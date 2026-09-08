@@ -19,21 +19,35 @@
 //!
 //! # Which kind a failed fetch is recorded under
 //!
-//! The contracts declare no image-fetch-failure kind, and the store carries no
-//! field for one, so the failure is written down as an event of its own under
-//! the malformed-external-event kind: an external thing this system tried to
-//! read and could not, which is what that kind is for. Its `detail` names the
-//! URL and the bound that refused, and the bytes it carries are the **alert's**
-//! own, exactly as they arrived — those are what this system received, and they
-//! say which alert lost its image. Nothing here invents bytes for a response
-//! that never came.
+//! The contracts declare a kind for exactly this: a
+//! [`PortFailure`](printobserver_types::EventKind::PortFailure) at the
+//! [`ImageWrite`](PortFailureSite::ImageWrite) site, naming the event whose
+//! handling reached the failing call. That is what a failed fetch is — the
+//! alert itself was read perfectly, and only getting the image it pointed at
+//! failed — and it is the same kind and the same site the supervision core
+//! records its own image failures under.
+//!
+//! It is deliberately **not** the malformed-external-event kind. That kind
+//! means the body that arrived could not be read, and recording a failed fetch
+//! under it would claim the alert was unreadable while carrying the alert's own
+//! bytes as the thing that could not be read — a false audit record about a
+//! body this system read and stored. The alert's bytes stay where they belong,
+//! on the alert's own event; the failure carries that event's identifier
+//! instead, so a reader holding the alert reaches the failure and a reader
+//! holding the failure reaches the alert.
+//!
+//! Its `detail` is the refusal in [`VisionError`]'s own words, which is what
+//! names the variant: timed out, too large naming the limit, an unacceptable
+//! content type naming what arrived, or unreachable carrying its detail. A
+//! variant the port gains is carried by the same line with nothing here to
+//! change.
 
 use std::sync::Arc;
 
 use printobserver_store_api::{EventDraft, StoreError, StorePort};
 use printobserver_types::{
-    EventPayload, EventRecord, EventSource, ImageRecord, MalformedExternalEventPayload, PrintId,
-    PrintRecord, RawBytes, Timestamp,
+    EventId, EventPayload, EventRecord, EventSource, ImageRecord, MalformedExternalEventPayload,
+    PortFailurePayload, PortFailureSite, PrintId, PrintRecord, RawBytes, Timestamp,
 };
 use printobserver_vision_api::{VisionError, VisionPort};
 
@@ -193,25 +207,28 @@ impl ObicoIngress {
         ))
     }
 
-    /// Record why no snapshot was stored, against the print it was about.
+    /// Record why no snapshot was stored, beside the event that named it.
     ///
-    /// The bytes it carries are the alert's own, exactly as they arrived: they
-    /// are what this system received, and they say which alert lost its image.
+    /// A port failure at the image-write site, naming the alert's own event, so
+    /// that a reader holding either one reaches the other. It carries no `raw`
+    /// of its own: the bytes that arrived are on the alert's event, and no
+    /// bytes arrived for the response that never came.
     async fn record_image_failure(
         &self,
         print_id: PrintId,
-        source_url: &str,
+        event_id: EventId,
         failure: &VisionError,
-        raw: RawBytes,
     ) -> Result<(), IngressError> {
         let draft = EventDraft {
             print_id: Some(print_id),
             source: EventSource::System,
             received_at: Timestamp::now(),
-            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: format!("the snapshot at {source_url} could not be read: {failure}"),
+            payload: EventPayload::PortFailure(PortFailurePayload {
+                event_id,
+                site: PortFailureSite::ImageWrite,
+                detail: failure.to_string(),
             }),
-            raw: Some(raw),
+            raw: None,
         };
         self.store.append_event(draft).await?;
         Ok(())
@@ -241,7 +258,7 @@ impl ObicoIngress {
                 source: alert.source,
                 received_at: alert.received_at,
                 payload: alert.payload,
-                raw: Some(alert.raw.clone()),
+                raw: Some(alert.raw),
             })
             .await?;
 
@@ -263,7 +280,7 @@ impl ObicoIngress {
                     );
                 }
                 Err(failure) => {
-                    self.record_image_failure(record.id, source_url, &failure, alert.raw)
+                    self.record_image_failure(record.id, event.id, &failure)
                         .await?;
                     image_failure = Some(failure);
                 }

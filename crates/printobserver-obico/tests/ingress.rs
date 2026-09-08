@@ -31,8 +31,8 @@ use printobserver_store_api::{HistoryQuery, ImageLookup, StorePort};
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{
     EventKind, EventPayload, EventRecord, EventSource, ImageRecord, ObicoFailureAlertPayload,
-    ObicoNotificationType, ObicoPrinterNotificationPayload, PrintRecord, PrinterState, RawBytes,
-    Timestamp,
+    ObicoNotificationType, ObicoPrinterNotificationPayload, PortFailurePayload, PortFailureSite,
+    PrintRecord, PrinterState, RawBytes, Timestamp,
 };
 use printobserver_vision_api::VisionError;
 use store::{MemoryStore, RefusingStore};
@@ -135,27 +135,40 @@ async fn stored_image(store: &MemoryStore, record: &ImageRecord) -> (ImageRecord
 ///
 /// It is an event of its own against the same print, so it is found the way
 /// any consumer would find it: by reading that print's history.
-async fn recorded_failure(store: &MemoryStore, receipt: &Receipt) -> EventRecord {
+///
+/// A failed snapshot fetch is a port failure and **not** a malformed external
+/// event — the alert's body was read perfectly, and only the fetch of the image
+/// it pointed at failed — so this reads back the port failures, and asserts that
+/// nothing recorded the alert itself as unreadable. An implementation writing
+/// the fetch failure down under the malformed kind carrying the alert's bytes
+/// fails here rather than passing.
+async fn recorded_failure(store: &MemoryStore, receipt: &Receipt) -> PortFailurePayload {
     let print = receipt.print.clone().expect("the alert named a print");
-    let mut malformed: Vec<EventRecord> = history_of(store, &print)
-        .await
+    let history = history_of(store, &print).await;
+    assert!(
+        !history
+            .iter()
+            .any(|record| record.kind() == EventKind::MalformedExternalEvent),
+        "a fetch failure was recorded as a malformed external event"
+    );
+    let mut failures: Vec<PortFailurePayload> = history
         .into_iter()
-        .filter(|record| record.kind() == EventKind::MalformedExternalEvent)
+        .filter_map(|record| match record.payload {
+            EventPayload::PortFailure(payload) => {
+                assert_eq!(record.source, EventSource::System);
+                assert_eq!(record.print_id, Some(print.id));
+                assert_eq!(record.raw, None, "the failure invented bytes of its own");
+                Some(payload)
+            }
+            _ => None,
+        })
         .collect();
     assert_eq!(
-        malformed.len(),
+        failures.len(),
         1,
         "expected exactly one recorded failure beside the event"
     );
-    malformed.pop().expect("one recorded failure")
-}
-
-/// What a recorded failure says.
-fn failure_detail(record: &EventRecord) -> String {
-    match &record.payload {
-        EventPayload::MalformedExternalEvent(payload) => payload.detail.clone(),
-        other => panic!("expected a malformed external event, found {other:?}"),
-    }
+    failures.pop().expect("one recorded failure")
 }
 
 /// A small snapshot, of the shape and size a printer's camera produces.
@@ -490,17 +503,22 @@ async fn an_alert_for_an_ended_print_does_not_reopen_it() {
 // --- Fetching the snapshot ---------------------------------------------------
 
 /// Post the committed alert with its snapshot at one URL.
+///
+/// Answers the receipt and the bytes that were posted, because every failure
+/// journey below asserts the alert's own bytes survived the failed fetch.
 async fn post_alert_for(
     store: &Arc<MemoryStore>,
     snapshot_url: String,
     config: ObicoVisionConfig,
-) -> Receipt {
-    let mut body = failure_alert();
-    body["img_url"] = json!(snapshot_url);
-    ingress(store, config)
-        .receive(body_of(&body), Some("application/json".to_owned()))
+) -> (Receipt, RawBytes) {
+    let mut alert = failure_alert();
+    alert["img_url"] = json!(snapshot_url);
+    let body = body_of(&alert);
+    let receipt = ingress(store, config)
+        .receive(body.clone(), Some("application/json".to_owned()))
         .await
-        .expect("the alert is accepted")
+        .expect("the alert is accepted");
+    (receipt, body)
 }
 
 /// The snapshot is stored during the handling, under the declared defaults.
@@ -516,7 +534,7 @@ async fn the_snapshot_is_stored_during_the_handling_under_the_defaults() {
     assert_eq!(defaults.fetch_timeout, DEFAULT_FETCH_TIMEOUT);
     assert_eq!(defaults.max_image_bytes, DEFAULT_MAX_IMAGE_BYTES);
 
-    let receipt = post_alert_for(&store, host.snapshot_url(), defaults).await;
+    let (receipt, _) = post_alert_for(&store, host.snapshot_url(), defaults).await;
 
     // Read the moment the handling returns: nothing below fetches anything.
     let record = receipt
@@ -532,21 +550,40 @@ async fn the_snapshot_is_stored_during_the_handling_under_the_defaults() {
 }
 
 /// Every way the fetch fails leaves the event and the failure written down.
-async fn assert_refused(receipt: &Receipt, store: &MemoryStore, expected: &VisionError) {
+///
+/// The event is still stored — its kind, its source and its own bytes intact,
+/// because the body was read perfectly — and the failure is read back beside
+/// it, naming that event and saying which [`VisionError`] variant refused the
+/// fetch in the port's own words.
+async fn assert_refused(
+    receipt: &Receipt,
+    store: &MemoryStore,
+    body: &RawBytes,
+    expected: &VisionError,
+) {
     assert_eq!(receipt.image_failure.as_ref(), Some(expected));
     assert!(receipt.image.is_none(), "a snapshot was stored anyway");
 
     let held = stored_event(store, receipt);
     assert_eq!(held.kind(), EventKind::ObicoFailureAlert);
+    assert_eq!(held.source, EventSource::Obico);
     assert_eq!(held.image, None, "the event names an image");
+    assert_eq!(
+        held.raw.as_ref().map(RawBytes::as_slice),
+        Some(body.as_slice()),
+        "the alert's own bytes did not survive the failed fetch"
+    );
 
     let failure = recorded_failure(store, receipt).await;
-    assert_eq!(failure.source, EventSource::System);
-    assert_eq!(failure.print_id, held.print_id);
-    assert!(
-        failure_detail(&failure).contains(&expected.to_string()),
-        "the recorded failure does not say why: {}",
-        failure_detail(&failure)
+    assert_eq!(
+        failure.event_id, held.id,
+        "the failure does not name the event it was recorded beside"
+    );
+    assert_eq!(failure.site, PortFailureSite::ImageWrite);
+    assert_eq!(
+        failure.detail,
+        expected.to_string(),
+        "the recorded failure does not name the variant that refused"
     );
 }
 
@@ -564,9 +601,9 @@ async fn a_snapshot_served_too_late_times_out() {
         ..ObicoVisionConfig::default()
     };
 
-    let receipt = post_alert_for(&store, host.snapshot_url(), config).await;
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), config).await;
 
-    assert_refused(&receipt, &store, &VisionError::TimedOut).await;
+    assert_refused(&receipt, &store, &body, &VisionError::TimedOut).await;
 }
 
 /// A snapshot over the maximum is refused, whether or not it declares itself.
@@ -584,9 +621,15 @@ async fn a_snapshot_over_the_maximum_is_refused() {
             ..prompt_bounds()
         };
 
-        let receipt = post_alert_for(&store, host.snapshot_url(), config).await;
+        let (receipt, body) = post_alert_for(&store, host.snapshot_url(), config).await;
 
-        assert_refused(&receipt, &store, &VisionError::TooLarge { limit: 100 }).await;
+        assert_refused(
+            &receipt,
+            &store,
+            &body,
+            &VisionError::TooLarge { limit: 100 },
+        )
+        .await;
     }
 }
 
@@ -607,11 +650,12 @@ async fn a_content_type_that_is_not_an_image_is_refused() {
         .await;
         let store = Arc::new(MemoryStore::new());
 
-        let receipt = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+        let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
 
         assert_refused(
             &receipt,
             &store,
+            &body,
             &VisionError::UnacceptableContentType {
                 content_type: named.to_owned(),
             },
@@ -628,7 +672,7 @@ async fn a_content_type_that_is_not_an_image_is_refused() {
 async fn a_host_nothing_answers_on_is_unreachable() {
     let store = Arc::new(MemoryStore::new());
 
-    let receipt = post_alert_for(&store, unreachable_url().await, prompt_bounds()).await;
+    let (receipt, body) = post_alert_for(&store, unreachable_url().await, prompt_bounds()).await;
 
     let failure = receipt
         .image_failure
@@ -638,7 +682,7 @@ async fn a_host_nothing_answers_on_is_unreachable() {
         matches!(failure, VisionError::Unreachable { .. }),
         "expected an unreachable host, found {failure}"
     );
-    assert_refused(&receipt, &store, &failure).await;
+    assert_refused(&receipt, &store, &body, &failure).await;
 }
 
 /// A host that answers with a status other than success is unreachable.
@@ -654,7 +698,7 @@ async fn a_host_that_refuses_the_request_is_unreachable() {
     .await;
     let store = Arc::new(MemoryStore::new());
 
-    let receipt = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
 
     let failure = receipt
         .image_failure
@@ -664,7 +708,7 @@ async fn a_host_that_refuses_the_request_is_unreachable() {
         matches!(failure, VisionError::Unreachable { .. }),
         "expected an unreachable host, found {failure}"
     );
-    assert_refused(&receipt, &store, &failure).await;
+    assert_refused(&receipt, &store, &body, &failure).await;
 }
 
 /// Every notification the producer sends normalizes to its own spelling.
