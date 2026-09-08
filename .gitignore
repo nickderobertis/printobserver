@@ -1,3 +1,25 @@
 # Local sync bookkeeping for gh-secrets (per-machine; the manifest itself is
 # tracked)
 .gh-secrets-state.json
+
+# Rust
+/target/
+*.profraw
+/lcov.info
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+/coverage-python/
+
+# Node / Nx
+node_modules/
+.nx/
+dist/
+
+# Scratch space the recipes use
+/.just-tmp/
