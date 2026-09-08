@@ -12,6 +12,8 @@
 mod assessment_schema;
 #[path = "supervision/closing.rs"]
 mod closing;
+#[path = "supervision/failures.rs"]
+mod failures;
 #[path = "supervision/prompting.rs"]
 mod prompting;
 #[path = "supervision/retries.rs"]

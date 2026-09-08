@@ -12,6 +12,7 @@ use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_supervisor_api::{
     BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
+use printobserver_types::serde_json::Value;
 use printobserver_types::{AgentAssessment, PrintId, SessionPhase, SupervisionSession, Timestamp};
 
 use crate::config::{SupervisorConfig, TurnSeam};
@@ -238,6 +239,9 @@ impl OneharnessSupervisor {
     }
 }
 
+/// The detail an answer no schema verdict was reached about is refused with.
+const NO_ANSWER: &str = "the answer carried no value the assessment schema could be applied to";
+
 /// The detail a run that reported no session handle is recorded under.
 const NO_SESSION: &str = "the harness exposed no session, so the conversation cannot be continued";
 
@@ -291,18 +295,17 @@ fn assessment(result: &RunResult) -> Result<AgentAssessment, SupervisorError> {
     }
     if result.schema_valid != Some(true) {
         return Err(SupervisorError::InvalidAnswer {
-            detail: result.schema_error.clone().unwrap_or_else(|| {
-                "the answer carried no value the assessment schema could be applied to".to_owned()
-            }),
+            detail: result.schema_error.clone().unwrap_or(NO_ANSWER.to_owned()),
         });
     }
-    let Some(value) = result.structured.clone() else {
-        return Err(SupervisorError::InvalidAnswer {
-            detail: "the answer carried no JSON value".to_owned(),
-        });
-    };
-    serde_json::from_value(value).map_err(|error| SupervisorError::InvalidAnswer {
-        detail: error.to_string(),
+    // The value is read back as the assessment itself rather than trusted for
+    // having passed the schema: the two agree only while the schema is the one
+    // generated from the type, and a schema saying otherwise is a bad answer
+    // rather than a value this port hands on.
+    serde_json::from_value(result.structured.clone().unwrap_or(Value::Null)).map_err(|error| {
+        SupervisorError::InvalidAnswer {
+            detail: error.to_string(),
+        }
     })
 }
 
