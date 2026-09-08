@@ -38,11 +38,44 @@ def install_hooks(repo: Repo) -> int:
 
 
 def commit_msg(repo: Repo, message_file: Path) -> int:
-    """Refuse a commit subject that is not a Conventional Commit of an admitted type."""
+    """Refuse an authored commit subject that is not a Conventional Commit.
+
+    The subject git writes for a merge it is completing is not one anybody
+    authored, so it is admitted as written; everything else is held to the
+    declared type list.
+    """
     subject = message_file.read_text(encoding="utf-8").splitlines()[0].strip()
     if subject.startswith("#") or not subject:
         return 0
+    if _a_merge_is_in_progress(repo):
+        return 0
     return _rule_on_subject(repo, subject, "commit subject")
+
+
+def _a_merge_is_in_progress(repo: Repo) -> bool:
+    """Whether git is part-way through a merge it is writing this commit for.
+
+    Publishing a branch of this repository merges the base into it first, and
+    git — not a person — writes `Merge remote-tracking branch 'origin/main'
+    into <branch>` for that commit. Holding a subject nobody typed to
+    Conventional Commits refused the merge, so no branch could be published
+    once `main` had moved under it.
+
+    What distinguishes that commit is its *state*, not its wording: git writes
+    `MERGE_HEAD` into the git directory when a merge starts and removes it once
+    the merge commit is made, so it is present exactly while git is completing
+    one and absent for an ordinary commit whatever its subject says. Reading
+    the subject instead would hand anybody a bypass of the whole convention by
+    typing one word, because `Merge branch 'main'` typed by a person is
+    textually identical to what git generates.
+
+    `run` drops the variables naming a repository, so this asks about the tree
+    the hook was pointed at rather than about whichever repository a `pre-push`
+    hook further out happened to be pushing. A tree that is no git repository
+    at all answers no, and its subject is ruled on as usual.
+    """
+    located = run(["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"], cwd=repo.root)
+    return located.returncode == 0
 
 
 def pr_title(repo: Repo) -> int:

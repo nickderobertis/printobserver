@@ -132,6 +132,16 @@ The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
 continuous-integration job of its own.
 
+That tier needs the *harness* as well as its credential, and the two are not the
+same thing. `llmlint` and `oneharness` drive a separate agent binary that
+neither of them carries, so on a host with none — a runner, where nothing else
+installs an agent — oneharness skips every candidate in `oneharness.toml`'s
+chain as uninstalled and the tier errors having judged nothing. It reads as a
+broken toolchain rather than as a missing agent, and on a push to `main` it
+hides completely, because that diff is empty and no rule runs to need one. So
+`just setup-llmlint` installs an agent when the host carries none, and asks
+`oneharness` which ones would count rather than restating the chain.
+
 Recipes delegate to `nx run-many` rather than looping over packages, so a new
 project joins the gate by declaring the target names every other project uses.
 
@@ -291,6 +301,21 @@ and `revert` are valid subjects that release nothing. `release-plz.toml`'s
 `release_commits` regex and the committed `commit-msg` hook are held to that
 same list by `just check-repo`. Pre-1.0 Cargo rules apply: `feat`/`fix`/`perf`
 bump the patch, `!`/`BREAKING CHANGE` bumps the minor.
+
+That rule is over subjects a *person* writes. Publishing a branch merges the base
+into it first, and git writes that merge commit's subject itself — `Merge
+remote-tracking branch 'origin/main' into <branch>`. The hook admits that commit
+by its **state** rather than by its wording: `MERGE_HEAD` is in the git directory
+exactly while git is completing a merge, and absent for an ordinary commit
+whatever its subject says. Do not read the subject instead — `Merge branch 'main'`
+typed by a person is textually identical to what git writes, so a rule matching
+the wording hands anybody a bypass of the whole convention by typing one word. A
+subject somebody types is held to the type list exactly as before, that wording
+included. The exemption is the hook's alone: `just check-pr-title` has none,
+because a title is always typed and no merge commit reaches `main` under
+squash-merge. Without it no branch of this repository could be published once
+`main` had moved under it, which is a failure that arrives after the work is
+finished.
 
 **How a release happens.** `.github/workflows/release-plz.yml` fires on every
 push to `main` with no manual invocation. `release-plz release-pr` opens the

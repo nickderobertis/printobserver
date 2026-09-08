@@ -18,8 +18,18 @@
 #      PATH entry. `--upgrade` bumps an older cached tool, honouring the floor below
 #      (`just lint-llm-diff` needs the changed-file-scoped `--diff` and three-dot
 #      `--diff-base` default; `just lint-llm-validate` needs the `validate` gate).
-#   2. In a Claude Code session, persists PATH (so the freshly installed binary
-#      resolves) into CLAUDE_ENV_FILE so later Bash calls inherit it.
+#   2. Installs an agent harness when the host carries none oneharness can spawn.
+#      Step 1 installs `llmlint` and `oneharness` but neither of the agent binaries
+#      oneharness drives, so on a host that has no harness at all — a continuous-
+#      integration runner — every candidate in the fallback chain is skipped as
+#      uninstalled and the tier errors with "all harnesses in the fallback chain
+#      failed", having judged nothing. Which chain to look for is read back out of
+#      oneharness's own effective configuration rather than restated here, so
+#      `oneharness.toml` stays the one source of it.
+#   3. Persists PATH so the freshly installed binaries resolve for whatever runs
+#      next: into CLAUDE_ENV_FILE in a Claude Code session, and into GITHUB_PATH in
+#      a workflow step, whose next step is a new shell that would not otherwise see
+#      `$HOME/.local/bin`.
 #
 # Harness selection: the committed `oneharness.toml` is in fallback mode (codex +
 # gpt-5.5 primary, claude-code + opus-4.8 secondary), so llmlint runs the primary
@@ -27,7 +37,7 @@
 # Claude Code session where codex is absent — no `ONEHARNESS_*` override needed
 # (one would only clobber the fallback list). If your fallback order can't select
 # the right harness for some environment, set ONEHARNESS_HARNESSES there.
-# llmlint: ignore-file[tool_output_is_signal, boundary_inputs_validated] deliberate for a session-startup installer (see header): success stays quiet while failures log-and-continue rather than block startup; and the toolchain is installed from PyPI (`uv tool install llmlint-cli`) whose wheels ship with Trusted Publishing + PEP 740 attestations, so no unvalidated external input is executed.
+# llmlint: ignore-file[tool_output_is_signal, boundary_inputs_validated] deliberate for a session-startup installer (see header): success stays quiet while failures log-and-continue rather than block startup; and every external input is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing + PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — each a constant in this file rather than anything a caller supplies, so no unvalidated external input is executed.
 set -uo pipefail
 
 # Version floor, as a PyPI constraint (the `llmlint-cli` package version tracks the
@@ -44,7 +54,16 @@ set -uo pipefail
 # so `line_localizable_rules_require_attribution` is enforced (0.3.23).
 # llmlint: ignore[changed_behavior_has_e2e] this dependency floor selects the validator release used by the existing real `just lint-llm-validate` gate; installer control flow and its user-visible contract are unchanged.
 readonly LLMLINT_MIN="0.3.23"
-readonly BIN_DIR="$HOME/.local/bin"
+# The package `@anthropic-ai/claude-code` publishes; installing it puts the `claude`
+# binary oneharness spawns for the `claude-code` harness onto PATH. It is the member
+# of the fallback chain whose credential the llmlint continuous-integration job
+# wires (ANTHROPIC_API_KEY), which is why it is this script's choice of harness to
+# install rather than the chain's primary.
+readonly HARNESS_PACKAGE="@anthropic-ai/claude-code"
+# `npm --prefix` writes binaries to `$PREFIX_DIR/bin`, which is the directory this
+# script already puts on PATH and persists — so one prefix serves both installs.
+readonly PREFIX_DIR="$HOME/.local"
+readonly BIN_DIR="$PREFIX_DIR/bin"
 
 log() { printf 'setup-llmlint: %s\n' "$*" >&2; }
 
@@ -63,6 +82,68 @@ ensure_toolchain() {
     || log "llmlint-cli install failed (continuing)"
 }
 
+# Where `oneharness` actually is. `uv tool` links only the *requested* package's
+# executable onto PATH, so oneharness is not on it: it sits beside `llmlint` inside
+# the tool venv, which is where llmlint itself resolves it.
+oneharness_binary() {
+  local llmlint_path venv_bin
+  if command -v oneharness >/dev/null 2>&1; then
+    command -v oneharness
+    return 0
+  fi
+  llmlint_path=$(command -v llmlint 2>/dev/null) || return 1
+  venv_bin=$(dirname "$(readlink -f "$llmlint_path")")
+  [ -x "$venv_bin/oneharness" ] || return 1
+  printf '%s\n' "$venv_bin/oneharness"
+}
+
+# The fallback chain, read back out of oneharness's own effective configuration
+# (`oneharness config` reports every field's value and where it came from). Asking
+# oneharness rather than listing the harnesses here keeps `oneharness.toml` — and
+# any ONEHARNESS_HARNESSES override layered over it — the one source of the chain,
+# so this script cannot drift from the file that decides what the tier drives.
+configured_chain() {
+  local python
+  python=$(command -v python3 2>/dev/null) || python=$(command -v python 2>/dev/null) || return 1
+  "$1" config 2>/dev/null | "$python" -c 'import json, sys
+print(" ".join(json.load(sys.stdin)["harnesses"]["value"] or []))' 2>/dev/null
+}
+
+# Zero when oneharness can already spawn one of the configured harnesses, so this
+# host needs no install. `detect --require-available` is oneharness's own answer to
+# "is this harness installed", reported as an exit status. Every way of failing to
+# find out returns non-zero: an unanswerable question installs a harness rather than
+# leaving the tier with none, which is the failure this step exists to prevent.
+a_configured_harness_is_available() {
+  local oneharness chain_text id
+  local -a chain
+  oneharness=$(oneharness_binary) || return 1
+  chain_text=$(configured_chain "$oneharness") || return 1
+  read -ra chain <<< "$chain_text"
+  for id in "${chain[@]}"; do
+    if "$oneharness" detect --harness "$id" --require-available >/dev/null 2>&1; then
+      log "harness \`$id\` is installed; installing none"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Install a harness when the host carries none oneharness can spawn. Without this
+# the tier errors with "all harnesses in the fallback chain failed" and judges
+# nothing — which is what a continuous-integration runner does, because nothing
+# else on it installs an agent.
+ensure_harness() {
+  a_configured_harness_is_available && return 0
+  if ! command -v npm >/dev/null 2>&1; then
+    log "no harness installed and npm absent; cannot install $HARNESS_PACKAGE"
+    return 0
+  fi
+  log "no harness oneharness can spawn; installing $HARNESS_PACKAGE via npm"
+  npm install -g --prefix "$PREFIX_DIR" "$HARNESS_PACKAGE" >&2 \
+    || log "$HARNESS_PACKAGE install failed (continuing)"
+}
+
 # Persist env for the rest of the session via CLAUDE_ENV_FILE (Claude Code sources
 # it into every later Bash call). PATH so the freshly installed binaries resolve.
 # No-op outside a session.
@@ -78,9 +159,21 @@ persist_session_env() {
   log "exported PATH"
 }
 
+# Persist PATH for the rest of a workflow job via GITHUB_PATH. Each step of a job
+# is a fresh shell, so the export below reaches this script and nothing after it —
+# and the step that runs the tier is the one that has to find the harness binary.
+# No-op outside a workflow.
+persist_ci_env() {
+  [ -n "${GITHUB_PATH:-}" ] || { log "no GITHUB_PATH (not a workflow); skipping env"; return 0; }
+  printf '%s\n' "$BIN_DIR" >> "$GITHUB_PATH"
+  log "added $BIN_DIR to GITHUB_PATH"
+}
+
 export PATH="${BIN_DIR}:${PATH}"
 ensure_toolchain
+ensure_harness
 persist_session_env
+persist_ci_env
 # `llmlint doctor` confirms the sibling `oneharness` is reachable (it is not on
 # PATH — llmlint resolves it beside its own binary), so report via doctor.
 if command -v llmlint >/dev/null 2>&1; then
