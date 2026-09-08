@@ -14,10 +14,8 @@ use printobserver_types::{EventKind, PrintId};
 /// The default window is below the maximum limit.
 #[test]
 fn the_default_window_is_below_the_maximum_limit() {
-    assert!(
-        DEFAULT_HISTORY_WINDOW < MAX_HISTORY_LIMIT,
-        "the default window {DEFAULT_HISTORY_WINDOW} is not below the maximum {MAX_HISTORY_LIMIT}"
-    );
+    let (default, maximum) = (DEFAULT_HISTORY_WINDOW, MAX_HISTORY_LIMIT);
+    assert!(default < maximum, "the default window {default} is not below the maximum {maximum}");
 }
 
 /// An absent limit takes the declared default window.
