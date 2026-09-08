@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How sure the agent is.\n\nA closed vocabulary rather than a number, because a number invites a\nprecision the agent does not have.",
+  "oneOf": [
+    {
+      "const": "low",
+      "description": "Not sure.",
+      "type": "string"
+    },
+    {
+      "const": "medium",
+      "description": "Fairly sure.",
+      "type": "string"
+    },
+    {
+      "const": "high",
+      "description": "Sure.",
+      "type": "string"
+    }
+  ],
+  "title": "Confidence"
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An inclusive pair of 64-bit floats.",
+  "properties": {
+    "max": {
+      "description": "The highest value the range admits, inclusive.",
+      "format": "double",
+      "type": "number"
+    },
+    "min": {
+      "description": "The lowest value the range admits, inclusive.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "min",
+    "max"
+  ],
+  "title": "Range",
+  "type": "object"
+}

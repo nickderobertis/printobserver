@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "ObicoEventType": {
+      "description": "The `type` a printer notification's event object carries.\n\nThese are the producer's own spellings; the normalized vocabulary is\n[`ObicoNotificationType`](crate::ObicoNotificationType).",
+      "oneOf": [
+        {
+          "const": "PrintStarted",
+          "description": "A print started.",
+          "type": "string"
+        },
+        {
+          "const": "PrintDone",
+          "description": "A print finished.",
+          "type": "string"
+        },
+        {
+          "const": "PrintCancelled",
+          "description": "A print was cancelled.",
+          "type": "string"
+        },
+        {
+          "const": "PrintPaused",
+          "description": "A print was paused.",
+          "type": "string"
+        },
+        {
+          "const": "PrintResumed",
+          "description": "A print was resumed.",
+          "type": "string"
+        },
+        {
+          "const": "FilamentChange",
+          "description": "The printer is waiting for a filament change.",
+          "type": "string"
+        },
+        {
+          "const": "HeaterCooledDown",
+          "description": "A heater cooled down.",
+          "type": "string"
+        },
+        {
+          "const": "HeaterTargetReached",
+          "description": "A heater reached its target.",
+          "type": "string"
+        }
+      ]
+    },
+    "ObicoNotificationEvent": {
+      "description": "The `event` object a printer notification carries.",
+      "properties": {
+        "is_warning": {
+          "description": "Whether the producer called it a warning.",
+          "type": "boolean"
+        },
+        "print_paused": {
+          "description": "Whether the producer paused the print itself.",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ObicoEventType",
+          "description": "Which notification it is, in the producer's own spelling."
+        }
+      },
+      "required": [
+        "type",
+        "is_warning",
+        "print_paused"
+      ],
+      "type": "object"
+    },
+    "ObicoPrintInfo": {
+      "description": "The `print` object, which the producer sends when there is a print.",
+      "properties": {
+        "ended_at": {
+          "$ref": "#/$defs/ObicoTimestamp",
+          "description": "When the print ended."
+        },
+        "filename": {
+          "description": "The file being printed.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Obico's own identifier for the print.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "started_at": {
+          "$ref": "#/$defs/ObicoTimestamp",
+          "description": "When the print started."
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "started_at",
+        "ended_at"
+      ],
+      "type": "object"
+    },
+    "ObicoPrinterInfo": {
+      "description": "The `printer` object both shapes carry.",
+      "properties": {
+        "id": {
+          "description": "Obico's own identifier for the printer.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "name": {
+          "description": "The name Obico shows the printer under.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ObicoTimestamp": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "maxLength": 0,
+          "type": "string"
+        }
+      ],
+      "description": "A Unix timestamp number, or the empty string the producer sends when it has no instant to send.",
+      "title": "ObicoTimestamp"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole body the producer sends for a printer notification.\n\n`print` and `img_url` are present together when the notification is about a\nprint and absent together when it is not; the absent form is a shape the\nproducer sends rather than an incomplete copy of the present one.",
+  "properties": {
+    "event": {
+      "$ref": "#/$defs/ObicoNotificationEvent",
+      "description": "What happened."
+    },
+    "img_url": {
+      "description": "Where the snapshot can be fetched, when the notification carries one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ObicoPrintInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Which print it is about, when it is about one."
+    },
+    "printer": {
+      "$ref": "#/$defs/ObicoPrinterInfo",
+      "description": "Which printer it happened on."
+    }
+  },
+  "required": [
+    "event",
+    "printer"
+  ],
+  "title": "ObicoPrinterNotification",
+  "type": "object"
+}

@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "ObicoFailureEvent": {
+      "description": "The `event` object a failure alert carries.",
+      "properties": {
+        "is_warning": {
+          "description": "Whether the producer called it a warning rather than a failure.",
+          "type": "boolean"
+        },
+        "print_paused": {
+          "description": "Whether the producer paused the print itself.",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ObicoFailureEventType",
+          "description": "Always the producer's own `PrintFailure`."
+        }
+      },
+      "required": [
+        "type",
+        "is_warning",
+        "print_paused"
+      ],
+      "type": "object"
+    },
+    "ObicoFailureEventType": {
+      "description": "The one `type` a failure alert's event object carries.",
+      "oneOf": [
+        {
+          "const": "PrintFailure",
+          "description": "Obico's own spelling of a print failure.",
+          "type": "string"
+        }
+      ]
+    },
+    "ObicoPrintInfo": {
+      "description": "The `print` object, which the producer sends when there is a print.",
+      "properties": {
+        "ended_at": {
+          "$ref": "#/$defs/ObicoTimestamp",
+          "description": "When the print ended."
+        },
+        "filename": {
+          "description": "The file being printed.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Obico's own identifier for the print.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "started_at": {
+          "$ref": "#/$defs/ObicoTimestamp",
+          "description": "When the print started."
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "started_at",
+        "ended_at"
+      ],
+      "type": "object"
+    },
+    "ObicoPrinterInfo": {
+      "description": "The `printer` object both shapes carry.",
+      "properties": {
+        "id": {
+          "description": "Obico's own identifier for the printer.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "name": {
+          "description": "The name Obico shows the printer under.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ObicoTimestamp": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "maxLength": 0,
+          "type": "string"
+        }
+      ],
+      "description": "A Unix timestamp number, or the empty string the producer sends when it has no instant to send.",
+      "title": "ObicoTimestamp"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole body the producer sends for a print failure.",
+  "properties": {
+    "event": {
+      "$ref": "#/$defs/ObicoFailureEvent",
+      "description": "What happened."
+    },
+    "img_url": {
+      "description": "Where the snapshot that shows it can be fetched.",
+      "type": "string"
+    },
+    "print": {
+      "$ref": "#/$defs/ObicoPrintInfo",
+      "description": "Which print it happened to."
+    },
+    "printer": {
+      "$ref": "#/$defs/ObicoPrinterInfo",
+      "description": "Which printer it happened on."
+    }
+  },
+  "required": [
+    "event",
+    "printer",
+    "print",
+    "img_url"
+  ],
+  "title": "ObicoFailureAlert",
+  "type": "object"
+}

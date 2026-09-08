@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One thing an adjustment may change.",
+  "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+  "title": "Adjustable",
+  "type": "string"
+}

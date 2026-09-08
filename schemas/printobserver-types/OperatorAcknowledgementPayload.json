@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "AcknowledgementDisposition": {
+      "description": "What an operator's acknowledgement of a failure event asks for next.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "Stop the print.",
+          "type": "string"
+        }
+      ]
+    },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An operator acknowledged an event.",
+  "properties": {
+    "acknowledged_event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The event being acknowledged."
+    },
+    "disposition": {
+      "$ref": "#/$defs/AcknowledgementDisposition",
+      "description": "What the operator asked for next."
+    }
+  },
+  "required": [
+    "acknowledged_event_id",
+    "disposition"
+  ],
+  "title": "OperatorAcknowledgementPayload",
+  "type": "object"
+}

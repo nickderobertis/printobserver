@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One action of the closed vocabulary, named without its payload.\n\nThis is what a safety envelope grants and what a policy rejection names; the\npayload lives on [`PrintAction`] itself.",
+  "oneOf": [
+    {
+      "const": "pause",
+      "description": "Pause the print.",
+      "type": "string"
+    },
+    {
+      "const": "resume",
+      "description": "Resume the print.",
+      "type": "string"
+    },
+    {
+      "const": "cancel",
+      "description": "Cancel the print.",
+      "type": "string"
+    },
+    {
+      "const": "start_print",
+      "description": "Start a print of a named file.",
+      "type": "string"
+    },
+    {
+      "const": "set_feedrate_factor",
+      "description": "Set the feedrate factor.",
+      "type": "string"
+    },
+    {
+      "const": "set_flowrate_factor",
+      "description": "Set the flowrate factor.",
+      "type": "string"
+    },
+    {
+      "const": "set_tool_target_c",
+      "description": "Set a tool's target temperature.",
+      "type": "string"
+    },
+    {
+      "const": "set_bed_target_c",
+      "description": "Set the bed's target temperature.",
+      "type": "string"
+    },
+    {
+      "const": "set_fan_percent",
+      "description": "Set the fan percentage.",
+      "type": "string"
+    },
+    {
+      "const": "acknowledge_failure",
+      "description": "Acknowledge a failure event.",
+      "type": "string"
+    }
+  ],
+  "title": "ActionKind"
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An actor class, which is what a safety envelope grants actions to.",
+  "oneOf": [
+    {
+      "const": "agent",
+      "description": "The supervising agent.",
+      "type": "string"
+    },
+    {
+      "const": "operator",
+      "description": "A person.",
+      "type": "string"
+    },
+    {
+      "const": "system",
+      "description": "The supervisor itself.",
+      "type": "string"
+    }
+  ],
+  "title": "ActorClass"
+}

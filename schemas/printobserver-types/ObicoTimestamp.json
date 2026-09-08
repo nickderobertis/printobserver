@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "type": "number"
+    },
+    {
+      "maxLength": 0,
+      "type": "string"
+    }
+  ],
+  "description": "A Unix timestamp number, or the empty string the producer sends when it has no instant to send.",
+  "title": "ObicoTimestamp"
+}

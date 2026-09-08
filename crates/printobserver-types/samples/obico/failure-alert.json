@@ -1,0 +1,18 @@
+{
+  "event": {
+    "type": "PrintFailure",
+    "is_warning": false,
+    "print_paused": true
+  },
+  "printer": {
+    "id": 17,
+    "name": "Prusa MK4"
+  },
+  "print": {
+    "id": 4211,
+    "filename": "benchy.gcode",
+    "started_at": 1772366400.5,
+    "ended_at": ""
+  },
+  "img_url": "https://obico.example/media/snapshots/4211.jpg"
+}

@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An accepted action reached the printer.",
+  "properties": {
+    "action_id": {
+      "$ref": "#/$defs/ActionId",
+      "description": "The action's identifier."
+    },
+    "intervention_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InterventionId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bounded intervention it opened, when it opened one."
+    }
+  },
+  "required": [
+    "action_id"
+  ],
+  "title": "ActionExecutedPayload",
+  "type": "object"
+}

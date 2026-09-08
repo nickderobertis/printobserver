@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Who asked for something.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The supervising agent, naming its session.",
+      "properties": {
+        "agent": {
+          "additionalProperties": false,
+          "properties": {
+            "session_name": {
+              "description": "The supervision session the agent is acting in.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "session_name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "operator",
+      "description": "A person.",
+      "type": "string"
+    },
+    {
+      "const": "system",
+      "description": "The supervisor itself.",
+      "type": "string"
+    }
+  ],
+  "title": "Actor"
+}

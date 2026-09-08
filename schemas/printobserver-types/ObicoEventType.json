@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The `type` a printer notification's event object carries.\n\nThese are the producer's own spellings; the normalized vocabulary is\n[`ObicoNotificationType`](crate::ObicoNotificationType).",
+  "oneOf": [
+    {
+      "const": "PrintStarted",
+      "description": "A print started.",
+      "type": "string"
+    },
+    {
+      "const": "PrintDone",
+      "description": "A print finished.",
+      "type": "string"
+    },
+    {
+      "const": "PrintCancelled",
+      "description": "A print was cancelled.",
+      "type": "string"
+    },
+    {
+      "const": "PrintPaused",
+      "description": "A print was paused.",
+      "type": "string"
+    },
+    {
+      "const": "PrintResumed",
+      "description": "A print was resumed.",
+      "type": "string"
+    },
+    {
+      "const": "FilamentChange",
+      "description": "The printer is waiting for a filament change.",
+      "type": "string"
+    },
+    {
+      "const": "HeaterCooledDown",
+      "description": "A heater cooled down.",
+      "type": "string"
+    },
+    {
+      "const": "HeaterTargetReached",
+      "description": "A heater reached its target.",
+      "type": "string"
+    }
+  ],
+  "title": "ObicoEventType"
+}

@@ -1,0 +1,30 @@
+{
+  "$defs": {
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The handle an image travels in context under.",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/ImageId",
+      "description": "The image's identifier."
+    },
+    "sha256": {
+      "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "sha256"
+  ],
+  "title": "ImageRef",
+  "type": "object"
+}

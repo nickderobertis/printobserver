@@ -1,0 +1,521 @@
+{
+  "$defs": {
+    "AcknowledgementDisposition": {
+      "description": "What an operator's acknowledgement of a failure event asks for next.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "Stop the print.",
+          "type": "string"
+        }
+      ]
+    },
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
+    "JobManifest": {
+      "additionalProperties": false,
+      "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
+      "properties": {
+        "allowed": {
+          "additionalProperties": false,
+          "description": "The range each named adjustable may take, inclusive.",
+          "patternProperties": {
+            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+              "$ref": "#/$defs/Range"
+            }
+          },
+          "type": "object"
+        },
+        "file_name": {
+          "description": "The file this manifest is about, as the slicer named it.",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material the job is sliced for.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Whatever else the slicer recorded.",
+          "type": "object"
+        },
+        "nozzle_diameter_mm": {
+          "description": "The nozzle the job is sliced for, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "slicer_profile": {
+          "description": "The slicer profile the job was sliced with.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "material",
+        "nozzle_diameter_mm",
+        "slicer_profile",
+        "allowed",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PrintAction": {
+      "description": "The whole vocabulary an actor may ask for, and there is no other.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Pause the print.",
+          "properties": {
+            "action": {
+              "const": "pause",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Resume the print.",
+          "properties": {
+            "action": {
+              "const": "resume",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Cancel the print.",
+          "properties": {
+            "action": {
+              "const": "cancel",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Start a print of a named file, with a manifest.",
+          "properties": {
+            "action": {
+              "const": "start_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "file_name": {
+              "$ref": "#/$defs/FileName",
+              "description": "The file to print, validated as a name a file API can be asked for."
+            },
+            "manifest": {
+              "$ref": "#/$defs/JobManifest",
+              "description": "The manifest this print is bounded by."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "file_name",
+            "manifest",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the feedrate factor, where one means one hundred percent.",
+          "properties": {
+            "action": {
+              "const": "set_feedrate_factor",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "factor": {
+              "description": "The multiplier asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "factor",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the flowrate factor, where one means one hundred percent.",
+          "properties": {
+            "action": {
+              "const": "set_flowrate_factor",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "factor": {
+              "description": "The multiplier asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "factor",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set one tool's target temperature.",
+          "properties": {
+            "action": {
+              "const": "set_tool_target_c",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            },
+            "target_c": {
+              "description": "The target temperature asked for, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the bed's target temperature.",
+          "properties": {
+            "action": {
+              "const": "set_bed_target_c",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            },
+            "target_c": {
+              "description": "The target temperature asked for, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "target_c",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan percentage.",
+          "properties": {
+            "action": {
+              "const": "set_fan_percent",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "percent": {
+              "description": "The percentage asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "percent",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Acknowledge a failure event, with a disposition.",
+          "properties": {
+            "action": {
+              "const": "acknowledge_failure",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "disposition": {
+              "$ref": "#/$defs/AcknowledgementDisposition",
+              "description": "What to do next."
+            },
+            "event_id": {
+              "$ref": "#/$defs/EventId",
+              "description": "The event being acknowledged."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "event_id",
+            "disposition",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An actor asked for an action.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/PrintAction",
+      "description": "What was asked for."
+    },
+    "action_id": {
+      "$ref": "#/$defs/ActionId",
+      "description": "The action's identifier."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who asked."
+    }
+  },
+  "required": [
+    "action_id",
+    "action",
+    "actor"
+  ],
+  "title": "ActionRequestedPayload",
+  "type": "object"
+}

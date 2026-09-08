@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A supervision session was closed.",
+  "properties": {
+    "close_reason": {
+      "description": "Why it was closed.",
+      "type": "string"
+    },
+    "session_name": {
+      "description": "The session's own name in the harness.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_name",
+    "close_reason"
+  ],
+  "title": "SupervisionSessionClosedPayload",
+  "type": "object"
+}

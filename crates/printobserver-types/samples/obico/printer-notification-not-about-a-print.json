@@ -1,0 +1,11 @@
+{
+  "event": {
+    "type": "HeaterCooledDown",
+    "is_warning": false,
+    "print_paused": false
+  },
+  "printer": {
+    "id": 17,
+    "name": "Prusa MK4"
+  }
+}

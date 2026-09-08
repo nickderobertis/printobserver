@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
+  "properties": {
+    "completion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
+    },
+    "error": {
+      "description": "The error the source reports, when it reports one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "estimated_print_time_s": {
+      "description": "The whole print's estimated duration, in whole seconds.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "file_name": {
+      "description": "The name of the file being printed, as the source reported it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "file_origin": {
+      "description": "Where the file lives, in the source's own vocabulary.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "print_time_left_s": {
+      "description": "How long the print has left, in whole seconds.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "print_time_s": {
+      "description": "How long the print has been running, in whole seconds.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "size_bytes": {
+      "description": "The file's size in bytes.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "state": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state the source reports the job to be in."
+    }
+  },
+  "required": [
+    "state"
+  ],
+  "title": "JobSnapshot",
+  "type": "object"
+}
