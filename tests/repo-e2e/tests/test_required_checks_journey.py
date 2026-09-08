@@ -14,6 +14,8 @@ from journey import GateCopy
 from repo_checks.expect import failing
 
 AGENTS = "AGENTS.md"
+CI = ".github/workflows/ci.yml"
+QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
 X86 = "- `gate (linux-x86_64)`\n"
 AARCH64 = "- `gate (linux-aarch64)`\n"
 
@@ -40,3 +42,28 @@ def test_a_record_naming_only_one_of_the_gates_cells_is_refused(
     result = broken.just("check-repo")
 
     failing(result, naming="some but not all of job `gate`'s status contexts as required")
+
+
+def test_a_required_name_several_cells_report_under_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """Two check runs under one name are two a rule requiring it cannot tell apart."""
+    broken = gate_copy()
+    broken.edit(CI, QUALIFIED, "    name: gate\n")
+    broken.edit(AGENTS, X86 + AARCH64, "- `gate`\n")
+
+    result = broken.just("check-repo")
+
+    failing(result, naming="2 matrix cells of job `gate` report under that one name")
+
+
+def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """A typo there would derive a context nothing reports, silently."""
+    broken = gate_copy()
+    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+
+    result = broken.just("check-repo")
+
+    failing(result, naming="but its matrix cells carry `id`, `runner`")

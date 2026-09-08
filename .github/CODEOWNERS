@@ -1,0 +1,6 @@
+# Review ownership for every path in this repository.
+#
+# One owner, because there is one: the rules this tree is held to live in
+# AGENTS.md and are enforced by `just check-repo`, and this file is what routes a
+# change to somebody who can rule on the ones no check can.
+* @nickderobertis

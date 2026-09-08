@@ -28,6 +28,18 @@ INTEGRATION_AARCH64 = AARCH64 + (
     "      - uses: actions/checkout@v5\n"
     "      - uses: extractions/setup-just@v3\n"
 )
+# The gate's whole matrix, down to the line that reads a cell out of it.
+GATE_MATRIX = (
+    """    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+"""
+    + AARCH64
+    + "    runs-on: ${{ matrix.platform.runner }}\n"
+)
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"
 NOT_A_KIND = "which is not one of the job kinds these checks classify"
 MATRIX = """    strategy:
@@ -60,6 +72,18 @@ def test_a_platform_dependent_job_narrowed_away_from_the_list_is_refused(
     result = broken.just("check-repo")
 
     failing(result, naming="job `gate`'s matrix omits platform `linux-aarch64`")
+
+
+def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """Narrowing a build to one platform by deleting its matrix is still narrowing."""
+    broken = gate_copy()
+    broken.edit(CI, GATE_MATRIX, "    runs-on: ubuntu-24.04\n")
+
+    result = broken.just("check-repo")
+
+    failing(result, naming="job `gate` is a gate job but declares no platform matrix")
 
 
 def test_the_integration_jobs_matrix_is_still_held_to_the_list(

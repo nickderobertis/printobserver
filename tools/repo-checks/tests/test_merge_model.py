@@ -112,6 +112,34 @@ def test_a_matrix_job_whose_cells_share_one_name_is_refused(
     refused_naming(findings, "2 matrix cells of job `gate`", "which of them was green")
 
 
+def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An empty substitution would derive a context nothing reports."""
+    broken = tree()
+    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+
+    findings = merge_model(broken.repo)
+
+    refused_naming(findings, "matrix.platform.arch", "its matrix cells carry `id`, `runner`")
+
+
+def test_a_name_interpolating_a_field_no_name_can_be_built_from_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A cell field that is not a scalar cannot name a check run either."""
+    broken = tree()
+    broken.edit(
+        CI,
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+        "          - id: [linux, x86_64]\n            runner: ubuntu-24.04\n",
+    )
+
+    findings = merge_model(broken.repo)
+
+    refused(findings, "not something a status context can be named after")
+
+
 def test_the_derived_contexts_follow_the_names_the_workflow_declares(
     tree: Callable[[], Tree],
 ) -> None:

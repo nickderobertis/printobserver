@@ -99,6 +99,10 @@ class PolicyValueError(ValueError):
     """`repo-policy.toml` declares a value a check cannot act on."""
 
 
+class WorkflowValueError(ValueError):
+    """A committed workflow declares something a check cannot derive from."""
+
+
 def _bring_up_command(repo: Repo) -> str:
     """The command line the printer-integration job is recognized by, or empty."""
     recipe = repo.policy.get("integration", {}).get("bring_up")
@@ -173,12 +177,36 @@ class StatusContext:
     kind: JobKind
 
 
-def _substituted(base: str, entry: dict[str, Any]) -> str:
-    """A job's declared name with one matrix cell's own values put into it."""
-    return MATRIX_EXPRESSION.sub(lambda found: str(entry.get(found["key"], "")), base)
+def _substituted(base: str, entry: dict[str, Any], where: str) -> str:
+    """A job's declared name with one matrix cell's own values put into it.
+
+    Raises:
+        WorkflowValueError: If the name interpolates a matrix field the cells do
+            not carry, or one carrying something no name can be built from.
+            Substituting an empty string there would derive a context nothing
+            reports, and the record would then read as having drifted rather than
+            as the typo in the workflow that it is.
+    """
+
+    def value(found: re.Match[str]) -> str:
+        key = found["key"]
+        if key not in entry:
+            carried = ", ".join(f"`{one}`" for one in sorted(map(str, entry))) or "nothing"
+            msg = f"{where} interpolates `{found[0]}`, but its matrix cells carry {carried}"
+            raise WorkflowValueError(msg)
+        found_value = entry[key]
+        if not isinstance(found_value, str | int) or not str(found_value).strip():
+            msg = (
+                f"{where} interpolates `{found[0]}`, whose value {found_value!r} is "
+                f"not something a status context can be named after"
+            )
+            raise WorkflowValueError(msg)
+        return str(found_value)
+
+    return MATRIX_EXPRESSION.sub(value, base)
 
 
-def _context_names(job_name: str, job: dict[str, Any]) -> list[str]:
+def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
     """The check-run name each of a job's cells reports under.
 
     GitHub names a check run after the job's `name` where it sets one and after
@@ -186,24 +214,32 @@ def _context_names(job_name: str, job: dict[str, Any]) -> list[str]:
     matrixed job whose name interpolates none of them therefore reports every
     cell under one repeated name, which this returns as the repetition it is
     rather than collapsing.
+
+    Raises:
+        WorkflowValueError: If a cell cannot be substituted into the name.
     """
     declared = job.get("name")
     base = declared if isinstance(declared, str) and declared else job_name
     entries = _matrix_platforms(job)
     if entries is None:
         return [base]
-    return [_substituted(base, entry) for entry in entries]
+    return [_substituted(base, entry, where) for entry in entries]
 
 
 def status_contexts(repo: Repo) -> list[StatusContext]:
-    """Every check run the committed workflows report, one per matrix cell."""
+    """Every check run the committed workflows report, one per matrix cell.
+
+    Raises:
+        WorkflowValueError: If a job's name cannot be resolved to the names its
+            cells report under.
+    """
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
     return [
         StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up))
         for file_name, workflow in _workflows(repo).items()
         for job_name, job in jobs_of(workflow).items()
-        for name in _context_names(job_name, job)
+        for name in _context_names(job_name, job, f"{file_name}: job `{job_name}`'s name")
     ]
 
 
@@ -523,7 +559,11 @@ def merge_model(repo: Repo) -> list[str]:
     if not required:
         findings.append("AGENTS.md records no required check at all")
 
-    reported = status_contexts(repo)
+    try:
+        reported = status_contexts(repo)
+    except WorkflowValueError as error:
+        return [*findings, str(error)]
+
     by_name: dict[str, list[StatusContext]] = {}
     for context in reported:
         by_name.setdefault(context.name, []).append(context)
