@@ -6,7 +6,7 @@ import json
 import tomllib
 from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     marker_block,
@@ -75,10 +75,7 @@ def _derived_programs(repo: Repo) -> dict[str, list[str]]:
             for program in programs_in(line):
                 derived.setdefault(program, []).append(f"justfile recipe `{recipe.name}`")
     for project in sorted(repo.root.glob("**/project.json")):
-        if any(
-            part in {"node_modules", "target", ".venv", ".octoprint-env", ".obico-env"}
-            for part in project.parts
-        ):
+        if UNCOMMITTED_DIRECTORIES & set(project.relative_to(repo.root).parts):
             continue
         data = json.loads(project.read_text(encoding="utf-8"))
         for target, spec in (data.get("targets") or {}).items():
