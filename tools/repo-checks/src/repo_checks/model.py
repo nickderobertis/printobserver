@@ -7,6 +7,10 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+# Directories a tool or a run produced, which the committed tree's own
+# declarations are never found under.
+NOT_THE_TREE = frozenset({"node_modules", "target", ".venv", ".octoprint-env"})
+
 
 class Repo:
     """A committed tree, and the declarations its checks read."""
@@ -54,6 +58,15 @@ class Repo:
         if not directory.is_dir():
             return []
         return sorted(p for p in directory.iterdir() if p.suffix in {".yml", ".yaml"})
+
+    @cached_property
+    def project_paths(self) -> list[Path]:
+        """Every committed `project.json` of the Nx graph, in a stable order."""
+        return [
+            project
+            for project in sorted(self.root.glob("**/project.json"))
+            if not any(part in NOT_THE_TREE for part in project.parts)
+        ]
 
     @cached_property
     def crate_dirs(self) -> list[Path]:
