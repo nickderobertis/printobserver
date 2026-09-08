@@ -457,14 +457,6 @@ def call(
 
     A plain HTTP connection rather than a URL opener: the scheme, the host and
     the port are this script's own, so there is no URL to audit.
-
-    Synchronous, and the standard library rather than a client: every call here
-    reaches an OctoPrint this script itself provisioned and started, on loopback
-    at a port it claimed itself, and each one is a step of a strictly ordered
-    bring-up whose answer is acted on before the next request is made — so there
-    is nothing for an async client to overlap. The boundary where an async typed
-    client does belong is the product's, and the product reaches OctoPrint from
-    the `printobserver-octoprint` crate rather than from here.
     """
     parts = urllib.parse.urlsplit(url)
     headers = {}

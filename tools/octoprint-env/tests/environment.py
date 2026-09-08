@@ -43,14 +43,7 @@ def said(result: subprocess.CompletedProcess[str]) -> str:
 def api(
     url: str, path: str, key: str | None, *, timeout: float = 15.0
 ) -> tuple[int, dict[str, Any] | str]:
-    """One GET against an instance, with or without an API key.
-
-    Synchronous, and the standard library rather than a client: this polls one
-    loopback instance the tier brought up, one observation at a time, with each
-    answer asserted on before the next call is made — so there is nothing for an
-    async client to overlap. The point of the helper is that it shares no code
-    with the script it observes, not that it is a client of anything.
-    """
+    """One GET against an instance, with or without an API key."""
     _, _, host_port = url.partition("//")
     host, _, port = host_port.partition(":")
     # llmlint: ignore[async_typed_clients_at_boundaries] one sequential poll of a test's instance
