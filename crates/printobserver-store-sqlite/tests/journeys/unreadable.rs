@@ -4,13 +4,8 @@
 //! it outlives the build that wrote it — and the answer has to be a refusal
 //! that says so rather than a panic in the middle of a supervision loop.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/fixture.rs"]
-mod fixture;
-
-use block_on::block_on;
-use fixture::{draft, instant, request};
+use crate::block_on::block_on;
+use crate::fixture::{draft, instant, request};
 use printobserver_store_api::{HistoryQuery, StoreError, StorePort};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MemoryStore, SqliteStore, connect};
 use printobserver_types::{ActionId, Adjustable, ExecutionOutcome, PolicyDecision, PrintId};

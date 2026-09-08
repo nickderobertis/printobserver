@@ -3,8 +3,6 @@
 //! The conformance suite runs every journey against both implementations, so a
 //! journey names the store it is driving only in what it reports when it fails.
 
-#![allow(dead_code)]
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -85,17 +83,17 @@ impl Fixture {
         }
     }
 
+    /// The state directory this store was opened on.
+    pub fn state_dir(&self) -> &Path {
+        self.dir.path()
+    }
+
     /// The places this store holds a call at.
     pub fn hold_points(&self) -> &HoldPoints {
         match &self.backing {
             Backing::Sqlite(store) => store.hold_points(),
             Backing::Memory(store) => store.hold_points(),
         }
-    }
-
-    /// The state directory image bytes are written under.
-    pub fn state_dir(&self) -> &Path {
-        self.dir.path()
     }
 }
 

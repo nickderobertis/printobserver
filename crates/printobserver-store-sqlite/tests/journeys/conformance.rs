@@ -6,16 +6,11 @@
 //! about the tier that will run against the real one. A check in
 //! `port_coverage.rs` refuses a port method this suite does not exercise.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/fixture.rs"]
-mod fixture;
-
 use std::sync::Arc;
 use std::thread;
 
-use block_on::block_on;
-use fixture::{Fixture, draft, instant, manifest, request, session};
+use crate::block_on::block_on;
+use crate::fixture::{Fixture, draft, instant, manifest, request, session};
 use printobserver_store_api::{
     DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome,
     StoreError, StorePort,
@@ -429,6 +424,11 @@ fn an_image_whose_file_is_gone_is_answered_as_missing() {
             Ok(ImageLookup::Found { path, .. }) => path,
             other => panic!("{name}: a stored image did not read back as found: {other:?}"),
         };
+        assert!(
+            path.starts_with(store.state_dir()),
+            "{name}: an image's bytes are outside the state directory: {}",
+            path.display()
+        );
         std::fs::remove_file(&path).expect("the image file is removable");
 
         assert_eq!(

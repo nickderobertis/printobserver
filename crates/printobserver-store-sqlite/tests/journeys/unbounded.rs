@@ -7,12 +7,9 @@
 //! one whose answer carries a collection of events under neither bound — a
 //! limit the declared maximum bounds, or a page size answered with a cursor.
 
-#[path = "support/surface.rs"]
-mod surface;
-
 use std::collections::BTreeSet;
 
-use surface::{
+use crate::surface::{
     Method, crate_dir, crate_sources, exposed_methods, named_types, parse, read, struct_fields,
     struct_names, trait_methods,
 };

@@ -9,12 +9,7 @@
 //! refusal. A loaded host cannot make correct work fail here, and no bound
 //! generous enough to pass slow work can let incorrect work through.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/fixture.rs"]
-mod fixture;
-
-use block_on::block_on;
+use crate::block_on::block_on;
 use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
 use printobserver_types::PrintId;

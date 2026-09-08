@@ -7,8 +7,6 @@
 //! added to the contracts is one this crate is held to without anybody
 //! remembering to add it here.
 
-#![allow(dead_code)]
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::surface::{

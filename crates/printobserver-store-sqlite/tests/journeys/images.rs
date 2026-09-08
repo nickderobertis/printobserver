@@ -5,17 +5,11 @@
 //! answered, so a store that assigned every image one constant address fails
 //! the first assertion of the addressing journeys rather than passing them all.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/child.rs"]
-mod child;
-#[path = "support/fixture.rs"]
-mod fixture;
-
 use std::path::{Path, PathBuf};
 
-use block_on::block_on;
-use fixture::{draft, instant};
+use crate::block_on::block_on;
+use crate::child;
+use crate::fixture::{draft, instant};
 use printobserver_store_api::{ImageLookup, StorePort};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
 use printobserver_types::{EventRecord, PrintRecord, RawBytes};
@@ -247,7 +241,7 @@ fn a_row_whose_file_is_gone_is_answered_as_missing() {
 #[test]
 fn an_interrupted_write_leaves_no_row_and_no_file() {
     let dir = TempDir::new().expect("a temporary state directory");
-    let output = child::run("the_child_interrupts_an_image_write", dir.path());
+    let output = child::run("images::the_child_interrupts_an_image_write", dir.path());
     assert_eq!(
         output.status.code(),
         Some(INTERRUPTED),

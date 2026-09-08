@@ -5,18 +5,9 @@
 //! was never declared is caught rather than passed over — a check that read the
 //! schema would agree with whatever the schema happened to say.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/contracts.rs"]
-mod contracts;
-#[path = "support/fixture.rs"]
-mod fixture;
-#[path = "support/surface.rs"]
-mod surface;
-
-use block_on::block_on;
-use contracts::{Reference, record_kinds, references};
-use fixture::{draft, instant, manifest, request, session};
+use crate::block_on::block_on;
+use crate::contracts::{Reference, record_kinds, references};
+use crate::fixture::{draft, instant, manifest, request, session};
 use printobserver_store_api::{StoreError, StorePort};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MIGRATIONS, SqliteStore, connect};
 use printobserver_types::{

@@ -6,16 +6,13 @@
 //! carrying a method the suite does not reach, so that what refuses the fixture
 //! is what reads the committed pair.
 
-#[path = "support/surface.rs"]
-mod surface;
-
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use surface::{crate_dir, method_calls, parse, read, trait_methods};
+use crate::surface::{crate_dir, method_calls, parse, read, trait_methods};
 
 /// The files the conformance suite is written across.
-const SUITE_FILES: [&str; 2] = ["tests/conformance.rs", "tests/support/fixture.rs"];
+const SUITE_FILES: [&str; 2] = ["tests/journeys/conformance.rs", "tests/support/fixture.rs"];
 
 /// The suite, parsed.
 fn suite() -> Vec<syn::File> {

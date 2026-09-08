@@ -7,15 +7,10 @@
 //! need its own seeding here, which is the point: the version a database was
 //! written at is a fact about the database, not about this build.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/fixture.rs"]
-mod fixture;
-
 use std::path::Path;
 
-use block_on::block_on;
-use fixture::manifest;
+use crate::block_on::block_on;
+use crate::fixture::manifest;
 use printobserver_store_api::{HistoryQuery, ImageLookup, StoreError, StorePort};
 use printobserver_store_sqlite::{
     CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, MIGRATIONS, SqliteStore,

@@ -8,8 +8,6 @@
 //! snippet read by this same reader — so what refuses a fixture is what reads
 //! the committed crate.
 
-#![allow(dead_code)]
-
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 

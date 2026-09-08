@@ -7,22 +7,12 @@
 //! of record is what a person reads after the print that went wrong, by which
 //! time the process that wrote it has ended.
 
-#[path = "support/block_on.rs"]
-mod block_on;
-#[path = "support/child.rs"]
-mod child;
-#[path = "support/contracts.rs"]
-mod contracts;
-#[path = "support/fixture.rs"]
-mod fixture;
-#[path = "support/surface.rs"]
-mod surface;
-
 use std::collections::BTreeSet;
 
-use block_on::block_on;
-use contracts::record_kinds;
-use fixture::{draft, instant, manifest, request, session};
+use crate::block_on::block_on;
+use crate::child;
+use crate::contracts::record_kinds;
+use crate::fixture::{draft, instant, manifest, request, session};
 use printobserver_store_api::{HistoryQuery, ImageLookup, StorePort};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{self, Value, json};
@@ -75,7 +65,10 @@ fn uncovered(walked: &BTreeSet<String>) -> Vec<String> {
 #[test]
 fn every_record_kind_survives_the_process_that_wrote_it() {
     let dir = tempfile::TempDir::new().expect("a temporary state directory");
-    let output = child::run("the_child_writes_one_of_every_record_kind", dir.path());
+    let output = child::run(
+        "durability::the_child_writes_one_of_every_record_kind",
+        dir.path(),
+    );
     assert!(
         output.status.success(),
         "the walk did not complete: {}",

@@ -6,8 +6,6 @@
 //! journey spawns this same test binary, asks it for one ignored test by name,
 //! and reads what the process that ran it left on the filesystem after it ended.
 
-#![allow(dead_code)]
-
 use std::path::Path;
 use std::process::{Command, Output};
 
