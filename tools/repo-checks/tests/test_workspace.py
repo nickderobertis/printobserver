@@ -31,7 +31,30 @@ REQUIRED_CRATES = (
     "printobserver",
 )
 
-DEPENDENCY = '\n[dependencies]\n{name} = {{ path = "../{name}" }}\n'
+DEPENDENCY = '{name} = {{ path = "../{name}" }}\n'
+DEPENDENCIES = "[dependencies]\n"
+
+
+def with_only_dependencies(manifest: str, *names: str) -> str:
+    """`manifest` declaring exactly the path dependencies named, and no other.
+
+    The edge under test is written by replacing the crate's dependency table
+    rather than by appending a second one, so a fixture says the same thing
+    whatever the crate it is built from already declares. Appending grew a
+    manifest with two `[dependencies]` headers, or two entries for one crate,
+    the day core gained a dependency of its own — and a fixture that no longer
+    parses proves nothing about the dependency rule.
+    """
+    entries = "".join(DEPENDENCY.format(name=name) for name in names)
+    lines = manifest.splitlines(keepends=True)
+    if DEPENDENCIES not in lines:
+        return manifest + "\n" + DEPENDENCIES + entries
+    start = lines.index(DEPENDENCIES) + 1
+    end = next(
+        (index for index in range(start, len(lines)) if lines[index].startswith("[")),
+        len(lines),
+    )
+    return "".join(lines[:start]) + entries + "".join(lines[end:])
 
 
 def test_the_workspace_holds_exactly_the_required_crates(committed: Repo) -> None:
@@ -112,8 +135,9 @@ def test_core_depending_on_an_implementation_is_refused(
     broken = tree()
     broken.write(
         "crates/printobserver-core/Cargo.toml",
-        broken.read("crates/printobserver-core/Cargo.toml")
-        + DEPENDENCY.format(name="printobserver-octoprint"),
+        with_only_dependencies(
+            broken.read("crates/printobserver-core/Cargo.toml"), "printobserver-octoprint"
+        ),
     )
 
     findings = workspace(broken.repo)
@@ -126,8 +150,9 @@ def test_core_depending_outside_its_layer_is_refused(tree: Callable[[], Tree]) -
     broken = tree()
     broken.write(
         "crates/printobserver-core/Cargo.toml",
-        broken.read("crates/printobserver-core/Cargo.toml")
-        + DEPENDENCY.format(name="printobserver-server"),
+        with_only_dependencies(
+            broken.read("crates/printobserver-core/Cargo.toml"), "printobserver-server"
+        ),
     )
 
     findings = workspace(broken.repo)
@@ -142,8 +167,9 @@ def test_an_implementation_depending_on_another_is_refused(
     broken = tree()
     broken.write(
         "crates/printobserver-obico/Cargo.toml",
-        broken.read("crates/printobserver-obico/Cargo.toml")
-        + DEPENDENCY.format(name="printobserver-octoprint"),
+        with_only_dependencies(
+            broken.read("crates/printobserver-obico/Cargo.toml"), "printobserver-octoprint"
+        ),
     )
 
     findings = workspace(broken.repo)
@@ -156,8 +182,9 @@ def test_core_may_depend_on_a_port(tree: Callable[[], Tree]) -> None:
     allowed = tree()
     allowed.write(
         "crates/printobserver-core/Cargo.toml",
-        allowed.read("crates/printobserver-core/Cargo.toml")
-        + DEPENDENCY.format(name="printobserver-printer-api"),
+        with_only_dependencies(
+            allowed.read("crates/printobserver-core/Cargo.toml"), "printobserver-printer-api"
+        ),
     )
 
     accepted(workspace(allowed.repo))

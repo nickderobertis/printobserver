@@ -496,8 +496,19 @@
     },
     "ObicoFailureAlertPayload": {
       "additionalProperties": false,
-      "description": "Obico reported a print failure.",
+      "description": "Obico reported a print failure.\n\nThe two instants are optional because Obico's own field for each is a Unix\ntimestamp number, an empty string, or absent, and the last two both mean the\nproducer reported no instant. An absent field here is that, never an epoch\ndate standing in for it.",
       "properties": {
+        "ended_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print ended, when Obico reported an instant for it."
+        },
         "file_name": {
           "description": "The file being printed, when Obico named one.",
           "type": [
@@ -520,6 +531,17 @@
         "print_paused": {
           "description": "Whether Obico paused the print itself.",
           "type": "boolean"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print started, when Obico reported an instant for it."
         }
       },
       "required": [
@@ -575,8 +597,19 @@
     },
     "ObicoPrinterNotificationPayload": {
       "additionalProperties": false,
-      "description": "Obico sent a printer notification.",
+      "description": "Obico sent a printer notification.\n\nThe two instants are optional for the same reason\n[`ObicoFailureAlertPayload`]'s are, and are absent along with the rest of\nthe print's fields when the notification is about no print at all.",
       "properties": {
+        "ended_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print ended, when Obico reported an instant for it."
+        },
         "file_name": {
           "description": "The file being printed, when the notification is about one.",
           "type": [
@@ -595,6 +628,17 @@
             "integer",
             "null"
           ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print started, when Obico reported an instant for it."
         }
       },
       "required": [
@@ -641,6 +685,55 @@
             "rejected"
           ],
           "type": "object"
+        }
+      ]
+    },
+    "PortFailurePayload": {
+      "additionalProperties": false,
+      "description": "A port failed while one event was being handled.\n\nThe event is named rather than implied, so that a reader holding an event's\nidentifier reaches every failure recorded while that event was being\nhandled. A failure recorded here is one the handling survived: the event is\nalready in the history by the time any of these sites is reached, and the\nloop goes on to handle the next event.",
+      "properties": {
+        "detail": {
+          "description": "What the port said about it, in the port's own words.",
+          "type": "string"
+        },
+        "event_id": {
+          "$ref": "#/$defs/EventId",
+          "description": "The event whose handling reached the failing call."
+        },
+        "site": {
+          "$ref": "#/$defs/PortFailureSite",
+          "description": "Where it failed."
+        }
+      },
+      "required": [
+        "event_id",
+        "site",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "PortFailureSite": {
+      "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](crate::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](crate::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
+      "oneOf": [
+        {
+          "const": "printer_snapshot",
+          "description": "Reading the printer's own state.",
+          "type": "string"
+        },
+        {
+          "const": "printer_job",
+          "description": "Reading the job the printer reports it is running.",
+          "type": "string"
+        },
+        {
+          "const": "image_write",
+          "description": "Writing the image the event arrived with.",
+          "type": "string"
+        },
+        {
+          "const": "supervision_turn",
+          "description": "Running the supervision turn the event prompted.",
+          "type": "string"
         }
       ]
     },
@@ -1435,6 +1528,23 @@
         },
         "payload": {
           "$ref": "#/$defs/OperatorAcknowledgementPayload"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "A port failed while an event was being handled.",
+      "properties": {
+        "kind": {
+          "const": "port_failure",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/PortFailurePayload"
         }
       },
       "required": [

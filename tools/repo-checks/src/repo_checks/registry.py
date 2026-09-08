@@ -42,6 +42,7 @@ CHECKS: dict[str, Check] = {
     "recipes": checks_repo.recipe_set,
     "node-install": checks_repo.node_install,
     "workspace": checks_repo.workspace,
+    "octoprint-client": checks_repo.octoprint_client,
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,

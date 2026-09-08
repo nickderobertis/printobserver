@@ -1,8 +1,27 @@
 {
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Obico reported a print failure.",
+  "description": "Obico reported a print failure.\n\nThe two instants are optional because Obico's own field for each is a Unix\ntimestamp number, an empty string, or absent, and the last two both mean the\nproducer reported no instant. An absent field here is that, never an epoch\ndate standing in for it.",
   "properties": {
+    "ended_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the print ended, when Obico reported an instant for it."
+    },
     "file_name": {
       "description": "The file being printed, when Obico named one.",
       "type": [
@@ -25,6 +44,17 @@
     "print_paused": {
       "description": "Whether Obico paused the print itself.",
       "type": "boolean"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the print started, when Obico reported an instant for it."
     }
   },
   "required": [

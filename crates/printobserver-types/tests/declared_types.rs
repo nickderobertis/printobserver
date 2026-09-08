@@ -222,10 +222,12 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "ObicoFailureAlertPayload",
         &[
+            ("ended_at", "Timestamp", false),
             ("file_name", "string", false),
             ("is_warning", "boolean", true),
             ("obico_print_id", "integer", false),
             ("print_paused", "boolean", true),
+            ("started_at", "Timestamp", false),
         ],
     ),
     (
@@ -249,10 +251,10 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "ObicoPrintInfo",
         &[
-            ("ended_at", "ObicoTimestamp", true),
+            ("ended_at", "ObicoTimestamp", false),
             ("filename", "string", true),
             ("id", "integer", true),
-            ("started_at", "ObicoTimestamp", true),
+            ("started_at", "ObicoTimestamp", false),
         ],
     ),
     (
@@ -271,9 +273,11 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "ObicoPrinterNotificationPayload",
         &[
+            ("ended_at", "Timestamp", false),
             ("file_name", "string", false),
             ("notification_type", "ObicoNotificationType", true),
             ("obico_print_id", "integer", false),
+            ("started_at", "Timestamp", false),
         ],
     ),
     ("ObicoTimestamp", &[]),
@@ -285,6 +289,15 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     ("PolicyDecision", &[("rejected", "RejectionReason", true)]),
+    (
+        "PortFailurePayload",
+        &[
+            ("detail", "string", true),
+            ("event_id", "EventId", true),
+            ("site", "PortFailureSite", true),
+        ],
+    ),
+    ("PortFailureSite", &[]),
     (
         "PrintAction",
         &[
