@@ -16,6 +16,17 @@
 //!    sends is short-lived. A fetch that fails leaves the event recorded with
 //!    no image and the failure recorded beside it, as an event of its own
 //!    against the same print, rather than losing the alert.
+//!
+//! # Which kind a failed fetch is recorded under
+//!
+//! The contracts declare no image-fetch-failure kind, and the store carries no
+//! field for one, so the failure is written down as an event of its own under
+//! the malformed-external-event kind: an external thing this system tried to
+//! read and could not, which is what that kind is for. Its `detail` names the
+//! URL and the bound that refused, and the bytes it carries are the **alert's**
+//! own, exactly as they arrived — those are what this system received, and they
+//! say which alert lost its image. Nothing here invents bytes for a response
+//! that never came.
 
 use std::sync::Arc;
 
