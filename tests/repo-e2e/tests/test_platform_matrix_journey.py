@@ -17,6 +17,7 @@ from journey import GateCopy
 from repo_checks.expect import failing, passing
 
 CI = ".github/workflows/ci.yml"
+INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
 DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
@@ -130,3 +131,15 @@ def test_a_declaration_the_rule_cannot_act_on_is_refused(
     result = broken.just("check-repo")
 
     failing(result, naming=naming)
+
+
+def test_an_install_jobs_matrix_is_held_to_the_list_too(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """A route proves nothing on a platform it was never run on."""
+    broken = gate_copy()
+    broken.edit(INSTALL, AARCH64, "")
+
+    result = broken.just("check-repo")
+
+    failing(result, naming="job `install-route-pypi`'s matrix omits platform `linux-aarch64`")

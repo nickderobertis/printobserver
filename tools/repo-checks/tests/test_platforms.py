@@ -71,6 +71,23 @@ def test_the_committed_judged_lint_job_declares_no_matrix(committed: Repo) -> No
     )
 
 
+def test_a_policy_whose_table_is_not_a_table_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A malformed declaration is a finding, not an attribute error on the way to one."""
+    broken = tree()
+    # `workflows` becomes a top-level string rather than a table, which is what a
+    # reader calling `.get` on it without narrowing would trip over.
+    broken.edit(
+        "repo-policy.toml", "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n'
+    )
+    broken.edit("repo-policy.toml", "\n[workflows]\n", "\n[workflow-settings]\n")
+
+    findings = platforms(broken.repo)
+
+    refused(findings, "declares no non-empty `workflows.platform_dependent_kinds` list")
+
+
 def test_a_matrix_cell_whose_id_is_not_a_platform_name_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

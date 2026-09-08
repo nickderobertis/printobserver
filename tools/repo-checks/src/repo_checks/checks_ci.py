@@ -104,9 +104,21 @@ class WorkflowValueError(ValueError):
     """A committed workflow declares something a check cannot derive from."""
 
 
+def _policy_table(repo: Repo, name: str) -> dict[str, Any]:
+    """One table of `repo-policy.toml`, or an empty one where it declares none.
+
+    `repo.policy` is whatever the TOML reader handed back, so a table read here
+    may be absent or may not be a table at all. Both leave the readers below with
+    nothing to find, which each of them already has a finding for, rather than an
+    attribute error on a value nobody narrowed.
+    """
+    table = repo.policy.get(name)
+    return table if isinstance(table, dict) else {}
+
+
 def _bring_up_command(repo: Repo) -> str:
     """The command line the printer-integration job is recognized by, or empty."""
-    recipe = repo.policy.get("integration", {}).get("bring_up")
+    recipe = _policy_table(repo, "integration").get("bring_up")
     if not isinstance(recipe, str) or not recipe.strip():
         return ""
     return f"just {recipe.strip()}"
@@ -123,7 +135,7 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
         PolicyValueError: If the declaration is absent, empty, or names anything
             that is not one of `JobKind`.
     """
-    declared = repo.policy.get("workflows", {}).get("platform_dependent_kinds")
+    declared = _policy_table(repo, "workflows").get("platform_dependent_kinds")
     if not isinstance(declared, list) or not declared:
         msg = (
             "`repo-policy.toml` declares no non-empty "
