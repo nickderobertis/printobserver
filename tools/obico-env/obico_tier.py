@@ -136,18 +136,20 @@ def differs_in_type(sample: str, captured: str) -> bool:
 
 def shape_of(body: object, prefix: str = "") -> dict[str, str]:
     """Every field of a body, by dotted path, with the JSON type of each."""
-    if isinstance(body, dict):
-        found: dict[str, str] = {}
-        for name, value in body.items():
-            path = f"{prefix}{name}"
-            found[path] = type_of(value)
-            found.update(shape_of(value, f"{path}."))
-        return found
-    if isinstance(body, list) and body:
-        # One entry stands for the whole array: the producer sends homogeneous
-        # arrays, and a per-index path would name a field nobody wrote.
-        return shape_of(body[0], f"{prefix}[].")
-    return {}
+    match body:
+        case dict():
+            found: dict[str, str] = {}
+            for name, value in body.items():
+                path = f"{prefix}{name}"
+                found[path] = type_of(value)
+                found.update(shape_of(value, f"{path}."))
+            return found
+        case list([first, *_]):
+            # One entry stands for the whole array: the producer sends homogeneous
+            # arrays, and a per-index path would name a field nobody wrote.
+            return shape_of(first, f"{prefix}[].")
+        case _:
+            return {}
 
 
 def differences(sample: object, captured: object) -> list[str]:

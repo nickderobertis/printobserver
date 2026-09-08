@@ -108,12 +108,15 @@ def _gate_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
 
 def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
     """The events a workflow fires on, whatever shape they are written in."""
-    declared = workflow.get("on")
-    if isinstance(declared, str):
-        return {declared: None}
-    if isinstance(declared, list):
-        return dict.fromkeys(str(event) for event in declared)
-    return declared if isinstance(declared, dict) else {}
+    match workflow.get("on"):
+        case str() as event:
+            return {event: None}
+        case list() as events:
+            return dict.fromkeys(str(event) for event in events)
+        case dict() as mapping:
+            return mapping
+        case _:
+            return {}
 
 
 def _trigger_findings(policy: dict[str, Any], triggers: dict[str, Any], relative: str) -> list[str]:
