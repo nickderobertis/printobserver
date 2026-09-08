@@ -106,19 +106,23 @@ def type_of(value: object) -> str:
     not see it. The other direction is not a move — a whole-valued real is a
     real — which `differs_in_type` is what encodes.
     """
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, float):
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
-    return "null"
+    match value:
+        # Before `int()`, because `bool` is a subclass of it and `True` is not
+        # an integer identifier.
+        case bool():
+            return "boolean"
+        case int():
+            return "integer"
+        case float():
+            return "number"
+        case str():
+            return "string"
+        case list():
+            return "array"
+        case dict():
+            return "object"
+        case _:
+            return "null"
 
 
 def differs_in_type(sample: str, captured: str) -> bool:

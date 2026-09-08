@@ -514,11 +514,13 @@ def celery_answers(stack: Stack, service: str, *, timeout: float = 30.0) -> bool
 
 def ready(stack: Stack, service: Service, ports: dict[str, int]) -> bool:
     """Whether one service answers for itself."""
-    if service.probe == "redis":
-        return redis_answers(ports[service.name])
-    if service.probe == "http":
-        return http_answers(ports[service.name], "/hc/")
-    return celery_answers(stack, service.name)
+    match service.probe:
+        case "redis":
+            return redis_answers(ports[service.name])
+        case "http":
+            return http_answers(ports[service.name], "/hc/")
+        case _:
+            return celery_answers(stack, service.name)
 
 
 def wait_for_services(stack: Stack, ports: dict[str, int], timeout: float) -> None:
