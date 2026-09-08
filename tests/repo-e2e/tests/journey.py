@@ -138,6 +138,26 @@ class GateCopy:
             raise AssertionError(msg)
         self.write(relative, text.replace(old, new, 1))
 
+    def hook(self, name: str, *, timeout: int = 1800) -> subprocess.CompletedProcess[str]:
+        """Run a committed git hook the way git runs it, `GIT_DIR` and all.
+
+        git exports `GIT_DIR` into every hook it runs, and the `pre-push` hook
+        here runs the whole gate — so that variable reaches every check, suite
+        and journey the gate starts, and each of them works on the repository
+        being pushed unless something drops it. `env` puts it back on the way
+        in, because `repo_checks.shell.run` is the thing that drops it.
+        """
+        return shell_run(
+            [
+                "env",
+                f"GIT_DIR={self.root / '.git'}",
+                str(self.root / ".githooks" / name),
+            ],
+            cwd=self.root,
+            timeout=timeout,
+            env=clean_environment(UV_PROJECT_ENVIRONMENT=str(self.shared_venv)),
+        )
+
     def just(self, recipe: str, *, timeout: int = 900) -> subprocess.CompletedProcess[str]:
         """Run one recipe of the copy's own command surface."""
         return shell_run(

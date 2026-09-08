@@ -146,6 +146,15 @@ describe, and it reinstalls nothing when the tree already matches. Only the
 JavaScript side needs this, because `uv run` syncs its own environment on every
 invocation. `just check-repo` refuses a recipe that reaches Nx without it.
 
+That same path hands the gate git's own hook environment, in which `GIT_DIR`
+names the repository being pushed and everything the gate starts inherits it.
+`repo_checks.shell.run` drops the variables that name a repository, so a
+subprocess works on the directory it was given; without that, the suites that
+build repositories in temporary directories commit into the one being pushed
+instead. Both of these are proven by `tests/repo-e2e` driving the committed
+`pre-push` hook over a copy carrying neither installed dependencies nor a clean
+environment — where they fail, rather than argued about here.
+
 ## Supported platforms
 
 This is the one source both this repository's continuous-integration matrices
