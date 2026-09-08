@@ -146,39 +146,53 @@ const PORT_ERRORS: [(&str, &str); 4] = [
     ("printobserver-store-api", "StoreError"),
 ];
 
-/// Every type in the schema set has a checked-in schema, the six included.
+/// Every way a tree falls short of carrying the whole schema set.
 ///
 /// The set is wider than this crate's own declarations, because six of the
-/// types that cross a process boundary are the ports' own. A type cannot fall
-/// out of it by being declared in a port crate rather than here.
+/// types that cross a process boundary are the ports' own, so this reads both:
+/// a type cannot fall out of the set by being declared in a port crate rather
+/// than here, and a port's error vocabulary — which reaches no process boundary
+/// — cannot slip into it.
+fn schema_set_findings(root: &Path) -> Vec<String> {
+    let mut findings = Vec::new();
+    for entry in declared() {
+        let path = schema_dir(root, "printobserver-types").join(format!("{}.json", entry.name));
+        if !path.is_file() {
+            findings.push(format!("{} emits no checked-in schema", entry.name));
+        }
+    }
+    for (crate_name, type_name) in PORT_OWNED_SHAPES {
+        let path = schema_dir(root, crate_name).join(format!("{type_name}.json"));
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            findings.push(format!("{type_name} emits no checked-in schema"));
+            continue;
+        };
+        let schema: Value = serde_json::from_str(&text).expect("the schema is JSON");
+        if schema.get("title").and_then(Value::as_str) != Some(type_name) {
+            findings.push(format!("{} is not {type_name}'s schema", path.display()));
+        }
+    }
+    for (crate_name, error_name) in PORT_ERRORS {
+        let path = schema_dir(root, crate_name).join(format!("{error_name}.json"));
+        if path.exists() {
+            findings.push(format!(
+                "{error_name} emits a schema, and a port error reaches no process boundary"
+            ));
+        }
+    }
+    findings
+}
+
+/// Every type in the schema set has a checked-in schema, the six included.
 #[test]
 fn every_type_in_the_schema_set_has_a_checked_in_schema() {
     ensure_written();
-    let root = repo_root();
-    for entry in declared() {
-        let path = schema_dir(&root, "printobserver-types").join(format!("{}.json", entry.name));
-        assert!(path.is_file(), "{} emits no checked-in schema", entry.name);
-    }
-    for (crate_name, type_name) in PORT_OWNED_SHAPES {
-        let path = schema_dir(&root, crate_name).join(format!("{type_name}.json"));
-        assert!(path.is_file(), "{type_name} emits no checked-in schema");
-        let schema: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).expect("the schema is readable"))
-                .expect("the schema is JSON");
-        assert_eq!(
-            schema.get("title").and_then(Value::as_str),
-            Some(type_name),
-            "{} is not {type_name}'s schema",
-            path.display()
-        );
-    }
-    for (crate_name, error_name) in PORT_ERRORS {
-        let path = schema_dir(&root, crate_name).join(format!("{error_name}.json"));
-        assert!(
-            !path.exists(),
-            "{error_name} emits a schema, and a port error reaches no process boundary"
-        );
-    }
+    let findings = schema_set_findings(&repo_root());
+    assert!(
+        findings.is_empty(),
+        "the schema set is incomplete:\n{}",
+        findings.join("\n")
+    );
 }
 
 /// A scratch copy of the checked-in schemas, for driving the drift check.
@@ -275,5 +289,26 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
             .any(|finding| finding.contains("NormalizedAlert.json")
                 && finding.contains("not what the types generate")),
         "the altered port schema was not refused: {findings:?}"
+    );
+}
+
+/// The reading refuses a tree in which one of the six emits no schema.
+///
+/// Driven for one of the six the port crates own, because that is how a type
+/// falls out of the set without this crate's own declarations changing.
+#[test]
+fn the_schema_set_reading_refuses_a_tree_missing_one_of_the_six() {
+    ensure_written();
+    let scratch = ScratchTree::new("missing-six");
+    assert!(
+        schema_set_findings(&scratch.root).is_empty(),
+        "the matching tree was refused"
+    );
+    let removed =
+        schema_dir(&scratch.root, "printobserver-vision-api").join("NormalizedAlert.json");
+    std::fs::remove_file(&removed).expect("the scratch schema is removable");
+    assert_eq!(
+        schema_set_findings(&scratch.root),
+        vec!["NormalizedAlert emits no checked-in schema".to_owned()]
     );
 }
