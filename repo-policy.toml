@@ -103,6 +103,32 @@ core = "printobserver-core"
 composition_roots = ["printobserver-server", "printobserver"]
 clients = ["printobserver-sdk"]
 
+[octoprint]
+# The one crate that may know what an OctoPrint is. Everything above
+# `printobserver-octoprint` is written as though printers were normal, and the
+# moment a second crate constructs an OctoPrint request there are two places a
+# vendor's own vocabulary has to be kept right — which is the coupling the port
+# exists to remove. `just check-repo` reads every Rust source under `crates/`
+# other than this crate's and refuses a line carrying one of the markers below.
+#
+# A comment-only line is exempt, so a crate may *say* `/api/job` while no crate
+# but this one may *build* one.
+crate = "printobserver-octoprint"
+# What constructing an OctoPrint request looks like in a Rust source: the header
+# OctoPrint authenticates by, and the paths this port speaks to. These are
+# OctoPrint's own surface rather than this system's; a crate that wanted one of
+# these spellings for a route of its own would be reconciling with this list
+# deliberately rather than colliding with it silently.
+request_markers = [
+    "X-Api-Key",
+    "/api/printer",
+    "/api/job",
+    "/api/files",
+    "/api/connection",
+    "/api/version",
+    "/api/settings",
+]
+
 [manifests]
 # The only manifests permitted to carry a version field, because release
 # automation writes every one of them. A version anywhere else is one a person

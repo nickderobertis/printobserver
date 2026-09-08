@@ -14,10 +14,21 @@ findings here are about the list rather than the job: a list that *gained* a
 platform refuses an unchanged matrix, and a list that *lost* one it carried at
 the base revision is refused outright. A check that compared the job only
 against the list beside it would be satisfied by editing both.
+
+One finding here is about the graph rather than the job, and it is about the
+one thing this tier has that no other tier has: a single physical machine.
+`just octoprint-up` starts one OctoPrint with one virtual printer, and every
+project's `test-integration` target drives *that* printer — one of them cancels
+the print another is asserting on. So the tier's target is declared
+unparallelisable, and this check refuses a graph that leaves two of them free to
+run at once. It cost a publication to learn: the adapter's tier cancelled the
+hold print while `octoprint-env`'s tier was part-way through asserting the print
+was there, and the tier that failed was the one that had done nothing wrong.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -54,6 +65,7 @@ def integration_tier(repo: Repo, base: str | None = None) -> list[str]:
         return ["`repo-policy.toml` declares no `[integration]` section"]
 
     findings = _recipe_findings(repo, policy)
+    findings.extend(_one_machine_findings(repo, policy))
     try:
         declared = platforms_of(repo)
         excluded, shape = _exclusions(repo, policy)
@@ -94,6 +106,30 @@ def _recipe_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
         for key in ("tier", "bring_up", "bring_down")
         if str(policy[key]) not in declared
     ]
+
+
+def _one_machine_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
+    """No two of the tier's tasks run at once, because there is one printer."""
+    tier = str(policy["tier"])
+    why = (
+        f"the tier drives the one printer `just {policy['bring_up']}` starts, so two of its "
+        f"tasks running at once drive one machine from two places"
+    )
+    graph = json.loads(repo.read("nx.json"))
+    findings: list[str] = []
+    if ((graph.get("targetDefaults") or {}).get(tier) or {}).get("parallelism") is not False:
+        findings.append(
+            f'nx.json does not declare the `{tier}` target `"parallelism": false`: {why}'
+        )
+    for path in repo.project_paths:
+        project = json.loads(path.read_text(encoding="utf-8"))
+        target = (project.get("targets") or {}).get(tier)
+        if isinstance(target, dict) and target.get("parallelism") is not None:
+            findings.append(
+                f"{project.get('name', path.parent.name)}'s `{tier}` target overrides "
+                f"`parallelism`, which nx.json declares for every project: {why}"
+            )
+    return findings
 
 
 def _exclusions(repo: Repo, policy: dict[str, Any]) -> tuple[dict[str, str], list[str]]:
