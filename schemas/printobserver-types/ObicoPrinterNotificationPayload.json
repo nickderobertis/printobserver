@@ -44,12 +44,29 @@
           "type": "string"
         }
       ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Obico sent a printer notification.",
+  "description": "Obico sent a printer notification.\n\nThe two instants are optional for the same reason\n[`ObicoFailureAlertPayload`]'s are, and are absent along with the rest of\nthe print's fields when the notification is about no print at all.",
   "properties": {
+    "ended_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the print ended, when Obico reported an instant for it."
+    },
     "file_name": {
       "description": "The file being printed, when the notification is about one.",
       "type": [
@@ -68,6 +85,17 @@
         "integer",
         "null"
       ]
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the print started, when Obico reported an instant for it."
     }
   },
   "required": [

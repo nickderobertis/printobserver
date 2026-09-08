@@ -58,6 +58,11 @@ pub enum ObicoNotificationType {
 }
 
 /// Obico reported a print failure.
+///
+/// The two instants are optional because Obico's own field for each is a Unix
+/// timestamp number, an empty string, or absent, and the last two both mean the
+/// producer reported no instant. An absent field here is that, never an epoch
+/// date standing in for it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ObicoFailureAlertPayload {
@@ -71,9 +76,19 @@ pub struct ObicoFailureAlertPayload {
     /// The file being printed, when Obico named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    /// When the print started, when Obico reported an instant for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
+    /// When the print ended, when Obico reported an instant for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<Timestamp>,
 }
 
 /// Obico sent a printer notification.
+///
+/// The two instants are optional for the same reason
+/// [`ObicoFailureAlertPayload`]'s are, and are absent along with the rest of
+/// the print's fields when the notification is about no print at all.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ObicoPrinterNotificationPayload {
@@ -85,6 +100,12 @@ pub struct ObicoPrinterNotificationPayload {
     /// The file being printed, when the notification is about one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    /// When the print started, when Obico reported an instant for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
+    /// When the print ended, when Obico reported an instant for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<Timestamp>,
 }
 
 /// An external body arrived that could not be read.

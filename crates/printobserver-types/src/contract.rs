@@ -913,6 +913,8 @@ impl Sample for ObicoFailureAlertPayload {
             print_paused: false,
             obico_print_id: Some(4211),
             file_name: Some("benchy.gcode".to_owned()),
+            started_at: Some(instant()),
+            ended_at: Some(later_instant()),
         }
     }
 
@@ -920,6 +922,8 @@ impl Sample for ObicoFailureAlertPayload {
         Self {
             obico_print_id: None,
             file_name: None,
+            started_at: None,
+            ended_at: None,
             ..Self::sample_full()
         }
     }
@@ -931,6 +935,8 @@ impl Sample for ObicoPrinterNotificationPayload {
             notification_type: ObicoNotificationType::Started,
             obico_print_id: Some(4211),
             file_name: Some("benchy.gcode".to_owned()),
+            started_at: Some(instant()),
+            ended_at: Some(later_instant()),
         }
     }
 
@@ -938,6 +944,8 @@ impl Sample for ObicoPrinterNotificationPayload {
         Self {
             obico_print_id: None,
             file_name: None,
+            started_at: None,
+            ended_at: None,
             ..Self::sample_full()
         }
     }
@@ -1158,8 +1166,16 @@ impl Sample for ObicoPrintInfo {
         Self {
             id: 4211,
             filename: "benchy.gcode".to_owned(),
-            started_at: ObicoTimestamp::Seconds(1_772_366_400.5),
-            ended_at: ObicoTimestamp::NotReported,
+            started_at: Some(ObicoTimestamp::Seconds(1_772_366_400.5)),
+            ended_at: Some(ObicoTimestamp::NotReported),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            started_at: None,
+            ended_at: None,
+            ..Self::sample_full()
         }
     }
 }
