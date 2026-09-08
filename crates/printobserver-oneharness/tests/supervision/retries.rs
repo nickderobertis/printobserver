@@ -24,7 +24,7 @@ use printobserver_types::{
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, in_turn, port, responder, turn,
+    generated_assessment_schema, in_turn, port, responder, schema_read_lock, turn,
 };
 
 /// An event to hang a turn off.
@@ -63,6 +63,9 @@ fn one_request_and_only_the_responder(watch: &Watch) {
 /// under one run request.
 #[test]
 fn a_retry_inside_one_request_recovers_the_turn() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("retries-recovered");
     let counter = fixture.path("attempts");
     let watch = Arc::new(Watch::default());
@@ -101,6 +104,9 @@ fn a_retry_inside_one_request_recovers_the_turn() {
 /// turn of the same print runs past.
 #[test]
 fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("retries-exhausted");
     let schema = generated_assessment_schema();
     let print_id = PrintId::new();

@@ -19,12 +19,15 @@ use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, responder, turn,
+    generated_assessment_schema, port, responder, schema_read_lock, turn,
 };
 
 /// Driving every method the port declares creates only the responder.
 #[test]
 fn every_process_a_turn_creates_is_the_responder_this_repository_ships() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("spawning");
     let watch = Arc::new(Watch::default());
     let supervisor = port(

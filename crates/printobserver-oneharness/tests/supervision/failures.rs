@@ -23,7 +23,7 @@ use printobserver_types::{
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, turn,
+    generated_assessment_schema, port, schema_read_lock, turn,
 };
 
 /// An event to hang a turn off.
@@ -125,6 +125,9 @@ fn a_template_that_does_not_declare_each_slot_once_is_refused() {
 /// A port nobody is watching still takes a turn, and the seam says as much.
 #[test]
 fn a_port_with_nothing_watching_it_still_takes_a_turn() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unwatched");
     unwatched_turn(answering(&fixture)).expect("an unwatched turn runs");
 
@@ -150,6 +153,9 @@ fn a_port_with_nothing_watching_it_still_takes_a_turn() {
 /// A harness this system cannot reach is unavailable rather than an answer.
 #[test]
 fn a_harness_that_cannot_run_the_turn_is_unavailable() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unreachable");
 
     // A harness identity OneHarness does not know: refused before anything runs.
@@ -188,6 +194,9 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
 /// A turn that outlives its deadline is a timeout, not a hang.
 #[test]
 fn a_turn_that_outlives_its_deadline_is_a_timeout() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-timeout");
     let mut slow = answering(&fixture);
     slow.turn_timeout_s = 1;
@@ -231,6 +240,9 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
 /// A ledger that cannot be read is reported by every method that reads one.
 #[test]
 fn a_ledger_that_cannot_be_read_is_reported() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unreadable");
     let print_id = PrintId::new();
     let ledger = fixture
@@ -279,6 +291,9 @@ fn a_ledger_that_cannot_be_read_is_reported() {
 #[cfg(unix)]
 #[test]
 fn a_ledger_that_cannot_be_written_is_reported() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unwritable");
     // A dangling link where the ledger directory belongs: reading a print's
     // ledger finds nothing, and creating the directory to write one cannot
@@ -308,6 +323,9 @@ fn a_ledger_that_cannot_be_written_is_reported() {
 /// again rather than stranding the print.
 #[test]
 fn a_lost_harness_store_opens_the_conversation_again() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-lost-store");
     let watch = Arc::new(Watch::default());
     let supervisor = port(answering(&fixture), &watch);

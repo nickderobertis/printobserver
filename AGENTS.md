@@ -457,6 +457,25 @@ the port. That feature is why the crate's `lint`, `typecheck` and `test` graph
 targets pass `--features test-responder` where `build` does not: what a consumer
 installs carries neither the binary nor the dependency behind it.
 
+That suite also **writes** to the checked-in schema tree. Proving the answer is
+constrained by the *generated* artifact rather than by a copy of its bytes means
+changing that artifact on disk, driving an answer that was accepted before, and
+watching it be refused — a byte comparison cannot tell the two apart, and a
+scratch copy the port was pointed at would not be the artifact the claim is
+about. Everything else that reads that tree runs at the same time — the test
+runner gives each test its own process, and `nx run-many` drives
+`printobserver-types`'s suite while this project's tests are still going — so
+every side takes one operating-system lock on a file under `target`: shared for
+the journeys that only read the artifact, so they still run beside each other,
+and exclusive for the one that changes it. The kernel releases it when the
+holder goes, so a test that panics or is killed leaves nothing holding it.
+`repo-policy.toml`'s `supervisor.schema_lock` names the file and
+`schema_lock_holders` names both suites; `just check-repo` holds each of them to
+that one name, because two suites locking two different files are back to no
+lock at all. The artifact is put back by a guard rather than by the last line of
+the journey, so a journey that falls over mid-way still leaves the tree as it
+found it.
+
 ## Tests are the only QA loop
 
 Never mock the layer under test. Drive the real artifact across real boundaries

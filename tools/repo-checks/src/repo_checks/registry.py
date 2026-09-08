@@ -46,6 +46,7 @@ CHECKS: dict[str, Check] = {
     "supervisor-spawn-free": checks_supervisor.spawn_free,
     "supervisor-schema-source": checks_supervisor.schema_source,
     "supervisor-prompt-template": checks_supervisor.prompt_template,
+    "supervisor-schema-lock": checks_supervisor.schema_lock,
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,

@@ -127,6 +127,18 @@ action_schema = "schemas/printobserver-types/PrintAction.json"
 program = "printobserver"
 reads = ["status", "context", "image", "materialize", "history", "manifest-get", "manifest-set"]
 context_read = "context"
+# The lock the checked-in schema tree is read and written under, and every
+# suite that takes it. One journey in the adapter's suite CHANGES a checked-in
+# schema on disk — which is what proves the port reads that artifact at run
+# time rather than validating against a copy of its bytes — and every suite
+# that reads that tree runs at the same time under `nx run-many`. Both sides
+# take this lock, and `just check-repo` holds every holder to this one name:
+# two suites locking two different files are back to no lock at all.
+schema_lock = "printobserver-schemas.lock"
+schema_lock_holders = [
+    "crates/printobserver-types/tests/schemas.rs",
+    "crates/printobserver-oneharness/tests/supervision/support.rs",
+]
 
 [manifests]
 # The only manifests permitted to carry a version field, because release

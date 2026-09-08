@@ -18,7 +18,7 @@ use printobserver_types::{
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, turn,
+    generated_assessment_schema, port, schema_read_lock, turn,
 };
 
 /// An alert about a print.
@@ -44,6 +44,9 @@ fn notification() -> EventPayload {
 /// each continues that session after everything held in memory is dropped.
 #[test]
 fn each_print_keeps_its_own_session_across_a_rebuild() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("sessions");
     let schema = generated_assessment_schema();
     let environment = always("SID-SESSIONS", &assessment("the print is fine", "high"));

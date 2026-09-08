@@ -16,7 +16,7 @@ use printobserver_types::{
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, turn,
+    generated_assessment_schema, port, schema_read_lock, turn,
 };
 
 /// An event that says nothing this system could read.
@@ -40,6 +40,9 @@ fn last(sessions: &[SupervisionSession]) -> &SupervisionSession {
 /// reason, and closing answers success.
 #[test]
 fn a_terminal_state_closes_the_session_with_that_state_as_the_reason() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("closing-terminal");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
@@ -70,6 +73,9 @@ fn a_terminal_state_closes_the_session_with_that_state_as_the_reason() {
 /// closing answers success.
 #[test]
 fn an_abandoned_print_closes_its_session_with_abandonment_as_the_reason() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("closing-abandoned");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
@@ -100,6 +106,9 @@ fn an_abandoned_print_closes_its_session_with_abandonment_as_the_reason() {
 /// under a name carrying a sequence beside that print's identifier.
 #[test]
 fn an_event_after_a_close_opens_the_next_session_of_the_sequence() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("closing-reopen");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
@@ -139,6 +148,9 @@ fn an_event_after_a_close_opens_the_next_session_of_the_sequence() {
 /// carrying that reason and a new session, not an error the caller sees.
 #[test]
 fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("closing-identity");
     let schema = generated_assessment_schema();
     let print_id = PrintId::new();

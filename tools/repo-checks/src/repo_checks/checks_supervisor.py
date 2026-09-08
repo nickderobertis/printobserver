@@ -15,6 +15,12 @@ forbidden set derived from the generated action vocabulary rather than restated
 here: a variant `PrintAction` gains enters that set the moment the contracts'
 generation target writes it, so the walk cannot fall behind the type.
 
+The fourth is about the first one's own test: proving the answer is constrained
+by the *generated* artifact means changing that artifact on disk, and every
+suite that reads the schema tree runs beside that one. Both sides take one
+operating-system lock, and this check holds every declared holder to one name,
+because two suites locking two different files are back to no lock at all.
+
 The template rule is keyed on those names rather than on words that sound like
 instructions, deliberately. An event description that says the printer paused is
 a fact, not an instruction, and a rule hunting remediation-sounding words would
@@ -203,4 +209,38 @@ def prompt_template(repo: Repo) -> list[str]:
                     f"asks for is a reading: the only operation of this program it may "
                     f"name is the context read `{program} {context_read}`."
                 )
+    return findings
+
+
+def schema_lock(repo: Repo) -> list[str]:
+    """Every suite that reads the checked-in schema tree locks the same file."""
+    found = _adapter(repo)
+    if found is None:
+        return ["`repo-policy.toml` declares no `[supervisor]` section"]
+    policy, _ = found
+    name = str(policy["schema_lock"])
+    holders = [str(path) for path in policy["schema_lock_holders"]]
+
+    findings: list[str] = []
+    if len(holders) < 2:
+        findings.append(
+            "`repo-policy.toml`'s supervisor.schema_lock_holders names fewer than two "
+            "suites, and a lock only one side takes serializes nothing"
+        )
+    for holder in holders:
+        if not repo.exists(holder):
+            findings.append(f"the declared schema-lock holder `{holder}` is absent")
+            continue
+        text = repo.read(holder)
+        if name not in text:
+            findings.append(
+                f"`{holder}` is declared a holder of the schema lock and does not name "
+                f"`{name}`. Two suites locking two different files are back to no lock "
+                f"at all, and the journey that changes a checked-in schema would run "
+                f"beside the suite that reads it."
+            )
+        if ".lock()" not in text:
+            findings.append(
+                f"`{holder}` names the schema lock file `{name}` and never takes the lock on it"
+            )
     return findings

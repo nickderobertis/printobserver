@@ -11,7 +11,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from repo_checks.checks_supervisor import prompt_template, schema_source, spawn_free
+from repo_checks.checks_supervisor import (
+    prompt_template,
+    schema_lock,
+    schema_source,
+    spawn_free,
+)
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
@@ -158,3 +163,42 @@ def test_an_action_vocabulary_that_declares_nothing_is_refused(
     copy = tree()
     copy.write(ACTION_SCHEMA, json.dumps({"title": "PrintAction"}))
     refused(prompt_template(copy.repo), "declares no variants")
+
+
+def test_the_committed_holders_all_take_the_same_schema_lock(committed: Repo) -> None:
+    """The two suites that read the checked-in schema tree lock one file."""
+    accepted(schema_lock(committed))
+
+
+def _holders(copy: Tree) -> list[str]:
+    """The suites the policy declares as holders of the schema lock."""
+    return [str(path) for path in copy.repo.policy["supervisor"]["schema_lock_holders"]]
+
+
+def test_a_holder_locking_another_file_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two suites locking two different files are back to no lock at all."""
+    copy = tree()
+    holder = _holders(copy)[0]
+    name = copy.repo.policy["supervisor"]["schema_lock"]
+    copy.edit(holder, name, "some-other.lock")
+    refused(schema_lock(copy.repo), holder)
+
+
+def test_a_holder_that_never_takes_the_lock_is_refused(tree: Callable[[], Tree]) -> None:
+    """Naming the file is not taking the lock on it."""
+    copy = tree()
+    holder = _holders(copy)[1]
+    copy.write(holder, copy.read(holder).replace(".lock()", ".metadata()"))
+    refused(schema_lock(copy.repo), "never takes the lock")
+
+
+def test_a_lock_only_one_suite_takes_is_refused(tree: Callable[[], Tree]) -> None:
+    """A lock one side takes serializes nothing, so a lone holder is refused."""
+    copy = tree()
+    policy = copy.read("repo-policy.toml")
+    holders = _holders(copy)
+    copy.write(
+        "repo-policy.toml",
+        policy.replace(f'    "{holders[1]}",\n', "", 1),
+    )
+    refused(schema_lock(copy.repo), "fewer than two")

@@ -9,6 +9,7 @@
 //! publishes and this repository ships a binary for.
 
 use std::fs;
+use std::fs::File;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -76,6 +77,52 @@ pub fn generated_assessment_schema() -> PathBuf {
         .join("schemas")
         .join("printobserver-types")
         .join("AgentAssessment.json")
+}
+
+/// The file the checked-in schema tree is read and written under.
+///
+/// One journey here **writes** to that tree: the assessment-schema journey
+/// changes the checked-in artifact on disk, drives an answer that was accepted
+/// before, and puts the artifact back, which is what proves the port reads that
+/// artifact at run time rather than validating against a copy of its bytes.
+/// Everything else that names the artifact reads it, in this suite and in
+/// `printobserver-types`'s `schemas` suite, and all of it runs at the same time:
+/// the test runner gives each test its own process, and `nx run-many` drives one
+/// project's tests while another's are still going.
+///
+/// The file sits under `target`, which is per-worktree and ignored, so two
+/// checkouts on one machine never block each other.
+/// `repo-policy.toml`'s `supervisor.schema_lock` is where the name comes from,
+/// and `just check-repo` holds every holder it declares to that one name: two
+/// suites that locked two different files would be back to no lock at all.
+fn schema_lock_file() -> File {
+    let directory = repo_root().join("target");
+    fs::create_dir_all(&directory).expect("the target directory is writable");
+    File::create(directory.join("printobserver-schemas.lock"))
+        .expect("the schema lock file is creatable")
+}
+
+/// Hold the checked-in schema tree still while this journey **changes** it.
+///
+/// Exclusive, so nothing reads the tree while it is half-changed. The lock is
+/// the operating system's own, so the kernel releases it when the handle goes:
+/// a journey that panics, or is killed, leaves nothing holding it.
+pub fn schema_lock() -> File {
+    let file = schema_lock_file();
+    file.lock().expect("the schema lock is takeable");
+    file
+}
+
+/// Hold the checked-in schema tree still while this journey **reads** it.
+///
+/// Shared, so the journeys that only read the artifact still run beside each
+/// other and only the one that changes it waits for them. Every journey here
+/// that drives a turn against the checked-in artifact takes this, because an
+/// answer it accepts is only the answer that artifact admits.
+pub fn schema_read_lock() -> File {
+    let file = schema_lock_file();
+    file.lock_shared().expect("the schema lock is shareable");
+    file
 }
 
 /// The committed prompt template.

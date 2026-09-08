@@ -16,7 +16,7 @@ use printobserver_types::{
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, skill_path, template_path, turn,
+    generated_assessment_schema, port, schema_read_lock, skill_path, template_path, turn,
 };
 
 /// The literal text of the committed template between its slots, in the order
@@ -74,6 +74,9 @@ fn fillings(literals: &[String], prompt: &str) -> Option<Vec<String>> {
 /// Every prompt is the committed template with only its three slots differing.
 #[test]
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("prompting");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
@@ -163,6 +166,9 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
 /// tree when the port is built.
 #[test]
 fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
     let fixture = Fixture::new("skill");
     let schema = generated_assessment_schema();
     let environment = always("SID-SKILL", &assessment("the print is fine", "high"));
