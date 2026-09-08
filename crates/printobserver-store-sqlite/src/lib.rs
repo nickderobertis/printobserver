@@ -51,7 +51,7 @@
 //! asks it over the connection this crate opens, rather than over one of its
 //! own that might differ.
 //!
-//! # Two facts the port leaves open, settled here
+//! # Four facts the port leaves open, settled here
 //!
 //! * **Which print an action binds to.** `record_action` answers an
 //!   `ActionRecord` carrying a print, and takes a request that names none. The
@@ -62,6 +62,13 @@
 //!   port's own [`resolve_history_limit`](printobserver_store_api::resolve_history_limit),
 //!   and a zero page takes the default window, because a page of nothing cannot
 //!   walk a history to exhaustion.
+//! * **The state a print opens in.** `open_print` is called when a job starts
+//!   being watched, so the print opens in
+//!   [`PrinterState::Printing`](printobserver_types::PrinterState::Printing);
+//!   `end_print` is what puts it in a terminal state.
+//! * **Which print an Obico identifier names.** Obico reuses nothing, but this
+//!   system may have opened a print for one identifier more than once, so
+//!   `print_by_obico_id` answers the most recently opened of them.
 
 mod hold;
 mod images;
