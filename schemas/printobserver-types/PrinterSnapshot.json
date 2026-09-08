@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "HeaterSnapshot": {
+      "additionalProperties": false,
+      "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
+      "properties": {
+        "actual_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is at."
+        },
+        "offset_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The offset applied to this heater's target."
+        },
+        "target_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is driving towards."
+        }
+      },
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A printer, as a source reported it at one instant.",
+  "properties": {
+    "bed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HeaterSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bed heater, when the printer reports one."
+    },
+    "chamber": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HeaterSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The chamber heater, when the printer reports one."
+    },
+    "connection": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state the printer is in."
+    },
+    "fan_percent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The part-cooling fan, in percent."
+    },
+    "feedrate_factor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The feedrate multiplier, where one means one hundred percent."
+    },
+    "flowrate_factor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The flowrate multiplier, where one means one hundred percent."
+    },
+    "observed_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "The instant this observation was taken."
+    },
+    "tools": {
+      "description": "The tool heaters, indexed by tool number.",
+      "items": {
+        "$ref": "#/$defs/HeaterSnapshot"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "connection",
+    "tools",
+    "observed_at"
+  ],
+  "title": "PrinterSnapshot",
+  "type": "object"
+}

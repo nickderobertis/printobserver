@@ -1,0 +1,37 @@
+{
+  "$defs": {
+    "ObicoFailureEventType": {
+      "description": "The one `type` a failure alert's event object carries.",
+      "oneOf": [
+        {
+          "const": "PrintFailure",
+          "description": "Obico's own spelling of a print failure.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The `event` object a failure alert carries.",
+  "properties": {
+    "is_warning": {
+      "description": "Whether the producer called it a warning rather than a failure.",
+      "type": "boolean"
+    },
+    "print_paused": {
+      "description": "Whether the producer paused the print itself.",
+      "type": "boolean"
+    },
+    "type": {
+      "$ref": "#/$defs/ObicoFailureEventType",
+      "description": "Always the producer's own `PrintFailure`."
+    }
+  },
+  "required": [
+    "type",
+    "is_warning",
+    "print_paused"
+  ],
+  "title": "ObicoFailureEvent",
+  "type": "object"
+}

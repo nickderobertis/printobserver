@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether a turn opened a session or continued one.",
+  "oneOf": [
+    {
+      "const": "created",
+      "description": "This turn opened the session.",
+      "type": "string"
+    },
+    {
+      "const": "continued",
+      "description": "This turn continued a session already open.",
+      "type": "string"
+    }
+  ],
+  "title": "SessionPhase"
+}

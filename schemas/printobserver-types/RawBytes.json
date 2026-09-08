@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contentEncoding": "base64",
+  "description": "Bytes exactly as received, base64-encoded.",
+  "title": "RawBytes",
+  "type": "string"
+}

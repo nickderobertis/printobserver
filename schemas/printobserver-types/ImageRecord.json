@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One image, stored beside the event it arrived with.\n\n`relative_path` is relative to the configured state directory, so that the\nstore stays portable. Materializing an image resolves that to an absolute\npath; nothing in this system renders image bytes into JSON.",
+  "properties": {
+    "byte_len": {
+      "description": "How many bytes it is.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "content_type": {
+      "description": "The content type it was served as.",
+      "type": "string"
+    },
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The event it arrived with."
+    },
+    "fetched_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When it was fetched."
+    },
+    "id": {
+      "$ref": "#/$defs/ImageId",
+      "description": "This image's identifier, minted by the store."
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print it belongs to."
+    },
+    "relative_path": {
+      "description": "Where it lives, relative to the configured state directory.",
+      "type": "string"
+    },
+    "sha256": {
+      "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+      "type": "string"
+    },
+    "source_url": {
+      "description": "Where it was fetched from, when it was fetched from somewhere.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "print_id",
+    "event_id",
+    "fetched_at",
+    "content_type",
+    "byte_len",
+    "sha256",
+    "relative_path"
+  ],
+  "title": "ImageRecord",
+  "type": "object"
+}

@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "AgentAssessment": {
+      "additionalProperties": false,
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "description": "How sure the agent is."
+        },
+        "did": {
+          "description": "What the agent did.",
+          "type": "string"
+        },
+        "escalating": {
+          "description": "Whether the agent is escalating to a person.",
+          "type": "boolean"
+        },
+        "should_continue": {
+          "description": "Whether the print should carry on.",
+          "type": "boolean"
+        },
+        "summary": {
+          "description": "One line saying what is happening.",
+          "type": "string"
+        },
+        "why": {
+          "description": "Why it did it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "confidence",
+        "should_continue",
+        "did",
+        "why",
+        "escalating"
+      ],
+      "type": "object"
+    },
+    "Confidence": {
+      "description": "How sure the agent is.\n\nA closed vocabulary rather than a number, because a number invites a\nprecision the agent does not have.",
+      "oneOf": [
+        {
+          "const": "low",
+          "description": "Not sure.",
+          "type": "string"
+        },
+        {
+          "const": "medium",
+          "description": "Fairly sure.",
+          "type": "string"
+        },
+        {
+          "const": "high",
+          "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SessionPhase": {
+      "description": "Whether a turn opened a session or continued one.",
+      "oneOf": [
+        {
+          "const": "created",
+          "description": "This turn opened the session.",
+          "type": "string"
+        },
+        {
+          "const": "continued",
+          "description": "This turn continued a session already open.",
+          "type": "string"
+        }
+      ]
+    },
+    "SupervisionSession": {
+      "additionalProperties": false,
+      "description": "The supervision session keyed to one print.",
+      "properties": {
+        "close_reason": {
+          "description": "Why it was closed, if it was.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "closed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the session was closed, if it was."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the session was opened."
+        },
+        "harness_identity": {
+          "description": "The identity the harness ran the session under.",
+          "type": "string"
+        },
+        "last_turn_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the last turn ran."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print this session watches."
+        },
+        "session_name": {
+          "description": "The session's own name in the harness.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "print_id",
+        "session_name",
+        "harness_identity",
+        "created_at",
+        "last_turn_at"
+      ],
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What one supervision turn answered with.",
+  "properties": {
+    "assessment": {
+      "$ref": "#/$defs/AgentAssessment",
+      "description": "The agent's written record of the turn."
+    },
+    "phase": {
+      "$ref": "#/$defs/SessionPhase",
+      "description": "Whether this turn opened that session or continued it."
+    },
+    "session": {
+      "$ref": "#/$defs/SupervisionSession",
+      "description": "The session the turn ran in."
+    }
+  },
+  "required": [
+    "session",
+    "phase",
+    "assessment"
+  ],
+  "title": "TurnOutcome",
+  "type": "object"
+}

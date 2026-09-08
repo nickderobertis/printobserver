@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A supervision session was opened.",
+  "properties": {
+    "harness_identity": {
+      "description": "The identity the harness ran it under.",
+      "type": "string"
+    },
+    "session_name": {
+      "description": "The session's own name in the harness.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_name",
+    "harness_identity"
+  ],
+  "title": "SupervisionSessionOpenedPayload",
+  "type": "object"
+}

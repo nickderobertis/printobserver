@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The supervision session keyed to one print.",
+  "properties": {
+    "close_reason": {
+      "description": "Why it was closed, if it was.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "closed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the session was closed, if it was."
+    },
+    "created_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the session was opened."
+    },
+    "harness_identity": {
+      "description": "The identity the harness ran the session under.",
+      "type": "string"
+    },
+    "last_turn_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the last turn ran."
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print this session watches."
+    },
+    "session_name": {
+      "description": "The session's own name in the harness.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "print_id",
+    "session_name",
+    "harness_identity",
+    "created_at",
+    "last_turn_at"
+  ],
+  "title": "SupervisionSession",
+  "type": "object"
+}

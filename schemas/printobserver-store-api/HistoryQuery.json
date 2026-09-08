@@ -1,0 +1,130 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "Which event this is, without its payload.\n\nEvery kind here has exactly one [`EventPayload`] variant, and the spellings\nare the same on the wire.",
+      "oneOf": [
+        {
+          "const": "obico_failure_alert",
+          "description": "Obico reported a print failure.",
+          "type": "string"
+        },
+        {
+          "const": "obico_printer_notification",
+          "description": "Obico sent a printer notification.",
+          "type": "string"
+        },
+        {
+          "const": "malformed_external_event",
+          "description": "An external body arrived that could not be read.",
+          "type": "string"
+        },
+        {
+          "const": "action_requested",
+          "description": "An actor asked for an action.",
+          "type": "string"
+        },
+        {
+          "const": "action_executed",
+          "description": "An accepted action reached the printer.",
+          "type": "string"
+        },
+        {
+          "const": "action_rejected",
+          "description": "Policy refused an action.",
+          "type": "string"
+        },
+        {
+          "const": "intervention_expired",
+          "description": "A bounded intervention expired.",
+          "type": "string"
+        },
+        {
+          "const": "supervision_session_opened",
+          "description": "A supervision session was opened.",
+          "type": "string"
+        },
+        {
+          "const": "supervision_session_closed",
+          "description": "A supervision session was closed.",
+          "type": "string"
+        },
+        {
+          "const": "agent_assessment",
+          "description": "The agent wrote down what it made of a turn.",
+          "type": "string"
+        },
+        {
+          "const": "operator_acknowledgement",
+          "description": "An operator acknowledged an event.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Which of a print's events to read.\n\nAn empty `kinds` means every kind rather than no kinds, and an absent\n`limit` means [`DEFAULT_HISTORY_WINDOW`].",
+  "properties": {
+    "kinds": {
+      "description": "The kinds to read; empty means every kind.",
+      "items": {
+        "$ref": "#/$defs/EventKind"
+      },
+      "type": "array"
+    },
+    "limit": {
+      "description": "How many events to answer; absent means [`DEFAULT_HISTORY_WINDOW`].",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print to read the history of."
+    },
+    "since": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The earliest instant to read from, inclusive."
+    },
+    "until": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The latest instant to read to, inclusive."
+    }
+  },
+  "required": [
+    "print_id",
+    "kinds"
+  ],
+  "title": "HistoryQuery",
+  "type": "object"
+}

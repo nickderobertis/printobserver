@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Obico reported a print failure.",
+  "properties": {
+    "file_name": {
+      "description": "The file being printed, when Obico named one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_warning": {
+      "description": "Whether Obico called it a warning rather than a failure.",
+      "type": "boolean"
+    },
+    "obico_print_id": {
+      "description": "Obico's own identifier for the print, when it named one.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "print_paused": {
+      "description": "Whether Obico paused the print itself.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "is_warning",
+    "print_paused"
+  ],
+  "title": "ObicoFailureAlertPayload",
+  "type": "object"
+}

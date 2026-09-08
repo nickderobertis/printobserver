@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+  "format": "date-time",
+  "title": "Timestamp",
+  "type": "string"
+}

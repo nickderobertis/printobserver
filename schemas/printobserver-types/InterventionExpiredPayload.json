@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    },
+    "InterventionOutcome": {
+      "description": "What became of a bounded change.",
+      "oneOf": [
+        {
+          "const": "still_active",
+          "description": "It is still in force.",
+          "type": "string"
+        },
+        {
+          "const": "restored",
+          "description": "The prior value was put back.",
+          "type": "string"
+        },
+        {
+          "const": "restore_unavailable",
+          "description": "There was no prior value to put back.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Putting the prior value back failed.",
+          "properties": {
+            "restore_failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "restore_failed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another intervention replaced it before it expired.",
+          "properties": {
+            "superseded": {
+              "additionalProperties": false,
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that replaced it."
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "superseded"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A bounded intervention expired.",
+  "properties": {
+    "adjustable": {
+      "$ref": "#/$defs/Adjustable",
+      "description": "What it had changed."
+    },
+    "intervention_id": {
+      "$ref": "#/$defs/InterventionId",
+      "description": "The intervention's identifier."
+    },
+    "outcome": {
+      "$ref": "#/$defs/InterventionOutcome",
+      "description": "What became of it."
+    }
+  },
+  "required": [
+    "intervention_id",
+    "adjustable",
+    "outcome"
+  ],
+  "title": "InterventionExpiredPayload",
+  "type": "object"
+}

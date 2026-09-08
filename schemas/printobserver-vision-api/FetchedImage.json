@@ -1,0 +1,29 @@
+{
+  "$defs": {
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One image, as it was retrieved.",
+  "properties": {
+    "bytes": {
+      "$ref": "#/$defs/RawBytes",
+      "description": "The image's bytes, exactly as served."
+    },
+    "content_type": {
+      "description": "The content type it was served as.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "bytes",
+    "content_type"
+  ],
+  "title": "FetchedImage",
+  "type": "object"
+}

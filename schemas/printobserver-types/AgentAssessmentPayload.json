@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "AgentAssessment": {
+      "additionalProperties": false,
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "description": "How sure the agent is."
+        },
+        "did": {
+          "description": "What the agent did.",
+          "type": "string"
+        },
+        "escalating": {
+          "description": "Whether the agent is escalating to a person.",
+          "type": "boolean"
+        },
+        "should_continue": {
+          "description": "Whether the print should carry on.",
+          "type": "boolean"
+        },
+        "summary": {
+          "description": "One line saying what is happening.",
+          "type": "string"
+        },
+        "why": {
+          "description": "Why it did it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "confidence",
+        "should_continue",
+        "did",
+        "why",
+        "escalating"
+      ],
+      "type": "object"
+    },
+    "Confidence": {
+      "description": "How sure the agent is.\n\nA closed vocabulary rather than a number, because a number invites a\nprecision the agent does not have.",
+      "oneOf": [
+        {
+          "const": "low",
+          "description": "Not sure.",
+          "type": "string"
+        },
+        {
+          "const": "medium",
+          "description": "Fairly sure.",
+          "type": "string"
+        },
+        {
+          "const": "high",
+          "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The agent wrote down what it made of a turn.",
+  "properties": {
+    "assessment": {
+      "$ref": "#/$defs/AgentAssessment",
+      "description": "What the agent answered with."
+    },
+    "session_name": {
+      "description": "The session the turn ran in.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_name",
+    "assessment"
+  ],
+  "title": "AgentAssessmentPayload",
+  "type": "object"
+}

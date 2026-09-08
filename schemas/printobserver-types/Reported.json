@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+  "properties": {
+    "out_of_range": {
+      "type": "boolean"
+    },
+    "value": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "value",
+    "out_of_range"
+  ],
+  "title": "Reported",
+  "type": "object"
+}

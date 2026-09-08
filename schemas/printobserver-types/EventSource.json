@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where an event came from.",
+  "oneOf": [
+    {
+      "const": "obico",
+      "description": "Obico, over its webhook.",
+      "type": "string"
+    },
+    {
+      "const": "operator",
+      "description": "A person.",
+      "type": "string"
+    },
+    {
+      "const": "agent",
+      "description": "The supervising agent.",
+      "type": "string"
+    },
+    {
+      "const": "system",
+      "description": "The supervisor itself.",
+      "type": "string"
+    }
+  ],
+  "title": "EventSource"
+}

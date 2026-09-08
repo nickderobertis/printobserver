@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+  "minLength": 1,
+  "not": {
+    "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+  },
+  "pattern": "^[^/\\\\\u0000]+$",
+  "title": "FileName",
+  "type": "string"
+}

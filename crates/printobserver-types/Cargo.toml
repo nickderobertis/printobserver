@@ -18,6 +18,8 @@ uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]
 proptest = "1"
+quote = "1"
+syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
 
 [lints]
 workspace = true

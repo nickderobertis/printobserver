@@ -1105,3 +1105,123 @@ impl Sample for ObicoPrinterNotification {
         }
     }
 }
+
+/// One field as a generated schema declares it.
+///
+/// This is how the contract tests read a type's fields: off the schema the type
+/// generates rather than off a table maintained beside it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WireField {
+    /// The field's name on the wire.
+    pub name: String,
+    /// What the field is: a referenced type's name, or a primitive's.
+    pub descriptor: String,
+    /// Whether an instance must carry it.
+    pub required: bool,
+}
+
+/// The name a reference names.
+fn referenced(reference: &str) -> String {
+    reference.rsplit('/').next().unwrap_or(reference).to_owned()
+}
+
+/// The one non-null arm of a union, when there is exactly one.
+fn sole_arm(arms: &[Value]) -> Option<&Value> {
+    let mut kept = arms.iter().filter(|arm| arm.get("type") != Some(&Value::from("null")));
+    let first = kept.next()?;
+    kept.next().is_none().then_some(first)
+}
+
+/// What one property schema declares the field to be.
+fn descriptor(schema: &Value) -> String {
+    if let Some(Value::String(reference)) = schema.get("$ref") {
+        return referenced(reference);
+    }
+    for key in ["anyOf", "oneOf"] {
+        if let Some(Value::Array(arms)) = schema.get(key) {
+            return match sole_arm(arms) {
+                Some(arm) => descriptor(arm),
+                None => "enum".to_owned(),
+            };
+        }
+    }
+    let kind = match schema.get("type") {
+        Some(Value::String(name)) => name.clone(),
+        Some(Value::Array(names)) => names
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|name| *name != "null")
+            .unwrap_or("unknown")
+            .to_owned(),
+        _ => "unknown".to_owned(),
+    };
+    match kind.as_str() {
+        "array" => format!(
+            "array:{}",
+            schema.get("items").map_or_else(|| "unknown".to_owned(), descriptor)
+        ),
+        "object" => match schema.get("additionalProperties") {
+            Some(value) if value.is_object() => format!("map:{}", descriptor(value)),
+            _ => "object".to_owned(),
+        },
+        other => other.to_owned(),
+    }
+}
+
+/// The names one schema object marks required.
+fn required_names(schema: &Value) -> Vec<&str> {
+    schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
+}
+
+/// Read the fields off one object schema into a map.
+fn collect(schema: &Value, into: &mut BTreeMap<String, WireField>) {
+    let required = required_names(schema);
+    let Some(Value::Object(properties)) = schema.get("properties") else { return };
+    for (name, property) in properties {
+        into.insert(
+            name.clone(),
+            WireField {
+                name: name.clone(),
+                descriptor: descriptor(property),
+                required: required.contains(&name.as_str()),
+            },
+        );
+    }
+}
+
+/// Every field one generated schema declares, in name order.
+///
+/// A schema whose type flattens a tagged enum declares some of its fields
+/// inside the union's arms rather than beside them, so this reads both: a field
+/// every arm requires is required, a field no arm declares is absent, and a
+/// field the arms declare at differing types is `union`.
+#[must_use]
+pub fn wire_fields(schema: &Value) -> Vec<WireField> {
+    let mut fields = BTreeMap::new();
+    collect(schema, &mut fields);
+    for key in ["anyOf", "oneOf", "allOf"] {
+        let Some(Value::Array(arms)) = schema.get(key) else { continue };
+        let mut from_arms: BTreeMap<String, WireField> = BTreeMap::new();
+        for arm in arms {
+            let mut one = BTreeMap::new();
+            collect(arm, &mut one);
+            for (name, field) in one {
+                from_arms
+                    .entry(name)
+                    .and_modify(|held| {
+                        held.required &= field.required;
+                        if held.descriptor != field.descriptor {
+                            "union".clone_into(&mut held.descriptor);
+                        }
+                    })
+                    .or_insert(field);
+            }
+        }
+        fields.extend(from_arms);
+    }
+    fields.into_values().collect()
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The `printer` object both shapes carry.",
+  "properties": {
+    "id": {
+      "description": "Obico's own identifier for the printer.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "name": {
+      "description": "The name Obico shows the printer under.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "ObicoPrinterInfo",
+  "type": "object"
+}
