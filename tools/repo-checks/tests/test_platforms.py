@@ -90,17 +90,17 @@ def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
 def test_a_policy_naming_something_that_is_not_a_job_kind_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """A mistyped declaration is refused rather than coerced into a job kind."""
+    """A kind no job can ever be is refused rather than coerced into one."""
     broken = tree()
     broken.edit(
         "repo-policy.toml",
         'platform_dependent_kinds = ["gate", "integration", "install"]',
-        'platform_dependent_kinds = ["gate", 7]',
+        'platform_dependent_kinds = ["gate", "smoke"]',
     )
 
     findings = platforms(broken.repo)
 
-    refused(findings, "names something that is not a job kind")
+    refused(findings, "which is not one of the job kinds these checks classify")
 
 
 def test_a_matrix_on_the_judged_lint_job_is_refused(tree: Callable[[], Tree]) -> None:

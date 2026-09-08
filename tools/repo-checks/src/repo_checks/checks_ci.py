@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
@@ -74,17 +75,33 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
+class JobKind(StrEnum):
+    """What a workflow job is, judged by what its own steps run.
+
+    A closed set: `repo-policy.toml` may name only these, and every comparison
+    below is against a member rather than a bare string.
+    """
+
+    GATE = "gate"
+    INTEGRATION = "integration"
+    LLMLINT = "llmlint"
+    INSTALL = "install"
+    OTHER = "other"
+
+
 class PolicyValueError(ValueError):
     """`repo-policy.toml` declares a value a check cannot act on."""
 
 
 def _bring_up_command(repo: Repo) -> str:
     """The command line the printer-integration job is recognized by, or empty."""
-    recipe = str(repo.policy.get("integration", {}).get("bring_up", "")).strip()
-    return f"just {recipe}" if recipe else ""
+    recipe = repo.policy.get("integration", {}).get("bring_up")
+    if not isinstance(recipe, str) or not recipe.strip():
+        return ""
+    return f"just {recipe.strip()}"
 
 
-def platform_dependent_kinds(repo: Repo) -> set[str]:
+def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
     """The job kinds `repo-policy.toml` declares platform-dependent.
 
     Validated rather than coerced: a misspelt or mistyped declaration would
@@ -93,7 +110,7 @@ def platform_dependent_kinds(repo: Repo) -> set[str]:
 
     Raises:
         PolicyValueError: If the declaration is absent, empty, or names anything
-            but non-empty strings.
+            that is not one of `JobKind`.
     """
     declared = repo.policy.get("workflows", {}).get("platform_dependent_kinds")
     if not isinstance(declared, list) or not declared:
@@ -103,16 +120,22 @@ def platform_dependent_kinds(repo: Repo) -> set[str]:
             "to the supported-platform list"
         )
         raise PolicyValueError(msg)
-    if not all(isinstance(kind, str) and kind for kind in declared):
-        msg = (
-            f"`repo-policy.toml`'s `workflows.platform_dependent_kinds` names "
-            f"something that is not a job kind: {declared!r}"
-        )
-        raise PolicyValueError(msg)
-    return set(declared)
+    known = {kind.value for kind in JobKind}
+    kinds: set[JobKind] = set()
+    for entry in declared:
+        name = entry.strip() if isinstance(entry, str) else entry
+        if name not in known:
+            msg = (
+                f"`repo-policy.toml`'s `workflows.platform_dependent_kinds` names "
+                f"{entry!r}, which is not one of the job kinds these checks "
+                f"classify ({', '.join(sorted(known))})"
+            )
+            raise PolicyValueError(msg)
+        kinds.add(JobKind(name))
+    return frozenset(kinds)
 
 
-def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> str:
+def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> JobKind:
     """Classify a job by what its own steps run, not by what it is called.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
@@ -120,14 +143,14 @@ def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> str:
     """
     commands = run_commands(job)
     if bring_up and bring_up in commands:
-        return "integration"
+        return JobKind.INTEGRATION
     if "just check" in commands and "just bootstrap" in commands:
-        return "gate"
+        return JobKind.GATE
     if any(command.startswith("just lint-llm-diff") for command in commands):
-        return "llmlint"
+        return JobKind.LLMLINT
     if any(command in path.canonical for command in commands):
-        return "install"
-    return "other"
+        return JobKind.INSTALL
+    return JobKind.OTHER
 
 
 def platforms(repo: Repo) -> list[str]:
@@ -164,7 +187,7 @@ def platforms(repo: Repo) -> list[str]:
         for job_name, job in jobs_of(workflow).items():
             kind = _job_kind(job, path, bring_up)
             entries = _matrix_platforms(job)
-            if kind == "integration":
+            if kind == JobKind.INTEGRATION:
                 # The printer integration job's matrix is the `integration-tier`
                 # check's: it is the one matrix the exclusions recorded in
                 # AGENTS.md may narrow, and a rule stated in two places is a
@@ -175,7 +198,7 @@ def platforms(repo: Repo) -> list[str]:
                     findings.append(
                         f"{file_name}: job `{job_name}` declares a platform matrix, but "
                         f"`repo-policy.toml` names only "
-                        f"{', '.join(f'`{one}`' for one in sorted(dependent))} as "
+                        f"{', '.join(f'`{one.value}`' for one in sorted(dependent))} as "
                         f"platform-dependent: running a job with no platform-dependent "
                         f"behaviour once per platform is repetition rather than coverage, "
                         f"and for a non-deterministic one it is two independent verdicts "
@@ -350,11 +373,11 @@ def continuous_integration(repo: Repo) -> list[str]:
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
             kind = _job_kind(job, path, bring_up)
-            if kind == "gate":
+            if kind == JobKind.GATE:
                 gate = (file_name, job_name, job)
-            elif kind == "llmlint":
+            elif kind == JobKind.LLMLINT:
                 llmlint = (file_name, job_name, job)
-            elif kind == "install":
+            elif kind == JobKind.INSTALL:
                 install.append((file_name, job_name, job))
 
     if gate is None:
@@ -449,7 +472,7 @@ def merge_model(repo: Repo) -> list[str]:
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
     declared: dict[str, str] = {}
-    kinds: dict[str, str] = {}
+    kinds: dict[str, JobKind] = {}
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
             declared[job_name] = file_name
@@ -461,7 +484,10 @@ def merge_model(repo: Repo) -> list[str]:
         for name in required
         if name not in declared
     )
-    for kind, label in (("gate", "complete-gate"), ("llmlint", "judged-lint")):
+    for kind, label in (
+        (JobKind.GATE, "complete-gate"),
+        (JobKind.LLMLINT, "judged-lint"),
+    ):
         if not any(kinds.get(name) == kind for name in required):
             findings.append(f"AGENTS.md's required checks omit the {label} job")
 
@@ -509,7 +535,7 @@ def secrets(repo: Repo) -> list[str]:
 
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if _job_kind(job, path, bring_up) != "llmlint":
+            if _job_kind(job, path, bring_up) != JobKind.LLMLINT:
                 continue
             used = sorted(
                 {
