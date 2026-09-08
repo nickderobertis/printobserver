@@ -760,6 +760,15 @@ version = "0.1.0"
 [[package]]
 name = "printobserver-octoprint"
 version = "0.1.0"
+dependencies = [
+ "log",
+ "printobserver-printer-api",
+ "printobserver-types",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "printobserver-oneharness"

@@ -8,5 +8,16 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+log = "0.4"
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+quote = "1"
+syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
+
 [lints]
 workspace = true
