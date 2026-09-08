@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from journey import GateCopy
 from repo_checks.expect import failing, passing
 
@@ -27,6 +28,8 @@ INTEGRATION_AARCH64 = AARCH64 + (
     "      - uses: actions/checkout@v5\n"
     "      - uses: extractions/setup-just@v3\n"
 )
+NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"
+NOT_A_KIND = "which is not one of the job kinds these checks classify"
 MATRIX = """    strategy:
       fail-fast: false
       matrix:
@@ -83,25 +86,23 @@ def test_a_platform_matrix_on_the_judged_lint_job_is_refused(
     failing(result, naming="job `llmlint` declares a platform matrix")
 
 
-def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
-    gate_copy: Callable[[], GateCopy],
+@pytest.mark.parametrize(
+    ("declaration", "naming"),
+    [
+        pytest.param("", NO_LIST, id="absent"),
+        pytest.param("platform_dependent_kinds = []", NO_LIST, id="empty"),
+        pytest.param('platform_dependent_kinds = "gate"', NO_LIST, id="not-a-list"),
+        pytest.param('platform_dependent_kinds = ["gate", 7]', NOT_A_KIND, id="not-a-string"),
+        pytest.param('platform_dependent_kinds = ["gate", "smoke"]', NOT_A_KIND, id="unknown"),
+    ],
+)
+def test_a_declaration_the_rule_cannot_act_on_is_refused(
+    gate_copy: Callable[[], GateCopy], declaration: str, naming: str
 ) -> None:
-    """A rule left reaching no job would pass every workflow by inspecting none."""
+    """Each shape is refused outright, rather than leaving the rule reaching no job."""
     broken = gate_copy()
-    broken.edit(POLICY, DECLARED_KINDS, "platform_dependent_kinds = []")
+    broken.edit(POLICY, DECLARED_KINDS, declaration)
 
     result = broken.just("check-repo")
 
-    failing(result, naming="declares no non-empty `workflows.platform_dependent_kinds` list")
-
-
-def test_a_policy_naming_a_kind_no_job_can_be_is_refused(
-    gate_copy: Callable[[], GateCopy],
-) -> None:
-    """A typo there is refused rather than quietly matching nothing."""
-    broken = gate_copy()
-    broken.edit(POLICY, DECLARED_KINDS, 'platform_dependent_kinds = ["gate", "smoke"]')
-
-    result = broken.just("check-repo")
-
-    failing(result, naming="which is not one of the job kinds these checks classify")
+    failing(result, naming=naming)
