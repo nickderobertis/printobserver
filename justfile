@@ -123,6 +123,7 @@ octoprint-down:
 # it, and waits a print out, so it is a continuous-integration job of its own
 # rather than something every gate run pays for.
 test-integration:
+    just node-modules
     bunx nx run-many -t test-integration --output-style=stream
 
 # Refuse a pull-request title that is not a Conventional Commit subject.
