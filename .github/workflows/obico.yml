@@ -1,0 +1,51 @@
+# The scheduled Obico tier: reconcile what a live self-hosted Obico posts
+# against the sample this repository commits as its claim about that producer.
+#
+# A workflow of its own, on a schedule and a manual invocation and NOTHING else.
+# No `push`, no `pull_request`, nothing that fires on a change: this job builds
+# Obico's own images, starts four containers including a machine-learning
+# service, and waits a real failure alert out, so a change-fired copy of it would
+# be the gate again under another name. `AGENTS.md`'s "The scheduled Obico tier"
+# records the schedule below in prose and `just check-repo` refuses a tree in
+# which the two disagree.
+
+name: obico
+
+on:
+  schedule:
+    # Weekly, on Monday. Obico releases far less often than this repository
+    # changes, so a weekly reconciliation dates the claim to within a week
+    # without spending an hour of runner time on every change.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not cancel-in-progress: a run stopped between the bring-up and the
+  # bring-down is containers nobody stopped.
+  group: obico-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  obico:
+    name: obico
+    # One platform rather than the supported-platform matrix: what this tier
+    # reconciles is a JSON payload an external producer posts, which is the same
+    # payload whatever processor the container runs on. The matrix belongs where
+    # the artifact is proved, which is the gate and the install path.
+    runs-on: ubuntu-24.04
+    # Obico's images are built from its own sources and one of them carries a
+    # machine-learning model, so a cold run is tens of minutes.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just obico-up
+      - run: just test-obico
+      # The one condition in this job, and it is on the teardown: a stack that
+      # outlived a failing tier is four containers nobody stopped.
+      - if: always()
+        run: just obico-down

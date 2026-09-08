@@ -21,7 +21,8 @@
     "build": { "cache": true, "inputs": ["default", "^default"] },
     "test": { "cache": false, "inputs": ["default", "^default"] },
     "test-e2e": { "cache": false },
-    "test-integration": { "cache": false }
+    "test-integration": { "cache": false },
+    "test-obico": { "cache": false }
   },
   "defaultBase": "origin/main"
 }

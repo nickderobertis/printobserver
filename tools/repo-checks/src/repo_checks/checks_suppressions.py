@@ -38,7 +38,8 @@ SCANNED_SUFFIXES = frozenset(
 # Build products and provisioned environments: nothing under them is committed,
 # so a directive inside one is somebody else's source rather than a suppression
 # this repository made. `.octoprint-env` is the scripted OctoPrint environment,
-# which carries an OctoPrint install of its own.
+# which carries an OctoPrint install of its own, and `.obico-env` is the
+# self-hosted Obico environment, which carries a clone of Obico's own sources.
 SKIPPED_DIRECTORIES = frozenset(
     {
         ".git",
@@ -50,6 +51,7 @@ SKIPPED_DIRECTORIES = frozenset(
         ".ruff_cache",
         ".pytest_cache",
         ".octoprint-env",
+        ".obico-env",
     }
 )
 
@@ -127,7 +129,7 @@ RUFF_SUPPRESSION_KEYS = (
 )
 SILENCED_LEVELS = frozenset({"allow", "ignore", "off", "none"})
 CONFIG_DIRECTORIES = frozenset(
-    {".git", "target", "node_modules", ".venv", ".nx", "dist", ".octoprint-env"}
+    {".git", "target", "node_modules", ".venv", ".nx", "dist", ".octoprint-env", ".obico-env"}
 )
 
 

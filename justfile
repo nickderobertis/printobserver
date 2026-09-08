@@ -156,3 +156,27 @@ lint-llm:
 # Prove release-plz accepts this tree's release configuration, publishing nothing.
 release-dry-run:
     release-plz release --dry-run
+
+# Bring up the self-hosted Obico stack the scheduled reconciliation tier drives.
+#
+# Four containers under `.obico-env`, built from Obico's own sources at a pinned
+# revision. It says on stderr what it is about to start and roughly how long that
+# takes before it starts anything: about 25 minutes the first time and about 3
+# once the images are built. `OBICO_ENV_WEBHOOK_URL` names the address the
+# notification plugin is configured to post to; `auto` takes a free port.
+obico-up:
+    uv run -q python tools/obico-env/obico_env.py up
+
+# Stop it, leaving no container of it running.
+obico-down:
+    uv run -q python tools/obico-env/obico_env.py down
+
+# The scheduled Obico tier, against the stack `obico-up` started.
+#
+# Deliberately NOT one of `just check`'s tiers, and `just check-repo` refuses a
+# tree in which it is: it builds Obico's own images, starts four containers and
+# waits a real failure alert out. It is a scheduled workflow of its own —
+# `.github/workflows/obico.yml` — rather than something every gate run pays for.
+test-obico:
+    just node-modules
+    bunx nx run-many -t test-obico --output-style=stream

@@ -242,6 +242,76 @@ plugin that needs no hardware, so it is available on every platform the list
 above names, and the integration job runs on all of them.
 [//]: # (END virtual-printer-exclusions)
 
+## The scheduled Obico tier
+
+The vision port reads Obico's webhook notifications, and the fast tier replays a
+recorded one. A recording is only as good as the last time somebody held it
+against the thing being recorded — and Obico is an external project on its own
+release cadence, so the day its payload gains or renames a field, every replayed
+test goes on passing and the running system stops seeing failures. This tier is
+the only thing here that notices.
+
+**What it proves.** `tools/obico-env/obico_env.py` brings up a self-hosted Obico
+in containers from that project's own development composition, pinned to a
+revision; `tools/obico-env/obico_tier.py` then walks one path and reports one
+verdict:
+
+1. it listens on the address the stack's webhook notification plugin was
+   configured to post to,
+2. it causes a real failure alert on that stack — the snapshot goes in through
+   Obico's own printer API and the alert is raised through Obico's own
+   `alert_if_needed`, the function its detection pipeline calls the moment a
+   frame scores as a failure, so everything downstream of the score is Obico's:
+   its models, its queue, its worker and its own webhook plugin,
+3. it captures the body that stack posts,
+4. it fetches the image *that captured body* points at and reads its bytes,
+5. it compares *that captured body* against the sample committed at
+   `crates/printobserver-types/samples/obico/failure-alert.json`,
+6. and it reports a verdict naming every field that moved.
+
+Nothing in it compares a body the capture did not produce — the alteration
+tests in `tools/obico-env/tests/test_reconciliation.py` run each alteration
+through the capture rather than past the comparator, which is what makes them
+proof of that. What is compared is the *shape*: the set of fields and the JSON
+type of each, because the ids, the file name and the instants differ on every
+run by design and are not what the sample claims. A field the producer added,
+renamed, removed or retyped moves the shape and fails the tier naming it.
+
+A divergence found here is a **finding to report** rather than a defect of this
+repository: the sample is the `contracts` node's file, and moving it is a
+deliberate change to a checked-in contract.
+
+**Why it is not in every run.** The tier builds Obico's images from Obico's own
+sources — one of them carries a machine-learning model — starts four containers,
+and then waits a real failure alert out. That is tens of minutes on a cold
+runner. `repo-policy.toml`'s `gate.tiers` does not name it, `just check` does not
+invoke it, and `just check-repo` refuses a tree in which either changes. Leaving
+it out silently is what this repository forbids; running it on a schedule and
+saying so here is what it asks for instead.
+
+**The schedule it runs on.** `.github/workflows/obico.yml` declares this and a
+manual `workflow_dispatch`, and no trigger that fires on a change at all. The
+cron below and the workflow's own are checked against each other, so this
+paragraph cannot drift from what actually fires.
+
+[//]: # (BEGIN obico-tier-schedule)
+- cron: `17 4 * * 1`
+[//]: # (END obico-tier-schedule)
+
+**How to run it by hand.** Three recipes, in order. `just obico-up` says what it
+is about to start — naming each of the four services — and roughly how long that
+takes, before it starts anything.
+
+```console
+just obico-up
+just test-obico
+just obico-down
+```
+
+`just obico-down` stops every container the bring-up created and is worth running
+even after a failure: the bring-up stops what it started when it fails, but a
+tier interrupted between the two leaves a stack up.
+
 ## The end-user install path
 
 This section is the authoritative source of the end-user install path. Every

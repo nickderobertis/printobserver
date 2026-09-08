@@ -76,7 +76,8 @@ def _derived_programs(repo: Repo) -> dict[str, list[str]]:
                 derived.setdefault(program, []).append(f"justfile recipe `{recipe.name}`")
     for project in sorted(repo.root.glob("**/project.json")):
         if any(
-            part in {"node_modules", "target", ".venv", ".octoprint-env"} for part in project.parts
+            part in {"node_modules", "target", ".venv", ".octoprint-env", ".obico-env"}
+            for part in project.parts
         ):
             continue
         data = json.loads(project.read_text(encoding="utf-8"))

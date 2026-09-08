@@ -78,3 +78,51 @@ rule = "S603"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "subprocess.Popen"
 reason = "S603 fires on the subprocess call itself whatever it runs, and no code change silences it. Every process this script starts — `uv`, and OctoPrint's own program — goes through this one helper, so the rule has one reviewable site rather than one per caller; each `argv[0]` is an absolute path this script composed (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing runs through a shell."
+
+# --- the self-hosted Obico environment's one subprocess site ----------------
+
+[[suppression]]
+rule = "S603"
+file = "tools/obico-env/obico_env.py"
+site = "subprocess.Popen"
+reason = "S603 fires on the subprocess call itself whatever it runs, and no code change silences it. Every process this script starts — `docker` and `git`, and nothing else — goes through this one helper, so the rule has one reviewable site rather than one per caller; each `argv[0]` is resolved against PATH by `_resolve` first (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing runs through a shell."
+
+# --- the scheduled Obico tier's one URL-opening site ------------------------
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/obico_tier.py"
+site = "urllib.request.Request(url"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it for a URL that is data. Every URL this tier opens goes through this one helper, so the rule has one reviewable pair of lines rather than one per caller: the addresses are the webhook and control addresses the caller named on the command line, and the `img_url` the captured body carries — which is the very thing this tier exists to report on, so refusing to look at it would defeat the tier."
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/obico_tier.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every fetch in this tier goes through, immediately below the `Request` it was handed."
+
+# --- the scheduled Obico tier's suite: two URL-opening sites ----------------
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/tests/harness.py"
+site = "urllib.request.Request(url)"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the suite's own HTTP client, and every address reaching it is one this suite composed from the record the bring-up wrote — `http://localhost:<port>` on loopback — so there is no caller-supplied scheme to audit. One helper rather than one call per journey, so the rule has one reviewable site."
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/tests/harness.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site: S310 flags both building the request and opening it, and this is the single `urlopen` every read in this suite goes through."
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/tests/substitute.py"
+site = "self.webhook_url,"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the stand-in posting to the webhook address the journey that built it named, which is always a loopback `http://127.0.0.1:<free port>/alert` composed in the journey itself."
+
+[[suppression]]
+rule = "S310"
+file = "tools/obico-env/tests/substitute.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site: S310 flags both building the request and opening it, and this stand-in posts through exactly one `urlopen`."
