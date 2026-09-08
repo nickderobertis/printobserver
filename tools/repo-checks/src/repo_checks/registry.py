@@ -9,6 +9,7 @@ from repo_checks import (
     checks_integration,
     checks_release,
     checks_repo,
+    checks_supervisor,
     checks_suppressions,
 )
 from repo_checks.model import Repo
@@ -42,6 +43,9 @@ CHECKS: dict[str, Check] = {
     "recipes": checks_repo.recipe_set,
     "node-install": checks_repo.node_install,
     "workspace": checks_repo.workspace,
+    "supervisor-spawn-free": checks_supervisor.spawn_free,
+    "supervisor-schema-source": checks_supervisor.schema_source,
+    "supervisor-prompt-template": checks_supervisor.prompt_template,
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,

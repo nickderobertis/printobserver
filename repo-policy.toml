@@ -103,6 +103,31 @@ core = "printobserver-core"
 composition_roots = ["printobserver-server", "printobserver"]
 clients = ["printobserver-sdk"]
 
+[supervisor]
+# The one implementation of the supervisor port, and the artifacts it is held
+# to. `just check-repo` refuses a source of this crate that uses a
+# process-spawning interface at all, a schema file this crate carries of its
+# own, and a prompt template naming an operation of this program beside the one
+# read.
+adapter = "printobserver-oneharness"
+prompt_template = "crates/printobserver-oneharness/assets/turn-prompt.md"
+skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
+# The generated assessment schema's own checked-in artifact: written by the
+# contracts' generation target, which refuses the tree when it no longer matches
+# the types. It is the only schema the agent's answer may be constrained by.
+assessment_schema = "schemas/printobserver-types/AgentAssessment.json"
+# The generated action vocabulary. The set of operations the prompt template may
+# not name is DERIVED from this file rather than restated here, so a variant
+# `PrintAction` gains enters that set the moment the generation target writes
+# it and the walk cannot fall behind the type.
+action_schema = "schemas/printobserver-types/PrintAction.json"
+# The program whose operations the template may not name, and the reads this
+# system exposes beside the action vocabulary. `context_read` is the one
+# operation the template may name, because it is a read.
+program = "printobserver"
+reads = ["status", "context", "image", "materialize", "history", "manifest-get", "manifest-set"]
+context_read = "context"
+
 [manifests]
 # The only manifests permitted to carry a version field, because release
 # automation writes every one of them. A version anywhere else is one a person
