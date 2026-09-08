@@ -110,23 +110,23 @@ class FakePrinter:
         body = command.split("*")[0].strip()
         if body.startswith("N") and " " in body:
             body = body.split(" ", 1)[1]
-        code = code_of(command)
-        if code == "M105":
-            self._say("ok T:21.3 /0.0 B:20.9 /0.0")
-        elif code == "M115":
-            self._say(
-                "FIRMWARE_NAME:FakeMarlin 1.0 PROTOCOL_VERSION:1.0 "
-                "MACHINE_TYPE:printobserver-fake EXTRUDER_COUNT:1"
-            )
-            self._say("ok")
-        elif code == "M114":
-            self._say("X:0.00 Y:0.00 Z:0.00 E:0.00 Count X:0 Y:0 Z:0")
-            self._say("ok")
-        elif code == "G4":
-            self._dwell(body)
-            self._say("ok")
-        else:
-            self._say("ok")
+        match code_of(command):
+            case "M105":
+                self._say("ok T:21.3 /0.0 B:20.9 /0.0")
+            case "M115":
+                self._say(
+                    "FIRMWARE_NAME:FakeMarlin 1.0 PROTOCOL_VERSION:1.0 "
+                    "MACHINE_TYPE:printobserver-fake EXTRUDER_COUNT:1"
+                )
+                self._say("ok")
+            case "M114":
+                self._say("X:0.00 Y:0.00 Z:0.00 E:0.00 Count X:0 Y:0 Z:0")
+                self._say("ok")
+            case "G4":
+                self._dwell(body)
+                self._say("ok")
+            case _:
+                self._say("ok")
 
     def _dwell(self, body: str) -> None:
         """Wait out a dwell, the way the machine would."""

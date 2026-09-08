@@ -78,3 +78,17 @@ rule = "S603"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "subprocess.Popen"
 reason = "S603 fires on the subprocess call itself whatever it runs, and no code change silences it. Every process this script starts — `uv`, and OctoPrint's own program — goes through this one helper, so the rule has one reviewable site rather than one per caller; each `argv[0]` is an absolute path this script composed (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing runs through a shell."
+
+# --- the scripted OctoPrint environment's two HTTP call sites ----------------
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "http.client.HTTPConnection"
+reason = "Every call through this helper reaches an OctoPrint this script itself provisioned and started, on loopback at a port it claimed itself, and each one is a step of a strictly ordered bring-up — is one already answering, wait until the API answers, wait until the printer connects, upload the hold print, watch the job start — whose answer is acted on before the next request is made. There is no concurrency for an async client to win, no official async typed OctoPrint client to adopt, and satisfying the rule would mean writing an async HTTP client and putting an event loop under a provisioning script whose whole contract is one blocking command. The boundary this rule is about is the product's, and the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/environment.py"
+site = "http.client.HTTPConnection"
+reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
