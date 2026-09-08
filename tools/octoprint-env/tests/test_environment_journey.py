@@ -18,7 +18,17 @@ from collections.abc import Callable
 from pathlib import Path
 
 import yaml
-from environment import answer, api, job_state, key_from, printer_state, running, said, script
+from environment import (
+    answer,
+    api,
+    job_file,
+    job_state,
+    key_from,
+    printer_state,
+    running,
+    said,
+    script,
+)
 from repo_checks.expect import contains, equal, passing, truth
 
 # The minimum this journey holds the script to, stated here rather than read
@@ -27,6 +37,8 @@ from repo_checks.expect import contains, equal, passing, truth
 REQUIRED_HOLD_SECONDS = 120
 
 CONNECTED = frozenset({"Operational", "Printing"})
+# The G-code file this repository owns, which is what the tier is given to act on.
+HOLD_PRINT = "hold.gcode"
 REFUSED = frozenset({401, 403})
 
 
@@ -138,6 +150,11 @@ def _holds_a_print_for_the_minimum_it_states(started: dict[str, object]) -> None
         stated >= REQUIRED_HOLD_SECONDS,
         describing=f"a stated hold of at least {REQUIRED_HOLD_SECONDS}s, not {stated}s",
     )
+    equal(
+        job_file(url, key),
+        HOLD_PRINT,
+        describing="the file the instance uploaded, selected and started",
+    )
     truth(
         job_state(url, key).startswith("Printing"),
         describing=f"a running print when the start returned, not `{job_state(url, key)}`",
@@ -145,6 +162,7 @@ def _holds_a_print_for_the_minimum_it_states(started: dict[str, object]) -> None
 
     time.sleep(stated)
 
+    equal(job_file(url, key), HOLD_PRINT, describing="the file still selected")
     after = job_state(url, key)
     truth(
         after.startswith("Printing"),

@@ -372,10 +372,12 @@ def read_config(instance: Instance) -> dict[str, Any]:
 def _write_config(instance: Instance) -> None:
     """Write this script's settings over whatever the instance already had."""
     merged = _merge(managed_config(instance.connection), read_config(instance))
-    # The global API key OctoPrint generates for itself on first run. It is
-    # deprecated, it stops working in 1.13, and this instance authenticates with
-    # the user key `install` provisioned — so it is removed rather than left to
-    # be a second credential nobody wrote down.
+    # The global API key. It is deprecated, it stops working in OctoPrint 1.13,
+    # and this instance authenticates with the user key `install` provisioned,
+    # so nothing here carries it over: leaving it would make the two modes'
+    # configurations differ by a random value rather than by the connection.
+    # OctoPrint generates one for itself when the server starts; it is random,
+    # local to the instance, and nothing here uses it.
     api = merged.get("api")
     if isinstance(api, dict):
         api.pop("key", None)

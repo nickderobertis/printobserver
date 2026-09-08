@@ -82,6 +82,16 @@ def job_state(url: str, key: str) -> str:
     return state_of(url, "/api/job", key, "state")
 
 
+def job_file(url: str, key: str) -> str:
+    """The file the instance says it selected for the print it is running."""
+    status, body = api(url, "/api/job", key)
+    if status != 200 or not isinstance(body, dict):
+        return "unknown"
+    job = body.get("job")
+    file = job.get("file") if isinstance(job, dict) else None
+    return str(file.get("name", "unknown")) if isinstance(file, dict) else "unknown"
+
+
 def key_from(api_key_file: str) -> str:
     """The API key the script wrote, read from the path it named."""
     return Path(api_key_file).read_text(encoding="utf-8").strip()
