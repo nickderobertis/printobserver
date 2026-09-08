@@ -304,13 +304,18 @@ bump the patch, `!`/`BREAKING CHANGE` bumps the minor.
 
 That rule is over subjects a *person* writes. Publishing a branch merges the base
 into it first, and git writes that merge commit's subject itself — `Merge
-remote-tracking branch 'origin/main' into <branch>`. The hook admits a subject of
-git's own merge grammar, which is the one carrying a quoted ref, and holds
-everything else — prose beginning `Merge` included — to the type list exactly as
-before. The exemption is the hook's alone: `just check-pr-title` has none, because
-a title is always typed and no merge commit reaches `main` under squash-merge.
-Without it no branch of this repository could be published once `main` had moved
-under it, which is a failure that arrives after the work is finished.
+remote-tracking branch 'origin/main' into <branch>`. The hook admits that commit
+by its **state** rather than by its wording: `MERGE_HEAD` is in the git directory
+exactly while git is completing a merge, and absent for an ordinary commit
+whatever its subject says. Do not read the subject instead — `Merge branch 'main'`
+typed by a person is textually identical to what git writes, so a rule matching
+the wording hands anybody a bypass of the whole convention by typing one word. A
+subject somebody types is held to the type list exactly as before, that wording
+included. The exemption is the hook's alone: `just check-pr-title` has none,
+because a title is always typed and no merge commit reaches `main` under
+squash-merge. Without it no branch of this repository could be published once
+`main` had moved under it, which is a failure that arrives after the work is
+finished.
 
 **How a release happens.** `.github/workflows/release-plz.yml` fires on every
 push to `main` with no manual invocation. `release-plz release-pr` opens the

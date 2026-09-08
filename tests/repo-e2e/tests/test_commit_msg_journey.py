@@ -8,11 +8,18 @@ refuse it for not being a Conventional Commit, so the merge never completed and
 the publication failed. Nothing anybody typed was wrong; the hook was ruling on
 a subject nobody typed.
 
+The hook tells the two apart by the *state* of the commit rather than by its
+wording — `MERGE_HEAD` is present exactly while git is completing a merge — and
+that narrowing is what the refusal half below is about. `Merge remote-tracking
+branch 'origin/main' into work` typed by a person is textually identical to what
+git writes, so a rule reading the subject would hand anybody a bypass of the
+whole convention by typing one word.
+
 This journey drives that path rather than describing it: a real repository, the
 real committed hook installed the way `just bootstrap` installs it, a real
 `git merge` of a real remote-tracking ref. The refusal half is driven the same
-way, including with an authored subject that begins with the word `Merge`, so
-widening the exemption past what git generates fails the suite here.
+way, in the same repository and with the very subject git generates, so an
+exemption that moved back onto the wording fails the suite here.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -108,6 +115,10 @@ def test_a_publication_merges_the_base_into_the_branch(
     [
         "made some changes",
         "Merge the two configuration files by hand",
+        # The subject git generates, typed by a person into an ordinary commit.
+        # Nothing distinguishes it from the accepted one above but the state git
+        # is in, so this is the case that fails if the narrowing is ever lost.
+        MERGE_SUBJECT,
     ],
 )
 def test_an_authored_subject_is_still_held_to_conventional_commits(
