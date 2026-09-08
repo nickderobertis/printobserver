@@ -23,7 +23,10 @@ fn method(name: &str, params: &[(&str, &str)], returns: &str) -> Method {
         name: name.to_owned(),
         params: params
             .iter()
-            .map(|(name, ty)| Param { name: (*name).to_owned(), ty: (*ty).to_owned() })
+            .map(|(name, ty)| Param {
+                name: (*name).to_owned(),
+                ty: (*ty).to_owned(),
+            })
             .collect(),
         returns: returns.to_owned(),
     }
@@ -35,7 +38,10 @@ fn variant(name: &str, fields: &[(&str, &str)]) -> Variant {
         name: name.to_owned(),
         fields: fields
             .iter()
-            .map(|(name, ty)| Field { name: (*name).to_owned(), ty: (*ty).to_owned() })
+            .map(|(name, ty)| Field {
+                name: (*name).to_owned(),
+                ty: (*ty).to_owned(),
+            })
             .collect(),
     }
 }
@@ -45,9 +51,17 @@ fn variant(name: &str, fields: &[(&str, &str)]) -> Variant {
 fn printer_port_declares_exactly_the_stated_methods() {
     let source = parse(&crate_source("printobserver-printer-api"));
     let expected = vec![
-        method("snapshot", &[], "BoxFuture<'_,Result<PrinterSnapshot,PrinterError>>"),
+        method(
+            "snapshot",
+            &[],
+            "BoxFuture<'_,Result<PrinterSnapshot,PrinterError>>",
+        ),
         method("job", &[], "BoxFuture<'_,Result<JobSnapshot,PrinterError>>"),
-        method("start", &[("file_name", "FileName")], "BoxFuture<'_,Result<(),PrinterError>>"),
+        method(
+            "start",
+            &[("file_name", "FileName")],
+            "BoxFuture<'_,Result<(),PrinterError>>",
+        ),
         method("pause", &[], "BoxFuture<'_,Result<(),PrinterError>>"),
         method("resume", &[], "BoxFuture<'_,Result<(),PrinterError>>"),
         method("cancel", &[], "BoxFuture<'_,Result<(),PrinterError>>"),
@@ -66,8 +80,16 @@ fn printer_port_declares_exactly_the_stated_methods() {
             &[("tool", "i64"), ("target_c", "f64")],
             "BoxFuture<'_,Result<(),PrinterError>>",
         ),
-        method("set_bed_target_c", &[("target_c", "f64")], "BoxFuture<'_,Result<(),PrinterError>>"),
-        method("set_fan_percent", &[("percent", "f64")], "BoxFuture<'_,Result<(),PrinterError>>"),
+        method(
+            "set_bed_target_c",
+            &[("target_c", "f64")],
+            "BoxFuture<'_,Result<(),PrinterError>>",
+        ),
+        method(
+            "set_fan_percent",
+            &[("percent", "f64")],
+            "BoxFuture<'_,Result<(),PrinterError>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "PrinterPort"), expected);
 }
@@ -157,7 +179,10 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
     vec![
         method(
             "open_print",
-            &[("obico_print_id", "Option<i64>"), ("file_name", "Option<String>")],
+            &[
+                ("obico_print_id", "Option<i64>"),
+                ("file_name", "Option<String>"),
+            ],
             "BoxFuture<'_,Result<PrintRecord,StoreError>>",
         ),
         method(
@@ -201,7 +226,11 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
             ],
             "BoxFuture<'_,Result<ImageRecord,StoreError>>",
         ),
-        method("image", &[("image_id", "ImageId")], "BoxFuture<'_,Result<ImageLookup,StoreError>>"),
+        method(
+            "image",
+            &[("image_id", "ImageId")],
+            "BoxFuture<'_,Result<ImageLookup,StoreError>>",
+        ),
         method(
             "record_action",
             &[("request", "ActionRequest"), ("decision", "PolicyDecision")],
@@ -232,7 +261,10 @@ fn stated_store_methods_from_interventions() -> Vec<Method> {
         ),
         method(
             "settle_intervention",
-            &[("intervention_id", "InterventionId"), ("outcome", "InterventionOutcome")],
+            &[
+                ("intervention_id", "InterventionId"),
+                ("outcome", "InterventionOutcome"),
+            ],
             "BoxFuture<'_,Result<SettleOutcome,StoreError>>",
         ),
         method(
@@ -262,7 +294,11 @@ fn stated_store_methods_from_interventions() -> Vec<Method> {
         ),
         method(
             "audit_page",
-            &[("print_id", "PrintId"), ("after", "Option<EventId>"), ("page_size", "u32")],
+            &[
+                ("print_id", "PrintId"),
+                ("after", "Option<EventId>"),
+                ("page_size", "u32"),
+            ],
             "BoxFuture<'_,Result<AuditPage,StoreError>>",
         ),
         method(
@@ -363,7 +399,10 @@ fn parameter_closure(
         .into_iter()
         .flat_map(|declared| {
             declared.params.into_iter().map(move |param| {
-                (format!("{}::{}({})", trait_name, declared.name, param.name), param.ty)
+                (
+                    format!("{}::{}({})", trait_name, declared.name, param.name),
+                    param.ty,
+                )
             })
         })
         .collect();
@@ -410,14 +449,26 @@ pub trait Fixture {
 #[test]
 fn printer_port_closure_carries_no_bytes_and_one_string() {
     let findings = parameter_closure(None, "printobserver-printer-api", "PrinterPort");
-    assert!(findings.bytes.is_empty(), "the closure reaches bytes at {:?}", findings.bytes);
-    assert_eq!(findings.strings.len(), 1, "the closure reaches {:?}", findings.strings);
+    assert!(
+        findings.bytes.is_empty(),
+        "the closure reaches bytes at {:?}",
+        findings.bytes
+    );
+    assert_eq!(
+        findings.strings.len(),
+        1,
+        "the closure reaches {:?}",
+        findings.strings
+    );
     assert!(
         findings.strings[0].ends_with("/FileName.0"),
         "the one string is {}, not the one FileName wraps",
         findings.strings[0]
     );
-    assert!(findings.reached.contains("FileName"), "the closure does not reach FileName at all");
+    assert!(
+        findings.reached.contains("FileName"),
+        "the closure does not reach FileName at all"
+    );
 }
 
 /// Exactly one printer-port method takes a `FileName`, and it is `start`.
@@ -427,8 +478,11 @@ fn only_start_takes_a_file_name() {
     let taking: Vec<(String, usize)> = trait_methods(&source, "PrinterPort")
         .into_iter()
         .map(|declared| {
-            let count =
-                declared.params.iter().filter(|param| param.ty.contains("FileName")).count();
+            let count = declared
+                .params
+                .iter()
+                .filter(|param| param.ty.contains("FileName"))
+                .count();
             (declared.name, count)
         })
         .filter(|(_, count)| *count > 0)
@@ -446,17 +500,28 @@ fn the_closure_walk_refuses_every_fixture_it_must() {
     ] {
         let findings = parameter_closure(Some(fixture), "", "Fixture");
         assert!(
-            findings.strings.iter().any(|path| !path.ends_with("/FileName.0")),
+            findings
+                .strings
+                .iter()
+                .any(|path| !path.ends_with("/FileName.0")),
             "{label} was not refused"
         );
     }
     let findings = parameter_closure(Some(FIXTURE_ENUM_WITH_BYTES), "", "Fixture");
-    assert!(!findings.bytes.is_empty(), "an enum carrying a byte sequence was not refused");
+    assert!(
+        !findings.bytes.is_empty(),
+        "an enum carrying a byte sequence was not refused"
+    );
 
     let fixture = parse(FIXTURE_SECOND_FILE_NAME);
     let taking: Vec<String> = trait_methods(&fixture, "Fixture")
         .into_iter()
-        .filter(|declared| declared.params.iter().any(|param| param.ty.contains("FileName")))
+        .filter(|declared| {
+            declared
+                .params
+                .iter()
+                .any(|param| param.ty.contains("FileName"))
+        })
         .map(|declared| declared.name)
         .collect();
     assert_eq!(
@@ -471,19 +536,23 @@ fn the_closure_walk_refuses_every_fixture_it_must() {
         .find(|declared| declared.name == "start")
         .expect("the fixture declares start");
     assert!(
-        !start.params.iter().any(|param| param.ty.contains("FileName")),
+        !start
+            .params
+            .iter()
+            .any(|param| param.ty.contains("FileName")),
         "a start taking a bare string was read as taking the newtype"
     );
 }
 
 /// Which store methods take either half of the action pair.
 fn action_pair_partition(source: &syn::File, trait_name: &str) -> (Vec<Method>, Vec<Method>) {
-    trait_methods(source, trait_name).into_iter().partition(|declared| {
-        declared
-            .params
-            .iter()
-            .any(|param| param.ty.contains("ActionRequest") || param.ty.contains("PolicyDecision"))
-    })
+    trait_methods(source, trait_name)
+        .into_iter()
+        .partition(|declared| {
+            declared.params.iter().any(|param| {
+                param.ty.contains("ActionRequest") || param.ty.contains("PolicyDecision")
+            })
+        })
 }
 
 /// `record_action` is the only method taking either half, and it takes both.
@@ -491,11 +560,19 @@ fn action_pair_partition(source: &syn::File, trait_name: &str) -> (Vec<Method>, 
 fn record_action_is_the_only_method_taking_the_action_pair() {
     let source = parse(&crate_source("printobserver-store-api"));
     let (taking, rest) = action_pair_partition(&source, "StorePort");
-    assert_eq!(taking.len(), 1, "these methods take a half of the pair: {taking:?}");
+    assert_eq!(
+        taking.len(),
+        1,
+        "these methods take a half of the pair: {taking:?}"
+    );
     let recorder = &taking[0];
     assert_eq!(recorder.name, "record_action");
     assert_eq!(
-        recorder.params.iter().map(|param| param.ty.as_str()).collect::<Vec<_>>(),
+        recorder
+            .params
+            .iter()
+            .map(|param| param.ty.as_str())
+            .collect::<Vec<_>>(),
         vec!["ActionRequest", "PolicyDecision"],
         "record_action does not take the request and the decision together"
     );
@@ -505,7 +582,10 @@ fn record_action_is_the_only_method_taking_the_action_pair() {
         recorder.returns
     );
     assert!(
-        !rest.is_empty() && rest.iter().any(|declared| declared.returns.contains("EventRecord")),
+        !rest.is_empty()
+            && rest
+                .iter()
+                .any(|declared| declared.returns.contains("EventRecord")),
         "the rest of the surface should still carry identifier-bearing answers"
     );
 }
@@ -548,17 +628,28 @@ pub trait Fixture {
 fn the_action_pair_partition_refuses_every_fixture_it_must() {
     let fixture = parse(FIXTURE_SECOND_REQUEST);
     let (taking, _) = action_pair_partition(&fixture, "Fixture");
-    assert_eq!(taking.len(), 2, "a second method taking an ActionRequest was not seen");
+    assert_eq!(
+        taking.len(),
+        2,
+        "a second method taking an ActionRequest was not seen"
+    );
 
     let fixture = parse(FIXTURE_DECISION_ALONE);
     let (taking, _) = action_pair_partition(&fixture, "Fixture");
     assert_eq!(taking.len(), 1);
-    assert_ne!(taking[0].name, "record_action", "a decision-only method was read as the recorder");
+    assert_ne!(
+        taking[0].name, "record_action",
+        "a decision-only method was read as the recorder"
+    );
 
     let fixture = parse(FIXTURE_REQUEST_WITHOUT_DECISION);
     let (taking, _) = action_pair_partition(&fixture, "Fixture");
     assert_eq!(
-        taking[0].params.iter().map(|param| param.ty.as_str()).collect::<Vec<_>>(),
+        taking[0]
+            .params
+            .iter()
+            .map(|param| param.ty.as_str())
+            .collect::<Vec<_>>(),
         vec!["ActionRequest"],
         "a record_action without the decision was read as taking the pair"
     );
@@ -592,7 +683,10 @@ fn limit_resolutions(source: &syn::File) -> Vec<Method> {
     public_functions(source)
         .into_iter()
         .filter(|declared| {
-            declared.params.iter().any(|param| param.ty == "Option<u32>")
+            declared
+                .params
+                .iter()
+                .any(|param| param.ty == "Option<u32>")
                 && declared.returns == "Result<u32,StoreError>"
         })
         .collect()
@@ -610,11 +704,17 @@ fn the_store_port_exports_one_of_each_history_answer() {
         vec!["DEFAULT_HISTORY_WINDOW".to_owned()]
     );
     assert_eq!(
-        maximum_limit_constants(&source).into_iter().map(|entry| entry.name).collect::<Vec<_>>(),
+        maximum_limit_constants(&source)
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<Vec<_>>(),
         vec!["MAX_HISTORY_LIMIT".to_owned()]
     );
     assert_eq!(
-        limit_resolutions(&source).into_iter().map(|declared| declared.name).collect::<Vec<_>>(),
+        limit_resolutions(&source)
+            .into_iter()
+            .map(|declared| declared.name)
+            .collect::<Vec<_>>(),
         vec!["resolve_history_limit".to_owned()]
     );
 }
@@ -641,11 +741,23 @@ pub fn clamp_history_limit(limit: Option<u32>) -> Result<u32, StoreError> {
 #[test]
 fn the_exported_surface_reading_refuses_a_second_answer() {
     let fixture = parse(FIXTURE_SECOND_CONSTANTS);
-    assert_eq!(default_window_constants(&fixture).len(), 2, "a second window was not seen");
-    assert_eq!(maximum_limit_constants(&fixture).len(), 2, "a second maximum was not seen");
+    assert_eq!(
+        default_window_constants(&fixture).len(),
+        2,
+        "a second window was not seen"
+    );
+    assert_eq!(
+        maximum_limit_constants(&fixture).len(),
+        2,
+        "a second maximum was not seen"
+    );
 
     let fixture = parse(FIXTURE_SECOND_RESOLUTION);
-    assert_eq!(limit_resolutions(&fixture).len(), 2, "a second resolution was not seen");
+    assert_eq!(
+        limit_resolutions(&fixture).len(),
+        2,
+        "a second resolution was not seen"
+    );
 }
 
 /// The default window is below the maximum limit.
@@ -659,29 +771,40 @@ fn the_default_window_is_below_the_maximum_limit() {
 
 /// The declared default window, read from the store port's own source.
 fn printobserver_store_api_default_window() -> u32 {
-    constant_value(&crate_source("printobserver-store-api"), "DEFAULT_HISTORY_WINDOW")
+    constant_value(
+        &crate_source("printobserver-store-api"),
+        "DEFAULT_HISTORY_WINDOW",
+    )
 }
 
 /// The declared maximum limit, read from the store port's own source.
 fn printobserver_store_api_maximum_limit() -> u32 {
-    constant_value(&crate_source("printobserver-store-api"), "MAX_HISTORY_LIMIT")
+    constant_value(
+        &crate_source("printobserver-store-api"),
+        "MAX_HISTORY_LIMIT",
+    )
 }
 
 /// The value one declared constant carries.
 fn constant_value(source: &str, name: &str) -> u32 {
     let needle = format!("pub const {name}: u32 = ");
-    let start = source.find(&needle).unwrap_or_else(|| panic!("{name} is declared")) + needle.len();
+    let start = source
+        .find(&needle)
+        .unwrap_or_else(|| panic!("{name} is declared"))
+        + needle.len();
     let rest = &source[start..];
     let end = rest.find(';').expect("the declaration ends");
-    rest[..end].replace('_', "").parse().expect("the declaration carries a number")
+    rest[..end]
+        .replace('_', "")
+        .parse()
+        .expect("the declaration carries a number")
 }
 
 /// The `history` documentation states the ordering and the empty-kinds meaning.
 #[test]
 fn the_history_documentation_states_its_two_unvalued_facts() {
     let source = parse(&crate_source("printobserver-store-api"));
-    let documentation =
-        surface::trait_method_docs(&source, "StorePort", "history").to_lowercase();
+    let documentation = surface::trait_method_docs(&source, "StorePort", "history").to_lowercase();
     assert!(
         documentation.contains("newest first"),
         "the history documentation does not state the ordering: {documentation}"
@@ -705,9 +828,11 @@ pub trait Fixture {
 #[test]
 fn the_history_documentation_reading_refuses_an_undocumented_history() {
     let fixture = parse(FIXTURE_UNDOCUMENTED_HISTORY);
-    let documentation =
-        surface::trait_method_docs(&fixture, "Fixture", "history").to_lowercase();
-    assert!(!documentation.is_empty(), "the reader found no documentation at all");
+    let documentation = surface::trait_method_docs(&fixture, "Fixture", "history").to_lowercase();
+    assert!(
+        !documentation.is_empty(),
+        "the reader found no documentation at all"
+    );
     assert!(!documentation.contains("newest first"));
     assert!(!documentation.contains("every kind"));
 }
@@ -715,15 +840,20 @@ fn the_history_documentation_reading_refuses_an_undocumented_history() {
 /// The type crate declares none of the ten types the port crates own.
 #[test]
 fn the_type_crate_declares_none_of_the_port_owned_types() {
-    let declared: Vec<String> =
-        crate_sources("printobserver-types").iter().flat_map(declared_type_names).collect();
+    let declared: Vec<String> = crate_sources("printobserver-types")
+        .iter()
+        .flat_map(declared_type_names)
+        .collect();
     for owned in printobserver_types::contract::PORT_OWNED_TYPES {
         assert!(
             !declared.iter().any(|name| name == owned),
             "the type crate declares {owned}, which the port that carries it owns"
         );
     }
-    assert!(declared.iter().any(|name| name == "PrintRecord"), "the reader found no declarations");
+    assert!(
+        declared.iter().any(|name| name == "PrintRecord"),
+        "the reader found no declarations"
+    );
 }
 
 /// A fixture crate declaring one of the port-owned types.
@@ -741,7 +871,11 @@ fn the_ownership_reading_refuses_a_crate_declaring_a_port_owned_type() {
         .iter()
         .filter(|owned| declared.iter().any(|name| name == *owned))
         .collect();
-    assert_eq!(offending, vec![&"TurnRequest"], "a port-owned declaration was not seen");
+    assert_eq!(
+        offending,
+        vec![&"TurnRequest"],
+        "a port-owned declaration was not seen"
+    );
 }
 
 /// Each port crate declares the type crate as its only dependency.
@@ -783,4 +917,27 @@ fn dependency_names(manifest: &str) -> Vec<String> {
         }
     }
     names
+}
+
+/// Every type that can emit a schema is in the declared set, and no other.
+///
+/// A type that derives `JsonSchema` and is not registered would fall silently
+/// out of the schema set and out of every corpus these tests walk, so the set
+/// is read off the declarations rather than trusted to a list.
+#[test]
+fn the_declared_set_holds_every_type_that_can_emit_a_schema() {
+    let mut emitting: Vec<String> = crate_sources("printobserver-types")
+        .iter()
+        .flat_map(surface::schema_emitting_types)
+        .collect();
+    emitting.sort();
+    emitting.dedup();
+
+    let mut registered: Vec<String> = printobserver_types::contract::declared()
+        .into_iter()
+        .map(|entry| entry.name.to_owned())
+        .collect();
+    registered.sort();
+
+    assert_eq!(emitting, registered);
 }

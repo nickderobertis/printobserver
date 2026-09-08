@@ -15,9 +15,7 @@ use std::thread;
 use block_on::block_on;
 use printobserver_types::contract::Sample;
 use printobserver_types::{EventKind, EventPayload, EventSource, RawBytes, Timestamp};
-use printobserver_vision_api::{
-    BoxFuture, FetchedImage, NormalizedAlert, VisionError, VisionPort,
-};
+use printobserver_vision_api::{BoxFuture, FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
 /// The alert the trivial implementation answers with.
 fn trivial_alert() -> NormalizedAlert {
@@ -43,13 +41,13 @@ impl VisionPort for TrivialVision {
         Box::pin(async { Ok(trivial_alert()) })
     }
 
-    fn fetch_image(
-        &self,
-        source_url: String,
-    ) -> BoxFuture<'_, Result<FetchedImage, VisionError>> {
+    fn fetch_image(&self, source_url: String) -> BoxFuture<'_, Result<FetchedImage, VisionError>> {
         let _ = source_url;
         Box::pin(async {
-            Ok(FetchedImage { bytes: RawBytes::default(), content_type: String::new() })
+            Ok(FetchedImage {
+                bytes: RawBytes::default(),
+                content_type: String::new(),
+            })
         })
     }
 }
@@ -58,10 +56,16 @@ impl VisionPort for TrivialVision {
 #[test]
 fn every_method_answers_its_declared_success_type() {
     let port: Arc<dyn VisionPort> = Arc::new(TrivialVision);
-    assert_eq!(block_on(port.normalize(RawBytes::default(), None)), Ok(trivial_alert()));
+    assert_eq!(
+        block_on(port.normalize(RawBytes::default(), None)),
+        Ok(trivial_alert())
+    );
     assert_eq!(
         block_on(port.fetch_image(String::new())),
-        Ok(FetchedImage { bytes: RawBytes::default(), content_type: String::new() })
+        Ok(FetchedImage {
+            bytes: RawBytes::default(),
+            content_type: String::new()
+        })
     );
 }
 
@@ -82,7 +86,10 @@ fn the_trait_object_is_shareable_across_threads() {
         })
         .collect();
     for handle in handles {
-        assert_eq!(handle.join().expect("the thread completes"), Ok(trivial_alert()));
+        assert_eq!(
+            handle.join().expect("the thread completes"),
+            Ok(trivial_alert())
+        );
     }
 }
 
@@ -90,11 +97,18 @@ fn the_trait_object_is_shareable_across_threads() {
 #[test]
 fn every_error_variant_says_what_it_is() {
     let variants = [
-        VisionError::Malformed { detail: "not JSON".to_owned(), raw: RawBytes::new(b"x".to_vec()) },
+        VisionError::Malformed {
+            detail: "not JSON".to_owned(),
+            raw: RawBytes::new(b"x".to_vec()),
+        },
         VisionError::TimedOut,
         VisionError::TooLarge { limit: 1_048_576 },
-        VisionError::UnacceptableContentType { content_type: "text/html".to_owned() },
-        VisionError::Unreachable { detail: "no route".to_owned() },
+        VisionError::UnacceptableContentType {
+            content_type: "text/html".to_owned(),
+        },
+        VisionError::Unreachable {
+            detail: "no route".to_owned(),
+        },
     ];
     for variant in variants {
         assert!(!variant.to_string().is_empty(), "{variant:?} says nothing");

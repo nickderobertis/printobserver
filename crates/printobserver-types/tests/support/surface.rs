@@ -59,7 +59,9 @@ pub fn parse(source: &str) -> syn::File {
 
 /// The path of one crate of this workspace.
 pub fn crate_dir(crate_name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(crate_name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(crate_name)
 }
 
 /// One crate's `src/lib.rs`.
@@ -69,7 +71,8 @@ pub fn crate_dir(crate_name: &str) -> PathBuf {
 /// Panics when the crate has no readable `src/lib.rs`.
 pub fn crate_source(crate_name: &str) -> String {
     let path = crate_dir(crate_name).join("src").join("lib.rs");
-    std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
 
 /// Every `.rs` source under one crate's `src`, parsed.
@@ -101,7 +104,11 @@ fn fields_of(fields: &syn::Fields) -> Vec<Field> {
             .named
             .iter()
             .map(|field| Field {
-                name: field.ident.as_ref().expect("a named field has a name").to_string(),
+                name: field
+                    .ident
+                    .as_ref()
+                    .expect("a named field has a name")
+                    .to_string(),
                 ty: spelling(&field.ty),
             })
             .collect(),
@@ -109,7 +116,10 @@ fn fields_of(fields: &syn::Fields) -> Vec<Field> {
             .unnamed
             .iter()
             .enumerate()
-            .map(|(index, field)| Field { name: index.to_string(), ty: spelling(&field.ty) })
+            .map(|(index, field)| Field {
+                name: index.to_string(),
+                ty: spelling(&field.ty),
+            })
             .collect(),
         syn::Fields::Unit => Vec::new(),
     }
@@ -119,12 +129,16 @@ fn fields_of(fields: &syn::Fields) -> Vec<Field> {
 pub fn trait_methods(file: &syn::File, trait_name: &str) -> Vec<Method> {
     let mut methods = Vec::new();
     for item in &file.items {
-        let syn::Item::Trait(declaration) = item else { continue };
+        let syn::Item::Trait(declaration) = item else {
+            continue;
+        };
         if declaration.ident != trait_name {
             continue;
         }
         for entry in &declaration.items {
-            let syn::TraitItem::Fn(function) = entry else { continue };
+            let syn::TraitItem::Fn(function) = entry else {
+                continue;
+            };
             let params = function
                 .sig
                 .inputs
@@ -141,7 +155,11 @@ pub fn trait_methods(file: &syn::File, trait_name: &str) -> Vec<Method> {
                 syn::ReturnType::Default => "()".to_owned(),
                 syn::ReturnType::Type(_, ty) => spelling(ty),
             };
-            methods.push(Method { name: function.sig.ident.to_string(), params, returns });
+            methods.push(Method {
+                name: function.sig.ident.to_string(),
+                params,
+                returns,
+            });
         }
     }
     methods
@@ -151,13 +169,17 @@ pub fn trait_methods(file: &syn::File, trait_name: &str) -> Vec<Method> {
 pub fn enum_variants(file: &syn::File, enum_name: &str) -> Vec<Variant> {
     let mut variants = Vec::new();
     for item in &file.items {
-        let syn::Item::Enum(declaration) = item else { continue };
+        let syn::Item::Enum(declaration) = item else {
+            continue;
+        };
         if declaration.ident != enum_name {
             continue;
         }
         for variant in &declaration.variants {
-            variants
-                .push(Variant { name: variant.ident.to_string(), fields: fields_of(&variant.fields) });
+            variants.push(Variant {
+                name: variant.ident.to_string(),
+                fields: fields_of(&variant.fields),
+            });
         }
     }
     variants
@@ -166,7 +188,9 @@ pub fn enum_variants(file: &syn::File, enum_name: &str) -> Vec<Variant> {
 /// The fields one struct declares.
 pub fn struct_fields(file: &syn::File, struct_name: &str) -> Vec<Field> {
     for item in &file.items {
-        let syn::Item::Struct(declaration) = item else { continue };
+        let syn::Item::Struct(declaration) = item else {
+            continue;
+        };
         if declaration.ident == struct_name {
             return fields_of(&declaration.fields);
         }
@@ -201,9 +225,10 @@ pub fn public_constants(file: &syn::File) -> Vec<Field> {
     file.items
         .iter()
         .filter_map(|item| match item {
-            syn::Item::Const(declaration) if is_public(&declaration.vis) => {
-                Some(Field { name: declaration.ident.to_string(), ty: spelling(&declaration.ty) })
-            }
+            syn::Item::Const(declaration) if is_public(&declaration.vis) => Some(Field {
+                name: declaration.ident.to_string(),
+                ty: spelling(&declaration.ty),
+            }),
             _ => None,
         })
         .collect()
@@ -221,16 +246,21 @@ pub fn public_functions(file: &syn::File) -> Vec<Method> {
                     .iter()
                     .filter_map(|input| match input {
                         syn::FnArg::Receiver(_) => None,
-                        syn::FnArg::Typed(typed) => {
-                            Some(Param { name: spelling(&typed.pat), ty: spelling(&typed.ty) })
-                        }
+                        syn::FnArg::Typed(typed) => Some(Param {
+                            name: spelling(&typed.pat),
+                            ty: spelling(&typed.ty),
+                        }),
                     })
                     .collect();
                 let returns = match &declaration.sig.output {
                     syn::ReturnType::Default => "()".to_owned(),
                     syn::ReturnType::Type(_, ty) => spelling(ty),
                 };
-                Some(Method { name: declaration.sig.ident.to_string(), params, returns })
+                Some(Method {
+                    name: declaration.sig.ident.to_string(),
+                    params,
+                    returns,
+                })
             }
             _ => None,
         })
@@ -241,25 +271,88 @@ pub fn public_functions(file: &syn::File) -> Vec<Method> {
 pub fn trait_method_docs(file: &syn::File, trait_name: &str, method_name: &str) -> String {
     let mut lines = Vec::new();
     for item in &file.items {
-        let syn::Item::Trait(declaration) = item else { continue };
+        let syn::Item::Trait(declaration) = item else {
+            continue;
+        };
         if declaration.ident != trait_name {
             continue;
         }
         for entry in &declaration.items {
-            let syn::TraitItem::Fn(function) = entry else { continue };
+            let syn::TraitItem::Fn(function) = entry else {
+                continue;
+            };
             if function.sig.ident != method_name {
                 continue;
             }
             for attribute in &function.attrs {
-                let syn::Meta::NameValue(pair) = &attribute.meta else { continue };
+                let syn::Meta::NameValue(pair) = &attribute.meta else {
+                    continue;
+                };
                 if !pair.path.is_ident("doc") {
                     continue;
                 }
-                let syn::Expr::Lit(literal) = &pair.value else { continue };
-                let syn::Lit::Str(text) = &literal.lit else { continue };
+                let syn::Expr::Lit(literal) = &pair.value else {
+                    continue;
+                };
+                let syn::Lit::Str(text) = &literal.lit else {
+                    continue;
+                };
                 lines.push(text.value());
             }
         }
     }
     lines.join("\n")
+}
+
+/// Whether a declaration derives one named trait.
+fn derives(attrs: &[syn::Attribute], wanted: &str) -> bool {
+    attrs.iter().any(|attribute| {
+        attribute.path().is_ident("derive")
+            && attribute.to_token_stream().to_string().contains(wanted)
+    })
+}
+
+/// Every type one source declares that can emit a JSON Schema.
+///
+/// Three shapes reach that: a declaration deriving `JsonSchema`, one carrying a
+/// hand-written `impl JsonSchema`, and an identifier newtype the `identifier!`
+/// macro declares, whose expansion no source-level reader can see.
+pub fn schema_emitting_types(file: &syn::File) -> Vec<String> {
+    let mut names = Vec::new();
+    for item in &file.items {
+        match item {
+            syn::Item::Struct(declaration)
+                if is_public(&declaration.vis) && derives(&declaration.attrs, "JsonSchema") =>
+            {
+                names.push(declaration.ident.to_string());
+            }
+            syn::Item::Enum(declaration)
+                if is_public(&declaration.vis) && derives(&declaration.attrs, "JsonSchema") =>
+            {
+                names.push(declaration.ident.to_string());
+            }
+            syn::Item::Impl(block) => {
+                let Some((path, _)) = &block.trait_ else {
+                    continue;
+                };
+                if path
+                    .segments
+                    .last()
+                    .is_some_and(|segment| segment.ident == "JsonSchema")
+                {
+                    names.push(spelling(&block.self_ty).replace("<f64>", ""));
+                }
+            }
+            syn::Item::Macro(invocation) if invocation.mac.path.is_ident("identifier") => {
+                let tokens = invocation.mac.tokens.to_string();
+                if let Some((name, _)) = tokens.split_once(',') {
+                    names.push(name.trim().to_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
 }

@@ -98,7 +98,10 @@ pub fn resolve_history_limit(limit: Option<u32>) -> Result<u32, StoreError> {
     match limit {
         None => Ok(DEFAULT_HISTORY_WINDOW),
         Some(asked_for) if asked_for <= MAX_HISTORY_LIMIT => Ok(asked_for),
-        Some(asked_for) => Err(StoreError::LimitRefused { limit: MAX_HISTORY_LIMIT, asked_for }),
+        Some(asked_for) => Err(StoreError::LimitRefused {
+            limit: MAX_HISTORY_LIMIT,
+            asked_for,
+        }),
     }
 }
 
@@ -255,7 +258,10 @@ impl core::fmt::Display for StoreError {
             }
             Self::NotFound { what } => write!(formatter, "there is no {what}"),
             Self::LimitRefused { limit, asked_for } => {
-                write!(formatter, "{asked_for} was asked for, and the limit is {limit}")
+                write!(
+                    formatter,
+                    "{asked_for} was asked for, and the limit is {limit}"
+                )
             }
             Self::Database { detail } => write!(formatter, "the database failed: {detail}"),
             Self::Io { detail } => write!(formatter, "reading or writing failed: {detail}"),
@@ -304,8 +310,7 @@ pub trait StorePort: Send + Sync {
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>>;
 
     /// Append one event, minting its identifier.
-    fn append_event(&self, draft: EventDraft)
-    -> BoxFuture<'_, Result<EventRecord, StoreError>>;
+    fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>>;
 
     /// Store one image's bytes, minting its identifier.
     fn put_image(
@@ -378,10 +383,8 @@ pub trait StorePort: Send + Sync {
     ) -> BoxFuture<'_, Result<(), StoreError>>;
 
     /// Read one print's manifest.
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>>;
+    fn manifest(&self, print_id: PrintId)
+    -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>>;
 
     /// Read a print's events, newest first.
     ///
@@ -389,10 +392,7 @@ pub trait StorePort: Send + Sync {
     /// than no kinds. An absent `limit` takes [`DEFAULT_HISTORY_WINDOW`], and a
     /// limit above [`MAX_HISTORY_LIMIT`] is refused rather than clamped —
     /// [`resolve_history_limit`] is the one resolution of that rule.
-    fn history(
-        &self,
-        query: HistoryQuery,
-    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
 
     /// Read one page of a print's whole history, oldest first.
     ///
@@ -408,10 +408,7 @@ pub trait StorePort: Send + Sync {
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>>;
 
     /// Store one print's supervision session.
-    fn put_session(
-        &self,
-        session: SupervisionSession,
-    ) -> BoxFuture<'_, Result<(), StoreError>>;
+    fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>>;
 
     /// Read one print's supervision session.
     fn session(

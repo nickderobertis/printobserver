@@ -94,7 +94,9 @@ impl core::fmt::Display for SupervisorError {
             Self::IdentityRefused { detail } => {
                 write!(formatter, "the harness refused the identity: {detail}")
             }
-            Self::Unavailable { detail } => write!(formatter, "the harness is unavailable: {detail}"),
+            Self::Unavailable { detail } => {
+                write!(formatter, "the harness is unavailable: {detail}")
+            }
             Self::TimedOut => formatter.write_str("the turn took too long"),
         }
     }
@@ -109,7 +111,8 @@ impl core::error::Error for SupervisorError {}
 /// `Arc<dyn SupervisorPort>`.
 pub trait SupervisorPort: Send + Sync {
     /// Run one supervision turn, opening the session if it is not open.
-    fn run_turn(&self, request: TurnRequest) -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>>;
+    fn run_turn(&self, request: TurnRequest)
+    -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>>;
 
     /// Close the session watching one print.
     fn close_session(

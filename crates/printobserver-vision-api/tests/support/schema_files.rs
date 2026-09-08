@@ -36,7 +36,11 @@ pub fn reconcile(crate_name: &str, entries: &[(String, Value)]) -> Vec<String> {
         std::fs::create_dir_all(&directory).expect("the schema directory is writable");
         for existing in std::fs::read_dir(&directory).expect("the schema directory is readable") {
             let path = existing.expect("a readable directory entry").path();
-            let name = path.file_name().expect("a file name").to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .expect("a file name")
+                .to_string_lossy()
+                .into_owned();
             if !entries.iter().any(|(file, _)| *file == name) {
                 std::fs::remove_file(&path).expect("a stale schema is removable");
             }
@@ -62,10 +66,16 @@ pub fn reconcile(crate_name: &str, entries: &[(String, Value)]) -> Vec<String> {
         Ok(listing) => {
             for existing in listing {
                 let path = existing.expect("a readable directory entry").path();
-                let name = path.file_name().expect("a file name").to_string_lossy().into_owned();
+                let name = path
+                    .file_name()
+                    .expect("a file name")
+                    .to_string_lossy()
+                    .into_owned();
                 if !entries.iter().any(|(file, _)| *file == name) {
-                    findings
-                        .push(format!("{} is a schema no declared type generates", path.display()));
+                    findings.push(format!(
+                        "{} is a schema no declared type generates",
+                        path.display()
+                    ));
                 }
             }
         }

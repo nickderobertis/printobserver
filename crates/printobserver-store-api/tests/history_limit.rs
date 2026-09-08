@@ -29,7 +29,10 @@ fn an_absent_limit_takes_the_default_window() {
 /// A limit at the maximum is taken as asked for.
 #[test]
 fn a_limit_at_the_maximum_is_taken_as_asked_for() {
-    assert_eq!(resolve_history_limit(Some(MAX_HISTORY_LIMIT)), Ok(MAX_HISTORY_LIMIT));
+    assert_eq!(
+        resolve_history_limit(Some(MAX_HISTORY_LIMIT)),
+        Ok(MAX_HISTORY_LIMIT)
+    );
     assert_eq!(resolve_history_limit(Some(1)), Ok(1));
 }
 
@@ -39,7 +42,10 @@ fn a_limit_above_the_maximum_is_refused_rather_than_clamped() {
     let asked_for = MAX_HISTORY_LIMIT + 1;
     assert_eq!(
         resolve_history_limit(Some(asked_for)),
-        Err(StoreError::LimitRefused { limit: MAX_HISTORY_LIMIT, asked_for }),
+        Err(StoreError::LimitRefused {
+            limit: MAX_HISTORY_LIMIT,
+            asked_for
+        }),
         "a resolution that clamped would have answered the maximum here"
     );
 }
@@ -56,7 +62,10 @@ fn a_query_resolves_its_limit_by_the_same_rule() {
     };
     assert_eq!(query.resolved_limit(), Ok(DEFAULT_HISTORY_WINDOW));
 
-    let refused = HistoryQuery { limit: Some(MAX_HISTORY_LIMIT + 1), ..query.clone() };
+    let refused = HistoryQuery {
+        limit: Some(MAX_HISTORY_LIMIT + 1),
+        ..query.clone()
+    };
     assert_eq!(
         refused.resolved_limit(),
         Err(StoreError::LimitRefused {
@@ -65,7 +74,10 @@ fn a_query_resolves_its_limit_by_the_same_rule() {
         })
     );
 
-    let empty_kinds = HistoryQuery { kinds: vec![], ..query };
+    let empty_kinds = HistoryQuery {
+        kinds: vec![],
+        ..query
+    };
     assert!(
         empty_kinds.kinds.is_empty(),
         "an empty kinds is representable, and this crate's documentation says it means every kind"

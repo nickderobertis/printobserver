@@ -32,8 +32,9 @@ const PRIMITIVES: [&str; 17] = [
 ];
 
 /// Container spellings the walk sees through rather than resolving.
-const CONTAINERS: [&str; 8] =
-    ["Option", "Vec", "Box", "Arc", "Rc", "BTreeMap", "HashMap", "Result"];
+const CONTAINERS: [&str; 8] = [
+    "Option", "Vec", "Box", "Arc", "Rc", "BTreeMap", "HashMap", "Result",
+];
 
 /// What the walk found in a closure.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -69,8 +70,16 @@ impl Universe {
     }
 
     /// Walk one type spelling, recording what it reaches.
-    fn walk(&self, path: &str, spelling: &str, findings: &mut Findings, seen: &mut BTreeSet<String>) {
-        if spelling.contains("Vec<u8>") || spelling.contains("[u8]") || spelling.contains("RawBytes")
+    fn walk(
+        &self,
+        path: &str,
+        spelling: &str,
+        findings: &mut Findings,
+        seen: &mut BTreeSet<String>,
+    ) {
+        if spelling.contains("Vec<u8>")
+            || spelling.contains("[u8]")
+            || spelling.contains("RawBytes")
         {
             findings.bytes.push(path.to_owned());
         }
@@ -89,7 +98,12 @@ impl Universe {
             match self.resolve(&name) {
                 Some(Declaration::Fields(fields)) => {
                     for field in fields {
-                        self.walk(&format!("{path}/{name}.{}", field.name), &field.ty, findings, seen);
+                        self.walk(
+                            &format!("{path}/{name}.{}", field.name),
+                            &field.ty,
+                            findings,
+                            seen,
+                        );
                     }
                 }
                 Some(Declaration::Variants(variants)) => {

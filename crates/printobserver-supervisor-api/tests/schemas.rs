@@ -11,7 +11,11 @@ use schema_files::reconcile;
 /// The field the contract states, as a name, what it is, and whether it is
 /// required.
 fn field(name: &str, descriptor: &str, required: bool) -> WireField {
-    WireField { name: name.to_owned(), descriptor: descriptor.to_owned(), required }
+    WireField {
+        name: name.to_owned(),
+        descriptor: descriptor.to_owned(),
+        required,
+    }
 }
 
 /// The schemas this crate declares, by the file name each is written under.
@@ -26,7 +30,11 @@ fn generated() -> Vec<(String, printobserver_types::serde_json::Value)> {
 #[test]
 fn the_checked_in_schemas_are_what_the_types_generate() {
     let findings = reconcile("printobserver-supervisor-api", &generated());
-    assert!(findings.is_empty(), "the checked-in schemas have drifted:\n{}", findings.join("\n"));
+    assert!(
+        findings.is_empty(),
+        "the checked-in schemas have drifted:\n{}",
+        findings.join("\n")
+    );
 }
 
 /// `TurnRequest` carries exactly the fields the contract states.

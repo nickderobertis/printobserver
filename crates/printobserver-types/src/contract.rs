@@ -118,6 +118,16 @@ pub trait Sample: Sized {
     fn sample_minimal() -> Self {
         Self::sample_full()
     }
+
+    /// One value per further arm, for a type whose wire form is a union.
+    ///
+    /// A union's arms declare fields the other arms do not, so a corpus of one
+    /// value per type would leave those fields undriven. Every arm a type
+    /// declares beyond the one `sample_full` carries belongs here.
+    #[must_use]
+    fn sample_alternates() -> Vec<Self> {
+        Vec::new()
+    }
 }
 
 /// One type this crate declares, with its schema and its canonical values.
@@ -133,6 +143,8 @@ pub struct TypeContract {
     minimal: fn() -> Value,
     /// Parse a value as this type and serialize it back.
     round_trip: fn(Value) -> Result<Value, String>,
+    /// One serialized value per further arm of a union.
+    alternates: fn() -> Vec<Value>,
 }
 
 impl TypeContract {
@@ -152,6 +164,15 @@ impl TypeContract {
     #[must_use]
     pub fn minimal(&self) -> Value {
         (self.minimal)()
+    }
+
+    /// Every canonical value of this type: the full one, the minimal one, and
+    /// one per further arm of a union.
+    #[must_use]
+    pub fn samples(&self) -> Vec<Value> {
+        let mut values = vec![self.full(), self.minimal()];
+        values.extend((self.alternates)());
+        values
     }
 
     /// Parse a value as this type and serialize the result back.
@@ -207,6 +228,12 @@ macro_rules! contract_of {
             full: || canonical(&<$ty as Sample>::sample_full()),
             minimal: || canonical(&<$ty as Sample>::sample_minimal()),
             round_trip: round_trip_as::<$ty>,
+            alternates: || {
+                <$ty as Sample>::sample_alternates()
+                    .iter()
+                    .map(canonical)
+                    .collect()
+            },
         }
     };
 }
@@ -267,6 +294,7 @@ pub fn declared() -> Vec<TypeContract> {
         ObicoPrinterInfo,
         ObicoPrinterNotification,
         ObicoPrinterNotificationPayload,
+        ObicoTimestamp,
         OperatorAcknowledgementPayload,
         PolicyDecision,
         PrintAction,
@@ -625,6 +653,61 @@ impl Sample for PrintAction {
             actor: Actor::sample_full(),
         }
     }
+
+    fn sample_alternates() -> Vec<Self> {
+        let reason = || "the print needs it".to_owned();
+        vec![
+            Self::Pause {
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::Resume {
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::Cancel {
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::StartPrint {
+                file_name: FileName::sample_full(),
+                manifest: JobManifest::sample_full(),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::SetFlowrateFactor {
+                factor: 1.05,
+                duration_s: Some(300),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::SetToolTargetC {
+                tool: 0,
+                target_c: 215.0,
+                duration_s: Some(300),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::SetBedTargetC {
+                target_c: 60.0,
+                duration_s: Some(300),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::SetFanPercent {
+                percent: 80.0,
+                duration_s: Some(300),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::AcknowledgeFailure {
+                event_id: event_id(),
+                disposition: AcknowledgementDisposition::Watch,
+                reason: reason(),
+                actor: Actor::Operator,
+            },
+        ]
+    }
 }
 
 impl Sample for ActionRequest {
@@ -964,6 +1047,21 @@ impl Sample for EventPayload {
     fn sample_minimal() -> Self {
         Self::ObicoFailureAlert(ObicoFailureAlertPayload::sample_minimal())
     }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::ObicoPrinterNotification(ObicoPrinterNotificationPayload::sample_full()),
+            Self::MalformedExternalEvent(MalformedExternalEventPayload::sample_full()),
+            Self::ActionRequested(ActionRequestedPayload::sample_full()),
+            Self::ActionExecuted(ActionExecutedPayload::sample_full()),
+            Self::ActionRejected(ActionRejectedPayload::sample_full()),
+            Self::InterventionExpired(InterventionExpiredPayload::sample_full()),
+            Self::SupervisionSessionOpened(SupervisionSessionOpenedPayload::sample_full()),
+            Self::SupervisionSessionClosed(SupervisionSessionClosedPayload::sample_full()),
+            Self::AgentAssessment(AgentAssessmentPayload::sample_full()),
+            Self::OperatorAcknowledgement(OperatorAcknowledgementPayload::sample_full()),
+        ]
+    }
 }
 
 impl Sample for EventRecord {
@@ -987,6 +1085,16 @@ impl Sample for EventRecord {
             payload: EventPayload::sample_minimal(),
             ..Self::sample_full()
         }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        EventPayload::sample_alternates()
+            .into_iter()
+            .map(|payload| Self {
+                payload,
+                ..Self::sample_full()
+            })
+            .collect()
     }
 }
 
@@ -1127,7 +1235,9 @@ fn referenced(reference: &str) -> String {
 
 /// The one non-null arm of a union, when there is exactly one.
 fn sole_arm(arms: &[Value]) -> Option<&Value> {
-    let mut kept = arms.iter().filter(|arm| arm.get("type") != Some(&Value::from("null")));
+    let mut kept = arms
+        .iter()
+        .filter(|arm| arm.get("type") != Some(&Value::from("null")));
     let first = kept.next()?;
     kept.next().is_none().then_some(first)
 }
@@ -1158,10 +1268,19 @@ fn descriptor(schema: &Value) -> String {
     match kind.as_str() {
         "array" => format!(
             "array:{}",
-            schema.get("items").map_or_else(|| "unknown".to_owned(), descriptor)
+            schema
+                .get("items")
+                .map_or_else(|| "unknown".to_owned(), descriptor)
         ),
-        "object" => match schema.get("additionalProperties") {
-            Some(value) if value.is_object() => format!("map:{}", descriptor(value)),
+        "object" => match (
+            schema.get("additionalProperties"),
+            schema.get("patternProperties"),
+        ) {
+            (Some(value), _) if value.is_object() => format!("map:{}", descriptor(value)),
+            (_, Some(Value::Object(patterns))) if patterns.len() == 1 => {
+                let value = patterns.values().next().expect("one pattern");
+                format!("map:{}", descriptor(value))
+            }
             _ => "object".to_owned(),
         },
         other => other.to_owned(),
@@ -1180,7 +1299,9 @@ fn required_names(schema: &Value) -> Vec<&str> {
 /// Read the fields off one object schema into a map.
 fn collect(schema: &Value, into: &mut BTreeMap<String, WireField>) {
     let required = required_names(schema);
-    let Some(Value::Object(properties)) = schema.get("properties") else { return };
+    let Some(Value::Object(properties)) = schema.get("properties") else {
+        return;
+    };
     for (name, property) in properties {
         into.insert(
             name.clone(),
@@ -1204,7 +1325,9 @@ pub fn wire_fields(schema: &Value) -> Vec<WireField> {
     let mut fields = BTreeMap::new();
     collect(schema, &mut fields);
     for key in ["anyOf", "oneOf", "allOf"] {
-        let Some(Value::Array(arms)) = schema.get(key) else { continue };
+        let Some(Value::Array(arms)) = schema.get(key) else {
+            continue;
+        };
         let mut from_arms: BTreeMap<String, WireField> = BTreeMap::new();
         for arm in arms {
             let mut one = BTreeMap::new();

@@ -128,7 +128,14 @@ impl StorePort for TrivialStore {
         applied_at: Timestamp,
         expires_at: Timestamp,
     ) -> BoxFuture<'_, Result<Intervention, StoreError>> {
-        let _ = (action_id, adjustable, prior_value, applied_value, applied_at, expires_at);
+        let _ = (
+            action_id,
+            adjustable,
+            prior_value,
+            applied_value,
+            applied_at,
+            expires_at,
+        );
         Box::pin(async { Ok(Intervention::sample_minimal()) })
     }
 
@@ -139,7 +146,9 @@ impl StorePort for TrivialStore {
     ) -> BoxFuture<'_, Result<SettleOutcome, StoreError>> {
         let _ = (intervention_id, outcome);
         Box::pin(async {
-            Ok(SettleOutcome::Settled { intervention: Intervention::sample_minimal() })
+            Ok(SettleOutcome::Settled {
+                intervention: Intervention::sample_minimal(),
+            })
         })
     }
 
@@ -176,10 +185,7 @@ impl StorePort for TrivialStore {
         Box::pin(async { Ok(Some(JobManifest::sample_full())) })
     }
 
-    fn history(
-        &self,
-        query: HistoryQuery,
-    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
         let _ = query;
         Box::pin(async { Ok(Vec::new()) })
     }
@@ -191,13 +197,15 @@ impl StorePort for TrivialStore {
         page_size: u32,
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         let _ = (print_id, after, page_size);
-        Box::pin(async { Ok(AuditPage { events: Vec::new(), next: None }) })
+        Box::pin(async {
+            Ok(AuditPage {
+                events: Vec::new(),
+                next: None,
+            })
+        })
     }
 
-    fn put_session(
-        &self,
-        session: SupervisionSession,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
+    fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         let _ = session;
         Box::pin(async { Ok(()) })
     }
@@ -242,9 +250,18 @@ fn draft() -> EventDraft {
 #[test]
 fn every_print_and_event_method_answers_its_declared_success_type() {
     let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
-    assert_eq!(block_on(port.open_print(None, None)), Ok(PrintRecord::sample_minimal()));
-    assert_eq!(block_on(port.print(print_id())), Ok(Some(PrintRecord::sample_minimal())));
-    assert_eq!(block_on(port.print_by_obico_id(1)), Ok(Some(PrintRecord::sample_minimal())));
+    assert_eq!(
+        block_on(port.open_print(None, None)),
+        Ok(PrintRecord::sample_minimal())
+    );
+    assert_eq!(
+        block_on(port.print(print_id())),
+        Ok(Some(PrintRecord::sample_minimal()))
+    );
+    assert_eq!(
+        block_on(port.print_by_obico_id(1)),
+        Ok(Some(PrintRecord::sample_minimal()))
+    );
     assert_eq!(
         block_on(port.end_print(
             print_id(),
@@ -258,11 +275,17 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
         block_on(port.record_narrowing(print_id(), ManifestNarrowing::sample_full())),
         Ok(PrintRecord::sample_minimal())
     );
-    assert_eq!(block_on(port.append_event(draft())), Ok(EventRecord::sample_minimal()));
+    assert_eq!(
+        block_on(port.append_event(draft())),
+        Ok(EventRecord::sample_minimal())
+    );
     assert_eq!(block_on(port.history(query())), Ok(Vec::new()));
     assert_eq!(
         block_on(port.audit_page(print_id(), None, 10)),
-        Ok(AuditPage { events: Vec::new(), next: None })
+        Ok(AuditPage {
+            events: Vec::new(),
+            next: None
+        })
     );
 }
 
@@ -282,7 +305,10 @@ fn every_image_action_and_intervention_method_answers_its_declared_success_type(
     );
     assert_eq!(
         block_on(port.image(ImageId::sample_full())),
-        Ok(ImageLookup::Found { record: ImageRecord::sample_minimal(), path: PathBuf::new() })
+        Ok(ImageLookup::Found {
+            record: ImageRecord::sample_minimal(),
+            path: PathBuf::new()
+        })
     );
     assert_eq!(
         block_on(port.record_action(ActionRequest::sample_minimal(), PolicyDecision::Accepted)),
@@ -304,23 +330,39 @@ fn every_image_action_and_intervention_method_answers_its_declared_success_type(
         Ok(Intervention::sample_minimal())
     );
     assert_eq!(
-        block_on(port.settle_intervention(
-            InterventionId::sample_full(),
-            InterventionOutcome::Restored
-        )),
-        Ok(SettleOutcome::Settled { intervention: Intervention::sample_minimal() })
+        block_on(
+            port.settle_intervention(InterventionId::sample_full(), InterventionOutcome::Restored)
+        ),
+        Ok(SettleOutcome::Settled {
+            intervention: Intervention::sample_minimal()
+        })
     );
-    assert_eq!(block_on(port.due_interventions(Timestamp::sample_full())), Ok(Vec::new()));
-    assert_eq!(block_on(port.active_interventions(print_id())), Ok(Vec::new()));
+    assert_eq!(
+        block_on(port.due_interventions(Timestamp::sample_full())),
+        Ok(Vec::new())
+    );
+    assert_eq!(
+        block_on(port.active_interventions(print_id())),
+        Ok(Vec::new())
+    );
 }
 
 /// Every manifest and session method answers its declared success type.
 #[test]
 fn every_manifest_and_session_method_answers_its_declared_success_type() {
     let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
-    assert_eq!(block_on(port.put_manifest(print_id(), JobManifest::sample_full())), Ok(()));
-    assert_eq!(block_on(port.manifest(print_id())), Ok(Some(JobManifest::sample_full())));
-    assert_eq!(block_on(port.put_session(SupervisionSession::sample_minimal())), Ok(()));
+    assert_eq!(
+        block_on(port.put_manifest(print_id(), JobManifest::sample_full())),
+        Ok(())
+    );
+    assert_eq!(
+        block_on(port.manifest(print_id())),
+        Ok(Some(JobManifest::sample_full()))
+    );
+    assert_eq!(
+        block_on(port.put_session(SupervisionSession::sample_minimal())),
+        Ok(())
+    );
     assert_eq!(
         block_on(port.session(print_id())),
         Ok(Some(SupervisionSession::sample_minimal()))
@@ -348,20 +390,29 @@ fn the_trait_object_is_shareable_across_threads() {
 /// An image lookup distinguishes a missing file from a missing record.
 #[test]
 fn an_image_lookup_distinguishes_a_missing_file() {
-    let missing = ImageLookup::FileMissing { record: ImageRecord::sample_minimal() };
+    let missing = ImageLookup::FileMissing {
+        record: ImageRecord::sample_minimal(),
+    };
     assert_ne!(
         missing,
-        ImageLookup::Found { record: ImageRecord::sample_minimal(), path: PathBuf::new() }
+        ImageLookup::Found {
+            record: ImageRecord::sample_minimal(),
+            path: PathBuf::new()
+        }
     );
 }
 
 /// Settling an already-settled intervention answers the outcome that won.
 #[test]
 fn settling_twice_answers_the_outcome_that_won() {
-    let already = SettleOutcome::AlreadySettled { outcome: InterventionOutcome::Restored };
+    let already = SettleOutcome::AlreadySettled {
+        outcome: InterventionOutcome::Restored,
+    };
     assert_ne!(
         already,
-        SettleOutcome::Settled { intervention: Intervention::sample_minimal() }
+        SettleOutcome::Settled {
+            intervention: Intervention::sample_minimal()
+        }
     );
 }
 
@@ -369,11 +420,22 @@ fn settling_twice_answers_the_outcome_that_won() {
 #[test]
 fn every_error_variant_says_what_it_is() {
     let variants = [
-        StoreError::ConstraintRefused { constraint: "print_id".to_owned() },
-        StoreError::NotFound { what: "print".to_owned() },
-        StoreError::LimitRefused { limit: 1_000, asked_for: 5_000 },
-        StoreError::Database { detail: "locked".to_owned() },
-        StoreError::Io { detail: "no space".to_owned() },
+        StoreError::ConstraintRefused {
+            constraint: "print_id".to_owned(),
+        },
+        StoreError::NotFound {
+            what: "print".to_owned(),
+        },
+        StoreError::LimitRefused {
+            limit: 1_000,
+            asked_for: 5_000,
+        },
+        StoreError::Database {
+            detail: "locked".to_owned(),
+        },
+        StoreError::Io {
+            detail: "no space".to_owned(),
+        },
     ];
     for variant in variants {
         assert!(!variant.to_string().is_empty(), "{variant:?} says nothing");

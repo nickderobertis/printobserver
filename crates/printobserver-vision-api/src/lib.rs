@@ -113,12 +113,20 @@ impl core::fmt::Display for VisionError {
             }
             Self::TimedOut => formatter.write_str("the source took too long"),
             Self::TooLarge { limit } => {
-                write!(formatter, "what arrived is larger than the {limit} byte limit")
+                write!(
+                    formatter,
+                    "what arrived is larger than the {limit} byte limit"
+                )
             }
             Self::UnacceptableContentType { content_type } => {
-                write!(formatter, "{content_type} is not a content type this port accepts")
+                write!(
+                    formatter,
+                    "{content_type} is not a content type this port accepts"
+                )
             }
-            Self::Unreachable { detail } => write!(formatter, "the source is unreachable: {detail}"),
+            Self::Unreachable { detail } => {
+                write!(formatter, "the source is unreachable: {detail}")
+            }
         }
     }
 }
@@ -139,6 +147,5 @@ pub trait VisionPort: Send + Sync {
     ) -> BoxFuture<'_, Result<NormalizedAlert, VisionError>>;
 
     /// Retrieve the image a source URL names.
-    fn fetch_image(&self, source_url: String)
-    -> BoxFuture<'_, Result<FetchedImage, VisionError>>;
+    fn fetch_image(&self, source_url: String) -> BoxFuture<'_, Result<FetchedImage, VisionError>>;
 }

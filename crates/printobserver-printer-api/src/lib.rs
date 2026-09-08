@@ -73,21 +73,32 @@ pub enum PrinterError {
 impl core::fmt::Display for PrinterError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Unreachable { detail } => write!(formatter, "the printer is unreachable: {detail}"),
+            Self::Unreachable { detail } => {
+                write!(formatter, "the printer is unreachable: {detail}")
+            }
             Self::Unauthorized { detail } => {
                 write!(formatter, "the printer refused the credentials: {detail}")
             }
             Self::Refused { status, detail } => {
-                write!(formatter, "the printer refused the request with {status}: {detail}")
+                write!(
+                    formatter,
+                    "the printer refused the request with {status}: {detail}"
+                )
             }
             Self::StateConflict { detail } => {
-                write!(formatter, "the printer is not in a state this is valid from: {detail}")
+                write!(
+                    formatter,
+                    "the printer is not in a state this is valid from: {detail}"
+                )
             }
             Self::Unsupported { adjustable } => {
                 write!(formatter, "this printer has no {adjustable}")
             }
             Self::Malformed { detail } => {
-                write!(formatter, "the printer answered something unreadable: {detail}")
+                write!(
+                    formatter,
+                    "the printer answered something unreadable: {detail}"
+                )
             }
         }
     }

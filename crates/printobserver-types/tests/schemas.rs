@@ -14,7 +14,9 @@ use serde_json::Value;
 
 /// The repository root, from this crate's own directory.
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
 }
 
 /// Where the schemas one crate declares are checked in.
@@ -35,14 +37,20 @@ fn ensure_written() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         if writing() {
-            write(&schema_dir(&repo_root(), "printobserver-types"), &generated());
+            write(
+                &schema_dir(&repo_root(), "printobserver-types"),
+                &generated(),
+            );
         }
     });
 }
 
 /// The schemas this crate declares, by the file name each is written under.
 fn generated() -> Vec<(String, Value)> {
-    declared().into_iter().map(|entry| (format!("{}.json", entry.name), entry.schema())).collect()
+    declared()
+        .into_iter()
+        .map(|entry| (format!("{}.json", entry.name), entry.schema()))
+        .collect()
 }
 
 /// One schema's text, as it is written and as it is compared.
@@ -57,7 +65,11 @@ fn write(directory: &Path, entries: &[(String, Value)]) {
     std::fs::create_dir_all(directory).expect("the schema directory is writable");
     for existing in std::fs::read_dir(directory).expect("the schema directory is readable") {
         let path = existing.expect("a readable directory entry").path();
-        let name = path.file_name().expect("a file name").to_string_lossy().into_owned();
+        let name = path
+            .file_name()
+            .expect("a file name")
+            .to_string_lossy()
+            .into_owned();
         if !entries.iter().any(|(file, _)| *file == name) {
             std::fs::remove_file(&path).expect("a stale schema is removable");
         }
@@ -86,9 +98,16 @@ fn drift(directory: &Path, entries: &[(String, Value)]) -> Vec<String> {
     };
     for existing in listing {
         let path = existing.expect("a readable directory entry").path();
-        let name = path.file_name().expect("a file name").to_string_lossy().into_owned();
+        let name = path
+            .file_name()
+            .expect("a file name")
+            .to_string_lossy()
+            .into_owned();
         if !entries.iter().any(|(file, _)| *file == name) {
-            findings.push(format!("{} is a schema no declared type generates", path.display()));
+            findings.push(format!(
+                "{} is a schema no declared type generates",
+                path.display()
+            ));
         }
     }
     findings
@@ -102,7 +121,11 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
     let entries = generated();
     assert!(!entries.is_empty(), "this crate declares no type at all");
     let findings = drift(&directory, &entries);
-    assert!(findings.is_empty(), "the checked-in schemas have drifted:\n{}", findings.join("\n"));
+    assert!(
+        findings.is_empty(),
+        "the checked-in schemas have drifted:\n{}",
+        findings.join("\n")
+    );
 }
 
 /// The six shapes the port crates own, and the crate each is declared by.
@@ -139,10 +162,9 @@ fn every_type_in_the_schema_set_has_a_checked_in_schema() {
     for (crate_name, type_name) in PORT_OWNED_SHAPES {
         let path = schema_dir(&root, crate_name).join(format!("{type_name}.json"));
         assert!(path.is_file(), "{type_name} emits no checked-in schema");
-        let schema: Value = serde_json::from_str(
-            &std::fs::read_to_string(&path).expect("the schema is readable"),
-        )
-        .expect("the schema is JSON");
+        let schema: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the schema is readable"))
+                .expect("the schema is JSON");
         assert_eq!(
             schema.get("title").and_then(Value::as_str),
             Some(type_name),
@@ -168,11 +190,14 @@ struct ScratchTree {
 impl ScratchTree {
     /// Copy the checked-in schemas of the five crates into a scratch tree.
     fn new(label: &str) -> Self {
-        let root = std::env::temp_dir()
-            .join(format!("printobserver-schema-drift-{}-{label}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "printobserver-schema-drift-{}-{label}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
-        for (crate_name, _) in
-            PORT_OWNED_SHAPES.into_iter().chain([("printobserver-types", "")])
+        for (crate_name, _) in PORT_OWNED_SHAPES
+            .into_iter()
+            .chain([("printobserver-types", "")])
         {
             let from = schema_dir(&repo_root(), crate_name);
             let to = schema_dir(&root, crate_name);
@@ -219,11 +244,16 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
     );
     scratch.alter("printobserver-types", "PrintRecord");
     let findings = drift(&schema_dir(&scratch.root, "printobserver-types"), &entries);
-    assert_eq!(findings.len(), 1, "the altered type-crate schema was not refused: {findings:?}");
+    assert_eq!(
+        findings.len(),
+        1,
+        "the altered type-crate schema was not refused: {findings:?}"
+    );
     assert!(findings[0].contains("PrintRecord.json"));
 
     let port = ScratchTree::new("vision");
-    let committed = schema_dir(&repo_root(), "printobserver-vision-api").join("NormalizedAlert.json");
+    let committed =
+        schema_dir(&repo_root(), "printobserver-vision-api").join("NormalizedAlert.json");
     let generated_port: Value =
         serde_json::from_str(&std::fs::read_to_string(&committed).expect("readable"))
             .expect("the schema is JSON");
@@ -240,8 +270,10 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
     port.alter("printobserver-vision-api", "NormalizedAlert");
     let findings = drift(&port_dir, &port_entries);
     assert!(
-        findings.iter().any(|finding| finding.contains("NormalizedAlert.json")
-            && finding.contains("not what the types generate")),
+        findings
+            .iter()
+            .any(|finding| finding.contains("NormalizedAlert.json")
+                && finding.contains("not what the types generate")),
         "the altered port schema was not refused: {findings:?}"
     );
 }

@@ -75,7 +75,9 @@ pub use action::{
 pub use adjustable::{Adjustable, AdjustableError};
 pub use assessment::{AgentAssessment, Confidence};
 pub use context::PrintContext;
-pub use contract::{RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared, wire_fields};
+pub use contract::{
+    RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared, wire_fields,
+};
 pub use event::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,

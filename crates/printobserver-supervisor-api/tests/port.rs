@@ -64,8 +64,14 @@ impl SupervisorPort for TrivialSupervisor {
 #[test]
 fn every_method_answers_its_declared_success_type() {
     let port: Arc<dyn SupervisorPort> = Arc::new(TrivialSupervisor);
-    assert_eq!(block_on(port.run_turn(trivial_request())), Ok(trivial_outcome()));
-    assert_eq!(block_on(port.close_session(PrintId::sample_full(), String::new())), Ok(()));
+    assert_eq!(
+        block_on(port.run_turn(trivial_request())),
+        Ok(trivial_outcome())
+    );
+    assert_eq!(
+        block_on(port.close_session(PrintId::sample_full(), String::new())),
+        Ok(())
+    );
 }
 
 /// The same trait object is shareable across threads, which is what core needs.
@@ -79,7 +85,10 @@ fn the_trait_object_is_shareable_across_threads() {
         })
         .collect();
     for handle in handles {
-        assert_eq!(handle.join().expect("the thread completes"), Ok(trivial_outcome()));
+        assert_eq!(
+            handle.join().expect("the thread completes"),
+            Ok(trivial_outcome())
+        );
     }
 }
 
@@ -87,9 +96,15 @@ fn the_trait_object_is_shareable_across_threads() {
 #[test]
 fn every_error_variant_says_what_it_is() {
     let variants = [
-        SupervisorError::InvalidAnswer { detail: "no summary".to_owned() },
-        SupervisorError::IdentityRefused { detail: "unknown identity".to_owned() },
-        SupervisorError::Unavailable { detail: "no harness".to_owned() },
+        SupervisorError::InvalidAnswer {
+            detail: "no summary".to_owned(),
+        },
+        SupervisorError::IdentityRefused {
+            detail: "unknown identity".to_owned(),
+        },
+        SupervisorError::Unavailable {
+            detail: "no harness".to_owned(),
+        },
         SupervisorError::TimedOut,
     ];
     for variant in variants {

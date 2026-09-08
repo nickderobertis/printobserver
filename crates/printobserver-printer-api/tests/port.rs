@@ -86,7 +86,10 @@ impl PrinterPort for TrivialPrinter {
 fn every_method_answers_its_declared_success_type() {
     let port: Arc<dyn PrinterPort> = Arc::new(TrivialPrinter);
 
-    assert_eq!(block_on(port.snapshot()), Ok(PrinterSnapshot::sample_minimal()));
+    assert_eq!(
+        block_on(port.snapshot()),
+        Ok(PrinterSnapshot::sample_minimal())
+    );
     assert_eq!(block_on(port.job()), Ok(JobSnapshot::sample_minimal()));
     assert_eq!(block_on(port.start(FileName::sample_full())), Ok(()));
     assert_eq!(block_on(port.pause()), Ok(()));
@@ -110,7 +113,10 @@ fn the_trait_object_is_shareable_across_threads() {
         })
         .collect();
     for handle in handles {
-        assert_eq!(handle.join().expect("the thread completes"), Ok(PrinterSnapshot::sample_minimal()));
+        assert_eq!(
+            handle.join().expect("the thread completes"),
+            Ok(PrinterSnapshot::sample_minimal())
+        );
     }
 }
 
@@ -118,14 +124,25 @@ fn the_trait_object_is_shareable_across_threads() {
 #[test]
 fn every_error_variant_says_what_it_is() {
     let variants = [
-        PrinterError::Unreachable { detail: "no route".to_owned() },
-        PrinterError::Unauthorized { detail: "bad key".to_owned() },
-        PrinterError::Refused { status: 409, detail: "printing".to_owned() },
-        PrinterError::StateConflict { detail: "already paused".to_owned() },
+        PrinterError::Unreachable {
+            detail: "no route".to_owned(),
+        },
+        PrinterError::Unauthorized {
+            detail: "bad key".to_owned(),
+        },
+        PrinterError::Refused {
+            status: 409,
+            detail: "printing".to_owned(),
+        },
+        PrinterError::StateConflict {
+            detail: "already paused".to_owned(),
+        },
         PrinterError::Unsupported {
             adjustable: printobserver_types::Adjustable::ToolTarget { tool: 3 },
         },
-        PrinterError::Malformed { detail: "not JSON".to_owned() },
+        PrinterError::Malformed {
+            detail: "not JSON".to_owned(),
+        },
     ];
     for variant in variants {
         let message = variant.to_string();
