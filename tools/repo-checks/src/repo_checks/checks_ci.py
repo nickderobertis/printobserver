@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -177,33 +178,68 @@ class StatusContext:
     kind: JobKind
 
 
-def _substituted(base: str, entry: dict[str, Any], where: str) -> str:
-    """A job's declared name with one matrix cell's own values put into it.
+@dataclass(frozen=True, slots=True)
+class MatrixCell:
+    """One cell of a job's `platform` matrix, as a check-run name can read it.
 
-    Raises:
-        WorkflowValueError: If the name interpolates a matrix field the cells do
-            not carry, or one carrying something no name can be built from.
-            Substituting an empty string there would derive a context nothing
-            reports, and the record would then read as having drifted rather than
-            as the typo in the workflow that it is.
+    The field names are the workflow author's own, so that set is open; what is
+    closed is what a value may be. `read` settles it, and `fields` holds only
+    what survived, so nothing downstream re-checks a value it was handed.
     """
 
-    def value(found: re.Match[str]) -> str:
-        key = found["key"]
-        if key not in entry:
-            carried = ", ".join(f"`{one}`" for one in sorted(map(str, entry))) or "nothing"
-            msg = f"{where} interpolates `{found[0]}`, but its matrix cells carry {carried}"
-            raise WorkflowValueError(msg)
-        found_value = entry[key]
-        if not isinstance(found_value, str | int) or not str(found_value).strip():
-            msg = (
-                f"{where} interpolates `{found[0]}`, whose value {found_value!r} is "
-                f"not something a status context can be named after"
-            )
-            raise WorkflowValueError(msg)
-        return str(found_value)
+    where: str
+    fields: Mapping[str, str]
+    declared: frozenset[str]
 
-    return MATRIX_EXPRESSION.sub(value, base)
+    @classmethod
+    def read(cls, entry: dict[str, Any], where: str) -> MatrixCell:
+        """Read one declared cell of a matrix.
+
+        `entry` is the mapping the YAML reader handed back, so its values are
+        `Any` at that deserialization boundary; this is the one place they stop
+        being. A field carrying anything but a non-empty scalar is not one a
+        check-run name can be built from, so it is kept out rather than coerced,
+        and `declared` remembers it was there so `substituted` can say which of
+        the two went wrong.
+        """
+        return cls(
+            where,
+            {
+                str(key): str(value)
+                for key, value in entry.items()
+                if isinstance(value, str | int) and str(value).strip()
+            },
+            frozenset(str(key) for key in entry),
+        )
+
+    def substituted(self, base: str) -> str:
+        """`base` with this cell's own values put into it.
+
+        Raises:
+            WorkflowValueError: If `base` interpolates a field this cell has not
+                got. Substituting an empty string there would derive a context
+                nothing reports, and the record would then read as having drifted
+                rather than as the typo in the workflow that it is.
+        """
+
+        def value(found: re.Match[str]) -> str:
+            key = found["key"]
+            if key in self.fields:
+                return self.fields[key]
+            if key in self.declared:
+                msg = (
+                    f"{self.where}'s name interpolates `{found[0]}`, whose value is not "
+                    f"something a status context can be named after"
+                )
+            else:
+                carried = ", ".join(f"`{one}`" for one in sorted(self.fields)) or "nothing"
+                msg = (
+                    f"{self.where}'s name interpolates `{found[0]}`, but its matrix "
+                    f"cells carry {carried}"
+                )
+            raise WorkflowValueError(msg)
+
+        return MATRIX_EXPRESSION.sub(value, base)
 
 
 def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
@@ -215,6 +251,10 @@ def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
     cell under one repeated name, which this returns as the repetition it is
     rather than collapsing.
 
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; the name is narrowed here and the cells by
+    `MatrixCell.read`.
+
     Raises:
         WorkflowValueError: If a cell cannot be substituted into the name.
     """
@@ -223,7 +263,7 @@ def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
     entries = _matrix_platforms(job)
     if entries is None:
         return [base]
-    return [_substituted(base, entry, where) for entry in entries]
+    return [MatrixCell.read(entry, where).substituted(base) for entry in entries]
 
 
 def status_contexts(repo: Repo) -> list[StatusContext]:
@@ -239,7 +279,7 @@ def status_contexts(repo: Repo) -> list[StatusContext]:
         StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up))
         for file_name, workflow in _workflows(repo).items()
         for job_name, job in jobs_of(workflow).items()
-        for name in _context_names(job_name, job, f"{file_name}: job `{job_name}`'s name")
+        for name in _context_names(job_name, job, f"{file_name}: job `{job_name}`")
     ]
 
 
@@ -300,7 +340,14 @@ def platforms(repo: Repo) -> list[str]:
                     f"{file_name}: job `{job_name}` is a {kind} job but declares no platform matrix"
                 )
                 continue
-            ids = [entry.get("id") for entry in entries]
+            cells = [MatrixCell.read(entry, f"{file_name}: job `{job_name}`") for entry in entries]
+            findings.extend(
+                f"{file_name}: job `{job_name}`'s matrix has a cell whose `id` is not a "
+                f"platform name, so there is nothing to hold to AGENTS.md's list"
+                for cell in cells
+                if "id" not in cell.fields
+            )
+            ids = [cell.fields["id"] for cell in cells if "id" in cell.fields]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, "
                 f"which AGENTS.md's supported-platform list does not"
@@ -314,10 +361,12 @@ def platforms(repo: Repo) -> list[str]:
                 if wanted not in ids
             )
             findings.extend(
-                f"{file_name}: job `{job_name}`'s matrix runs `{entry.get('id')}` on "
-                f"`{entry.get('runner')}`, but AGENTS.md declares `{runners[entry['id']]}`"
-                for entry in entries
-                if entry.get("id") in runners and entry.get("runner") != runners[entry["id"]]
+                f"{file_name}: job `{job_name}`'s matrix runs `{cell.fields['id']}` on "
+                f"`{cell.fields.get('runner')}`, but AGENTS.md declares "
+                f"`{runners[cell.fields['id']]}`"
+                for cell in cells
+                if cell.fields.get("id") in runners
+                and cell.fields.get("runner") != runners[cell.fields["id"]]
             )
     return findings
 

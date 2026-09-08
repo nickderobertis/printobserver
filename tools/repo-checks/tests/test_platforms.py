@@ -71,6 +71,22 @@ def test_the_committed_judged_lint_job_declares_no_matrix(committed: Repo) -> No
     )
 
 
+def test_a_matrix_cell_whose_id_is_not_a_platform_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """It is reported, rather than aborting the tier on an unhashable key."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/ci.yml",
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+        "          - id: [linux, x86_64]\n            runner: ubuntu-24.04\n",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `gate`", "whose `id` is not a platform name")
+
+
 def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

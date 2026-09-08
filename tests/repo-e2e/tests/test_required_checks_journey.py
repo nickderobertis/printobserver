@@ -67,3 +67,19 @@ def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
     result = broken.just("check-repo")
 
     failing(result, naming="but its matrix cells carry `id`, `runner`")
+
+
+def test_a_name_interpolating_a_field_no_name_can_be_built_from_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """A cell field that is not a scalar cannot name a check run either."""
+    broken = gate_copy()
+    broken.edit(
+        CI,
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+        "          - id: [linux, x86_64]\n            runner: ubuntu-24.04\n",
+    )
+
+    result = broken.just("check-repo")
+
+    failing(result, naming="whose value is not something a status context can be named after")

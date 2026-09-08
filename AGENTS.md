@@ -361,11 +361,9 @@ platform in its name at all.
 - `pr-title`
 [//]: # (END required-checks)
 
-`just check-repo` derives the contexts the committed workflows report and refuses
-a required name none of them reports, one that several cells report under at
-once, and a job with some of its cells required and some not. Applying these
-settings to the repository itself is a person's action through GitHub — it needs
-these jobs to exist first — and is tracked as its own task of this plan.
+`just check-repo` derives those contexts from the committed workflows and refuses
+a record that disagrees with them. Applying the settings themselves to the
+repository is a person's action through GitHub.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`
