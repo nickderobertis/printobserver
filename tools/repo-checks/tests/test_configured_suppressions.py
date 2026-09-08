@@ -133,3 +133,91 @@ def test_a_crate_local_lint_allow_is_refused(tree: Callable[[], Tree]) -> None:
     findings = suppressions(broken.repo)
 
     refused(findings, "missing_panics_doc")
+
+
+# Assembled rather than written whole, so this module does not itself carry the
+# directives it is about.
+WHOLE_FILE = "llmlint: " + "ignore-file"
+LINE_LOCALIZABLE_RULE = "e2e_not_mocked"
+INTRINSICALLY_WHOLE_FILE_RULE = "tool_output_is_signal"
+PROBE = "scripts/probe.sh"
+
+
+def _entry(rule: str, file: str, site: str) -> str:
+    return (
+        f'\n[[suppression]]\nrule = "{rule}"\nfile = "{file}"\n'
+        f'site = "{site}"\nreason = "A stated reason."\n'
+    )
+
+
+def test_a_whole_file_llmlint_directive_for_a_line_rule_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The exception is for rules that are intrinsically about a whole file.
+
+    A rule llmlint attributes to a line is not one of them, so silencing it for
+    a whole file is the blanket suppression the policy refuses — an allowlist
+    entry does not buy it in.
+    """
+    broken = tree()
+    broken.write(PROBE, f"#!/usr/bin/env bash\n# {WHOLE_FILE}[{LINE_LOCALIZABLE_RULE}] why\n")
+    broken.append("suppressions.toml", _entry(LINE_LOCALIZABLE_RULE, PROBE, WHOLE_FILE))
+
+    findings = suppressions(broken.repo)
+
+    refused_naming(findings, "probe.sh", LINE_LOCALIZABLE_RULE)
+
+
+def test_a_whole_file_llmlint_directive_for_an_admitted_rule_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """The narrow exception is a way through, not a wall."""
+    allowed = tree()
+    allowed.write(
+        PROBE, f"#!/usr/bin/env bash\n# {WHOLE_FILE}[{INTRINSICALLY_WHOLE_FILE_RULE}] why\n"
+    )
+    allowed.append(
+        "suppressions.toml",
+        _entry(INTRINSICALLY_WHOLE_FILE_RULE, PROBE, WHOLE_FILE),
+    )
+
+    accepted(suppressions(allowed.repo))
+
+
+def test_an_admitted_whole_file_directive_still_needs_its_entry(
+    tree: Callable[[], Tree],
+) -> None:
+    """Being an admitted rule excuses the directive from nothing else."""
+    broken = tree()
+    broken.write(
+        PROBE, f"#!/usr/bin/env bash\n# {WHOLE_FILE}[{INTRINSICALLY_WHOLE_FILE_RULE}] why\n"
+    )
+
+    findings = suppressions(broken.repo)
+
+    refused_naming(findings, "probe.sh", "no entry in suppressions.toml")
+
+
+def test_the_exception_does_not_reach_a_line_attributing_tool(
+    tree: Callable[[], Tree],
+) -> None:
+    """Admitting a rule name does not admit ruff's whole-file directive form.
+
+    The exception is llmlint's alone, because llmlint is the only tool here with
+    rules that are not attributable to a line. Naming a ruff rule in the policy
+    must not buy a ruff file-level directive in.
+    """
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated"]',
+        'whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated", "E501"]',
+    )
+    broken.append("tools/repo-checks/src/repo_checks/model.py", "\n# " + "ruff: noqa: E501\n")
+    broken.append(
+        "suppressions.toml", _entry("E501", "tools/repo-checks/src/repo_checks/model.py", "ruff")
+    )
+
+    findings = suppressions(broken.repo)
+
+    refused_naming(findings, "file-level", "model.py")

@@ -318,23 +318,33 @@ directive needs an entry naming the rule, the file, the site and a non-empty
 reason, added in the same change. Nothing in the check asks whether a reason is
 a *good* reason — that is for whoever reviews the change.
 
-**Silencing a rule for a whole file is refused outright**, not allowlisted —
-both halves of it. A blanket `ignore`, a per-file glob, a crate lint set to
-`allow` or a linter rule set to `off` in a *configuration* file; and a
-file-level directive inside the file itself (ruff's `noqa` file form, flake8's,
-mypy's `ignore-errors`, `biome-ignore-all`, `eslint-disable` — each spelled here
-without its comment marker so this document carries none). Both cover every line
-of a file, including lines written long after the reason was true, and neither
-names a site. `just check-repo` refuses them all. Choosing which rules run is
-not suppression and is left alone.
+**Silencing a rule for a whole file is refused**, not allowlisted — in a
+*configuration* file (a blanket `ignore`, a per-file glob, a crate lint set to
+`allow`, a linter rule set to `off`) and by a file-level directive inside the
+file itself (ruff's `noqa` file form, flake8's, mypy's `ignore-errors`,
+`biome-ignore-all`, `eslint-disable` — each spelled here without its comment
+marker so this document carries none). Both cover every line, including lines
+written long after the reason was true, and neither names a site. Choosing which
+rules run is not suppression and is left alone.
 
-So a suppression is only ever a single line, answering a single finding, with an
-entry naming its exact site. Where even that is avoidable, avoid it: every
-subprocess goes through `repo_checks.shell.run`, which resolves the executable
-against PATH, so `S607` is fixed by construction and `S603` has one site rather
-than thirty-four. The suites are written in the `repo_checks.expect` vocabulary
-rather than the `assert` statement, so `S101` is enabled with nothing suppressing
-it anywhere.
+**One narrow exception, enumerated and enforced.** Every deterministic linter
+and type checker here attributes each finding to a line, so a whole-file
+directive from one of them is always broader than the finding it answers and is
+refused with no exception at all. llmlint is the one tool with rules that are
+about a file as a whole — whether a script's output is signal, whether its
+inputs are validated — and for those a whole-file `ignore-file` directive is the
+only shape that fits. `repo-policy.toml`'s `suppressions.whole_file_rules` names
+exactly which rules that reaches; `just check-repo` refuses one naming any other
+rule, refuses the same form from any other tool, and still requires the
+directive's own allowlist entry and reason. Two such directives stand in the
+tree today, both in `scripts/`, and both are listed in `suppressions.toml`.
+
+Every other suppression is a single line answering a single finding. Where even
+that is avoidable, avoid it: every subprocess goes through
+`repo_checks.shell.run`, which resolves the executable against PATH, so `S607`
+is fixed by construction and `S603` has one site rather than thirty-four. The
+suites are written in the `repo_checks.expect` vocabulary rather than the
+`assert` statement, so `S101` is enabled with nothing suppressing it anywhere.
 
 ## Keeping the allowlist current
 

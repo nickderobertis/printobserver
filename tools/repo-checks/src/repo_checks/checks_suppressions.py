@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,7 +48,8 @@ DIRECTIVE_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = (
     (re.compile(r"//\s*biome-ignore\s+([\w/]+)"), False),
     (re.compile(r"//\s*@ts-(expect-error|ignore)\b"), False),
     (re.compile(r"#\s*shellcheck\s+disable=([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)"), True),
-    (re.compile(r"llmlint:\s*ignore(?:-file)?\[([^\]]+)\]"), True),
+    (re.compile(r"llmlint:\s*ignore\[([^\]]+)\]"), True),
+    (WHOLE_FILE_LLMLINT := re.compile(r"llmlint:\s*ignore-file\[([^\]]+)\]"), True),
 )
 
 
@@ -230,10 +232,10 @@ def configured_suppressions(root: Path) -> list[str]:
 # reason was true, so it is a blanket suppression whatever file it sits in.
 #
 # Every tool named here attributes each of its findings to a line, so a
-# file-level directive is always strictly broader than the finding it answers.
-# llmlint is deliberately absent: it has rules that are about a file as a whole,
-# and its own `validate` gate refuses a whole-file directive that names a
-# line-localizable rule.
+# file-level directive is always strictly broader than the finding it answers,
+# and there is no exception for any of them. llmlint is absent because it is the
+# one tool with rules that are not attributable to a line; `whole_file_directives`
+# above is where its narrow, enumerated permission is enforced.
 FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"#\s*ruff:\s*noqa\b"), "ruff"),
     (re.compile(r"#\s*flake8:\s*noqa\b"), "flake8"),
@@ -244,16 +246,52 @@ FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def file_level_directives(root: Path) -> list[str]:
-    """Refuse every directive that silences a rule for a whole file."""
-    findings: list[str] = []
+def _scannable(root: Path) -> Iterator[tuple[Path, Path, list[str]]]:
+    """Every file the directive scanners read, with its lines."""
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
             continue
         relative = path.relative_to(root)
         if SKIPPED_DIRECTORIES & set(relative.parts):
             continue
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        yield path, relative, path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def whole_file_directives(root: Path, admitted: Sequence[str]) -> list[str]:
+    """Refuse a whole-file llmlint directive naming a rule that is not intrinsically one.
+
+    llmlint is the one tool here with rules that are about a file as a whole
+    rather than a line — whether a script's output is signal, whether its inputs
+    are validated. For those, a whole-file directive is the only shape that
+    fits, so `repo-policy.toml` names them and they are permitted here. Every
+    other rule llmlint attributes to a line, and silencing one of those for a
+    whole file is the blanket suppression the policy refuses.
+
+    The permission is narrow in three ways: it is llmlint's alone, it reaches
+    only the rules the policy names, and the directive still needs its own
+    allowlist entry with a reason like any other.
+    """
+    findings: list[str] = []
+    for path, relative, lines in _scannable(root):
+        del path
+        for number, line in enumerate(lines, start=1):
+            for match in WHOLE_FILE_LLMLINT.finditer(line):
+                findings.extend(
+                    f"{relative}:{number} silences `{rule}` for the whole file, and "
+                    f"`repo-policy.toml`'s suppressions.whole_file_rules does not name "
+                    f"it as a rule that is intrinsically about a whole file. Suppress "
+                    f"it at the line it answers instead."
+                    for rule in (r.strip() for r in match.group(1).split(","))
+                    if rule and rule not in admitted
+                )
+    return findings
+
+
+def file_level_directives(root: Path) -> list[str]:
+    """Refuse every directive that silences a rule for a whole file."""
+    findings: list[str] = []
+    for path, relative, lines in _scannable(root):
+        del path
         for number, line in enumerate(lines, start=1):
             findings.extend(
                 f"{relative}:{number} carries a file-level {tool} directive, which "
@@ -279,6 +317,9 @@ def suppressions(repo: Repo, base: str | None = None) -> list[str]:
     found = [d for d in scan(repo.root) if d.file != relative]
     findings: list[str] = configured_suppressions(repo.root)
     findings.extend(file_level_directives(repo.root))
+    findings.extend(
+        whole_file_directives(repo.root, repo.policy["suppressions"].get("whole_file_rules", []))
+    )
 
     for index, entry in enumerate(entries):
         for field in ("rule", "file", "site"):

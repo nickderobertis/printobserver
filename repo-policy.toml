@@ -47,6 +47,23 @@ typescript = 95
 # entry without a reason, and an entry that matches nothing.
 allowlist = "suppressions.toml"
 
+# The only rules a WHOLE-FILE directive may name, and the narrowest the
+# exception can be made.
+#
+# Every deterministic linter and type checker here attributes each finding to a
+# line, so a whole-file directive from one of them is always broader than the
+# finding it answers, and `just check-repo` refuses it with no exception at all.
+# llmlint is the one tool with rules that are about a file as a whole — whether
+# a script's output is signal, whether its inputs are validated — and for those
+# a whole-file directive is the only shape that fits.
+#
+# The permission is llmlint's alone and reaches only the rules named here; a
+# directive naming any other rule is refused, and every use still needs its own
+# entry in the allowlist above, with a reason. Adding a name to this list is a
+# deliberate, reviewable change rather than something a directive can do for
+# itself.
+whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated"]
+
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`
 # enforces: core may depend on the type crate and the four ports and on no

@@ -17,22 +17,31 @@
 schema_version = 1
 
 
+# --- WHOLE-FILE llmlint directives --------------------------------------------
+#
+# The two entries per script below are `llmlint: ignore-file` directives, which
+# cover the whole script rather than one line. That is permitted only because
+# both rules are about a file as a whole rather than a line, and only for the
+# rules `repo-policy.toml`'s suppressions.whole_file_rules names; `just
+# check-repo` refuses the form from any other tool and for any other rule. Each
+# still needs the entry and reason below like any other suppression.
+#
 # --- scripts/session-setup.sh -------------------------------------------------
-# One directive, three rules. The reason is the script's own header: a
-# SessionStart hook that aborted a session because an install was flaky would be
-# worse than one that logs and continues.
+# The reason is the script's own header: a SessionStart hook that aborted a
+# session because an install was flaky would be worse than one that logs and
+# continues.
 
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/session-setup.sh"
 site = "set -uo pipefail"
-reason = "Success is quiet; every failure logs and continues rather than blocking startup, so the output is deliberately advisory rather than a gate's verdict."
+reason = "Whole-file, and the rule is about the whole file: success is quiet and every failure logs and continues rather than blocking startup, so this script's output is deliberately advisory rather than a gate's verdict."
 
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "scripts/session-setup.sh"
 site = "set -uo pipefail"
-reason = "The only external input is the `rust-just` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations; no untrusted input is executed."
+reason = "Whole-file, and the rule is about the whole file: the only external input this script takes is the `rust-just` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations, so no untrusted input is executed anywhere in it."
 
 # --- scripts/setup-llmlint.sh -------------------------------------------------
 
@@ -40,13 +49,13 @@ reason = "The only external input is the `rust-just` wheel from PyPI, whose rele
 rule = "tool_output_is_signal"
 file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
-reason = "Success is quiet; a failed install logs an actionable line and continues rather than blocking startup."
+reason = "Whole-file, and the rule is about the whole file: success is quiet and a failed install logs an actionable line and continues rather than blocking startup."
 
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
-reason = "The only external input is the `llmlint-cli` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations; no untrusted input is executed."
+reason = "Whole-file, and the rule is about the whole file: the only external input this script takes is the `llmlint-cli` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations, so no untrusted input is executed anywhere in it."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
