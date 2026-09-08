@@ -260,9 +260,14 @@ def install(instance: Instance) -> None:
     """Provision the instance, doing nothing that is already done."""
     instance.state_dir.mkdir(parents=True, exist_ok=True)
     instance.basedir.mkdir(parents=True, exist_ok=True)
+    # Read first: a state directory whose configuration cannot be read is said
+    # so in a second, rather than after an install that will not be used.
+    read_config(instance)
     _install_octoprint(instance)
-    _write_config(instance)
     _provision_api_key(instance)
+    # Written last, because creating the account writes a configuration of its
+    # own that this one is composed over.
+    _write_config(instance)
 
 
 def _install_octoprint(instance: Instance) -> None:
@@ -367,6 +372,13 @@ def read_config(instance: Instance) -> dict[str, Any]:
 def _write_config(instance: Instance) -> None:
     """Write this script's settings over whatever the instance already had."""
     merged = _merge(managed_config(instance.connection), read_config(instance))
+    # The global API key OctoPrint generates for itself on first run. It is
+    # deprecated, it stops working in 1.13, and this instance authenticates with
+    # the user key `install` provisioned — so it is removed rather than left to
+    # be a second credential nobody wrote down.
+    api = merged.get("api")
+    if isinstance(api, dict):
+        api.pop("key", None)
     instance.config_file.write_text(
         yaml.safe_dump(merged, default_flow_style=False, sort_keys=True), encoding="utf-8"
     )
@@ -701,10 +713,12 @@ def up(instance: Instance, port: int | None, *, printing: bool, timeout: float) 
         note(f"an instance is already running on {running['url']}")
         return running
 
+    # Before anything is provisioned: a device that cannot be opened is not a
+    # reason to install OctoPrint first.
+    claim_device(instance.connection)
     install(instance)
     chosen = free_port() if port is None else port
     claim_port(chosen)
-    claim_device(instance.connection)
 
     url = f"http://{HOST}:{chosen}"
     pid = start_server(instance, chosen)

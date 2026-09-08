@@ -35,8 +35,22 @@ from repo_checks.shell import run
 SCANNED_SUFFIXES = frozenset(
     {".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".sh", ".toml", ".yml", ".yaml", ".json", ".md"}
 )
+# Build products and provisioned environments: nothing under them is committed,
+# so a directive inside one is somebody else's source rather than a suppression
+# this repository made. `.octoprint-env` is the scripted OctoPrint environment,
+# which carries an OctoPrint install of its own.
 SKIPPED_DIRECTORIES = frozenset(
-    {".git", "target", "node_modules", ".venv", ".nx", "dist", ".ruff_cache", ".pytest_cache"}
+    {
+        ".git",
+        "target",
+        "node_modules",
+        ".venv",
+        ".nx",
+        "dist",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".octoprint-env",
+    }
 )
 
 # (pattern, whether group 1 is a comma-separated rule list)
@@ -112,7 +126,9 @@ RUFF_SUPPRESSION_KEYS = (
     "extend-per-file-ignores",
 )
 SILENCED_LEVELS = frozenset({"allow", "ignore", "off", "none"})
-CONFIG_DIRECTORIES = frozenset({".git", "target", "node_modules", ".venv", ".nx", "dist"})
+CONFIG_DIRECTORIES = frozenset(
+    {".git", "target", "node_modules", ".venv", ".nx", "dist", ".octoprint-env"}
+)
 
 
 def _load_toml(path: Path) -> dict[str, object]:
