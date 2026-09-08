@@ -302,6 +302,16 @@ and `revert` are valid subjects that release nothing. `release-plz.toml`'s
 same list by `just check-repo`. Pre-1.0 Cargo rules apply: `feat`/`fix`/`perf`
 bump the patch, `!`/`BREAKING CHANGE` bumps the minor.
 
+That rule is over subjects a *person* writes. Publishing a branch merges the base
+into it first, and git writes that merge commit's subject itself — `Merge
+remote-tracking branch 'origin/main' into <branch>`. The hook admits a subject of
+git's own merge grammar, which is the one carrying a quoted ref, and holds
+everything else — prose beginning `Merge` included — to the type list exactly as
+before. The exemption is the hook's alone: `just check-pr-title` has none, because
+a title is always typed and no merge commit reaches `main` under squash-merge.
+Without it no branch of this repository could be published once `main` had moved
+under it, which is a failure that arrives after the work is finished.
+
 **How a release happens.** `.github/workflows/release-plz.yml` fires on every
 push to `main` with no manual invocation. `release-plz release-pr` opens the
 release pull request under `RELEASE_PLZ_TOKEN` — the workflow's built-in token

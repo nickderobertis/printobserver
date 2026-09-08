@@ -86,6 +86,59 @@ def test_the_committed_hook_admits_every_declared_type(subject: str, tmp_path: P
     equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
 
 
+@pytest.mark.parametrize(
+    "generated",
+    [
+        "Merge remote-tracking branch 'origin/main' into onevcs/s-a9c7c602e4c6",
+        "Merge branch 'main' into work",
+        "Merge branch 'main'",
+        "Merge branch 'main' of https://github.com/nickderobertis/printobserver into main",
+        "Merge branches 'one' and 'two'",
+        "Merge tag 'v0.1.0'",
+        "Merge commit '709e42c'",
+    ],
+)
+def test_the_committed_hook_admits_a_subject_git_generated(generated: str, tmp_path: Path) -> None:
+    """Every shape `fmt-merge-msg` writes, because nobody typed any of them."""
+    message = tmp_path / "COMMIT_EDITMSG"
+    message.write_text(generated + "\n", encoding="utf-8")
+
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
+
+
+@pytest.mark.parametrize(
+    "authored",
+    [
+        "Merge the two configuration files by hand",
+        "Merge in what landed on main",
+        "Merged branch 'main' into work",
+    ],
+)
+def test_the_exemption_reaches_no_subject_a_person_typed(
+    authored: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Prose beginning `Merge` is authored, so the type list still rules on it."""
+    message = tmp_path / "COMMIT_EDITMSG"
+    message.write_text(authored + "\n", encoding="utf-8")
+
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 1)
+    contains(capsys.readouterr().err, "not a Conventional Commit")
+
+
+def test_a_merge_shaped_pull_request_title_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The exemption is the commit hook's alone: a title is always authored.
+
+    Under squash-merge the title becomes the subject release automation reads,
+    and no merge commit of this repository ever reaches `main` to carry one.
+    """
+    monkeypatch.setenv("PR_TITLE", "Merge remote-tracking branch 'origin/main' into work")
+
+    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+    contains(capsys.readouterr().err, "not a Conventional Commit")
+
+
 def test_the_committed_hook_refuses_an_unconventional_subject(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

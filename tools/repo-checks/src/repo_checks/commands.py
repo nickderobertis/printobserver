@@ -11,6 +11,20 @@ from repo_checks.model import Repo
 from repo_checks.shell import run
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
+# The subject git writes for itself when it makes a merge commit, which is
+# `fmt-merge-msg`'s grammar: the kind of thing merged, one or more quoted refs,
+# and the optional `of <remote>` and `into <branch>` tails. Publishing a branch
+# of this repository merges the base into it first, and git — not a person —
+# writes `Merge remote-tracking branch 'origin/main' into <branch>` for that
+# commit. Holding a subject nobody typed to Conventional Commits refused the
+# merge, so no branch could be published once `main` had moved under it.
+#
+# The quoted ref is what keeps this narrow: a subject a person authors, prose
+# beginning `Merge` included, carries none and is ruled on exactly as before.
+GENERATED_MERGE = re.compile(
+    r"^Merge (?:remote-tracking )?(?:branch|branches|commit|commits|tag|tags) "
+    r"'[^']+'(?:(?:,| and) '[^']+')*(?: of \S+)?(?: into \S+)?$"
+)
 
 
 def install_tools(repo: Repo) -> int:
@@ -38,9 +52,15 @@ def install_hooks(repo: Repo) -> int:
 
 
 def commit_msg(repo: Repo, message_file: Path) -> int:
-    """Refuse a commit subject that is not a Conventional Commit of an admitted type."""
+    """Refuse an authored commit subject that is not a Conventional Commit.
+
+    A subject git generates for a merge is not one anybody authored, so it is
+    admitted as written; everything else is held to the declared type list.
+    """
     subject = message_file.read_text(encoding="utf-8").splitlines()[0].strip()
     if subject.startswith("#") or not subject:
+        return 0
+    if GENERATED_MERGE.match(subject):
         return 0
     return _rule_on_subject(repo, subject, "commit subject")
 
