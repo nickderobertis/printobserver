@@ -318,7 +318,10 @@ just obico-down
 
 `just obico-down` stops every container the bring-up created and is worth running
 even after a failure: the bring-up stops what it started when it fails, but a
-tier interrupted between the two leaves a stack up.
+tier interrupted between the two leaves a stack up. It also hands the state
+directory back to the user who ran it before stopping anything — Obico's own
+composition bind-mounts its sources into containers that run as root, so without
+that a developer needs `sudo` to delete `.obico-env` after their own bring-down.
 
 ## The end-user install path
 

@@ -14,6 +14,8 @@ tier against the real stack, and reads it out of a body arriving there.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 from harness import (
     answer,
@@ -183,3 +185,21 @@ def test_the_bring_down_leaves_no_container_of_the_stack_running(state_dir: str)
 
     passing(brought_down, describing="the bring-down")
     equal(containers(project), [], describing="the containers of the stack still running")
+    # And it leaves a state directory its caller can delete. Obico's containers
+    # run as root over a bind mount, so without the hand-back the developer who
+    # ran `just obico-up` needs `sudo` to clean up after `just obico-down`.
+    equal(
+        _owned_by_someone_else(str(answer(brought_up)["source"])),
+        [],
+        describing="paths under the state directory this user no longer owns",
+    )
+
+
+def _owned_by_someone_else(where: str) -> list[str]:
+    """Every path under a directory that the user running this does not own."""
+    mine = os.getuid()
+    return [
+        str(path)
+        for path in sorted(Path(where).rglob("*"))
+        if not path.is_symlink() and path.stat().st_uid != mine
+    ][:10]

@@ -719,11 +719,39 @@ def up(
     return record
 
 
+def hand_back_ownership(stack: Stack) -> bool:
+    """Give the state directory back to the user who ran this, before stopping.
+
+    Obico's own composition bind-mounts its `backend` and `frontend` directories
+    into containers that run as root, so a run leaves root-owned caches, static
+    files and a database file under the state directory that the caller cannot
+    delete or even re-clone over. Handing them back is done from inside the
+    running container, because that is the only place with the privilege to.
+
+    Done before the containers are stopped, and reported rather than raised on:
+    a bring-down that refused to stop a stack because it could not chown a cache
+    would be worse than the leftovers.
+    """
+    handed = run_program(
+        stack.compose(
+            "exec", "-T", "web", "chown", "-R", f"{os.getuid()}:{os.getgid()}", "/app", "/frontend"
+        ),
+        timeout=600,
+    )
+    if handed.returncode != 0:
+        note(
+            f"could not hand {stack.source} back to uid {os.getuid()}; files the "
+            f"containers wrote as root may need `sudo` to remove"
+        )
+    return handed.returncode == 0
+
+
 def down(stack: Stack) -> dict[str, Any]:
     """Stop and remove every container this project created, leaving none running."""
     if not stack.compose_file.is_file() or not stack.override_file.is_file():
         note(f"no stack is installed under {stack.state_dir}")
         return {"state_dir": str(stack.state_dir), "project": stack.project, "stopped": False}
+    handed_back = hand_back_ownership(stack)
     stopped = run_program(
         stack.compose("down", "--remove-orphans", "--volumes"),
         timeout=1800,
@@ -734,6 +762,7 @@ def down(stack: Stack) -> dict[str, Any]:
         "state_dir": str(stack.state_dir),
         "project": stack.project,
         "stopped": stopped.returncode == 0,
+        "handed_back": handed_back,
         "said": stopped.stdout,
     }
 
