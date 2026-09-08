@@ -443,13 +443,39 @@ def install_path_section(repo: Repo) -> list[str]:
     return findings
 
 
+def _policy_strings(table: dict[str, Any], keys: tuple[str, ...], where: str) -> dict[str, str]:
+    """The named values of a policy table, each of them a non-empty string.
+
+    Raises:
+        PolicyValueError: If one is absent or carries anything else. A reader
+            taking them unnarrowed would abort the whole tier on a malformed file
+            rather than report the one thing wrong with it.
+    """
+    found: dict[str, str] = {}
+    for key in keys:
+        value = table.get(key)
+        if not isinstance(value, str) or not value.strip():
+            msg = f"`repo-policy.toml` declares no `{where}.{key}` string"
+            raise PolicyValueError(msg)
+        found[key] = value.strip()
+    return found
+
+
 def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     """Every fetch URL names this repository, its base branch and the declared path."""
-    repository = repo.policy["repository"]
-    expected = {
-        repo.policy["workflows"]["install_script_path"],
-        repo.policy["workflows"]["install_service_script_path"],
-    }
+    try:
+        repository = _policy_strings(
+            _policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
+        )
+        expected = set(
+            _policy_strings(
+                _policy_table(repo, "workflows"),
+                ("install_script_path", "install_service_script_path"),
+                "workflows",
+            ).values()
+        )
+    except PolicyValueError as error:
+        return [str(error)]
     prefix = (
         f"https://raw.githubusercontent.com/{repository['owner']}/"
         f"{repository['name']}/{repository['base_branch']}/"

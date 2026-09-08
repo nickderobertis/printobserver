@@ -143,3 +143,18 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
     result = broken.just("check-repo")
 
     failing(result, naming="job `install-route-pypi`'s matrix omits platform `linux-aarch64`")
+
+
+def test_a_policy_whose_table_is_not_a_table_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """A malformed table is a finding, not an attribute error on the way to one."""
+    broken = gate_copy()
+    # `workflows` becomes a top-level string rather than a table, which is what a
+    # reader calling `.get` on it without narrowing would trip over.
+    broken.edit(POLICY, "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n')
+    broken.edit(POLICY, "\n[workflows]\n", "\n[workflow-settings]\n")
+
+    result = broken.just("check-repo")
+
+    failing(result, naming=NO_LIST)
