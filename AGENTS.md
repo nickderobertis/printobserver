@@ -135,6 +135,26 @@ continuous-integration job of its own.
 Recipes delegate to `nx run-many` rather than looping over packages, so a new
 project joins the gate by declaring the target names every other project uses.
 
+Every recipe that reaches Nx runs `just node-modules` — the locked `bun install
+--frozen-lockfile` — before it gets there. `bunx nx` fails outright in a clone
+whose JavaScript dependencies have never been installed, and the `pre-push` hook
+runs the whole gate in exactly such a clone every time this repository is
+published from a fresh one, so the gate heals that state rather than needing a
+person to run `just bootstrap` in a directory nothing hands them. Being locked,
+the install can neither resolve nor record anything `bun.lock` does not already
+describe, and it reinstalls nothing when the tree already matches. Only the
+JavaScript side needs this, because `uv run` syncs its own environment on every
+invocation. `just check-repo` refuses a recipe that reaches Nx without it.
+
+That same path hands the gate git's own hook environment, in which `GIT_DIR`
+names the repository being pushed and everything the gate starts inherits it.
+`repo_checks.shell.run` drops the variables that name a repository, so a
+subprocess works on the directory it was given; without that, the suites that
+build repositories in temporary directories commit into the one being pushed
+instead. Both of these are proven by `tests/repo-e2e` driving the committed
+`pre-push` hook over a copy carrying neither installed dependencies nor a clean
+environment — where they fail, rather than argued about here.
+
 ## Supported platforms
 
 This is the one source both this repository's continuous-integration matrices
