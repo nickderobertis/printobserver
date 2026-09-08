@@ -401,6 +401,18 @@ the composition roots and are the only crates allowed to name an implementation.
 The roles are declared in `repo-policy.toml` and enforced by `just check-repo` —
 the boundary is not a convention, it is a check.
 
+The same rule holds one level down, over vocabulary rather than over edges:
+**`printobserver-octoprint` is the only crate that may construct an `OctoPrint`
+request.** Everything above it is written as though printers were normal, so the
+moment a second crate spells an OctoPrint path or its authentication header
+there are two places one vendor's own surface has to be kept right.
+`repo-policy.toml`'s `[octoprint]` names the permitted crate and what
+constructing such a request looks like in a Rust source; `just check-repo`
+refuses one of those markers on a line of any other crate, exempting a
+comment-only line so a crate may *say* `/api/job` while no crate but the adapter
+may *build* one — and refuses a tree in which the adapter itself constructs
+none, because a rule guarding a boundary nothing is on has stopped being a rule.
+
 ## Tests are the only QA loop
 
 Never mock the layer under test. Drive the real artifact across real boundaries
