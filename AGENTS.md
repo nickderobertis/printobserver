@@ -229,6 +229,16 @@ the three recipes, and `just check-repo` refuses a job that runs a recipe the
 set does not declare, omits the bring-up or bring-down recipe, omits a platform
 with no exclusion recorded, or is narrowed below every change.
 
+There is **one machine**, and every project's `test-integration` target drives
+it: `just test-integration` runs the adapter's tier and this environment's own
+suite against the one OctoPrint the bring-up started, and one of them cancels
+the print the other asserts is running. So `nx.json` declares `test-integration`
+unparallelisable, and a tier that acts on the print puts it back when it is
+done, leaving the environment as the bring-up recipe left it. `just check-repo`
+refuses a graph that leaves two of the tier's tasks free to run at once. It cost
+a publication to learn: the tier that failed was the one that had done nothing
+wrong, which is what a shared machine does to a diagnosis.
+
 ### Virtual printer availability
 
 Every platform the supported-platform list names for which OctoPrint's virtual

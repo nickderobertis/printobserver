@@ -74,11 +74,7 @@ def _derived_programs(repo: Repo) -> dict[str, list[str]]:
         for line in recipe.body:
             for program in programs_in(line):
                 derived.setdefault(program, []).append(f"justfile recipe `{recipe.name}`")
-    for project in sorted(repo.root.glob("**/project.json")):
-        if any(
-            part in {"node_modules", "target", ".venv", ".octoprint-env"} for part in project.parts
-        ):
-            continue
+    for project in repo.project_paths:
         data = json.loads(project.read_text(encoding="utf-8"))
         for target, spec in (data.get("targets") or {}).items():
             command = spec.get("command")

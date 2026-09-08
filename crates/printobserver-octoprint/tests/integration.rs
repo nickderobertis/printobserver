@@ -5,9 +5,14 @@
 //! printer and its hold print, which is why it is a continuous-integration job
 //! of its own.
 //!
-//! It begins by putting the hold print back if a previous run left the
-//! environment without one, so the tier is re-runnable against one instance
-//! rather than only against a freshly started one.
+//! It begins and ends by putting the hold print back. Beginning that way makes
+//! the tier re-runnable against one instance rather than only against a freshly
+//! started one. Ending that way is what keeps the *other* tier on the same
+//! machine true: `just test-integration` runs this binary and `octoprint-env`'s
+//! own suite against the one instance `just octoprint-up` started, and that
+//! suite asserts the hold print is there to be acted on. This walk cancels it,
+//! so this walk puts it back. The two tiers never run at once — `nx.json`
+//! declares `test-integration` unparallelisable, because there is one machine.
 //!
 //! It is one test rather than several, and that is the point: the journeys act
 //! on one shared machine — one of them cancels the print another is reading —
@@ -54,9 +59,10 @@ fn the_printer_port_is_proven_against_a_real_octoprint() {
         "the scripted environment states no hold"
     );
 
-    acting::ensure_the_hold_print_is_running(&instance);
+    acting::hold_the_print_running(&instance);
     reading::walk(&instance);
     reading::pin_completion(&instance);
     failing::walk(&instance);
     acting::walk(&instance);
+    acting::hold_the_print_running(&instance);
 }

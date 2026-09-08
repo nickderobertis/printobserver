@@ -26,6 +26,7 @@ use printobserver_types::{Adjustable, FileName, PrinterState};
 use crate::block_on::block_on;
 use crate::env::Scripted;
 use crate::proxy::Proxy;
+use crate::raw;
 use crate::received::Recorded;
 use crate::wait;
 
@@ -37,26 +38,55 @@ const REACHED: Duration = Duration::from_secs(90);
 
 /// The hold print is running, whatever state this environment was left in.
 ///
-/// `just octoprint-up` starts one and answers only once it is running, and the
-/// tier asserts that it did — but the tier also cancels and restarts prints, so
-/// a second run against one environment finds it where the first left it. This
-/// puts it back, through the port's own `start`, which the walk below proves
-/// separately.
+/// This runs at both ends of the tier, and each end is for a different reader.
+/// At the start it is for this tier: `just octoprint-up` starts a print and
+/// answers only once it is running, but this tier cancels and restarts prints,
+/// so a second run against one environment finds it where the first left it.
+/// At the end it is for the *other* tier on the same machine — `octoprint-env`
+/// asserts the print the bring-up recipe started is there to be acted on, and
+/// `just test-integration` runs both against the one instance, so a walk that
+/// cancelled the print and stopped there would leave that assertion false.
+///
+/// It waits on `OctoPrint`'s own word rather than on this port's, and that is
+/// the point of reading `/api/job` directly here: this port reads `Starting` as
+/// `Printing`, deliberately, while the assertion on the other side of the shared
+/// machine reads `OctoPrint`'s own state text. Waiting for the port's answer
+/// would hand that assertion a window in which the two disagree.
 ///
 /// # Panics
 ///
-/// Panics when the print cannot be started.
-pub fn ensure_the_hold_print_is_running(instance: &Scripted) {
+/// Panics when the print cannot be started, or when the instance does not say it
+/// is printing.
+pub fn hold_the_print_running(instance: &Scripted) {
     let printer = instance.printer();
-    if block_on(printer.job()).expect("a job snapshot").state == PrinterState::Printing {
-        return;
+    let state = block_on(printer.job()).expect("a job snapshot").state;
+    if state != PrinterState::Printing {
+        if state == PrinterState::Paused {
+            // `start` on a paused job is a conflict, so clear it first.
+            block_on(printer.cancel()).expect("the paused print is cancelled");
+            wait_for_job(
+                instance,
+                &PrinterState::Operational,
+                "the paused print to be cancelled",
+            );
+        }
+        block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
+            .expect("the hold print starts");
     }
-    block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
-        .expect("the hold print starts");
-    wait_for_job(
-        instance,
-        &PrinterState::Printing,
-        "the hold print to be running",
+    wait::until(
+        "OctoPrint's own job state to say the hold print is printing",
+        REACHED,
+        || {
+            let reported = raw::get(instance, "/api/job")["state"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            if reported.starts_with("Printing") {
+                Ok(())
+            } else {
+                Err(format!("`{reported}`"))
+            }
+        },
     );
 }
 
