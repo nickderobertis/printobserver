@@ -169,8 +169,10 @@ def test_a_host_that_already_carries_an_agent_installs_none(
     result = host.setup_llmlint(copy)
 
     passing(result)
-    contains(output(result), "harness `claude-code` is installed")
+    # The no-op itself first, so a detection that stopped working fails on the
+    # install it made rather than on the line it did not log.
     absent(host.npm_installs(), HARNESS_PACKAGE)
+    contains(output(result), "harness `claude-code` is installed")
 
 
 def test_the_installed_agent_reaches_the_step_that_runs_the_tier(
