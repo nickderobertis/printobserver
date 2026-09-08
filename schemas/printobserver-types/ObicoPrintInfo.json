@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "ObicoTimestamp": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "maxLength": 0,
+          "type": "string"
+        }
+      ],
+      "description": "A Unix timestamp number, or the empty string the producer sends when it has no instant to send.",
+      "title": "ObicoTimestamp"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The `print` object, which the producer sends when there is a print.",
+  "properties": {
+    "ended_at": {
+      "$ref": "#/$defs/ObicoTimestamp",
+      "description": "When the print ended."
+    },
+    "filename": {
+      "description": "The file being printed.",
+      "type": "string"
+    },
+    "id": {
+      "description": "Obico's own identifier for the print.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "started_at": {
+      "$ref": "#/$defs/ObicoTimestamp",
+      "description": "When the print started."
+    }
+  },
+  "required": [
+    "id",
+    "filename",
+    "started_at",
+    "ended_at"
+  ],
+  "title": "ObicoPrintInfo",
+  "type": "object"
+}

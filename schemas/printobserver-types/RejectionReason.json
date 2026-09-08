@@ -1,0 +1,302 @@
+{
+  "$defs": {
+    "ActionKind": {
+      "description": "One action of the closed vocabulary, named without its payload.\n\nThis is what a safety envelope grants and what a policy rejection names; the\npayload lives on [`PrintAction`] itself.",
+      "oneOf": [
+        {
+          "const": "pause",
+          "description": "Pause the print.",
+          "type": "string"
+        },
+        {
+          "const": "resume",
+          "description": "Resume the print.",
+          "type": "string"
+        },
+        {
+          "const": "cancel",
+          "description": "Cancel the print.",
+          "type": "string"
+        },
+        {
+          "const": "start_print",
+          "description": "Start a print of a named file.",
+          "type": "string"
+        },
+        {
+          "const": "set_feedrate_factor",
+          "description": "Set the feedrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_flowrate_factor",
+          "description": "Set the flowrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_tool_target_c",
+          "description": "Set a tool's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_bed_target_c",
+          "description": "Set the bed's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_fan_percent",
+          "description": "Set the fan percentage.",
+          "type": "string"
+        },
+        {
+          "const": "acknowledge_failure",
+          "description": "Acknowledge a failure event.",
+          "type": "string"
+        }
+      ]
+    },
+    "ActorClass": {
+      "description": "An actor class, which is what a safety envelope grants actions to.",
+      "oneOf": [
+        {
+          "const": "agent",
+          "description": "The supervising agent.",
+          "type": "string"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a request was refused.\n\nEach rejection is a distinct variant, so a consumer distinguishes them by\nmatching rather than by reading a message.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The value asked for is outside the range allowed for that adjustable.",
+      "properties": {
+        "out_of_bounds": {
+          "additionalProperties": false,
+          "properties": {
+            "adjustable": {
+              "$ref": "#/$defs/Adjustable",
+              "description": "The adjustable that was asked for."
+            },
+            "allowed": {
+              "$ref": "#/$defs/Range",
+              "description": "The range that was allowed."
+            },
+            "requested": {
+              "description": "The value that was asked for.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "adjustable",
+            "requested",
+            "allowed"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "out_of_bounds"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "This actor class may not request this action at all.",
+      "properties": {
+        "actor_may_not_request": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/ActionKind",
+              "description": "The action they asked for."
+            },
+            "actor_class": {
+              "$ref": "#/$defs/ActorClass",
+              "description": "The class of the actor that asked."
+            }
+          },
+          "required": [
+            "actor_class",
+            "action"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "actor_may_not_request"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "no_active_print",
+      "description": "There is no active print to act on.",
+      "type": "string"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The printer is not in a state this action is valid from.",
+      "properties": {
+        "invalid_from_state": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/PrinterState",
+              "description": "The state the printer is in."
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "invalid_from_state"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The agent's minimum interval has not elapsed.",
+      "properties": {
+        "min_interval_not_elapsed": {
+          "additionalProperties": false,
+          "properties": {
+            "interval_s": {
+              "description": "The minimum interval, in whole seconds.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "since_last_s": {
+              "description": "How long it has been since the last agent action, in whole seconds.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "interval_s",
+            "since_last_s"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "min_interval_not_elapsed"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The adjustable is not one this printer has.",
+      "properties": {
+        "unsupported_adjustable": {
+          "additionalProperties": false,
+          "properties": {
+            "adjustable": {
+              "$ref": "#/$defs/Adjustable",
+              "description": "The adjustable this printer cannot express."
+            }
+          },
+          "required": [
+            "adjustable"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "unsupported_adjustable"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "RejectionReason"
+}

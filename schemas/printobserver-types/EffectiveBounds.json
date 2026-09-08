@@ -1,0 +1,45 @@
+{
+  "$defs": {
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
+  "properties": {
+    "allowed": {
+      "additionalProperties": false,
+      "description": "The range each adjustable may be set to, inclusive.",
+      "patternProperties": {
+        "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+          "$ref": "#/$defs/Range"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "allowed"
+  ],
+  "title": "EffectiveBounds",
+  "type": "object"
+}

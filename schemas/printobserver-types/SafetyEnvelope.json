@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "ActionKind": {
+      "description": "One action of the closed vocabulary, named without its payload.\n\nThis is what a safety envelope grants and what a policy rejection names; the\npayload lives on [`PrintAction`] itself.",
+      "oneOf": [
+        {
+          "const": "pause",
+          "description": "Pause the print.",
+          "type": "string"
+        },
+        {
+          "const": "resume",
+          "description": "Resume the print.",
+          "type": "string"
+        },
+        {
+          "const": "cancel",
+          "description": "Cancel the print.",
+          "type": "string"
+        },
+        {
+          "const": "start_print",
+          "description": "Start a print of a named file.",
+          "type": "string"
+        },
+        {
+          "const": "set_feedrate_factor",
+          "description": "Set the feedrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_flowrate_factor",
+          "description": "Set the flowrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_tool_target_c",
+          "description": "Set a tool's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_bed_target_c",
+          "description": "Set the bed's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_fan_percent",
+          "description": "Set the fan percentage.",
+          "type": "string"
+        },
+        {
+          "const": "acknowledge_failure",
+          "description": "Acknowledge a failure event.",
+          "type": "string"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Server configuration: what any actor may ask for at all.\n\nThis is the operator's safety envelope. It is a different contract from the\nplausibility ranges [`Reported`](crate::Reported) fields carry, is narrower\nby orders of magnitude, and the two are never intersected, compared or\nsubstituted for one another.",
+  "properties": {
+    "actions": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/ActionKind"
+        },
+        "type": "array"
+      },
+      "description": "The actions each actor class may request at all.",
+      "type": "object"
+    },
+    "agent_min_interval_s": {
+      "description": "The minimum interval between agent actions, in whole seconds.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "allowed": {
+      "additionalProperties": false,
+      "description": "The range each adjustable may be set to, inclusive.",
+      "patternProperties": {
+        "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+          "$ref": "#/$defs/Range"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "allowed",
+    "actions",
+    "agent_min_interval_s"
+  ],
+  "title": "SafetyEnvelope",
+  "type": "object"
+}

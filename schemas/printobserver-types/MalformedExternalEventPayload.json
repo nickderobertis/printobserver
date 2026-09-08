@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An external body arrived that could not be read.\n\nThis kind always carries its `raw` bytes, and it exists so that an alert\nthis system cannot read is written down rather than dropped.",
+  "properties": {
+    "detail": {
+      "description": "One line saying why the body could not be read.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "detail"
+  ],
+  "title": "MalformedExternalEventPayload",
+  "type": "object"
+}

@@ -40,6 +40,7 @@ CHECKS: dict[str, Check] = {
     "agent-layer": checks_repo.agent_layer,
     "command-allowlist": checks_repo.command_allowlist,
     "recipes": checks_repo.recipe_set,
+    "node-install": checks_repo.node_install,
     "workspace": checks_repo.workspace,
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,

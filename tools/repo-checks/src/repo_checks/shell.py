@@ -1,7 +1,7 @@
 """The one place in this repository that starts a subprocess.
 
 Every check, command and test helper runs external programs through `run`
-below, and two things follow from there being exactly one such place.
+below, and three things follow from there being exactly one such place.
 
 `S607` — starting a process from a partial path — is *fixed* rather than
 suppressed: the executable is resolved against PATH with `shutil.which` and run
@@ -10,16 +10,51 @@ by absolute path, so no caller can reintroduce the finding.
 `S603` fires on the `subprocess.run` call itself whatever it runs, and no code
 change silences it. Funnelling every caller here leaves it one reviewable site
 carrying one allowlist entry, instead of one at every call in the tree.
+
+The third thing that follows is the ambient-git repair below: a subprocess
+started here runs on the directory it was given, whatever repository the
+caller's own environment happens to name.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 # The exit status a shell reports for a command it could not find.
 PROGRAM_NOT_FOUND = 127
+
+# The variables git exports into a hook's environment. Every one of them *names*
+# a repository rather than describing one, so a process that inherits them works
+# on that repository however its own `cwd` was set.
+#
+# This repository's `pre-push` hook runs the whole gate, so git hands `GIT_DIR`
+# to every check, suite and journey the gate starts — and the suites init real
+# repositories in temporary directories and commit to them. Inherited, those
+# commits land in the repository being pushed instead, which is a defect that
+# only ever appears on the enforcement path and never when the same suite is run
+# by hand.
+GIT_LOCATION_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_NAMESPACE",
+    "GIT_PREFIX",
+    "GIT_QUARANTINE_PATH",
+)
+
+
+def without_ambient_git(environment: Mapping[str, str]) -> dict[str, str]:
+    """`environment` minus every variable that names a repository."""
+    return {
+        name: value for name, value in environment.items() if name not in GIT_LOCATION_VARIABLES
+    }
 
 
 def run(
@@ -37,7 +72,10 @@ def run(
         argv: The program and its arguments. Never a shell string — nothing here
             runs through a shell, so no argument can be interpreted as one.
         cwd: The directory to run in.
-        env: The environment to run under, or the caller's when omitted.
+        env: The environment to run under, or the caller's when omitted. Either
+            way the variables naming a git repository are dropped, so the
+            program works on `cwd` rather than on the repository a `pre-push`
+            hook was pushing.
         timeout: Seconds to wait before giving up.
         check: Raise on a non-zero exit rather than returning it.
         capture: Collect the output, or let it reach the caller's terminal when
@@ -60,7 +98,7 @@ def run(
     return subprocess.run(  # noqa: S603
         [program, *argv[1:]],
         cwd=cwd,
-        env=env,
+        env=without_ambient_git(os.environ if env is None else env),
         timeout=timeout,
         capture_output=capture,
         text=True,

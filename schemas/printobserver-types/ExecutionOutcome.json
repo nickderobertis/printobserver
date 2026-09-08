@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What happened when an accepted action reached the printer.",
+  "oneOf": [
+    {
+      "const": "succeeded",
+      "description": "The printer took it.",
+      "type": "string"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The printer did not, for this reason.",
+      "properties": {
+        "failed": {
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "description": "Why it failed.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "failed"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ExecutionOutcome"
+}

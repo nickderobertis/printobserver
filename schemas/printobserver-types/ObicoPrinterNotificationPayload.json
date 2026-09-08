@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "ObicoNotificationType": {
+      "description": "The kind of printer notification Obico sent, normalized.",
+      "oneOf": [
+        {
+          "const": "started",
+          "description": "A print started.",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "A print finished.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "A print was cancelled.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "A print was paused.",
+          "type": "string"
+        },
+        {
+          "const": "resumed",
+          "description": "A print was resumed.",
+          "type": "string"
+        },
+        {
+          "const": "filament_change",
+          "description": "The printer is waiting for a filament change.",
+          "type": "string"
+        },
+        {
+          "const": "heater_cooled",
+          "description": "A heater cooled down.",
+          "type": "string"
+        },
+        {
+          "const": "heater_target",
+          "description": "A heater reached its target.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Obico sent a printer notification.",
+  "properties": {
+    "file_name": {
+      "description": "The file being printed, when the notification is about one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notification_type": {
+      "$ref": "#/$defs/ObicoNotificationType",
+      "description": "Which notification it is."
+    },
+    "obico_print_id": {
+      "description": "Obico's own identifier for the print, when the notification is about one.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "notification_type"
+  ],
+  "title": "ObicoPrinterNotificationPayload",
+  "type": "object"
+}

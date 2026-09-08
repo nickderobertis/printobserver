@@ -132,8 +132,38 @@ The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
 continuous-integration job of its own.
 
+That tier needs the *harness* as well as its credential, and the two are not the
+same thing. `llmlint` and `oneharness` drive a separate agent binary that
+neither of them carries, so on a host with none — a runner, where nothing else
+installs an agent — oneharness skips every candidate in `oneharness.toml`'s
+chain as uninstalled and the tier errors having judged nothing. It reads as a
+broken toolchain rather than as a missing agent, and on a push to `main` it
+hides completely, because that diff is empty and no rule runs to need one. So
+`just setup-llmlint` installs an agent when the host carries none, and asks
+`oneharness` which ones would count rather than restating the chain.
+
 Recipes delegate to `nx run-many` rather than looping over packages, so a new
 project joins the gate by declaring the target names every other project uses.
+
+Every recipe that reaches Nx runs `just node-modules` — the locked `bun install
+--frozen-lockfile` — before it gets there. `bunx nx` fails outright in a clone
+whose JavaScript dependencies have never been installed, and the `pre-push` hook
+runs the whole gate in exactly such a clone every time this repository is
+published from a fresh one, so the gate heals that state rather than needing a
+person to run `just bootstrap` in a directory nothing hands them. Being locked,
+the install can neither resolve nor record anything `bun.lock` does not already
+describe, and it reinstalls nothing when the tree already matches. Only the
+JavaScript side needs this, because `uv run` syncs its own environment on every
+invocation. `just check-repo` refuses a recipe that reaches Nx without it.
+
+That same path hands the gate git's own hook environment, in which `GIT_DIR`
+names the repository being pushed and everything the gate starts inherits it.
+`repo_checks.shell.run` drops the variables that name a repository, so a
+subprocess works on the directory it was given; without that, the suites that
+build repositories in temporary directories commit into the one being pushed
+instead. Both of these are proven by `tests/repo-e2e` driving the committed
+`pre-push` hook over a copy carrying neither installed dependencies nor a clean
+environment — where they fail, rather than argued about here.
 
 ## Supported platforms
 
@@ -330,6 +360,21 @@ and `revert` are valid subjects that release nothing. `release-plz.toml`'s
 same list by `just check-repo`. Pre-1.0 Cargo rules apply: `feat`/`fix`/`perf`
 bump the patch, `!`/`BREAKING CHANGE` bumps the minor.
 
+That rule is over subjects a *person* writes. Publishing a branch merges the base
+into it first, and git writes that merge commit's subject itself — `Merge
+remote-tracking branch 'origin/main' into <branch>`. The hook admits that commit
+by its **state** rather than by its wording: `MERGE_HEAD` is in the git directory
+exactly while git is completing a merge, and absent for an ordinary commit
+whatever its subject says. Do not read the subject instead — `Merge branch 'main'`
+typed by a person is textually identical to what git writes, so a rule matching
+the wording hands anybody a bypass of the whole convention by typing one word. A
+subject somebody types is held to the type list exactly as before, that wording
+included. The exemption is the hook's alone: `just check-pr-title` has none,
+because a title is always typed and no merge commit reaches `main` under
+squash-merge. Without it no branch of this repository could be published once
+`main` had moved under it, which is a failure that arrives after the work is
+finished.
+
 **How a release happens.** `.github/workflows/release-plz.yml` fires on every
 push to `main` with no manual invocation. `release-plz release-pr` opens the
 release pull request under `RELEASE_PLZ_TOKEN` — the workflow's built-in token
@@ -368,6 +413,14 @@ gate: it runs `just bootstrap` in a fresh copy carrying no build products, and
 it assembles copies of the tree carrying one defect each and asserts the gate
 refuses each one. Those copies omit `tests/repo-e2e` itself, because a gate that
 ran the suite that runs the gate could not terminate.
+
+A defect that has to *outweigh* the tree is computed from what the copy measures
+rather than written down. The coverage journey sizes its block of uncovered Rust
+from the Rust its copy will carry, and it proves that sizing by running over a
+copy grown by a substantial well-covered block as well as over the tree as it
+stands. A fixed block stopped sinking the tree the moment a few well-covered
+crates landed, and a journey that can no longer make the floor fail has stopped
+checking that the floor is enforced at all.
 
 ## Suppressions
 

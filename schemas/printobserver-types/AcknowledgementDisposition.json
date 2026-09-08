@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What an operator's acknowledgement of a failure event asks for next.",
+  "oneOf": [
+    {
+      "const": "continue",
+      "description": "Carry on printing.",
+      "type": "string"
+    },
+    {
+      "const": "watch",
+      "description": "Carry on printing, watched more closely.",
+      "type": "string"
+    },
+    {
+      "const": "stop",
+      "description": "Stop the print.",
+      "type": "string"
+    }
+  ],
+  "title": "AcknowledgementDisposition"
+}

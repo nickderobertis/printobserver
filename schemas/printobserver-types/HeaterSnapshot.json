@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
+  "properties": {
+    "actual_c": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The temperature the heater is at."
+    },
+    "offset_c": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The offset applied to this heater's target."
+    },
+    "target_c": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reported"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The temperature the heater is driving towards."
+    }
+  },
+  "title": "HeaterSnapshot",
+  "type": "object"
+}

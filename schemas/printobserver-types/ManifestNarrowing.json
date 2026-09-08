@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One adjustable whose manifest range was wider than the envelope's.",
+  "properties": {
+    "adjustable": {
+      "$ref": "#/$defs/Adjustable",
+      "description": "The adjustable that was narrowed."
+    },
+    "applied": {
+      "$ref": "#/$defs/Range",
+      "description": "The range that stands."
+    },
+    "requested": {
+      "$ref": "#/$defs/Range",
+      "description": "The range the manifest asked for."
+    }
+  },
+  "required": [
+    "adjustable",
+    "requested",
+    "applied"
+  ],
+  "title": "ManifestNarrowing",
+  "type": "object"
+}
