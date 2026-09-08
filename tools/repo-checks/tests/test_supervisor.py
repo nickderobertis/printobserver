@@ -1,9 +1,15 @@
-"""The supervisor adapter's three structural claims, each driven against a defect.
+"""The supervisor adapter's structural claims, each driven against a defect.
 
 Every journey drives the committed check against a real copy of the committed
 tree with one defect in it. The spawn journeys matter most: the fixture crate
 they add spawns an executable whose name it *computes*, which is exactly the
 path a rule keyed on the word `oneharness` would let through.
+
+The journeys after them are about the artifacts these checks read rather than
+about the rules: what each check says when the policy, the crate, the template,
+the skill or a generated schema is absent or unreadable. A check that crashed
+there would fail the gate with a traceback instead of with what is missing, and
+one that returned nothing would pass over a tree its rule has no subject in.
 """
 
 from __future__ import annotations
@@ -202,3 +208,151 @@ def test_a_lock_only_one_suite_takes_is_refused(tree: Callable[[], Tree]) -> Non
         policy.replace(f'    "{holders[1]}",\n', "", 1),
     )
     refused(schema_lock(copy.repo), "fewer than two")
+
+
+POLICY = "repo-policy.toml"
+SKILL = f"{CRATE}/assets/printobserver-skill.md"
+
+
+def _without_the_supervisor_section(copy: Tree) -> None:
+    """Drop the `[supervisor]` policy all four checks are declared by."""
+    text = copy.read(POLICY)
+    start = text.index("[supervisor]")
+    end = text.index("[octoprint]")
+    copy.write(POLICY, text[:start] + text[end:])
+
+
+def test_every_check_says_so_when_the_policy_declares_no_supervisor(
+    tree: Callable[[], Tree],
+) -> None:
+    """A rule with no subject is refused rather than passing over nothing."""
+    copy = tree()
+    _without_the_supervisor_section(copy)
+    repo = copy.repo
+
+    for findings in (
+        spawn_free(repo),
+        schema_source(repo),
+        prompt_template(repo),
+        schema_lock(repo),
+    ):
+        refused(findings, "declares no `[supervisor]` section")
+
+
+def test_an_adapter_crate_with_no_sources_is_refused(tree: Callable[[], Tree]) -> None:
+    """A spawn rule over a crate with nothing to read guards nothing."""
+    copy = tree()
+    copy.remove(f"{CRATE}/src")
+
+    refused(spawn_free(copy.repo), "no `src` directory")
+
+
+def test_a_tree_without_the_generated_assessment_schema_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """With the artifact absent, nothing constrains the agent's answer."""
+    copy = tree()
+    copy.remove(ASSESSMENT_SCHEMA)
+
+    refused(schema_source(copy.repo), "is absent, so nothing")
+
+
+def test_json_the_crate_carries_that_is_not_a_schema_is_left_alone(
+    tree: Callable[[], Tree],
+) -> None:
+    """The rule is about schemas, so ordinary and unreadable JSON pass it."""
+    copy = tree()
+    copy.write(f"{CRATE}/fixtures/truncated.json", '{"$defs": ')
+    copy.write(f"{CRATE}/fixtures/arms.json", '["pause_print", "cancel_print"]')
+    copy.write(f"{CRATE}/fixtures/settings.json", json.dumps({"timeout_seconds": 30}))
+
+    accepted(
+        schema_source(copy.repo),
+        describing="a crate carrying JSON that is not a schema",
+    )
+
+
+def test_a_generated_schema_under_the_crate_s_build_directory_is_left_alone(
+    tree: Callable[[], Tree],
+) -> None:
+    """`target` holds what a build wrote, not what the crate carries."""
+    copy = tree()
+    copy.write(f"{CRATE}/target/debug/AgentAssessment.json", copy.read(ASSESSMENT_SCHEMA))
+
+    accepted(
+        schema_source(copy.repo),
+        describing="a schema a build left under the crate's target directory",
+    )
+
+
+def test_a_tree_without_the_committed_skill_is_refused(tree: Callable[[], Tree]) -> None:
+    """The system prompt is read from the tree, so the tree has to carry it."""
+    copy = tree()
+    copy.remove(SKILL)
+
+    refused(prompt_template(copy.repo), "the committed skill")
+
+
+def test_a_context_read_the_reads_do_not_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """The one operation the template may name has to be one of the reads."""
+    copy = tree()
+    copy.edit(POLICY, 'context_read = "context"', 'context_read = "diagnose"')
+
+    refused(prompt_template(copy.repo), "which its `reads` do not")
+
+
+def test_a_tree_without_the_committed_template_is_refused(tree: Callable[[], Tree]) -> None:
+    """What a prompt may say is one committed file, and a missing one says anything."""
+    copy = tree()
+    copy.remove(TEMPLATE)
+
+    refused(prompt_template(copy.repo), "prompt template")
+
+
+def test_a_tree_without_the_action_vocabulary_is_refused(tree: Callable[[], Tree]) -> None:
+    """The forbidden set is derived from that artifact, so its absence is a hole."""
+    copy = tree()
+    copy.remove(ACTION_SCHEMA)
+
+    refused(prompt_template(copy.repo), "is absent")
+
+
+def test_an_action_vocabulary_that_is_not_json_is_refused(tree: Callable[[], Tree]) -> None:
+    """A vocabulary nothing can parse derives no set, and says so."""
+    copy = tree()
+    copy.write(ACTION_SCHEMA, '{"oneOf": [')
+
+    refused(prompt_template(copy.repo), "is not JSON")
+
+
+def test_an_action_vocabulary_whose_arms_name_no_variant_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Arms that tag nothing are a vocabulary that declares nothing."""
+    copy = tree()
+    copy.write(ACTION_SCHEMA, json.dumps({"oneOf": [{"type": "object", "properties": {}}]}))
+
+    refused(prompt_template(copy.repo), "declares no variants")
+
+
+def test_an_arm_naming_no_variant_does_not_hide_the_ones_that_do(
+    tree: Callable[[], Tree],
+) -> None:
+    """One unreadable arm narrows the derived set by itself and nothing else."""
+    copy = tree()
+    schema = json.loads(copy.read(ACTION_SCHEMA))
+    variant = schema["oneOf"][0]["properties"]["action"]["const"]
+    schema["oneOf"].insert(0, {"type": "object", "properties": {}})
+    copy.write(ACTION_SCHEMA, json.dumps(schema, indent=2))
+    copy.append(TEMPLATE, f"\n\nThen run `printobserver {variant}`.\n")
+
+    refused(prompt_template(copy.repo), f"printobserver {variant}")
+
+
+def test_a_declared_holder_that_is_absent_is_refused(tree: Callable[[], Tree]) -> None:
+    """A holder that is not in the tree takes no lock at all."""
+    copy = tree()
+    holder = _holders(copy)[0]
+    copy.remove(holder)
+
+    refused(schema_lock(copy.repo), "declared schema-lock holder")
