@@ -75,6 +75,12 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
+# What a matrix cell substitutes into a job's name. GitHub evaluates the
+# expression per cell, so this is what turns one declared name into one status
+# context per platform.
+MATRIX_EXPRESSION = re.compile(r"\$\{\{\s*matrix\.platform\.(?P<key>[A-Za-z0-9_-]+)\s*\}\}")
+
+
 class JobKind(StrEnum):
     """What a workflow job is, judged by what its own steps run.
 
@@ -151,6 +157,54 @@ def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> JobKi
     if any(command in path.canonical for command in commands):
         return JobKind.INSTALL
     return JobKind.OTHER
+
+
+@dataclass(frozen=True, slots=True)
+class StatusContext:
+    """One check run a workflow reports, under the name it reports it by.
+
+    That name — not the job's key — is what a branch-protection rule requires,
+    so it is what `AGENTS.md`'s required-checks record has to name.
+    """
+
+    name: str
+    file: str
+    job: str
+    kind: JobKind
+
+
+def _substituted(base: str, entry: dict[str, Any]) -> str:
+    """A job's declared name with one matrix cell's own values put into it."""
+    return MATRIX_EXPRESSION.sub(lambda found: str(entry.get(found["key"], "")), base)
+
+
+def _context_names(job_name: str, job: dict[str, Any]) -> list[str]:
+    """The check-run name each of a job's cells reports under.
+
+    GitHub names a check run after the job's `name` where it sets one and after
+    the job's key otherwise, substituting the cell's own matrix values into it. A
+    matrixed job whose name interpolates none of them therefore reports every
+    cell under one repeated name, which this returns as the repetition it is
+    rather than collapsing.
+    """
+    declared = job.get("name")
+    base = declared if isinstance(declared, str) and declared else job_name
+    entries = _matrix_platforms(job)
+    if entries is None:
+        return [base]
+    return [_substituted(base, entry) for entry in entries]
+
+
+def status_contexts(repo: Repo) -> list[StatusContext]:
+    """Every check run the committed workflows report, one per matrix cell."""
+    path = ip.parse(repo.agents_md)
+    bring_up = _bring_up_command(repo)
+    return [
+        StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up))
+        for file_name, workflow in _workflows(repo).items()
+        for job_name, job in jobs_of(workflow).items()
+        for name in _context_names(job_name, job)
+    ]
 
 
 def platforms(repo: Repo) -> list[str]:
@@ -457,7 +511,7 @@ def _install_job_findings(
 
 
 def merge_model(repo: Repo) -> list[str]:
-    """Every job `AGENTS.md` records as required is a job the configuration declares."""
+    """Every check `AGENTS.md` records as required is one the configuration reports."""
     try:
         required = [
             line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")
@@ -469,26 +523,42 @@ def merge_model(repo: Repo) -> list[str]:
     if not required:
         findings.append("AGENTS.md records no required check at all")
 
-    path = ip.parse(repo.agents_md)
-    bring_up = _bring_up_command(repo)
-    declared: dict[str, str] = {}
-    kinds: dict[str, JobKind] = {}
-    for file_name, workflow in _workflows(repo).items():
-        for job_name, job in jobs_of(workflow).items():
-            declared[job_name] = file_name
-            kinds[job_name] = _job_kind(job, path, bring_up)
+    reported = status_contexts(repo)
+    by_name: dict[str, list[StatusContext]] = {}
+    for context in reported:
+        by_name.setdefault(context.name, []).append(context)
 
     findings.extend(
         f"AGENTS.md records `{name}` as a required check, but no committed workflow "
-        f"declares a job by that name"
+        f"reports a status context by that name; the names they report are "
+        f"{', '.join(f'`{one}`' for one in sorted(by_name))}"
         for name in required
-        if name not in declared
+        if name not in by_name
+    )
+    findings.extend(
+        f"AGENTS.md records `{name}` as a required check, but {len(by_name[name])} "
+        f"matrix cells of job `{by_name[name][0].job}` report under that one name, so "
+        f"a rule requiring it cannot say which of them was green"
+        for name in required
+        if name in by_name and len(by_name[name]) > 1
+    )
+    # Every context a required job reports is required too: a gate required on
+    # one platform and not the other is a merge path the other never blocked.
+    required_jobs = {
+        (context.file, context.job) for name in required for context in by_name.get(name, [])
+    }
+    findings.extend(
+        f"AGENTS.md records some but not all of job `{context.job}`'s status contexts as "
+        f"required: `{context.name}` is not one of them, so a change could merge with "
+        f"that cell red"
+        for context in sorted(set(reported), key=lambda one: one.name)
+        if (context.file, context.job) in required_jobs and context.name not in required
     )
     for kind, label in (
         (JobKind.GATE, "complete-gate"),
         (JobKind.LLMLINT, "judged-lint"),
     ):
-        if not any(kinds.get(name) == kind for name in required):
+        if not any(context.kind == kind for name in required for context in by_name.get(name, [])):
             findings.append(f"AGENTS.md's required checks omit the {label} job")
 
     if "takes no direct push" not in repo.agents_md:

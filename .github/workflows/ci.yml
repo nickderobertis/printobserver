@@ -23,7 +23,10 @@ concurrency:
 
 jobs:
   gate:
-    name: gate
+    # The cell's platform is in the name because that name is the status context
+    # a branch-protection rule names: two cells reporting under one name are two
+    # check runs the rule cannot tell apart, so it cannot require both.
+    name: gate (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
       matrix:

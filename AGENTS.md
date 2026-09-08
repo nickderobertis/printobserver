@@ -347,15 +347,23 @@ The pull request title becomes the squash subject, which is the commit release
 automation reads, so it is linted against Conventional Commits as a required
 check.
 
-The jobs required to be green before a pull request can merge:
+The status contexts required to be green before a pull request can merge. These
+are **check-run names, not job keys**: a branch-protection rule names a check by
+the name GitHub reports it under, and a matrixed job reports one check run per
+cell. That is why the gate appears twice — its `name` carries the cell's platform
+so the two are distinguishable — and why the judged tier appears once, with no
+platform in its name at all.
 
 [//]: # (BEGIN required-checks)
-- `gate`
+- `gate (linux-x86_64)`
+- `gate (linux-aarch64)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)
 
-`just check-repo` refuses a required name with no job behind it. Applying these
+`just check-repo` derives the contexts the committed workflows report and refuses
+a required name none of them reports, one that several cells report under at
+once, and a job with some of its cells required and some not. Applying these
 settings to the repository itself is a person's action through GitHub — it needs
 these jobs to exist first — and is tracked as its own task of this plan.
 

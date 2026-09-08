@@ -1,4 +1,11 @@
-"""The recorded merge model names jobs the configuration actually declares."""
+"""The recorded merge model names the status contexts the workflows report.
+
+A branch-protection rule names a check by the name GitHub reports it under, not
+by the job's key: a matrixed job reports one check run per cell, each carrying
+that cell's own name. So every journey here compares the record against the
+contexts derived from the committed workflows, and a record naming a job key a
+matrix has moved past is refused.
+"""
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
@@ -7,14 +14,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from repo_checks.checks_ci import merge_model
-from repo_checks.expect import absent, accepted, contains, equal, refused, truth
+from repo_checks.checks_ci import merge_model, status_contexts
+from repo_checks.expect import absent, accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, marker_block
+from repo_checks.parsing import marker_block
 from treecopy import Tree
 
 BLOCK_START = "[//]: # (BEGIN required-checks)"
 BLOCK_END = "[//]: # (END required-checks)"
+CI = ".github/workflows/ci.yml"
+QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
+# The two contexts the gate reports, which is what the record has to name.
+GATE_CELLS = ("gate (linux-x86_64)", "gate (linux-aarch64)")
 
 
 def _required(repo: Repo) -> list[str]:
@@ -22,32 +33,36 @@ def _required(repo: Repo) -> list[str]:
     return [line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")]
 
 
-def _matrix_by_job(repo: Repo) -> dict[str, bool]:
-    """Every job every committed workflow declares, and whether it carries a matrix.
-
-    A job with a platform matrix reports one status context per cell, each
-    suffixed with that cell, so its bare name is a context nothing reports.
-    """
-    found: dict[str, bool] = {}
-    for path in repo.workflow_paths:
-        for name, job in jobs_of(load_workflow(path)).items():
-            found[name] = "strategy" in job
-    return found
-
-
 def test_the_committed_record_is_accepted(committed: Repo) -> None:
-    """Every required name has a job behind it."""
+    """Every required name is a context the committed workflows report."""
     accepted(merge_model(committed))
 
 
-def test_every_required_name_is_a_job_the_workflows_declare(committed: Repo) -> None:
+def test_every_required_name_is_a_context_the_workflows_report(committed: Repo) -> None:
     """A required context nothing reports would block every change forever."""
-    declared = _matrix_by_job(committed)
+    reported = [context.name for context in status_contexts(committed)]
     required = _required(committed)
 
     truth(required, describing="a non-empty record of required checks")
     for name in required:
-        contains(declared, name, describing="the jobs the committed workflows declare")
+        contains(reported, name, describing="the contexts the committed workflows report")
+        equal(
+            reported.count(name),
+            1,
+            describing=f"the number of check runs reporting under `{name}`",
+        )
+
+
+def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> None:
+    """Two cells, two distinguishable contexts, and the record names both."""
+    required = _required(committed)
+    gate = [name for name in required if name.startswith("gate")]
+
+    equal(
+        sorted(gate),
+        ["gate (linux-aarch64)", "gate (linux-x86_64)"],
+        describing="the gate entries of the required record",
+    )
 
 
 def test_the_judged_tier_is_required_once_under_a_name_carrying_no_platform(
@@ -60,10 +75,54 @@ def test_the_judged_tier_is_required_once_under_a_name_carrying_no_platform(
     equal(judged, ["llmlint"], describing="the judged-lint entries of the required record")
     for platform in ("linux-x86_64", "linux-aarch64", "ubuntu-24.04"):
         absent(judged[0], platform, describing="the judged-lint required check's name")
-    truth(
-        not _matrix_by_job(committed)[judged[0]],
-        describing="the judged-lint job to declare no matrix, so its bare name is its context",
-    )
+
+
+def test_a_stale_bare_matrix_job_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """`gate` is the job's key; the cells report under names carrying the platform."""
+    broken = tree()
+    _replace_required(broken, ["gate", "llmlint", "pr-title"])
+
+    findings = merge_model(broken.repo)
+
+    refused_naming(findings, "`gate` as a required check", "reports a status context")
+
+
+def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A gate required on one platform is a merge path the other never blocked."""
+    broken = tree()
+    _replace_required(broken, ["gate (linux-x86_64)", "llmlint", "pr-title"])
+
+    findings = merge_model(broken.repo)
+
+    refused_naming(findings, "some but not all", "gate (linux-aarch64)")
+
+
+def test_a_matrix_job_whose_cells_share_one_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Two check runs under one name are two a rule requiring it cannot tell apart."""
+    broken = tree()
+    broken.edit(CI, QUALIFIED, "    name: gate\n")
+    _replace_required(broken, ["gate", "llmlint", "pr-title"])
+
+    findings = merge_model(broken.repo)
+
+    refused_naming(findings, "2 matrix cells of job `gate`", "which of them was green")
+
+
+def test_the_derived_contexts_follow_the_names_the_workflow_declares(
+    tree: Callable[[], Tree],
+) -> None:
+    """The contexts are derived from the workflow, not restated beside it."""
+    renamed = tree()
+    renamed.edit(CI, QUALIFIED, "    name: build-${{ matrix.platform.id }}\n")
+
+    reported = {context.name for context in status_contexts(renamed.repo)}
+
+    contains(reported, "build-linux-aarch64", describing="the derived contexts")
+    absent(reported, "gate (linux-aarch64)", describing="the derived contexts")
 
 
 def _replace_required(tree: Tree, names: list[str]) -> None:
@@ -79,11 +138,11 @@ def test_a_required_name_with_no_job_behind_it_is_refused(
 ) -> None:
     """A required context nothing reports blocks every pull request forever."""
     broken = tree()
-    _replace_required(broken, ["gate", "llmlint", "pr-title", "smoke"])
+    _replace_required(broken, [*GATE_CELLS, "llmlint", "pr-title", "smoke"])
 
     findings = merge_model(broken.repo)
 
-    refused(findings, "no committed workflow declares a job")
+    refused_naming(findings, "`smoke` as a required check", "reports a status context")
 
 
 def test_a_record_naming_no_required_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -111,7 +170,7 @@ def test_a_record_omitting_the_judged_lint_job_is_refused(
 ) -> None:
     """So is the judged-lint job."""
     broken = tree()
-    _replace_required(broken, ["gate", "pr-title"])
+    _replace_required(broken, [*GATE_CELLS, "pr-title"])
 
     findings = merge_model(broken.repo)
 
