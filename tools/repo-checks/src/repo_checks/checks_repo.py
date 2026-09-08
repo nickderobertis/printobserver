@@ -6,7 +6,7 @@ import json
 import tomllib
 from typing import Any
 
-from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
+from repo_checks.model import Repo
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     marker_block,
@@ -74,9 +74,7 @@ def _derived_programs(repo: Repo) -> dict[str, list[str]]:
         for line in recipe.body:
             for program in programs_in(line):
                 derived.setdefault(program, []).append(f"justfile recipe `{recipe.name}`")
-    for project in sorted(repo.root.glob("**/project.json")):
-        if UNCOMMITTED_DIRECTORIES & set(project.relative_to(repo.root).parts):
-            continue
+    for project in repo.project_paths:
         data = json.loads(project.read_text(encoding="utf-8"))
         for target, spec in (data.get("targets") or {}).items():
             command = spec.get("command")
@@ -277,4 +275,47 @@ def workspace(repo: Repo) -> list[str]:
                 f"no implementation crate may depend on another"
                 for edge in sorted(edges & implementations - {name})
             )
+    return findings
+
+
+def octoprint_client(repo: Repo) -> list[str]:
+    """Only one crate constructs an OctoPrint request."""
+    policy = repo.policy.get("octoprint")
+    if not policy:
+        return ["`repo-policy.toml` declares no `[octoprint]` section"]
+    permitted = str(policy["crate"])
+    markers = [str(marker) for marker in policy["request_markers"]]
+    if not markers:
+        return ["`repo-policy.toml` names no marker of an OctoPrint request"]
+
+    findings: list[str] = []
+    if permitted not in repo.crate_names:
+        return [
+            f"`repo-policy.toml` permits crate `{permitted}` to construct an OctoPrint "
+            f"request, which the workspace does not hold"
+        ]
+
+    found_in_permitted = False
+    for directory in repo.crate_dirs:
+        for path in sorted(directory.rglob("*.rs")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                if line.lstrip().startswith("//"):
+                    continue
+                for marker in markers:
+                    if marker not in line:
+                        continue
+                    if directory.name == permitted:
+                        found_in_permitted = True
+                        continue
+                    findings.append(
+                        f"{path.relative_to(repo.root)}:{number} carries `{marker}`, so "
+                        f"crate `{directory.name}` constructs an OctoPrint request: only "
+                        f"`{permitted}` may"
+                    )
+    if not found_in_permitted:
+        findings.append(
+            f"crate `{permitted}` constructs no OctoPrint request, so this rule guards a "
+            f"boundary nothing is on: either the adapter is gone or the markers "
+            f"`repo-policy.toml` names no longer describe one"
+        )
     return findings

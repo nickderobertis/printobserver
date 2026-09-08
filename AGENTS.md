@@ -229,6 +229,16 @@ the three recipes, and `just check-repo` refuses a job that runs a recipe the
 set does not declare, omits the bring-up or bring-down recipe, omits a platform
 with no exclusion recorded, or is narrowed below every change.
 
+There is **one machine**, and every project's `test-integration` target drives
+it: `just test-integration` runs the adapter's tier and this environment's own
+suite against the one OctoPrint the bring-up started, and one of them cancels
+the print the other asserts is running. So `nx.json` declares `test-integration`
+unparallelisable, and a tier that acts on the print puts it back when it is
+done, leaving the environment as the bring-up recipe left it. `just check-repo`
+refuses a graph that leaves two of the tier's tasks free to run at once. It cost
+a publication to learn: the tier that failed was the one that had done nothing
+wrong, which is what a shared machine does to a diagnosis.
+
 ### Virtual printer availability
 
 Every platform the supported-platform list names for which OctoPrint's virtual
@@ -484,6 +494,18 @@ depend on another.** `printobserver-server` and the `printobserver` binary are
 the composition roots and are the only crates allowed to name an implementation.
 The roles are declared in `repo-policy.toml` and enforced by `just check-repo` —
 the boundary is not a convention, it is a check.
+
+The same rule holds one level down, over vocabulary rather than over edges:
+**`printobserver-octoprint` is the only crate that may construct an `OctoPrint`
+request.** Everything above it is written as though printers were normal, so the
+moment a second crate spells an OctoPrint path or its authentication header
+there are two places one vendor's own surface has to be kept right.
+`repo-policy.toml`'s `[octoprint]` names the permitted crate and what
+constructing such a request looks like in a Rust source; `just check-repo`
+refuses one of those markers on a line of any other crate, exempting a
+comment-only line so a crate may *say* `/api/job` while no crate but the adapter
+may *build* one — and refuses a tree in which the adapter itself constructs
+none, because a rule guarding a boundary nothing is on has stopped being a rule.
 
 ## Tests are the only QA loop
 

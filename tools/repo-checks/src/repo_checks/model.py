@@ -81,6 +81,15 @@ class Repo:
         return sorted(p for p in directory.iterdir() if p.suffix in {".yml", ".yaml"})
 
     @cached_property
+    def project_paths(self) -> list[Path]:
+        """Every committed `project.json` of the Nx graph, in a stable order."""
+        return [
+            project
+            for project in sorted(self.root.glob("**/project.json"))
+            if not UNCOMMITTED_DIRECTORIES & set(project.relative_to(self.root).parts)
+        ]
+
+    @cached_property
     def crate_dirs(self) -> list[Path]:
         """Every crate directory of the Cargo workspace, in a stable order."""
         crates = self.path("crates")

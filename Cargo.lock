@@ -752,6 +752,15 @@ version = "0.1.0"
 [[package]]
 name = "printobserver-core"
 version = "0.1.0"
+dependencies = [
+ "printobserver-printer-api",
+ "printobserver-store-api",
+ "printobserver-supervisor-api",
+ "printobserver-types",
+ "printobserver-vision-api",
+ "quote",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "printobserver-obico"
@@ -760,6 +769,15 @@ version = "0.1.0"
 [[package]]
 name = "printobserver-octoprint"
 version = "0.1.0"
+dependencies = [
+ "log",
+ "printobserver-printer-api",
+ "printobserver-types",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "printobserver-oneharness"
