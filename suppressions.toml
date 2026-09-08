@@ -23,12 +23,6 @@ schema_version = 1
 # worse than one that logs and continues.
 
 [[suppression]]
-rule = "robust_shell"
-file = "scripts/session-setup.sh"
-site = "set -uo pipefail"
-reason = "A session-startup hook must never abort session startup, so `set -e` is deliberately omitted: the script owns its own exit codes and always exits 0, logging what it could not do."
-
-[[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/session-setup.sh"
 site = "set -uo pipefail"
@@ -41,12 +35,6 @@ site = "set -uo pipefail"
 reason = "The only external input is the `rust-just` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations; no untrusted input is executed."
 
 # --- scripts/setup-llmlint.sh -------------------------------------------------
-
-[[suppression]]
-rule = "robust_shell"
-file = "scripts/setup-llmlint.sh"
-site = "set -uo pipefail"
-reason = "Same reason as session-setup.sh: this installer runs from the SessionStart hook, so a flaky install must not abort the session; it owns its exit codes and always exits 0."
 
 [[suppression]]
 rule = "tool_output_is_signal"

@@ -21,8 +21,8 @@ BLOCKS = ("composition-record", "supported-platforms", "required-checks")
 
 def _drop_block(tree: Tree, name: str) -> None:
     text = tree.read("AGENTS.md")
-    start = text.index(f"<!-- BEGIN: {name} -->")
-    end = text.index(f"<!-- END: {name} -->") + len(f"<!-- END: {name} -->")
+    start = text.index(f"[//]: # (BEGIN {name})")
+    end = text.index(f"[//]: # (END {name})") + len(f"[//]: # (END {name})")
     tree.write("AGENTS.md", text[:start] + text[end:])
 
 

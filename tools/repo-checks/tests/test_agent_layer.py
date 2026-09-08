@@ -70,11 +70,11 @@ def test_an_empty_record_is_refused(tree: Callable[[], Tree]) -> None:
     """A bare heading with no entries under it is not a record."""
     broken = tree()
     text = broken.read("AGENTS.md")
-    start = text.index("<!-- BEGIN: composition-record -->")
-    end = text.index("<!-- END: composition-record -->")
+    start = text.index("[//]: # (BEGIN composition-record)")
+    end = text.index("[//]: # (END composition-record)")
     broken.write(
         "AGENTS.md",
-        text[: start + len("<!-- BEGIN: composition-record -->")] + "\n" + text[end:],
+        text[: start + len("[//]: # (BEGIN composition-record)")] + "\n" + text[end:],
     )
 
     findings = agent_layer(broken.repo)

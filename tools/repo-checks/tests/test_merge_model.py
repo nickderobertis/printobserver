@@ -8,8 +8,8 @@ from repo_checks.checks_ci import merge_model
 from repo_checks.model import Repo
 from treecopy import Tree
 
-BLOCK_START = "<!-- BEGIN: required-checks -->"
-BLOCK_END = "<!-- END: required-checks -->"
+BLOCK_START = "[//]: # (BEGIN required-checks)"
+BLOCK_END = "[//]: # (END required-checks)"
 
 
 def test_the_committed_record_is_accepted(committed: Repo) -> None:

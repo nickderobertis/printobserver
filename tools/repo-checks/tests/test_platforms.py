@@ -8,7 +8,7 @@ from repo_checks.checks_ci import platforms, platforms_of
 from repo_checks.model import Repo
 from treecopy import Tree
 
-EMPTY_BLOCK = "<!-- BEGIN: supported-platforms -->\n<!-- END: supported-platforms -->"
+EMPTY_BLOCK = "[//]: # (BEGIN supported-platforms)\n[//]: # (END supported-platforms)"
 AARCH64 = (
     "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
     "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
@@ -32,8 +32,8 @@ def test_the_list_is_non_empty_and_names_the_install_paths_platform(
 
 def _replace_block(tree: Tree, replacement: str) -> None:
     text = tree.read("AGENTS.md")
-    start = text.index("<!-- BEGIN: supported-platforms -->")
-    end = text.index("<!-- END: supported-platforms -->") + len("<!-- END: supported-platforms -->")
+    start = text.index("[//]: # (BEGIN supported-platforms)")
+    end = text.index("[//]: # (END supported-platforms)") + len("[//]: # (END supported-platforms)")
     tree.write("AGENTS.md", text[:start] + replacement + text[end:])
 
 
@@ -55,10 +55,10 @@ def test_a_list_omitting_the_install_paths_platform_is_refused(
     text = broken.read("AGENTS.md")
     _replace_block(
         broken,
-        "<!-- BEGIN: supported-platforms -->\n"
+        "[//]: # (BEGIN supported-platforms)\n"
         "- `linux-x86_64` — runner `ubuntu-24.04`, Rust target "
         "`x86_64-unknown-linux-gnu`, service manager `launchd`, install path: no\n"
-        "<!-- END: supported-platforms -->",
+        "[//]: # (END supported-platforms)",
     )
     assert text != broken.read("AGENTS.md")
 

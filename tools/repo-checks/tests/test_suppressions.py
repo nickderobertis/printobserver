@@ -45,7 +45,7 @@ def test_the_scanner_finds_the_directives_this_repository_carries(
     """The check reads real directives out of the tree rather than a list beside it."""
     found = {(d.file, d.rule) for d in scan(REPO_ROOT)}
 
-    assert ("scripts/session-setup.sh", "robust_shell") in found
+    assert ("scripts/session-setup.sh", "tool_output_is_signal") in found
     assert ("scripts/setup-llmlint.sh", "changed_behavior_has_e2e") in found
 
 

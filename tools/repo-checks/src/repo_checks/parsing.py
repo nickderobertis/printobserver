@@ -14,8 +14,11 @@ from typing import Any
 
 import yaml
 
-BLOCK = "<!-- BEGIN: {name} -->"
-BLOCK_END = "<!-- END: {name} -->"
+# Markdown-comment markers rather than HTML ones: an HTML comment reads as a
+# `<...>` template placeholder to the create-repo baseline checker, which
+# scans the composition section for exactly that.
+BLOCK = "[//]: # (BEGIN {name})"
+BLOCK_END = "[//]: # (END {name})"
 
 # Shell keywords and builtins a recipe body may use that are not programs the
 # agent allowlist has anything to say about.

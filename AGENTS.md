@@ -51,7 +51,7 @@ This record is this repository's claim about the create-repo skill as it stood
 when the baseline was written; the skill's own baseline checker, run by a person
 against the tree, is what reconciles it against a later version of that skill.
 
-<!-- BEGIN: composition-record -->
+[//]: # (BEGIN composition-record)
 - `shape:cli` — included: the deliverable is one installed command, so the CLI
   shape's entry-point e2e, output contract and asset-naming rules all apply.
 - `shape:library` — excluded: the clients are thin generated surfaces over the
@@ -69,22 +69,23 @@ against the tree, is what reconciles it against a later version of that skill.
 - `language:python` — included: the Python client distribution, and this
   repository's own deterministic checks and end-to-end tier.
 - `language:typescript` — included: the Node client distribution.
-- `language:bash` — excluded: as a *product* language. The only shell in the tree
-  is session and toolchain setup, plus the install scripts the `sdks` and
+- `language:bash` — excluded: as a *product* language. The only shell in the
+  tree is session and toolchain setup, plus the install scripts the `sdks` and
   `server` nodes ship. Its gate is `shellcheck` inside `just lint-workflows`
-  rather than a project of its own.
+  rather than a project of its own, and the judged tier carries no bash rules.
 - `language:terraform` — excluded: this repository provisions no infrastructure.
   The deployment target is one machine beside a printer, reached by the
   end-user install path below.
 - `intersection:rust-cli` — included: auto-composed from `cli` + `rust`.
 - `intersection:python-cli` — included: auto-composed from `cli` + `python`.
-- `cross-cutting:releasing` — included: passed as `--releasing`, because this repository
-  publishes versioned artifacts, and release automation runs from Conventional
-  Commits with no manual step.
-- `cross-cutting:project-graph` — included: mandatory, with no flag to pass. The Nx graph is
-  and every crate, client and tool is a project in it.
-- `cross-cutting:ci` — included: mandatory, with no flag to pass. GitHub Actions proves the artifact on
-  the supported platform matrix and proves the end-user install path.
+- `cross-cutting:releasing` — included: passed as `--releasing`, because this
+  repository publishes versioned artifacts and release automation runs from
+  Conventional Commits with no manual step.
+- `cross-cutting:project-graph` — included: mandatory, with no flag to pass.
+  Every crate, client and tool is a project in the Nx graph.
+- `cross-cutting:ci` — included: mandatory, with no flag to pass. GitHub Actions
+  proves the artifact on the supported platform matrix and proves the end-user
+  install path.
 - `cross-cutting:llmlint` — included: `llmlint.yml` and `oneharness.toml` are
   composed rather than hand-rolled, and the judged tier is a continuous-
   integration job of its own rather than a step inside the gate job.
@@ -105,7 +106,7 @@ against the tree, is what reconciles it against a later version of that skill.
   required check.
 - `optional:pr-template` — included: `.github/pull_request_template.md`, whose
   **What**/**Why** becomes the squash body release automation reads.
-<!-- END: composition-record -->
+[//]: # (END composition-record)
 
 Non-negotiable invariants are never on that list: a strict gate, realistic
 un-mocked end-to-end coverage of every real journey, and CI that proves the
@@ -141,10 +142,10 @@ are derived from; `just check-repo` refuses a matrix that names a platform this
 list does not, or omits one it does. Neither matrix can be narrowed
 independently of this list.
 
-<!-- BEGIN: supported-platforms -->
+[//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
-<!-- END: supported-platforms -->
+[//]: # (END supported-platforms)
 
 Both are Linux with systemd, which is what the unit in the end-user install path
 below is written for. `linux-aarch64` is not optional: the machine beside the
@@ -253,11 +254,11 @@ check.
 
 The jobs required to be green before a pull request can merge:
 
-<!-- BEGIN: required-checks -->
+[//]: # (BEGIN required-checks)
 - `gate`
 - `llmlint`
 - `pr-title`
-<!-- END: required-checks -->
+[//]: # (END required-checks)
 
 `just check-repo` refuses a required name with no job behind it. Applying these
 settings to the repository itself is a person's action through GitHub — it needs
