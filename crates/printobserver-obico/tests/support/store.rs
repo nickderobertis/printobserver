@@ -343,3 +343,166 @@ impl StorePort for MemoryStore {
         unsupported("session")
     }
 }
+
+/// A store that refuses every write, and answers no read.
+///
+/// It is here so a journey can drive the one path a working store never takes:
+/// the ingress being unable to write anything down at all.
+#[derive(Debug, Default)]
+pub struct RefusingStore;
+
+/// What this store answers to everything.
+fn refused<T: Send + 'static>() -> BoxFuture<'static, Result<T, StoreError>> {
+    Box::pin(async {
+        Err(StoreError::Database {
+            detail: "the database is not available".to_owned(),
+        })
+    })
+}
+
+impl StorePort for RefusingStore {
+    fn open_print(
+        &self,
+        _obico_print_id: Option<i64>,
+        _file_name: Option<String>,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        refused()
+    }
+
+    fn print(&self, _print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+        refused()
+    }
+
+    fn print_by_obico_id(
+        &self,
+        _obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+        refused()
+    }
+
+    fn end_print(
+        &self,
+        _print_id: PrintId,
+        _state: PrinterState,
+        _ended_at: Timestamp,
+        _reason: String,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        refused()
+    }
+
+    fn record_narrowing(
+        &self,
+        _print_id: PrintId,
+        _narrowing: ManifestNarrowing,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        refused()
+    }
+
+    fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        refused()
+    }
+
+    fn put_image(
+        &self,
+        _print_id: PrintId,
+        _event_id: EventId,
+        _source_url: Option<String>,
+        _content_type: String,
+        _bytes: RawBytes,
+    ) -> BoxFuture<'_, Result<ImageRecord, StoreError>> {
+        refused()
+    }
+
+    fn image(&self, _image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
+        refused()
+    }
+
+    fn record_action(
+        &self,
+        _request: ActionRequest,
+        _decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        refused()
+    }
+
+    fn record_execution(
+        &self,
+        _action_id: ActionId,
+        _outcome: ExecutionOutcome,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        refused()
+    }
+
+    fn open_intervention(
+        &self,
+        _action_id: ActionId,
+        _adjustable: Adjustable,
+        _prior_value: Option<f64>,
+        _applied_value: f64,
+        _applied_at: Timestamp,
+        _expires_at: Timestamp,
+    ) -> BoxFuture<'_, Result<Intervention, StoreError>> {
+        refused()
+    }
+
+    fn settle_intervention(
+        &self,
+        _intervention_id: InterventionId,
+        _outcome: InterventionOutcome,
+    ) -> BoxFuture<'_, Result<SettleOutcome, StoreError>> {
+        refused()
+    }
+
+    fn due_interventions(
+        &self,
+        _at: Timestamp,
+    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+        refused()
+    }
+
+    fn active_interventions(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+        refused()
+    }
+
+    fn put_manifest(
+        &self,
+        _print_id: PrintId,
+        _manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        refused()
+    }
+
+    fn manifest(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        refused()
+    }
+
+    fn history(&self, _query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        refused()
+    }
+
+    fn audit_page(
+        &self,
+        _print_id: PrintId,
+        _after: Option<EventId>,
+        _page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        refused()
+    }
+
+    fn put_session(&self, _session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
+        refused()
+    }
+
+    fn session(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>> {
+        refused()
+    }
+}

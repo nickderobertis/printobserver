@@ -100,6 +100,18 @@ fn correlation_of(payload: &EventPayload) -> Option<(i64, Option<String>)> {
     }
 }
 
+/// What one refusal says, in the one line the malformed kind carries.
+///
+/// A refusal to *read a body* carries its own line and that line is the whole
+/// answer; every other refusal is one this path does not produce today, and it
+/// says so in its own words rather than being flattened to a placeholder.
+fn detail_of(refusal: &VisionError) -> String {
+    match refusal {
+        VisionError::Malformed { detail, .. } => detail.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// The Obico ingress: the adapter and the store it writes through.
 #[derive(Clone)]
 pub struct ObicoIngress {
@@ -134,15 +146,13 @@ impl ObicoIngress {
 
     /// Record one body this system could not read, and refuse it.
     async fn refuse(&self, body: RawBytes, refusal: VisionError) -> IngressError {
-        let detail = match &refusal {
-            VisionError::Malformed { detail, .. } => detail.clone(),
-            other => other.to_string(),
-        };
         let draft = EventDraft {
             print_id: None,
             source: EventSource::Obico,
             received_at: Timestamp::now(),
-            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload { detail }),
+            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
+                detail: detail_of(&refusal),
+            }),
             raw: Some(body),
         };
         match self.store.append_event(draft).await {
@@ -254,5 +264,53 @@ impl ObicoIngress {
             image,
             image_failure,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use printobserver_store_api::StoreError;
+    use printobserver_types::contract::Sample as _;
+    use printobserver_types::{ActionExecutedPayload, EventPayload, EventRecord, RawBytes};
+    use printobserver_vision_api::VisionError;
+
+    use super::{IngressError, correlation_of, detail_of};
+
+    /// A payload of a kind this adapter does not produce correlates to nothing.
+    #[test]
+    fn a_kind_this_adapter_does_not_produce_correlates_to_nothing() {
+        let payload = EventPayload::ActionExecuted(ActionExecutedPayload::sample_full());
+        assert_eq!(correlation_of(&payload), None);
+    }
+
+    /// A refusal that is not about reading a body says so in its own words.
+    #[test]
+    fn a_refusal_that_is_not_about_a_body_says_so_in_its_own_words() {
+        assert_eq!(
+            detail_of(&VisionError::Malformed {
+                detail: "not JSON".to_owned(),
+                raw: RawBytes::default(),
+            }),
+            "not JSON"
+        );
+        assert_eq!(
+            detail_of(&VisionError::TimedOut),
+            VisionError::TimedOut.to_string()
+        );
+    }
+
+    /// Both refusals say which they are, and the recorded one names its record.
+    #[test]
+    fn both_refusals_say_which_they_are() {
+        let recorded = EventRecord::sample_full();
+        let refused = IngressError::Refused {
+            refusal: VisionError::TimedOut,
+            recorded: Box::new(recorded.clone()),
+        };
+        assert!(refused.to_string().contains(&recorded.id.to_string()));
+        let refused_by_store = IngressError::from(StoreError::Database {
+            detail: "the disk is full".to_owned(),
+        });
+        assert!(refused_by_store.to_string().contains("the disk is full"));
     }
 }

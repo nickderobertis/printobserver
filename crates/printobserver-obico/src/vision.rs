@@ -125,3 +125,29 @@ impl VisionPort for ObicoVision {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ObicoVision, ObicoVisionConfig, ObicoVisionError};
+
+    /// A host that cannot carry the adapter is told which half failed.
+    #[test]
+    fn a_client_that_cannot_be_built_says_so() {
+        let error = ObicoVisionError {
+            detail: "no TLS backend".to_owned(),
+        };
+        assert_eq!(error.detail(), "no TLS backend");
+        assert!(error.to_string().contains("no TLS backend"));
+    }
+
+    /// The adapter runs under the bounds it was given.
+    #[test]
+    fn the_adapter_carries_the_bounds_it_was_given() {
+        let config = ObicoVisionConfig {
+            max_image_bytes: 17,
+            ..ObicoVisionConfig::default()
+        };
+        let vision = ObicoVision::new(config).expect("the adapter builds");
+        assert_eq!(*vision.config(), config);
+    }
+}

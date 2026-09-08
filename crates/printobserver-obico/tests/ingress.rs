@@ -35,7 +35,7 @@ use printobserver_types::{
     Timestamp,
 };
 use printobserver_vision_api::VisionError;
-use store::MemoryStore;
+use store::{MemoryStore, RefusingStore};
 
 /// Obico's own identifier for the print every committed sample is about.
 const SAMPLE_OBICO_PRINT_ID: i64 = 4211;
@@ -345,6 +345,23 @@ async fn a_body_that_cannot_be_read_is_recorded_and_then_refused() {
     let mut wrong_kind = failure_alert();
     wrong_kind["event"]["is_warning"] = json!("yes");
 
+    let mut notification_without_required = sample("printer-notification-about-a-print.json");
+    notification_without_required
+        .as_object_mut()
+        .expect("the notification is an object")
+        .remove("printer")
+        .expect("the sample carries a printer");
+
+    let mut naming_no_shape = failure_alert();
+    naming_no_shape
+        .as_object_mut()
+        .expect("the alert is an object")
+        .remove("event")
+        .expect("the sample carries an event");
+
+    let mut naming_no_instant = failure_alert();
+    naming_no_instant["print"]["started_at"] = json!(1e30);
+
     for (what, body) in [
         ("a body that is not well-formed", not_well_formed),
         (
@@ -354,6 +371,15 @@ async fn a_body_that_cannot_be_read_is_recorded_and_then_refused() {
         (
             "a body whose required field is of the wrong kind",
             body_of(&wrong_kind),
+        ),
+        (
+            "a notification omitting a required field",
+            body_of(&notification_without_required),
+        ),
+        ("a body naming no shape at all", body_of(&naming_no_shape)),
+        (
+            "a body whose timestamp names no instant",
+            body_of(&naming_no_instant),
         ),
     ] {
         let store = Arc::new(MemoryStore::new());
@@ -639,4 +665,73 @@ async fn a_host_that_refuses_the_request_is_unreachable() {
         "expected an unreachable host, found {failure}"
     );
     assert_refused(&receipt, &store, &failure).await;
+}
+
+/// Every notification the producer sends normalizes to its own spelling.
+///
+/// The producer's eight types and this system's eight are two vocabularies, and
+/// a mapping that agreed on the two the committed samples carry while
+/// disagreeing on the rest would pass every journey above.
+#[tokio::test]
+async fn every_notification_type_normalizes_to_its_own_spelling() {
+    for (sent, normalized) in [
+        ("PrintStarted", ObicoNotificationType::Started),
+        ("PrintDone", ObicoNotificationType::Done),
+        ("PrintCancelled", ObicoNotificationType::Cancelled),
+        ("PrintPaused", ObicoNotificationType::Paused),
+        ("PrintResumed", ObicoNotificationType::Resumed),
+        ("FilamentChange", ObicoNotificationType::FilamentChange),
+        ("HeaterCooledDown", ObicoNotificationType::HeaterCooled),
+        ("HeaterTargetReached", ObicoNotificationType::HeaterTarget),
+    ] {
+        let mut body = sample("printer-notification-not-about-a-print.json");
+        body["event"]["type"] = json!(sent);
+
+        let store = Arc::new(MemoryStore::new());
+        let receipt = ingress(&store, prompt_bounds())
+            .receive(body_of(&body), Some("application/json".to_owned()))
+            .await
+            .unwrap_or_else(|error| panic!("{sent} is accepted: {error}"));
+
+        assert_eq!(
+            notification_payload(&stored_event(&store, &receipt)).notification_type,
+            normalized,
+            "{sent} did not normalize to its own spelling"
+        );
+    }
+}
+
+/// A store that can write nothing down refuses the body rather than losing it.
+///
+/// This is the one answer that says the alert was neither recorded nor
+/// accepted, which is what a caller needs in order to retry it.
+#[tokio::test]
+async fn a_store_that_refuses_the_write_says_nothing_was_written_down() {
+    let ingress = ObicoIngress::new(
+        Arc::new(RefusingStore) as Arc<dyn StorePort>,
+        prompt_bounds(),
+    )
+    .expect("the ingress builds");
+
+    let unreadable = ingress
+        .receive(RawBytes::new(b"not a body".to_vec()), None)
+        .await
+        .expect_err("the store refuses the write");
+    assert!(
+        matches!(unreadable, IngressError::Store { .. }),
+        "expected the store's refusal, found {unreadable}"
+    );
+
+    let readable = ingress
+        .receive(body_of(&failure_alert()), None)
+        .await
+        .expect_err("the store refuses the write");
+    assert!(
+        matches!(readable, IngressError::Store { .. }),
+        "expected the store's refusal, found {readable}"
+    );
+
+    // The adapter is reachable through the ingress, under the bounds it was
+    // built with, so a caller can see what they are.
+    assert_eq!(*ingress.vision().config(), prompt_bounds());
 }
