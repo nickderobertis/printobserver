@@ -49,7 +49,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from obico_env import PRINTER_NAME, Stack, note, run_program
+from obico_env import PRINT_FILENAME, PRINTER_NAME, Stack, note, run_program
 
 # The committed sample this repository holds as its claim about the producer,
 # relative to the repository root. It is the `contracts` node's file and this
@@ -265,15 +265,42 @@ class CaptureServer:
 
 
 ALERT_SCRIPT = """
-from app.models import Printer
+from django.utils import timezone
+from app.models import Printer, Print
 from api.octoprint_views import alert_if_needed
 
 printer = Printer.objects.get(name={name!r})
+
+# Obico alerts on a print once and then suppresses, which is right: a printer
+# that alerted on the same failed print every ten seconds would be unusable. So a
+# print that has already alerted is finished here and a fresh one started, which
+# is what happens between two real failures anyway. Without it the second run of
+# this tier would capture nothing and blame the network.
+current = printer.current_print
+if current is None or current.alerted_at or current.finished_at or current.cancelled_at:
+    if current is not None:
+        current.finished_at = timezone.now()
+        current.save()
+    started = timezone.now()
+    current = Print.objects.create(
+        user=printer.user,
+        printer=printer,
+        filename={filename!r},
+        started_at=started,
+        ext_id=int(started.timestamp() * 1000),
+    )
+    printer.current_print = current
+    printer.save()
+    print('OBICO_TIER_NEW_PRINT ' + str(current.id))
+
 pic = printer.pic
 if not pic or not pic.get('img_url'):
     raise SystemExit('the printer has no snapshot to alert on')
 alert_if_needed(printer, pic['img_url'])
-print('OBICO_TIER_ALERTED')
+printer.refresh_from_db()
+if printer.current_print.alerted_at is None:
+    raise SystemExit('Obico suppressed the alert rather than raising one')
+print('OBICO_TIER_ALERTED print ' + str(printer.current_print_id))
 """
 
 ALERTED = "OBICO_TIER_ALERTED"
@@ -307,7 +334,7 @@ def cause_alert_on_stack(state_dir: Path) -> str:
     answered = run_program(
         stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
         timeout=600,
-        stdin=ALERT_SCRIPT.format(name=PRINTER_NAME),
+        stdin=ALERT_SCRIPT.format(name=PRINTER_NAME, filename=PRINT_FILENAME),
     )
     if ALERTED not in answered.stdout:
         message = f"the stack did not raise a failure alert:\n{answered.stdout}"
