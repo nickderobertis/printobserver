@@ -8,5 +8,31 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# Test-only. Builds `printobserver-oneharness-responder`, the binary this
+# repository points a run at so OneHarness replaces the paid provider process
+# with its own published deterministic responder. Off by default, so nothing an
+# ordinary consumer installs carries it; this crate's own graph targets turn it
+# on because its tests are the only thing that needs it.
+test-responder = ["dep:oneharness"]
+
+[dependencies]
+oneharness-core = "0.12.3"
+printobserver-supervisor-api = { path = "../printobserver-supervisor-api", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# The CLI crate is here only for `oneharness::mock_harness`, the deterministic
+# responder it publishes. A binary target cannot read a dev-dependency, so this
+# is an optional ordinary dependency gated behind `test-responder` rather than a
+# `[dev-dependencies]` entry.
+oneharness = { version = "0.11.4", optional = true }
+
+[[bin]]
+name = "printobserver-oneharness-responder"
+path = "src/bin/responder.rs"
+required-features = ["test-responder"]
+
 [lints]
 workspace = true
