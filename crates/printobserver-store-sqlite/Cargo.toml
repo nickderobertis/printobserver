@@ -8,5 +8,18 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+chrono = "0.4"
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+rusqlite = { version = "0.37", features = ["bundled"] }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+quote = "1"
+syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
+tempfile = "3"
+
 [lints]
 workspace = true
