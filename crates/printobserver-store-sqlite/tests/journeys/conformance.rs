@@ -162,6 +162,20 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
         ))
         .expect("a narrowing is recorded");
         assert_eq!(narrowed.narrowings.len(), 1, "{name}");
+        let narrowed = block_on(port.record_narrowing(
+            print.id,
+            printobserver_types::ManifestNarrowing {
+                adjustable: Adjustable::Feedrate,
+                requested: printobserver_types::Range { min: 0.5, max: 2.0 },
+                applied: printobserver_types::Range { min: 0.8, max: 1.2 },
+            },
+        ))
+        .expect("a second narrowing is recorded");
+        assert_eq!(
+            narrowed.narrowings.len(),
+            2,
+            "{name}: a second narrowing replaced the first rather than joining it"
+        );
 
         let ended_at = instant("2026-03-01T13:00:00Z");
         let ended = block_on(port.end_print(

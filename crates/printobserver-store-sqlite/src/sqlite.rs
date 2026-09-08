@@ -15,7 +15,7 @@ use printobserver_types::{
     SupervisionSession, Timestamp,
 };
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension as _, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params, params_from_iter};
 
 use crate::hold::{HoldPoints, settle_label};
 use crate::images::{resolve, store_bytes};
@@ -217,24 +217,38 @@ impl SqliteStore {
     }
 
     /// Record that a manifest range was narrowed to the envelope's.
+    ///
+    /// Read and written in one transaction, so that two narrowings recorded at
+    /// once are both kept rather than one overwriting the other's list.
     fn write_narrowing(
         &self,
         print_id: PrintId,
         narrowing: ManifestNarrowing,
     ) -> Result<PrintRecord, StoreError> {
-        let mut record = self.require_print(print_id)?;
-        record.narrowings.push(narrowing);
-        let narrowings = json_text(&record.narrowings)?;
-        self.on_connection(|connection| {
-            connection
+        let identifier = print_id.to_string();
+        let query = format!("{PRINT_SELECT} WHERE id = ?1");
+        self.on_connection(move |connection| {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| database_error(&error))?;
+            let mut record = transaction
+                .query_row(&query, params![identifier], print_from_row)
+                .optional()
+                .map_err(|error| database_error(&error))?
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            record.narrowings.push(narrowing);
+            let narrowings = json_text(&record.narrowings)?;
+            transaction
                 .execute(
                     "UPDATE prints SET narrowings = ?2 WHERE id = ?1",
                     params![print_id.to_string(), narrowings],
                 )
                 .map_err(|error| database_error(&error))?;
-            Ok(())
-        })?;
-        self.require_print(print_id)
+            transaction
+                .commit()
+                .map_err(|error| database_error(&error))?;
+            Ok(record)
+        })
     }
 
     /// Append one event, minting its identifier.
@@ -368,7 +382,12 @@ impl SqliteStore {
         let requested_at = instant_text(request.requested_at);
         let id = ActionId::new();
         self.on_connection(move |connection| {
-            let print_id: Option<PrintId> = connection
+            // One transaction, so the print an action binds to cannot end
+            // between the two statements that find it and name it.
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| database_error(&error))?;
+            let print_id: Option<PrintId> = transaction
                 .query_row(
                     "SELECT id FROM prints WHERE ended_at IS NULL \
                      ORDER BY opened_at DESC, id DESC LIMIT 1",
@@ -379,7 +398,7 @@ impl SqliteStore {
                 .map_err(|error| database_error(&error))?;
             let print_id =
                 print_id.ok_or_else(|| not_found("open print to record this action against"))?;
-            connection
+            transaction
                 .execute(
                     "INSERT INTO actions (id, print_id, action, actor, requested_at, decision) \
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -392,6 +411,9 @@ impl SqliteStore {
                         decision_text
                     ],
                 )
+                .map_err(|error| database_error(&error))?;
+            transaction
+                .commit()
                 .map_err(|error| database_error(&error))?;
             Ok(ActionRecord {
                 id,
