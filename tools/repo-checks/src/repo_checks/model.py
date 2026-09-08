@@ -1,24 +1,11 @@
-"""The tree a check reads, and what a check says when it refuses."""
+"""The tree a check reads."""
 
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any
-
-
-@dataclass(frozen=True, slots=True)
-class Finding:
-    """One refusal: which check, and what disagreed."""
-
-    check: str
-    message: str
-
-    def render(self) -> str:
-        """Format the finding as the one line a reader acts on."""
-        return f"{self.check}: {self.message}"
 
 
 class Repo:

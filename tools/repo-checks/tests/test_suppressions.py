@@ -1,0 +1,150 @@
+"""The suppression allowlist is the only way to suppress a diagnostic here.
+
+The directive spellings below are assembled from pieces rather than written
+whole, because a test file that carried a real directive would itself be a
+suppression the check would then demand an allowlist entry for.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+
+from conftest import REPO_ROOT, Tree
+from repo_checks.checks_suppressions import scan, suppressions
+from repo_checks.model import Repo
+
+ALLOW = "#[" + "allow(dead_code)]"
+ENTRY = """
+[[suppression]]
+rule = "dead_code"
+file = "crates/printobserver-types/src/lib.rs"
+site = "pub fn placeholder"
+reason = "A stated reason."
+"""
+
+
+def _plant_directive(tree: Tree) -> None:
+    """Put one suppression directive into a crate, with the site the entry anchors to."""
+    source = tree.read("crates/printobserver-types/src/lib.rs")
+    tree.write(
+        "crates/printobserver-types/src/lib.rs",
+        source + f"\n{ALLOW}\npub fn placeholder() {{}}\n",
+    )
+
+
+def test_the_committed_tree_is_accepted(committed: Repo) -> None:
+    """Every directive standing in this repository carries its entry."""
+    assert suppressions(committed) == []
+
+
+def test_the_scanner_finds_the_directives_this_repository_carries(
+    committed: Repo,
+) -> None:
+    """The check reads real directives out of the tree rather than a list beside it."""
+    found = {(d.file, d.rule) for d in scan(REPO_ROOT)}
+
+    assert ("scripts/session-setup.sh", "robust_shell") in found
+    assert ("scripts/setup-llmlint.sh", "changed_behavior_has_e2e") in found
+
+
+def test_a_directive_with_no_entry_is_refused(tree: Callable[[], Tree]) -> None:
+    """A suppression nobody wrote down is a check switched off in silence."""
+    broken = tree()
+    _plant_directive(broken)
+
+    findings = suppressions(broken.repo)
+
+    assert any("with no entry in suppressions.toml" in finding for finding in findings), findings
+
+
+def test_an_entry_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
+    """An entry without a reason records that a rule was silenced, not why."""
+    broken = tree()
+    _plant_directive(broken)
+    broken.write(
+        "suppressions.toml",
+        broken.read("suppressions.toml")
+        + ENTRY.replace('reason = "A stated reason."', 'reason = ""'),
+    )
+
+    findings = suppressions(broken.repo)
+
+    assert any("carries no reason" in finding for finding in findings), findings
+
+
+def test_an_entry_matching_nothing_is_refused(tree: Callable[[], Tree]) -> None:
+    """A stale entry is an allowlist that has stopped describing the tree."""
+    broken = tree()
+    broken.write("suppressions.toml", broken.read("suppressions.toml") + ENTRY)
+
+    findings = suppressions(broken.repo)
+
+    assert any("matches no suppression directive" in finding for finding in findings), findings
+
+
+def test_a_directive_and_its_entry_together_are_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """The allowlist is a way through, not a wall."""
+    allowed = tree()
+    _plant_directive(allowed)
+    allowed.write("suppressions.toml", allowed.read("suppressions.toml") + ENTRY)
+
+    assert suppressions(allowed.repo) == []
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+
+def test_a_change_adding_a_directive_without_its_entry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Against a base revision, the entry lands in the same change as the directive."""
+    broken = tree()
+    _git(broken.root, "init", "-q", "-b", "main")
+    _git(broken.root, "config", "user.email", "test@example.com")
+    _git(broken.root, "config", "user.name", "test")
+    _git(broken.root, "add", "-A")
+    _git(broken.root, "commit", "-q", "-m", "chore: the base")
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=broken.root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    _plant_directive(broken)
+    _git(broken.root, "add", "-A")
+    _git(broken.root, "commit", "-q", "-m", "feat: silence a rule")
+
+    findings = suppressions(broken.repo, base=base)
+
+    assert any("without adding its entry" in finding for finding in findings), findings
+
+
+def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> None:
+    """The same change carrying both is exactly what the rule asks for."""
+    allowed = tree()
+    _git(allowed.root, "init", "-q", "-b", "main")
+    _git(allowed.root, "config", "user.email", "test@example.com")
+    _git(allowed.root, "config", "user.name", "test")
+    _git(allowed.root, "add", "-A")
+    _git(allowed.root, "commit", "-q", "-m", "chore: the base")
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=allowed.root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    _plant_directive(allowed)
+    allowed.write("suppressions.toml", allowed.read("suppressions.toml") + ENTRY)
+    _git(allowed.root, "add", "-A")
+    _git(allowed.root, "commit", "-q", "-m", "feat: silence a rule, with its reason")
+
+    assert suppressions(allowed.repo, base=base) == []

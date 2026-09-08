@@ -98,7 +98,8 @@ class Recipe:
     body: tuple[str, ...]
 
 
-RECIPE_HEADER = re.compile(r"^(?P<name>[a-zA-Z0-9_-]+)(?P<deps>(?: +[a-zA-Z0-9_-]+)*):\s*$")
+# `just` puts a recipe's dependencies after the colon: `check: lint test`.
+RECIPE_HEADER = re.compile(r"^(?P<name>[a-zA-Z0-9_-]+):(?P<deps>(?: +[a-zA-Z0-9_-]+)*)\s*$")
 
 
 def recipes(justfile: str) -> dict[str, Recipe]:

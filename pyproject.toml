@@ -66,4 +66,9 @@ exclude_also = ["if TYPE_CHECKING:"]
 
 [tool.ty.environment]
 python-version = "3.14"
-root = ["tools/repo-checks/src", "python/printobserver-sdk/src", "tests/repo-e2e"]
+root = [
+    "tools/repo-checks/src",
+    "tools/repo-checks/tests",
+    "python/printobserver-sdk/src",
+    "tests/repo-e2e/tests",
+]
