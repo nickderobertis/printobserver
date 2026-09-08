@@ -70,3 +70,11 @@ rule = "S603"
 file = "tools/repo-checks/src/repo_checks/shell.py"
 site = "subprocess.run"
 reason = "S603 fires on `subprocess.run` itself whatever it runs, and no code change silences it. Every check, command and test helper is funnelled through this one call so the rule has one reviewable site instead of thirty-four; the executable is resolved with `shutil.which` first (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing here runs through a shell."
+
+# --- the scripted OctoPrint environment's one subprocess site ---------------
+
+[[suppression]]
+rule = "S603"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "subprocess.Popen"
+reason = "S603 fires on the subprocess call itself whatever it runs, and no code change silences it. Every process this script starts — `uv`, and OctoPrint's own program — goes through this one helper, so the rule has one reviewable site rather than one per caller; each `argv[0]` is an absolute path this script composed (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing runs through a shell."
