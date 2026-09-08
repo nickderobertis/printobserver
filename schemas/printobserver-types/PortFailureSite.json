@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](crate::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](crate::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
+  "oneOf": [
+    {
+      "const": "printer_snapshot",
+      "description": "Reading the printer's own state.",
+      "type": "string"
+    },
+    {
+      "const": "printer_job",
+      "description": "Reading the job the printer reports it is running.",
+      "type": "string"
+    },
+    {
+      "const": "image_write",
+      "description": "Writing the image the event arrived with.",
+      "type": "string"
+    },
+    {
+      "const": "supervision_turn",
+      "description": "Running the supervision turn the event prompted.",
+      "type": "string"
+    }
+  ],
+  "title": "PortFailureSite"
+}

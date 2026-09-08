@@ -752,6 +752,15 @@ version = "0.1.0"
 [[package]]
 name = "printobserver-core"
 version = "0.1.0"
+dependencies = [
+ "printobserver-printer-api",
+ "printobserver-store-api",
+ "printobserver-supervisor-api",
+ "printobserver-types",
+ "printobserver-vision-api",
+ "quote",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "printobserver-obico"
