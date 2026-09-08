@@ -305,3 +305,42 @@ fn a_rejection_while_an_event_is_handled_leaves_the_loops_own_writes_standing() 
     );
     world.journal.assert_no_violations();
 }
+
+/// Once the agent's minimum interval has elapsed, its next action is accepted.
+///
+/// The interval bounds how often the agent may act, and nothing more: an agent
+/// that waited is an agent that may act again.
+#[test]
+fn an_agent_action_after_its_minimum_interval_is_accepted() {
+    let mut envelope = permissive_envelope();
+    envelope.agent_min_interval_s = 300;
+    let world = World::with_envelope(envelope);
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+
+    world
+        .request(
+            print.id,
+            PrintAction::Pause {
+                reason: "the agent's first action".to_owned(),
+                actor: agent_actor(print.id),
+            },
+        )
+        .expect("the first request is recorded");
+
+    world.clock.advance(301);
+    world.printer.reports_state(PrinterState::Paused);
+    let later = world
+        .request(
+            print.id,
+            PrintAction::Resume {
+                reason: "the agent waited its interval out".to_owned(),
+                actor: agent_actor(print.id),
+            },
+        )
+        .expect("the later request is recorded");
+
+    assert_eq!(later.record.decision, PolicyDecision::Accepted);
+    assert!(world.journal.printer_actions().contains(&Call::Resume));
+    world.journal.assert_no_violations();
+}

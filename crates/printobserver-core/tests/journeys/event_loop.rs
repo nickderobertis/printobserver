@@ -12,7 +12,10 @@ use printobserver_types::{
 };
 
 use crate::journal::{Call, Port};
-use crate::world::{World, agent_actor, failure_alert, failure_alert_with_image, manifest};
+use crate::world::{
+    World, agent_actor, failure_alert, failure_alert_with_image, manifest, notification_alert,
+    unattributed_alert,
+};
 
 /// A print carrying a manifest and one active intervention, ready for an event.
 fn prepared() -> (World, printobserver_types::PrintRecord) {
@@ -60,8 +63,15 @@ fn assert_the_append_came_first(world: &World) {
         .position(|call| *call == Call::AppendEvent(EventKind::ObicoFailureAlert))
         .expect("the event was appended");
     for (index, call) in calls.iter().enumerate() {
+        // A decision is in this set too, and deliberately: the append is the
+        // loop's own first operation and no decision could exist before it, so
+        // an implementation deciding first has collapsed the two properties
+        // this crate keeps apart.
         let owed_the_append = matches!(call.port(), Port::Printer)
-            || matches!(call, Call::PutImage | Call::RunTurn(_));
+            || matches!(
+                call,
+                Call::PutImage | Call::RunTurn(_) | Call::RecordAction(_)
+            );
         assert!(
             !owed_the_append || index > appended,
             "{call:?} happened before the event was appended"
@@ -268,5 +278,51 @@ fn an_event_of_another_print_drives_a_turn_under_that_prints_identifier() {
             .count();
         assert_eq!(opened, 1);
     }
+    world.journal.assert_no_violations();
+}
+
+/// A printer notification opens the print it names and drives a turn on it.
+#[test]
+fn a_printer_notification_opens_the_print_it_names() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+
+    let event = world
+        .handle(notification_alert(9))
+        .expect("the notification is handled");
+
+    let print_id = event.print_id.expect("the notification names its print");
+    let opened = world
+        .store
+        .print_now(print_id)
+        .expect("the print was opened");
+    assert_eq!(opened.obico_print_id, Some(9));
+    assert_eq!(opened.file_name, Some("benchy.gcode".to_owned()));
+    assert_eq!(world.agent.turns().len(), 1);
+    assert_eq!(world.agent.turns()[0].print_id, print_id);
+    world.journal.assert_no_violations();
+}
+
+/// An alert naming no print is held in the history, and reaches no other port.
+///
+/// An externally sourced body may name no print this system knows. It is
+/// written down rather than dropped, and nothing is supervised on its account.
+#[test]
+fn an_alert_naming_no_print_is_recorded_and_reaches_no_other_port() {
+    let world = World::new();
+    world.journal.clear();
+
+    let event = world
+        .handle(unattributed_alert())
+        .expect("the alert is handled");
+
+    assert_eq!(event.print_id, None);
+    assert_eq!(world.journal.at(Port::Printer), Vec::new());
+    assert_eq!(world.journal.at(Port::Supervisor), Vec::new());
+    assert_eq!(world.journal.at(Port::Vision), Vec::new());
+    assert_eq!(
+        world.journal.store_writes(),
+        vec![Call::AppendEvent(EventKind::MalformedExternalEvent)]
+    );
     world.journal.assert_no_violations();
 }

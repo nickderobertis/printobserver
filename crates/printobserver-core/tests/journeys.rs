@@ -46,5 +46,8 @@ mod serialization;
 #[path = "journeys/terminal_cleanup.rs"]
 mod terminal_cleanup;
 
+#[path = "journeys/messages.rs"]
+mod messages;
+
 #[path = "journeys/surface.rs"]
 mod surface;

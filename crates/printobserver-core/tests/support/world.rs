@@ -251,6 +251,37 @@ pub fn failure_alert_with_image(obico_print_id: i64) -> NormalizedAlert {
     }
 }
 
+/// One Obico printer notification about a print, carrying no image.
+#[must_use]
+pub fn notification_alert(obico_print_id: i64) -> NormalizedAlert {
+    NormalizedAlert {
+        payload: EventPayload::ObicoPrinterNotification(
+            printobserver_types::ObicoPrinterNotificationPayload {
+                notification_type: printobserver_types::ObicoNotificationType::Paused,
+                obico_print_id: Some(obico_print_id),
+                file_name: Some("benchy.gcode".to_owned()),
+            },
+        ),
+        ..failure_alert(obico_print_id)
+    }
+}
+
+/// One alert naming no print this system knows.
+///
+/// An externally sourced body may name no print at all, and the history holds
+/// it rather than dropping it.
+#[must_use]
+pub fn unattributed_alert() -> NormalizedAlert {
+    NormalizedAlert {
+        payload: EventPayload::MalformedExternalEvent(
+            printobserver_types::MalformedExternalEventPayload {
+                detail: "the body is not JSON: expected value at line 1 column 1".to_owned(),
+            },
+        ),
+        ..failure_alert(7)
+    }
+}
+
 /// A manifest naming the ranges given for it, and nothing else.
 #[must_use]
 pub fn manifest(allowed: &[(Adjustable, Range)]) -> JobManifest {
