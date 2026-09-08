@@ -4,13 +4,8 @@
 # The matrices below are derived from AGENTS.md's "Supported platforms" list and
 # `just check-repo` refuses one if the two disagree, so this file cannot be
 # narrowed independently of that list.
-#
-# A matrix is what a PLATFORM-DEPENDENT job carries, and
-# `repo-policy.toml`'s `workflows.platform_dependent_kinds` is the set of those.
-# `gate` builds and tests Rust binaries and `integration` drives a real
-# OctoPrint, so both run everywhere that list names; `llmlint` reads a text diff
-# and runs exactly once. `just check-repo` holds the first two to the list and
-# refuses a platform matrix on any other job.
+# Which jobs carry one at all is `repo-policy.toml`'s
+# `workflows.platform_dependent_kinds`.
 
 name: ci
 
@@ -92,14 +87,8 @@ jobs:
     # The judged tier is a job of its own rather than a step inside the gate:
     # it is non-deterministic and needs a harness credential, and a gate that
     # could not run without one would stop being the deterministic gate.
-    #
-    # It carries NO platform matrix, and that is the reason it is a job of its
-    # own rather than a cell of one. It reads a text diff, which is the same
-    # text whatever processor renders it, so a second cell would not be a second
-    # platform: it would be a second, independent roll of a non-deterministic
-    # judge over one change, free to return a pass and a fail over identical
-    # content while both are required. One change is judged once, and reports as
-    # the single status context `llmlint`.
+    # No matrix: a second cell over a text diff would be a second verdict from
+    # that non-deterministic judge, not a second platform.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5

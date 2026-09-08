@@ -125,19 +125,10 @@ non_release_types = ["docs", "test", "chore", "ci", "refactor", "build", "style"
 # A branch ref (`@main`) is not a pin: it re-points under the repository without
 # a commit here.
 action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+)?$'
-# The kinds of job whose behaviour depends on the platform it runs on, and so
-# the only kinds that may carry a platform matrix. A job's kind is what its own
-# steps run — `gate` runs the whole gate, `integration` brings the printer
-# environment up, `install` runs a route of the end-user install path — and
-# `just check-repo` holds every job of these kinds to AGENTS.md's
-# supported-platform list.
-#
-# Every other job runs once. `llmlint` is why the distinction is written down:
-# it reads a text diff, so a second matrix cell would not be a second platform
-# but a second, independent roll of a non-deterministic judge over one change,
-# able to return a pass and a fail over identical content while both are
-# required checks. `just check-repo` refuses a platform matrix on a kind this
-# list does not name.
+# The kinds of job whose behaviour depends on the platform, and so the only kinds
+# that may carry a platform matrix. A job's kind is what its own steps run, not
+# what it is called. `just check-repo` holds these to AGENTS.md's
+# supported-platform list and refuses a platform matrix on any other job.
 platform_dependent_kinds = ["gate", "integration", "install"]
 # The install script the `sdks` node commits, and the path the install-path
 # section's fetch URL must name.

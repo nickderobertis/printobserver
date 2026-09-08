@@ -130,9 +130,7 @@ lines, per ecosystem). There is no warnings-only mode.
 
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
-continuous-integration job of its own. One change is judged exactly once, on one
-runner, reported as the single status context `llmlint`; the "Supported
-platforms" section below is where that is enforced.
+continuous-integration job of its own.
 
 That tier needs the *harness* as well as its credential, and the two are not the
 same thing. `llmlint` and `oneharness` drive a separate agent binary that
@@ -174,17 +172,12 @@ matrices is derived from; `just check-repo` refuses a matrix that names a
 platform this list does not, or omits one it does. No matrix can be narrowed
 independently of this list.
 
-A matrix is what a *platform-dependent* job carries, and `repo-policy.toml`'s
-`workflows.platform_dependent_kinds` is the set of those: `gate`, which builds
-and tests Rust binaries, `integration`, which drives a real OctoPrint, and
-`install`, which proves the end-user install path. Every job of those kinds is
-held to this list, and that is the rule with the teeth in it. Every other job
-runs once, and `just check-repo` refuses a platform matrix on one — the judged
-tier is the reason the distinction is written down rather than assumed. It reads
-a text diff, which is the same text whatever processor renders it, so a second
-matrix cell would not be a second platform: it would be a second, independent
-roll of a non-deterministic judge over one change, free to return a pass and a
-fail over identical content while both are required checks.
+A matrix belongs to a job whose behaviour depends on the platform, and
+`repo-policy.toml`'s `workflows.platform_dependent_kinds` is that set. Jobs of
+those kinds are held to this list; `just check-repo` refuses a platform matrix on
+any other job, because a second cell over the non-deterministic judged tier would
+not be a second platform but a second, independent verdict on one diff — free to
+pass and fail the same content while both are required checks.
 
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes

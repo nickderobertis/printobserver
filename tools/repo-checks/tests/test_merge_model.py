@@ -22,11 +22,16 @@ def _required(repo: Repo) -> list[str]:
     return [line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")]
 
 
-def _declared_jobs(repo: Repo) -> dict[str, dict[str, object]]:
-    """Every job every committed workflow declares, keyed by the name it reports under."""
-    found: dict[str, dict[str, object]] = {}
+def _matrix_by_job(repo: Repo) -> dict[str, bool]:
+    """Every job every committed workflow declares, and whether it carries a matrix.
+
+    A job with a platform matrix reports one status context per cell, each
+    suffixed with that cell, so its bare name is a context nothing reports.
+    """
+    found: dict[str, bool] = {}
     for path in repo.workflow_paths:
-        found.update(jobs_of(load_workflow(path)))
+        for name, job in jobs_of(load_workflow(path)).items():
+            found[name] = "strategy" in job
     return found
 
 
@@ -37,7 +42,7 @@ def test_the_committed_record_is_accepted(committed: Repo) -> None:
 
 def test_every_required_name_is_a_job_the_workflows_declare(committed: Repo) -> None:
     """A required context nothing reports would block every change forever."""
-    declared = _declared_jobs(committed)
+    declared = _matrix_by_job(committed)
     required = _required(committed)
 
     truth(required, describing="a non-empty record of required checks")
@@ -55,12 +60,9 @@ def test_the_judged_tier_is_required_once_under_a_name_carrying_no_platform(
     equal(judged, ["llmlint"], describing="the judged-lint entries of the required record")
     for platform in ("linux-x86_64", "linux-aarch64", "ubuntu-24.04"):
         absent(judged[0], platform, describing="the judged-lint required check's name")
-    # A job with a platform matrix reports one context per cell, each suffixed
-    # with that cell, so the bare name would be a context nothing reports.
-    absent(
-        _declared_jobs(committed)["llmlint"],
-        "strategy",
-        describing="the judged-lint job",
+    truth(
+        not _matrix_by_job(committed)[judged[0]],
+        describing="the judged-lint job to declare no matrix, so its bare name is its context",
     )
 
 

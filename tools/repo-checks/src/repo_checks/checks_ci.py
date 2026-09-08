@@ -74,25 +74,49 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
-def _bring_up(repo: Repo) -> str:
-    """The command the printer-integration job is recognized by, if one is declared."""
+class PolicyValueError(ValueError):
+    """`repo-policy.toml` declares a value a check cannot act on."""
+
+
+def _bring_up_command(repo: Repo) -> str:
+    """The command line the printer-integration job is recognized by, or empty."""
     recipe = str(repo.policy.get("integration", {}).get("bring_up", "")).strip()
     return f"just {recipe}" if recipe else ""
 
 
 def platform_dependent_kinds(repo: Repo) -> set[str]:
-    """The job kinds `repo-policy.toml` declares platform-dependent."""
-    declared = repo.policy.get("workflows", {}).get("platform_dependent_kinds", [])
-    return {str(kind) for kind in declared}
+    """The job kinds `repo-policy.toml` declares platform-dependent.
+
+    Validated rather than coerced: a misspelt or mistyped declaration would
+    silently stop the matrix rule applying to any job at all, which is a check
+    that passes because it inspected nothing.
+
+    Raises:
+        PolicyValueError: If the declaration is absent, empty, or names anything
+            but non-empty strings.
+    """
+    declared = repo.policy.get("workflows", {}).get("platform_dependent_kinds")
+    if not isinstance(declared, list) or not declared:
+        msg = (
+            "`repo-policy.toml` declares no non-empty "
+            "`workflows.platform_dependent_kinds` list, so no job could be held "
+            "to the supported-platform list"
+        )
+        raise PolicyValueError(msg)
+    if not all(isinstance(kind, str) and kind for kind in declared):
+        msg = (
+            f"`repo-policy.toml`'s `workflows.platform_dependent_kinds` names "
+            f"something that is not a job kind: {declared!r}"
+        )
+        raise PolicyValueError(msg)
+    return set(declared)
 
 
 def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> str:
-    """Classify a job by what its own steps run.
+    """Classify a job by what its own steps run, not by what it is called.
 
-    The kind is what the job's own steps do rather than what it is called: a job
-    that runs the bring-up recipe is the integration job, and one that runs `just
-    lint-llm-diff` is the judged-lint job. Only the kinds `repo-policy.toml`
-    names platform-dependent may carry a platform matrix.
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; every field this reads is narrowed before use.
     """
     commands = run_commands(job)
     if bring_up and bring_up in commands:
@@ -113,6 +137,11 @@ def platforms(repo: Repo) -> list[str]:
     except MarkerBlockMissingError as error:
         return [str(error)]
 
+    try:
+        dependent = platform_dependent_kinds(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+
     findings: list[str] = []
     if not declared:
         return ["AGENTS.md's supported-platform list is empty"]
@@ -130,8 +159,7 @@ def platforms(repo: Repo) -> list[str]:
     declared_ids = [item.id for item in declared]
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
-    bring_up = _bring_up(repo)
-    dependent = platform_dependent_kinds(repo)
+    bring_up = _bring_up_command(repo)
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
             kind = _job_kind(job, path, bring_up)
@@ -312,7 +340,7 @@ def continuous_integration(repo: Repo) -> list[str]:
     from repo_checks.parsing import recipes as parse_recipes
 
     path = ip.parse(repo.agents_md)
-    bring_up = _bring_up(repo)
+    bring_up = _bring_up_command(repo)
     declared_recipes = set(parse_recipes(repo.justfile))
     findings: list[str] = []
 
@@ -419,7 +447,7 @@ def merge_model(repo: Repo) -> list[str]:
         findings.append("AGENTS.md records no required check at all")
 
     path = ip.parse(repo.agents_md)
-    bring_up = _bring_up(repo)
+    bring_up = _bring_up_command(repo)
     declared: dict[str, str] = {}
     kinds: dict[str, str] = {}
     for file_name, workflow in _workflows(repo).items():
@@ -451,7 +479,7 @@ def secrets(repo: Repo) -> list[str]:
     findings: list[str] = []
 
     path = ip.parse(repo.agents_md)
-    bring_up = _bring_up(repo)
+    bring_up = _bring_up_command(repo)
     for file_path in repo.workflow_paths:
         text = file_path.read_text(encoding="utf-8")
         findings.extend(

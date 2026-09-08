@@ -71,6 +71,38 @@ def test_the_committed_judged_lint_job_declares_no_matrix(committed: Repo) -> No
     )
 
 
+def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A rule that reaches no job passes by inspecting nothing."""
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'platform_dependent_kinds = ["gate", "integration", "install"]',
+        "platform_dependent_kinds = []",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused(findings, "declares no non-empty `workflows.platform_dependent_kinds` list")
+
+
+def test_a_policy_naming_something_that_is_not_a_job_kind_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A mistyped declaration is refused rather than coerced into a job kind."""
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'platform_dependent_kinds = ["gate", "integration", "install"]',
+        'platform_dependent_kinds = ["gate", 7]',
+    )
+
+    findings = platforms(broken.repo)
+
+    refused(findings, "names something that is not a job kind")
+
+
 def test_a_matrix_on_the_judged_lint_job_is_refused(tree: Callable[[], Tree]) -> None:
     """Two cells over one text diff are two rolls of a non-deterministic judge."""
     broken = tree()
