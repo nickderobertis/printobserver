@@ -281,6 +281,14 @@ A divergence found here is a **finding to report** rather than a defect of this
 repository: the sample is the `contracts` node's file, and moving it is a
 deliberate change to a checked-in contract.
 
+One thing about step 2 a reader will otherwise meet as a mystery: Obico alerts on
+a print **once** and suppresses every alert after it, which is right — a printer
+that alerted on the same failed print every ten seconds would be unusable. So the
+trigger finishes an already-alerted print and starts a fresh one, which is what
+happens between two real failures anyway. A stack that has run this tier several
+times therefore carries several finished prints, and a tier that skipped this
+would capture nothing on its second run and blame the network.
+
 **Why it is not in every run.** The tier builds Obico's images from Obico's own
 sources — one of them carries a machine-learning model — starts four containers,
 and then waits a real failure alert out. That is tens of minutes on a cold
