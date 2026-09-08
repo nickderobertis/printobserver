@@ -120,16 +120,26 @@ pub struct ObicoPrinterInfo {
 }
 
 /// The `print` object, which the producer sends when there is a print.
+///
+/// Each instant has **three** input states rather than two, and the option and
+/// the enum carry one each: a number is [`ObicoTimestamp::Seconds`], the empty
+/// string the producer sends for a print that has not started or ended is
+/// [`ObicoTimestamp::NotReported`], and a field the producer omits altogether
+/// is `None`. The last two both mean the producer reported no instant, and
+/// neither is refused and neither is an epoch date; they are held apart here
+/// only so that a body round-trips back into exactly the form it arrived in.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ObicoPrintInfo {
     /// Obico's own identifier for the print.
     pub id: i64,
     /// The file being printed.
     pub filename: String,
-    /// When the print started.
-    pub started_at: ObicoTimestamp,
-    /// When the print ended.
-    pub ended_at: ObicoTimestamp,
+    /// When the print started, absent when the producer omits the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<ObicoTimestamp>,
+    /// When the print ended, absent when the producer omits the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<ObicoTimestamp>,
 }
 
 /// The `event` object a failure alert carries.

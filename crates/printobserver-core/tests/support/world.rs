@@ -236,6 +236,8 @@ pub fn failure_alert(obico_print_id: i64) -> NormalizedAlert {
             print_paused: false,
             obico_print_id: Some(obico_print_id),
             file_name: Some("benchy.gcode".to_owned()),
+            started_at: None,
+            ended_at: None,
         }),
         raw: RawBytes::new(br#"{"event":"print_failure"}"#.to_vec()),
         image_url: None,
@@ -260,6 +262,8 @@ pub fn notification_alert(obico_print_id: i64) -> NormalizedAlert {
                 notification_type: printobserver_types::ObicoNotificationType::Paused,
                 obico_print_id: Some(obico_print_id),
                 file_name: Some("benchy.gcode".to_owned()),
+                started_at: None,
+                ended_at: None,
             },
         ),
         ..failure_alert(obico_print_id)
