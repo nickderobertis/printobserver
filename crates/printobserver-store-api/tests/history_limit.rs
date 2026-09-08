@@ -15,7 +15,10 @@ use printobserver_types::{EventKind, PrintId};
 #[test]
 fn the_default_window_is_below_the_maximum_limit() {
     let (default, maximum) = (DEFAULT_HISTORY_WINDOW, MAX_HISTORY_LIMIT);
-    assert!(default < maximum, "the default window {default} is not below the maximum {maximum}");
+    assert!(
+        default < maximum,
+        "the default window {default} is not below the maximum {maximum}"
+    );
 }
 
 /// An absent limit takes the declared default window.
@@ -80,4 +83,21 @@ fn a_query_resolves_its_limit_by_the_same_rule() {
         empty_kinds.kinds.is_empty(),
         "an empty kinds is representable, and this crate's documentation says it means every kind"
     );
+}
+
+/// A draft reads its kind off the closed pair it carries.
+#[test]
+fn a_draft_reads_its_kind_off_its_payload() {
+    use printobserver_store_api::EventDraft;
+    use printobserver_types::{EventPayload, EventSource, Timestamp};
+
+    let draft = EventDraft {
+        print_id: Some(PrintId::sample_full()),
+        source: EventSource::Obico,
+        received_at: Timestamp::sample_full(),
+        payload: EventPayload::sample_minimal(),
+        raw: None,
+    };
+    assert_eq!(draft.kind(), EventKind::ObicoFailureAlert);
+    assert_eq!(draft.kind(), draft.payload.kind());
 }

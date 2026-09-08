@@ -8,7 +8,10 @@
 //!
 //! The producer sends three shapes: the failure alert, a printer notification
 //! about a print, which carries `print` and `img_url`, and a printer
-//! notification not about a print, which carries neither.
+//! notification not about a print, which carries neither. One sample per shape
+//! is committed under this crate's own `samples/obico/`, and the third is not
+//! an incomplete copy of the second: it is what the producer sends when there
+//! is no print, and its two absences are the whole reason it is committed.
 
 use std::borrow::Cow;
 
