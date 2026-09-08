@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-obico",
+  "root": "crates/printobserver-obico",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:implementation"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-obico"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-obico -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-obico --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-obico --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-obico --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-obico --locked"
+    }
+  }
+}

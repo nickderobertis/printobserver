@@ -1,0 +1,13 @@
+{
+  "name": "repo-e2e",
+  "root": "tests/repo-e2e",
+  "projectType": "library",
+  "tags": ["lang:python", "type:e2e"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tests/repo-e2e" },
+    "format-check": { "command": "uv run -q ruff format --check tests/repo-e2e" },
+    "lint": { "command": "uv run -q ruff check tests/repo-e2e" },
+    "typecheck": { "command": "uv run -q ty check tests/repo-e2e" },
+    "test-e2e": { "command": "uv run -q pytest tests/repo-e2e/tests" }
+  }
+}

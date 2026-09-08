@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-octoprint",
+  "root": "crates/printobserver-octoprint",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:implementation"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-octoprint"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-octoprint -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-octoprint --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-octoprint --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-octoprint --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-octoprint --locked"
+    }
+  }
+}

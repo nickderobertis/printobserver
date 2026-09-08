@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-supervisor-api",
+  "root": "crates/printobserver-supervisor-api",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:contract"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-supervisor-api"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-supervisor-api -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-supervisor-api --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-supervisor-api --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-supervisor-api --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-supervisor-api --locked"
+    }
+  }
+}

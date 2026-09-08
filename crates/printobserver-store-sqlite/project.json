@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-store-sqlite",
+  "root": "crates/printobserver-store-sqlite",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:implementation"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-store-sqlite"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-store-sqlite -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-store-sqlite --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-store-sqlite --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-store-sqlite --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-store-sqlite --locked"
+    }
+  }
+}

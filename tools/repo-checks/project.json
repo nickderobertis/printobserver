@@ -1,0 +1,13 @@
+{
+  "name": "repo-checks",
+  "root": "tools/repo-checks",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/repo-checks" },
+    "format-check": { "command": "uv run -q ruff format --check tools/repo-checks" },
+    "lint": { "command": "uv run -q ruff check tools/repo-checks" },
+    "typecheck": { "command": "uv run -q ty check tools/repo-checks" },
+    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests" }
+  }
+}

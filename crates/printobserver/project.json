@@ -1,0 +1,29 @@
+{
+  "name": "printobserver",
+  "root": "crates/printobserver",
+  "projectType": "application",
+  "tags": [
+    "lang:rust",
+    "type:composition-root"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver --locked"
+    }
+  }
+}

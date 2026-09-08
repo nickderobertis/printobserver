@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-types",
+  "root": "crates/printobserver-types",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:contract"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-types"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-types -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-types --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-types --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-types --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-types --locked"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "sharedGlobals": [
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/rustfmt.toml",
+      "{workspaceRoot}/clippy.toml",
+      "{workspaceRoot}/pyproject.toml",
+      "{workspaceRoot}/uv.lock",
+      "{workspaceRoot}/biome.json",
+      "{workspaceRoot}/tsconfig.base.json"
+    ]
+  },
+  "targetDefaults": {
+    "format-check": { "cache": true, "inputs": ["default"] },
+    "lint": { "cache": true, "inputs": ["default", "^default"] },
+    "typecheck": { "cache": true, "inputs": ["default", "^default"] },
+    "build": { "cache": true, "inputs": ["default", "^default"] },
+    "test": { "cache": false, "inputs": ["default", "^default"] },
+    "test-e2e": { "cache": false }
+  },
+  "defaultBase": "origin/main"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@printobserver/sdk",
+  "private": true,
+  "description": "Typed Node client for the printobserver server's HTTP surface.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
