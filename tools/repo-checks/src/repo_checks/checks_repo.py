@@ -15,6 +15,11 @@ from repo_checks.parsing import (
 )
 
 PLACEHOLDERS = ("TODO", "TBD", "FIXME", "...", "…", "<placeholder>", "XXX")
+# The Nx entry point every fan-out tier goes through, the recipe that installs
+# what it needs, and the locked install that recipe must run.
+NX_INVOCATION = "bunx nx"
+NODE_INSTALL_RECIPE = "node-modules"
+LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
 DISPOSITIONS = ("included", "excluded")
 
@@ -151,6 +156,49 @@ def recipe_set(repo: Repo) -> list[str]:
         )
         if recipe.body and not does_something:
             findings.append(f"the `{name}` recipe is a placeholder: its body runs nothing")
+    return findings
+
+
+def _first_index(body: tuple[str, ...], *, startswith: str) -> int | None:
+    """The position of the first body line starting with `startswith`."""
+    return next((index for index, line in enumerate(body) if line.startswith(startswith)), None)
+
+
+def node_install(repo: Repo) -> list[str]:
+    """Every recipe that reaches Nx installs the JavaScript dependencies first.
+
+    `bunx nx` fails outright in a clone whose dependencies have never been
+    installed, and the `pre-push` hook runs the whole gate in exactly such a
+    clone every time this repository is published from a fresh one. So a recipe
+    reaching Nx heals that state before it gets there, and heals it from the
+    committed lockfile rather than from whatever the registry offers today.
+    """
+    parsed = recipes(repo.justfile)
+    install = parsed.get(NODE_INSTALL_RECIPE)
+    if install is None:
+        return [
+            f"the justfile declares no `{NODE_INSTALL_RECIPE}` recipe: nothing "
+            f"installs the JavaScript dependencies `bunx nx` needs"
+        ]
+
+    findings: list[str] = []
+    if LOCKED_NODE_INSTALL not in install.body:
+        findings.append(
+            f"the `{NODE_INSTALL_RECIPE}` recipe does not run `{LOCKED_NODE_INSTALL}`: "
+            f"an unlocked install can resolve what the committed lockfile does not describe"
+        )
+
+    invocation = f"just {NODE_INSTALL_RECIPE}"
+    for recipe in parsed.values():
+        reaches_nx = _first_index(recipe.body, startswith=NX_INVOCATION)
+        if reaches_nx is None:
+            continue
+        installs = _first_index(recipe.body, startswith=invocation)
+        if installs is None or installs > reaches_nx:
+            findings.append(
+                f"the `{recipe.name}` recipe reaches Nx without running `{invocation}` "
+                f"first: it fails in a clone that has never been bootstrapped"
+            )
     return findings
 
 

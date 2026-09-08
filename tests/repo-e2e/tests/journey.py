@@ -83,8 +83,13 @@ def output(result: subprocess.CompletedProcess[str]) -> str:
 class GateCopy:
     """A copy of the committed tree the gate can be run over."""
 
-    def __init__(self, root: Path, shared: Path) -> None:
-        """Prepare a copy that resolves its dependencies without a fresh install."""
+    def __init__(self, root: Path, shared: Path, *, node_modules: bool = True) -> None:
+        """Prepare a copy of the tree, with or without its dependencies installed.
+
+        `node_modules=False` is the clone a publication is cut from: one that has
+        never run `just bootstrap`, and in which the gate has to heal that state
+        for itself.
+        """
         self.root = copy_tracked(root)
         suite = self.root / "tests" / "repo-e2e" / "tests"
         shutil.rmtree(suite, ignore_errors=True)
@@ -107,7 +112,8 @@ class GateCopy:
         ):
             shell_run(["git", *args], cwd=self.root, check=True)
 
-        (self.root / "node_modules").symlink_to(REPO_ROOT / "node_modules")
+        if node_modules:
+            (self.root / "node_modules").symlink_to(REPO_ROOT / "node_modules")
         self.shared_venv = shared
 
     def read(self, relative: str) -> str:

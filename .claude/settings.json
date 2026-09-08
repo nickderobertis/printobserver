@@ -15,6 +15,7 @@
       "Bash(just coverage)",
       "Bash(just build)",
       "Bash(just install-tools)",
+      "Bash(just node-modules)",
       "Bash(just upgrade)",
       "Bash(just setup-llmlint)",
       "Bash(just lint-llm)",
