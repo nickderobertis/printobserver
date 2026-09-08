@@ -55,7 +55,7 @@ reason = "Whole-file, and the rule is about the whole file: success is quiet and
 rule = "boundary_inputs_validated"
 file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
-reason = "Whole-file, and the rule is about the whole file: the only external input this script takes is the `llmlint-cli` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations, so no untrusted input is executed anywhere in it."
+reason = "Whole-file, and the rule is about the whole file: every external input it takes is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing and PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — and each package name is a constant in the file rather than anything a caller supplies, so no untrusted input is executed anywhere in it."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
