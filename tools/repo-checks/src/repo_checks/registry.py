@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from repo_checks import checks_ci, checks_release, checks_repo, checks_suppressions
+from repo_checks import (
+    checks_ci,
+    checks_integration,
+    checks_release,
+    checks_repo,
+    checks_suppressions,
+)
 from repo_checks.model import Repo
 
 Check = Callable[[Repo], list[str]]
@@ -38,6 +44,7 @@ CHECKS: dict[str, Check] = {
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,
+    "integration-tier": checks_integration.integration_tier,
     "merge-model": checks_ci.merge_model,
     "secrets": checks_ci.secrets,
     "release-targets": checks_release.release_targets,
