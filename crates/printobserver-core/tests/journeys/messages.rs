@@ -51,7 +51,7 @@ fn every_rejection() -> Vec<RejectionReason> {
 /// Every error this crate answers says which port failed, and says it distinctly.
 #[test]
 fn every_core_error_says_what_failed_and_says_it_distinctly() {
-    let errors = vec![
+    let errors = [
         CoreError::Store(StoreError::Database {
             detail: "the database is locked".to_owned(),
         }),
