@@ -16,12 +16,12 @@ def shared_venv(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def gate_copy(tmp_path: Path, shared_venv: Path) -> Callable[[], GateCopy]:
+def gate_copy(tmp_path: Path, shared_venv: Path) -> Callable[..., GateCopy]:
     """A factory for copies of the committed tree the gate can run over."""
     counter = {"n": 0}
 
-    def make() -> GateCopy:
+    def make(*, node_modules: bool = True) -> GateCopy:
         counter["n"] += 1
-        return GateCopy(tmp_path / f"copy{counter['n']}", shared_venv)
+        return GateCopy(tmp_path / f"copy{counter['n']}", shared_venv, node_modules=node_modules)
 
     return make

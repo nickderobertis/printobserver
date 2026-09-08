@@ -49,7 +49,7 @@ def test_an_empty_recipe_body_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.edit(
         "justfile",
-        "build:\n    bunx nx run-many -t build --output-style=stream\n",
+        "build:\n    just node-modules\n    bunx nx run-many -t build --output-style=stream\n",
         "build:\n",
     )
 

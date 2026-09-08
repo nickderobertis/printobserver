@@ -19,7 +19,7 @@ bootstrap:
     rustup show active-toolchain
     cargo fetch --locked
     uv sync
-    bun install --frozen-lockfile
+    just node-modules
     uv run -q python -m repo_checks install-tools
     uv run -q python -m repo_checks install-hooks
 
@@ -39,24 +39,44 @@ check:
     just check-repo
     just test-e2e
 
+# Install the workspace's JavaScript dependencies, exactly as `bun.lock` describes.
+#
+# Every recipe that reaches Nx runs this first, because `bunx nx` fails outright
+# in a clone that has never been bootstrapped — and every publication of this
+# repository is made from a clone cut fresh for it, where the `pre-push` hook
+# runs the whole gate. So the gate installs what it needs rather than requiring
+# a person to run `just bootstrap` in a directory nothing hands them.
+#
+# The install is the locked one: it can neither resolve nor record anything
+# `bun.lock` does not already describe, and it reports `no changes` without
+# reinstalling when the tree already matches. Only the JavaScript side needs
+# this, because `uv run` syncs its own environment on every invocation.
+node-modules:
+    bun install --frozen-lockfile
+
 # Rewrite every project's sources in its language's canonical format.
 format:
+    just node-modules
     bunx nx run-many -t format --output-style=stream
 
 # Refuse a source file that is not in its language's canonical format.
 format-check:
+    just node-modules
     bunx nx run-many -t format-check --output-style=stream
 
 # Lint every project with its language's linter, failing on any finding.
 lint:
+    just node-modules
     bunx nx run-many -t lint --output-style=stream
 
 # Type-check every project with its language's type checker.
 typecheck:
+    just node-modules
     bunx nx run-many -t typecheck --output-style=stream
 
 # Run every project's tests, recording coverage as they run.
 test:
+    just node-modules
     cargo llvm-cov clean --workspace
     uv run -q coverage erase
     bunx nx run-many -t test --output-style=stream
@@ -67,6 +87,7 @@ coverage:
 
 # Build every project that produces an artifact.
 build:
+    just node-modules
     bunx nx run-many -t build --output-style=stream
 
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
@@ -81,6 +102,7 @@ check-repo:
 
 # The end-to-end tier: journeys that drive the real gate, checks and bootstrap.
 test-e2e:
+    just node-modules
     bunx nx run-many -t test-e2e --output-style=stream
 
 # Refuse a pull-request title that is not a Conventional Commit subject.

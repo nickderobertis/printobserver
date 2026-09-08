@@ -2,8 +2,10 @@
 
 Every check, command and test helper runs programs through `run`, so its
 contract is worth driving directly: it resolves the executable against PATH
-before running it, and it reports a program that is not there rather than
-raising out of a caller that was going to report the failure itself.
+before running it, it reports a program that is not there rather than raising
+out of a caller that was going to report the failure itself, and it runs that
+program on the directory it was given rather than on the repository the
+caller's own environment names.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -58,3 +60,67 @@ def test_output_can_be_left_to_the_terminal() -> None:
 
     passing(result)
     equal(result.stdout, None)
+
+
+def _repository(root: Path) -> Path:
+    """A real git repository, initialized the way the suites here make one."""
+    root.mkdir(parents=True, exist_ok=True)
+    run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+    return root
+
+
+def test_an_ambient_git_directory_does_not_move_a_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every hook git runs inherits `GIT_DIR`, and `pre-push` here runs the whole gate.
+
+    Inherited, it would point every `git` the gate starts at the repository
+    being pushed — so a suite that inits a repository in a temporary directory
+    would commit into the developer's own tree instead.
+    """
+    pushed = _repository(tmp_path / "pushed")
+    elsewhere = _repository(tmp_path / "elsewhere")
+    monkeypatch.setenv("GIT_DIR", str(pushed / ".git"))
+
+    where = run(["git", "rev-parse", "--absolute-git-dir"], cwd=elsewhere)
+
+    passing(where)
+    equal(
+        Path(where.stdout.strip()).resolve(),
+        (elsewhere / ".git").resolve(),
+        describing="the repository the subprocess worked on",
+    )
+
+
+def test_a_commit_lands_where_the_subprocess_was_pointed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure this repairs is a commit landing in the wrong repository."""
+    pushed = _repository(tmp_path / "pushed")
+    elsewhere = _repository(tmp_path / "elsewhere")
+    (elsewhere / "a-file.txt").write_text("a line\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(pushed / ".git"))
+
+    run(["git", "add", "-A"], cwd=elsewhere, check=True)
+    run(
+        [
+            "git",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "chore: the base",
+        ],
+        cwd=elsewhere,
+        check=True,
+    )
+
+    contains(run(["git", "log", "--oneline"], cwd=elsewhere).stdout, "chore: the base")
+    equal(
+        run(["git", "log", "--oneline"], cwd=pushed).returncode,
+        128,
+        describing="an empty repository",
+    )
