@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_release import _publishable_crates, release_automation, release_targets
 from repo_checks.model import Repo
+from treecopy import Tree
 
 RELEASE = ".github/workflows/release-plz.yml"
 TARGETS = "release-targets.toml"

@@ -11,9 +11,9 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from conftest import REPO_ROOT, Tree
 from repo_checks.checks_suppressions import scan, suppressions
 from repo_checks.model import Repo
+from treecopy import REPO_ROOT, Tree
 
 ALLOW = "#[" + "allow(dead_code)]"
 ENTRY = """

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_repo import workspace
 from repo_checks.model import Repo
+from treecopy import Tree
 
 # The crates this repository is required to hold, named here rather than read
 # from the tree, so that a tree that lost one is refused by the list rather than

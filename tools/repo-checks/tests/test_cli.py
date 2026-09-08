@@ -7,8 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT, Tree
 from repo_checks.__main__ import main
+from treecopy import REPO_ROOT, Tree
 
 
 def test_all_over_the_committed_tree_reports_nothing(capsys: pytest.CaptureFixture[str]) -> None:

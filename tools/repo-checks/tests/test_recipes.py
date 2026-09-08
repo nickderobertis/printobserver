@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_repo import recipe_set
 from repo_checks.model import Repo
+from treecopy import Tree
 
 
 def test_the_committed_recipe_set_is_accepted(committed: Repo) -> None:

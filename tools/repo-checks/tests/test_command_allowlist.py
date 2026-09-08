@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_repo import _derived_programs, command_allowlist
 from repo_checks.model import Repo
+from treecopy import Tree
 
 
 def test_the_committed_allowlist_is_accepted(committed: Repo) -> None:

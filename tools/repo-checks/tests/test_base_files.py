@@ -5,9 +5,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT
 from repo_checks.model import Repo
 from repo_checks.registry import base_files
+from treecopy import REPO_ROOT
 
 MANIFEST = "gh-secrets.json"
 IGNORE_RULE = ".gh-secrets-state.json"

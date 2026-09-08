@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
 from repo_checks.model import Repo
+from treecopy import Tree
 
 FETCH = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"

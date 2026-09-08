@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_ci import platforms, platforms_of
 from repo_checks.model import Repo
+from treecopy import Tree
 
 EMPTY_BLOCK = "<!-- BEGIN: supported-platforms -->\n<!-- END: supported-platforms -->"
 AARCH64 = (

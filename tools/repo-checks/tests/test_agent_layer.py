@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_repo import agent_layer
 from repo_checks.model import Repo
+from treecopy import Tree
 
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:

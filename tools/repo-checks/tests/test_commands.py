@@ -7,9 +7,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import Tree
 from repo_checks.commands import coverage, install_hooks, install_tools
 from repo_checks.model import Repo
+from treecopy import Tree
 
 POLICY = """
 schema_version = 1

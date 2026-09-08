@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_ci import continuous_integration
 from repo_checks.model import Repo
+from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
 INSTALL = ".github/workflows/install-path.yml"

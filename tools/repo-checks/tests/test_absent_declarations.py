@@ -9,12 +9,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from conftest import Tree
 from repo_checks.checks_ci import install_path_section, merge_model, platforms, secrets
 from repo_checks.checks_release import release_targets
 from repo_checks.checks_repo import agent_layer, recipe_set, workspace
 from repo_checks.model import Repo
 from repo_checks.registry import base_files
+from treecopy import Tree
 
 BLOCKS = ("composition-record", "supported-platforms", "required-checks")
 

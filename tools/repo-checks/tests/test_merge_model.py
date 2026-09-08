@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from conftest import Tree
 from repo_checks.checks_ci import merge_model
 from repo_checks.model import Repo
+from treecopy import Tree
 
 BLOCK_START = "<!-- BEGIN: required-checks -->"
 BLOCK_END = "<!-- END: required-checks -->"
