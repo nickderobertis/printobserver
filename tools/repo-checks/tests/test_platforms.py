@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_ci import platforms, platforms_of
+from repo_checks.expect import accepted, refused, truth
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -21,7 +21,7 @@ AARCH64 = (
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """Both committed matrices agree with the list they are derived from."""
-    assert platforms(committed) == []
+    accepted(platforms(committed))
 
 
 def test_the_list_is_non_empty_and_names_the_install_paths_platform(
@@ -30,8 +30,11 @@ def test_the_list_is_non_empty_and_names_the_install_paths_platform(
     """The list names the operating system and service manager the unit is written for."""
     declared = platforms_of(committed)
 
-    assert declared
-    assert any(p.install_path and p.service_manager == "systemd" for p in declared)
+    truth(declared, describing="a non-empty supported-platform list")
+    truth(
+        any(p.install_path and p.service_manager == "systemd" for p in declared),
+        describing="a systemd platform the end-user install path targets",
+    )
 
 
 def _replace_block(tree: Tree, replacement: str) -> None:
@@ -48,7 +51,7 @@ def test_an_empty_list_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = platforms(broken.repo)
 
-    assert any("is empty" in finding for finding in findings), findings
+    refused(findings, "is empty")
 
 
 def test_a_list_omitting_the_install_paths_platform_is_refused(
@@ -64,11 +67,14 @@ def test_a_list_omitting_the_install_paths_platform_is_refused(
         "`x86_64-unknown-linux-gnu`, service manager `launchd`, install path: no\n"
         "[//]: # (END supported-platforms)",
     )
-    assert text != broken.read("AGENTS.md")
+    truth(
+        text != broken.read("AGENTS.md"),
+        describing="the platform block to have been replaced by the fixture",
+    )
 
     findings = platforms(broken.repo)
 
-    assert any("install path targets" in finding for finding in findings), findings
+    refused(findings, "install path targets")
 
 
 def test_a_matrix_naming_an_undeclared_platform_is_refused(
@@ -85,7 +91,7 @@ def test_a_matrix_naming_an_undeclared_platform_is_refused(
 
     findings = platforms(broken.repo)
 
-    assert any("windows-x86_64" in finding for finding in findings), findings
+    refused(findings, "windows-x86_64")
 
 
 def test_a_matrix_omitting_a_declared_platform_is_refused(
@@ -101,7 +107,7 @@ def test_a_matrix_omitting_a_declared_platform_is_refused(
 
     findings = platforms(broken.repo)
 
-    assert any("omits platform `linux-aarch64`" in finding for finding in findings), findings
+    refused(findings, "omits platform `linux-aarch64`")
 
 
 def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
@@ -121,4 +127,4 @@ def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
 
     findings = platforms(broken.repo)
 
-    assert any("omits platform `linux-riscv64`" in finding for finding in findings), findings
+    refused(findings, "omits platform `linux-riscv64`")

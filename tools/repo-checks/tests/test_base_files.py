@@ -2,12 +2,12 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from repo_checks.registry import base_files
 from repo_checks.shell import run
@@ -42,7 +42,7 @@ def test_the_secret_manifest_reads_exactly_as_it_did_on_the_base_commit() -> Non
     """The manifest is authoritative and this node overwrote none of it."""
     base = _introducing_commit(MANIFEST)
 
-    assert (REPO_ROOT / MANIFEST).read_text(encoding="utf-8") == _blob_at(base, MANIFEST)
+    equal((REPO_ROOT / MANIFEST).read_text(encoding="utf-8"), _blob_at(base, MANIFEST))
 
 
 def test_the_manifest_declares_the_seven_secrets_this_repository_holds() -> None:
@@ -51,7 +51,7 @@ def test_the_manifest_declares_the_seven_secrets_this_repository_holds() -> None
 
     manifest = json.loads((REPO_ROOT / MANIFEST).read_text(encoding="utf-8"))
 
-    assert {entry["name"] for entry in manifest["secrets"]} == DECLARED_SECRETS
+    equal({entry["name"] for entry in manifest["secrets"]}, DECLARED_SECRETS)
 
 
 def test_the_gitignore_rule_that_was_already_there_is_still_there() -> None:
@@ -61,8 +61,8 @@ def test_the_gitignore_rule_that_was_already_there_is_still_there() -> None:
     after = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
     for line in before.splitlines():
-        assert line in after, line
-    assert IGNORE_RULE in after
+        contains(after, line)
+    contains(after, IGNORE_RULE)
 
 
 def test_the_check_refuses_a_tree_that_lost_the_ignore_rule(tmp_path: Path) -> None:
@@ -74,9 +74,9 @@ def test_the_check_refuses_a_tree_that_lost_the_ignore_rule(tmp_path: Path) -> N
 
     findings = base_files(Repo(root))
 
-    assert any("no longer ignores" in finding for finding in findings), findings
+    refused(findings, "no longer ignores")
 
 
 def test_the_committed_tree_is_accepted() -> None:
     """Both paths are present and intact."""
-    assert base_files(Repo(REPO_ROOT)) == []
+    accepted(base_files(Repo(REPO_ROOT)))

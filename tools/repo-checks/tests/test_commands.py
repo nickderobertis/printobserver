@@ -2,7 +2,6 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.commands import coverage, install_hooks, install_tools
+from repo_checks.expect import contains, equal
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree
@@ -36,10 +36,10 @@ def test_install_hooks_points_git_at_the_committed_hooks(
     fresh = tree()
     run(["git", "init", "-q", "-b", "main"], cwd=fresh.root, check=True)
 
-    assert install_hooks(fresh.repo) == 0
+    equal(install_hooks(fresh.repo), 0)
 
     configured = run(["git", "config", "core.hooksPath"], cwd=fresh.root, check=True).stdout.strip()
-    assert configured == ".githooks"
+    equal(configured, ".githooks")
 
 
 def test_install_hooks_is_a_no_op_outside_a_git_repository(
@@ -48,7 +48,7 @@ def test_install_hooks_is_a_no_op_outside_a_git_repository(
     """The bootstrap journey copies the tree without its history and must still run."""
     fresh = tree()
 
-    assert install_hooks(fresh.repo) == 0
+    equal(install_hooks(fresh.repo), 0)
 
 
 def test_install_tools_skips_a_tool_already_on_the_path(tmp_path: Path) -> None:
@@ -59,7 +59,7 @@ def test_install_tools_skips_a_tool_already_on_the_path(tmp_path: Path) -> None:
         POLICY.format(command="git", install="false"), encoding="utf-8"
     )
 
-    assert install_tools(Repo(root)) == 0
+    equal(install_tools(Repo(root)), 0)
 
 
 def test_install_tools_reports_an_install_it_could_not_do(
@@ -73,8 +73,8 @@ def test_install_tools_reports_an_install_it_could_not_do(
         encoding="utf-8",
     )
 
-    assert install_tools(Repo(root)) == 1
-    assert "Run `false` by hand" in capsys.readouterr().err
+    equal(install_tools(Repo(root)), 1)
+    contains(capsys.readouterr().err, "Run `false` by hand")
 
 
 def test_coverage_fails_where_no_coverage_was_measured(
@@ -87,5 +87,5 @@ def test_coverage_fails_where_no_coverage_was_measured(
         POLICY.format(command="git", install="false"), encoding="utf-8"
     )
 
-    assert coverage(Repo(root)) == 1
-    assert "below the" in capsys.readouterr().err
+    equal(coverage(Repo(root)), 1)
+    contains(capsys.readouterr().err, "below the")

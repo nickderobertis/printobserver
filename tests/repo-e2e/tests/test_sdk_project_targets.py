@@ -7,7 +7,6 @@ runs the real Nx target over it.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -16,6 +15,7 @@ from collections.abc import Callable
 
 import pytest
 from journey import REPO_ROOT, GateCopy, clean_environment
+from repo_checks.expect import contains, failing, passing
 from repo_checks.shell import run as shell_run
 
 PYTHON_PROJECT = "printobserver-sdk-python"
@@ -50,7 +50,7 @@ def test_the_project_declares_every_gate_target(project: str) -> None:
     )["targets"]
 
     for target in GATE_TARGETS:
-        assert target in declared, target
+        contains(declared, target)
 
 
 @pytest.mark.parametrize("target", GATE_TARGETS)
@@ -59,7 +59,7 @@ def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: 
     """A target the gate never reaches is a target that gates nothing."""
     justfile = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
 
-    assert f"nx run-many -t {target}" in justfile
+    contains(justfile, f"nx run-many -t {target}")
 
 
 def test_the_committed_project_passes_every_python_target(
@@ -69,8 +69,7 @@ def test_the_committed_project_passes_every_python_target(
     clean = gate_copy()
 
     for target in GATE_TARGETS:
-        code, said = _run_target(clean, PYTHON_PROJECT, target)
-        assert code == 0, (target, said)
+        passing(_run_target(clean, PYTHON_PROJECT, target), describing=f"{PYTHON_PROJECT}:{target}")
 
 
 def test_the_committed_project_passes_every_typescript_target(
@@ -80,8 +79,7 @@ def test_the_committed_project_passes_every_typescript_target(
     clean = gate_copy()
 
     for target in GATE_TARGETS:
-        code, said = _run_target(clean, NODE_PROJECT, target)
-        assert code == 0, (target, said)
+        passing(_run_target(clean, NODE_PROJECT, target), describing=f"{NODE_PROJECT}:{target}")
 
 
 def test_the_python_format_target_fails_on_an_unformatted_file(
@@ -93,8 +91,7 @@ def test_the_python_format_target_fails_on_an_unformatted_file(
 
     code, said = _run_target(broken, PYTHON_PROJECT, "format-check")
 
-    assert code != 0
-    assert "defect.py" in said, said
+    failing((code, said), naming="defect.py")
 
 
 def test_the_python_lint_target_fails_on_a_lint_finding(
@@ -106,8 +103,7 @@ def test_the_python_lint_target_fails_on_a_lint_finding(
 
     code, said = _run_target(broken, PYTHON_PROJECT, "lint")
 
-    assert code != 0
-    assert "F401" in said, said
+    failing((code, said), naming="F401")
 
 
 def test_the_python_typecheck_target_fails_on_a_type_error(
@@ -123,8 +119,7 @@ def test_the_python_typecheck_target_fails_on_a_type_error(
 
     code, said = _run_target(broken, PYTHON_PROJECT, "typecheck")
 
-    assert code != 0
-    assert "invalid-return-type" in said, said
+    failing((code, said), naming="invalid-return-type")
 
 
 def test_the_python_test_target_fails_on_a_failing_test(
@@ -140,8 +135,7 @@ def test_the_python_test_target_fails_on_a_failing_test(
 
     code, said = _run_target(broken, PYTHON_PROJECT, "test")
 
-    assert code != 0
-    assert "test_the_target_must_fail" in said, said
+    failing((code, said), naming="test_the_target_must_fail")
 
 
 def test_the_typescript_format_target_fails_on_an_unformatted_file(
@@ -153,8 +147,7 @@ def test_the_typescript_format_target_fails_on_an_unformatted_file(
 
     code, said = _run_target(broken, NODE_PROJECT, "format-check")
 
-    assert code != 0
-    assert "defect.ts" in said, said
+    failing((code, said), naming="defect.ts")
 
 
 def test_the_typescript_lint_target_fails_on_a_lint_finding(
@@ -168,8 +161,7 @@ def test_the_typescript_lint_target_fails_on_a_lint_finding(
 
     code, said = _run_target(broken, NODE_PROJECT, "lint")
 
-    assert code != 0
-    assert "defect.ts" in said, said
+    failing((code, said), naming="defect.ts")
 
 
 def test_the_typescript_typecheck_target_fails_on_a_type_error(
@@ -181,8 +173,7 @@ def test_the_typescript_typecheck_target_fails_on_a_type_error(
 
     code, said = _run_target(broken, NODE_PROJECT, "typecheck")
 
-    assert code != 0
-    assert "defect.ts" in said, said
+    failing((code, said), naming="defect.ts")
 
 
 def test_the_typescript_test_target_fails_on_a_failing_test(
@@ -198,5 +189,4 @@ def test_the_typescript_test_target_fails_on_a_failing_test(
 
     code, said = _run_target(broken, NODE_PROJECT, "test")
 
-    assert code != 0
-    assert "the target must fail" in said, said
+    failing((code, said), naming="the target must fail")

@@ -9,7 +9,6 @@ rejects.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -19,6 +18,7 @@ from collections.abc import Callable
 import pytest
 import yaml
 from journey import REPO_ROOT, GateCopy, output, run
+from repo_checks.expect import absent, contains, equal, failing
 
 RELEASE_WORKFLOW = REPO_ROOT / ".github/workflows/release-plz.yml"
 REJECTED_SETTING = "not_a_release_plz_setting"
@@ -46,8 +46,8 @@ pytestmark = pytest.mark.skipif(
 
 def test_the_committed_step_runs_the_release_program_the_toolchain_installs() -> None:
     """The step names a program `just install-tools` puts on PATH."""
-    assert release_step_arguments()[0] == "release-plz"
-    assert "release-plz" in (REPO_ROOT / "repo-policy.toml").read_text(encoding="utf-8")
+    equal(release_step_arguments()[0], "release-plz")
+    contains((REPO_ROOT / "repo-policy.toml").read_text(encoding="utf-8"), "release-plz")
 
 
 def test_the_program_accepts_the_committed_arguments_and_configuration() -> None:
@@ -59,9 +59,9 @@ def test_the_program_accepts_the_committed_arguments_and_configuration() -> None
     )
     said = output(result)
 
-    assert "using release-plz config file release-plz.toml" in said, said
+    contains(said, "using release-plz config file release-plz.toml")
     for error in ARGUMENT_ERRORS + CONFIG_ERRORS:
-        assert error not in said, said
+        absent(said, error)
 
 
 def test_a_configuration_the_program_rejects_is_refused_naming_it(
@@ -82,6 +82,5 @@ def test_a_configuration_the_program_rejects_is_refused_naming_it(
     )
     said = output(result)
 
-    assert result.returncode != 0, said
-    assert "invalid config file" in said, said
-    assert REJECTED_SETTING in said, said
+    failing(result, naming="invalid config file")
+    contains(said, REJECTED_SETTING)

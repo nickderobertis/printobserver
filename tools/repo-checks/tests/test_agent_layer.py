@@ -2,20 +2,20 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_repo import agent_layer
+from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """The record this repository ships passes the check it is held to."""
-    assert agent_layer(committed) == []
+    accepted(agent_layer(committed))
 
 
 def test_an_absent_symlink_is_refused(tree: Callable[[], Tree]) -> None:
@@ -26,7 +26,7 @@ def test_an_absent_symlink_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = agent_layer(broken.repo)
 
-    assert any("not a symbolic link" in finding for finding in findings), findings
+    refused(findings, "not a symbolic link")
 
 
 def test_a_symlink_pointing_elsewhere_is_refused(tree: Callable[[], Tree]) -> None:
@@ -37,7 +37,7 @@ def test_a_symlink_pointing_elsewhere_is_refused(tree: Callable[[], Tree]) -> No
 
     findings = agent_layer(broken.repo)
 
-    assert any("points at README.md" in finding for finding in findings), findings
+    refused(findings, "points at README.md")
 
 
 def test_an_entry_without_a_disposition_is_refused(tree: Callable[[], Tree]) -> None:
@@ -51,7 +51,7 @@ def test_an_entry_without_a_disposition_is_refused(tree: Callable[[], Tree]) -> 
 
     findings = agent_layer(broken.repo)
 
-    assert any("carries no disposition" in finding for finding in findings), findings
+    refused(findings, "carries no disposition")
 
 
 def test_a_placeholder_entry_is_refused(tree: Callable[[], Tree]) -> None:
@@ -67,7 +67,7 @@ def test_a_placeholder_entry_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = agent_layer(broken.repo)
 
-    assert any("is a placeholder" in finding for finding in findings), findings
+    refused(findings, "is a placeholder")
 
 
 def test_an_empty_record_is_refused(tree: Callable[[], Tree]) -> None:
@@ -83,4 +83,4 @@ def test_an_empty_record_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = agent_layer(broken.repo)
 
-    assert any("empty block" in finding for finding in findings), findings
+    refused(findings, "empty block")

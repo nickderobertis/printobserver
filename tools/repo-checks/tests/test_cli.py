@@ -2,7 +2,6 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -11,24 +10,25 @@ from pathlib import Path
 
 import pytest
 from repo_checks.__main__ import main
+from repo_checks.expect import contains, equal
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
 
 def test_all_over_the_committed_tree_reports_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     """Silent on success is the contract every script here holds to."""
-    assert main(["all", "--root", str(REPO_ROOT)]) == 0
-    assert capsys.readouterr().err == ""
+    equal(main(["all", "--root", str(REPO_ROOT)]), 0)
+    equal(capsys.readouterr().err, "")
 
 
 def test_one_check_can_be_run_on_its_own() -> None:
     """A single check is reachable by name."""
-    assert main(["workspace", "--root", str(REPO_ROOT)]) == 0
+    equal(main(["workspace", "--root", str(REPO_ROOT)]), 0)
 
 
 def test_the_workflow_tier_is_its_own_group() -> None:
     """`just lint-workflows` runs the workflow checks, `just check-repo` runs the rest."""
-    assert main(["workflows", "--root", str(REPO_ROOT)]) == 0
+    equal(main(["workflows", "--root", str(REPO_ROOT)]), 0)
 
 
 def test_an_unknown_check_is_refused() -> None:
@@ -44,8 +44,8 @@ def test_a_failing_check_prints_every_finding(
     broken = tree()
     broken.remove("CLAUDE.md")
 
-    assert main(["agent-layer", "--root", str(broken.root)]) == 1
-    assert "agent-layer" in capsys.readouterr().err
+    equal(main(["agent-layer", "--root", str(broken.root)]), 1)
+    contains(capsys.readouterr().err, "agent-layer")
 
 
 def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -> None:
@@ -60,7 +60,7 @@ def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -
     ):
         run(["git", *args], cwd=allowed.root, check=True)
 
-    assert main(["suppressions", "--root", str(allowed.root), "--base", "HEAD"]) == 0
+    equal(main(["suppressions", "--root", str(allowed.root), "--base", "HEAD"]), 0)
 
 
 def test_commit_msg_needs_a_message_file() -> None:
@@ -74,7 +74,7 @@ def test_the_committed_hook_admits_a_releasing_subject(tmp_path: Path) -> None:
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("feat(server): supervise a print\n", encoding="utf-8")
 
-    assert main(["commit-msg", str(message), "--root", str(REPO_ROOT)]) == 0
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
 
 
 @pytest.mark.parametrize("subject", ["fix: a thing", "perf: faster", "chore: tidy up"])
@@ -83,7 +83,7 @@ def test_the_committed_hook_admits_every_declared_type(subject: str, tmp_path: P
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text(subject + "\n", encoding="utf-8")
 
-    assert main(["commit-msg", str(message), "--root", str(REPO_ROOT)]) == 0
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
 
 
 def test_the_committed_hook_refuses_an_unconventional_subject(
@@ -93,8 +93,8 @@ def test_the_committed_hook_refuses_an_unconventional_subject(
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("made some changes\n", encoding="utf-8")
 
-    assert main(["commit-msg", str(message), "--root", str(REPO_ROOT)]) == 1
-    assert "not a Conventional Commit" in capsys.readouterr().err
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 1)
+    contains(capsys.readouterr().err, "not a Conventional Commit")
 
 
 def test_the_committed_hook_refuses_an_undeclared_type(
@@ -104,8 +104,8 @@ def test_the_committed_hook_refuses_an_undeclared_type(
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("wip: halfway there\n", encoding="utf-8")
 
-    assert main(["commit-msg", str(message), "--root", str(REPO_ROOT)]) == 1
-    assert "does not admit" in capsys.readouterr().err
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 1)
+    contains(capsys.readouterr().err, "does not admit")
 
 
 def test_a_comment_only_message_is_left_alone(tmp_path: Path) -> None:
@@ -113,7 +113,7 @@ def test_a_comment_only_message_is_left_alone(tmp_path: Path) -> None:
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("# please enter a message\n", encoding="utf-8")
 
-    assert main(["commit-msg", str(message), "--root", str(REPO_ROOT)]) == 0
+    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
 
 
 def test_the_pull_request_title_lint_reads_the_title_from_the_environment(
@@ -122,7 +122,7 @@ def test_the_pull_request_title_lint_reads_the_title_from_the_environment(
     """The title is attacker-controlled, so it arrives through the environment."""
     monkeypatch.setenv("PR_TITLE", "feat(gate): add a tier")
 
-    assert main(["pr-title", "--root", str(REPO_ROOT)]) == 0
+    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 0)
 
 
 def test_an_empty_pull_request_title_is_refused(
@@ -131,8 +131,8 @@ def test_an_empty_pull_request_title_is_refused(
     """A missing title is a misconfigured job, not a pass."""
     monkeypatch.setenv("PR_TITLE", "")
 
-    assert main(["pr-title", "--root", str(REPO_ROOT)]) == 1
-    assert "PR_TITLE is empty" in capsys.readouterr().err
+    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+    contains(capsys.readouterr().err, "PR_TITLE is empty")
 
 
 def test_an_unconventional_pull_request_title_is_refused(
@@ -141,4 +141,4 @@ def test_an_unconventional_pull_request_title_is_refused(
     """Under squash-merge the title is the commit release automation reads."""
     monkeypatch.setenv("PR_TITLE", "some changes")
 
-    assert main(["pr-title", "--root", str(REPO_ROOT)]) == 1
+    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)

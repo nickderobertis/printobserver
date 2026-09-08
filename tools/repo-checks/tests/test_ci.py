@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_ci import continuous_integration
+from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -27,7 +27,7 @@ brew install printobserver
 
 def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
     """The jobs this repository ships agree with the recipes and the section."""
-    assert continuous_integration(committed) == []
+    accepted(continuous_integration(committed))
 
 
 def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -37,7 +37,7 @@ def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = continuous_integration(broken.repo)
 
-    assert any("no complete-gate job" in finding for finding in findings), findings
+    refused(findings, "no complete-gate job")
 
 
 def test_a_gate_job_omitting_the_bootstrap_recipe_is_refused(
@@ -49,7 +49,7 @@ def test_a_gate_job_omitting_the_bootstrap_recipe_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("no complete-gate job" in finding for finding in findings), findings
+    refused(findings, "no complete-gate job")
 
 
 def test_a_gate_step_naming_an_undeclared_recipe_is_refused(
@@ -63,7 +63,7 @@ def test_a_gate_step_naming_an_undeclared_recipe_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("which the recipe set does not declare" in finding for finding in findings), findings
+    refused(findings, "which the recipe set does not declare")
 
 
 def test_a_gate_step_running_something_that_is_not_a_recipe_is_refused(
@@ -79,9 +79,7 @@ def test_a_gate_step_running_something_that_is_not_a_recipe_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("is not one of this repository's recipes" in finding for finding in findings), (
-        findings
-    )
+    refused(findings, "is not one of this repository's recipes")
 
 
 def test_a_missing_judged_lint_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -91,7 +89,7 @@ def test_a_missing_judged_lint_job_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = continuous_integration(broken.repo)
 
-    assert any("no judged-lint job" in finding for finding in findings), findings
+    refused(findings, "no judged-lint job")
 
 
 def test_the_judged_tier_as_a_step_of_the_gate_job_is_refused(
@@ -107,7 +105,7 @@ def test_the_judged_tier_as_a_step_of_the_gate_job_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("rather than a job of its own" in finding for finding in findings), findings
+    refused(findings, "rather than a job of its own")
 
 
 def test_a_route_with_no_install_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -121,10 +119,7 @@ def test_a_route_with_no_install_job_is_refused(tree: Callable[[], Tree]) -> Non
 
     findings = continuous_integration(broken.repo)
 
-    assert any(
-        "for which the committed configuration declares no install job" in finding
-        for finding in findings
-    ), findings
+    refused(findings, "for which the committed configuration declares no install job")
 
 
 def test_a_missing_install_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -134,7 +129,7 @@ def test_a_missing_install_job_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = continuous_integration(broken.repo)
 
-    assert any("npm install -g printobserver-cli" in finding for finding in findings), findings
+    refused(findings, "npm install -g printobserver-cli")
 
 
 def test_an_install_job_omitting_one_of_the_two_commands_is_refused(
@@ -152,7 +147,7 @@ def test_an_install_job_omitting_one_of_the_two_commands_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("omits `curl -fsSL" in finding for finding in findings), findings
+    refused(findings, "omits `curl -fsSL")
 
 
 def test_an_install_step_the_section_does_not_state_is_refused(
@@ -168,7 +163,7 @@ def test_an_install_step_the_section_does_not_state_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    assert any("does not state" in finding for finding in findings), findings
+    refused(findings, "does not state")
 
 
 def test_a_spelling_disagreement_is_refused(tree: Callable[[], Tree]) -> None:
@@ -182,4 +177,4 @@ def test_a_spelling_disagreement_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = continuous_integration(broken.repo)
 
-    assert any("does not state" in finding for finding in findings), findings
+    refused(findings, "does not state")

@@ -2,7 +2,6 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -10,23 +9,24 @@ import json
 from collections.abc import Callable
 
 from repo_checks.checks_repo import _derived_programs, command_allowlist
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
 
 def test_the_committed_allowlist_is_accepted(committed: Repo) -> None:
     """The allowlist this repository ships names the set its own commands need."""
-    assert command_allowlist(committed) == []
+    accepted(command_allowlist(committed))
 
 
 def test_the_derived_set_comes_from_the_recipes_and_targets(committed: Repo) -> None:
     """The set is derived from the committed files, not from a list kept beside them."""
     derived = _derived_programs(committed)
 
-    assert "cargo" in derived
-    assert "uv" in derived
-    assert "bunx" in derived
-    assert "just" in derived
+    contains(derived, "cargo")
+    contains(derived, "uv")
+    contains(derived, "bunx")
+    contains(derived, "just")
 
 
 def _allow(tree: Tree) -> list[str]:
@@ -48,7 +48,7 @@ def test_an_allowlist_omitting_an_invoked_command_is_refused(
 
     findings = command_allowlist(broken.repo)
 
-    assert any("`cargo` is invoked by" in finding for finding in findings), findings
+    refused(findings, "`cargo` is invoked by")
 
 
 def test_an_allowlist_naming_an_uninvoked_command_is_refused(
@@ -60,4 +60,4 @@ def test_an_allowlist_naming_an_uninvoked_command_is_refused(
 
     findings = command_allowlist(broken.repo)
 
-    assert any("the allowlist names `curl`" in finding for finding in findings), findings
+    refused(findings, "the allowlist names `curl`")

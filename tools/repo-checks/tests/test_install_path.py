@@ -2,7 +2,6 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -10,6 +9,7 @@ from collections.abc import Callable
 
 from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
+from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -31,22 +31,21 @@ brew install printobserver
 
 def test_the_committed_section_is_accepted(committed: Repo) -> None:
     """The section this repository ships is complete and agrees with every restatement."""
-    assert install_path_section(committed) == []
+    accepted(install_path_section(committed))
 
 
 def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> None:
     """Three alternatives to the program, then two commands in order."""
     path = ip.parse(committed.agents_md)
 
-    assert len(path.routes) == 3
-    assert [route.command for route in path.routes] == [
-        "pip install printobserver-cli",
-        "npm install -g printobserver-cli",
-        FETCH,
-    ]
-    assert path.routes[2].commands[1] == PINNED
-    assert len(path.commands) == 2
-    assert path.commands[1] == "sudo systemctl enable --now printobserver.service"
+    equal(len(path.routes), 3)
+    equal(
+        [route.command for route in path.routes],
+        ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
+    )
+    equal(path.routes[2].commands[1], PINNED)
+    equal(len(path.commands), 2)
+    equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
 
 
 def test_a_fourth_route_is_refused(tree: Callable[[], Tree]) -> None:
@@ -60,7 +59,7 @@ def test_a_fourth_route_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = install_path_section(broken.repo)
 
-    assert any("states 4 routes" in finding for finding in findings), findings
+    refused(findings, "states 4 routes")
 
 
 def test_a_missing_route_is_refused(tree: Callable[[], Tree]) -> None:
@@ -73,7 +72,7 @@ def test_a_missing_route_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = install_path_section(broken.repo)
 
-    assert any("states 2 routes" in finding for finding in findings), findings
+    refused(findings, "states 2 routes")
 
 
 def test_a_third_command_after_the_routes_is_refused(tree: Callable[[], Tree]) -> None:
@@ -88,7 +87,7 @@ def test_a_third_command_after_the_routes_is_refused(tree: Callable[[], Tree]) -
 
     findings = install_path_section(broken.repo)
 
-    assert any("states 3 commands" in finding for finding in findings), findings
+    refused(findings, "states 3 commands")
 
 
 def test_presenting_the_routes_as_a_sequence_is_refused(
@@ -105,8 +104,8 @@ def test_presenting_the_routes_as_a_sequence_is_refused(
 
     findings = install_path_section(broken.repo)
 
-    assert any("does not say the routes are" in finding for finding in findings), findings
-    assert any("presents the routes as a sequence" in finding for finding in findings), findings
+    refused(findings, "does not say the routes are")
+    refused(findings, "presents the routes as a sequence")
 
 
 def test_an_elided_fetch_command_is_refused(tree: Callable[[], Tree]) -> None:
@@ -116,7 +115,7 @@ def test_an_elided_fetch_command_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = install_path_section(broken.repo)
 
-    assert any("where a literal value belongs" in finding for finding in findings), findings
+    refused(findings, "where a literal value belongs")
 
 
 def test_a_fetch_url_naming_another_file_is_refused(tree: Callable[[], Tree]) -> None:
@@ -126,7 +125,7 @@ def test_a_fetch_url_naming_another_file_is_refused(tree: Callable[[], Tree]) ->
 
     findings = install_path_section(broken.repo)
 
-    assert any("is not a path this section declares" in finding for finding in findings), findings
+    refused(findings, "is not a path this section declares")
 
 
 def test_a_fetch_url_naming_another_repository_is_refused(
@@ -142,7 +141,7 @@ def test_a_fetch_url_naming_another_repository_is_refused(
 
     findings = install_path_section(broken.repo)
 
-    assert any("which does not name" in finding for finding in findings), findings
+    refused(findings, "which does not name")
 
 
 def test_a_fetch_url_naming_another_branch_is_refused(tree: Callable[[], Tree]) -> None:
@@ -156,7 +155,7 @@ def test_a_fetch_url_naming_another_branch_is_refused(tree: Callable[[], Tree]) 
 
     findings = install_path_section(broken.repo)
 
-    assert any("which does not name" in finding for finding in findings), findings
+    refused(findings, "which does not name")
 
 
 def test_a_metavariable_release_tag_is_refused(tree: Callable[[], Tree]) -> None:
@@ -168,7 +167,7 @@ def test_a_metavariable_release_tag_is_refused(tree: Callable[[], Tree]) -> None
 
     findings = install_path_section(broken.repo)
 
-    assert any("no concrete release tag" in finding for finding in findings), findings
+    refused(findings, "no concrete release tag")
 
 
 def test_a_metavariable_install_directory_is_refused(tree: Callable[[], Tree]) -> None:
@@ -182,7 +181,7 @@ def test_a_metavariable_install_directory_is_refused(tree: Callable[[], Tree]) -
 
     findings = install_path_section(broken.repo)
 
-    assert any("no concrete install directory" in finding for finding in findings), findings
+    refused(findings, "no concrete install directory")
 
 
 def test_a_first_command_that_starts_the_service_is_refused(
@@ -199,7 +198,7 @@ def test_a_first_command_that_starts_the_service_is_refused(
 
     findings = install_path_section(broken.repo)
 
-    assert any("starts or enables the service" in finding for finding in findings), findings
+    refused(findings, "starts or enables the service")
 
 
 def test_dropping_the_reason_is_refused(tree: Callable[[], Tree]) -> None:
@@ -209,7 +208,7 @@ def test_dropping_the_reason_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = install_path_section(broken.repo)
 
-    assert any("why enabling and" in finding for finding in findings), findings
+    refused(findings, "why enabling and")
 
 
 def test_a_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None:
@@ -223,4 +222,4 @@ def test_a_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None
 
     findings = install_path_section(broken.repo)
 
-    assert any("README.md states" in finding for finding in findings), findings
+    refused(findings, "README.md states")

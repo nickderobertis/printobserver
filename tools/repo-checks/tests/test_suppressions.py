@@ -7,7 +7,6 @@ suppression the check would then demand an allowlist entry for.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -15,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from repo_checks.checks_suppressions import scan, suppressions
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -40,7 +40,7 @@ def _plant_directive(tree: Tree) -> None:
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """Every directive standing in this repository carries its entry."""
-    assert suppressions(committed) == []
+    accepted(suppressions(committed))
 
 
 def test_the_scanner_finds_the_directives_this_repository_carries(
@@ -49,8 +49,8 @@ def test_the_scanner_finds_the_directives_this_repository_carries(
     """The check reads real directives out of the tree rather than a list beside it."""
     found = {(d.file, d.rule) for d in scan(REPO_ROOT)}
 
-    assert ("scripts/session-setup.sh", "tool_output_is_signal") in found
-    assert ("scripts/setup-llmlint.sh", "changed_behavior_has_e2e") in found
+    contains(found, ("scripts/session-setup.sh", "tool_output_is_signal"))
+    contains(found, ("scripts/setup-llmlint.sh", "changed_behavior_has_e2e"))
 
 
 def test_a_directive_with_no_entry_is_refused(tree: Callable[[], Tree]) -> None:
@@ -60,7 +60,7 @@ def test_a_directive_with_no_entry_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("with no entry in suppressions.toml" in finding for finding in findings), findings
+    refused(findings, "with no entry in suppressions.toml")
 
 
 def test_an_entry_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
@@ -75,7 +75,7 @@ def test_an_entry_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("carries no reason" in finding for finding in findings), findings
+    refused(findings, "carries no reason")
 
 
 def test_an_entry_matching_nothing_is_refused(tree: Callable[[], Tree]) -> None:
@@ -85,7 +85,7 @@ def test_an_entry_matching_nothing_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("matches no suppression directive" in finding for finding in findings), findings
+    refused(findings, "matches no suppression directive")
 
 
 def test_a_directive_and_its_entry_together_are_accepted(
@@ -96,7 +96,7 @@ def test_a_directive_and_its_entry_together_are_accepted(
     _plant_directive(allowed)
     allowed.write("suppressions.toml", allowed.read("suppressions.toml") + ENTRY)
 
-    assert suppressions(allowed.repo) == []
+    accepted(suppressions(allowed.repo))
 
 
 def _git(root: Path, *args: str) -> None:
@@ -121,7 +121,7 @@ def test_a_change_adding_a_directive_without_its_entry_is_refused(
 
     findings = suppressions(broken.repo, base=base)
 
-    assert any("without adding its entry" in finding for finding in findings), findings
+    refused(findings, "without adding its entry")
 
 
 def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> None:
@@ -139,4 +139,4 @@ def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> 
     _git(allowed.root, "add", "-A")
     _git(allowed.root, "commit", "-q", "-m", "feat: silence a rule, with its reason")
 
-    assert suppressions(allowed.repo, base=base) == []
+    accepted(suppressions(allowed.repo, base=base))

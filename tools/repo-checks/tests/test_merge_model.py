@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_ci import merge_model
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -18,7 +18,7 @@ BLOCK_END = "[//]: # (END required-checks)"
 
 def test_the_committed_record_is_accepted(committed: Repo) -> None:
     """Every required name has a job behind it."""
-    assert merge_model(committed) == []
+    accepted(merge_model(committed))
 
 
 def _replace_required(tree: Tree, names: list[str]) -> None:
@@ -38,7 +38,7 @@ def test_a_required_name_with_no_job_behind_it_is_refused(
 
     findings = merge_model(broken.repo)
 
-    assert any("no committed workflow declares a job" in finding for finding in findings), findings
+    refused(findings, "no committed workflow declares a job")
 
 
 def test_a_record_naming_no_required_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -48,7 +48,7 @@ def test_a_record_naming_no_required_job_is_refused(tree: Callable[[], Tree]) ->
 
     findings = merge_model(broken.repo)
 
-    assert any("records no required check at all" in finding for finding in findings), findings
+    refused(findings, "records no required check at all")
 
 
 def test_a_record_omitting_the_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
@@ -58,7 +58,7 @@ def test_a_record_omitting_the_gate_job_is_refused(tree: Callable[[], Tree]) -> 
 
     findings = merge_model(broken.repo)
 
-    assert any("omit the complete-gate job" in finding for finding in findings), findings
+    refused(findings, "omit the complete-gate job")
 
 
 def test_a_record_omitting_the_judged_lint_job_is_refused(
@@ -70,12 +70,12 @@ def test_a_record_omitting_the_judged_lint_job_is_refused(
 
     findings = merge_model(broken.repo)
 
-    assert any("omit the judged-lint job" in finding for finding in findings), findings
+    refused(findings, "omit the judged-lint job")
 
 
 def test_the_record_states_that_the_base_branch_takes_no_direct_push(
     committed: Repo,
 ) -> None:
     """How a change reaches the base branch is written down."""
-    assert "takes no direct push" in committed.agents_md
-    assert "squash-merged" in committed.agents_md
+    contains(committed.agents_md, "takes no direct push")
+    contains(committed.agents_md, "squash-merged")

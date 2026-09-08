@@ -318,17 +318,23 @@ directive needs an entry naming the rule, the file, the site and a non-empty
 reason, added in the same change. Nothing in the check asks whether a reason is
 a *good* reason — that is for whoever reviews the change.
 
-**Silencing a rule in a configuration file is refused outright**, not
-allowlisted: a blanket `ignore`, a per-file glob, a crate lint set to `allow` or
-a linter rule set to `off` names no site, carries no reason, is invisible in a
-diff, and goes on silencing findings long after whatever motivated it is gone.
-`just check-repo` reads the ruff, ty, Cargo and Biome configurations and refuses
-each of those. Choosing which rules run is not suppression and is left alone.
+**Silencing a rule for a whole file is refused outright**, not allowlisted —
+both halves of it. A blanket `ignore`, a per-file glob, a crate lint set to
+`allow` or a linter rule set to `off` in a *configuration* file; and a
+file-level directive inside the file itself (ruff's `noqa` file form, flake8's,
+mypy's `ignore-errors`, `biome-ignore-all`, `eslint-disable` — each spelled here
+without its comment marker so this document carries none). Both cover every line
+of a file, including lines written long after the reason was true, and neither
+names a site. `just check-repo` refuses them all. Choosing which rules run is
+not suppression and is left alone.
 
-Where a rule genuinely cannot be fixed, fix what can be: every subprocess in
-this repository goes through `repo_checks.shell.run`, which resolves the
-executable against PATH — so `S607` is fixed by construction and `S603` has one
-site rather than thirty-four.
+So a suppression is only ever a single line, answering a single finding, with an
+entry naming its exact site. Where even that is avoidable, avoid it: every
+subprocess goes through `repo_checks.shell.run`, which resolves the executable
+against PATH, so `S607` is fixed by construction and `S603` has one site rather
+than thirty-four. The suites are written in the `repo_checks.expect` vocabulary
+rather than the `assert` statement, so `S101` is enabled with nothing suppressing
+it anywhere.
 
 ## Keeping the allowlist current
 

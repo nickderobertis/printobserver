@@ -6,11 +6,10 @@ a consumer takes first: import the package the distribution will ship.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
-
 import printobserver_sdk
+from repo_checks.expect import equal
 
 
 def test_the_package_imports_and_exports_nothing_yet() -> None:
     """A fresh environment can import the package the `sdks` node will fill in."""
-    assert printobserver_sdk.__all__ == []
+    equal(printobserver_sdk.__all__, [])

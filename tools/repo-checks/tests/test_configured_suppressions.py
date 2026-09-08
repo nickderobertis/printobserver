@@ -9,20 +9,20 @@ tree whose configuration silences a rule and asserts it is refused.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_suppressions import suppressions
+from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
 
 
 def test_the_committed_configuration_silences_nothing(committed: Repo) -> None:
     """No linter or type-checker configuration in this repository turns a rule off."""
-    assert suppressions(committed) == []
+    accepted(suppressions(committed))
 
 
 def test_a_repository_wide_rule_ignore_is_refused(tree: Callable[[], Tree]) -> None:
@@ -36,7 +36,7 @@ def test_a_repository_wide_rule_ignore_is_refused(tree: Callable[[], Tree]) -> N
 
     findings = suppressions(broken.repo)
 
-    assert any("pyproject.toml" in f and "S603" in f for f in findings), findings
+    refused_naming(findings, "pyproject.toml", "S603")
 
 
 def test_a_per_file_rule_ignore_is_refused(tree: Callable[[], Tree]) -> None:
@@ -49,7 +49,7 @@ def test_a_per_file_rule_ignore_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("per-file-ignores" in f and "S101" in f for f in findings), findings
+    refused_naming(findings, "per-file-ignores", "S101")
 
 
 def test_a_crate_level_lint_allow_is_refused(tree: Callable[[], Tree]) -> None:
@@ -63,7 +63,7 @@ def test_a_crate_level_lint_allow_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("Cargo.toml" in f and "pedantic" in f for f in findings), findings
+    refused_naming(findings, "Cargo.toml", "pedantic")
 
 
 def test_a_linter_rule_turned_off_is_refused(tree: Callable[[], Tree]) -> None:
@@ -73,7 +73,7 @@ def test_a_linter_rule_turned_off_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("biome.json" in f and "noExplicitAny" in f for f in findings), findings
+    refused_naming(findings, "biome.json", "noExplicitAny")
 
 
 def test_a_type_check_rule_set_to_ignore_is_refused(tree: Callable[[], Tree]) -> None:
@@ -83,7 +83,7 @@ def test_a_type_check_rule_set_to_ignore_is_refused(tree: Callable[[], Tree]) ->
 
     findings = suppressions(broken.repo)
 
-    assert any("invalid-return-type" in f for f in findings), findings
+    refused(findings, "invalid-return-type")
 
 
 def test_a_disabled_linter_is_refused(tree: Callable[[], Tree]) -> None:
@@ -97,7 +97,7 @@ def test_a_disabled_linter_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("biome.json" in f and "linter" in f for f in findings), findings
+    refused_naming(findings, "biome.json", "linter")
 
 
 def test_a_standalone_ruff_configuration_is_read_too(tree: Callable[[], Tree]) -> None:
@@ -107,7 +107,7 @@ def test_a_standalone_ruff_configuration_is_read_too(tree: Callable[[], Tree]) -
 
     findings = suppressions(broken.repo)
 
-    assert any("ruff.toml" in f and "S101" in f for f in findings), findings
+    refused_naming(findings, "ruff.toml", "S101")
 
 
 def test_a_single_ignored_rule_written_as_a_string_is_refused(
@@ -119,7 +119,7 @@ def test_a_single_ignored_rule_written_as_a_string_is_refused(
 
     findings = suppressions(broken.repo)
 
-    assert any("S603" in f for f in findings), findings
+    refused(findings, "S603")
 
 
 def test_a_crate_local_lint_allow_is_refused(tree: Callable[[], Tree]) -> None:
@@ -132,4 +132,4 @@ def test_a_crate_local_lint_allow_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = suppressions(broken.repo)
 
-    assert any("missing_panics_doc" in f for f in findings), findings
+    refused(findings, "missing_panics_doc")

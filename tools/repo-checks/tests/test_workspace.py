@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_repo import workspace
+from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -36,12 +36,12 @@ DEPENDENCY = '\n[dependencies]\n{name} = {{ path = "../{name}" }}\n'
 
 def test_the_workspace_holds_exactly_the_required_crates(committed: Repo) -> None:
     """Every crate the design names, and no crate it does not."""
-    assert sorted(committed.crate_names) == sorted(REQUIRED_CRATES)
+    equal(sorted(committed.crate_names), sorted(REQUIRED_CRATES))
 
 
 def test_the_committed_workspace_is_accepted(committed: Repo) -> None:
     """The workspace this repository ships satisfies its own dependency rule."""
-    assert workspace(committed) == []
+    accepted(workspace(committed))
 
 
 def test_every_crate_states_what_it_owns_and_what_it_may_depend_on(
@@ -53,8 +53,8 @@ def test_every_crate_states_what_it_owns_and_what_it_may_depend_on(
         if not source.is_file():
             source = directory / "src" / "main.rs"
         comment = source.read_text(encoding="utf-8")
-        assert "Owns:" in comment, directory.name
-        assert "May depend on:" in comment, directory.name
+        contains(comment, "Owns:")
+        contains(comment, "May depend on:")
 
 
 def test_a_missing_crate_is_refused(tree: Callable[[], Tree]) -> None:
@@ -64,7 +64,7 @@ def test_a_missing_crate_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = workspace(broken.repo)
 
-    assert any("printobserver-obico" in finding for finding in findings), findings
+    refused(findings, "printobserver-obico")
 
 
 def test_an_undeclared_crate_is_refused(tree: Callable[[], Tree]) -> None:
@@ -78,7 +78,7 @@ def test_an_undeclared_crate_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = workspace(broken.repo)
 
-    assert any("printobserver-surprise" in finding for finding in findings), findings
+    refused(findings, "printobserver-surprise")
 
 
 def test_a_crate_whose_comment_omits_what_it_owns_is_refused(
@@ -90,7 +90,7 @@ def test_a_crate_whose_comment_omits_what_it_owns_is_refused(
 
     findings = workspace(broken.repo)
 
-    assert any("does not say what it owns" in finding for finding in findings), findings
+    refused(findings, "does not say what it owns")
 
 
 def test_a_crate_whose_comment_omits_its_dependencies_is_refused(
@@ -102,7 +102,7 @@ def test_a_crate_whose_comment_omits_its_dependencies_is_refused(
 
     findings = workspace(broken.repo)
 
-    assert any("does not say what it may depend on" in finding for finding in findings), findings
+    refused(findings, "does not say what it may depend on")
 
 
 def test_core_depending_on_an_implementation_is_refused(
@@ -118,9 +118,7 @@ def test_core_depending_on_an_implementation_is_refused(
 
     findings = workspace(broken.repo)
 
-    assert any(
-        "printobserver-core` depends on `printobserver-octoprint" in finding for finding in findings
-    ), findings
+    refused(findings, "printobserver-core` depends on `printobserver-octoprint")
 
 
 def test_core_depending_outside_its_layer_is_refused(tree: Callable[[], Tree]) -> None:
@@ -134,7 +132,7 @@ def test_core_depending_outside_its_layer_is_refused(tree: Callable[[], Tree]) -
 
     findings = workspace(broken.repo)
 
-    assert any("outside its layer" in finding for finding in findings), findings
+    refused(findings, "outside its layer")
 
 
 def test_an_implementation_depending_on_another_is_refused(
@@ -150,9 +148,7 @@ def test_an_implementation_depending_on_another_is_refused(
 
     findings = workspace(broken.repo)
 
-    assert any(
-        "no implementation crate may depend on another" in finding for finding in findings
-    ), findings
+    refused(findings, "no implementation crate may depend on another")
 
 
 def test_core_may_depend_on_a_port(tree: Callable[[], Tree]) -> None:
@@ -164,4 +160,4 @@ def test_core_may_depend_on_a_port(tree: Callable[[], Tree]) -> None:
         + DEPENDENCY.format(name="printobserver-printer-api"),
     )
 
-    assert workspace(allowed.repo) == []
+    accepted(workspace(allowed.repo))

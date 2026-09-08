@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_release import _publishable_crates, release_automation, release_targets
+from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -18,12 +18,12 @@ TARGETS = "release-targets.toml"
 
 def test_the_committed_declaration_is_accepted(committed: Repo) -> None:
     """One crate target per publishable crate, and nothing else at this node."""
-    assert release_targets(committed) == []
+    accepted(release_targets(committed))
 
 
 def test_the_publishable_set_is_derived_from_the_workspace(committed: Repo) -> None:
     """The check reads the workspace, not the declaration it is comparing against."""
-    assert sorted(_publishable_crates(committed)) == sorted(committed.crate_names)
+    equal(sorted(_publishable_crates(committed)), sorted(committed.crate_names))
 
 
 def test_a_declaration_omitting_a_publishable_crate_is_refused(
@@ -40,7 +40,7 @@ def test_a_declaration_omitting_a_publishable_crate_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("omits publishable crate" in finding for finding in findings), findings
+    refused(findings, "omits publishable crate")
 
 
 def test_a_declaration_naming_an_unbacked_target_is_refused(
@@ -56,7 +56,7 @@ def test_a_declaration_naming_an_unbacked_target_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("no workspace member backs" in finding for finding in findings), findings
+    refused(findings, "no workspace member backs")
 
 
 def test_a_non_crate_target_is_refused_at_this_node(tree: Callable[[], Tree]) -> None:
@@ -70,7 +70,7 @@ def test_a_non_crate_target_is_refused_at_this_node(tree: Callable[[], Tree]) ->
 
     findings = release_targets(broken.repo)
 
-    assert any("publishes crates and nothing else" in finding for finding in findings), findings
+    refused(findings, "publishes crates and nothing else")
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(
@@ -82,7 +82,7 @@ def test_automation_that_is_not_conventional_commit_driven_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("does not admit `feat`" in finding for finding in findings), findings
+    refused(findings, "does not admit `feat`")
 
 
 def test_a_release_rule_admitting_a_non_releasing_type_is_refused(
@@ -94,7 +94,7 @@ def test_a_release_rule_admitting_a_non_releasing_type_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("releases from `chore`" in finding for finding in findings), findings
+    refused(findings, "releases from `chore`")
 
 
 def test_a_version_field_outside_the_automation_owned_set_is_refused(
@@ -110,12 +110,12 @@ def test_a_version_field_outside_the_automation_owned_set_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("carries a version field" in finding for finding in findings), findings
+    refused(findings, "carries a version field")
 
 
 def test_the_committed_release_path_is_accepted(committed: Repo) -> None:
     """The release path exists, fires by itself, and covers every declared target."""
-    assert release_automation(committed) == []
+    accepted(release_automation(committed))
 
 
 def test_no_release_workflow_at_all_is_refused(tree: Callable[[], Tree]) -> None:
@@ -125,9 +125,7 @@ def test_no_release_workflow_at_all_is_refused(tree: Callable[[], Tree]) -> None
 
     findings = release_automation(broken.repo)
 
-    assert any("no committed workflow performs releases" in finding for finding in findings), (
-        findings
-    )
+    refused(findings, "no committed workflow performs releases")
 
 
 def test_a_manual_only_release_workflow_is_refused(tree: Callable[[], Tree]) -> None:
@@ -137,7 +135,7 @@ def test_a_manual_only_release_workflow_is_refused(tree: Callable[[], Tree]) -> 
 
     findings = release_automation(broken.repo)
 
-    assert any("only trigger is manual invocation" in finding for finding in findings), findings
+    refused(findings, "only trigger is manual invocation")
 
 
 def test_a_release_workflow_with_no_release_step_is_refused(
@@ -152,9 +150,7 @@ def test_a_release_workflow_with_no_release_step_is_refused(
 
     findings = release_automation(broken.repo)
 
-    assert any("no committed workflow performs releases" in finding for finding in findings), (
-        findings
-    )
+    refused(findings, "no committed workflow performs releases")
 
 
 def test_a_target_with_no_publishing_step_is_refused(tree: Callable[[], Tree]) -> None:
@@ -168,7 +164,7 @@ def test_a_target_with_no_publishing_step_is_refused(tree: Callable[[], Tree]) -
 
     findings = release_automation(broken.repo)
 
-    assert any("no committed publishing step covers" in finding for finding in findings), findings
+    refused(findings, "no committed publishing step covers")
 
 
 def test_a_step_that_halts_for_a_person_is_refused(tree: Callable[[], Tree]) -> None:
@@ -182,7 +178,7 @@ def test_a_step_that_halts_for_a_person_is_refused(tree: Callable[[], Tree]) -> 
 
     findings = release_automation(broken.repo)
 
-    assert any("halt for a person" in finding for finding in findings), findings
+    refused(findings, "halt for a person")
 
 
 def test_a_release_program_the_toolchain_does_not_install_is_refused(
@@ -198,4 +194,4 @@ def test_a_release_program_the_toolchain_does_not_install_is_refused(
 
     findings = release_automation(broken.repo)
 
-    assert any("toolchain does not install" in finding for finding in findings), findings
+    refused(findings, "toolchain does not install")

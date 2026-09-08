@@ -6,7 +6,6 @@ nobody can act on; each of these asserts it names what is missing instead.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
@@ -16,6 +15,7 @@ from pathlib import Path
 from repo_checks.checks_ci import install_path_section, merge_model, platforms, secrets
 from repo_checks.checks_release import release_targets
 from repo_checks.checks_repo import agent_layer, recipe_set, workspace
+from repo_checks.expect import equal, refused
 from repo_checks.model import Repo
 from repo_checks.registry import base_files
 from treecopy import Tree
@@ -35,7 +35,7 @@ def test_a_tree_without_agents_md_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.remove("AGENTS.md")
 
-    assert agent_layer(broken.repo) == ["AGENTS.md is absent"]
+    equal(agent_layer(broken.repo), ["AGENTS.md is absent"])
 
 
 def test_a_missing_composition_block_is_refused(tree: Callable[[], Tree]) -> None:
@@ -45,7 +45,7 @@ def test_a_missing_composition_block_is_refused(tree: Callable[[], Tree]) -> Non
 
     findings = agent_layer(broken.repo)
 
-    assert any("no `composition-record` marker block" in f for f in findings), findings
+    refused(findings, "no `composition-record` marker block")
 
 
 def test_a_missing_platform_block_is_refused(tree: Callable[[], Tree]) -> None:
@@ -55,7 +55,7 @@ def test_a_missing_platform_block_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = platforms(broken.repo)
 
-    assert any("no `supported-platforms` marker block" in f for f in findings), findings
+    refused(findings, "no `supported-platforms` marker block")
 
 
 def test_a_missing_required_checks_block_is_refused(tree: Callable[[], Tree]) -> None:
@@ -65,7 +65,7 @@ def test_a_missing_required_checks_block_is_refused(tree: Callable[[], Tree]) ->
 
     findings = merge_model(broken.repo)
 
-    assert any("no `required-checks` marker block" in f for f in findings), findings
+    refused(findings, "no `required-checks` marker block")
 
 
 def test_dropping_the_no_direct_push_statement_is_refused(
@@ -77,7 +77,7 @@ def test_dropping_the_no_direct_push_statement_is_refused(
 
     findings = merge_model(broken.repo)
 
-    assert any("no direct push" in f for f in findings), findings
+    refused(findings, "no direct push")
 
 
 def test_a_missing_check_recipe_is_refused(tree: Callable[[], Tree]) -> None:
@@ -88,7 +88,7 @@ def test_a_missing_check_recipe_is_refused(tree: Callable[[], Tree]) -> None:
     end = text.index("# Rewrite every project's sources")
     broken.write("justfile", text[:start] + text[end:])
 
-    assert recipe_set(broken.repo) == ["the justfile declares no `check` recipe"]
+    equal(recipe_set(broken.repo), ["the justfile declares no `check` recipe"])
 
 
 def test_a_missing_bootstrap_recipe_is_refused(tree: Callable[[], Tree]) -> None:
@@ -101,7 +101,7 @@ def test_a_missing_bootstrap_recipe_is_refused(tree: Callable[[], Tree]) -> None
 
     findings = recipe_set(broken.repo)
 
-    assert any("no `bootstrap` recipe" in f for f in findings), findings
+    refused(findings, "no `bootstrap` recipe")
 
 
 def test_a_declared_tier_with_no_recipe_is_refused(tree: Callable[[], Tree]) -> None:
@@ -111,7 +111,7 @@ def test_a_declared_tier_with_no_recipe_is_refused(tree: Callable[[], Tree]) -> 
 
     findings = recipe_set(broken.repo)
 
-    assert any("but no recipe defines it" in f for f in findings), findings
+    refused(findings, "but no recipe defines it")
 
 
 def test_a_crate_without_a_source_file_is_refused(tree: Callable[[], Tree]) -> None:
@@ -121,7 +121,7 @@ def test_a_crate_without_a_source_file_is_refused(tree: Callable[[], Tree]) -> N
 
     findings = workspace(broken.repo)
 
-    assert any("has no `src/lib.rs`" in f for f in findings), findings
+    refused(findings, "has no `src/lib.rs`")
 
 
 def test_a_platform_specific_dependency_still_counts(tree: Callable[[], Tree]) -> None:
@@ -136,7 +136,7 @@ def test_a_platform_specific_dependency_still_counts(tree: Callable[[], Tree]) -
 
     findings = workspace(broken.repo)
 
-    assert any("printobserver-obico" in f for f in findings), findings
+    refused(findings, "printobserver-obico")
 
 
 def test_a_target_pointing_at_a_missing_manifest_is_refused(
@@ -152,7 +152,7 @@ def test_a_target_pointing_at_a_missing_manifest_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("at a missing" in f for f in findings), findings
+    refused(findings, "at a missing")
 
 
 def test_a_tree_without_release_plz_is_refused(tree: Callable[[], Tree]) -> None:
@@ -162,7 +162,7 @@ def test_a_tree_without_release_plz_is_refused(tree: Callable[[], Tree]) -> None
 
     findings = release_targets(broken.repo)
 
-    assert any("not configured" in f for f in findings), findings
+    refused(findings, "not configured")
 
 
 def test_a_release_rule_that_releases_everything_is_refused(
@@ -177,7 +177,7 @@ def test_a_release_rule_that_releases_everything_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("every commit would release" in f for f in findings), findings
+    refused(findings, "every commit would release")
 
 
 def test_a_changelog_that_drops_a_releasing_type_is_refused(
@@ -189,7 +189,7 @@ def test_a_changelog_that_drops_a_releasing_type_is_refused(
 
     findings = release_targets(broken.repo)
 
-    assert any("does not group `feat`" in f for f in findings), findings
+    refused(findings, "does not group `feat`")
 
 
 def test_a_missing_commit_msg_hook_is_refused(tree: Callable[[], Tree]) -> None:
@@ -199,7 +199,7 @@ def test_a_missing_commit_msg_hook_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = release_targets(broken.repo)
 
-    assert any("no hook rules on a commit subject" in f for f in findings), findings
+    refused(findings, "no hook rules on a commit subject")
 
 
 def test_a_hook_carrying_its_own_type_list_is_refused(tree: Callable[[], Tree]) -> None:
@@ -209,7 +209,7 @@ def test_a_hook_carrying_its_own_type_list_is_refused(tree: Callable[[], Tree]) 
 
     findings = release_targets(broken.repo)
 
-    assert any("can disagree" in f for f in findings), findings
+    refused(findings, "can disagree")
 
 
 def test_a_tree_without_the_secret_manifest_is_refused(tmp_path: Path) -> None:
@@ -217,9 +217,10 @@ def test_a_tree_without_the_secret_manifest_is_refused(tmp_path: Path) -> None:
     root = tmp_path / "tree"
     root.mkdir()
 
-    assert base_files(Repo(root)) == [
-        "gh-secrets.json is absent: it is the authoritative secret manifest"
-    ]
+    equal(
+        base_files(Repo(root)),
+        ["gh-secrets.json is absent: it is the authoritative secret manifest"],
+    )
 
 
 def test_a_manifest_declaring_no_secrets_is_refused(tmp_path: Path) -> None:
@@ -230,8 +231,8 @@ def test_a_manifest_declaring_no_secrets_is_refused(tmp_path: Path) -> None:
 
     findings = base_files(Repo(root))
 
-    assert any("declares no secrets" in f for f in findings), findings
-    assert any(".gitignore is absent" in f for f in findings), findings
+    refused(findings, "declares no secrets")
+    refused(findings, ".gitignore is absent")
 
 
 def test_a_workflow_without_a_release_job_leaves_the_secret_check_saying_so(
@@ -243,7 +244,7 @@ def test_a_workflow_without_a_release_job_leaves_the_secret_check_saying_so(
 
     findings = secrets(broken.repo)
 
-    assert any("no committed workflow performs releases" in f for f in findings), findings
+    refused(findings, "no committed workflow performs releases")
 
 
 def test_a_section_with_a_route_stating_no_command_is_refused(
@@ -258,7 +259,7 @@ def test_a_section_with_a_route_stating_no_command_is_refused(
 
     findings = install_path_section(broken.repo)
 
-    assert any("states no command" in f for f in findings), findings
+    refused(findings, "states no command")
 
 
 def test_a_matrix_running_a_platform_on_the_wrong_runner_is_refused(
@@ -274,7 +275,7 @@ def test_a_matrix_running_a_platform_on_the_wrong_runner_is_refused(
 
     findings = platforms(broken.repo)
 
-    assert any("but AGENTS.md declares" in f for f in findings), findings
+    refused(findings, "but AGENTS.md declares")
 
 
 def test_an_allowlist_entry_missing_a_field_is_refused(tree: Callable[[], Tree]) -> None:
@@ -290,4 +291,4 @@ def test_an_allowlist_entry_missing_a_field_is_refused(tree: Callable[[], Tree])
 
     findings = suppressions(broken.repo)
 
-    assert any("names no site" in f for f in findings), findings
+    refused(findings, "names no site")

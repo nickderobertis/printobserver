@@ -7,14 +7,14 @@ floor. Every assertion below comes from a real `just check` over a real copy.
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 import pytest
-from journey import REPO_ROOT, GateCopy, output
+from journey import REPO_ROOT, GateCopy
+from repo_checks.expect import contains, failing, passing
 
 TYPES = "crates/printobserver-types/src/lib.rs"
 SDK = "python/printobserver-sdk/src/printobserver_sdk/__init__.py"
@@ -58,7 +58,7 @@ def test_the_gate_accepts_the_committed_tree(gate_copy: Callable[[], GateCopy]) 
 
     result = clean.just("check")
 
-    assert result.returncode == 0, output(result)
+    passing(result)
 
 
 def test_the_gate_fails_on_a_badly_formatted_file(
@@ -70,8 +70,7 @@ def test_the_gate_fails_on_a_badly_formatted_file(
 
     result = broken.just("check")
 
-    assert result.returncode != 0
-    assert "badly_formatted" in output(result), output(result)
+    failing(result, naming="badly_formatted")
 
 
 def test_the_gate_fails_on_a_lint_finding(gate_copy: Callable[[], GateCopy]) -> None:
@@ -81,8 +80,7 @@ def test_the_gate_fails_on_a_lint_finding(gate_copy: Callable[[], GateCopy]) -> 
 
     result = broken.just("check")
 
-    assert result.returncode != 0
-    assert "useless_conversion" in output(result), output(result)
+    failing(result, naming="useless_conversion")
 
 
 def test_the_gate_fails_on_a_type_error(gate_copy: Callable[[], GateCopy]) -> None:
@@ -92,8 +90,7 @@ def test_the_gate_fails_on_a_type_error(gate_copy: Callable[[], GateCopy]) -> No
 
     result = broken.just("check")
 
-    assert result.returncode != 0
-    assert "invalid-return-type" in output(result), output(result)
+    failing(result, naming="invalid-return-type")
 
 
 def test_the_gate_fails_on_a_failing_test(gate_copy: Callable[[], GateCopy]) -> None:
@@ -103,8 +100,7 @@ def test_the_gate_fails_on_a_failing_test(gate_copy: Callable[[], GateCopy]) -> 
 
     result = broken.just("check")
 
-    assert result.returncode != 0
-    assert "the_gate_must_fail_on_a_failing_test" in output(result), output(result)
+    failing(result, naming="the_gate_must_fail_on_a_failing_test")
 
 
 def test_the_gate_fails_below_the_recorded_coverage_floor(
@@ -116,8 +112,7 @@ def test_the_gate_fails_below_the_recorded_coverage_floor(
 
     result = broken.just("check")
 
-    assert result.returncode != 0
-    assert "coverage is below the 95% floor" in output(result), output(result)
+    failing(result, naming="coverage is below the 95% floor")
 
 
 @pytest.mark.parametrize(
@@ -139,4 +134,4 @@ def test_the_check_recipe_invokes_every_declared_tier(tier: str) -> None:
     justfile = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
     body = justfile[justfile.index("\ncheck:\n") : justfile.index("# Rewrite every project")]
 
-    assert f"just {tier}" in body
+    contains(body, f"just {tier}")

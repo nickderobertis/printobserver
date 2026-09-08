@@ -2,13 +2,13 @@
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
-# ruff: noqa: S101
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from repo_checks.checks_ci import secrets
+from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -19,7 +19,7 @@ JUDGE_ENV = "          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}\n"
 
 def test_the_committed_workflows_are_accepted(committed: Repo) -> None:
     """Every reference lands inside gh-secrets.json."""
-    assert secrets(committed) == []
+    accepted(secrets(committed))
 
 
 def test_a_secret_outside_the_manifest_is_refused(tree: Callable[[], Tree]) -> None:
@@ -29,7 +29,7 @@ def test_a_secret_outside_the_manifest_is_refused(tree: Callable[[], Tree]) -> N
 
     findings = secrets(broken.repo)
 
-    assert any("SLACK_TOKEN" in finding for finding in findings), findings
+    refused(findings, "SLACK_TOKEN")
 
 
 def test_release_automation_naming_the_built_in_token_is_refused(
@@ -44,8 +44,8 @@ def test_release_automation_naming_the_built_in_token_is_refused(
 
     findings = secrets(broken.repo)
 
-    assert any("built-in token" in finding for finding in findings), findings
-    assert any("RELEASE_PLZ_TOKEN" in finding for finding in findings), findings
+    refused(findings, "built-in token")
+    refused(findings, "RELEASE_PLZ_TOKEN")
 
 
 def test_release_automation_without_a_crate_credential_is_refused(
@@ -63,7 +63,7 @@ def test_release_automation_without_a_crate_credential_is_refused(
 
     findings = secrets(broken.repo)
 
-    assert any("no crate-publishing credential" in finding for finding in findings), findings
+    refused(findings, "no crate-publishing credential")
 
 
 def test_a_judged_lint_job_with_no_judge_credential_is_refused(
@@ -75,7 +75,7 @@ def test_a_judged_lint_job_with_no_judge_credential_is_refused(
 
     findings = secrets(broken.repo)
 
-    assert any("authenticates with 0 of" in finding for finding in findings), findings
+    refused(findings, "authenticates with 0 of")
 
 
 def test_a_judged_lint_job_with_two_judge_credentials_is_refused(
@@ -91,7 +91,7 @@ def test_a_judged_lint_job_with_two_judge_credentials_is_refused(
 
     findings = secrets(broken.repo)
 
-    assert any("authenticates with 2 of" in finding for finding in findings), findings
+    refused(findings, "authenticates with 2 of")
 
 
 def test_a_judged_lint_job_with_three_judge_credentials_is_refused(
@@ -109,4 +109,4 @@ def test_a_judged_lint_job_with_three_judge_credentials_is_refused(
 
     findings = secrets(broken.repo)
 
-    assert any("authenticates with 3 of" in finding for finding in findings), findings
+    refused(findings, "authenticates with 3 of")

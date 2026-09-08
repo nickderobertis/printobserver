@@ -5,7 +5,8 @@ reason is a *good* reason: that is a question for whoever reviews the change, an
 a check that tried to answer it would be exactly the non-deterministic thing the
 allowlist exists to replace.
 
-A rule silenced in a *configuration* file is refused outright rather than
+A rule silenced for a whole file — in a *configuration* file, or by a
+file-level directive inside the file itself — is refused outright rather than
 allowlisted. A blanket `ignore`, a per-file glob, a crate lint set to `allow` or
 a linter rule set to `off` names no site, carries no reason, is invisible in a
 diff, and goes on silencing findings long after whatever motivated it is gone —
@@ -40,7 +41,6 @@ SKIPPED_DIRECTORIES = frozenset(
 # (pattern, whether group 1 is a comma-separated rule list)
 DIRECTIVE_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = (
     (re.compile(r"#\s*noqa:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)"), True),
-    (re.compile(r"#\s*ruff:\s*noqa:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)"), True),
     (re.compile(r"#\s*type:\s*ignore\[([^\]]+)\]"), True),
     (re.compile(r"#\s*ty:\s*ignore\[([^\]]+)\]"), True),
     (re.compile(r"#\[(?:allow|expect)\(([^)]+)\)\]"), True),
@@ -225,6 +225,47 @@ def configured_suppressions(root: Path) -> list[str]:
     return findings
 
 
+# Directives that silence a rule for a WHOLE FILE. Each is refused rather than
+# allowlisted: it covers every line, including lines written long after the
+# reason was true, so it is a blanket suppression whatever file it sits in.
+#
+# Every tool named here attributes each of its findings to a line, so a
+# file-level directive is always strictly broader than the finding it answers.
+# llmlint is deliberately absent: it has rules that are about a file as a whole,
+# and its own `validate` gate refuses a whole-file directive that names a
+# line-localizable rule.
+FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"#\s*ruff:\s*noqa\b"), "ruff"),
+    (re.compile(r"#\s*flake8:\s*noqa\b"), "flake8"),
+    (re.compile(r"#\s*mypy:\s*ignore-errors\b"), "mypy"),
+    (re.compile(r"//\s*biome-ignore-all\b"), "biome"),
+    (re.compile(r"//\s*eslint-disable\s*$"), "eslint"),
+    (re.compile(r"/\*\s*eslint-disable\s*\*/"), "eslint"),
+)
+
+
+def file_level_directives(root: Path) -> list[str]:
+    """Refuse every directive that silences a rule for a whole file."""
+    findings: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+            continue
+        relative = path.relative_to(root)
+        if SKIPPED_DIRECTORIES & set(relative.parts):
+            continue
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        for number, line in enumerate(lines, start=1):
+            findings.extend(
+                f"{relative}:{number} carries a file-level {tool} directive, which "
+                f"silences every line of the file. Suppress at the site that needs "
+                f"it, with an entry naming the rule, the file, the site and a "
+                f"reason — or change the code so the rule has nothing to say."
+                for pattern, tool in FILE_LEVEL_PATTERNS
+                if pattern.search(line)
+            )
+    return findings
+
+
 def _allowlist(repo: Repo) -> tuple[str, list[dict[str, str]]]:
     """The allowlist path this repository declares, and the entries it holds."""
     relative = repo.policy["suppressions"]["allowlist"]
@@ -237,6 +278,7 @@ def suppressions(repo: Repo, base: str | None = None) -> list[str]:
     relative, entries = _allowlist(repo)
     found = [d for d in scan(repo.root) if d.file != relative]
     findings: list[str] = configured_suppressions(repo.root)
+    findings.extend(file_level_directives(repo.root))
 
     for index, entry in enumerate(entries):
         for field in ("rule", "file", "site"):
