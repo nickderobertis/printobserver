@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just bootstrap)",
+      "Bash(just check)",
+      "Bash(just check-repo)",
+      "Bash(just check-pr-title)",
+      "Bash(just format)",
+      "Bash(just format-check)",
+      "Bash(just lint)",
+      "Bash(just lint-workflows)",
+      "Bash(just typecheck)",
+      "Bash(just test)",
+      "Bash(just test-e2e)",
+      "Bash(just coverage)",
+      "Bash(just build)",
+      "Bash(just install-tools)",
+      "Bash(just upgrade)",
+      "Bash(just setup-llmlint)",
+      "Bash(just lint-llm)",
+      "Bash(just lint-llm-diff)",
+      "Bash(just lint-llm-validate)",
+      "Bash(just release-dry-run)",
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+      "Bash(uv:*)",
+      "Bash(bun:*)",
+      "Bash(bunx:*)",
+      "Bash(llmlint:*)",
+      "Bash(release-plz:*)",
+      "Bash(./scripts/setup-llmlint.sh)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/scripts/session-setup.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

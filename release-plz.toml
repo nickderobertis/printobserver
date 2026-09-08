@@ -1,0 +1,60 @@
+# Automated releases from Conventional Commits, driven by release-plz. Mirrors
+# the proven setup in nickderobertis/oneharness.
+#
+# Flow, with no manual step anywhere in it:
+#   1. A change lands on `main` under a Conventional Commit subject.
+#   2. `.github/workflows/release-plz.yml`'s `release-pr` job opens or updates a
+#      release pull request that bumps the workspace version and writes the
+#      CHANGELOG section. It is opened under RELEASE_PLZ_TOKEN rather than the
+#      workflow's built-in token, because a pull request opened by the built-in
+#      token does not trigger the workflows that gate it.
+#   3. Merging that pull request makes the `release` job tag the release, cut
+#      the GitHub Release, and publish every crate to crates.io under
+#      CARGO_REGISTRY_TOKEN.
+#
+# Which subjects release is settled in `repo-policy.toml` (`commits.
+# release_types`) and `just check-repo` holds this regex and that list to each
+# other. `feat`, `fix` and `perf` all release: every node of this repository's
+# own plan publishes under `feat`, and a repository whose release rule refuses
+# the subjects its own plan publishes under is a release that fails after a
+# merge.
+
+[workspace]
+# Release only on release-worthy Conventional Commits. Without this, a
+# generated `chore(...): release v...` commit opens the next release pull
+# request and the two auto-merge each other in a loop.
+release_commits = "(?s)^(feat|fix|perf)(\\([^)]+\\))?!?:|BREAKING CHANGE:"
+
+# Publish on every push to `main`, not only on the release pull request's merge
+# commit, so a publish that fails partway is recoverable: the fix lands as an
+# ordinary commit and the next push completes the pending release. A normal
+# push finds nothing unreleased and no-ops.
+release_always = true
+
+# The bump follows the code, not the subject line: cargo-semver-checks reads the
+# actual API surface, so a breaking change spelled `fix` cannot ship as a patch.
+# The release workflow installs the binary this shells out to; without it
+# release-plz only warns and skips.
+semver_check = true
+
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
+
+# Keep-a-Changelog grouping. The bump is computed from the Conventional Commit
+# type (pre-1.0 Cargo rules: feat/fix/perf -> patch, `!`/BREAKING -> minor),
+# independent of these display groups, so skipping a type from the changelog
+# never changes the bump.
+[changelog]
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^test", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^build", skip = true },
+  { message = "^style", skip = true },
+  { message = ".*", skip = true },
+]

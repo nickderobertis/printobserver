@@ -1,0 +1,92 @@
+# The gate, on the supported platform matrix, plus the judged-lint tier and the
+# pull-request-title lint as jobs of their own.
+#
+# The matrix below is derived from AGENTS.md's "Supported platforms" list and
+# `just check-repo` refuses it if the two disagree, so this file cannot be
+# narrowed independently of that list.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The end-to-end tier and the suppression check both diff against the
+          # base branch, which a shallow checkout omits.
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just check
+
+  llmlint:
+    name: llmlint
+    # The judged tier is a job of its own rather than a step inside the gate:
+    # it is non-deterministic and needs a harness credential, and a gate that
+    # could not run without one would stop being the deterministic gate.
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just setup-llmlint
+      # The deterministic half runs first: a config, plugin or suppression slip
+      # fails here without spending a harness call.
+      - run: just lint-llm-validate
+      - run: just lint-llm-diff
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  pr-title:
+    name: pr-title
+    # Under squash-merge the pull-request title becomes the commit release
+    # automation reads, so it is linted as a required check.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just check-pr-title
+        env:
+          # Passed through the environment rather than interpolated into the
+          # shell: the title is attacker-controlled on a fork pull request.
+          PR_TITLE: ${{ github.event.pull_request.title }}

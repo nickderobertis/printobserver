@@ -24,6 +24,8 @@ dev = [
     "pytest-cov>=7",
     "coverage>=7",
     "pyyaml>=6",
+    "actionlint-py>=1.7",
+    "shellcheck-py>=0.11",
 ]
 
 [tool.ruff]
@@ -32,6 +34,14 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "D", "S", "PTH"]
+# S603 and S607 fire on every `subprocess.run`, whatever it runs. This
+# repository's checks shell out to `git`, `cargo` and `uv` with fixed argument
+# lists and never `shell=True`, so leaving these on would turn the suppression
+# allowlist into an inventory of every subprocess call in the tree — which is
+# the opposite of what it is for. The injection invariant the two rules stand
+# for is kept by construction: no `shell=True`, and no external input reaches an
+# argument list. Blast radius: these two rules only, repository-wide.
+ignore = ["S603", "S607"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

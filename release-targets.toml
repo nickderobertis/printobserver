@@ -1,0 +1,83 @@
+# What this repository publishes, and the name each registry serves it under.
+#
+# A consumer that has to wait for a change to land here needs one thing only
+# this repository can say: the registry-qualified identifier of every artifact
+# it publishes. Every id below is `<registry>:<name>`, and `<name>` is exactly
+# what that registry serves.
+#
+# A target is a CONSUMABLE artifact — one a dependent names in order to depend
+# on it. `just check-repo` derives the publishable-crate set from the committed
+# workspace rather than from this file and fails on a name that is in one and
+# not the other, in either direction.
+#
+# At this node the repository publishes crates and nothing else. The two client
+# distributions, the CLI-capable distribution on PyPI and on npm, and the
+# per-platform release artifacts `scripts/install.sh` downloads are the `sdks`
+# node's to declare here — see `AGENTS.md`, "The end-user install path".
+
+schema_version = 1
+
+# The shared domain vocabulary. Every other crate depends on it.
+[[target]]
+id = "crate:printobserver-types"
+manifest = "crates/printobserver-types/Cargo.toml"
+
+# The printer port.
+[[target]]
+id = "crate:printobserver-printer-api"
+manifest = "crates/printobserver-printer-api/Cargo.toml"
+
+# The vision port.
+[[target]]
+id = "crate:printobserver-vision-api"
+manifest = "crates/printobserver-vision-api/Cargo.toml"
+
+# The supervisor port.
+[[target]]
+id = "crate:printobserver-supervisor-api"
+manifest = "crates/printobserver-supervisor-api/Cargo.toml"
+
+# The store port.
+[[target]]
+id = "crate:printobserver-store-api"
+manifest = "crates/printobserver-store-api/Cargo.toml"
+
+# The OctoPrint adapter behind the printer port.
+[[target]]
+id = "crate:printobserver-octoprint"
+manifest = "crates/printobserver-octoprint/Cargo.toml"
+
+# The Obico adapter behind the vision port.
+[[target]]
+id = "crate:printobserver-obico"
+manifest = "crates/printobserver-obico/Cargo.toml"
+
+# The oneharness adapter behind the supervisor port.
+[[target]]
+id = "crate:printobserver-oneharness"
+manifest = "crates/printobserver-oneharness/Cargo.toml"
+
+# The SQLite adapter behind the store port.
+[[target]]
+id = "crate:printobserver-store-sqlite"
+manifest = "crates/printobserver-store-sqlite/Cargo.toml"
+
+# The supervision logic.
+[[target]]
+id = "crate:printobserver-core"
+manifest = "crates/printobserver-core/Cargo.toml"
+
+# The long-running service and its composition root.
+[[target]]
+id = "crate:printobserver-server"
+manifest = "crates/printobserver-server/Cargo.toml"
+
+# The Rust client of the server's HTTP surface.
+[[target]]
+id = "crate:printobserver-sdk"
+manifest = "crates/printobserver-sdk/Cargo.toml"
+
+# The `printobserver` command itself.
+[[target]]
+id = "crate:printobserver"
+manifest = "crates/printobserver/Cargo.toml"

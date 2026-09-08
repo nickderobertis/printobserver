@@ -1,0 +1,67 @@
+# Every lint or type-check suppression standing in this repository.
+#
+# This file is the ONLY way to suppress a diagnostic here. `just check-repo`
+# refuses a suppression directive in the tree with no entry below, an entry
+# whose reason is absent or empty, an entry that matches no directive, and — on
+# a change, against its base revision — a directive introduced without its entry
+# in the same change.
+#
+# Nothing here asks whether a reason is a GOOD reason. That is a question for
+# whoever reviews the change; a check that tried to answer it would be exactly
+# the non-deterministic gate this file exists to replace.
+#
+# An entry matches a directive when `file` is the file the directive is in,
+# `rule` is the rule the directive names, and `site` occurs on the directive's
+# own line or in one of the three following non-blank lines.
+
+schema_version = 1
+
+
+# --- scripts/session-setup.sh -------------------------------------------------
+# One directive, three rules. The reason is the script's own header: a
+# SessionStart hook that aborted a session because an install was flaky would be
+# worse than one that logs and continues.
+
+[[suppression]]
+rule = "robust_shell"
+file = "scripts/session-setup.sh"
+site = "set -uo pipefail"
+reason = "A session-startup hook must never abort session startup, so `set -e` is deliberately omitted: the script owns its own exit codes and always exits 0, logging what it could not do."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/session-setup.sh"
+site = "set -uo pipefail"
+reason = "Success is quiet; every failure logs and continues rather than blocking startup, so the output is deliberately advisory rather than a gate's verdict."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/session-setup.sh"
+site = "set -uo pipefail"
+reason = "The only external input is the `rust-just` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations; no untrusted input is executed."
+
+# --- scripts/setup-llmlint.sh -------------------------------------------------
+
+[[suppression]]
+rule = "robust_shell"
+file = "scripts/setup-llmlint.sh"
+site = "set -uo pipefail"
+reason = "Same reason as session-setup.sh: this installer runs from the SessionStart hook, so a flaky install must not abort the session; it owns its exit codes and always exits 0."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/setup-llmlint.sh"
+site = "set -uo pipefail"
+reason = "Success is quiet; a failed install logs an actionable line and continues rather than blocking startup."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/setup-llmlint.sh"
+site = "set -uo pipefail"
+reason = "The only external input is the `llmlint-cli` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations; no untrusted input is executed."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/setup-llmlint.sh"
+site = "readonly LLMLINT_MIN"
+reason = "The dependency floor selects the validator release the existing real `just lint-llm-validate` gate runs; the installer's control flow and its user-visible contract are unchanged, so there is no new behavior for an end-to-end test to drive."

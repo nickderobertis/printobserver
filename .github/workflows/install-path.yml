@@ -1,0 +1,71 @@
+# The end-user install path, proven on the supported platform matrix.
+#
+# One job per ROUTE, because the three routes are alternatives to one another:
+# a single job exercising all three would prove none of them is enough on its
+# own. Every step below is derived from AGENTS.md's "The end-user install path"
+# section, and `just check-repo` refuses this file if the two disagree.
+#
+# None of these routes and neither of the two commands is executable yet: the
+# distributions, the install script and the service installer land at the `sdks`
+# and `server` nodes. That is why this workflow does not run on pull requests.
+
+name: install-path
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  install-route-pypi:
+    name: install-route-pypi
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - run: pip install printobserver-cli
+      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - run: sudo systemctl enable --now printobserver.service
+
+  install-route-npm:
+    name: install-route-npm
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - run: npm install -g printobserver-cli
+      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - run: sudo systemctl enable --now printobserver.service
+
+  install-route-script:
+    name: install-route-script
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - run: sudo systemctl enable --now printobserver.service
