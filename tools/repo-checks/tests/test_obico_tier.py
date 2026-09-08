@@ -216,12 +216,20 @@ def _gate_targets() -> list[str]:
 def _selects(target: str) -> list[str]:
     """The projects Nx itself selects for one target.
 
+    `--json` is passed rather than relied upon: Nx defaults `show projects` to
+    JSON only when it detects it is being run by an agent, and to bare
+    newline-separated names otherwise — so a reader parsing the default gets
+    JSON on a developer's machine and a plain project name on a runner. The flag
+    makes the two the same. Nx may still print its own notices around the
+    answer, so the answer is the last line that parses as a JSON list.
+
     Raises:
-        AssertionError: If Nx will not answer, so a silent empty answer cannot
-            be read as "the gate selects nothing".
+        AssertionError: If Nx will not answer, or answers with nothing this can
+            read, so a silent empty answer cannot be read as "the gate selects
+            nothing".
     """
     answered = run(
-        ["bunx", "nx", "show", "projects", "--with-target", target],
+        ["bunx", "nx", "show", "projects", "--with-target", target, "--json"],
         cwd=REPO_ROOT,
         timeout=600,
     )
@@ -231,7 +239,18 @@ def _selects(target: str) -> list[str]:
             f"{answered.returncode}:\n{answered.stdout}{answered.stderr}"
         )
         raise AssertionError(message)
-    return list(json.loads(answered.stdout.strip().splitlines()[-1]))
+    for line in reversed(answered.stdout.strip().splitlines()):
+        try:
+            selected = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(selected, list):
+            return list(selected)
+    message = (
+        f"expected Nx to answer for `{target}` with a JSON list of projects; "
+        f"its output was:\n{answered.stdout}{answered.stderr}"
+    )
+    raise AssertionError(message)
 
 
 def test_the_ordinary_gates_own_selection_does_not_include_this_tier() -> None:
