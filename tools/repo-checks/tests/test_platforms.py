@@ -7,8 +7,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from repo_checks.checks_ci import platforms, platforms_of
-from repo_checks.expect import accepted, refused, truth
+import yaml
+from repo_checks.checks_ci import platform_dependent_kinds, platforms, platforms_of
+from repo_checks.expect import (
+    absent,
+    accepted,
+    contains,
+    equal,
+    refused,
+    refused_naming,
+    truth,
+)
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -19,9 +28,61 @@ AARCH64 = (
 )
 
 
+MATRIX = """    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+"""
+
+
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
-    """Both committed matrices agree with the list they are derived from."""
+    """Every committed matrix agrees with the list it is derived from."""
     accepted(platforms(committed))
+
+
+def test_the_platform_dependent_kinds_are_the_ones_that_build_or_install(
+    committed: Repo,
+) -> None:
+    """The judged tier is not one of them: it reads a text diff."""
+    dependent = platform_dependent_kinds(committed)
+
+    contains(dependent, "gate", describing="the platform-dependent kinds")
+    contains(dependent, "integration", describing="the platform-dependent kinds")
+    contains(dependent, "install", describing="the platform-dependent kinds")
+    absent(dependent, "llmlint", describing="the platform-dependent kinds")
+
+
+def test_the_committed_judged_lint_job_declares_no_matrix(committed: Repo) -> None:
+    """One change, one judged verdict, one status context carrying no platform."""
+    workflow = yaml.safe_load(
+        (committed.root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    judged = workflow["jobs"]["llmlint"]
+
+    absent(judged, "strategy", describing="the judged-lint job")
+    equal(judged["runs-on"], "ubuntu-24.04", describing="the judged-lint job's runner")
+    truth(
+        "${{" not in str(judged["runs-on"]),
+        describing="the judged-lint job to name its runner outright, not from a matrix",
+    )
+
+
+def test_a_matrix_on_the_judged_lint_job_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two cells over one text diff are two rolls of a non-deterministic judge."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/ci.yml",
+        "  llmlint:\n    name: llmlint\n",
+        "  llmlint:\n    name: llmlint\n" + MATRIX,
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `llmlint`", "declares a platform matrix")
 
 
 def test_the_list_is_non_empty_and_names_the_install_paths_platform(
@@ -107,7 +168,7 @@ def test_a_matrix_omitting_a_declared_platform_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused(findings, "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `gate`", "omits platform `linux-aarch64`")
 
 
 def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
@@ -127,4 +188,37 @@ def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
 
     findings = platforms(broken.repo)
 
-    refused(findings, "omits platform `linux-riscv64`")
+    refused_naming(findings, "job `gate`", "omits platform `linux-riscv64`")
+    refused_naming(findings, "job `install-route-pypi`", "omits platform `linux-riscv64`")
+
+
+def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Narrowing a build to one platform by deleting its matrix is still narrowing."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/ci.yml",
+        MATRIX + "    runs-on: ${{ matrix.platform.runner }}\n",
+        "    runs-on: ubuntu-24.04\n",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `gate`", "declares no platform matrix")
+
+
+def test_an_install_jobs_matrix_is_held_to_the_list_too(
+    tree: Callable[[], Tree],
+) -> None:
+    """`install` is platform-dependent as well: a route proves nothing it never ran on."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/install-path.yml",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `install-route-pypi`", "omits platform `linux-aarch64`")

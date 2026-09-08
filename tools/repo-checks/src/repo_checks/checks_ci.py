@@ -74,9 +74,29 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
-def _job_kind(name: str, job: dict[str, Any], path: ip.InstallPath) -> str:
-    """Classify a job by what its own steps run."""
+def _bring_up(repo: Repo) -> str:
+    """The command the printer-integration job is recognized by, if one is declared."""
+    recipe = str(repo.policy.get("integration", {}).get("bring_up", "")).strip()
+    return f"just {recipe}" if recipe else ""
+
+
+def platform_dependent_kinds(repo: Repo) -> set[str]:
+    """The job kinds `repo-policy.toml` declares platform-dependent."""
+    declared = repo.policy.get("workflows", {}).get("platform_dependent_kinds", [])
+    return {str(kind) for kind in declared}
+
+
+def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> str:
+    """Classify a job by what its own steps run.
+
+    The kind is what the job's own steps do rather than what it is called: a job
+    that runs the bring-up recipe is the integration job, and one that runs `just
+    lint-llm-diff` is the judged-lint job. Only the kinds `repo-policy.toml`
+    names platform-dependent may carry a platform matrix.
+    """
     commands = run_commands(job)
+    if bring_up and bring_up in commands:
+        return "integration"
     if "just check" in commands and "just bootstrap" in commands:
         return "gate"
     if any(command.startswith("just lint-llm-diff") for command in commands):
@@ -110,22 +130,34 @@ def platforms(repo: Repo) -> list[str]:
     declared_ids = [item.id for item in declared]
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
-    # The printer integration job's matrix is the `integration-tier` check's:
-    # it is the one matrix the exclusions recorded in AGENTS.md may narrow, and
-    # a rule stated in two places is a rule that can disagree with itself.
-    brings_up = f"just {repo.policy.get('integration', {}).get('bring_up', '')}".strip()
+    bring_up = _bring_up(repo)
+    dependent = platform_dependent_kinds(repo)
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if brings_up != "just" and brings_up in run_commands(job):
-                continue
+            kind = _job_kind(job, path, bring_up)
             entries = _matrix_platforms(job)
-            kind = _job_kind(job_name, job, path)
-            if entries is None:
-                if kind in {"gate", "llmlint", "install"}:
+            if kind == "integration":
+                # The printer integration job's matrix is the `integration-tier`
+                # check's: it is the one matrix the exclusions recorded in
+                # AGENTS.md may narrow, and a rule stated in two places is a
+                # rule that can disagree with itself.
+                continue
+            if kind not in dependent:
+                if entries is not None:
                     findings.append(
-                        f"{file_name}: job `{job_name}` is a {kind} job but declares no "
-                        f"platform matrix"
+                        f"{file_name}: job `{job_name}` declares a platform matrix, but "
+                        f"`repo-policy.toml` names only "
+                        f"{', '.join(f'`{one}`' for one in sorted(dependent))} as "
+                        f"platform-dependent: running a job with no platform-dependent "
+                        f"behaviour once per platform is repetition rather than coverage, "
+                        f"and for a non-deterministic one it is two independent verdicts "
+                        f"on one change"
                     )
+                continue
+            if entries is None:
+                findings.append(
+                    f"{file_name}: job `{job_name}` is a {kind} job but declares no platform matrix"
+                )
                 continue
             ids = [entry.get("id") for entry in entries]
             findings.extend(
@@ -280,6 +312,7 @@ def continuous_integration(repo: Repo) -> list[str]:
     from repo_checks.parsing import recipes as parse_recipes
 
     path = ip.parse(repo.agents_md)
+    bring_up = _bring_up(repo)
     declared_recipes = set(parse_recipes(repo.justfile))
     findings: list[str] = []
 
@@ -288,7 +321,7 @@ def continuous_integration(repo: Repo) -> list[str]:
     install: list[tuple[str, str, dict[str, Any]]] = []
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            kind = _job_kind(job_name, job, path)
+            kind = _job_kind(job, path, bring_up)
             if kind == "gate":
                 gate = (file_name, job_name, job)
             elif kind == "llmlint":
@@ -386,12 +419,13 @@ def merge_model(repo: Repo) -> list[str]:
         findings.append("AGENTS.md records no required check at all")
 
     path = ip.parse(repo.agents_md)
+    bring_up = _bring_up(repo)
     declared: dict[str, str] = {}
     kinds: dict[str, str] = {}
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
             declared[job_name] = file_name
-            kinds[job_name] = _job_kind(job_name, job, path)
+            kinds[job_name] = _job_kind(job, path, bring_up)
 
     findings.extend(
         f"AGENTS.md records `{name}` as a required check, but no committed workflow "
@@ -417,6 +451,7 @@ def secrets(repo: Repo) -> list[str]:
     findings: list[str] = []
 
     path = ip.parse(repo.agents_md)
+    bring_up = _bring_up(repo)
     for file_path in repo.workflow_paths:
         text = file_path.read_text(encoding="utf-8")
         findings.extend(
@@ -446,7 +481,7 @@ def secrets(repo: Repo) -> list[str]:
 
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if _job_kind(job_name, job, path) != "llmlint":
+            if _job_kind(job, path, bring_up) != "llmlint":
                 continue
             used = sorted(
                 {

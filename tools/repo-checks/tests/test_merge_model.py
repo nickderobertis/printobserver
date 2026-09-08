@@ -8,17 +8,60 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from repo_checks.checks_ci import merge_model
-from repo_checks.expect import accepted, contains, refused
+from repo_checks.expect import absent, accepted, contains, equal, refused, truth
 from repo_checks.model import Repo
+from repo_checks.parsing import jobs_of, load_workflow, marker_block
 from treecopy import Tree
 
 BLOCK_START = "[//]: # (BEGIN required-checks)"
 BLOCK_END = "[//]: # (END required-checks)"
 
 
+def _required(repo: Repo) -> list[str]:
+    """The checks AGENTS.md records as required, as it spells them."""
+    return [line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")]
+
+
+def _declared_jobs(repo: Repo) -> dict[str, dict[str, object]]:
+    """Every job every committed workflow declares, keyed by the name it reports under."""
+    found: dict[str, dict[str, object]] = {}
+    for path in repo.workflow_paths:
+        found.update(jobs_of(load_workflow(path)))
+    return found
+
+
 def test_the_committed_record_is_accepted(committed: Repo) -> None:
     """Every required name has a job behind it."""
     accepted(merge_model(committed))
+
+
+def test_every_required_name_is_a_job_the_workflows_declare(committed: Repo) -> None:
+    """A required context nothing reports would block every change forever."""
+    declared = _declared_jobs(committed)
+    required = _required(committed)
+
+    truth(required, describing="a non-empty record of required checks")
+    for name in required:
+        contains(declared, name, describing="the jobs the committed workflows declare")
+
+
+def test_the_judged_tier_is_required_once_under_a_name_carrying_no_platform(
+    committed: Repo,
+) -> None:
+    """One roll of the judge, one status context, and the record names exactly it."""
+    required = _required(committed)
+    judged = [name for name in required if name.startswith("llmlint")]
+
+    equal(judged, ["llmlint"], describing="the judged-lint entries of the required record")
+    for platform in ("linux-x86_64", "linux-aarch64", "ubuntu-24.04"):
+        absent(judged[0], platform, describing="the judged-lint required check's name")
+    # A job with a platform matrix reports one context per cell, each suffixed
+    # with that cell, so the bare name would be a context nothing reports.
+    absent(
+        _declared_jobs(committed)["llmlint"],
+        "strategy",
+        describing="the judged-lint job",
+    )
 
 
 def _replace_required(tree: Tree, names: list[str]) -> None:
