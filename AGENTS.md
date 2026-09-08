@@ -356,6 +356,14 @@ it assembles copies of the tree carrying one defect each and asserts the gate
 refuses each one. Those copies omit `tests/repo-e2e` itself, because a gate that
 ran the suite that runs the gate could not terminate.
 
+A defect that has to *outweigh* the tree is computed from what the copy measures
+rather than written down. The coverage journey sizes its block of uncovered Rust
+from the Rust its copy will carry, and it proves that sizing by running over a
+copy grown by a substantial well-covered block as well as over the tree as it
+stands. A fixed block stopped sinking the tree the moment a few well-covered
+crates landed, and a journey that can no longer make the floor fail has stopped
+checking that the floor is enforced at all.
+
 ## Suppressions
 
 `suppressions.toml` is the only way to suppress a diagnostic here. Every
