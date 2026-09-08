@@ -5,6 +5,10 @@ carrying no build products, no installed toolchain state and no dependency tree,
 and then a declared tier of the gate is run to completion there.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 from pathlib import Path

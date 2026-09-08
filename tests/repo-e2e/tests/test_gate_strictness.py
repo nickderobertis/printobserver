@@ -5,6 +5,10 @@ coverage is measured on the test run, and the build fails below the recorded
 floor. Every assertion below comes from a real `just check` over a real copy.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 from collections.abc import Callable

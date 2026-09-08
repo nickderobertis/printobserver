@@ -8,11 +8,11 @@ files, and the files are the ones this repository ships.
 from __future__ import annotations
 
 import shutil
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,11 +24,9 @@ def tracked_files(root: Path) -> list[str]:
     yet committed, and excludes everything `.gitignore` covers. Reading only the
     index would copy a tree missing exactly the files the change is about.
     """
-    listing = subprocess.run(
+    listing = run(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         cwd=root,
-        capture_output=True,
-        text=True,
         check=True,
     ).stdout
     return [name for name in listing.split("\0") if name]
@@ -72,6 +70,10 @@ class Tree:
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+
+    def append(self, relative: str, text: str) -> None:
+        """Add to a file of this tree."""
+        self.write(relative, self.read(relative) + text)
 
     def edit(self, relative: str, old: str, new: str) -> None:
         """Replace one exact fragment of one file, refusing a no-op edit."""

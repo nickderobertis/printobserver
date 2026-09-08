@@ -1,5 +1,9 @@
 """The readers every check is built on, driven over the shapes they have to survive."""
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 from pathlib import Path

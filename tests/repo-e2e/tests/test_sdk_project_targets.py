@@ -5,13 +5,18 @@ name. Each journey assembles a copy of the project carrying that one defect and
 runs the real Nx target over it.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 import json
 from collections.abc import Callable
 
 import pytest
-from journey import REPO_ROOT, GateCopy
+from journey import REPO_ROOT, GateCopy, clean_environment
+from repo_checks.shell import run as shell_run
 
 PYTHON_PROJECT = "printobserver-sdk-python"
 NODE_PROJECT = "printobserver-sdk-node"
@@ -24,20 +29,11 @@ TS_TESTS = "npm/printobserver-sdk/test/defect.test.ts"
 
 
 def _run_target(copy: GateCopy, project: str, target: str) -> tuple[int, str]:
-    import os
-    import subprocess
-
-    environment = dict(os.environ)
-    environment.pop("VIRTUAL_ENV", None)
-    environment["UV_PROJECT_ENVIRONMENT"] = str(copy.shared_venv)
-    result = subprocess.run(
+    result = shell_run(
         ["bunx", "nx", "run", f"{project}:{target}", "--output-style=stream", "--skip-nx-cache"],
         cwd=copy.root,
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=600,
-        env=environment,
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv)),
     )
     return result.returncode, result.stdout + result.stderr
 

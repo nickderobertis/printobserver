@@ -318,6 +318,18 @@ directive needs an entry naming the rule, the file, the site and a non-empty
 reason, added in the same change. Nothing in the check asks whether a reason is
 a *good* reason — that is for whoever reviews the change.
 
+**Silencing a rule in a configuration file is refused outright**, not
+allowlisted: a blanket `ignore`, a per-file glob, a crate lint set to `allow` or
+a linter rule set to `off` names no site, carries no reason, is invisible in a
+diff, and goes on silencing findings long after whatever motivated it is gone.
+`just check-repo` reads the ruff, ty, Cargo and Biome configurations and refuses
+each of those. Choosing which rules run is not suppression and is left alone.
+
+Where a rule genuinely cannot be fixed, fix what can be: every subprocess in
+this repository goes through `repo_checks.shell.run`, which resolves the
+executable against PATH — so `S607` is fixed by construction and `S603` has one
+site rather than thirty-four.
+
 ## Keeping the allowlist current
 
 The agent command allowlist is `.claude/settings.json`. `just check-repo`

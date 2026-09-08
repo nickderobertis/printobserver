@@ -1,12 +1,16 @@
 """The two files this repository was branched with are still there, unchanged."""
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from repo_checks.model import Repo
 from repo_checks.registry import base_files
+from repo_checks.shell import run
 from treecopy import REPO_ROOT
 
 MANIFEST = "gh-secrets.json"
@@ -24,24 +28,14 @@ DECLARED_SECRETS = {
 
 def _introducing_commit(path: str) -> str:
     """The commit that first brought a path into this repository."""
-    log = subprocess.run(
-        ["git", "log", "--reverse", "--format=%H", "--", path],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
+    log = run(
+        ["git", "log", "--reverse", "--format=%H", "--", path], cwd=REPO_ROOT, check=True
     ).stdout.split()
     return log[0]
 
 
 def _blob_at(revision: str, path: str) -> str:
-    return subprocess.run(
-        ["git", "show", f"{revision}:{path}"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    return run(["git", "show", f"{revision}:{path}"], cwd=REPO_ROOT, check=True).stdout
 
 
 def test_the_secret_manifest_reads_exactly_as_it_did_on_the_base_commit() -> None:

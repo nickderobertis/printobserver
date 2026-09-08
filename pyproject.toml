@@ -34,21 +34,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "D", "S", "PTH"]
-# S603 and S607 fire on every `subprocess.run`, whatever it runs. This
-# repository's checks shell out to `git`, `cargo` and `uv` with fixed argument
-# lists and never `shell=True`, so leaving these on would turn the suppression
-# allowlist into an inventory of every subprocess call in the tree — which is
-# the opposite of what it is for. The injection invariant the two rules stand
-# for is kept by construction: no `shell=True`, and no external input reaches an
-# argument list. Blast radius: these two rules only, repository-wide.
-ignore = ["S603", "S607"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
-"**/tests/**" = ["S101"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
@@ -62,7 +50,6 @@ source = ["tools/repo-checks/src", "python/printobserver-sdk/src"]
 
 [tool.coverage.report]
 show_missing = true
-exclude_also = ["if TYPE_CHECKING:"]
 
 [tool.ty.environment]
 python-version = "3.14"

@@ -1,14 +1,18 @@
 """The commands the recipes and hooks run that do something rather than check it."""
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from repo_checks.commands import coverage, install_hooks, install_tools
 from repo_checks.model import Repo
+from repo_checks.shell import run
 from treecopy import Tree
 
 POLICY = """
@@ -30,17 +34,11 @@ def test_install_hooks_points_git_at_the_committed_hooks(
 ) -> None:
     """A clean clone's bootstrap wires the hooks it ships with."""
     fresh = tree()
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=fresh.root, check=True)
+    run(["git", "init", "-q", "-b", "main"], cwd=fresh.root, check=True)
 
     assert install_hooks(fresh.repo) == 0
 
-    configured = subprocess.run(
-        ["git", "config", "core.hooksPath"],
-        cwd=fresh.root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    configured = run(["git", "config", "core.hooksPath"], cwd=fresh.root, check=True).stdout.strip()
     assert configured == ".githooks"
 
 

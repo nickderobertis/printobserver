@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
 
@@ -19,7 +19,7 @@ def install_tools(repo: Repo) -> int:
         if shutil.which(tool["command"]):
             continue
         print(f"installing {tool['command']}", file=sys.stderr)
-        result = subprocess.run(tool["install"].split(), cwd=repo.root, check=False)
+        result = run(tool["install"].split(), cwd=repo.root, capture=False)
         if result.returncode != 0:
             print(
                 f"failed to install {tool['command']}. Run `{tool['install']}` by hand.",
@@ -33,7 +33,7 @@ def install_hooks(repo: Repo) -> int:
     """Point git at the committed hooks, where this tree is a git repository."""
     if not (repo.root / ".git").exists():
         return 0
-    subprocess.run(["git", "config", "core.hooksPath", ".githooks"], cwd=repo.root, check=True)
+    run(["git", "config", "core.hooksPath", ".githooks"], cwd=repo.root, check=True)
     return 0
 
 
@@ -86,18 +86,9 @@ def coverage(repo: Repo) -> int:
     floors = repo.policy["gate"]["coverage"]
     failed = False
 
-    rust = subprocess.run(
-        [
-            "cargo",
-            "llvm-cov",
-            "report",
-            "--summary-only",
-            f"--fail-under-lines={floors['rust']}",
-        ],
+    rust = run(
+        ["cargo", "llvm-cov", "report", "--summary-only", f"--fail-under-lines={floors['rust']}"],
         cwd=repo.root,
-        check=False,
-        capture_output=True,
-        text=True,
     )
     if rust.returncode != 0:
         print(rust.stdout, file=sys.stderr)
@@ -108,22 +99,13 @@ def coverage(repo: Repo) -> int:
         )
         failed = True
 
-    python = subprocess.run(
-        ["uv", "run", "-q", "coverage", "combine"],
-        cwd=repo.root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
     if python.returncode not in (0, 1):
         print(python.stderr, file=sys.stderr)
         failed = True
-    report = subprocess.run(
+    report = run(
         ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
         cwd=repo.root,
-        check=False,
-        capture_output=True,
-        text=True,
     )
     if report.returncode != 0:
         print(report.stdout, file=sys.stderr)

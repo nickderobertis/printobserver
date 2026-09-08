@@ -4,6 +4,10 @@ A check that crashed on a missing file would leave the gate reporting an error
 nobody can act on; each of these asserts it names what is missing instead.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 from collections.abc import Callable

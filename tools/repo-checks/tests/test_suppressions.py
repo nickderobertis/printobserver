@@ -5,14 +5,18 @@ whole, because a test file that carried a real directive would itself be a
 suppression the check would then demand an allowlist entry for.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 from repo_checks.checks_suppressions import scan, suppressions
 from repo_checks.model import Repo
+from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
 ALLOW = "#[" + "allow(dead_code)]"
@@ -96,7 +100,7 @@ def test_a_directive_and_its_entry_together_are_accepted(
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    run(["git", *args], cwd=root, check=True)
 
 
 def test_a_change_adding_a_directive_without_its_entry_is_refused(
@@ -109,13 +113,7 @@ def test_a_change_adding_a_directive_without_its_entry_is_refused(
     _git(broken.root, "config", "user.name", "test")
     _git(broken.root, "add", "-A")
     _git(broken.root, "commit", "-q", "-m", "chore: the base")
-    base = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=broken.root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    base = run(["git", "rev-parse", "HEAD"], cwd=broken.root, check=True).stdout.strip()
 
     _plant_directive(broken)
     _git(broken.root, "add", "-A")
@@ -134,13 +132,7 @@ def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> 
     _git(allowed.root, "config", "user.name", "test")
     _git(allowed.root, "add", "-A")
     _git(allowed.root, "commit", "-q", "-m", "chore: the base")
-    base = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=allowed.root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    base = run(["git", "rev-parse", "HEAD"], cwd=allowed.root, check=True).stdout.strip()
 
     _plant_directive(allowed)
     allowed.write("suppressions.toml", allowed.read("suppressions.toml") + ENTRY)

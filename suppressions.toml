@@ -53,3 +53,167 @@ rule = "changed_behavior_has_e2e"
 file = "scripts/setup-llmlint.sh"
 site = "readonly LLMLINT_MIN"
 reason = "The dependency floor selects the validator release the existing real `just lint-llm-validate` gate runs; the installer's control flow and its user-visible contract are unchanged, so there is no new behavior for an end-to-end test to drive."
+
+# --- the single subprocess site ---------------------------------------------
+
+[[suppression]]
+rule = "S603"
+file = "tools/repo-checks/src/repo_checks/shell.py"
+site = "subprocess.run"
+reason = "S603 fires on `subprocess.run` itself whatever it runs, and no code change silences it. Every check, command and test helper is funnelled through this one call so the rule has one reviewable site instead of thirty-four; the executable is resolved with `shutil.which` first (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing here runs through a shell."
+
+# --- pytest modules: `assert` (S101) -----------------------------------------
+#
+# One entry per module rather than one per statement: the directive is
+# file-scoped because the reason is, and 243 inline comments would bury the
+# assertions they sit on. S101 stays enabled everywhere else.
+
+[[suppression]]
+rule = "S101"
+file = "python/printobserver-sdk/tests/test_package.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the Python client package imports from a bootstrapped environment. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tests/repo-e2e/tests/test_bootstrap_journey.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts `just bootstrap` brings a clean clone to a state in which a gate tier runs. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tests/repo-e2e/tests/test_gate_strictness.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the real gate refuses a copy of the tree carrying each of the five strictness defects. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tests/repo-e2e/tests/test_release_program.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts release-plz accepts the committed release arguments and configuration. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tests/repo-e2e/tests/test_sdk_project_targets.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts each client project's gate target fails on the defect it is meant to catch. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tests/repo-e2e/tests/test_workflow_validation.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the workflow validation refuses an unparseable, unpinned or unallowlisted configuration. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_absent_declarations.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts each check names what is missing rather than crashing on it. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_agent_layer.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the agent-layer check refuses a broken symlink or an undispositioned composition entry. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_base_files.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the secret manifest and the inherited ignore rule are intact against the base commit. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_ci.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the continuous-integration jobs agree with the recipe set and the install-path section. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_cli.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the check command line and the committed commit-message hook behave as documented. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_command_allowlist.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the allowlist names exactly the programs the recipes and graph targets invoke. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_commands.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the bootstrap commands install, wire hooks and enforce the coverage floors. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_configured_suppressions.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts a rule silenced in a configuration file is refused rather than allowlisted. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_install_path.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the install-path section is complete, pasteable and the only source of itself. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_merge_model.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts every job the merge model records as required is a job the configuration declares. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_parsing.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the readers every check is built on survive the shapes they have to read. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_platforms.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the supported-platform list is the one source every continuous-integration matrix comes from. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_recipes.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the check recipe invokes every declared tier and no recipe runs nothing. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_release.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the release declaration covers the publishable crates and the release path can run. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_secrets.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts every secret a workflow names is one the manifest declares. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_suppressions.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the suppression allowlist is the only way to suppress a diagnostic. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_workflow_policy.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts every action is pinned and every workflow command is one the allowlist names. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_workspace.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the crate set, the module comments and the dependency rule the design rests on. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."
+
+[[suppression]]
+rule = "S101"
+file = "tools/repo-checks/tests/test_shell.py"
+site = "ruff: noqa: S101"
+reason = "This module asserts the one subprocess site resolves its executable against PATH and reports a missing program. `assert` is pytest's assertion statement: it is what produces the introspected failure message the next reader acts on, and rewriting it as a raised `AssertionError` would lose that. S101 guards shipped code, where it stays enabled and unsuppressed; this file is a pytest module and ships nothing."

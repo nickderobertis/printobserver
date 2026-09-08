@@ -1,13 +1,17 @@
 """The command-line surface `just check-repo` and the committed hooks reach."""
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from repo_checks.__main__ import main
+from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
 
@@ -54,7 +58,7 @@ def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -
         ["add", "-A"],
         ["commit", "-q", "-m", "chore: the base"],
     ):
-        subprocess.run(["git", *args], cwd=allowed.root, check=True, capture_output=True)
+        run(["git", *args], cwd=allowed.root, check=True)
 
     assert main(["suppressions", "--root", str(allowed.root), "--base", "HEAD"]) == 0
 

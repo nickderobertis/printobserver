@@ -6,6 +6,10 @@ form it declares and every step's command to the agent allowlist. Each journey
 below runs that tier over a copy carrying one defect.
 """
 
+# `assert` is how pytest states an assertion and how it produces the failure
+# message a reader acts on; suppressions.toml carries the reason.
+# ruff: noqa: S101
+
 from __future__ import annotations
 
 from collections.abc import Callable
