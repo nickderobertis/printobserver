@@ -110,8 +110,14 @@ def platforms(repo: Repo) -> list[str]:
     declared_ids = [item.id for item in declared]
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
+    # The printer integration job's matrix is the `integration-tier` check's:
+    # it is the one matrix the exclusions recorded in AGENTS.md may narrow, and
+    # a rule stated in two places is a rule that can disagree with itself.
+    brings_up = f"just {repo.policy.get('integration', {}).get('bring_up', '')}".strip()
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
+            if brings_up != "just" and brings_up in run_commands(job):
+                continue
             entries = _matrix_platforms(job)
             kind = _job_kind(job_name, job, path)
             if entries is None:

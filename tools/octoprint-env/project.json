@@ -1,0 +1,13 @@
+{
+  "name": "octoprint-env",
+  "root": "tools/octoprint-env",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/octoprint-env" },
+    "format-check": { "command": "uv run -q ruff format --check tools/octoprint-env" },
+    "lint": { "command": "uv run -q ruff check tools/octoprint-env" },
+    "typecheck": { "command": "uv run -q ty check tools/octoprint-env" },
+    "test-integration": { "command": "uv run -q pytest tools/octoprint-env/tests" }
+  }
+}

@@ -23,3 +23,7 @@ dist/
 
 # Scratch space the recipes use
 /.just-tmp/
+
+# The scripted OctoPrint environment the integration tier drives: an
+# instance, its own virtual environment, its logs and its API key.
+/.octoprint-env/

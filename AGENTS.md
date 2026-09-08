@@ -167,9 +167,9 @@ environment — where they fail, rather than argued about here.
 
 ## Supported platforms
 
-This is the one source both this repository's continuous-integration matrices
-are derived from; `just check-repo` refuses a matrix that names a platform this
-list does not, or omits one it does. Neither matrix can be narrowed
+This is the one source every one of this repository's continuous-integration
+matrices is derived from; `just check-repo` refuses a matrix that names a
+platform this list does not, or omits one it does. No matrix can be narrowed
 independently of this list.
 
 [//]: # (BEGIN supported-platforms)
@@ -183,6 +183,64 @@ printer is usually a small ARM board, and it is the worst place to discover an
 architecture was never built for. macOS and Windows are deliberately absent —
 they can host a *client*, and the clients land at the `sdks` node, which is
 where the list grows if they need one.
+
+## The scripted OctoPrint environment
+
+The printer integration tier drives a real OctoPrint, because a fake one would
+prove a fake. `tools/octoprint-env/octoprint_env.py` is that environment: one
+script, two modes, and no container. The real printer is reached over a USB
+serial port, so a containerized OctoPrint would be a second, different
+installation beside the one that actually drives the machine — the same script
+serves the tier and the board beside the Prusa.
+
+- **Two modes, one flag apart.** `--mode virtual` enables OctoPrint's own
+  virtual printer and connects to it, which is what the tier drives.
+  `--mode serial --device /dev/ttyACM0 --baudrate 115200` connects to a real
+  USB device, which is what the printer uses. The two compose the same
+  configuration and differ in the connection alone; the script's
+  `CONNECTION_KEYS` names exactly which keys that is, and a journey asserts the
+  two configurations differ in those and in nothing else.
+- **Provisioned, not assumed.** `install` is idempotent and unattended: a
+  pinned OctoPrint in a virtual environment of its own (this repository's Python
+  is newer than anything OctoPrint supports), the first-run wizard already
+  answered so nothing waits on a browser, API authentication left **enabled**,
+  and the provisioned key written to a path the script names on its own output.
+  Turning authentication off would prove a configuration nobody runs.
+- **Started, not raced.** `up` answers only once the instance answers its own
+  API *and* reports a connected printer, and `--port auto` takes a free port so
+  two runs on one host do not collide. In `--mode virtual` it also uploads
+  `tools/octoprint-env/gcode/hold.gcode`, selects it and starts it, and states
+  in `HOLD_SECONDS` the minimum that print keeps running for — which is what
+  gives the tier something to act on. It does **not** start a print in
+  `--mode serial` unless asked: a real printer moves.
+- **Diagnosed, not timed out.** Every way starting can fail is one of the
+  script's `FAILURE_CLASSES`, reported by name with a next action; anything
+  outside that closed set is reported with the underlying error's own text. One
+  diagnosed failure path and a bare timeout everywhere else is the shape that
+  reads as diagnostics without being any.
+
+`just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
+which is deliberately **not** one of `just check`'s tiers: it installs
+OctoPrint, starts it and waits a print out, so it is a continuous-integration
+job of its own rather than something every gate run pays for. The `integration`
+job runs it on every change, on every platform the supported-platform list above
+names except those excluded below. `repo-policy.toml`'s `[integration]` names
+the three recipes, and `just check-repo` refuses a job that runs a recipe the
+set does not declare, omits the bring-up or bring-down recipe, omits a platform
+with no exclusion recorded, or is narrowed below every change.
+
+### Virtual printer availability
+
+Every platform the supported-platform list names for which OctoPrint's virtual
+printer is unavailable, with the reason it is. A platform excluded here is one
+the integration job does not run on; `just check-repo` refuses an exclusion with
+no reason, and refuses a job that skips a platform no exclusion names.
+
+[//]: # (BEGIN virtual-printer-exclusions)
+No platform is excluded. OctoPrint's virtual printer is a bundled pure-Python
+plugin that needs no hardware, so it is available on every platform the list
+above names, and the integration job runs on all of them.
+[//]: # (END virtual-printer-exclusions)
 
 ## The end-user install path
 

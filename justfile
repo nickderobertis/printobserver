@@ -105,6 +105,27 @@ test-e2e:
     just node-modules
     bunx nx run-many -t test-e2e --output-style=stream
 
+# Bring up the scripted OctoPrint environment the integration tier drives.
+#
+# The virtual printer, a free port and the hold print, under `.octoprint-env`.
+# `OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0` is the same
+# environment against the machine beside the printer.
+octoprint-up:
+    uv run -q python tools/octoprint-env/octoprint_env.py up
+
+# Stop it, leaving no process behind.
+octoprint-down:
+    uv run -q python tools/octoprint-env/octoprint_env.py down
+
+# The printer integration tier, against the environment `octoprint-up` started.
+#
+# Deliberately not one of `just check`'s tiers: it installs OctoPrint, starts
+# it, and waits a print out, so it is a continuous-integration job of its own
+# rather than something every gate run pays for.
+test-integration:
+    just node-modules
+    bunx nx run-many -t test-integration --output-style=stream
+
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:
     uv run -q python -m repo_checks pr-title

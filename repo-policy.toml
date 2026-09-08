@@ -64,6 +64,22 @@ allowlist = "suppressions.toml"
 # itself.
 whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated"]
 
+[integration]
+# The printer integration tier, and the two recipes that bracket it. These
+# names are the one source: `just check-repo` holds the committed
+# continuous-integration job to them, so a job that ran something other than
+# this repository's own recipes, or omitted the bring-up or the bring-down, is
+# refused. The tier is deliberately not one of `gate.tiers`: it installs
+# OctoPrint, starts it and waits a print out, so it is a job of its own rather
+# than something every gate run pays for.
+tier = "test-integration"
+bring_up = "octoprint-up"
+bring_down = "octoprint-down"
+# The block in `AGENTS.md` recording the platforms the virtual printer is
+# unavailable on, each with its reason. Empty today; the integration job's
+# matrix is the supported-platform list minus whatever it names.
+exclusions_block = "virtual-printer-exclusions"
+
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`
 # enforces: core may depend on the type crate and the four ports and on no

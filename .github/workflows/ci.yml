@@ -47,6 +47,39 @@ jobs:
       - run: just bootstrap
       - run: just check
 
+  integration:
+    name: integration
+    # The printer integration tier, against a real OctoPrint. It is a job of
+    # its own rather than one of `just check`'s tiers because it installs
+    # OctoPrint, starts it and waits a print out — but it runs on every change,
+    # on every platform AGENTS.md's supported-platform list names for which its
+    # "Virtual printer availability" block records no exclusion.
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just octoprint-up
+      - run: just test-integration
+      # The one condition in this job, and it is on the teardown: an
+      # environment that outlived a failing tier is a runner nobody stopped.
+      - if: always()
+        run: just octoprint-down
+
   llmlint:
     name: llmlint
     # The judged tier is a job of its own rather than a step inside the gate:

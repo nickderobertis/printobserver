@@ -11,11 +11,16 @@ import sys
 from pathlib import Path
 
 from repo_checks import commands
+from repo_checks.checks_integration import integration_tier
 from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
 from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
 COMMANDS = ("install-tools", "install-hooks", "commit-msg", "pr-title", "coverage")
+
+# The checks that read a base revision as well as the tree: what a change adds,
+# and what it takes away.
+BASE_AWARE = {"suppressions": suppressions, "integration-tier": integration_tier}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
 
     findings: list[str] = []
     for name, check in selected.items():
-        results = suppressions(repo, parsed.base) if name == "suppressions" else check(repo)
+        results = BASE_AWARE[name](repo, parsed.base) if name in BASE_AWARE else check(repo)
         findings.extend(f"{name}: {finding}" for finding in results)
 
     for finding in findings:
