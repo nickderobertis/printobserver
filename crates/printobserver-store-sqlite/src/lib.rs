@@ -31,11 +31,25 @@
 //! conformance suite drives one set of journeys against both, so the fake
 //! cannot drift into answering differently from the real one.
 //!
+//! Both live here rather than beside the port, because `printobserver-core` may
+//! depend on no implementation crate at all and so could not reach one wherever
+//! it were put; a tier inside core that needs a double defines its own, which is
+//! not a dependency on anything.
+//!
 //! Image *bytes* are on the filesystem for both of them, because the port hands
 //! a caller a [`ImageLookup::Found`](printobserver_store_api::ImageLookup)
 //! path: an implementation that held bytes in memory would have to answer a
 //! path nothing is at. So [`MemoryStore`] takes a state directory too, and both
 //! stores write images through the same content-addressed writer.
+//!
+//! # The connection is part of the contract
+//!
+//! Foreign keys are enforced per connection rather than per database, and a
+//! reader answering the pre-write state rather than waiting on a writer is a
+//! property of the journal mode. So [`connect`] — the one place both are set —
+//! is exported: a test asking whether this database enforces what it declares
+//! asks it over the connection this crate opens, rather than over one of its
+//! own that might differ.
 //!
 //! # Two facts the port leaves open, settled here
 //!
@@ -60,5 +74,7 @@ mod values;
 pub use hold::{HoldPoint, HoldPoints, settle_label};
 pub use images::{IMAGE_DIRECTORY, StoredImage, digest_of};
 pub use memory::MemoryStore;
-pub use schema::{CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, LOCK_TIMEOUT, MIGRATIONS, Migration};
+pub use schema::{
+    CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, LOCK_TIMEOUT, MIGRATIONS, Migration, connect,
+};
 pub use sqlite::SqliteStore;

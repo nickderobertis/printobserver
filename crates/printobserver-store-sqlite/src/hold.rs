@@ -40,12 +40,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl HoldPoint {
-    /// A point holding nothing.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Hold every call that reaches this point until it is released by label.
     pub fn arm(&self) {
         lock(&self.held).armed = true;
@@ -116,12 +110,6 @@ pub struct HoldPoints {
 }
 
 impl HoldPoints {
-    /// Points holding nothing.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Where a settle call has read the intervention's outcome.
     ///
     /// Calls are held here under the label of the outcome each is settling,

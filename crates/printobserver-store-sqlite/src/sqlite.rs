@@ -60,7 +60,7 @@ impl SqliteStore {
         Ok(Self {
             state_dir,
             idle: Mutex::new(vec![connection]),
-            points: HoldPoints::new(),
+            points: HoldPoints::default(),
         })
     }
 

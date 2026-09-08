@@ -73,7 +73,7 @@ impl MemoryStore {
         Ok(Self {
             state_dir,
             records: Mutex::new(Records::default()),
-            points: HoldPoints::new(),
+            points: HoldPoints::default(),
         })
     }
 

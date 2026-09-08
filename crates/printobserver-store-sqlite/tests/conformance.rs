@@ -660,6 +660,33 @@ fn an_intervention_settles_once_and_says_which_outcome_won() {
             Ok(Vec::new()),
             "{name}: a settled intervention is still active"
         );
+        let second = block_on(port.open_intervention(
+            action.id,
+            Adjustable::Fan,
+            Some(40.0),
+            80.0,
+            instant("2026-03-01T12:05:00Z"),
+            instant("2026-03-01T12:35:00Z"),
+        ))
+        .expect("a second intervention opens");
+        let failed = InterventionOutcome::RestoreFailed {
+            reason: "the printer refused the fan command".to_owned(),
+        };
+        match block_on(port.settle_intervention(second.id, failed.clone()))
+            .expect("the intervention settles")
+        {
+            SettleOutcome::Settled { intervention } => {
+                assert_eq!(intervention.outcome, failed, "{name}");
+                assert_eq!(
+                    intervention.restored_at, None,
+                    "{name}: an intervention whose restore failed recorded a restore"
+                );
+            }
+            other @ SettleOutcome::AlreadySettled { .. } => {
+                panic!("{name}: settling a fresh intervention answered {other:?}")
+            }
+        }
+
         let absent = InterventionId::new();
         assert_eq!(
             block_on(port.settle_intervention(absent, InterventionOutcome::Restored)),
@@ -758,5 +785,55 @@ fn an_expiry_and_a_supersession_cannot_both_take_effect() {
                 "{name}: the store did not keep exactly the outcome that won"
             );
         }
+    }
+}
+
+/// Events a fraction of a second apart still answer newest first.
+///
+/// The instants a store keeps have to sort as instants rather than as whatever
+/// spelling they were written in: a human-facing spelling drops the fractional
+/// part when it is zero, and `12:00:00.500Z` then sorts before `12:00:00Z`
+/// under the text ordering a database column has.
+#[test]
+fn events_a_fraction_of_a_second_apart_answer_newest_first() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = block_on(port.open_print(None, None)).expect("a print opens");
+        let instants = [
+            "2026-03-01T12:00:00Z",
+            "2026-03-01T12:00:00.5Z",
+            "2026-03-01T12:00:00.999999999Z",
+            "2026-03-01T12:00:01Z",
+        ];
+        let written: Vec<EventRecord> = instants
+            .iter()
+            .map(|at| {
+                block_on(port.append_event(draft(
+                    Some(print.id),
+                    "obico_failure_alert",
+                    instant(at),
+                )))
+                .expect("an event is appended")
+            })
+            .collect();
+
+        let read = block_on(port.history(whole_window(print.id))).expect("a history reads");
+        assert_eq!(
+            read,
+            reversed(written.clone()),
+            "{name}: events a fraction of a second apart did not answer newest first"
+        );
+        assert_eq!(
+            read.iter()
+                .map(|event| event.received_at)
+                .collect::<Vec<_>>(),
+            instants
+                .iter()
+                .rev()
+                .map(|at| instant(at))
+                .collect::<Vec<_>>(),
+            "{name}: an instant did not read back as the instant it was written"
+        );
     }
 }
