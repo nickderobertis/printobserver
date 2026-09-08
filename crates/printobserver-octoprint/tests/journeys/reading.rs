@@ -171,7 +171,7 @@ fn every_job_state_word_maps_to_the_arm_it_names() {
         ("Finishing", PrinterState::Operational),
         ("Ready", PrinterState::Operational),
         ("Paused", PrinterState::Paused),
-        ("Pausing", PrinterState::Paused),
+        ("Pausing", PrinterState::Printing),
         ("Cancelling", PrinterState::Cancelling),
         ("Error", PrinterState::Error),
         ("Offline", PrinterState::Offline),
@@ -230,7 +230,15 @@ fn every_printer_flag_combination_maps_to_the_arm_it_names() {
         ),
         (
             r#"{"pausing": true, "printing": true, "operational": true}"#,
-            PrinterState::Paused,
+            PrinterState::Printing,
+        ),
+        (
+            r#"{"pausing": true, "operational": true}"#,
+            PrinterState::Printing,
+        ),
+        (
+            r#"{"resuming": true, "printing": true, "operational": true}"#,
+            PrinterState::Printing,
         ),
         (
             r#"{"printing": true, "operational": true}"#,

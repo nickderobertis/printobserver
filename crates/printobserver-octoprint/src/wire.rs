@@ -173,8 +173,17 @@ impl JobPayload {
 /// The state `OctoPrint`'s flags denote.
 ///
 /// The order is the whole of the mapping: an error is an error whatever else is
-/// set, a closed connection is offline, and a printer that is cancelling or
-/// pausing still has `printing` set, so those are read before it.
+/// set, a closed connection is offline, and a printer that is cancelling still
+/// has `printing` set, so that is read before it.
+///
+/// **A printer that is `pausing` is still printing**, and that is a decision
+/// rather than an oversight. `OctoPrint` sets `pausing` from the moment it
+/// accepts a pause until the machine actually stops, which on a printer part-way
+/// through a long move is many seconds later; this vocabulary has no arm for the
+/// transition, and answering `Paused` while the head is still moving is exactly
+/// the confident lie about a machine that this layer exists not to tell. So
+/// `Paused` here means stopped, and nothing else does. `resuming` needs no arm
+/// of its own for the same reason: `printing` is already set through it.
 fn connection_of(state: &StatePayload) -> PrinterState {
     let flags = &state.flags;
     if flag(flags, "error") {
@@ -183,9 +192,9 @@ fn connection_of(state: &StatePayload) -> PrinterState {
         PrinterState::Offline
     } else if flag(flags, "cancelling") {
         PrinterState::Cancelling
-    } else if flag(flags, "paused") || flag(flags, "pausing") {
+    } else if flag(flags, "paused") {
         PrinterState::Paused
-    } else if flag(flags, "printing") {
+    } else if flag(flags, "printing") || flag(flags, "pausing") {
         PrinterState::Printing
     } else if flag(flags, "operational") {
         PrinterState::Operational
@@ -207,7 +216,8 @@ fn job_state_of(text: Option<&str>) -> PrinterState {
         "Printing" | "Starting" | "Resuming" | "Printing from SD" | "Sending file to SD" => {
             PrinterState::Printing
         }
-        "Paused" | "Pausing" => PrinterState::Paused,
+        "Paused" => PrinterState::Paused,
+        "Pausing" => PrinterState::Printing,
         "Cancelling" => PrinterState::Cancelling,
         "Error" => PrinterState::Error,
         other if other.starts_with("Offline") || other.starts_with("Closed") => {

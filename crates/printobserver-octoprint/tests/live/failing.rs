@@ -19,6 +19,12 @@ use printobserver_types::{Adjustable, FileName};
 use crate::block_on::block_on;
 use crate::env::Scripted;
 
+/// The file the scripted environment uploads, which the instance does have.
+const HOLD_FILE: &str = "hold.gcode";
+
+/// A file the instance does not have, and will not be given.
+const ABSENT_FILE: &str = "no-such-file-printobserver.gcode";
+
 /// Every variant, against a real instance.
 ///
 /// # Panics
@@ -53,7 +59,7 @@ fn state_conflict(instance: &Scripted) {
     let error = block_on(
         instance
             .printer()
-            .start(FileName::new("hold.gcode").expect("a file name")),
+            .start(FileName::new(HOLD_FILE).expect("a file name")),
     )
     .expect_err("a refusal");
 
@@ -68,13 +74,24 @@ fn state_conflict(instance: &Scripted) {
     }
 }
 
-/// A factor outside what the instance accepts is refused, in its own words.
+/// A file the printer does not have is refused, in the instance's own words.
+///
+/// This is what a refusal is against this target, and finding that out is part
+/// of what driving the real thing is for: `OctoPrint` 1.11 takes a feedrate
+/// factor of any magnitude and a target for a tool it does not have, answering
+/// `204` to both, so neither of those is a refusal here however plainly wrong it
+/// looks. Asking it to print something it does not hold is.
 fn refused(instance: &Scripted) {
-    let error = block_on(instance.printer().set_feedrate_factor(50.0)).expect_err("a refusal");
+    let error = block_on(
+        instance
+            .printer()
+            .start(FileName::new(ABSENT_FILE).expect("a file name")),
+    )
+    .expect_err("a refusal");
 
     match error {
         PrinterError::Refused { status, detail } => {
-            assert_eq!(status, 400, "the instance refused with {status}: {detail}");
+            assert_eq!(status, 404, "the instance refused with {status}: {detail}");
             assert!(!detail.is_empty(), "the instance said nothing");
         }
         other => panic!("expected a refusal, found {other:?}"),

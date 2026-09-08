@@ -5,6 +5,10 @@
 //! printer and its hold print, which is why it is a continuous-integration job
 //! of its own.
 //!
+//! It begins by putting the hold print back if a previous run left the
+//! environment without one, so the tier is re-runnable against one instance
+//! rather than only against a freshly started one.
+//!
 //! It is one test rather than several, and that is the point: the journeys act
 //! on one shared machine — one of them cancels the print another is reading —
 //! so the order they run in is part of what is being proven, and a runner free
@@ -50,6 +54,7 @@ fn the_printer_port_is_proven_against_a_real_octoprint() {
         "the scripted environment states no hold"
     );
 
+    acting::ensure_the_hold_print_is_running(&instance);
     reading::walk(&instance);
     reading::pin_completion(&instance);
     failing::walk(&instance);

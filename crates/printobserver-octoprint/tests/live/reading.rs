@@ -137,34 +137,39 @@ fn walk_the_job(instance: &Scripted) {
     );
     assert_eq!(job.size_bytes, before["job"]["file"]["size"].as_i64());
 
-    // `estimated_print_time_s` — reported, in seconds, rounded.
-    let estimate = before["job"]["estimatedPrintTime"]
-        .as_f64()
-        .expect("the instance estimates the print");
-    let carried = as_real(job.estimated_print_time_s.expect("the estimate"));
-    assert!(
-        (carried - estimate).abs() <= 0.5,
-        "the instance estimated {estimate} seconds and this port carried {carried}"
-    );
+    // `estimated_print_time_s` — the instance's own estimate, rounded, or absent
+    // when the instance has none to give.
+    match before["job"]["estimatedPrintTime"].as_f64() {
+        Some(estimate) => {
+            let carried = as_real(job.estimated_print_time_s.expect("the estimate"));
+            assert!(
+                (carried - estimate).abs() <= 0.5,
+                "the instance estimated {estimate} seconds and this port carried {carried}"
+            );
+        }
+        None => assert_eq!(job.estimated_print_time_s, None),
+    }
 
     // `completion` — reported, as a percentage, carried as a fraction.
-    bracketed(
+    reported_or_absent(
         "completion",
-        job.completion.expect("the completion").value() * 100.0,
+        job.completion.map(|reported| reported.value() * 100.0),
         &before["progress"]["completion"],
         &after["progress"]["completion"],
     );
 
-    // `print_time_s` and `print_time_left_s` — reported, in seconds.
-    bracketed(
+    // `print_time_s` and `print_time_left_s` — in seconds, where the instance
+    // has them: it reports no time left until it has an estimate to take one
+    // from, and an absent field is what "did not report" means.
+    reported_or_absent(
         "print_time_s",
-        as_real(job.print_time_s.expect("the elapsed time")),
+        job.print_time_s.map(as_real),
         &before["progress"]["printTime"],
         &after["progress"]["printTime"],
     );
-    bracketed(
+    reported_or_absent(
         "print_time_left_s",
-        as_real(job.print_time_left_s.expect("the remaining time")),
+        job.print_time_left_s.map(as_real),
         &before["progress"]["printTimeLeft"],
         &after["progress"]["printTimeLeft"],
     );
@@ -245,10 +250,34 @@ fn stable_point(instance: &Scripted, differing_from: Option<f64>) -> (f64, f64) 
 }
 
 /// `OctoPrint`'s own completion figure, in `OctoPrint`'s own units.
+///
+/// Waited for rather than demanded: a print that has just been selected reports
+/// none for as long as it takes the instance to have one.
 fn completion_of(instance: &Scripted) -> f64 {
-    raw::get(instance, JOB_PATH)["progress"]["completion"]
-        .as_f64()
-        .expect("the instance reports a completion")
+    wait::until("the instance to report a completion", ADVANCE_LIMIT, || {
+        raw::get(instance, JOB_PATH)["progress"]["completion"]
+            .as_f64()
+            .ok_or_else(|| "no completion reported".to_owned())
+    })
+}
+
+/// A field the instance reported is carried, and one it did not is absent.
+fn reported_or_absent(
+    field: &str,
+    answered: Option<f64>,
+    before: &serde_json::Value,
+    after: &serde_json::Value,
+) {
+    if before.as_f64().is_none() && after.as_f64().is_none() {
+        assert_eq!(
+            answered, None,
+            "{field} is carried, and the instance reported none either side of the call"
+        );
+        return;
+    }
+    let answered =
+        answered.unwrap_or_else(|| panic!("{field} is absent, and the instance reported one"));
+    bracketed(field, answered, before, after);
 }
 
 /// A count of seconds as a real number.

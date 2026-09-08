@@ -35,6 +35,31 @@ const HOLD_FILE: &str = "hold.gcode";
 /// How long an action has to reach a machine that dwells ten seconds at a time.
 const REACHED: Duration = Duration::from_secs(90);
 
+/// The hold print is running, whatever state this environment was left in.
+///
+/// `just octoprint-up` starts one and answers only once it is running, and the
+/// tier asserts that it did — but the tier also cancels and restarts prints, so
+/// a second run against one environment finds it where the first left it. This
+/// puts it back, through the port's own `start`, which the walk below proves
+/// separately.
+///
+/// # Panics
+///
+/// Panics when the print cannot be started.
+pub fn ensure_the_hold_print_is_running(instance: &Scripted) {
+    let printer = instance.printer();
+    if block_on(printer.job()).expect("a job snapshot").state == PrinterState::Printing {
+        return;
+    }
+    block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
+        .expect("the hold print starts");
+    wait_for_job(
+        instance,
+        &PrinterState::Printing,
+        "the hold print to be running",
+    );
+}
+
 /// Every action method the printer port declares, against a real printer.
 ///
 /// # Panics
