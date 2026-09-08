@@ -306,8 +306,11 @@ paragraph cannot drift from what actually fires.
 - cron: `17 4 * * 1`
 [//]: # (END obico-tier-schedule)
 
-**How to run it by hand.** Three recipes, in order. `just obico-up` says what it
-is about to start — naming each of the four services — and roughly how long that
+**How to run it by hand.** Three recipes, in order. Docker and its Compose plugin
+are the one prerequisite `just bootstrap` does not install, because this is the
+only thing here that needs them; a host without them is told so by name with the
+next action rather than by a failure to start. `just obico-up` says what it is
+about to start — naming each of the four services — and roughly how long that
 takes, before it starts anything.
 
 ```console
