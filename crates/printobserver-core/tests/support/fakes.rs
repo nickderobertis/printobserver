@@ -20,15 +20,13 @@ use printobserver_store_api::{
     AuditPage, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError, StorePort,
     resolve_history_limit,
 };
-use printobserver_supervisor_api::{
-    SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
-};
+use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnOutcome, TurnRequest};
 use printobserver_types::{
     ActionId, ActionRecord, ActionRequest, Adjustable, AgentAssessment, Confidence, EventId,
-    EventPayload, EventRecord, EventSource, ExecutionOutcome, FileName, ImageId, ImageRecord,
-    Intervention, InterventionId, InterventionOutcome, JobManifest, JobSnapshot, ManifestNarrowing,
-    PolicyDecision, PrintAction, PrintContext, PrintId, PrintRecord, PrinterSnapshot, PrinterState,
-    RawBytes, SessionPhase, SupervisionSession, Timestamp,
+    EventRecord, ExecutionOutcome, FileName, ImageId, ImageRecord, Intervention, InterventionId,
+    InterventionOutcome, JobManifest, JobSnapshot, ManifestNarrowing, PolicyDecision, PrintAction,
+    PrintContext, PrintId, PrintRecord, PrinterSnapshot, PrinterState, RawBytes, SessionPhase,
+    SupervisionSession, Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
@@ -126,12 +124,6 @@ impl PrinterMethod {
             Self::SetFanPercent => "set_fan_percent",
         }
     }
-
-    /// Whether this is an action method rather than one of the two reads.
-    #[must_use]
-    pub const fn is_action(self) -> bool {
-        !matches!(self, Self::Snapshot | Self::Job)
-    }
 }
 
 /// The one printer-port double in this crate's tests.
@@ -169,10 +161,7 @@ impl FakePrinter {
 
     /// Report this state from now on, leaving everything else as it was.
     pub fn reports_state(&self, state: PrinterState) {
-        self.snapshot
-            .lock()
-            .expect("the printer holds")
-            .connection = state;
+        self.snapshot.lock().expect("the printer holds").connection = state;
     }
 
     /// Fail one method with one error from now on.
@@ -405,6 +394,18 @@ impl FakeStore {
             .interventions
             .get(&id)
             .cloned()
+    }
+
+    /// Every print it holds.
+    #[must_use]
+    pub fn prints(&self) -> Vec<PrintRecord> {
+        self.held
+            .lock()
+            .expect("the store holds")
+            .prints
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// One print as it now stands.
@@ -725,7 +726,8 @@ impl StorePort for FakeStore {
             restored_at: None,
             outcome: InterventionOutcome::StillActive,
         };
-        held.interventions.insert(intervention.id, intervention.clone());
+        held.interventions
+            .insert(intervention.id, intervention.clone());
         drop(held);
         ready(Ok(intervention))
     }
@@ -735,7 +737,8 @@ impl StorePort for FakeStore {
         intervention_id: InterventionId,
         outcome: InterventionOutcome,
     ) -> printobserver_store_api::BoxFuture<'_, Result<SettleOutcome, StoreError>> {
-        self.journal.record(Call::SettleIntervention(outcome.clone()));
+        self.journal
+            .record(Call::SettleIntervention(outcome.clone()));
         let restored_at = self.clock.now();
         let mut held = self.held.lock().expect("the store holds");
         let answer = held.interventions.get_mut(&intervention_id).map_or_else(
@@ -903,7 +906,8 @@ impl StorePort for FakeStore {
     fn session(
         &self,
         print_id: PrintId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>> {
+    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>>
+    {
         self.journal.record(Call::ReadSession);
         let found = self
             .held
@@ -943,6 +947,11 @@ impl FakeVision {
     /// Fail every retrieval from now on.
     pub fn fails(&self, error: VisionError) {
         *self.failure.lock().expect("the vision port holds") = Some(error);
+    }
+
+    /// Stop failing every retrieval.
+    pub fn heals(&self) {
+        *self.failure.lock().expect("the vision port holds") = None;
     }
 
     /// The image it serves.
@@ -1168,12 +1177,11 @@ impl FakeSupervisor {
     fn session_for(&self, print_id: PrintId) -> (SupervisionSession, SessionPhase) {
         let now = self.clock.now();
         let mut sessions = self.sessions.lock().expect("the harness holds");
-        match sessions.get_mut(&print_id) {
-            Some(open) => {
-                open.last_turn_at = now;
-                (open.clone(), SessionPhase::Continued)
-            }
-            None => {
+        if let Some(open) = sessions.get_mut(&print_id) {
+            open.last_turn_at = now;
+            (open.clone(), SessionPhase::Continued)
+        } else {
+            {
                 let session = SupervisionSession {
                     print_id,
                     session_name: format!("print-{print_id}"),
@@ -1222,9 +1230,11 @@ impl SupervisorPort for FakeSupervisor {
                     self.acted.lock().expect("the harness holds").push(outcome);
                 }
             }
-            let answer = match self.failure.lock().expect("the harness holds").clone() {
-                Some(error) => Err(error),
-                None => {
+            let induced = self.failure.lock().expect("the harness holds").clone();
+            let answer = if let Some(error) = induced {
+                Err(error)
+            } else {
+                {
                     let (session, phase) = self.session_for(request.print_id);
                     Ok(TurnOutcome {
                         session,

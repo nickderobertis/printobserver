@@ -81,7 +81,7 @@ fn committed() -> Vec<Module> {
 fn with(modules: &[Module], name: &str, source: &str) -> Vec<Module> {
     let mut copy: Vec<Module> = modules.to_vec();
     if let Some(existing) = copy.iter_mut().find(|(held, _)| held == name) {
-        existing.1 = source.to_owned();
+        source.clone_into(&mut existing.1);
     } else {
         copy.push((name.to_owned(), source.to_owned()));
     }
@@ -90,11 +90,10 @@ fn with(modules: &[Module], name: &str, source: &str) -> Vec<Module> {
 
 /// One module's committed source.
 fn source_of(modules: &[Module], name: &str) -> String {
-    modules
-        .iter()
-        .find(|(held, _)| held == name)
-        .map(|(_, source)| source.clone())
-        .unwrap_or_else(|| panic!("the tree carries a `{name}` module"))
+    modules.iter().find(|(held, _)| held == name).map_or_else(
+        || panic!("the tree carries a `{name}` module"),
+        |(_, source)| source.clone(),
+    )
 }
 
 /// The committed modules with one module's source extended.
@@ -152,7 +151,10 @@ fn a_free_function_in_the_chokepoints_own_module_is_refused() {
         "async fn nudge(printer: &Arc<dyn PrinterPort>) -> Result<(), PrinterError> { \
          printer.pause().await }",
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "`supervisor` references");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "`supervisor` references",
+    );
 }
 
 /// A method on a type of this crate is refused.
@@ -164,7 +166,10 @@ fn a_method_on_a_type_of_this_crate_is_refused() {
         "struct Nudger { printer: Arc<dyn PrinterPort> } \
          impl Nudger { async fn go(&self) { let _ = self.printer.resume().await; } }",
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "`supervisor` references");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "`supervisor` references",
+    );
 }
 
 /// A call site in another module of this crate is refused.
@@ -175,7 +180,10 @@ fn a_call_site_in_another_module_is_refused() {
         "actions",
         "async fn stop(printer: &Arc<dyn PrinterPort>) { let _ = printer.cancel().await; }",
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "`actions` references");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "`actions` references",
+    );
 }
 
 /// A module taking an action method as a function pointer is refused.
@@ -188,7 +196,10 @@ fn an_action_method_taken_as_a_function_pointer_is_refused() {
          pub fn dispatch(port: &dyn PrinterPort) { \
          let held = PrinterPort::set_fan_percent; held(port, 100.0); }",
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "`dispatch` references");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "`dispatch` references",
+    );
 }
 
 /// A module aliasing an action method under another name is refused.
@@ -202,7 +213,10 @@ fn an_action_method_aliased_under_another_name_is_refused() {
          PrinterPort::cancel; \
          pub fn halt(port: &dyn PrinterPort) { let _ = HALT(port); }",
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "`aliased` references");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "`aliased` references",
+    );
 }
 
 /// A tree in which no function claims the chokepoint role is refused.
@@ -211,7 +225,10 @@ fn a_tree_with_no_chokepoint_is_refused() {
     let modules = committed();
     let renamed = source_of(&modules, CHOKEPOINT_MODULE).replace(CHOKEPOINT, "issue_anywhere");
     let tree = with(&modules, CHOKEPOINT_MODULE, &renamed);
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "0 functions claim the chokepoint role");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "0 functions claim the chokepoint role",
+    );
 }
 
 /// A tree in which two functions claim the chokepoint role is refused.
@@ -222,7 +239,10 @@ fn a_tree_with_two_chokepoints_is_refused() {
         "actions",
         &format!("async fn {CHOKEPOINT}() {{ }}"),
     );
-    refused(&chokepoint_findings(&tree, CHOKEPOINT, &action_methods()), "2 functions claim the chokepoint role");
+    refused(
+        &chokepoint_findings(&tree, CHOKEPOINT, &action_methods()),
+        "2 functions claim the chokepoint role",
+    );
 }
 
 /// The committed tree keeps the printer handle inside the chokepoint's module.
@@ -242,7 +262,10 @@ fn another_module_holding_the_handle_is_refused() {
         "events",
         "struct Held { printer: Arc<dyn PrinterPort> }",
     );
-    refused(&handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE), "`events` names `PrinterPort`");
+    refused(
+        &handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE),
+        "`events` names `PrinterPort`",
+    );
 }
 
 /// A public accessor handing the handle out of that module is refused.
@@ -253,7 +276,10 @@ fn a_public_accessor_handing_the_handle_out_is_refused() {
         CHOKEPOINT_MODULE,
         "impl Supervisor { pub fn printer(&self) -> &Arc<dyn PrinterPort> { &self.printer } }",
     );
-    refused(&handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE), "hands `PrinterPort` back out");
+    refused(
+        &handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE),
+        "hands `PrinterPort` back out",
+    );
 }
 
 /// Passing the handle out of that module as an argument is refused.
@@ -264,7 +290,10 @@ fn passing_the_handle_out_as_an_argument_is_refused() {
         "expiry",
         "fn take(printer: Arc<dyn PrinterPort>) { let _ = printer; }",
     );
-    refused(&handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE), "`expiry` names `PrinterPort`");
+    refused(
+        &handle_findings(&tree, CHOKEPOINT_MODULE, HANDLE),
+        "`expiry` names `PrinterPort`",
+    );
 }
 
 /// This crate's tests declare exactly one implementation of the printer port.
@@ -274,7 +303,10 @@ fn this_crates_tests_declare_exactly_one_printer_double() {
         .iter()
         .map(|(_, source)| impls_of_trait(&parse(source), HANDLE))
         .sum();
-    assert_eq!(declared, 1, "this crate's tests declare {declared} printer doubles");
+    assert_eq!(
+        declared, 1,
+        "this crate's tests declare {declared} printer doubles"
+    );
 }
 
 /// A tree whose tests declare a second printer double is refused.

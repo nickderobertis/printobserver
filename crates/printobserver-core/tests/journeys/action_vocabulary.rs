@@ -22,7 +22,7 @@ use crate::world::{ACTION_KINDS, World, agent_actor, permissive_envelope};
 const DURATION_S: i64 = 60;
 
 /// The request one kind is driven with, made by one actor.
-fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
+pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
     let reason = "the walk drives every variant".to_owned();
     match kind {
         ActionKind::Pause => PrintAction::Pause { reason, actor },
@@ -75,7 +75,7 @@ fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
 }
 
 /// The state each kind is valid from, so that the walk reaches the printer.
-const fn state_for(kind: ActionKind) -> PrinterState {
+pub(crate) const fn state_for(kind: ActionKind) -> PrinterState {
     match kind {
         ActionKind::Resume => PrinterState::Paused,
         ActionKind::StartPrint => PrinterState::Operational,
@@ -88,7 +88,7 @@ const fn state_for(kind: ActionKind) -> PrinterState {
 /// Acknowledging a failure with the `stop` disposition is the one kind whose
 /// call is another kind's: stopping a print is cancelling it, and one decision
 /// still stands in front of the one call.
-fn expected_call(kind: ActionKind) -> Call {
+pub(crate) fn expected_call(kind: ActionKind) -> Call {
     match kind {
         ActionKind::Pause => Call::Pause,
         ActionKind::Resume => Call::Resume,
@@ -139,9 +139,10 @@ fn drive(kind: ActionKind, actor: Actor, envelope: SafetyEnvelope) -> Driven {
     Driven {
         decision: outcome.record.decision.clone(),
         actions: world.journal.printer_actions(),
-        intervention: outcome.intervention.as_ref().map(|held| {
-            (held.adjustable, held.prior_value, held.applied_value)
-        }),
+        intervention: outcome
+            .intervention
+            .as_ref()
+            .map(|held| (held.adjustable, held.prior_value, held.applied_value)),
         actor: outcome.record.request.actor.clone(),
     }
 }
@@ -149,7 +150,9 @@ fn drive(kind: ActionKind, actor: Actor, envelope: SafetyEnvelope) -> Driven {
 /// The walk drives exactly the vocabulary the contracts declare.
 #[test]
 fn the_walk_covers_every_variant_the_vocabulary_declares() {
-    let path = crate_dir("printobserver-types").join("src").join("action.rs");
+    let path = crate_dir("printobserver-types")
+        .join("src")
+        .join("action.rs");
     let declared = enum_variant_names(&parse(&read(&path)), "PrintAction");
     let driven: Vec<String> = ACTION_KINDS
         .iter()
@@ -191,7 +194,10 @@ fn every_variant_reaches_the_printer_only_behind_a_recorded_decision() {
             .journal
             .position(&expected_call(kind))
             .unwrap_or_else(|| panic!("{kind:?} reached no printer call"));
-        assert!(decided < acted, "{kind:?} acted before its decision was recorded");
+        assert!(
+            decided < acted,
+            "{kind:?} acted before its decision was recorded"
+        );
 
         if let Some((adjustable, value)) = adjusts(kind) {
             let allowed = world

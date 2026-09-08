@@ -139,7 +139,9 @@ pub fn strip_literals(rendered: &str) -> String {
 #[must_use]
 pub fn words(tokens: &str) -> Vec<String> {
     let mut spaced = tokens.to_owned();
-    for delimiter in ['(', ')', '[', ']', '{', '}', ',', ';', '<', '>', '&', '#', '!'] {
+    for delimiter in [
+        '(', ')', '[', ']', '{', '}', ',', ';', '<', '>', '&', '#', '!',
+    ] {
         spaced = spaced.replace(delimiter, &format!(" {delimiter} "));
     }
     spaced.split_whitespace().map(str::to_owned).collect()
@@ -359,22 +361,6 @@ pub fn returns_mentioning(file: &syn::File, identifier: &str) -> Vec<String> {
         .collect()
 }
 
-/// Every function that takes a parameter whose type mentions one identifier.
-#[must_use]
-pub fn params_mentioning(file: &syn::File, identifier: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    collect_signatures(&file.items, &mut found);
-    found
-        .into_iter()
-        .filter_map(|(name, _, params)| {
-            params
-                .iter()
-                .any(|param| mentions(param, identifier) > 0)
-                .then_some(name)
-        })
-        .collect()
-}
-
 /// Every function signature among these items: the name, its return, its params.
 fn collect_signatures(items: &[syn::Item], found: &mut Vec<(String, String, Vec<String>)>) {
     let mut push = |signature: &syn::Signature| {
@@ -433,8 +419,24 @@ pub struct Findings {
 
 /// Types the walk treats as leaves rather than resolving.
 const PRIMITIVES: [&str; 18] = [
-    "bool", "char", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32",
-    "u64", "u128", "usize", "PathBuf", "Timestamp",
+    "bool",
+    "char",
+    "f32",
+    "f64",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "isize",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "usize",
+    "PathBuf",
+    "Timestamp",
 ];
 
 /// Container spellings the walk sees through rather than resolving.
@@ -518,7 +520,9 @@ impl Universe {
         findings: &mut Findings,
         seen: &mut BTreeSet<String>,
     ) {
-        if spelling.contains("Vec<u8>") || spelling.contains("[u8]") || spelling.contains("RawBytes")
+        if spelling.contains("Vec<u8>")
+            || spelling.contains("[u8]")
+            || spelling.contains("RawBytes")
         {
             findings.bytes.push(path.to_owned());
         }
@@ -617,8 +621,7 @@ pub fn chokepoint_findings(
             .sum::<usize>();
         if here > owned {
             findings.push(format!(
-                "`{name}` references {:?} outside the chokepoint",
-                found
+                "`{name}` references {found:?} outside the chokepoint"
             ));
         }
     }
@@ -642,7 +645,9 @@ pub fn handle_findings(modules: &[Module], chokepoint_module: &str, handle: &str
     for (name, source) in modules {
         let file = parse(source);
         if name != chokepoint_module && mentions(&tokens_without_literals(source), handle) > 0 {
-            findings.push(format!("`{name}` names `{handle}`, and only the chokepoint's module may"));
+            findings.push(format!(
+                "`{name}` names `{handle}`, and only the chokepoint's module may"
+            ));
         }
         for (holder, field, public) in fields_mentioning(&file, handle) {
             fields.push((name.clone(), holder, field, public));

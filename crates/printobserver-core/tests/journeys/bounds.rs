@@ -120,9 +120,7 @@ fn an_adjustable_the_envelope_does_not_name_is_unsupported() {
 
     assert_eq!(
         outcome.decision(),
-        &PolicyDecision::Rejected(RejectionReason::UnsupportedAdjustable {
-            adjustable: absent
-        })
+        &PolicyDecision::Rejected(RejectionReason::UnsupportedAdjustable { adjustable: absent })
     );
     assert_eq!(world.journal.printer_actions(), Vec::new());
     world.journal.assert_no_violations();

@@ -52,49 +52,39 @@ fn prepared() -> (World, printobserver_types::PrintRecord) {
     (world, print)
 }
 
-/// The loop performs the whole of the handling, in the order it owes.
-#[test]
-fn the_loop_performs_the_whole_of_the_handling_for_one_event() {
-    let (world, print) = prepared();
-    world.agent.acts_with(PrintAction::Pause {
-        reason: "the agent saw spaghetti".to_owned(),
-        actor: agent_actor(print.id),
-    });
-
-    let event = world
-        .handle(failure_alert_with_image(7))
-        .expect("the event is handled");
-
-    // The append precedes every printer call, every image write and the turn.
+/// The store's event append precedes every printer call, image write and turn.
+fn assert_the_append_came_first(world: &World) {
     let calls = world.journal.calls();
     let appended = calls
         .iter()
         .position(|call| *call == Call::AppendEvent(EventKind::ObicoFailureAlert))
         .expect("the event was appended");
     for (index, call) in calls.iter().enumerate() {
-        let after_the_append = matches!(call.port(), Port::Printer)
+        let owed_the_append = matches!(call.port(), Port::Printer)
             || matches!(call, Call::PutImage | Call::RunTurn(_));
         assert!(
-            !after_the_append || index > appended,
+            !owed_the_append || index > appended,
             "{call:?} happened before the event was appended"
         );
     }
+}
 
-    // The event is in the history, and its image was written and linked.
-    let held = world.store.events_of(print.id);
-    let alert = held
-        .iter()
-        .find(|record| record.id == event.id)
-        .expect("the event reads back out of the store");
-    let image = alert.image.clone().expect("the image was written");
-
-    // The context the turn was handed carries every part of it.
+/// The context the turn was handed carries every part the loop collects.
+fn assert_the_context_carries_everything(
+    world: &World,
+    print_id: printobserver_types::PrintId,
+    event_id: printobserver_types::EventId,
+    image: &printobserver_types::ImageRef,
+) {
     let contexts = world.agent.contexts();
     assert_eq!(contexts.len(), 1);
     let context = contexts[0].as_ref().expect("the turn read its context");
-    assert_eq!(context.print.id, print.id);
+    assert_eq!(context.print.id, print_id);
     assert_eq!(
-        context.printer.as_ref().map(|snapshot| &snapshot.connection),
+        context
+            .printer
+            .as_ref()
+            .map(|snapshot| &snapshot.connection),
         Some(&PrinterState::Printing)
     );
     assert_eq!(context.job.as_ref(), Some(&crate::fakes::job_snapshot()));
@@ -119,39 +109,77 @@ fn the_loop_performs_the_whole_of_the_handling_for_one_event() {
         context
             .recent_events
             .iter()
-            .any(|record| record.id == event.id),
+            .any(|record| record.id == event_id),
         "the context carries the event that prompted the turn"
     );
-    assert_eq!(context.latest_image.as_ref(), Some(&image));
+    assert_eq!(context.latest_image.as_ref(), Some(image));
+}
 
-    // One turn, carrying that event and that print's own identifier.
+/// The agent's action reached the printer only behind a recorded decision.
+fn assert_the_agents_action_took_the_ordinary_path(world: &World) {
+    let decided = world
+        .journal
+        .position(&Call::RecordAction(PolicyDecision::Accepted))
+        .expect("the agent's action was decided");
+    let acted = world
+        .journal
+        .position(&Call::Pause)
+        .expect("it reached the printer");
+    assert!(decided < acted);
+
+    let taken = world.agent.acted();
+    assert_eq!(taken.len(), 1);
+    let outcome = taken[0].as_ref().expect("the agent's action was answered");
+    assert_eq!(outcome.record.decision, PolicyDecision::Accepted);
+    assert_eq!(
+        outcome.record.request.actor.class(),
+        printobserver_types::ActorClass::Agent,
+        "the agent's action was not recorded with the agent as its actor"
+    );
+}
+
+/// The loop performs the whole of the handling, in the order it owes.
+#[test]
+fn the_loop_performs_the_whole_of_the_handling_for_one_event() {
+    let (world, print) = prepared();
+    world.agent.acts_with(PrintAction::Pause {
+        reason: "the agent saw spaghetti".to_owned(),
+        actor: agent_actor(print.id),
+    });
+
+    let event = world
+        .handle(failure_alert_with_image(7))
+        .expect("the event is handled");
+
+    assert_the_append_came_first(&world);
+
+    let held = world.store.events_of(print.id);
+    let alert = held
+        .iter()
+        .find(|record| record.id == event.id)
+        .expect("the event reads back out of the store");
+    let image = alert.image.clone().expect("the image was written");
+
+    assert_the_context_carries_everything(&world, print.id, event.id, &image);
+
     let turns = world.agent.turns();
     assert_eq!(turns.len(), 1);
     assert_eq!(turns[0].print_id, print.id);
     assert_eq!(turns[0].event.id, event.id);
     assert_eq!(turns[0].event.image.as_ref(), Some(&image));
-    assert!(turns[0].image_path.as_ref().is_some_and(|path| path.exists()));
+    assert!(
+        turns[0]
+            .image_path
+            .as_ref()
+            .is_some_and(|path| path.exists())
+    );
     assert!(
         turns[0].context_command.contains(&print.id.to_string()),
         "the context command names the print it is about"
     );
 
-    // The agent's action took the ordinary path, behind a recorded decision.
-    let decided = world
-        .journal
-        .position(&Call::RecordAction(PolicyDecision::Accepted))
-        .expect("the agent's action was decided");
-    let acted = world.journal.position(&Call::Pause).expect("it reached the printer");
-    assert!(decided < acted);
-    let record = world
-        .store
-        .action_records()
-        .into_iter()
-        .find(|record| record.request.action.kind() == printobserver_types::ActionKind::Pause)
-        .expect("the agent's action reads back");
-    assert_eq!(record.request.actor.class(), printobserver_types::ActorClass::Agent);
+    assert_the_agents_action_took_the_ordinary_path(&world);
 
-    // The turn's assessment reads back out of the store.
     let assessment = held
         .iter()
         .find_map(|record| match &record.payload {
@@ -215,8 +243,12 @@ fn an_event_of_another_print_drives_a_turn_under_that_prints_identifier() {
     let world = World::new();
     world.printer.reports_state(PrinterState::Printing);
 
-    let first = world.handle(failure_alert(7)).expect("the first print's event");
-    let other = world.handle(failure_alert(8)).expect("the other print's event");
+    let first = world
+        .handle(failure_alert(7))
+        .expect("the first print's event");
+    let other = world
+        .handle(failure_alert(8))
+        .expect("the other print's event");
 
     let first_print = first.print_id.expect("a print");
     let other_print = other.print_id.expect("a print");

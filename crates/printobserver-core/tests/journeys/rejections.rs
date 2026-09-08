@@ -157,7 +157,9 @@ fn stated_rejections() -> Vec<RejectionReason> {
 /// The walk produces every rejected variant the contracts declare.
 #[test]
 fn the_walk_produces_every_rejected_variant_the_contracts_declare() {
-    let path = crate_dir("printobserver-types").join("src").join("policy.rs");
+    let path = crate_dir("printobserver-types")
+        .join("src")
+        .join("policy.rs");
     let declared = enum_variant_names(&parse(&read(&path)), "RejectionReason");
     let produced: Vec<String> = stated_rejections()
         .iter()
@@ -196,7 +198,11 @@ fn every_rejection_is_reached_and_changes_nothing_at_the_printer() {
             Vec::new(),
             "{expected:?} reached the printer's action methods"
         );
-        assert_eq!(refused.vision, Vec::new(), "{expected:?} reached the vision port");
+        assert_eq!(
+            refused.vision,
+            Vec::new(),
+            "{expected:?} reached the vision port"
+        );
         assert_eq!(
             refused.supervisor,
             Vec::new(),

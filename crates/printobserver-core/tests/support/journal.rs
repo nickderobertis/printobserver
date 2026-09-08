@@ -245,7 +245,16 @@ impl Journal {
     /// Every write the store received, in order.
     #[must_use]
     pub fn store_writes(&self) -> Vec<Call> {
-        self.calls().into_iter().filter(Call::is_store_write).collect()
+        self.calls()
+            .into_iter()
+            .filter(Call::is_store_write)
+            .collect()
+    }
+
+    /// How many times one call was received.
+    #[must_use]
+    pub fn count(&self, call: &Call) -> usize {
+        self.calls().iter().filter(|seen| *seen == call).count()
     }
 
     /// Where one call first appears, if it does.

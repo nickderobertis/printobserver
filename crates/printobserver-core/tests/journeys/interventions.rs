@@ -11,7 +11,7 @@ use printobserver_types::{
 };
 
 use crate::journal::Call;
-use crate::world::World;
+use crate::world::{World, assert_same};
 
 /// How long every bounded adjustment in this corpus stands for.
 const DURATION_S: i64 = 60;
@@ -64,9 +64,12 @@ fn an_accepted_adjustment_reads_the_snapshot_before_it_acts() {
         .journal
         .position(&Call::SetFanPercent(80.0))
         .expect("the printer was acted on");
-    assert!(read < acted, "the adjustment acted before it read the printer");
+    assert!(
+        read < acted,
+        "the adjustment acted before it read the printer"
+    );
     assert_eq!(intervention.prior_value, Some(40.0));
-    assert_eq!(intervention.applied_value, 80.0);
+    assert_same(intervention.applied_value, 80.0);
     assert_eq!(intervention.outcome, InterventionOutcome::StillActive);
     world.journal.assert_no_violations();
 }
@@ -102,7 +105,10 @@ fn an_intervention_expires_on_the_clock_alone_and_restores_the_prior_value() {
         .journal
         .position(&Call::SetFanPercent(40.0))
         .expect("the restoration reached the printer");
-    assert!(decided < acted, "the restoration acted before it was decided");
+    assert!(
+        decided < acted,
+        "the restoration acted before it was decided"
+    );
 
     let settled = world
         .store
@@ -174,7 +180,7 @@ fn a_prior_value_outside_the_current_bounds_is_rejected_and_recorded() {
         "the outcome was {:?}",
         settled.outcome
     );
-    assert_eq!(settled.applied_value, 1.5);
+    assert_same(settled.applied_value, 1.5);
     assert_eq!(settled.prior_value, Some(5.0));
     world.journal.assert_no_violations();
 }
@@ -254,10 +260,7 @@ fn a_second_change_supersedes_the_first_and_carries_its_prior_value_forward() {
     // The machine now reports what the first change put on it, which is what a
     // second change would capture if it did not carry the earlier value forward.
     let mut snapshot = crate::fakes::printer_snapshot(PrinterState::Printing);
-    snapshot.fan_percent = Some(Reported::new(
-        80.0,
-        printobserver_types::FAN_PERCENT_RANGE,
-    ));
+    snapshot.fan_percent = Some(Reported::new(80.0, printobserver_types::FAN_PERCENT_RANGE));
     world.printer.reports(snapshot);
 
     let second = world

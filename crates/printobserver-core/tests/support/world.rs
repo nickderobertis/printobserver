@@ -98,7 +98,10 @@ impl World {
         ));
         let mut config = CoreConfig::new(
             envelope,
-            format!("printobserver context {}", printobserver_core::PRINT_ID_PLACEHOLDER),
+            format!(
+                "printobserver context {}",
+                printobserver_core::PRINT_ID_PLACEHOLDER
+            ),
         );
         config.expiry_poll = Duration::from_millis(5);
         let core = Supervisor::new(
@@ -127,13 +130,11 @@ impl World {
     ///
     /// Panics when the store refuses to open it.
     pub fn open_print(&self, obico_print_id: i64) -> PrintRecord {
-        block_on(
-            printobserver_store_api::StorePort::open_print(
-                self.store.as_ref(),
-                Some(obico_print_id),
-                Some("benchy.gcode".to_owned()),
-            ),
-        )
+        block_on(printobserver_store_api::StorePort::open_print(
+            self.store.as_ref(),
+            Some(obico_print_id),
+            Some("benchy.gcode".to_owned()),
+        ))
         .expect("the store opens a print")
     }
 
@@ -152,7 +153,10 @@ impl World {
     }
 
     /// Read one print's context back the way the context command does.
-    pub fn context(&self, print_id: PrintId) -> Result<printobserver_types::PrintContext, CoreError> {
+    pub fn context(
+        &self,
+        print_id: PrintId,
+    ) -> Result<printobserver_types::PrintContext, CoreError> {
         block_on(self.core.context(print_id))
     }
 
@@ -162,16 +166,39 @@ impl World {
     ///
     /// Panics when the condition has not held within the deadline, which is a
     /// property the run never reached rather than a slow machine.
-    pub fn wait_until(&self, what: &str, mut condition: impl FnMut() -> bool) {
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while std::time::Instant::now() < deadline {
-            if condition() {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        panic!("{what} did not happen within the deadline");
+    pub fn wait_until(&self, what: &str, condition: impl FnMut() -> bool) {
+        let _ = &self.core;
+        wait_until(what, condition);
     }
+}
+
+/// Wait until a condition holds, or give up naming what never happened.
+///
+/// # Panics
+///
+/// Panics when the condition has not held within the deadline.
+pub fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        if condition() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    panic!("{what} did not happen within the deadline");
+}
+
+/// Assert two reported values are the **same** value, bit for bit.
+///
+/// A value this system carries from a printer snapshot into an intervention and
+/// back out to the printer is never arithmetic on: it is the same number, and
+/// an approximate comparison would hide exactly the drift that would matter.
+#[track_caller]
+pub fn assert_same(actual: f64, expected: f64) {
+    assert!(
+        actual.to_bits() == expected.to_bits(),
+        "expected {expected}, found {actual}"
+    );
 }
 
 impl Default for World {
