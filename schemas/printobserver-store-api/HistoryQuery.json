@@ -57,6 +57,11 @@
           "const": "operator_acknowledgement",
           "description": "An operator acknowledged an event.",
           "type": "string"
+        },
+        {
+          "const": "port_failure",
+          "description": "A port failed while an event was being handled.",
+          "type": "string"
         }
       ]
     },

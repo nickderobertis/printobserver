@@ -8,5 +8,23 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.1.0" }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
+printobserver-supervisor-api = { path = "../printobserver-supervisor-api", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+
+# Test-only readers of this crate's own sources. The structural checks this
+# crate is held to are claims about declarations — which function issues an
+# action, which module can name the printer handle — so they read the
+# declarations rather than a table maintained beside them, and every fixture
+# they refuse is a source snippet read by that same reader. Neither is a crate
+# of this workspace, so no implementation crate reaches core through its tests
+# either.
+[dev-dependencies]
+quote = "1"
+syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits", "visit"] }
+
 [lints]
 workspace = true

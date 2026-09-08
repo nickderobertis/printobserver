@@ -6,6 +6,11 @@ platform list rather than the job, because that list is a source this
 repository's integration job is derived from and not one it may edit to fit:
 a list that gained a platform refuses an unchanged job, and a list that lost one
 it carried at the base revision is refused outright.
+
+The last two are about the Nx graph rather than the job: there is one printer,
+so the tier's target is unparallelisable, and neither the graph's declaration
+nor a project taking it back may leave two of its tasks free to drive that one
+machine at once.
 """
 
 from __future__ import annotations
@@ -284,3 +289,35 @@ def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
     findings = integration_tier(broken.repo)
 
     refused(findings, "just test-integration` under the condition")
+
+
+def test_a_graph_that_leaves_the_tier_parallelisable_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """One printer, so no two of the tier's tasks may run at once."""
+    broken = tree()
+    broken.edit(
+        "nx.json",
+        '"test-integration": { "cache": false, "parallelism": false }',
+        '"test-integration": { "cache": false }',
+    )
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, 'does not declare the `test-integration` target `"parallelism": false`')
+
+
+def test_a_project_overriding_the_tier_s_parallelism_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A project that took the declaration back would drive the one machine anyway."""
+    broken = tree()
+    broken.edit(
+        "tools/octoprint-env/project.json",
+        '"test-integration": { "command"',
+        '"test-integration": { "parallelism": true, "command"',
+    )
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, "octoprint-env's `test-integration` target overrides `parallelism`")
