@@ -30,8 +30,8 @@ use crate::event::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
     MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
-    ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload,
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    PortFailureSite, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
 };
 use crate::file_name::FileName;
 use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
@@ -297,6 +297,8 @@ pub fn declared() -> Vec<TypeContract> {
         ObicoTimestamp,
         OperatorAcknowledgementPayload,
         PolicyDecision,
+        PortFailurePayload,
+        PortFailureSite,
         PrintAction,
         PrintContext,
         PrintId,
@@ -951,6 +953,22 @@ impl Sample for ObicoPrinterNotificationPayload {
     }
 }
 
+impl Sample for PortFailureSite {
+    fn sample_full() -> Self {
+        Self::PrinterSnapshot
+    }
+}
+
+impl Sample for PortFailurePayload {
+    fn sample_full() -> Self {
+        Self {
+            event_id: event_id(),
+            site: PortFailureSite::sample_full(),
+            detail: "the printer is unreachable: connection refused".to_owned(),
+        }
+    }
+}
+
 impl Sample for MalformedExternalEventPayload {
     fn sample_full() -> Self {
         Self {
@@ -1068,6 +1086,7 @@ impl Sample for EventPayload {
             Self::SupervisionSessionClosed(SupervisionSessionClosedPayload::sample_full()),
             Self::AgentAssessment(AgentAssessmentPayload::sample_full()),
             Self::OperatorAcknowledgement(OperatorAcknowledgementPayload::sample_full()),
+            Self::PortFailure(PortFailurePayload::sample_full()),
         ]
     }
 }

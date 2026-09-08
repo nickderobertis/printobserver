@@ -119,6 +119,45 @@ pub struct MalformedExternalEventPayload {
     pub detail: String,
 }
 
+/// Where a port failed while an event was being handled.
+///
+/// A closed set of exactly the sites at which a failure has nowhere else to be
+/// recorded. The printer's action methods record theirs on the
+/// [`ActionRecord`](crate::ActionRecord) the request minted, and a restoring
+/// call records its own on the [`Intervention`](crate::Intervention) it was
+/// expiring; those are not sites here, because a second record of them would be
+/// a second version of one fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum PortFailureSite {
+    /// Reading the printer's own state.
+    PrinterSnapshot,
+    /// Reading the job the printer reports it is running.
+    PrinterJob,
+    /// Writing the image the event arrived with.
+    ImageWrite,
+    /// Running the supervision turn the event prompted.
+    SupervisionTurn,
+}
+
+/// A port failed while one event was being handled.
+///
+/// The event is named rather than implied, so that a reader holding an event's
+/// identifier reaches every failure recorded while that event was being
+/// handled. A failure recorded here is one the handling survived: the event is
+/// already in the history by the time any of these sites is reached, and the
+/// loop goes on to handle the next event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PortFailurePayload {
+    /// The event whose handling reached the failing call.
+    pub event_id: EventId,
+    /// Where it failed.
+    pub site: PortFailureSite,
+    /// What the port said about it, in the port's own words.
+    pub detail: String,
+}
+
 /// An actor asked for an action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -235,6 +274,8 @@ pub enum EventKind {
     AgentAssessment,
     /// An operator acknowledged an event.
     OperatorAcknowledgement,
+    /// A port failed while an event was being handled.
+    PortFailure,
 }
 
 impl EventKind {
@@ -242,7 +283,7 @@ impl EventKind {
     ///
     /// The whole vocabulary, so that a test walking the kinds reads them off
     /// this type rather than off a list of its own.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::ObicoFailureAlert,
         Self::ObicoPrinterNotification,
         Self::MalformedExternalEvent,
@@ -254,6 +295,7 @@ impl EventKind {
         Self::SupervisionSessionClosed,
         Self::AgentAssessment,
         Self::OperatorAcknowledgement,
+        Self::PortFailure,
     ];
 }
 
@@ -287,6 +329,8 @@ pub enum EventPayload {
     AgentAssessment(AgentAssessmentPayload),
     /// An operator acknowledged an event.
     OperatorAcknowledgement(OperatorAcknowledgementPayload),
+    /// A port failed while an event was being handled.
+    PortFailure(PortFailurePayload),
 }
 
 impl EventPayload {
@@ -305,6 +349,7 @@ impl EventPayload {
             Self::SupervisionSessionClosed(_) => EventKind::SupervisionSessionClosed,
             Self::AgentAssessment(_) => EventKind::AgentAssessment,
             Self::OperatorAcknowledgement(_) => EventKind::OperatorAcknowledgement,
+            Self::PortFailure(_) => EventKind::PortFailure,
         }
     }
 }

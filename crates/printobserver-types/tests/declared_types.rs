@@ -290,6 +290,15 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("PolicyDecision", &[("rejected", "RejectionReason", true)]),
     (
+        "PortFailurePayload",
+        &[
+            ("detail", "string", true),
+            ("event_id", "EventId", true),
+            ("site", "PortFailureSite", true),
+        ],
+    ),
+    ("PortFailureSite", &[]),
+    (
         "PrintAction",
         &[
             ("action", "string", true),
