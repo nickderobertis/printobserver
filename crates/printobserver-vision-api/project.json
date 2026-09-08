@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-vision-api",
+  "root": "crates/printobserver-vision-api",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:contract"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-vision-api"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-vision-api -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-vision-api --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-vision-api --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-vision-api --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-vision-api --locked"
+    }
+  }
+}

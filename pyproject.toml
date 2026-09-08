@@ -1,0 +1,61 @@
+# The repository's Python toolchain root.
+#
+# It is a VIRTUAL uv workspace root: no `[project]` table, so no distribution
+# and no hand-maintained version string. That is deliberate — `just check-repo`
+# refuses a version field outside the set release automation owns, and release
+# automation owns Cargo manifests only. The Python projects under `python/` and
+# `tools/` are graph projects with their own gate targets sharing this one
+# environment; the client distribution `printobserver-sdk` becomes a real
+# published package at the `sdks` node, which is where its version becomes
+# automation-owned too.
+#
+# Recipes call `uv run -q`: without `[project]` uv warns on every invocation
+# that it inferred `requires-python` from `.python-version`, and a gate that
+# prints a warning on success trains the next reader to ignore its output.
+
+[tool.uv.workspace]
+members = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+    "ty>=0.0.79",
+    "pytest>=9",
+    "pytest-cov>=7",
+    "coverage>=7",
+    "pyyaml>=6",
+    "actionlint-py>=1.7",
+    "shellcheck-py>=0.11",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN", "D", "S", "PTH"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --strict-config"
+pythonpath = ["tools/repo-checks/src", "python/printobserver-sdk/src"]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+relative_files = true
+source = ["tools/repo-checks/src", "python/printobserver-sdk/src"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ty.environment]
+python-version = "3.14"
+root = [
+    "tools/repo-checks/src",
+    "tools/repo-checks/tests",
+    "python/printobserver-sdk/src",
+    "tests/repo-e2e/tests",
+]

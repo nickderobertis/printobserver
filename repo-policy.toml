@@ -1,0 +1,137 @@
+# The machine-readable half of this repository's own rules.
+#
+# `AGENTS.md` is the prose half and is authoritative for the things a reader
+# needs in prose — the supported platforms, the merge model, the end-user
+# install path. This file holds the facts a check needs to be deterministic
+# about, so that no check has to guess and no rule is stated twice.
+#
+# `just check-repo` reads this file. `uv run -q repo-check --help` lists the
+# individual checks.
+
+schema_version = 1
+
+[repository]
+owner = "nickderobertis"
+name = "printobserver"
+base_branch = "main"
+
+[gate]
+# Every tier `just check` must invoke, the end-to-end tier included. `just
+# check-repo` refuses a `check` recipe that omits one of these, and refuses any
+# recipe in the set whose body would run nothing.
+tiers = [
+    "format-check",
+    "lint",
+    "typecheck",
+    "test",
+    "coverage",
+    "build",
+    "lint-workflows",
+    "check-repo",
+    "test-e2e",
+]
+
+[gate.coverage]
+# Line-coverage floors. 95% is the create-repo default and nothing here lowers
+# it. Each ecosystem measures its own suite and fails its own build below the
+# floor; there is no combined cross-language number, because a single blended
+# figure lets one language's coverage pay for another's.
+rust = 95
+python = 95
+typescript = 95
+
+[suppressions]
+# The ONE way to suppress a diagnostic in this repository. Every suppression
+# directive in the tree needs an entry here naming the rule, the file, the site
+# and a non-empty reason; `just check-repo` refuses a directive without one, an
+# entry without a reason, and an entry that matches nothing.
+allowlist = "suppressions.toml"
+
+# The only rules a WHOLE-FILE directive may name, and the narrowest the
+# exception can be made.
+#
+# Every deterministic linter and type checker here attributes each finding to a
+# line, so a whole-file directive from one of them is always broader than the
+# finding it answers, and `just check-repo` refuses it with no exception at all.
+# llmlint is the one tool with rules that are about a file as a whole — whether
+# a script's output is signal, whether its inputs are validated — and for those
+# a whole-file directive is the only shape that fits.
+#
+# The permission is llmlint's alone and reaches only the rules named here; a
+# directive naming any other rule is refused, and every use still needs its own
+# entry in the allowlist above, with a reason. Adding a name to this list is a
+# deliberate, reviewable change rather than something a directive can do for
+# itself.
+whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated"]
+
+[crates]
+# The roles the dependency rule is stated in terms of. `just check-repo`
+# enforces: core may depend on the type crate and the four ports and on no
+# implementation crate; no implementation crate may depend on another.
+types = "printobserver-types"
+ports = [
+    "printobserver-printer-api",
+    "printobserver-vision-api",
+    "printobserver-supervisor-api",
+    "printobserver-store-api",
+]
+implementations = [
+    "printobserver-octoprint",
+    "printobserver-obico",
+    "printobserver-oneharness",
+    "printobserver-store-sqlite",
+]
+core = "printobserver-core"
+# The only crates allowed to name an implementation: something has to choose
+# which one runs.
+composition_roots = ["printobserver-server", "printobserver"]
+clients = ["printobserver-sdk"]
+
+[manifests]
+# The only manifests permitted to carry a version field, because release
+# automation writes every one of them. A version anywhere else is one a person
+# would have to hand-maintain, which is the thing Conventional-Commit-driven
+# releasing exists to remove.
+automation_owned = ["Cargo.toml", "crates/*/Cargo.toml"]
+
+[commits]
+# The Conventional Commit types release automation releases from. This set and
+# `release-plz.toml`'s `release_commits` regex are checked against each other,
+# and the committed `commit-msg` hook rules on the same set — a repository whose
+# own hook refuses the titles its own plan publishes under is a defect that has
+# already fired once in this plan's history.
+release_types = ["feat", "fix", "perf"]
+# Types that are valid subjects but do not cut a release.
+non_release_types = ["docs", "test", "chore", "ci", "refactor", "build", "style", "revert"]
+
+[workflows]
+# `uses:` must name a tag of the form `@v<major>` or `@v<major>.<minor>.<patch>`.
+# A branch ref (`@main`) is not a pin: it re-points under the repository without
+# a commit here.
+action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+)?$'
+# The install script the `sdks` node commits, and the path the install-path
+# section's fetch URL must name.
+install_script_path = "scripts/install.sh"
+install_service_script_path = "scripts/install-service.sh"
+
+[agent]
+# The narrow command allowlist. `just check-repo` derives the set of programs
+# this repository's own recipes and graph targets invoke and requires the
+# allowlist to name exactly that set — no command missing, none beyond it.
+allowlist = ".claude/settings.json"
+
+[toolchain]
+# The tools `just install-tools` puts on PATH when they are missing. A release
+# workflow may only run a program named here: a workflow naming a program
+# nothing installs is a release that fails after a merge.
+[[toolchain.tool]]
+command = "cargo-nextest"
+install = "cargo install cargo-nextest --locked"
+
+[[toolchain.tool]]
+command = "cargo-llvm-cov"
+install = "cargo install cargo-llvm-cov --locked"
+
+[[toolchain.tool]]
+command = "release-plz"
+install = "cargo install release-plz --locked"

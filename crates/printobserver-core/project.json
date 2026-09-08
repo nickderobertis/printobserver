@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-core",
+  "root": "crates/printobserver-core",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:core"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-core"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-core -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-core --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-core --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-core --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-core --locked"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Refuse a commit subject that is not a Conventional Commit.
+#
+# The admitted types come from `repo-policy.toml` — `commits.release_types`
+# (feat, fix, perf) plus `commits.non_release_types` — rather than from a list
+# repeated here, so this hook and the release rule cannot disagree. A repository
+# whose own hook refuses the subjects its own plan publishes under is a release
+# that fails after the work is done.
+#
+# Installed by `just bootstrap` (`git config core.hooksPath .githooks`).
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+PYTHONPATH=tools/repo-checks/src uv run -q python -m repo_checks commit-msg "$1"

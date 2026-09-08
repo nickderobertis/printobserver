@@ -1,0 +1,12 @@
+{
+  "name": "printobserver-repo",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "workspaces": ["npm/*"],
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.12",
+    "nx": "^22.7.9",
+    "typescript": "^5.9.3",
+    "@types/bun": "^1.4.1"
+  }
+}

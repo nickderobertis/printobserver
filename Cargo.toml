@@ -1,0 +1,36 @@
+# The printobserver Rust workspace.
+#
+# The dependency rule this design rests on is declared here and enforced by
+# `just check-repo` (see `repo-policy.toml` for the crate roles it reads):
+#
+#   * `printobserver-core` may depend on `printobserver-types` and the four
+#     `*-api` port crates, and on NO implementation crate. Core is the layer the
+#     product's correctness lives in; the moment it can name an implementation,
+#     swapping one becomes a change to core.
+#   * No implementation crate may depend on another. Each one adapts exactly one
+#     external system to exactly one port; an edge between two of them is a
+#     hidden coupling between two vendors.
+#
+# `printobserver-server` and the `printobserver` binary are the composition
+# roots: they are the only crates permitted to name an implementation, because
+# something has to choose which one runs.
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/nickderobertis/printobserver"
+authors = ["Nick DeRobertis"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

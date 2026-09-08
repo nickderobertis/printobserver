@@ -1,0 +1,72 @@
+# Every lint or type-check suppression standing in this repository.
+#
+# This file is the ONLY way to suppress a diagnostic here. `just check-repo`
+# refuses a suppression directive in the tree with no entry below, an entry
+# whose reason is absent or empty, an entry that matches no directive, and — on
+# a change, against its base revision — a directive introduced without its entry
+# in the same change.
+#
+# Nothing here asks whether a reason is a GOOD reason. That is a question for
+# whoever reviews the change; a check that tried to answer it would be exactly
+# the non-deterministic gate this file exists to replace.
+#
+# An entry matches a directive when `file` is the file the directive is in,
+# `rule` is the rule the directive names, and `site` occurs on the directive's
+# own line or in one of the three following non-blank lines.
+
+schema_version = 1
+
+
+# --- WHOLE-FILE llmlint directives --------------------------------------------
+#
+# The two entries per script below are `llmlint: ignore-file` directives, which
+# cover the whole script rather than one line. That is permitted only because
+# both rules are about a file as a whole rather than a line, and only for the
+# rules `repo-policy.toml`'s suppressions.whole_file_rules names; `just
+# check-repo` refuses the form from any other tool and for any other rule. Each
+# still needs the entry and reason below like any other suppression.
+#
+# --- scripts/session-setup.sh -------------------------------------------------
+# The reason is the script's own header: a SessionStart hook that aborted a
+# session because an install was flaky would be worse than one that logs and
+# continues.
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/session-setup.sh"
+site = "set -uo pipefail"
+reason = "Whole-file, and the rule is about the whole file: success is quiet and every failure logs and continues rather than blocking startup, so this script's output is deliberately advisory rather than a gate's verdict."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/session-setup.sh"
+site = "set -uo pipefail"
+reason = "Whole-file, and the rule is about the whole file: the only external input this script takes is the `rust-just` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations, so no untrusted input is executed anywhere in it."
+
+# --- scripts/setup-llmlint.sh -------------------------------------------------
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/setup-llmlint.sh"
+site = "set -uo pipefail"
+reason = "Whole-file, and the rule is about the whole file: success is quiet and a failed install logs an actionable line and continues rather than blocking startup."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/setup-llmlint.sh"
+site = "set -uo pipefail"
+reason = "Whole-file, and the rule is about the whole file: the only external input this script takes is the `llmlint-cli` wheel from PyPI, whose releases carry Trusted Publishing and PEP 740 attestations, so no untrusted input is executed anywhere in it."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/setup-llmlint.sh"
+site = "readonly LLMLINT_MIN"
+reason = "The dependency floor selects the validator release the existing real `just lint-llm-validate` gate runs; the installer's control flow and its user-visible contract are unchanged, so there is no new behavior for an end-to-end test to drive."
+
+# --- the single subprocess site ---------------------------------------------
+
+[[suppression]]
+rule = "S603"
+file = "tools/repo-checks/src/repo_checks/shell.py"
+site = "subprocess.run"
+reason = "S603 fires on `subprocess.run` itself whatever it runs, and no code change silences it. Every check, command and test helper is funnelled through this one call so the rule has one reviewable site instead of thirty-four; the executable is resolved with `shutil.which` first (so S607 is fixed rather than suppressed), the arguments are always a list, and nothing here runs through a shell."

@@ -1,0 +1,29 @@
+{
+  "name": "printobserver-sdk",
+  "root": "crates/printobserver-sdk",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:client"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-sdk"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-sdk -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-sdk --all-targets --locked -- -D warnings"
+    },
+    "typecheck": {
+      "command": "cargo check -p printobserver-sdk --all-targets --locked"
+    },
+    "test": {
+      "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-sdk --locked"
+    }
+  }
+}
