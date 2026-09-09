@@ -54,6 +54,10 @@ impl StorePort for TrivialStore {
         Box::pin(async { Ok(Some(PrintRecord::sample_minimal())) })
     }
 
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async { Ok(vec![PrintRecord::sample_minimal()]) })
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,

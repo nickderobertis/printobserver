@@ -132,6 +132,19 @@ impl StorePort for MemoryStore {
         })
     }
 
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async move {
+            let held = self.held.lock().expect("the store is not poisoned");
+            Ok(held
+                .prints
+                .iter()
+                .filter(|record| record.ended_at.is_none())
+                .rev()
+                .cloned()
+                .collect())
+        })
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,
@@ -377,6 +390,10 @@ impl StorePort for RefusingStore {
         &self,
         _obico_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+        refused()
+    }
+
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         refused()
     }
 
