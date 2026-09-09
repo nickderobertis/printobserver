@@ -295,3 +295,70 @@ fn check(field: &Field, value: &Value) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use printobserver_server::{Located, Parameter, ValueKind};
+    use printobserver_types::serde_json::json;
+
+    use super::read_value;
+    use crate::surface::{Field, Form, Supply};
+
+    /// One field of one kind, in the form that carries the value itself.
+    fn field(kind: ValueKind) -> Field {
+        Field {
+            parameter: Parameter {
+                name: "asked".to_owned(),
+                required: true,
+                located: Located::Body,
+                kind,
+            },
+            forms: vec![Form {
+                option: "--asked".to_owned(),
+                supply: Supply::Value,
+            }],
+        }
+    }
+
+    /// A value is read as the kind its own parameter declares.
+    ///
+    /// The walk over the whole set rather than one of them: `1.15` is a number
+    /// and `1.15` is also a perfectly good reason to give, so what a value is
+    /// read as is a fact about the field rather than about the text.
+    #[test]
+    fn a_value_is_read_as_the_kind_its_parameter_declares() {
+        for (kind, given, expected) in [
+            (ValueKind::Text, "1.15", json!("1.15")),
+            (ValueKind::Number, "1.15", json!(1.15)),
+            (ValueKind::Integer, "60", json!(60)),
+            (ValueKind::Boolean, "true", json!(true)),
+            (ValueKind::Structured, "{\"a\":1}", json!({"a": 1})),
+            // Text that is not a document is the value a caller meant, which is
+            // what lets a closed set be spelled without quotes.
+            (ValueKind::Structured, "operator", json!("operator")),
+        ] {
+            let read = read_value(&field(kind), Supply::Value, given)
+                .unwrap_or_else(|refusal| panic!("`{given}` as {kind:?}: {refusal}"));
+
+            assert_eq!(read, expected, "`{given}` was read as {read} for {kind:?}");
+        }
+    }
+
+    /// A value that is not of its own kind is refused, saying what it takes.
+    #[test]
+    fn a_value_that_is_not_of_its_own_kind_is_refused() {
+        for (kind, given, said) in [
+            (ValueKind::Number, "quickly", "takes a number"),
+            (ValueKind::Integer, "1.5", "takes a whole number"),
+            (ValueKind::Boolean, "perhaps", "takes true or false"),
+        ] {
+            let refusal = read_value(&field(kind), Supply::Value, given)
+                .expect_err("this value is not of that kind");
+
+            assert!(
+                refusal.contains(said),
+                "{kind:?} was refused with {refusal}"
+            );
+        }
+    }
+}

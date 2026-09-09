@@ -159,6 +159,48 @@ fn the_policy_refuses_it(world: &World, one: &Driven) {
     }
 }
 
+/// An action the policy accepted and the machine refused is answered as that.
+///
+/// A different thing from a policy that would not have it: the request was
+/// made and the machine would not have it, so what the caller gets is the
+/// record, the machine's own words and an exit of its own — rather than a
+/// success it did not get, or silence.
+///
+/// Only a world whose machine is a socket can be told to have a bad day on
+/// demand; against a real one the walk asks for what it can do, so this
+/// journey answers that world by doing nothing.
+pub fn an_action_the_machine_refuses_is_answered_as_that(world: &World) {
+    if !world.machine_refuses(true) {
+        return;
+    }
+    let one = walk::walk(world)
+        .into_iter()
+        .find(|found| found.command.name == "pause")
+        .expect("this walk drives a pause");
+    let arguments = succeeding(&one);
+    let asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
+
+    let ran = running::command(world, &asked);
+    world.machine_refuses(false);
+
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Refused.status())),
+        "an action the machine refused was not answered as that: {}",
+        ran.said()
+    );
+    assert!(
+        ran.err.contains("the machine refused it"),
+        "an action the machine refused was answered without saying so: {}",
+        ran.said()
+    );
+    assert!(
+        ran.out.contains("printer_refusal"),
+        "an action the machine refused was answered without the record: {}",
+        ran.out
+    );
+}
+
 /// No mutating command runs without a reason, and nothing reaches the server.
 pub fn no_mutating_command_runs_without_a_reason(world: &World) {
     for one in walk::walk(world) {

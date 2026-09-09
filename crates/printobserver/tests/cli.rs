@@ -94,6 +94,7 @@ fn an_invocation_this_program_does_not_answer_to_is_refused() {
             "twice",
         ),
         (vec!["status"], "--print-id"),
+        (vec!["status", "--print-id"], "takes a value"),
         (vec!["pause", "--print-id", A_PRINT], "--actor"),
         (vec!["context", "--quickly", "x"], "--quickly"),
         (
@@ -321,9 +322,23 @@ fn the_servers_own_configuration_file_configures_a_client() {
 
 /// A read of a supervisor that is not there says where it looked and what to
 /// do.
+///
+/// Driven over a read that leaves an optional value out as well as one that has
+/// none, because what a command asks for is built from the values it was given
+/// rather than from the ones it could have been.
 #[test]
 fn a_read_of_a_supervisor_that_is_not_there_says_where_it_looked() {
     let address = nothing_listening();
+
+    let (code, said) = running(
+        &["history", "--print-id", A_PRINT],
+        &[("PRINTOBSERVER_SERVER", &address)],
+    );
+    assert_eq!(code, Some(i32::from(Exit::Unreachable.status())));
+    assert!(
+        said.contains(&address),
+        "the refusal does not say where it looked: {said}"
+    );
 
     let (code, said) = running(
         &["context", "--print-id", A_PRINT],

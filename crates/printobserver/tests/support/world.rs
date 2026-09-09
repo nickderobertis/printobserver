@@ -202,6 +202,20 @@ impl World {
         world
     }
 
+    /// Tell a stood-in machine to refuse everything it is asked, or to stop.
+    ///
+    /// Only a socket can be told to have a bad day on demand; a real machine is
+    /// asked for what it can do and answers for itself.
+    pub fn machine_refuses(&self, refusing: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.refusing(refusing);
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
     /// The file this world's printer can be asked to print.
     pub fn printable_file(&self) -> String {
         printable_file(&self.printer)

@@ -63,6 +63,8 @@ pub struct Machine {
     pub address: SocketAddr,
     /// What it reports it is doing.
     reported: Arc<Mutex<Reports>>,
+    /// Whether it refuses everything it is asked.
+    refusing: Arc<Mutex<bool>>,
 }
 
 impl Machine {
@@ -71,14 +73,31 @@ impl Machine {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
         let address = listener.local_addr().expect("the bound address");
         let reported = Arc::new(Mutex::new(Reports::Printing));
+        let refusing = Arc::new(Mutex::new(false));
         let answering = Arc::clone(&reported);
+        let refusals = Arc::clone(&refusing);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let reported = Arc::clone(&answering);
-                std::thread::spawn(move || answer(stream, &reported));
+                let refusing = Arc::clone(&refusals);
+                std::thread::spawn(move || answer(stream, &reported, &refusing));
             }
         });
-        Self { address, reported }
+        Self {
+            address,
+            reported,
+            refusing,
+        }
+    }
+
+    /// Tell it to refuse everything it is asked, or to stop.
+    ///
+    /// A machine having a bad day, which is a different thing from a policy
+    /// that would not have it: the request was made and the machine would not
+    /// have it, and what the caller is owed is the record and the machine's own
+    /// answer rather than silence.
+    pub fn refusing(&self, refusing: bool) {
+        *self.refusing.lock().expect("whether it refuses") = refusing;
     }
 
     /// Tell it what to report it is doing.
@@ -124,7 +143,7 @@ fn job_document(reported: Reports) -> Value {
 }
 
 /// Read one request and answer the document it is for.
-fn answer(mut stream: TcpStream, reported: &Mutex<Reports>) {
+fn answer(mut stream: TcpStream, reported: &Mutex<Reports>, refusing: &Mutex<bool>) {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 2048];
     while !request.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -140,6 +159,13 @@ fn answer(mut stream: TcpStream, reported: &Mutex<Reports>) {
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or_default()
         .to_owned();
+    if *refusing.lock().expect("whether it refuses") {
+        let _ = stream.write_all(
+            b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\
+              Content-Length: 2\r\nConnection: close\r\n\r\n{}",
+        );
+        return;
+    }
     let state = *reported.lock().expect("the reported state");
     let body = if target.contains('?') {
         connection_document(state).to_string()

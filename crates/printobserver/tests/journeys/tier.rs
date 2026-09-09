@@ -53,6 +53,7 @@ pub fn run(world: &World, depth: &str) {
     materializing::a_path_that_names_no_file_here_is_its_own_failure(world);
     failures::every_command_owes_its_failures(world);
     failures::no_mutating_command_runs_without_a_reason(world);
+    failures::an_action_the_machine_refuses_is_answered_as_that(world);
     tainting::every_assertion_here_refuses_the_defect_it_is_about(world);
     durations::every_adjustment_is_a_bounded_intervention(world);
     redaction::no_run_of_the_walk_prints_the_credential(world);

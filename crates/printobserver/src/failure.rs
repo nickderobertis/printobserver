@@ -99,10 +99,34 @@ impl Failure {
     }
 }
 
-impl core::fmt::Display for Failure {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str(&self.detail)
+#[cfg(test)]
+mod tests {
+    use super::Exit;
+
+    /// Every exit this program declares is distinguishable from every other.
+    ///
+    /// A caller — and the supervising agent is one — decides what to do next
+    /// from the status before it reads a word, so two classes sharing a status
+    /// would be two different problems with one answer.
+    #[test]
+    fn every_exit_is_distinguishable_from_every_other_and_from_success() {
+        let mut statuses: Vec<u8> = Exit::ALL.iter().map(|exit| exit.status()).collect();
+        let mut names: Vec<&str> = Exit::ALL.iter().map(|exit| exit.as_str()).collect();
+        let held = statuses.len();
+        statuses.sort_unstable();
+        statuses.dedup();
+        names.sort_unstable();
+        names.dedup();
+
+        assert_eq!(statuses.len(), held, "two exits share a status");
+        assert_eq!(names.len(), held, "two exits share a name");
+        assert_eq!(Exit::Success.status(), 0);
+        assert!(
+            Exit::ALL
+                .iter()
+                .all(|exit| *exit == Exit::Success || exit.status() != 0),
+            "an exit that is not success exits zero"
+        );
+        assert_eq!(Exit::Rejected.to_string(), "rejected");
     }
 }
-
-impl core::error::Error for Failure {}

@@ -304,3 +304,27 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
             .transpose()?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Credential, REDACTED};
+
+    /// Neither rendering of a credential shows it.
+    ///
+    /// This is what stops one reaching an error's own text, a panic message or
+    /// a log line by having been formatted: there is no rendering that could
+    /// carry it, so no site has to remember not to.
+    #[test]
+    fn neither_rendering_of_a_credential_shows_it() {
+        let credential = Credential::new("qz7vk3xhw9mrbt2ycf5jdlgnps46auei", "a test")
+            .expect("a credential this long is one");
+
+        assert_eq!(credential.to_string(), REDACTED);
+        assert_eq!(format!("{credential:?}"), REDACTED);
+        assert!(
+            credential
+                .header_value()
+                .ends_with("qz7vk3xhw9mrbt2ycf5jdlgnps46auei")
+        );
+    }
+}
