@@ -13,8 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use printobserver_oneharness::{
-    HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, SESSIONS_DIRECTORY, SupervisorConfig,
-    TurnSeam, TurnTimeout, session_name,
+    HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, SESSIONS_DIRECTORY, SessionName,
+    SupervisorConfig, TurnSeam, TurnTimeout,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{
@@ -396,6 +396,38 @@ fn a_ledger_written_under_another_shape_is_refused() {
     );
 }
 
+/// A recorded turn that names no conversation is refused on the way back in.
+///
+/// The ledger exists to say which conversation each turn belongs to, so a turn
+/// whose session is empty is a record that answers the one question it is for
+/// with nothing.
+#[test]
+fn a_recorded_turn_naming_no_session_is_refused() {
+    let fixture = Fixture::new("failures-nameless-turn");
+    let print_id = PrintId::new();
+    write_ledger(
+        &fixture,
+        &print_id,
+        &serde_json::json!({
+            "schema_version": "1",
+            "print_id": print_id,
+            "sessions": [],
+            "turns": [{ "session_name": "", "ran_at": "2026-01-01T00:00:00Z" }],
+        }),
+    );
+
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(answering(&fixture), &watch);
+    let refused = supervisor
+        .recorded_turns(&print_id)
+        .expect_err("a turn naming no conversation was read back");
+    assert!(
+        detail(&refused).contains("names no conversation"),
+        "the refusal does not say what is missing: {}",
+        detail(&refused)
+    );
+}
+
 /// A ledger holding another print's sessions is refused rather than continued.
 #[test]
 fn a_ledger_of_another_print_is_refused() {
@@ -440,7 +472,10 @@ fn a_lost_harness_store_opens_the_conversation_again() {
     let opened = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
         .expect("the first turn runs");
     assert_eq!(opened.phase, SessionPhase::Created);
-    assert_eq!(opened.session.session_name, session_name(&print_id, 1));
+    assert_eq!(
+        opened.session.session_name,
+        SessionName::of(&print_id, 1).to_string()
+    );
 
     let store: &Path = &fixture.state_dir().join(HARNESS_SESSIONS_DIRECTORY);
     fs::remove_dir_all(store).expect("the harness session store is removable");

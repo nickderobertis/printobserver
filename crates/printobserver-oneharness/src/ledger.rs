@@ -5,6 +5,7 @@
 //! is one file under the state directory, so a port rebuilt from that directory
 //! alone continues the conversation the previous one was in.
 
+use core::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -34,16 +35,53 @@ const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V1;
 
 /// The name of the session watching one print, at one point in its sequence.
 ///
-/// The first session of a print is named for the print alone. A print whose
-/// session has been closed and which then receives another event opens the
-/// next in the sequence, whose name carries that sequence beside the print id
-/// rather than resuming the closed one.
-#[must_use]
-pub fn session_name(print_id: &PrintId, sequence: usize) -> String {
-    if sequence <= 1 {
-        format!("print-{print_id}")
-    } else {
-        format!("print-{print_id}-{sequence}")
+/// Every one of these is derived from a print id rather than taken from a
+/// caller, and a persisted one is read back under the same rule: an empty name
+/// is what a turn recorded against no conversation would carry, and the ledger
+/// exists to say which conversation each turn belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct SessionName(String);
+
+impl SessionName {
+    /// The session watching one print at one point in its sequence.
+    ///
+    /// The first session of a print is named for the print alone. A print whose
+    /// session has been closed and which then receives another event opens the
+    /// next in the sequence, whose name carries that sequence beside the print
+    /// id rather than resuming the closed one.
+    #[must_use]
+    pub fn of(print_id: &PrintId, sequence: usize) -> Self {
+        Self(if sequence <= 1 {
+            format!("print-{print_id}")
+        } else {
+            format!("print-{print_id}-{sequence}")
+        })
+    }
+
+    /// The name as `OneHarness` and the ledger spell it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SessionName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionName {
+    /// Read a persisted name, refusing one that names no conversation.
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        if text.trim().is_empty() {
+            return Err(serde::de::Error::custom(
+                "a session name that is empty names no conversation",
+            ));
+        }
+        Ok(Self(text))
     }
 }
 
@@ -52,7 +90,7 @@ pub fn session_name(print_id: &PrintId, sequence: usize) -> String {
 #[serde(deny_unknown_fields)]
 pub struct RecordedTurn {
     /// The session the turn ran in.
-    pub session_name: String,
+    pub session_name: SessionName,
     /// When it ran.
     pub ran_at: Timestamp,
     /// Why the turn produced no assessment, when it produced none. A turn that
@@ -149,16 +187,18 @@ impl PrintLedger {
 
     /// The session a turn arriving now runs in: the current one while it is
     /// open, and the next of the sequence once it has been closed.
-    pub(crate) fn session_for_next_turn(&self) -> String {
+    pub(crate) fn session_for_next_turn(&self) -> SessionName {
         match self.sessions.last() {
-            Some(session) if session.closed_at.is_none() => session.session_name.clone(),
-            _ => session_name(&self.print_id, self.sessions.len() + 1),
+            Some(session) if session.closed_at.is_none() => {
+                SessionName(session.session_name.clone())
+            }
+            _ => SessionName::of(&self.print_id, self.sessions.len() + 1),
         }
     }
 
     /// The name the session after the current one takes.
-    pub(crate) fn name_after_current(&self) -> String {
-        session_name(&self.print_id, self.sessions.len() + 1)
+    pub(crate) fn name_after_current(&self) -> SessionName {
+        SessionName::of(&self.print_id, self.sessions.len() + 1)
     }
 
     /// Close the current session, if one is open, with this reason.
@@ -184,15 +224,14 @@ impl PrintLedger {
     /// ledger expected, which is why it is passed in.
     pub(crate) fn record_session(
         &mut self,
-        name: &str,
+        name: &SessionName,
         harness_identity: &str,
         phase: SessionPhase,
         at: Timestamp,
     ) -> SupervisionSession {
-        let known = self
-            .sessions
-            .iter()
-            .rposition(|session| session.session_name == name && session.closed_at.is_none());
+        let known = self.sessions.iter().rposition(|session| {
+            session.session_name == name.as_str() && session.closed_at.is_none()
+        });
         if let Some(index) = known {
             let session = &mut self.sessions[index];
             if phase == SessionPhase::Created {
@@ -204,7 +243,7 @@ impl PrintLedger {
         }
         let session = SupervisionSession {
             print_id: self.print_id,
-            session_name: name.to_owned(),
+            session_name: name.to_string(),
             harness_identity: harness_identity.to_owned(),
             created_at: at,
             last_turn_at: at,
@@ -215,9 +254,14 @@ impl PrintLedger {
         session
     }
 
-    pub(crate) fn record_turn(&mut self, session_name: &str, at: Timestamp, failure: Option<&str>) {
+    pub(crate) fn record_turn(
+        &mut self,
+        session_name: &SessionName,
+        at: Timestamp,
+        failure: Option<&str>,
+    ) {
         self.turns.push(RecordedTurn {
-            session_name: session_name.to_owned(),
+            session_name: session_name.clone(),
             ran_at: at,
             failure: failure.map(ToOwned::to_owned),
         });

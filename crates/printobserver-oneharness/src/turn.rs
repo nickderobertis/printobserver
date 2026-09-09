@@ -16,7 +16,7 @@ use printobserver_types::serde_json::Value;
 use printobserver_types::{AgentAssessment, PrintId, SessionPhase, SupervisionSession, Timestamp};
 
 use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
-use crate::ledger::{PrintLedger, RecordedTurn};
+use crate::ledger::{PrintLedger, RecordedTurn, SessionName};
 use crate::prompt::{NO_IMAGE, PromptTemplate};
 
 /// The directory under the state directory `OneHarness` keeps its own session
@@ -132,13 +132,13 @@ impl OneharnessSupervisor {
     }
 
     /// The run request for one turn in one session.
-    fn build_request(&self, session: &str, prompt: &str) -> RunRequest {
+    fn build_request(&self, session: &SessionName, prompt: &str) -> RunRequest {
         RunRequest {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
             model: self.config.model.iter().map(ToString::to_string).collect(),
             system: Some(self.skill.clone()),
-            session: Some(session.to_owned()),
+            session: Some(session.to_string()),
             session_dir: Some(self.config.state_dir.join(HARNESS_SESSIONS_DIRECTORY)),
             schema: Some(self.config.assessment_schema.path().to_path_buf()),
             timeout: Some(self.config.turn_timeout.seconds()),
@@ -164,7 +164,7 @@ impl OneharnessSupervisor {
     }
 
     /// Hand one run request to `OneHarness`, in this process.
-    fn drive(&self, session: &str, prompt: &str) -> Result<RunOutcome, OneharnessError> {
+    fn drive(&self, session: &SessionName, prompt: &str) -> Result<RunOutcome, OneharnessError> {
         let request = self.build_request(session, prompt);
         if let Some(observer) = &self.seam.requests {
             observer.built(&request);
@@ -221,14 +221,14 @@ impl OneharnessSupervisor {
     ) -> Result<TurnOutcome, SupervisorError> {
         let at = Timestamp::now();
         let session = ledger.record_session(
-            &reported.session.name,
+            &reported.name,
             &reported.result.harness_id,
             reported.phase(),
             at,
         );
         let answer = assessment(&reported.result);
         let failure = answer.as_ref().err().map(ToString::to_string);
-        ledger.record_turn(&session.session_name, at, failure.as_deref());
+        ledger.record_turn(&reported.name, at, failure.as_deref());
         self.save(ledger, print_id)?;
 
         Ok(TurnOutcome {
@@ -262,6 +262,8 @@ pub struct TurnReport {
     result: RunResult,
     /// The session block the run answered with.
     session: SessionReport,
+    /// The session the turn asked about, which the block above agrees with.
+    name: SessionName,
 }
 
 impl TurnReport {
@@ -280,7 +282,7 @@ impl TurnReport {
     /// identity other than the one asked for.
     pub fn of(
         report: RunReport,
-        asked_session: &str,
+        asked_session: &SessionName,
         asked_harness: &HarnessIdentity,
     ) -> Result<Self, SupervisorError> {
         let Some(session) = report.session else {
@@ -288,7 +290,7 @@ impl TurnReport {
                 detail: NO_SESSION.to_owned(),
             });
         };
-        if session.name != asked_session {
+        if session.name != asked_session.as_str() {
             return Err(SupervisorError::Unavailable {
                 detail: format!(
                     "the harness answered about session `{}`, and this turn asked about `{asked_session}`",
@@ -313,13 +315,23 @@ impl TurnReport {
                 ),
             });
         }
-        Ok(Self { result, session })
+        Ok(Self {
+            result,
+            session,
+            name: asked_session.clone(),
+        })
     }
 
     /// The session block the run answered with.
     #[must_use]
     pub fn session(&self) -> &SessionReport {
         &self.session
+    }
+
+    /// The session the turn ran in.
+    #[must_use]
+    pub fn name(&self) -> &SessionName {
+        &self.name
     }
 
     /// Whether the run opened the session or continued it, in this system's

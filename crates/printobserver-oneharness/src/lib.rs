@@ -51,7 +51,7 @@ pub use config::{
     AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
     RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
-pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, session_name};
+pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{
     CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SLOTS, TemplateError,
 };

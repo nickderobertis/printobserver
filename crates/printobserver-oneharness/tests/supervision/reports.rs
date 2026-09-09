@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use oneharness_core::domain::report::RunReport;
-use printobserver_oneharness::{HarnessIdentity, TurnReport};
+use printobserver_oneharness::{HarnessIdentity, SessionName, TurnReport};
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId, SessionPhase};
 
@@ -31,13 +31,18 @@ fn payload() -> EventPayload {
 /// The session every report here was answered about, read off the report
 /// itself: what a turn asks for is what the port planned, and what these
 /// journeys hand back to the narrowing is what that run answered.
-fn asked_about(report: &RunReport) -> String {
-    report
+fn asked_about(report: &RunReport) -> SessionName {
+    let name = &report
         .session
         .as_ref()
         .expect("a run under a session handle answers a session block")
-        .name
-        .clone()
+        .name;
+    let print_id = name
+        .strip_prefix("print-")
+        .expect("a session of this port is named for its print")
+        .parse()
+        .expect("a session of this port is named for its print");
+    SessionName::of(&print_id, 1)
 }
 
 /// The harness every journey here runs on.
@@ -171,10 +176,11 @@ fn a_report_about_another_session_or_identity_is_not_this_turn() {
     let report = one_real_report("reports-mismatched");
     let asked = asked_about(&report);
 
-    let elsewhere = TurnReport::of(report.clone(), "print-somebody-else", &asked_of())
+    let another_print = SessionName::of(&PrintId::new(), 1);
+    let elsewhere = TurnReport::of(report.clone(), &another_print, &asked_of())
         .expect_err("a report about another session was recorded as this turn");
     assert!(
-        detail(&elsewhere).contains("this turn asked about `print-somebody-else`"),
+        detail(&elsewhere).contains(&format!("this turn asked about `{another_print}`")),
         "the refusal does not say which session was asked about: {}",
         detail(&elsewhere)
     );
