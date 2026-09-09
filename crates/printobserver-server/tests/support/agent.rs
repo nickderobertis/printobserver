@@ -50,17 +50,10 @@ impl StandInAgent {
     /// Every turn it has been asked to take, in order.
     #[must_use]
     pub fn turns(&self) -> Vec<TurnRequest> {
-        self.turns.lock().expect("the agent is not poisoned").clone()
-    }
-
-    /// The session it is watching one print through, when it has one.
-    #[must_use]
-    pub fn session_of(&self, print_id: PrintId) -> Option<SupervisionSession> {
-        self.sessions
+        self.turns
             .lock()
             .expect("the agent is not poisoned")
-            .get(&print_id)
-            .cloned()
+            .clone()
     }
 }
 

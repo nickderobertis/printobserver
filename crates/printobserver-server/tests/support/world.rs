@@ -6,7 +6,6 @@
 //! port — the machine and the supervising agent — and the real ones are what
 //! this crate's integration tier runs against.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -94,12 +93,12 @@ pub fn remove(document: &mut toml::Value, dotted: &str) {
 }
 
 /// The table one dotted key lives in, and the key's own last segment.
-fn table_of<'a>(
-    document: &'a mut toml::Value,
-    dotted: &str,
-) -> (&'a mut toml::Table, String) {
+fn table_of<'a>(document: &'a mut toml::Value, dotted: &str) -> (&'a mut toml::Table, String) {
     let mut segments: Vec<&str> = dotted.split('.').collect();
-    let last = segments.pop().expect("a key has at least one segment").to_owned();
+    let last = segments
+        .pop()
+        .expect("a key has at least one segment")
+        .to_owned();
     let mut here = document;
     for segment in segments {
         here = here
@@ -147,10 +146,7 @@ impl World {
     }
 
     /// A server over a fresh root, over the machine and agent given.
-    pub async fn open_with(
-        printer: Arc<RecordingPrinter>,
-        agent: Arc<StandInAgent>,
-    ) -> Self {
+    pub async fn open_with(printer: Arc<RecordingPrinter>, agent: Arc<StandInAgent>) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
@@ -354,15 +350,4 @@ pub fn failure_alert(obico_print_id: i64, image_url: &str) -> serde_json::Value 
 #[must_use]
 pub fn committed_sample() -> &'static str {
     include_str!("../../../printobserver-types/samples/obico/failure-alert.json")
-}
-
-/// Every event kind one print's history carries, counted.
-#[must_use]
-pub fn kinds(events: &serde_json::Value) -> BTreeMap<String, usize> {
-    let mut found = BTreeMap::new();
-    for event in events.as_array().into_iter().flatten() {
-        let kind = event["kind"].as_str().unwrap_or_default().to_owned();
-        *found.entry(kind).or_insert(0) += 1;
-    }
-    found
 }

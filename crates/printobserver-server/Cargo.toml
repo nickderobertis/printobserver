@@ -42,6 +42,12 @@ oneharness = { workspace = true, optional = true }
 # values and render it, so a journey that makes one field unacceptable changes
 # that field and nothing else.
 toml = { version = "0.9", default-features = false, features = ["display", "parse", "serde"] }
+# The store's own driver, so a journey can read back the one record the store
+# port answers no read for: an event belonging to no print, which is what an
+# unauthenticated post is written down as. The connection is opened through
+# `printobserver-store-sqlite`'s own `connect`, so it is the store's schema
+# being read rather than a second belief about it.
+rusqlite = { version = "0.37", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
 sha2 = "0.10"
 tempfile = "3"

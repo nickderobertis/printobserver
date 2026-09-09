@@ -22,7 +22,9 @@
 //! particular — and a walk whose order was load-bearing would be proving the
 //! order rather than the operations.
 
-use printobserver_types::{ActionKind, Adjustable, PrinterState, serde_json::Value, serde_json::json};
+use printobserver_types::{
+    ActionKind, Adjustable, PrinterState, serde_json::Value, serde_json::json,
+};
 
 use printobserver_server::{Effect, OPERATIONS, Operation};
 
@@ -47,8 +49,8 @@ struct Asked {
 }
 
 /// One body carrying a reason and an actor, plus whatever else is given.
-fn body(actor: Value, extra: &[(&str, Value)]) -> Value {
-    let mut body = json!({ "reason": "a journey is asking", "actor": actor });
+fn body(actor: &Value, extra: &[(&str, Value)]) -> Value {
+    let mut body = json!({ "reason": "a journey is asking", "actor": actor.clone() });
     let object = body.as_object_mut().expect("the body is an object");
     for (name, value) in extra {
         object.insert((*name).to_owned(), value.clone());
@@ -70,6 +72,22 @@ fn manifest() -> Value {
 /// effective bounds for an adjustment, and an actor class the envelope does not
 /// grant the action to — or a state it is not valid from — for the rest.
 fn asked(kind: ActionKind) -> Asked {
+    match kind {
+        ActionKind::SetFeedrateFactor
+        | ActionKind::SetFlowrateFactor
+        | ActionKind::SetToolTargetC
+        | ActionKind::SetBedTargetC
+        | ActionKind::SetFanPercent => adjustment(kind),
+        _ => movement(kind),
+    }
+}
+
+/// What one operation that moves or stops the machine is asked.
+///
+/// The rejected body is an actor class the envelope does not grant the action
+/// to, or — for pausing, which every class may ask for — a state it is not
+/// valid from.
+fn movement(kind: ActionKind) -> Asked {
     let operator = json!("operator");
     // The safety envelope these journeys run under grants the agent `pause`,
     // `set_feedrate_factor` and `set_fan_percent` and nothing else, so an agent
@@ -77,37 +95,37 @@ fn asked(kind: ActionKind) -> Asked {
     let agent = json!({ "agent": { "session_name": "watch-1" } });
     match kind {
         ActionKind::Pause => Asked {
-            accepted: body(operator, &[]),
+            accepted: body(&operator, &[]),
             // Pausing is not valid from a machine that is not printing.
-            rejected: body(json!("operator"), &[]),
+            rejected: body(&json!("operator"), &[]),
             from: PrinterState::Printing,
             call: Some(Call::Pause),
             adjustable: None,
         },
         ActionKind::Resume => Asked {
-            accepted: body(operator, &[]),
-            rejected: body(agent, &[]),
+            accepted: body(&operator, &[]),
+            rejected: body(&agent, &[]),
             from: PrinterState::Paused,
             call: Some(Call::Resume),
             adjustable: None,
         },
         ActionKind::Cancel => Asked {
-            accepted: body(operator, &[]),
-            rejected: body(agent, &[]),
+            accepted: body(&operator, &[]),
+            rejected: body(&agent, &[]),
             from: PrinterState::Printing,
             call: Some(Call::Cancel),
             adjustable: None,
         },
         ActionKind::StartPrint => Asked {
             accepted: body(
-                operator,
+                &operator,
                 &[
                     ("file_name", json!("benchy.gcode")),
                     ("manifest", manifest()),
                 ],
             ),
             rejected: body(
-                agent,
+                &agent,
                 &[
                     ("file_name", json!("benchy.gcode")),
                     ("manifest", manifest()),
@@ -119,54 +137,16 @@ fn asked(kind: ActionKind) -> Asked {
             )),
             adjustable: None,
         },
-        ActionKind::SetFeedrateFactor => Asked {
-            accepted: body(operator, &[("factor", json!(1.2))]),
-            rejected: body(json!("operator"), &[("factor", json!(9.0))]),
-            from: PrinterState::Printing,
-            call: Some(Call::Feedrate(1.2)),
-            adjustable: Some((Adjustable::Feedrate, 1.2)),
-        },
-        ActionKind::SetFlowrateFactor => Asked {
-            accepted: body(operator, &[("factor", json!(1.05))]),
-            rejected: body(json!("operator"), &[("factor", json!(4.0))]),
-            from: PrinterState::Printing,
-            call: Some(Call::Flowrate(1.05)),
-            adjustable: Some((Adjustable::Flowrate, 1.05)),
-        },
-        ActionKind::SetToolTargetC => Asked {
-            accepted: body(operator, &[("tool", json!(0)), ("target_c", json!(220.0))]),
-            rejected: body(
-                json!("operator"),
-                &[("tool", json!(0)), ("target_c", json!(900.0))],
-            ),
-            from: PrinterState::Printing,
-            call: Some(Call::ToolTarget(0, 220.0)),
-            adjustable: Some((Adjustable::ToolTarget { tool: 0 }, 220.0)),
-        },
-        ActionKind::SetBedTargetC => Asked {
-            accepted: body(operator, &[("target_c", json!(65.0))]),
-            rejected: body(json!("operator"), &[("target_c", json!(400.0))]),
-            from: PrinterState::Printing,
-            call: Some(Call::BedTarget(65.0)),
-            adjustable: Some((Adjustable::BedTarget, 65.0)),
-        },
-        ActionKind::SetFanPercent => Asked {
-            accepted: body(operator, &[("percent", json!(80.0))]),
-            rejected: body(json!("operator"), &[("percent", json!(500.0))]),
-            from: PrinterState::Printing,
-            call: Some(Call::Fan(80.0)),
-            adjustable: Some((Adjustable::Fan, 80.0)),
-        },
         ActionKind::AcknowledgeFailure => Asked {
             accepted: body(
-                operator,
+                &operator,
                 &[
                     ("event_id", json!(printobserver_types::EventId::new())),
                     ("disposition", json!("stop")),
                 ],
             ),
             rejected: body(
-                agent,
+                &agent,
                 &[
                     ("event_id", json!(printobserver_types::EventId::new())),
                     ("disposition", json!("continue")),
@@ -178,6 +158,56 @@ fn asked(kind: ActionKind) -> Asked {
             call: Some(Call::Cancel),
             adjustable: None,
         },
+        _ => unreachable!("this is an adjustment rather than a movement"),
+    }
+}
+
+/// What one operation that adjusts a value is asked.
+///
+/// The rejected body is a value outside the effective bounds, which is the
+/// rejection an adjustment's own kind produces.
+fn adjustment(kind: ActionKind) -> Asked {
+    let operator = json!("operator");
+    match kind {
+        ActionKind::SetFeedrateFactor => Asked {
+            accepted: body(&operator, &[("factor", json!(1.2))]),
+            rejected: body(&json!("operator"), &[("factor", json!(9.0))]),
+            from: PrinterState::Printing,
+            call: Some(Call::Feedrate(1.2)),
+            adjustable: Some((Adjustable::Feedrate, 1.2)),
+        },
+        ActionKind::SetFlowrateFactor => Asked {
+            accepted: body(&operator, &[("factor", json!(1.05))]),
+            rejected: body(&json!("operator"), &[("factor", json!(4.0))]),
+            from: PrinterState::Printing,
+            call: Some(Call::Flowrate(1.05)),
+            adjustable: Some((Adjustable::Flowrate, 1.05)),
+        },
+        ActionKind::SetToolTargetC => Asked {
+            accepted: body(&operator, &[("tool", json!(0)), ("target_c", json!(220.0))]),
+            rejected: body(
+                &json!("operator"),
+                &[("tool", json!(0)), ("target_c", json!(900.0))],
+            ),
+            from: PrinterState::Printing,
+            call: Some(Call::ToolTarget(0, 220.0)),
+            adjustable: Some((Adjustable::ToolTarget { tool: 0 }, 220.0)),
+        },
+        ActionKind::SetBedTargetC => Asked {
+            accepted: body(&operator, &[("target_c", json!(65.0))]),
+            rejected: body(&json!("operator"), &[("target_c", json!(400.0))]),
+            from: PrinterState::Printing,
+            call: Some(Call::BedTarget(65.0)),
+            adjustable: Some((Adjustable::BedTarget, 65.0)),
+        },
+        ActionKind::SetFanPercent => Asked {
+            accepted: body(&operator, &[("percent", json!(80.0))]),
+            rejected: body(&json!("operator"), &[("percent", json!(500.0))]),
+            from: PrinterState::Printing,
+            call: Some(Call::Fan(80.0)),
+            adjustable: Some((Adjustable::Fan, 80.0)),
+        },
+        _ => unreachable!("this is a movement rather than an adjustment"),
     }
 }
 
@@ -212,7 +242,8 @@ async fn accepts(operation: &Operation, plan: &Asked) {
         operation.name
     );
     assert_eq!(
-        answer["record"]["decision"], json!("accepted"),
+        answer["record"]["decision"],
+        json!("accepted"),
         "`{}` answered a decision that is not acceptance: {answer}",
         operation.name
     );
@@ -412,7 +443,10 @@ async fn every_read_answers_the_record_it_names() {
     let manifest = manifest();
 
     let (status, written) = world
-        .put(&world.operation_url(&path("manifest_set"), print_id), &manifest)
+        .put(
+            &world.operation_url(&path("manifest_set"), print_id),
+            &manifest,
+        )
         .await;
     assert_eq!(status, reqwest::StatusCode::OK, "{written}");
 
@@ -445,7 +479,7 @@ async fn every_read_answers_the_record_it_names() {
     let (status, _) = world
         .post(
             &world.operation_url(&path("pause"), print_id),
-            &body(json!("operator"), &[]),
+            &body(&json!("operator"), &[]),
         )
         .await;
     assert_eq!(status, reqwest::StatusCode::OK);
@@ -510,7 +544,6 @@ fn path(name: &str) -> String {
 /// One instant of an answer, as whole seconds after the epoch.
 fn instant(value: &Value) -> i64 {
     let text = value.as_str().expect("an instant is a string");
-    let parsed: printobserver_types::Timestamp =
-        text.parse().expect("an instant is RFC 3339");
+    let parsed: printobserver_types::Timestamp = text.parse().expect("an instant is RFC 3339");
     parsed.as_utc().timestamp()
 }

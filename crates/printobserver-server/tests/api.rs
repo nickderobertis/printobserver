@@ -16,7 +16,15 @@ mod world;
 
 #[path = "journeys/configuration.rs"]
 mod configuration;
+#[path = "journeys/images.rs"]
+mod images;
+#[path = "journeys/ingress.rs"]
+mod ingress;
 #[path = "journeys/operating.rs"]
 mod operating;
+#[path = "journeys/reconciling.rs"]
+mod reconciling;
+#[path = "journeys/restarting.rs"]
+mod restarting;
 #[path = "journeys/surface.rs"]
 mod surface;

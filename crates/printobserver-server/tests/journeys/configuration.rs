@@ -183,10 +183,9 @@ async fn a_document_that_is_not_this_configuration_is_refused() {
     let path = root.path().join("config.toml");
     std::fs::write(&path, b"this is not = = a document\n").expect("a file is writable");
 
-    let refusal = Server::start(&path)
-        .await
-        .err()
-        .expect("a document that is not this configuration is refused");
+    let Err(refusal) = Server::start(&path).await else {
+        panic!("a document that is not this configuration was accepted");
+    };
 
     assert!(
         refusal.to_string().contains("config.toml"),
@@ -200,10 +199,9 @@ async fn a_configuration_that_is_not_there_is_refused() {
     let root = TempDir::new().expect("a journey's own root");
     let path = root.path().join("nowhere.toml");
 
-    let refusal = Server::start(&path)
-        .await
-        .err()
-        .expect("a configuration that is not there is refused");
+    let Err(refusal) = Server::start(&path).await else {
+        panic!("a configuration that is not there was accepted");
+    };
 
     assert!(
         refusal.to_string().contains("nowhere.toml"),

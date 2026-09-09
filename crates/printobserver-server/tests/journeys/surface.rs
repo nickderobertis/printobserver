@@ -107,19 +107,13 @@ fn audit(served: &[Served], required: &BTreeSet<String>) -> Vec<String> {
 
     let prefixes: BTreeSet<&str> = served
         .iter()
-        .map(|route| {
-            route
-                .path
-                .split('/')
-                .nth(1)
-                .map_or("", |segment| segment)
-        })
+        .map(|route| route.path.split('/').nth(1).map_or("", |segment| segment))
         .collect();
     if prefixes.len() > 1 {
-        let named: Vec<String> = prefixes.iter().map(|prefix| format!("/{prefix}")).collect();
+        let spellings: Vec<String> = prefixes.iter().map(|prefix| format!("/{prefix}")).collect();
         findings.push(format!(
             "two versioned prefixes are in use at once: {}",
-            named.join(" and ")
+            spellings.join(" and ")
         ));
     }
     for route in served {
@@ -131,7 +125,11 @@ fn audit(served: &[Served], required: &BTreeSet<String>) -> Vec<String> {
                 printobserver_server::VERSION_PREFIX
             ));
         }
-        if route.accepts.as_deref().is_some_and(|media| media != MEDIA_TYPE) {
+        if route
+            .accepts
+            .as_deref()
+            .is_some_and(|media| media != MEDIA_TYPE)
+        {
             findings.push(format!(
                 "`{}` takes a body as {:?} rather than as {MEDIA_TYPE}",
                 route.name, route.accepts
@@ -178,15 +176,24 @@ fn the_audit_refuses_each_way_a_served_set_can_be_wrong() {
         accepts: Some(MEDIA_TYPE.to_owned()),
         answers: MEDIA_TYPE.to_owned(),
     });
-    refuses(&audit(&extra, &required), "is no operation this server is required");
+    refuses(
+        &audit(&extra, &required),
+        "is no operation this server is required",
+    );
 
     let mut missing = served();
     missing.retain(|route| route.name != "pause");
-    refuses(&audit(&missing, &required), "`pause` is an operation with no served route");
+    refuses(
+        &audit(&missing, &required),
+        "`pause` is an operation with no served route",
+    );
 
     let mut grown = required.clone();
     grown.insert("reboot".to_owned());
-    refuses(&audit(&served(), &grown), "`reboot` is an operation with no served route");
+    refuses(
+        &audit(&served(), &grown),
+        "`reboot` is an operation with no served route",
+    );
 
     let mut two_prefixes = served();
     two_prefixes[0].path = two_prefixes[0].path.replace("/v1/", "/v2/");
@@ -194,7 +201,10 @@ fn the_audit_refuses_each_way_a_served_set_can_be_wrong() {
 
     let mut unprefixed = served();
     unprefixed[0].path = unprefixed[0].path.replace("/v1", "");
-    refuses(&audit(&unprefixed, &required), "outside the one versioned prefix");
+    refuses(
+        &audit(&unprefixed, &required),
+        "outside the one versioned prefix",
+    );
 
     let mut form_encoded = served();
     let index = form_encoded
@@ -269,7 +279,10 @@ async fn a_body_that_is_not_json_is_refused() {
     let response = world
         .client
         .post(world.operation_url(&operation.full_path(), print_id))
-        .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
         .body("reason=because")
         .send()
         .await
@@ -327,7 +340,10 @@ fn body_for(operation: &Operation) -> Value {
             object.insert("percent".to_owned(), json!(40.0));
         }
         printobserver_types::ActionKind::AcknowledgeFailure => {
-            object.insert("event_id".to_owned(), json!(printobserver_types::EventId::new()));
+            object.insert(
+                "event_id".to_owned(),
+                json!(printobserver_types::EventId::new()),
+            );
             object.insert("disposition".to_owned(), json!("continue"));
         }
         _ => {}

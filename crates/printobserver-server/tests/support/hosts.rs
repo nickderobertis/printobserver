@@ -1,12 +1,12 @@
 //! Two real hosts on the loopback address these journeys need.
 //!
-//! [`ImageHost`] serves the snapshot an alert names, so that the vision adapter
-//! this server composes does its real fetch rather than a mocked one.
+//! [`image_host`] serves the snapshot an alert names, so that the vision
+//! adapter this server composes does its real fetch rather than a mocked one.
 //!
-//! [`SilentHost`] answers every request with an empty JSON document. It is what
-//! the configuration walk points the `OctoPrint` address at: that walk drives
-//! the real composition root, which asks the machine whether the address and
-//! the key are the ones it answers to, and what it needs is an address that
+//! [`silent_host`] answers every request with an empty JSON document. It is
+//! what the configuration walk points the `OctoPrint` address at: that walk
+//! drives the real composition root, which asks the machine whether the address
+//! and the key are the ones it answers to, and what it needs is an address that
 //! *answers* — not an `OctoPrint`. It carries no `OctoPrint` path, header or
 //! response shape, because only the adapter crate may construct one.
 
@@ -43,12 +43,6 @@ impl Host {
         Self { address, serving }
     }
 
-    /// Where it is answering.
-    #[must_use]
-    pub const fn address(&self) -> SocketAddr {
-        self.address
-    }
-
     /// The URL of the one thing it serves.
     #[must_use]
     pub fn url(&self) -> String {
@@ -71,11 +65,6 @@ impl Drop for Host {
 /// A host serving one snapshot as an image.
 pub async fn image_host(body: Vec<u8>) -> Host {
     Host::serving("image/jpeg", body, Duration::ZERO).await
-}
-
-/// A host serving one snapshot slowly, so a journey can watch handling run on.
-pub async fn slow_image_host(body: Vec<u8>, delay: Duration) -> Host {
-    Host::serving("image/jpeg", body, delay).await
 }
 
 /// A host that answers, and says nothing else.
