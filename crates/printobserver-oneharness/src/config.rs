@@ -251,33 +251,40 @@ impl fmt::Display for ModelName {
     }
 }
 
-/// The schema an answer is constrained by, named as a path `OneHarness` reads
+/// A schema `OneHarness` can judge an answer against, named as a path it reads
 /// per run.
 ///
 /// Checked where it is named rather than where it is used: nothing about a
 /// schema is read until a turn runs, so a path that is not there — or is there
-/// and is not a document at all — would otherwise surface as every answer being
+/// and is not a schema at all — would otherwise surface as every answer being
 /// refused, hours after the configuration that caused it.
 ///
-/// What this cannot establish is that the document is the *generated* artifact
-/// rather than a schema somebody wrote: no property of a document says which
-/// target produced it. That is a claim about the tree and is made there —
-/// `just check-repo` refuses a tree in which this crate carries a schema of its
-/// own, and one journey changes the generated artifact on disk and watches what
-/// the port accepts move with it, which a document read here could not tell
-/// apart from a copy.
+/// **What this establishes, and what it does not.** It establishes that the
+/// file is there, is JSON, is a document declaring something, and compiles as a
+/// JSON Schema. It does *not* establish that the schema is strict, or that it
+/// is the *generated* artifact rather than one somebody wrote — and neither is
+/// this type's to establish. Whether a schema constrains a given answer is a
+/// property of the pair rather than of the schema (`{"title": "assessment"}` is
+/// a schema; so is one that admits every object), so short of judging an
+/// instance there is nothing here to decide. And which target produced a
+/// document is written nowhere in it: this crate could only tell by carrying a
+/// copy of the contract to compare against, which is exactly the thing
+/// `just check-repo` refuses it for. Both are claims about the tree and are
+/// made there — the check refuses a tree in which this crate carries a schema
+/// of its own, and one journey changes the generated artifact on disk and
+/// watches what the port accepts move with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssessmentSchema(PathBuf);
 
 impl AssessmentSchema {
-    /// The schema at this path, read to be sure something is there.
+    /// The schema at this path, read and compiled to be sure it is one.
     ///
     /// # Errors
     ///
     /// Returns [`ConfigError::AssessmentSchemaInvalid`] when the file cannot be
-    /// read, is not JSON, or is not a schema an answer could be judged against
-    /// — each of them a file that constrains nothing whatever `OneHarness`
-    /// later makes of it.
+    /// read, is not JSON, is not a document declaring anything, or does not
+    /// compile as a JSON Schema — each of them a file `OneHarness` could judge
+    /// no answer against at all.
     pub fn at(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         let invalid = |detail: String| ConfigError::AssessmentSchemaInvalid {

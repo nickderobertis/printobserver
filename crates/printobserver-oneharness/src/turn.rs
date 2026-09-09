@@ -316,7 +316,6 @@ const NO_SESSION: &str = "the harness exposed no session, so the conversation ca
 /// rather than one that did not happen.
 const NO_RESULT: &str = "the harness answered no result, so no turn was taken";
 
-/// Read a file the port is built from.
 fn read(path: &Path) -> Result<String, SupervisorError> {
     std::fs::read_to_string(path).map_err(|error| SupervisorError::Unavailable {
         detail: format!("{} is unreadable: {error}", path.display()),

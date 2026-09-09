@@ -123,7 +123,11 @@ impl PrintLedger {
         }
     }
 
-    /// Write the ledger back, creating the directory it lives in.
+    /// Write the ledger back, creating the directory it lives in on the way.
+    ///
+    /// Whole-file, because a print's sessions and its turns have to agree: a
+    /// turn appended without the session it ran in is a history that reads
+    /// wrong rather than one that is missing an entry.
     pub(crate) fn write(&self, state_dir: &Path) -> io::Result<()> {
         let path = Self::path(state_dir, &self.print_id);
         if let Some(parent) = path.parent() {
@@ -211,7 +215,6 @@ impl PrintLedger {
         session
     }
 
-    /// Write down one turn.
     pub(crate) fn record_turn(&mut self, session_name: &str, at: Timestamp, failure: Option<&str>) {
         self.turns.push(RecordedTurn {
             session_name: session_name.to_owned(),
