@@ -165,6 +165,47 @@ instead. Both of these are proven by `tests/repo-e2e` driving the committed
 `pre-push` hook over a copy carrying neither installed dependencies nor a clean
 environment — where they fail, rather than argued about here.
 
+## The agent's and the operator's surface
+
+The `printobserver` command is the whole of both. There is no second surface: the
+agent never touches `OctoPrint`, never sees G-code, and asks for nothing this
+program does not have a command for — and the operator uses the same commands,
+so nothing an agent can do is a path a person cannot audit.
+
+**Nothing in the command-line crate lists what that surface is.** It is folded
+out of what the server declares: one **client command** per operation
+`printobserver-server`'s `OPERATIONS` serves, and each command's options out of
+that operation's own `Operation::request` — whose body, for an action, is read at
+run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
+a variant gains a command, a variant that gains a field gains an option, and
+growing a declaration beside the parser grows nothing. The **server command** is
+the one command beside them, and is the only one that is not a request to an
+already-running server.
+
+Four options are common to every command and there is no fifth:
+`--json`, `--config <path>`, `--help` and `--version`. The configuration file's
+path is one of them and the address and credential it carries are not, because
+the closure that matters is the closure of the **action** surface: a path to a
+file reaches no printer and cannot be composed into an action.
+
+- **Where a server is and what authenticates to it are configuration.** No client
+  command takes either as an argument or an option. They are read from a
+  configuration file — which may be the server's own, since a client with no
+  `[client]` table takes the address the server was told to listen on — and from
+  `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win. A credential
+  has one accessor and no rendering that shows it.
+- **Five exits, each a different thing to do next**: success, an unreachable
+  server, a program nothing configured, an action the policy refused, and an
+  image path that names no file on the host the command ran on. That last one
+  prints the rest of the answer and a sentence saying why the path is not one it
+  can open, rather than a file name that names nothing.
+- **Images are a path, never bytes.** The server answers an absolute path on its
+  **own** filesystem, and this program transports none.
+
+`crates/printobserver/tests/journeys.rs` is the tier that holds all of it, and
+`crates/printobserver/tests/integration.rs` runs the same cross-product against
+the scripted `OctoPrint`.
+
 ## Supported platforms
 
 This is the one source every one of this repository's continuous-integration

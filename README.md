@@ -63,6 +63,33 @@ package must not, as a side effect, start a process that can move a machine.
 five commands above; this section is derived from it and a check holds the two
 together.
 
+## Using it
+
+Everything the supervising agent does and everything an operator does goes
+through the one command, against a running server:
+
+```console
+printobserver --help
+```
+
+That surface is **closed and derived**: one command per action the contracts
+declare plus the reads the server serves, each taking exactly the values that
+operation's own request schema names. Nothing in the command-line program lists
+them, so nothing there can grow them.
+
+Four options are common to every command: `--json` for machine-readable output,
+`--config <path>`, `--help` and `--version`. Where the server is and what
+authenticates to it are **configuration** rather than arguments — read from that
+file, which may be the server's own `/etc/printobserver/config.toml`, and from
+`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`.
+
+Every mutating command takes a `--reason`, which is what makes the history worth
+reading; every adjustment may take a `--duration-s`, which makes it a bounded
+intervention that puts the prior value back when it expires. An image is an
+absolute path on the server's own host: this program transports no image bytes,
+and a path that names no file where it is running is a failure of its own rather
+than a file name that names nothing.
+
 ## Development
 
 ```console
