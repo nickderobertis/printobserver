@@ -8,5 +8,54 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# Test-only. Builds `printobserver-server-responder`, the binary this crate's
+# own integration tier points a run at so `OneHarness` replaces the paid
+# provider process with its own published deterministic responder. Off by
+# default, so nothing an ordinary consumer installs carries it.
+test-responder = ["dep:oneharness"]
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+printobserver-core = { path = "../printobserver-core", version = "0.1.0" }
+printobserver-obico = { path = "../printobserver-obico", version = "0.1.0" }
+printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.1.0" }
+printobserver-oneharness = { path = "../printobserver-oneharness", version = "0.1.0" }
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.1.0" }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.1.0" }
+printobserver-supervisor-api.workspace = true
+printobserver-types.workspace = true
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+
+# The CLI crate is here only for `oneharness::mock_harness`, the deterministic
+# responder it publishes. A binary target cannot read a dev-dependency, so this
+# is an optional ordinary dependency gated behind `test-responder`.
+oneharness = { workspace = true, optional = true }
+
+[dev-dependencies]
+# `display` is a test-only need: the journeys build a configuration document as
+# values and render it, so a journey that makes one field unacceptable changes
+# that field and nothing else.
+toml = { version = "0.9", default-features = false, features = ["display", "parse", "serde"] }
+# The store's own driver, so a journey can read back the one record the store
+# port answers no read for: an event belonging to no print, which is what an
+# unauthenticated post is written down as. The connection is opened through
+# `printobserver-store-sqlite`'s own `connect`, so it is the store's schema
+# being read rather than a second belief about it.
+rusqlite = { version = "0.37", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
+sha2 = "0.10"
+tempfile = "3"
+
+[[bin]]
+name = "printobserver-server-responder"
+path = "src/bin/responder.rs"
+required-features = ["test-responder"]
+
 [lints]
 workspace = true

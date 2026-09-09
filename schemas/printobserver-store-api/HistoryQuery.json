@@ -62,6 +62,11 @@
           "const": "port_failure",
           "description": "A port failed while an event was being handled.",
           "type": "string"
+        },
+        {
+          "const": "startup_reconciliation",
+          "description": "A supervisor reconciled one thing the store held when it started.",
+          "type": "string"
         }
       ]
     },

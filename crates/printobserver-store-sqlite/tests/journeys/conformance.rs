@@ -199,6 +199,43 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
     }
 }
 
+/// The open prints answer every print with no end recorded, newest first.
+///
+/// This is what a supervisor adopts on start, so what it must not answer is a
+/// print that has ended: adopting one would resume supervision of a job the
+/// machine finished.
+#[test]
+fn the_open_prints_answer_the_unended_prints_newest_first() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+
+        assert_eq!(
+            block_on(port.open_prints()),
+            Ok(Vec::new()),
+            "{name}: a store holding no print answered one as open"
+        );
+
+        let first = block_on(port.open_print(Some(1), None)).expect("a print opens");
+        let second = block_on(port.open_print(Some(2), None)).expect("a second print opens");
+        let ended = block_on(port.open_print(Some(3), None)).expect("a third print opens");
+        block_on(port.end_print(
+            ended.id,
+            PrinterState::Operational,
+            instant("2026-03-01T13:00:00Z"),
+            "it finished".to_owned(),
+        ))
+        .expect("the third print ends");
+
+        let open = block_on(port.open_prints()).expect("the open prints read");
+        assert_eq!(
+            open.iter().map(|print| print.id).collect::<Vec<_>>(),
+            vec![second.id, first.id],
+            "{name}: the open prints are not the unended ones, newest first"
+        );
+    }
+}
+
 /// Every event this journey writes, with the kind and instant it was written at.
 struct Written {
     /// The events, oldest first.

@@ -114,12 +114,16 @@ impl Supervisor {
     /// One intervention's failure does not cost the rest: every one that is due
     /// is attempted on the same sweep.
     ///
+    /// The expiry driver calls this on its own poll, and a composition root
+    /// calls it once on start so that an intervention left past its expiry by a
+    /// restart is expired then rather than up to one poll later.
+    ///
     /// # Errors
     ///
     /// Returns the store's own error when the due interventions could not be
     /// read. A failure settling one of them is recorded on that intervention
     /// rather than answered here.
-    pub(crate) async fn sweep_expired(&self) -> Result<(), CoreError> {
+    pub async fn sweep_expired(&self) -> Result<(), CoreError> {
         let at = self.clock().now();
         for intervention in self.store().due_interventions(at).await? {
             let _ = self.expire_intervention(&intervention).await;
@@ -146,10 +150,16 @@ impl Supervisor {
     /// Expire one intervention: restore, report nothing to restore, or record
     /// that the restoration failed.
     ///
+    /// Settling is once-only, so an intervention this and the expiry driver
+    /// both reach answers the outcome that won rather than being restored
+    /// twice. That is what lets a composition root expire what a restart left
+    /// past its bound and record the outcome, whichever of the two got there
+    /// first.
+    ///
     /// # Errors
     ///
     /// Returns the store's own error when the outcome could not be settled.
-    pub(crate) async fn expire_intervention(
+    pub async fn expire_intervention(
         &self,
         intervention: &Intervention,
     ) -> Result<InterventionOutcome, CoreError> {

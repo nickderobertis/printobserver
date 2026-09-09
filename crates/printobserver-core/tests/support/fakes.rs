@@ -496,6 +496,22 @@ impl StorePort for FakeStore {
         Box::pin(async move { Ok(found) })
     }
 
+    fn open_prints(
+        &self,
+    ) -> printobserver_store_api::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        self.journal.record(Call::ReadOpenPrints);
+        let found: Vec<PrintRecord> = self
+            .held
+            .lock()
+            .expect("the store holds")
+            .prints
+            .values()
+            .filter(|print| print.ended_at.is_none())
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,

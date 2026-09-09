@@ -258,10 +258,22 @@ def workspace(repo: Repo) -> list[str]:
             )
 
     implementations = set(crates["implementations"])
+    composition_roots = set(crates["composition_roots"])
     allowed_for_core = {crates["types"], *crates["ports"]}
     for name in sorted(present):
         manifest = _crate_manifest(repo, name)
         edges = _in_workspace_dependencies(manifest, present)
+        # Something has to choose which implementation runs, and the composition
+        # roots are the only crates that may. A crate outside them that names one
+        # is a second place that choice is made, whatever layer it sits in — and
+        # `core` and the implementations say so in their own words below, because
+        # what is wrong with those two edges is more specific than this.
+        if name not in composition_roots and name != crates["core"] and name not in implementations:
+            findings.extend(
+                f"`{name}` depends on implementation crate `{edge}`: only "
+                f"{', '.join(sorted(composition_roots))} may name an implementation"
+                for edge in sorted(edges & implementations)
+            )
         if name == crates["core"]:
             for edge in sorted(edges - allowed_for_core):
                 kind = "an implementation crate" if edge in implementations else "outside its layer"

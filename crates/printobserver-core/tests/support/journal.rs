@@ -27,6 +27,8 @@ pub enum Call {
     ReadPrint,
     /// A print was read by Obico's own identifier.
     ReadPrintByObicoId,
+    /// Every print with no end recorded was read.
+    ReadOpenPrints,
     /// A print was ended, in a state.
     EndPrint(String),
     /// A manifest narrowing was recorded.
@@ -112,6 +114,7 @@ impl Call {
             Self::OpenPrint
             | Self::ReadPrint
             | Self::ReadPrintByObicoId
+            | Self::ReadOpenPrints
             | Self::EndPrint(_)
             | Self::RecordNarrowing(_)
             | Self::AppendEvent(_)

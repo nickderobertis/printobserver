@@ -185,6 +185,22 @@ impl SqliteStore {
         })
     }
 
+    /// Read every print with no end recorded, most recently opened first.
+    fn read_open_prints(&self) -> Result<Vec<PrintRecord>, StoreError> {
+        let query =
+            format!("{PRINT_SELECT} WHERE ended_at IS NULL ORDER BY opened_at DESC, id DESC");
+        self.on_connection(|connection| {
+            let mut statement = connection
+                .prepare(&query)
+                .map_err(|error| database_error(&error))?;
+            let rows = statement
+                .query_map([], print_from_row)
+                .map_err(|error| database_error(&error))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|error| database_error(&error))
+        })
+    }
+
     /// One print, or the refusal that there is no such print.
     fn require_print(&self, print_id: PrintId) -> Result<PrintRecord, StoreError> {
         let identifier = print_id.to_string();
@@ -795,6 +811,10 @@ impl StorePort for SqliteStore {
         obico_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         Box::pin(async move { self.read_print("obico_print_id = ?1", params![obico_print_id]) })
+    }
+
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async move { self.read_open_prints() })
     }
 
     fn end_print(

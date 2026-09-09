@@ -287,6 +287,14 @@ pub trait StorePort: Send + Sync {
     /// Read one print by its identifier.
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>>;
 
+    /// Read every print with no end recorded, most recently opened first.
+    ///
+    /// This is what a supervisor adopts on start: the port already binds an
+    /// action to the most recently opened print with no end recorded, and
+    /// without this method nothing above the port could name that print in
+    /// order to say it had adopted it.
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>>;
+
     /// Read one print by Obico's own identifier for it.
     fn print_by_obico_id(
         &self,

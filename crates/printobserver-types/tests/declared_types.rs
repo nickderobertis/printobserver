@@ -382,6 +382,20 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("SessionPhase", &[]),
     (
+        "StartupOutcome",
+        &[
+            ("intervention_expired", "object", true),
+            ("session_resumed", "object", true),
+        ],
+    ),
+    (
+        "StartupReconciliationPayload",
+        &[
+            ("outcome", "StartupOutcome", true),
+            ("print_id", "PrintId", true),
+        ],
+    ),
+    (
         "SupervisionSession",
         &[
             ("close_reason", "string", false),

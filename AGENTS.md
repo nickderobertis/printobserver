@@ -343,6 +343,38 @@ directory back to the user who ran it before stopping anything — Obico's own
 composition bind-mounts its sources into containers that run as root, so without
 that a developer needs `sudo` to delete `.obico-env` after their own bring-down.
 
+## The Obico ingress answer bound
+
+The vision port's ingress is an HTTP endpoint `Obico`'s webhook notification
+plugin posts to, and that plugin posts **best-effort**: it calls `requests.post`
+with a short timeout, raises on the answer, and **does not retry**. An alert it
+gives up on is an alert this system never sees. So the server answers that
+endpoint **before** its handling completes, and inside a bound this repository
+declares in its own configuration with a stated default.
+
+The timeout that bound has to stay below is Obico's rather than this
+repository's, so it is written down here as a claim about an external producer,
+with the release it was read from — and the scheduled tier above is what
+reconciles that claim against a live Obico.
+
+[//]: # (BEGIN obico-posting-timeout)
+- posting timeout: `5000` ms
+- source: `backend/notifications/plugins/webhook/__init__.py`, whose `execute_webhook` takes `timeout: float = 5.0`
+- release: Obico at revision `49c0bc7001a3fd8d56297fc3032ba287bfe1d50b`, the one `tools/obico-env/obico_env.py` stands up
+- retries: none. The plugin calls `raise_for_status` and the exception is logged; nothing posts that body a second time.
+[//]: # (END obico-posting-timeout)
+
+The default this repository ships is **1000 ms**, a fifth of that, and
+`crates/printobserver-server/src/config.rs`'s `DEFAULT_INGRESS_ANSWER_BOUND_MS`
+is where it is written. The margin is the whole point of the number rather than
+caution about it: the supported host is a small ARM board beside the printer, and
+a bound set just under the producer's is one the first slow moment on that board
+exceeds — after which the alert is gone, because nothing posts it again. A
+configured bound at or above the recorded timeout is refused where it is
+configured, naming the field, and `just check-repo`'s `ingress-answer-bound`
+holds the shipped default and the server's own copy of that timeout to the block
+above.
+
 ## The end-user install path
 
 This section is the authoritative source of the end-user install path. Every
@@ -427,11 +459,12 @@ machine, so starting the supervisor stays a decision somebody takes rather than
 something that happens while they are installing. Do not fold these two steps
 back together.
 
-None of the three routes and neither of these two commands runs yet: the
-distributions, the install script and the service installer do not exist at the
-baseline. What makes the three routes executable is the `sdks` node, and what
-makes the two commands executable is the `server` node — each held to this
-section.
+`just check-repo`'s `service-install` reads this section beside the tree and
+refuses one in which the unit's name or the installer's path differs from what is
+written above, or in which that installer enables or starts anything.
+
+What makes the three routes executable is the `sdks` node, and what makes the two
+commands executable is the `server` node — each held to this section.
 
 ## Commits, releases, and merging
 

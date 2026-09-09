@@ -8,5 +8,18 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+printobserver-server = { path = "../printobserver-server", version = "0.1.0" }
+printobserver-types.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[dev-dependencies]
+# The store the service keeps its record in, so that a journey can put a print
+# in the state directory the installer created and then ask the running program
+# to read that print's context — which is the one thing a supervision turn does.
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.1.0" }
+tempfile = "3"
+
 [lints]
 workspace = true

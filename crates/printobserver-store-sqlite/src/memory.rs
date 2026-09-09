@@ -309,6 +309,21 @@ impl StorePort for MemoryStore {
         })
     }
 
+    fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async move {
+            let records = lock(&self.records);
+            let mut found: Vec<PrintRecord> = records
+                .prints
+                .iter()
+                .filter(|print| print.ended_at.is_none())
+                .cloned()
+                .collect();
+            found.sort_by_key(|print| (print.opened_at, print.id));
+            found.reverse();
+            Ok(found)
+        })
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,

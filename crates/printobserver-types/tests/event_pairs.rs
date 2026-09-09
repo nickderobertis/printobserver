@@ -58,7 +58,7 @@ fn stated_kinds() -> Vec<String> {
 /// is refused here, so the coverage cannot fall behind the vocabulary.
 #[test]
 fn the_corpus_carries_one_value_per_declared_kind() {
-    assert_eq!(EventKind::ALL.len(), 12);
+    assert_eq!(EventKind::ALL.len(), 13);
     for type_name in ["EventRecord", "EventPayload"] {
         let mut carried: Vec<String> = by_kind(&contract(type_name))
             .into_iter()
@@ -115,7 +115,7 @@ fn every_mismatched_pair_fails_to_parse() {
     }
     assert_eq!(
         driven,
-        2 * 12 * 11,
+        2 * 13 * 12,
         "the walk did not cover every ordered pair"
     );
 }

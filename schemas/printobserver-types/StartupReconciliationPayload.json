@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    },
+    "InterventionOutcome": {
+      "description": "What became of a bounded change.",
+      "oneOf": [
+        {
+          "const": "still_active",
+          "description": "It is still in force.",
+          "type": "string"
+        },
+        {
+          "const": "restored",
+          "description": "The prior value was put back.",
+          "type": "string"
+        },
+        {
+          "const": "restore_unavailable",
+          "description": "There was no prior value to put back.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Putting the prior value back failed.",
+          "properties": {
+            "restore_failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "restore_failed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another intervention replaced it before it expired.",
+          "properties": {
+            "superseded": {
+              "additionalProperties": false,
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that replaced it."
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "superseded"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "StartupOutcome": {
+      "description": "What one restart put back the way it found it.\n\nA supervisor that has been restarted adopts whatever the store holds rather\nthan starting empty, and each of these is one of those adoptions. They are\nrecorded rather than merely done, because a print that carried on across a\nrestart and one that was started again look identical afterwards unless the\nhistory says which happened.",
+      "oneOf": [
+        {
+          "const": "print_adopted",
+          "description": "A print left open was adopted as the print this supervisor is watching.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A session left open was resumed rather than replaced.",
+          "properties": {
+            "session_resumed": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The session's own name in the harness.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "session_resumed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An intervention already past its expiry was expired on start.",
+          "properties": {
+            "intervention_expired": {
+              "additionalProperties": false,
+              "properties": {
+                "adjustable": {
+                  "$ref": "#/$defs/Adjustable",
+                  "description": "What it had changed."
+                },
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that had outlived its bound."
+                },
+                "outcome": {
+                  "$ref": "#/$defs/InterventionOutcome",
+                  "description": "What became of putting the prior value back."
+                }
+              },
+              "required": [
+                "intervention_id",
+                "adjustable",
+                "outcome"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_expired"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A supervisor reconciled one thing the store held when it started.",
+  "properties": {
+    "outcome": {
+      "$ref": "#/$defs/StartupOutcome",
+      "description": "What was reconciled."
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print it is about."
+    }
+  },
+  "required": [
+    "print_id",
+    "outcome"
+  ],
+  "title": "StartupReconciliationPayload",
+  "type": "object"
+}
