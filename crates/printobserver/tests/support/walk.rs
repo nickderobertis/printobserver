@@ -104,6 +104,11 @@ pub fn walk(world: &World) -> Vec<Driven> {
     driven
 }
 
+/// The file this world's printer can be asked for.
+fn printable(world: &World) -> String {
+    world.printable_file()
+}
+
 /// The reason each command gives, distinct from every other command's.
 pub fn reason_of(command: &str) -> String {
     format!("this walk is asking `{command}` for exactly this")
@@ -113,9 +118,9 @@ pub fn reason_of(command: &str) -> String {
 ///
 /// The slicer profile names the command that drove it, so a manifest that
 /// arrived from a neighbouring command is one this walk can see.
-pub fn manifest_of(command: &str, feedrate_max: f64) -> Value {
+pub fn manifest_of(command: &str, feedrate_max: f64, file: &str) -> Value {
     json!({
-        "file_name": crate::machine::RUNNING_FILE,
+        "file_name": file,
         "material": "PLA",
         "nozzle_diameter_mm": 0.4,
         "slicer_profile": format!("the profile `{command}` drove"),
@@ -148,7 +153,7 @@ fn ordered(world: &World) -> Vec<Entry> {
             ("reason".to_owned(), reason_of("manifest-set")),
             (
                 "manifest".to_owned(),
-                manifest_of("manifest-set", 1.4).to_string(),
+                manifest_of("manifest-set", 1.4, &printable(world)).to_string(),
             ),
         ],
     ));
@@ -218,13 +223,10 @@ fn actions(world: &World) -> Vec<Entry> {
             "start-print",
             Reports::Operational,
             vec![
-                (
-                    "file_name".to_owned(),
-                    crate::machine::RUNNING_FILE.to_owned(),
-                ),
+                ("file_name".to_owned(), world.printable_file()),
                 (
                     "manifest".to_owned(),
-                    manifest_of("start-print", 1.3).to_string(),
+                    manifest_of("start-print", 1.3, &world.printable_file()).to_string(),
                 ),
             ],
         ),

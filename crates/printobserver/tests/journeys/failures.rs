@@ -79,7 +79,7 @@ fn agent_actor(world: &World) -> String {
 /// Every client command, driven to each failure the contract says it owes.
 pub fn every_command_owes_its_failures(world: &World) {
     for one in walk::walk(world) {
-        world.machine.reports(one.reports);
+        world.wants(one.reports);
         let arguments = succeeding(&one);
 
         let nothing_there = running::against_nothing(world, &arguments, crate::world::CREDENTIAL);

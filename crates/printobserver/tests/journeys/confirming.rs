@@ -30,8 +30,11 @@ pub fn the_cross_product_walk(world: &World) {
     );
 
     for one in &driven {
-        world.machine.reports(one.reports);
         for invocation in walk::invocations(one, world) {
+            // Before every invocation rather than once per command: a real
+            // machine is moved by the command that just ran, so the next
+            // invocation of that same command needs it put back.
+            world.wants(one.reports);
             let ran = drive(world, &invocation);
             let received = world.proxy.the_one_request();
             the_request_carries_the_callers_values(one, &received);
@@ -208,7 +211,7 @@ fn the_manifest_it_wrote_is_the_one_read_back(world: &World) {
 
 /// The profile a manifest one command drove carries.
 fn profile_of(command: &str) -> String {
-    walk::manifest_of(command, 1.0)
+    walk::manifest_of(command, 1.0, "any file")
         .pointer("/slicer_profile")
         .and_then(Value::as_str)
         .expect("a manifest names its profile")

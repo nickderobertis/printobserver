@@ -37,7 +37,7 @@ pub fn both_renderings_carry_the_same_fields(world: &World) {
     }
 
     for one in walk::walk(world) {
-        world.machine.reports(one.reports);
+        world.wants(one.reports);
         let arguments = failures::succeeding(&one);
         both_ways(world, &arguments, &one.operation(), Answer::Success);
         if one.operation().action_kind().is_some() {

@@ -35,7 +35,7 @@ const OVER: &str = "set-fan-percent";
 
 /// Drive every assertion over the defect it is about, and refuse each.
 pub fn every_assertion_here_refuses_the_defect_it_is_about(world: &World) {
-    world.machine.reports(Reports::Printing);
+    world.wants(Reports::Printing);
     let one = the_command(world);
 
     the_endpoint_assertion_refuses(world, &one, "connects-directly", &[]);
@@ -69,7 +69,7 @@ fn under(world: &World, defect: &str) -> Vec<(String, String)> {
     given.push(("PRINTOBSERVER_TAINT".to_owned(), defect.to_owned()));
     given.push((
         "PRINTOBSERVER_TAINT_ELSEWHERE".to_owned(),
-        world.machine.address.to_string(),
+        world.elsewhere(),
     ));
     given.push((
         "PRINTOBSERVER_TAINT_IMAGE".to_owned(),

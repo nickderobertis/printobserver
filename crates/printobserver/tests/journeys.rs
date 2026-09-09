@@ -19,11 +19,18 @@
 //! image bytes in the output — through these same assertions, and each is
 //! refused. A tier whose assertions cannot catch a violation is a tier nobody
 //! has proven catches one.
+//!
+//! What is on the far side of the printer port here is a socket rather than a
+//! printer, which is the one thing this tier does not have for real and is what
+//! lets it run in every gate. `tests/integration.rs` runs the same walk over
+//! the `OctoPrint` `just octoprint-up` provisioned.
 
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]
 mod proxy;
+#[path = "support/scripted.rs"]
+mod scripted;
 #[path = "support/traced.rs"]
 mod traced;
 #[path = "support/walk.rs"]
@@ -51,6 +58,8 @@ mod redaction;
 mod running;
 #[path = "journeys/tainting.rs"]
 mod tainting;
+#[path = "journeys/tier.rs"]
+mod tier;
 
 use world::World;
 
@@ -58,22 +67,10 @@ use world::World;
 ///
 /// One world rather than one per journey: the supervisor is a process and the
 /// store is a file, and starting sixteen of each to walk sixteen commands would
-/// spend the tier's time on process startup rather than on what it proves. The
-/// journeys are ordered because they share one print — pausing is valid from
-/// printing and resuming from paused — and because the ones that take a print
-/// somewhere else run last.
+/// spend the tier's time on process startup rather than on what it proves.
 #[test]
 fn every_client_command_is_proven_against_a_real_supervisor() {
-    let world = World::open();
+    let world = World::open(world::STOOD_IN);
 
-    confirming::the_cross_product_walk(&world);
-    formats::both_renderings_carry_the_same_fields(&world);
-    carrying::every_output_carries_only_what_the_answer_carried(&world);
-    materializing::an_image_is_a_path_that_opens(&world);
-    materializing::a_path_that_names_no_file_here_is_its_own_failure(&world);
-    failures::every_command_owes_its_failures(&world);
-    failures::no_mutating_command_runs_without_a_reason(&world);
-    tainting::every_assertion_here_refuses_the_defect_it_is_about(&world);
-    durations::every_adjustment_is_a_bounded_intervention(&world);
-    redaction::no_run_of_the_walk_prints_the_credential(&world);
+    tier::run(&world, tier::WHOLE);
 }

@@ -30,7 +30,7 @@ use super::{failures, running};
 /// was given.
 pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
     for one in walk::walk(world) {
-        world.machine.reports(one.reports);
+        world.wants(one.reports);
         on_this_path(world, &one, &failures::succeeding(&one));
         if one.operation().action_kind().is_some() {
             on_this_path(world, &one, &failures::rejected(world, &one));

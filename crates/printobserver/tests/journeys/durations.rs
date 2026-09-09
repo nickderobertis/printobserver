@@ -54,7 +54,7 @@ struct Bounded {
 
 /// Every adjustment, over the whole corpus.
 pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
-    world.machine.reports(Reports::Printing);
+    world.wants(Reports::Printing);
     let adjustments = adjustments(world);
     assert_eq!(
         adjustments.len(),

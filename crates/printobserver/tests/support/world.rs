@@ -3,8 +3,17 @@
 //! Nothing here stands in for the program under test or for the server it
 //! talks to. The supervisor is `printobserver server` as a subprocess, over the
 //! store the installer creates and the printer port the composition root
-//! chooses; what is not real is the machine on the far side of that port, which
-//! is [`Machine`] — a socket rather than a printer.
+//! chooses.
+//!
+//! # Two worlds, one walk
+//!
+//! [`World::open`] puts a socket on the far side of the printer port; that is
+//! the one thing the fast tier does not have for real, and it is what lets it
+//! run in every gate. [`World::against_the_scripted_instance`] puts the
+//! `OctoPrint` `just octoprint-up` provisioned there instead, and the same walk
+//! runs against both. Where the fast world is **told** what to report,
+//! the scripted one is **driven** into it — through this same surface, by the
+//! actions that get it there.
 //!
 //! # Everything a command is configured with is written here
 //!
@@ -22,7 +31,7 @@ use printobserver_store_api::StorePort as _;
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
-use crate::machine::Machine;
+use crate::machine::{Machine, Reports};
 use crate::proxy::Proxy;
 
 /// The credential every run in the walk is configured with.
@@ -46,12 +55,74 @@ const SECRET: &str = "a-shared-secret-this-tier-configures";
 /// The image this world stores, as bytes a digest can be taken of.
 const IMAGE_BYTES: &[u8] = b"not a photograph, but the bytes of one";
 
+/// How many times this world asks a real machine to be somewhere before it
+/// gives up and says where it actually is.
+const SETTLING_ROUNDS: usize = 4;
+
+/// How many times it looks after each asking.
+const SETTLING_POLLS: usize = 40;
+
+/// How long it waits between looking.
+const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(500);
+
+/// The reason an action taken only to settle the machine gives.
+///
+/// Distinct from every reason the walk drives, so an assertion about what a
+/// command asked for cannot be satisfied by one of these.
+const SETTLING_REASON: &str = "this walk is putting the machine where the next command needs it";
+
+/// The manifest a settling start attaches, which narrows nothing.
+const SETTLING_MANIFEST: &str = concat!(
+    r#"{"file_name":"settling","material":"PLA","nozzle_diameter_mm":0.4,"#,
+    r#""slicer_profile":"the profile settling drove","allowed":{},"metadata":{}}"#
+);
+
+/// The world whose printer port reaches a socket.
+pub const STOOD_IN: &str = "stood-in";
+
+/// The world whose printer port reaches the `OctoPrint` `just octoprint-up`
+/// provisioned.
+pub const SCRIPTED: &str = "scripted";
+
+/// What is on the far side of the printer port.
+pub enum Printer {
+    /// A socket answering the documents a machine answers.
+    StoodIn(Machine),
+    /// The `OctoPrint` instance `just octoprint-up` provisioned.
+    Scripted {
+        /// Where it answers.
+        url: String,
+        /// The key it was provisioned with.
+        api_key: String,
+        /// The file it has to print, which its bring-up uploaded.
+        file: String,
+    },
+}
+
+impl Printer {
+    /// Where the server is configured to find it.
+    fn url(&self) -> String {
+        match self {
+            Self::StoodIn(machine) => machine.url(),
+            Self::Scripted { url, .. } => url.clone(),
+        }
+    }
+
+    /// The key the server authenticates to it with.
+    fn api_key(&self) -> String {
+        match self {
+            Self::StoodIn(_) => "a-provisioned-key".to_owned(),
+            Self::Scripted { api_key, .. } => api_key.clone(),
+        }
+    }
+}
+
 /// What the walk drives, and everything it was started from.
 pub struct World {
     /// This world's own root, removed when it is dropped.
     pub root: TempDir,
     /// The machine on the far side of the printer port.
-    pub machine: Machine,
+    pub printer: Printer,
     /// What a command is configured to reach the supervisor through.
     pub proxy: Proxy,
     /// The print every command in the walk is about.
@@ -79,15 +150,28 @@ impl World {
     ///
     /// Panics when the supervisor did not start, which is a world nothing in
     /// the walk could be driven against.
-    pub fn open() -> Self {
+    /// # Panics
+    ///
+    /// Panics when the scripted environment was asked for and is not up,
+    /// naming the recipe that brings one up: a tier that quietly passed against
+    /// no printer would prove nothing, so there is no fallback and no skip.
+    pub fn open(world: &str) -> Self {
+        Self::over(match world {
+            STOOD_IN => Printer::StoodIn(Machine::start()),
+            SCRIPTED => crate::scripted::scripted(),
+            other => panic!("there is no `{other}` world to open"),
+        })
+    }
+
+    /// A world over whatever is on the far side of the printer port.
+    fn over(printer: Printer) -> Self {
         let root = TempDir::new().expect("this tier's own root");
-        let machine = Machine::start();
         let state = root.path().join("state");
         std::fs::create_dir_all(&state).expect("a state directory");
-        let (print_id, image_id, event_id) = seed(&state);
+        let (print_id, image_id, event_id) = seed(&state, &printable_file(&printer));
 
         let configuration = root.path().join("server.toml");
-        std::fs::write(&configuration, server_document(&state, &machine.url()))
+        std::fs::write(&configuration, server_document(&state, &printer))
             .expect("the configuration is writable");
         let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .arg("server")
@@ -101,7 +185,7 @@ impl World {
 
         let world = Self {
             root,
-            machine,
+            printer,
             proxy,
             print_id,
             image_id,
@@ -116,6 +200,39 @@ impl World {
         )
         .expect("the client configuration is writable");
         world
+    }
+
+    /// The file this world's printer can be asked to print.
+    pub fn printable_file(&self) -> String {
+        printable_file(&self.printer)
+    }
+
+    /// An endpoint that is not the configured supervisor, for the variant of
+    /// this program that connects to one.
+    pub fn elsewhere(&self) -> String {
+        self.printer
+            .url()
+            .trim_start_matches("http://")
+            .trim_end_matches('/')
+            .to_owned()
+    }
+
+    /// Put the machine into the state one command is valid from.
+    ///
+    /// A socket is told. A real printer is **driven** there, through this same
+    /// surface, by the actions that get it there — which is what a print
+    /// actually goes through — and then waited for, because a machine takes its
+    /// own time.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the machine did not reach that state, which is a walk whose
+    /// next command could only be refused for being asked from the wrong one.
+    pub fn wants(&self, state: Reports) {
+        match &self.printer {
+            Printer::StoodIn(machine) => machine.reports(state),
+            Printer::Scripted { .. } => self.drive_to(state),
+        }
     }
 
     /// The configuration file a command is given when it is given one.
@@ -143,7 +260,7 @@ impl World {
         let state = self.root.path().join("second-state");
         std::fs::create_dir_all(&state).expect("a state directory");
         let path = self.root.path().join("second-server.toml");
-        std::fs::write(&path, server_document(&state, &self.machine.url()))
+        std::fs::write(&path, server_document(&state, &self.printer))
             .expect("the configuration is writable");
         path
     }
@@ -240,6 +357,105 @@ impl World {
         })
     }
 
+    /// Drive a real machine into one state, and wait until it reports it.
+    ///
+    /// Everything here goes through this program's own commands: reading what
+    /// the machine is doing is a status read, and moving it is one of the
+    /// vocabulary's own actions. So a walk that could not settle the machine is
+    /// one whose own surface could not, rather than one whose test harness
+    /// could not.
+    fn drive_to(&self, state: Reports) {
+        let mut said = String::new();
+        for _ in 0..SETTLING_ROUNDS {
+            if self.reported_state() == Some(state) {
+                return;
+            }
+            said = self.one_step_towards(state);
+            for _ in 0..SETTLING_POLLS {
+                std::thread::sleep(SETTLING_PAUSE);
+                if self.reported_state() == Some(state) {
+                    return;
+                }
+            }
+        }
+        panic!(
+            "the machine never reported {state:?}: it is reporting {:?}, and the last thing \
+             asked of it said {said}",
+            self.reported_state()
+        );
+    }
+
+    /// Ask for the one action that takes the machine towards a state.
+    ///
+    /// Asked for **once** per round rather than on every poll: a machine takes
+    /// its own time to pause, and a walk that asked again every half second
+    /// would be asking a machine part-way through pausing to pause.
+    fn one_step_towards(&self, state: Reports) -> String {
+        let starting = &[
+            "--file-name",
+            &self.printable_file(),
+            "--manifest",
+            SETTLING_MANIFEST,
+        ];
+        match (state, self.reported_state()) {
+            (Reports::Printing, Some(Reports::Paused)) => self.settle("resume", &[]),
+            (Reports::Paused, Some(Reports::Printing)) => self.settle("pause", &[]),
+            (Reports::Operational, _) => self.settle("cancel", &[]),
+            // Anywhere else, what gets the machine printing is starting a
+            // print — and a pause is only valid from printing, so that is the
+            // step before pausing too.
+            (Reports::Printing | Reports::Paused, _) => self.settle("start-print", starting),
+        }
+    }
+
+    /// What the machine reports it is doing, read through this same surface.
+    fn reported_state(&self) -> Option<Reports> {
+        let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+            .args(["status", "--print-id", &self.print_id, "--json", "--config"])
+            .arg(self.client_config())
+            .output()
+            .expect("a status read runs");
+        let answer: Value =
+            printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
+        match answer
+            .pointer("/printer/connection")
+            .and_then(Value::as_str)
+        {
+            Some("printing") => Some(Reports::Printing),
+            Some("paused") => Some(Reports::Paused),
+            Some("operational") => Some(Reports::Operational),
+            _ => None,
+        }
+    }
+
+    /// Ask for one action, for no reason but settling the machine.
+    ///
+    /// What it said is answered rather than dropped, so a walk that could not
+    /// settle the machine says why the last attempt did not take.
+    fn settle(&self, command: &str, also: &[&str]) -> String {
+        let mut asked = vec![
+            command,
+            "--print-id",
+            &self.print_id,
+            "--actor",
+            "operator",
+            "--reason",
+            SETTLING_REASON,
+        ];
+        asked.extend_from_slice(also);
+        let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+            .args(&asked)
+            .arg("--config")
+            .arg(self.client_config())
+            .output()
+            .expect("an action runs");
+        format!(
+            "`{command}` exited {:?}: {}",
+            ran.status.code(),
+            String::from_utf8_lossy(&ran.stderr)
+        )
+    }
+
     /// The client configuration document, under one credential.
     fn client_document(&self, credential: &str) -> String {
         format!(
@@ -265,15 +481,23 @@ fn with_the_store<T>(
     doing(&store, &runtime)
 }
 
+/// The file one printer can be asked to print.
+fn printable_file(printer: &Printer) -> String {
+    match printer {
+        Printer::StoodIn(_) => crate::machine::RUNNING_FILE.to_owned(),
+        Printer::Scripted { file, .. } => file.clone(),
+    }
+}
+
 /// Open a print, append an event and store an image against it.
-fn seed(state: &Path) -> (String, String, String) {
+fn seed(state: &Path, file: &str) -> (String, String, String) {
     let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime");
     runtime.block_on(async {
         let print = store
-            .open_print(Some(4211), Some(crate::machine::RUNNING_FILE.to_owned()))
+            .open_print(Some(4211), Some(file.to_owned()))
             .await
             .expect("a print opens");
         let event = store
@@ -307,11 +531,15 @@ fn seed(state: &Path) -> (String, String, String) {
 }
 
 /// The configuration the supervisor is started under.
-fn server_document(state: &Path, machine: &str) -> String {
+fn server_document(state: &Path, printer: &Printer) -> String {
     let document = json!({
         "state_dir": state.display().to_string(),
         "listen": "127.0.0.1:0",
-        "octoprint": { "url": machine, "api_key": "a-provisioned-key", "fan": "commandable" },
+        "octoprint": {
+            "url": printer.url(),
+            "api_key": printer.api_key(),
+            "fan": "commandable",
+        },
         "supervisor": { "harness": "claude-code" },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
         "safety": {

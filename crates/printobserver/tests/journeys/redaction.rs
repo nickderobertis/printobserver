@@ -75,7 +75,7 @@ fn fragments(credential: &str) -> BTreeSet<String> {
 fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, String)> {
     let mut said = Vec::new();
     for one in walk::walk(world) {
-        world.machine.reports(one.reports);
+        world.wants(one.reports);
         let arguments = failures::succeeding(&one);
         let name = one.command.name.clone();
         said.push((
@@ -191,6 +191,6 @@ fn a_second_server(world: &World, credential: &str) -> String {
         "the second supervisor did not start, so this says nothing about what it prints: \
          {printed}"
     );
-    world.machine.reports(Reports::Printing);
+    world.wants(Reports::Printing);
     printed
 }
