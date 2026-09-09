@@ -31,7 +31,8 @@ use crate::event::{
     EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
     MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
     ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    PortFailureSite, StartupOutcome, StartupReconciliationPayload, SupervisionSessionClosedPayload,
+    SupervisionSessionOpenedPayload,
 };
 use crate::file_name::FileName;
 use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
@@ -311,6 +312,8 @@ pub fn declared() -> Vec<TypeContract> {
         Reported<f64> => "Reported",
         SafetyEnvelope,
         SessionPhase,
+        StartupOutcome,
+        StartupReconciliationPayload,
         SupervisionSession,
         SupervisionSessionClosedPayload,
         SupervisionSessionOpenedPayload,
@@ -969,6 +972,34 @@ impl Sample for PortFailurePayload {
     }
 }
 
+impl Sample for StartupOutcome {
+    fn sample_full() -> Self {
+        Self::InterventionExpired {
+            intervention_id: intervention_id(),
+            adjustable: Adjustable::Fan,
+            outcome: InterventionOutcome::Restored,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::PrintAdopted,
+            Self::SessionResumed {
+                session_name: "watch-4211".to_owned(),
+            },
+        ]
+    }
+}
+
+impl Sample for StartupReconciliationPayload {
+    fn sample_full() -> Self {
+        Self {
+            print_id: print_id(),
+            outcome: StartupOutcome::sample_full(),
+        }
+    }
+}
+
 impl Sample for MalformedExternalEventPayload {
     fn sample_full() -> Self {
         Self {
@@ -1087,6 +1118,7 @@ impl Sample for EventPayload {
             Self::AgentAssessment(AgentAssessmentPayload::sample_full()),
             Self::OperatorAcknowledgement(OperatorAcknowledgementPayload::sample_full()),
             Self::PortFailure(PortFailurePayload::sample_full()),
+            Self::StartupReconciliation(StartupReconciliationPayload::sample_full()),
         ]
     }
 }

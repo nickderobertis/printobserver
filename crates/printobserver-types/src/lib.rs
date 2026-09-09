@@ -83,7 +83,8 @@ pub use event::{
     EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
     MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
     ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    PortFailureSite, StartupOutcome, StartupReconciliationPayload, SupervisionSessionClosedPayload,
+    SupervisionSessionOpenedPayload,
 };
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
 pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, PrintId};

@@ -47,6 +47,24 @@ mod ledger;
 mod prompt;
 mod turn;
 
+/// The `PrintObserver` skill this crate ships, as bytes in the built artifact.
+///
+/// The port reads its system prompt from a *path*, because editing the skill on
+/// a running host is a restart rather than a rebuild. An installed program has
+/// no checkout to read that path out of, so the composition root writes this
+/// constant to a file under its state directory and points the port at it —
+/// which is what makes an install that configures no skill of its own run the
+/// committed one rather than none.
+///
+/// It is `include_str!` of this crate's own committed asset rather than a copy,
+/// so the file `just check-repo`'s supervisor checks read and the bytes an
+/// installed program runs are one thing.
+pub const DEFAULT_SKILL: &str = include_str!("../assets/printobserver-skill.md");
+
+/// The committed prompt template this crate ships, for the same reason
+/// [`DEFAULT_SKILL`] is here.
+pub const DEFAULT_TURN_PROMPT: &str = include_str!("../assets/turn-prompt.md");
+
 pub use config::{
     AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
     RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,

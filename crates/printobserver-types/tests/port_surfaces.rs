@@ -191,6 +191,11 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
             "BoxFuture<'_,Result<Option<PrintRecord>,StoreError>>",
         ),
         method(
+            "open_prints",
+            &[],
+            "BoxFuture<'_,Result<Vec<PrintRecord>,StoreError>>",
+        ),
+        method(
             "print_by_obico_id",
             &[("obico_print_id", "i64")],
             "BoxFuture<'_,Result<Option<PrintRecord>,StoreError>>",
