@@ -47,9 +47,12 @@ mod ledger;
 mod prompt;
 mod turn;
 
-pub use config::{DEFAULT_TURN_TIMEOUT_S, RunRequestObserver, SupervisorConfig, TurnSeam};
-pub use ledger::{RecordedTurn, SESSIONS_DIRECTORY, session_name};
+pub use config::{
+    ConfigError, EnvAssignment, HarnessIdentity, RunReportObserver, RunRequestObserver,
+    SupervisorConfig, TurnSeam, TurnTimeout,
+};
+pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, session_name};
 pub use prompt::{
     CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SLOTS, TemplateError,
 };
-pub use turn::{HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor};
+pub use turn::{HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, TurnReport};

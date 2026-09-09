@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use printobserver_oneharness::EnvAssignment;
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{
     EventPayload, MalformedExternalEventPayload, PrintId, SessionPhase, SupervisionSession,
@@ -27,7 +28,7 @@ fn unreadable() -> EventPayload {
 }
 
 /// The environment every journey here scripts the responder with.
-fn answering() -> Vec<String> {
+fn answering() -> Vec<EnvAssignment> {
     always("SID-CLOSING", &assessment("the print is fine", "medium"))
 }
 
@@ -189,5 +190,75 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
     assert!(
         reason.contains(HARNESS) && reason.contains(OTHER_HARNESS),
         "the reason does not name the identity that refused: {reason}"
+    );
+}
+
+/// Closing a print with no session open is the answer the caller wanted rather
+/// than an error, and it opens nothing.
+///
+/// Both ways in: a print this supervisor has never taken a turn for — the
+/// supervision core closes a print it decided to abandon whether or not a turn
+/// ever ran — and a print whose session is already closed, which is what a
+/// second terminal event of one print does.
+#[test]
+fn closing_a_print_with_no_session_open_answers_the_caller_success() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
+    let fixture = Fixture::new("closing-nothing-open");
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            answering(),
+        ),
+        &watch,
+    );
+
+    let never_ran = PrintId::new();
+    assert_eq!(
+        block_on(supervisor.close_session(never_ran, "abandoned".to_owned())),
+        Ok(()),
+        "closing a print that never took a turn answered the caller a failure"
+    );
+    assert!(
+        supervisor
+            .recorded_sessions(&never_ran)
+            .expect("the ledger is readable")
+            .is_empty(),
+        "closing a print that never took a turn opened a session to close"
+    );
+
+    let ran = PrintId::new();
+    block_on(supervisor.run_turn(turn(ran, event(ran, unreadable()), None)))
+        .expect("the turn runs");
+    block_on(supervisor.close_session(ran, "cancelled".to_owned())).expect("the first close");
+    let closed_at = last(
+        &supervisor
+            .recorded_sessions(&ran)
+            .expect("the ledger is readable"),
+    )
+    .closed_at;
+
+    assert_eq!(
+        block_on(supervisor.close_session(ran, "finished".to_owned())),
+        Ok(()),
+        "closing an already-closed session answered the caller a failure"
+    );
+    let sessions = supervisor
+        .recorded_sessions(&ran)
+        .expect("the ledger is readable");
+    assert_eq!(sessions.len(), 1, "the second close opened a session");
+    assert_eq!(
+        last(&sessions).close_reason.as_deref(),
+        Some("cancelled"),
+        "the second close rewrote why the session had ended"
+    );
+    assert_eq!(
+        last(&sessions).closed_at,
+        closed_at,
+        "the second close moved the instant the session ended"
     );
 }

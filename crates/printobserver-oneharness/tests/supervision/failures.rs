@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use printobserver_oneharness::{
     HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, SESSIONS_DIRECTORY, SupervisorConfig,
-    TurnSeam, session_name,
+    TurnSeam, TurnTimeout, session_name,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{
@@ -22,8 +22,8 @@ use printobserver_types::{
 };
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn,
+    Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
+    generated_assessment_schema, identity, port, schema_read_lock, turn,
 };
 
 /// An event to hang a turn off.
@@ -62,6 +62,17 @@ fn watched_turn(configured: SupervisorConfig) -> Result<(), SupervisorError> {
 /// The detail one error carries, or the shape it turned out to be.
 fn detail(error: &SupervisorError) -> String {
     error.to_string()
+}
+
+/// Put one print's ledger on disk, exactly as this document writes it.
+fn write_ledger(fixture: &Fixture, print_id: &PrintId, document: &serde_json::Value) {
+    let path = fixture
+        .state_dir()
+        .join(SESSIONS_DIRECTORY)
+        .join(format!("{print_id}.json"));
+    fs::create_dir_all(path.parent().expect("the ledger has a directory"))
+        .expect("the ledger directory");
+    fs::write(&path, document.to_string()).expect("a scripted ledger");
 }
 
 /// A port needs the skill and the template to be where it was told they are.
@@ -133,7 +144,9 @@ fn a_port_with_nothing_watching_it_still_takes_a_turn() {
 
     let empty = format!("{:?}", TurnSeam::default());
     assert!(
-        empty.contains("requests: false") && empty.contains("processes: false"),
+        empty.contains("requests: false")
+            && empty.contains("processes: false")
+            && empty.contains("reports: false"),
         "the empty seam does not say it is watching nothing: {empty}"
     );
     let watch = Arc::new(Watch::default());
@@ -141,11 +154,14 @@ fn a_port_with_nothing_watching_it_still_takes_a_turn() {
         "{:?}",
         TurnSeam {
             requests: Some(watch.clone()),
-            processes: Some(watch),
+            processes: Some(watch.clone()),
+            reports: Some(watch),
         }
     );
     assert!(
-        watching.contains("requests: true") && watching.contains("processes: true"),
+        watching.contains("requests: true")
+            && watching.contains("processes: true")
+            && watching.contains("reports: true"),
         "the watching seam does not say what it is watching: {watching}"
     );
 }
@@ -160,7 +176,7 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
 
     // A harness identity OneHarness does not know: refused before anything runs.
     let mut unknown = answering(&fixture);
-    unknown.harness = "not-a-harness".to_owned();
+    unknown.harness = identity("not-a-harness");
     let refused = watched_turn(unknown).expect_err("an unknown harness ran a turn");
     assert!(
         matches!(refused, SupervisorError::Unavailable { .. }),
@@ -180,8 +196,8 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
     // A harness that refuses the request outright — no credential, no turn.
     let mut refusing = answering(&fixture);
     refusing.harness_env = vec![
-        "MOCK_EXIT=1".to_owned(),
-        "MOCK_STDERR=unauthorized: log in first".to_owned(),
+        assignment("MOCK_EXIT=1"),
+        assignment("MOCK_STDERR=unauthorized: log in first"),
     ];
     let refused = watched_turn(refusing).expect_err("a refused request produced an answer");
     let said = detail(&refused);
@@ -199,15 +215,15 @@ fn a_turn_that_outlives_its_deadline_is_a_timeout() {
     let _schemas = schema_read_lock();
     let fixture = Fixture::new("failures-timeout");
     let mut slow = answering(&fixture);
-    slow.turn_timeout_s = 1;
-    slow.harness_env.push("MOCK_SLEEP_MS=20000".to_owned());
+    slow.turn_timeout = TurnTimeout::new(1).expect("one second is a bound");
+    slow.harness_env.push(assignment("MOCK_SLEEP_MS=20000"));
     // The harness child is killed at the deadline, so its coverage profile is
     // written somewhere the gate's own collection will not pick a truncated
     // file up from.
-    slow.harness_env.push(format!(
+    slow.harness_env.push(assignment(&format!(
         "LLVM_PROFILE_FILE={}",
         fixture.path("killed-%p.profraw").display()
-    ));
+    )));
     let refused = watched_turn(slow).expect_err("a turn past its deadline answered");
     assert_eq!(refused, SupervisorError::TimedOut);
 }
@@ -317,6 +333,64 @@ fn a_ledger_that_cannot_be_written_is_reported() {
     );
     block_on(supervisor.close_session(print_id, "finished".to_owned()))
         .expect_err("a close was recorded into a ledger that cannot be written");
+}
+
+/// A ledger a later build wrote is refused rather than read as this build's.
+#[test]
+fn a_ledger_written_under_another_shape_is_refused() {
+    let fixture = Fixture::new("failures-shape");
+    let print_id = PrintId::new();
+    write_ledger(
+        &fixture,
+        &print_id,
+        &serde_json::json!({
+            "schema_version": "2",
+            "print_id": print_id,
+            "sessions": [],
+            "turns": [],
+            "supervisor_notes": "a field this build has never heard of",
+        }),
+    );
+
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(answering(&fixture), &watch);
+    let refused = supervisor
+        .recorded_sessions(&print_id)
+        .expect_err("a ledger of another shape was read as this build's");
+    let said = detail(&refused);
+    assert!(
+        said.contains("not a ledger this build reads") && said.contains("V1"),
+        "the refusal does not say which shape this build writes: {said}"
+    );
+}
+
+/// A ledger holding another print's sessions is refused rather than continued.
+#[test]
+fn a_ledger_of_another_print_is_refused() {
+    let fixture = Fixture::new("failures-other-print");
+    let print_id = PrintId::new();
+    let other = PrintId::new();
+    write_ledger(
+        &fixture,
+        &print_id,
+        &serde_json::json!({
+            "schema_version": "1",
+            "print_id": other,
+            "sessions": [],
+            "turns": [],
+        }),
+    );
+
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(answering(&fixture), &watch);
+    let refused = supervisor
+        .recorded_turns(&print_id)
+        .expect_err("one print's ledger was read as another's");
+    let said = detail(&refused);
+    assert!(
+        said.contains(&other.to_string()) && said.contains(&print_id.to_string()),
+        "the refusal names neither print: {said}"
+    );
 }
 
 /// A harness session store lost under a live ledger opens the conversation

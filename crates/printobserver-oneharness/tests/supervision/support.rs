@@ -16,10 +16,12 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 
+use oneharness_core::domain::report::RunReport;
 use oneharness_core::io::run::RunRequest;
 use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_oneharness::{
-    DEFAULT_TURN_TIMEOUT_S, OneharnessSupervisor, RunRequestObserver, SupervisorConfig, TurnSeam,
+    EnvAssignment, HarnessIdentity, OneharnessSupervisor, RunReportObserver, RunRequestObserver,
+    SupervisorConfig, TurnSeam, TurnTimeout,
 };
 use printobserver_supervisor_api::TurnRequest;
 use printobserver_types::{
@@ -173,36 +175,49 @@ impl Fixture {
     }
 }
 
+/// One harness identity a journey names.
+pub fn identity(name: &str) -> HarnessIdentity {
+    HarnessIdentity::new(name).expect("a journey names a harness")
+}
+
+/// One `KEY=VALUE` assignment a journey scripts the responder with.
+pub fn assignment(text: &str) -> EnvAssignment {
+    EnvAssignment::new(text)
+        .unwrap_or_else(|error| panic!("a journey scripts the responder: {error}"))
+}
+
 /// The configuration a journey drives the port with, constrained by the schema
 /// at `schema`.
 pub fn config(
     fixture: &Fixture,
     harness: &str,
     schema: &Path,
-    env: Vec<String>,
+    env: Vec<EnvAssignment>,
 ) -> SupervisorConfig {
     SupervisorConfig {
         state_dir: fixture.state_dir(),
         skill_path: skill_path(),
         prompt_template_path: template_path(),
         assessment_schema_path: schema.to_path_buf(),
-        harness: harness.to_owned(),
+        harness: identity(harness),
         model: None,
         working_dir: fixture.root.join("work"),
-        turn_timeout_s: DEFAULT_TURN_TIMEOUT_S,
+        turn_timeout: TurnTimeout::DEFAULT,
         harness_bin: Some(responder()),
         harness_env: env,
     }
 }
 
-/// What one journey saw the port do: every run request it built, and every
-/// process `OneHarness` created under them.
+/// What one journey saw the port do: every run request it built, every process
+/// `OneHarness` created under them, and every report it answered.
 #[derive(Debug, Default)]
 pub struct Watch {
     /// Every run request, in the order the port built them.
     requests: Mutex<Vec<RunRequest>>,
     /// Every process created under a run, by the program it was spawned with.
     programs: Mutex<Vec<PathBuf>>,
+    /// Every report `OneHarness` answered, in the order the runs finished.
+    reports: Mutex<Vec<RunReport>>,
 }
 
 impl Watch {
@@ -220,6 +235,23 @@ impl Watch {
             .lock()
             .expect("the watch is not poisoned")
             .clone()
+    }
+
+    /// Every report `OneHarness` has answered so far.
+    pub fn reports(&self) -> Vec<RunReport> {
+        self.reports
+            .lock()
+            .expect("the watch is not poisoned")
+            .clone()
+    }
+}
+
+impl RunReportObserver for Watch {
+    fn answered(&self, report: &RunReport) {
+        self.reports
+            .lock()
+            .expect("the watch is not poisoned")
+            .push(report.clone());
     }
 }
 
@@ -248,6 +280,7 @@ pub fn port(config: SupervisorConfig, watch: &Arc<Watch>) -> OneharnessSuperviso
         TurnSeam {
             requests: Some(watch.clone()),
             processes: Some(watch.clone()),
+            reports: Some(watch.clone()),
         },
     )
     .expect("the port is built from the committed skill and template")
@@ -285,23 +318,32 @@ fn document(session_id: &str, answer: &str) -> String {
 
 /// The environment that scripts the responder to give the same answer every
 /// time it is invoked.
-pub fn always(session_id: &str, answer: &str) -> Vec<String> {
-    vec![format!("MOCK_STDOUT={}", document(session_id, answer))]
+pub fn always(session_id: &str, answer: &str) -> Vec<EnvAssignment> {
+    vec![assignment(&format!(
+        "MOCK_STDOUT={}",
+        document(session_id, answer)
+    ))]
 }
 
 /// The environment that scripts the responder to give a different answer on
 /// each successive invocation, and the last of them from then on.
-pub fn in_turn(session_id: &str, answers: &[&str], counter: &Path) -> Vec<String> {
-    let mut env = vec![format!("MOCK_ATTEMPT_FILE={}", counter.display())];
+pub fn in_turn(session_id: &str, answers: &[&str], counter: &Path) -> Vec<EnvAssignment> {
+    let mut env = vec![assignment(&format!(
+        "MOCK_ATTEMPT_FILE={}",
+        counter.display()
+    ))];
     for (index, answer) in answers.iter().enumerate() {
-        env.push(format!(
+        env.push(assignment(&format!(
             "MOCK_STDOUT_{}={}",
             index + 1,
             document(session_id, answer)
-        ));
+        )));
     }
     let last = answers.last().copied().unwrap_or_default();
-    env.push(format!("MOCK_STDOUT={}", document(session_id, last)));
+    env.push(assignment(&format!(
+        "MOCK_STDOUT={}",
+        document(session_id, last)
+    )));
     env
 }
 

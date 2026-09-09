@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use oneharness_core::domain::mode::PermissionMode;
-use oneharness_core::domain::report::{RunResult, SessionReport, Status};
+use oneharness_core::domain::report::{RunReport, RunResult, SessionReport, Status};
 use oneharness_core::domain::session::SessionPhase as HarnessPhase;
 use oneharness_core::errors::OneharnessError;
 use oneharness_core::io::run::{RunControls, RunOutcome, RunRequest, run_supervised};
@@ -134,16 +134,21 @@ impl OneharnessSupervisor {
     /// The run request for one turn in one session.
     fn build_request(&self, session: &str, prompt: &str) -> RunRequest {
         RunRequest {
-            harness: vec![self.config.harness.clone()],
+            harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
             model: self.config.model.clone().into_iter().collect(),
             system: Some(self.skill.clone()),
             session: Some(session.to_owned()),
             session_dir: Some(self.config.state_dir.join(HARNESS_SESSIONS_DIRECTORY)),
             schema: Some(self.config.assessment_schema_path.clone()),
-            timeout: Some(self.config.turn_timeout_s),
+            timeout: Some(self.config.turn_timeout.seconds()),
             cwd: Some(self.config.working_dir.clone()),
-            env: self.config.harness_env.clone(),
+            env: self
+                .config
+                .harness_env
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             mode: Some(PermissionMode::ReadOnly),
             // The supervisor's turns are decided here, not by whatever
             // configuration happens to be on the host it runs on.
@@ -169,7 +174,11 @@ impl OneharnessSupervisor {
             .processes
             .as_ref()
             .map(|processes| Arc::as_ref(processes) as &dyn ProcessSupervisor);
-        run_supervised(&request, RunControls::default(), supervisor)
+        let outcome = run_supervised(&request, RunControls::default(), supervisor)?;
+        if let Some(observer) = &self.seam.reports {
+            observer.answered(&outcome.report);
+        }
+        Ok(outcome)
     }
 
     /// One supervision turn, from the ledger through the run and back.
@@ -199,7 +208,7 @@ impl OneharnessSupervisor {
             Err(error) => return Err(unavailable(&error)),
         };
 
-        self.record(&mut ledger, print_id, &session, outcome)
+        self.record(&mut ledger, print_id, &TurnReport::of(outcome.report)?)
     }
 
     /// Write down what a finished run did, and answer the caller.
@@ -207,43 +216,97 @@ impl OneharnessSupervisor {
         &self,
         ledger: &mut PrintLedger,
         print_id: &PrintId,
-        planned: &str,
-        outcome: RunOutcome,
+        reported: &TurnReport,
     ) -> Result<TurnOutcome, SupervisorError> {
         let at = Timestamp::now();
-        let result = outcome.report.results.into_iter().next();
-        let (Some(result), Some(reported)) = (result, outcome.report.session) else {
-            ledger.record_turn(planned, at, Some(NO_SESSION));
-            self.save(ledger, print_id)?;
-            return Err(SupervisorError::Unavailable {
-                detail: NO_SESSION.to_owned(),
-            });
-        };
-
         let session = ledger.record_session(
-            &reported.name,
-            &result.harness_id,
-            reported.phase == HarnessPhase::Create,
+            &reported.session.name,
+            &reported.result.harness_id,
+            reported.session.phase == HarnessPhase::Create,
             at,
         );
-        let answer = assessment(&result);
+        let answer = assessment(&reported.result);
         let failure = answer.as_ref().err().map(ToString::to_string);
         ledger.record_turn(&session.session_name, at, failure.as_deref());
         self.save(ledger, print_id)?;
 
         Ok(TurnOutcome {
             session,
-            phase: phase_of(&reported),
+            phase: reported.phase(),
             assessment: answer?,
         })
+    }
+}
+
+/// What a finished run answered, narrowed to what a turn is written down from:
+/// the one result the run produced, and the session block naming the
+/// conversation it ran in.
+///
+/// `OneHarness`'s report holds each of those behind an `Option`, because the
+/// same report describes runs this port never asks for — a run carrying no
+/// session handle at all, and a run whose selection left nothing to execute. A
+/// turn is neither, so the narrowing happens once, here, and every step after
+/// it holds both rather than an `Option` nobody downstream can act on.
+///
+/// A run that answers neither is refused rather than written down. Nothing ran
+/// that this port could attribute to a conversation: the session the turn would
+/// be recorded under is one this port planned and the harness never confirmed,
+/// and a ledger carrying turns of a session that was never opened is a history
+/// that reads as though the agent had been consulted.
+#[derive(Debug, Clone)]
+pub struct TurnReport {
+    /// The result the run produced.
+    result: RunResult,
+    /// The session block the run answered with.
+    session: SessionReport,
+}
+
+impl TurnReport {
+    /// Narrow one finished run's report to the turn it reports.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`] when the run answered no
+    /// session block, or no result at all.
+    pub fn of(report: RunReport) -> Result<Self, SupervisorError> {
+        let Some(session) = report.session else {
+            return Err(SupervisorError::Unavailable {
+                detail: NO_SESSION.to_owned(),
+            });
+        };
+        let Some(result) = report.results.into_iter().next() else {
+            return Err(SupervisorError::Unavailable {
+                detail: NO_RESULT.to_owned(),
+            });
+        };
+        Ok(Self { result, session })
+    }
+
+    /// The session block the run answered with.
+    #[must_use]
+    pub fn session(&self) -> &SessionReport {
+        &self.session
+    }
+
+    /// Whether the run opened the session or continued it, in this system's
+    /// words.
+    #[must_use]
+    pub fn phase(&self) -> SessionPhase {
+        match self.session.phase {
+            HarnessPhase::Create => SessionPhase::Created,
+            HarnessPhase::Continue => SessionPhase::Continued,
+        }
     }
 }
 
 /// The detail an answer no schema verdict was reached about is refused with.
 const NO_ANSWER: &str = "the answer carried no value the assessment schema could be applied to";
 
-/// The detail a run that reported no session handle is recorded under.
+/// The detail a run that answered no session block is refused with.
 const NO_SESSION: &str = "the harness exposed no session, so the conversation cannot be continued";
+
+/// The detail a run that answered no result at all is refused with.
+const NO_RESULT: &str = "the harness answered no result, so no turn was taken";
 
 /// Read a file the port is built from.
 fn read(path: &Path) -> Result<String, SupervisorError> {
@@ -256,14 +319,6 @@ fn read(path: &Path) -> Result<String, SupervisorError> {
 fn unavailable(error: &OneharnessError) -> SupervisorError {
     SupervisorError::Unavailable {
         detail: error.to_string(),
-    }
-}
-
-/// Whether the run opened the session or continued it, in this system's words.
-fn phase_of(reported: &SessionReport) -> SessionPhase {
-    match reported.phase {
-        HarnessPhase::Create => SessionPhase::Created,
-        HarnessPhase::Continue => SessionPhase::Continued,
     }
 }
 

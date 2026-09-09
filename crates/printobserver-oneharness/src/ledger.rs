@@ -15,8 +15,22 @@ use serde::{Deserialize, Serialize};
 /// The directory under the state directory this port keeps its ledgers in.
 pub const SESSIONS_DIRECTORY: &str = "supervisor-sessions";
 
-/// The ledger's own on-disk shape version, independent of every other.
-const LEDGER_SCHEMA_VERSION: &str = "1";
+/// The ledger's own on-disk shape, as a closed set rather than free text.
+///
+/// A record is written under exactly one of these and read back under exactly
+/// one of these, so a ledger a later build wrote is refused by the reader
+/// rather than read as though this build had written it. Widening this type is
+/// what adding a shape looks like, and a reader that has not been widened
+/// cannot silently accept the new one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LedgerFormat {
+    /// The shape this build writes: one print's sessions and turns, in order.
+    #[serde(rename = "1")]
+    V1,
+}
+
+/// The shape this build writes.
+const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V1;
 
 /// The name of the session watching one print, at one point in its sequence.
 ///
@@ -52,7 +66,7 @@ pub struct RecordedTurn {
 #[serde(deny_unknown_fields)]
 pub(crate) struct PrintLedger {
     /// The on-disk shape this file was written under.
-    schema_version: String,
+    schema_version: LedgerFormat,
     /// The print this ledger is about.
     print_id: PrintId,
     /// Every session opened for the print, in order; the last is the current
@@ -71,12 +85,36 @@ impl PrintLedger {
     }
 
     /// Read a print's ledger, answering an empty one for a print with none.
+    ///
+    /// A record is refused unless it is the shape this build writes and is the
+    /// ledger of the print it was selected by. Both are refusals rather than
+    /// repairs: a ledger written under a shape this build does not know is one
+    /// whose fields it would be guessing at, and a ledger holding another
+    /// print's sessions under this print's name is a state directory that has
+    /// been rearranged underneath the supervisor. Reading either as this
+    /// print's own history is how one print's conversation ends up continuing
+    /// another's.
     pub(crate) fn read(state_dir: &Path, print_id: &PrintId) -> io::Result<Self> {
         let path = Self::path(state_dir, print_id);
         match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text).map_err(io::Error::other),
+            Ok(text) => {
+                let ledger: Self = serde_json::from_str(&text).map_err(|error| {
+                    io::Error::other(format!(
+                        "{} is not a ledger this build reads (it writes {LEDGER_FORMAT:?}): {error}",
+                        path.display()
+                    ))
+                })?;
+                if ledger.print_id != *print_id {
+                    return Err(io::Error::other(format!(
+                        "{} holds the sessions of print {}, not of print {print_id}",
+                        path.display(),
+                        ledger.print_id
+                    )));
+                }
+                Ok(ledger)
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self {
-                schema_version: LEDGER_SCHEMA_VERSION.to_owned(),
+                schema_version: LEDGER_FORMAT,
                 print_id: *print_id,
                 sessions: Vec::new(),
                 turns: Vec::new(),
