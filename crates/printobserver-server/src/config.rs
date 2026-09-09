@@ -219,9 +219,11 @@ impl core::error::Error for ConfigError {}
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct OctoprintSection {
     /// The base URL the instance answers on.
-    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     /// The key it authenticates every request by.
-    pub api_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
     /// Whether the machine has a part-cooling fan this server may command.
     #[serde(default = "commandable")]
     pub fan: String,
@@ -239,6 +241,16 @@ fn commandable() -> String {
     FAN_VOCABULARY[0].0.to_owned()
 }
 
+impl Default for OctoprintSection {
+    fn default() -> Self {
+        Self {
+            url: None,
+            api_key: None,
+            fan: commandable(),
+        }
+    }
+}
+
 /// How the supervising agent is reached, as written down.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
@@ -247,9 +259,11 @@ fn commandable() -> String {
     rename_all = "snake_case"
 )]
 #[schemars(crate = "printobserver_types::schemars")]
+#[derive(Default)]
 pub struct SupervisorSection {
     /// The harness identity turns run on.
-    pub harness: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
     /// The model turns are pinned to, when one is pinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -273,7 +287,8 @@ pub struct SupervisorSection {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct IngressSection {
     /// The shared secret every post must carry.
-    pub shared_secret: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_secret: Option<String>,
     /// How long the ingress may take to answer, in milliseconds.
     #[serde(default = "default_answer_bound_ms")]
     pub answer_bound_ms: u64,
@@ -282,6 +297,15 @@ pub struct IngressSection {
 /// The answer bound a configuration naming none takes.
 const fn default_answer_bound_ms() -> u64 {
     DEFAULT_INGRESS_ANSWER_BOUND_MS
+}
+
+impl Default for IngressSection {
+    fn default() -> Self {
+        Self {
+            shared_secret: None,
+            answer_bound_ms: DEFAULT_INGRESS_ANSWER_BOUND_MS,
+        }
+    }
 }
 
 /// The whole configuration file, exactly as it is written down.
@@ -298,16 +322,22 @@ const fn default_answer_bound_ms() -> u64 {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct ConfigFile {
     /// Where the store, the images and the sessions live.
-    pub state_dir: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_dir: Option<PathBuf>,
     /// The address the API and the ingress are served on.
-    pub listen: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listen: Option<String>,
     /// Where the `OctoPrint` instance is.
+    #[serde(default)]
     pub octoprint: OctoprintSection,
     /// The operator's safety envelope.
-    pub safety: SafetyEnvelope,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety: Option<SafetyEnvelope>,
     /// How the supervising agent is reached.
+    #[serde(default)]
     pub supervisor: SupervisorSection,
     /// What the `Obico` ingress requires.
+    #[serde(default)]
     pub ingress: IngressSection,
 }
 
@@ -413,39 +443,24 @@ impl ServerConfig {
     }
 
     /// Rule on every value the document carries.
+    ///
+    /// Absence is ruled on here rather than by the parser, because a parser's
+    /// own "missing field" says which key it wanted and not which field of this
+    /// program that is. Every refusal below names the dotted key an operator
+    /// would edit.
     fn validate(file: ConfigFile) -> Result<Self, ConfigError> {
-        let state_dir = state_directory(&file.state_dir)?;
-        let listen = listen_address(&file.listen)?;
+        let state_dir =
+            state_directory(required(ConfigField::StateDir, file.state_dir)?.as_path())?;
+        let listen = listen_address(&required(ConfigField::Listen, file.listen)?)?;
         let octoprint_fan = fan_support(&file.octoprint.fan)?;
-        if file.octoprint.url.trim().is_empty() {
-            return Err(ConfigError::about(
-                ConfigField::OctoprintUrl,
-                "it names no OctoPrint instance",
-            ));
-        }
-        if file.octoprint.api_key.trim().is_empty() {
-            return Err(ConfigError::about(
-                ConfigField::OctoprintApiKey,
-                "it is empty, and an OctoPrint instance authenticates every request",
-            ));
-        }
-        check_envelope(&file.safety)?;
-        if file.supervisor.harness.trim().is_empty() {
-            return Err(ConfigError::about(
-                ConfigField::Harness,
-                "it names no harness, and a harness identity selects the agent a turn runs on",
-            ));
-        }
-        let model = match &file.supervisor.model {
+        let octoprint_url = named(ConfigField::OctoprintUrl, file.octoprint.url)?;
+        let octoprint_api_key = named(ConfigField::OctoprintApiKey, file.octoprint.api_key)?;
+        let safety = required(ConfigField::SafetyEnvelope, file.safety)?;
+        check_envelope(&safety)?;
+        let harness = named(ConfigField::Harness, file.supervisor.harness)?;
+        let model = match file.supervisor.model {
             None => None,
-            Some(name) if name.trim().is_empty() => {
-                return Err(ConfigError::about(
-                    ConfigField::Model,
-                    "it is empty; a model nobody pinned is the field left out rather than \
-                     a pin nothing can honour",
-                ));
-            }
-            Some(name) => Some(name.trim().to_owned()),
+            Some(name) => Some(named(ConfigField::Model, Some(name))?),
         };
         let skill_path = readable(
             ConfigField::SkillPath,
@@ -456,25 +471,21 @@ impl ServerConfig {
             file.supervisor.prompt_template_path.as_deref(),
         )?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
-        if file.ingress.shared_secret.trim().is_empty() {
-            return Err(ConfigError::about(
-                ConfigField::IngressSharedSecret,
-                "it is empty, and anything that can post to the ingress can pause a printer",
-            ));
-        }
+        let ingress_shared_secret =
+            named(ConfigField::IngressSharedSecret, file.ingress.shared_secret)?;
         Ok(Self {
             state_dir,
             listen,
-            octoprint_url: file.octoprint.url.trim().to_owned(),
-            octoprint_api_key: file.octoprint.api_key,
+            octoprint_url,
+            octoprint_api_key,
             octoprint_fan,
-            safety: file.safety,
-            harness: file.supervisor.harness.trim().to_owned(),
+            safety,
+            harness,
             model,
             skill_path,
             prompt_template_path,
             ingress_answer_bound,
-            ingress_shared_secret: file.ingress.shared_secret,
+            ingress_shared_secret,
         })
     }
 
@@ -483,6 +494,23 @@ impl ServerConfig {
     pub fn assets_dir(&self) -> PathBuf {
         self.state_dir.join(ASSETS_DIRECTORY)
     }
+}
+
+/// One field the file has to carry, refused by its own key when it does not.
+fn required<T>(field: ConfigField, value: Option<T>) -> Result<T, ConfigError> {
+    value.ok_or_else(|| ConfigError::about(field, "the configuration file carries no value for it"))
+}
+
+/// One field that has to carry a name rather than nothing at all.
+fn named(field: ConfigField, value: Option<String>) -> Result<String, ConfigError> {
+    let value = required(field, value)?;
+    if value.trim().is_empty() {
+        return Err(ConfigError::about(
+            field,
+            "it is empty, and an empty value names nothing",
+        ));
+    }
+    Ok(value.trim().to_owned())
 }
 
 /// The state directory, created where it is not there.

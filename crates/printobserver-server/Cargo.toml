@@ -38,6 +38,10 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 oneharness = { workspace = true, optional = true }
 
 [dev-dependencies]
+# `display` is a test-only need: the journeys build a configuration document as
+# values and render it, so a journey that makes one field unacceptable changes
+# that field and nothing else.
+toml = { version = "0.9", default-features = false, features = ["display", "parse", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
 sha2 = "0.10"
 tempfile = "3"
