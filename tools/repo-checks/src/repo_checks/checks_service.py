@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -179,13 +178,11 @@ def service_install(repo: Repo) -> list[str]:
                 f"so installing must not start a process that can move a machine"
             )
 
-    findings.extend(_granted_findings(repo, named.installer, script, service))
+    findings.extend(_granted_findings(repo, named.installer, script))
     return findings
 
 
-def _granted_findings(
-    repo: Repo, installer: str, script: str, service: dict[str, Any]
-) -> list[str]:
+def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:
     """The template grants actions the contracts declare, and no others.
 
     The names in the installed configuration's grants are the contracts'
@@ -194,18 +191,20 @@ def _granted_findings(
     generated action schema is read, and a name the template grants that the
     contracts do not declare is refused.
     """
-    table = service.get("granting_table")
-    if not isinstance(table, str) or table not in script:
-        return [
-            f"`{installer}` carries no `{table}` table, so nothing here reads the "
-            f"actions its configuration grants"
-        ]
     try:
+        table = policy_strings(policy_table(repo, "service"), ("granting_table",), "service")[
+            "granting_table"
+        ]
         schema_path = policy_strings(
             policy_table(repo, "supervisor"), ("action_schema",), "supervisor"
         )["action_schema"]
     except PolicyValueError as error:
         return [str(error)]
+    if table not in script:
+        return [
+            f"`{installer}` carries no `{table}` table, so nothing here reads the "
+            f"actions its configuration grants"
+        ]
     if not repo.exists(schema_path):
         return [f"`{schema_path}` is absent: it is the action vocabulary this reads"]
     declared = {

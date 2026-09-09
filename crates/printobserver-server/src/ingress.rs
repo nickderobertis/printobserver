@@ -195,10 +195,18 @@ pub(crate) async fn receive(
         .or(params.token);
     let body = RawBytes::new(body.to_vec());
     if !state.secret.matches(offered.as_deref()) {
-        record_unread(
-            &state.store,
-            body,
-            "the post carried no valid shared secret, so this system did not read it".to_owned(),
+        // Written down inside the same bound the answer is given inside: an
+        // unauthenticated post is the one class of post an operator most needs
+        // to see, and it is also the one a caller can send as fast as it likes,
+        // so the record is attempted rather than waited on.
+        let _ = tokio::time::timeout(
+            state.bound,
+            record_unread(
+                &state.store,
+                body,
+                "the post carried no valid shared secret, so this system did not read it"
+                    .to_owned(),
+            ),
         )
         .await;
         return rendered(

@@ -278,6 +278,34 @@ async fn the_answer_precedes_the_handling_and_arrives_inside_the_bound() {
     world.server.stop().await;
 }
 
+/// A post carrying no valid secret is refused inside the bound too.
+///
+/// Refusing one is not free — the bytes that arrived are written down — and a
+/// caller can send them as fast as it likes, so what would otherwise be
+/// unbounded is the answer `Obico` gets when its own secret has been rotated
+/// out from under it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_post_with_no_valid_secret_is_refused_inside_the_bound() {
+    let world = World::open().await;
+    let bound = world.server.config().ingress_answer_bound;
+
+    let started = Instant::now();
+    let status = post(&world, committed_sample(), Some("not-the-secret")).await;
+    let answered = started.elapsed();
+
+    assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED);
+    assert!(
+        answered < bound,
+        "an unauthenticated post was answered in {answered:?}, outside the {bound:?} bound"
+    );
+    assert_eq!(
+        unauthenticated_records(&world.state_dir()).len(),
+        1,
+        "an unauthenticated post was refused and not written down"
+    );
+    world.server.stop().await;
+}
+
 /// A body this system cannot read is taken, recorded, and costs nothing else.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_body_this_system_cannot_read_is_written_down() {

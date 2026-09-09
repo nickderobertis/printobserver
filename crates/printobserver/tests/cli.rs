@@ -44,6 +44,17 @@ fn an_invocation_this_program_does_not_answer_to_is_refused() {
             vec!["server", "--config", "one.toml", "--config", "another.toml"],
             "twice",
         ),
+        (vec!["context"], "needs the server it reads from"),
+        (vec!["context", "--server"], "--server"),
+        (
+            vec!["context", "--print", "x"],
+            "needs the server it reads from",
+        ),
+        (vec!["context", "--quickly"], "--quickly"),
+        (
+            vec!["context", "--print", "a", "--print", "b", "--server", "s"],
+            "twice",
+        ),
     ] {
         let (code, said) = run(&arguments);
         assert_eq!(code, Some(1), "`{arguments:?}` was accepted: {said}");
@@ -52,6 +63,54 @@ fn an_invocation_this_program_does_not_answer_to_is_refused() {
             "`{arguments:?}` was refused without naming `{named}`: {said}"
         );
     }
+}
+
+/// A context read of a supervisor that is not there says so, naming where it
+/// looked.
+#[test]
+fn a_context_read_of_a_supervisor_that_is_not_there_says_where_it_looked() {
+    // A port is bound to learn one that is free and then released, so what the
+    // read meets is a refused connection rather than a served refusal.
+    let address = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        listener.local_addr().expect("the bound address")
+    };
+
+    let (code, said) = run(&[
+        "context",
+        "--server",
+        &format!("http://{address}"),
+        "--print",
+        "01a08000-0000-7000-8000-000000000001",
+    ]);
+
+    assert_eq!(
+        code,
+        Some(1),
+        "a read of a supervisor that is not there succeeded"
+    );
+    assert!(
+        said.contains(&address.to_string()),
+        "the refusal does not name where it looked: {said}"
+    );
+}
+
+/// A server this program does not speak to is refused where it is named.
+#[test]
+fn a_server_this_program_does_not_speak_to_is_refused() {
+    let (code, said) = run(&[
+        "context",
+        "--server",
+        "https://elsewhere.example",
+        "--print",
+        "01a08000-0000-7000-8000-000000000001",
+    ]);
+
+    assert_eq!(code, Some(1));
+    assert!(
+        said.contains("https://elsewhere.example"),
+        "the refusal does not name the address: {said}"
+    );
 }
 
 /// A configuration that is not there refuses the start, naming the path.

@@ -21,6 +21,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+use printobserver_store_api::StorePort as _;
 use tempfile::TempDir;
 
 /// The unit's name, as the install-path section states it. `just check-repo`'s
@@ -319,6 +320,10 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         .replace("listen = \"127.0.0.1:8420\"", "listen = \"127.0.0.1:0\"");
     std::fs::write(&configuration, filled).expect("the configuration is writable");
 
+    // A print in the state directory the installer created, so the context read
+    // below has something to read. This is what an alert would have opened.
+    let print_id = a_print_in(&installed.state());
+
     let mut child = Command::new(&start[0])
         .args(&start[1..])
         .stderr(Stdio::piped())
@@ -338,6 +343,49 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
          JSON:\n{answer}"
     );
 
+    // The command a supervision turn runs to read its print's context is this
+    // program's own, and it reads from the server this program started.
+    let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .args([
+            "context",
+            "--server",
+            &format!("http://{address}"),
+            "--print",
+            &print_id,
+        ])
+        .output()
+        .expect("the context read runs");
+    assert!(
+        read.status.success(),
+        "the context read failed: {}",
+        String::from_utf8_lossy(&read.stderr)
+    );
+    let printed = String::from_utf8_lossy(&read.stdout);
+    assert!(
+        printed.contains(&print_id),
+        "the context read answered a context about another print: {printed}"
+    );
+
+    let refused = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .args([
+            "context",
+            "--server",
+            &format!("http://{address}"),
+            "--print",
+            absent_print(),
+        ])
+        .output()
+        .expect("the context read runs");
+    assert!(
+        !refused.status.success(),
+        "a context read of a print nothing holds succeeded"
+    );
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains(absent_print()),
+        "the refusal does not name the print: {}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+
     // Stopping it is the signal a service manager stops a unit with, and the
     // program answers it by shutting the server down and exiting successfully —
     // which is what makes `Restart=on-failure` mean what the unit says it does.
@@ -352,6 +400,19 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         finished.success(),
         "the program did not exit cleanly when it was stopped: {finished:?}"
     );
+}
+
+/// One print in a state directory, as an alert would have opened it.
+fn a_print_in(state: &Path) -> String {
+    let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("a runtime");
+    runtime
+        .block_on(store.open_print(Some(4211), Some("benchy.gcode".to_owned())))
+        .expect("a print opens")
+        .id
+        .to_string()
 }
 
 /// An identifier of a print nothing holds, spelled the one way this system

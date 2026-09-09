@@ -52,8 +52,8 @@ pub use operations::{
 };
 pub use reconcile::{Reconciliation, overdue, reconcile};
 pub use server::{
-    CONTEXT_COMMAND, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE, Server, StartError,
-    TURN_PROMPT,
+    CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE, Server, StartError,
+    TURN_PROMPT, context_command,
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,

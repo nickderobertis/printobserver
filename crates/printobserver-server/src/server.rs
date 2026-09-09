@@ -35,11 +35,20 @@ use crate::ingress::{IngressState, receive};
 use crate::operations::INGRESS_PATH;
 use crate::reconcile::{Reconciliation, overdue, reconcile};
 
+/// The program a supervision turn runs to read its print's context.
+pub const CONTEXT_PROGRAM: &str = "printobserver";
+
 /// The command a supervision turn runs to read its print's context.
 ///
-/// This program's own context read, against the print the turn is about.
+/// This program's own context read, against the print the turn is about and the
+/// address this server took — which is the bound address rather than the
+/// configured one, because a configuration may ask for any free port and a turn
+/// has to reach the one that was taken.
 /// `printobserver-oneharness` substitutes the print for the placeholder.
-pub const CONTEXT_COMMAND: &str = "printobserver context --print {print_id}";
+#[must_use]
+pub fn context_command(address: SocketAddr) -> String {
+    format!("{CONTEXT_PROGRAM} context --server http://{address} --print {{print_id}}")
+}
 
 /// The file name the agent's skill is materialized under.
 pub const SKILL_FILE: &str = "printobserver-skill.md";
@@ -205,6 +214,20 @@ impl Server {
     /// The same as [`Server::start`], less the refusals that belong to building
     /// the implementations.
     pub async fn start_with(config: ServerConfig, ports: Ports) -> Result<Running, StartError> {
+        // The listener is taken first, because the command a supervision turn
+        // runs to read its context names the address this server is answering
+        // on — and a configuration may ask for any free port.
+        let listener =
+            TcpListener::bind(config.listen)
+                .await
+                .map_err(|error| StartError::Listen {
+                    address: config.listen,
+                    detail: error.to_string(),
+                })?;
+        let address = listener.local_addr().map_err(|error| StartError::Listen {
+            address: config.listen,
+            detail: error.to_string(),
+        })?;
         let clock = Arc::new(SystemClock);
         let due = overdue(&ports.store, clock.now()).await.map_err(|error| {
             StartError::Reconciliation {
@@ -212,7 +235,7 @@ impl Server {
             }
         })?;
         let supervisor = Supervisor::new(
-            CoreConfig::new(config.safety.clone(), CONTEXT_COMMAND.to_owned()),
+            CoreConfig::new(config.safety.clone(), context_command(address)),
             Arc::clone(&ports.printer),
             Arc::clone(&ports.store),
             Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
@@ -243,17 +266,6 @@ impl Server {
                 .with_state(ingress),
         );
 
-        let listener =
-            TcpListener::bind(config.listen)
-                .await
-                .map_err(|error| StartError::Listen {
-                    address: config.listen,
-                    detail: error.to_string(),
-                })?;
-        let address = listener.local_addr().map_err(|error| StartError::Listen {
-            address: config.listen,
-            detail: error.to_string(),
-        })?;
         let (stop, stopped) = oneshot::channel::<()>();
         let serving = tokio::spawn(async move {
             let _ = axum::serve(listener, application)
