@@ -39,6 +39,15 @@ pub const SESSION: &str = "watch-integration";
 /// through a ten-second dwell answers when the dwell does.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The bound the manifest this tier writes narrows the feedrate to.
+///
+/// Named here because both the walk's accepted values and the responder's own
+/// action have to sit inside it, and the rejection has to sit outside it.
+pub const NARROWED: (f64, f64) = (0.8, 1.2);
+
+/// The file this tier's responder appends what it did to.
+pub const RESPONDER_LOG: &str = "responder-actions.log";
+
 /// The server this tier drives, and everything it was composed from.
 pub struct Composed {
     /// The state directory, removed when this is dropped.
@@ -54,10 +63,14 @@ pub struct Composed {
 }
 
 impl Composed {
-    /// A server over a fresh state directory, against the scripted instance.
-    pub async fn open(instance: &Scripted) -> Self {
+    /// A server over a fresh state directory, reaching the instance at one URL.
+    ///
+    /// The URL is the recording proxy's rather than the instance's own, so that
+    /// what the machine received is readable for the three actions it reports
+    /// nothing about.
+    pub async fn open(instance: &Scripted, octoprint: &str) -> Self {
         let root = TempDir::new().expect("this tier's own root");
-        let config = configuration(root.path(), instance);
+        let config = configuration(root.path(), instance, octoprint);
         let (server, store) = start(&config).await;
         Self {
             root,
@@ -66,6 +79,15 @@ impl Composed {
             client: reqwest::Client::new(),
             config,
         }
+    }
+
+    /// Everything this tier's responder has done, one line per action.
+    pub fn responder_log(&self) -> Vec<String> {
+        std::fs::read_to_string(responder_log_path(&self.config))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
     }
 
     /// Stop this server and start another over the same state directory.
@@ -160,7 +182,7 @@ async fn read(
 }
 
 /// The configuration this tier runs under, written into its own root.
-fn configuration(root: &std::path::Path, instance: &Scripted) -> ServerConfig {
+fn configuration(root: &std::path::Path, instance: &Scripted, octoprint: &str) -> ServerConfig {
     let document = format!(
         r#"
 state_dir = "{state}"
@@ -192,12 +214,15 @@ bed_target = {{ min = 0.0, max = 110.0 }}
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
             "set_fan_percent", "acknowledge_failure"]
-agent = ["pause", "set_feedrate_factor", "set_fan_percent"]
+# The agent is granted one adjustment and nothing else, so an agent asking for
+# anything else is a rejection of that operation's own kind — and the one it is
+# granted is the one this tier's responder issues through the API.
+agent = ["set_feedrate_factor"]
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
 "#,
         state = root.join("state").display(),
-        url = instance.url,
+        url = octoprint,
         key = instance.api_key,
     );
     let path = root.join("config.toml");
@@ -307,8 +332,8 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         "summary": "the first layer is down and the walls are clean",
         "confidence": "high",
         "should_continue": true,
-        "did": "read the event, the picture and the print's context",
-        "why": "nothing in the picture is coming away from the bed",
+        "did": "slowed the feedrate for ten minutes and was refused a second change",
+        "why": "the extrusion width was widening on the long edges",
         "escalating": false,
     })
     .to_string();
@@ -326,15 +351,69 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         harness: HarnessIdentity::new("claude-code").expect("a harness identity"),
         model: None,
         working_dir: config.state_dir.clone(),
-        turn_timeout: TurnTimeout::DEFAULT,
+        // Long enough for the two actions this tier's responder issues against a
+        // real machine, and short enough that a turn which hangs is a defect to
+        // be read rather than five minutes to be waited out.
+        turn_timeout: TurnTimeout::new(240).expect("a bound"),
         harness_bin: Some(PathBuf::from(env!(
             "CARGO_BIN_EXE_printobserver-server-responder"
         ))),
         harness_env: vec![
             EnvAssignment::new(&format!("MOCK_STDOUT={document}")).expect("an assignment"),
+            EnvAssignment::new(&format!(
+                "PRINTOBSERVER_RESPONDER_LOG={}",
+                responder_log_path(config).display()
+            ))
+            .expect("an assignment"),
+            EnvAssignment::new(&format!(
+                "PRINTOBSERVER_RESPONDER_ACTIONS={}",
+                responder_actions()
+            ))
+            .expect("an assignment"),
         ],
     })
     .expect("the supervising agent is built")
+}
+
+/// Where this tier's responder appends what it did.
+///
+/// Beside the state directory rather than inside it, so that a restart over the
+/// same state directory goes on appending to the one file a journey reads.
+fn responder_log_path(config: &ServerConfig) -> PathBuf {
+    config
+        .state_dir
+        .parent()
+        .unwrap_or(&config.state_dir)
+        .join(RESPONDER_LOG)
+}
+
+/// The actions this tier's responder issues through the API on every turn.
+///
+/// One the policy admits and one it does not, both as the agent: an adjustment
+/// inside the bounds the feedrate runs under, carrying a duration so that the
+/// intervention it opens is readable, and one outside the operator's envelope
+/// altogether — outside it whether or not a manifest has narrowed anything, so
+/// that the turn the first alert prompts is bounded exactly as every later one
+/// is.
+fn responder_actions() -> String {
+    json!([
+        {
+            "operation": "set_feedrate_factor",
+            "body": {
+                "reason": "the extrusion width is widening on the long edges",
+                "factor": 1.15,
+                "duration_s": 600,
+            },
+        },
+        {
+            "operation": "set_feedrate_factor",
+            "body": {
+                "reason": "asking for more than the operator's envelope allows",
+                "factor": 2.5,
+            },
+        },
+    ])
+    .to_string()
 }
 
 /// Start one server over the real four.

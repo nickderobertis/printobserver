@@ -1,16 +1,35 @@
-//! The whole loop, walked once against the machine and the harness.
+//! Every declared operation, against the real machine and the real harness.
 //!
 //! One walk rather than several tests, because every step acts on one shared
 //! machine and the order they run in is part of what is proven: an adjustment
 //! needs a running print, a resume needs a paused one, and a cancel ends the
 //! print the steps before it needed. A runner free to interleave them would be
 //! proving something else.
+//!
+//! # Where each operation's effect is confirmed
+//!
+//! Seven of the ten actions have a read-back at the machine — start, pause,
+//! resume, cancel, the two heater targets and the acknowledgement that stops a
+//! print — and are confirmed by a status read afterwards. Three have none:
+//! `OctoPrint` reports neither an applied feedrate factor nor an applied
+//! flowrate factor nor a fan setting. For those the observable is **what the
+//! instance received**, read out of a recording proxy that forwards every
+//! request verbatim to the real machine — so what was recorded is what the
+//! machine ruled on rather than what this server believed it sent. The value
+//! each is asserted to carry is computed with the adapter's own exported
+//! conversion, because the number on the wire is that adapter's business and no
+//! crate but that adapter may spell one.
 
+use printobserver_octoprint::{
+    FAN_PWM_PARAMETER, FAN_SET_COMMAND, fan_pwm_of_percent, percent_of_multiplier,
+};
+use printobserver_server::{Effect, OPERATIONS, Operation};
 use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{EventKind, PrintId};
 
-use crate::composition::{Composed, SECRET, hold_the_print_running};
+use crate::composition::{Composed, NARROWED, SECRET, hold_the_print_running};
 use crate::http_host::image_host;
+use crate::proxy::Proxy;
 use crate::scripted::Scripted;
 use crate::waiting::until;
 
@@ -19,6 +38,9 @@ const HOLD_FILE: &str = "hold.gcode";
 
 /// Obico's own identifier for the print this walk's alerts are about.
 const OBICO_PRINT: i64 = 4211;
+
+/// How long a bounded adjustment stands for, in the step that bounds one.
+const DURATION_S: i64 = 600;
 
 /// The bytes this walk's own image host serves.
 fn snapshot_bytes() -> Vec<u8> {
@@ -48,6 +70,165 @@ fn body(extra: &[(&str, Value)]) -> Value {
         object.insert((*name).to_owned(), value.clone());
     }
     body
+}
+
+/// The same body, as the actor class the envelope grants one adjustment to and
+/// nothing else.
+fn as_the_agent(extra: &[(&str, Value)]) -> Value {
+    let mut body = body(extra);
+    body.as_object_mut().expect("the body is an object").insert(
+        "actor".to_owned(),
+        json!({ "agent": { "session_name": "watch-1" } }),
+    );
+    body
+}
+
+/// The manifest a start is bounded by, naming the file it is about.
+fn manifest() -> Value {
+    json!({
+        "file_name": HOLD_FILE,
+        "material": "PLA",
+        "nozzle_diameter_mm": 0.4,
+        "slicer_profile": "0.20mm QUALITY",
+        "allowed": { "feedrate": { "min": NARROWED.0, "max": NARROWED.1 } },
+        "metadata": {},
+    })
+}
+
+/// The body a manifest write takes: the manifest, and why it is written.
+fn manifest_write(reason: Option<&str>) -> Value {
+    let mut body = json!({ "manifest": manifest() });
+    if let Some(reason) = reason {
+        body.as_object_mut()
+            .expect("the body is an object")
+            .insert("reason".to_owned(), json!(reason));
+    }
+    body
+}
+
+/// What one mutating operation is asked, and what asking should do.
+struct Live {
+    /// A body the policy accepts.
+    accepted: Value,
+    /// A body the policy rejects, of this operation's own kind.
+    rejected: Value,
+    /// The state the machine should report once it has taken the accepted body,
+    /// when the machine reports the effect at all.
+    reaches: Option<&'static str>,
+    /// Where a snapshot reports the value this operation set, and what it
+    /// should read as.
+    reported: Option<(&'static str, Value)>,
+    /// What the instance should have received, for a value it reports nothing
+    /// about: every fragment one recorded body has to carry.
+    received: Vec<String>,
+    /// The adjustable this operation changes, when it changes one.
+    adjustable: Option<&'static str>,
+}
+
+/// What every mutating operation is asked, by the name it is declared under.
+///
+/// The rejected body is of that operation's own kind: a value outside the
+/// bounds the manifest narrowed for an adjustment, and an actor class the
+/// envelope does not grant the action to for the rest.
+fn live(name: &str) -> Live {
+    match name {
+        "pause" => Live {
+            accepted: body(&[]),
+            rejected: as_the_agent(&[]),
+            reaches: Some("paused"),
+            reported: None,
+            received: Vec::new(),
+            adjustable: None,
+        },
+        "resume" => Live {
+            accepted: body(&[]),
+            rejected: as_the_agent(&[]),
+            reaches: Some("printing"),
+            reported: None,
+            received: Vec::new(),
+            adjustable: None,
+        },
+        "cancel" => Live {
+            accepted: body(&[]),
+            rejected: as_the_agent(&[]),
+            reaches: Some("operational"),
+            reported: None,
+            received: Vec::new(),
+            adjustable: None,
+        },
+        "start_print" => Live {
+            accepted: body(&[("file_name", json!(HOLD_FILE)), ("manifest", manifest())]),
+            rejected: as_the_agent(&[("file_name", json!(HOLD_FILE)), ("manifest", manifest())]),
+            reaches: Some("printing"),
+            reported: None,
+            received: Vec::new(),
+            adjustable: None,
+        },
+        "acknowledge_failure" => Live {
+            accepted: body(&[
+                ("event_id", json!(printobserver_types::EventId::new())),
+                ("disposition", json!("stop")),
+            ]),
+            rejected: as_the_agent(&[
+                ("event_id", json!(printobserver_types::EventId::new())),
+                ("disposition", json!("continue")),
+            ]),
+            // Stopping a print is cancelling it, which is what the machine
+            // reports afterwards.
+            reaches: Some("operational"),
+            reported: None,
+            received: Vec::new(),
+            adjustable: None,
+        },
+        "set_tool_target_c" => Live {
+            accepted: body(&[("tool", json!(0)), ("target_c", json!(205.0))]),
+            rejected: body(&[("tool", json!(0)), ("target_c", json!(900.0))]),
+            reaches: None,
+            reported: Some(("printer.tools.0.target_c.value", json!(205.0))),
+            received: Vec::new(),
+            adjustable: Some("tool_target:0"),
+        },
+        "set_bed_target_c" => Live {
+            accepted: body(&[("target_c", json!(61.0))]),
+            rejected: body(&[("target_c", json!(400.0))]),
+            reaches: None,
+            reported: Some(("printer.bed.target_c.value", json!(61.0))),
+            received: Vec::new(),
+            adjustable: Some("bed_target"),
+        },
+        "set_feedrate_factor" => Live {
+            accepted: body(&[("factor", json!(1.13))]),
+            rejected: body(&[("factor", json!(1.45))]),
+            reaches: None,
+            reported: None,
+            received: vec![percent_of_multiplier(1.13).to_string()],
+            adjustable: Some("feedrate"),
+        },
+        "set_flowrate_factor" => Live {
+            accepted: body(&[("factor", json!(1.07))]),
+            rejected: body(&[("factor", json!(4.0))]),
+            reaches: None,
+            reported: None,
+            received: vec![percent_of_multiplier(1.07).to_string()],
+            adjustable: Some("flowrate"),
+        },
+        "set_fan_percent" => Live {
+            accepted: body(&[("percent", json!(55.0))]),
+            rejected: body(&[("percent", json!(500.0))]),
+            reaches: None,
+            reported: None,
+            // The one command this adapter ever sends, the parameter it binds
+            // its number to, and the duty its own conversion gives for that
+            // percentage — all three read off the adapter's own exports.
+            received: vec![
+                FAN_SET_COMMAND.to_owned(),
+                FAN_PWM_PARAMETER.to_owned(),
+                fan_pwm_of_percent(55.0).to_string(),
+            ],
+            adjustable: Some("fan"),
+        },
+        other => panic!("`{other}` is a mutating operation this walk does not know"),
+    }
 }
 
 /// Deliver one alert to the real ingress, and wait its handling out.
@@ -88,6 +269,18 @@ async fn status(world: &Composed, print_id: PrintId) -> Value {
     answer
 }
 
+/// One value of an answer, by a dotted path through it.
+fn at<'a>(answer: &'a Value, path: &str) -> &'a Value {
+    let mut here = answer;
+    for segment in path.split('.') {
+        here = match segment.parse::<usize>() {
+            Ok(index) => &here[index],
+            Err(_) => &here[segment],
+        };
+    }
+    here
+}
+
 /// Wait until the machine reports one connection state.
 async fn until_state(world: &Composed, print_id: PrintId, wanted: &str) {
     until(&format!("the machine to report {wanted}"), || async {
@@ -101,30 +294,14 @@ async fn until_state(world: &Composed, print_id: PrintId, wanted: &str) {
     .await;
 }
 
-/// Ask for one action, and answer what the server said.
-async fn act(world: &Composed, print_id: PrintId, name: &str, body: &Value) -> (u16, Value) {
-    let (code, answer) = world.post(&world.operation_url(name, print_id), body).await;
+/// Ask for one operation, and answer what the server said.
+async fn ask(world: &Composed, print_id: PrintId, name: &str, body: &Value) -> (u16, Value) {
+    let url = world.operation_url(name, print_id);
+    let (code, answer) = match name {
+        "manifest_set" => world.put(&url, body).await,
+        _ => world.post(&url, body).await,
+    };
     (code.as_u16(), answer)
-}
-
-/// The body a manifest write takes: the manifest, and why it is written.
-fn manifest_write() -> Value {
-    json!({
-        "reason": "the integration tier is writing the bounds this print runs under",
-        "manifest": manifest(),
-    })
-}
-
-/// The manifest a start is bounded by, naming the file it is about.
-fn manifest() -> Value {
-    json!({
-        "file_name": HOLD_FILE,
-        "material": "PLA",
-        "nozzle_diameter_mm": 0.4,
-        "slicer_profile": "0.20mm QUALITY",
-        "allowed": { "feedrate": { "min": 0.8, "max": 1.2 } },
-        "metadata": {},
-    })
 }
 
 /// The whole loop.
@@ -133,67 +310,20 @@ pub async fn walk(instance: &Scripted) {
     // An alert delivered to an idle machine ends the print it opens, so the
     // machine is printing before the first one arrives.
     hold_the_print_running(instance).await;
-    let world = Composed::open(instance).await;
+    let proxy = Proxy::in_front_of(&instance.url);
+    let world = Composed::open(instance, &proxy.base_url()).await;
 
-    // An alert reaches the real ingress; the print and its image are stored and
-    // a session opens through the real harness.
-    deliver(&world, &host.url()).await;
-    let print_id = print_of(&world).await;
-    let recorded = history(&world, print_id).await;
-    assert!(
-        recorded.contains(&EventKind::ObicoFailureAlert),
-        "the alert was not recorded: {recorded:?}"
-    );
-    assert!(
-        recorded.contains(&EventKind::SupervisionSessionOpened),
-        "no session opened through the harness: {recorded:?}"
-    );
-    let opened = status(&world, print_id).await;
-    let session = opened["session"]["session_name"].clone();
-    assert!(
-        session.as_str().is_some_and(|name| !name.is_empty()),
-        "the alert opened no session through the harness: {opened}"
-    );
-    stored_image_is_a_path(&world, print_id).await;
+    let print_id = an_alert_opens_a_print_a_session_and_an_image(&world, &host.url()).await;
+    the_agent_acted_through_the_api(&world, print_id).await;
+    the_reads_answer_the_records_they_name(&world, print_id).await;
+    every_change_refuses_a_request_with_no_reason(&world, &proxy, print_id).await;
+    every_mutating_operation_is_rejected_in_its_own_kind(&world, &proxy, print_id).await;
+    every_adjustment_applies_the_duration_it_is_given(&world, print_id).await;
+    every_mutating_operation_has_its_own_effect(&world, &proxy, print_id).await;
+    the_history_accounts_for_every_step(&world, print_id).await;
 
-    // The manifest narrows the feedrate, which is what the bounded adjustment
-    // below is refused by.
-    let (code, written) = world
-        .put(
-            &world.operation_url("manifest_set", print_id),
-            &manifest_write(),
-        )
-        .await;
-    assert_eq!(code, reqwest::StatusCode::OK, "{written}");
-    let (code, read_back) = world
-        .get(&world.operation_url("manifest_get", print_id))
-        .await;
-    assert_eq!(code, reqwest::StatusCode::OK, "{read_back}");
-    assert_eq!(
-        read_back["manifest"],
-        manifest(),
-        "the manifest did not read back as it was written"
-    );
-
-    bounded_and_executed(&world, print_id).await;
-    paused_and_resumed(&world, print_id).await;
-    cancelled_and_started(&world, print_id).await;
-
-    // Every step is accounted for in the history the API reads afterwards.
-    let after = history(&world, print_id).await;
-    for wanted in [
-        EventKind::ObicoFailureAlert,
-        EventKind::SupervisionSessionOpened,
-        EventKind::AgentAssessment,
-    ] {
-        assert!(
-            after.contains(&wanted),
-            "the history does not account for {wanted:?}: {after:?}"
-        );
-    }
-
-    // Restart, and a second alert continues the first alert's session. The
-    // machine is printing again first, for the reason the first alert needed it.
+    // Restart, and a second alert continues the first alert's session — with the
+    // agent acting through the API again inside it.
     hold_the_print_running(instance).await;
     let world = world.restart().await;
     assert!(
@@ -201,19 +331,25 @@ pub async fn walk(instance: &Scripted) {
         "the restart did not adopt the print it was watching: {:?}",
         world.server.reconciliation()
     );
+    let before = status(&world, print_id).await["session"]["session_name"].clone();
+    let acted_before = world.responder_log().len();
     deliver(&world, &host.url()).await;
-    let continued = status(&world, print_id).await;
+    let after = status(&world, print_id).await;
     assert_eq!(
-        continued["session"]["session_name"], session,
+        after["session"]["session_name"], before,
         "the second alert did not continue the first alert's session"
     );
+    assert!(
+        world.responder_log().len() > acted_before,
+        "the turn after the restart issued no action through the API"
+    );
+    the_agent_acted_through_the_api(&world, print_id).await;
+
     let reconciled = history(&world, print_id).await;
     assert!(
         reconciled.contains(&EventKind::StartupReconciliation),
         "the restart recorded none of what it adopted: {reconciled:?}"
     );
-    // A session that was opened twice would be a second conversation about one
-    // print, which is what continuing means it is not.
     assert_eq!(
         reconciled
             .iter()
@@ -226,6 +362,424 @@ pub async fn walk(instance: &Scripted) {
     // Leave the environment as the bring-up recipe left it.
     hold_the_print_running(instance).await;
     world.server.stop().await;
+}
+
+/// The alert opens the print, stores its image, and opens a session.
+async fn an_alert_opens_a_print_a_session_and_an_image(
+    world: &Composed,
+    image_url: &str,
+) -> PrintId {
+    deliver(world, image_url).await;
+    let print_id = print_of(world).await;
+    let recorded = history(world, print_id).await;
+    assert!(
+        recorded.contains(&EventKind::ObicoFailureAlert),
+        "the alert was not recorded: {recorded:?}"
+    );
+    assert!(
+        recorded.contains(&EventKind::SupervisionSessionOpened),
+        "no session opened through the harness: {recorded:?}"
+    );
+    let opened = status(world, print_id).await;
+    assert!(
+        opened["session"]["session_name"]
+            .as_str()
+            .is_some_and(|name| !name.is_empty()),
+        "the alert opened no session through the harness: {opened}"
+    );
+    stored_image_is_a_path(world, print_id).await;
+    print_id
+}
+
+/// The agent asked this server for something, through the running API.
+///
+/// The responder issues both of its actions on every turn: one the policy
+/// admits and one it does not. What is asserted here is that the policy ruled on
+/// both, that the machine took the accepted one, that it opened the intervention
+/// the duration asked for, and that the action the server recorded carries the
+/// session the assessment beside it does.
+async fn the_agent_acted_through_the_api(world: &Composed, print_id: PrintId) {
+    let acted = world.responder_log();
+    assert!(
+        !acted.is_empty(),
+        "the agent's own turn issued no action through the API; nothing was written down"
+    );
+
+    let taken = acted
+        .iter()
+        .rev()
+        .find(|line| line.contains("HTTP/1.1 200"))
+        .unwrap_or_else(|| panic!("no action the agent issued was accepted: {acted:?}"));
+    let refused = acted
+        .iter()
+        .rev()
+        .find(|line| line.contains("HTTP/1.1 409"))
+        .unwrap_or_else(|| {
+            panic!(
+                "the policy took an action the agent asked outside the bounds it holds \
+                 the feedrate to: {acted:?}"
+            )
+        });
+
+    assert!(
+        refused.contains("out_of_bounds") && refused.contains("2.5"),
+        "the policy refused the agent without saying what was out of bounds: {refused}"
+    );
+    assert!(
+        taken.contains("\"outcome\":\"succeeded\""),
+        "the machine did not take the action the agent issued: {taken}"
+    );
+    assert!(
+        taken.contains("\"intervention\""),
+        "the bounded action the agent issued opened no intervention: {taken}"
+    );
+
+    let session = status(world, print_id).await["session"]["session_name"].clone();
+    let named = session.as_str().expect("a session name");
+    assert!(
+        taken.contains(named),
+        "the action the agent issued names another session than the turn it ran in: \
+         {taken} against {named}"
+    );
+}
+
+/// Every operation that changes something refuses a request carrying no reason.
+async fn every_change_refuses_a_request_with_no_reason(
+    world: &Composed,
+    proxy: &Proxy,
+    print_id: PrintId,
+) {
+    let mut walked = Vec::new();
+    for operation in OPERATIONS {
+        if !operation.is_mutating() {
+            continue;
+        }
+        for (described, reason) in [
+            ("no reason at all", None),
+            ("a reason that is only whitespace", Some("   ")),
+        ] {
+            let before = stored(world, print_id).await;
+            proxy.forget();
+            let body = reasonless(&operation, reason);
+
+            let (code, answer) = ask(world, print_id, operation.name, &body).await;
+
+            assert_eq!(
+                code, 400,
+                "`{}` took a request carrying {described}: {answer}",
+                operation.name
+            );
+            assert!(
+                proxy.bodies().is_empty(),
+                "`{}` carried a request with {described} to the machine: {:?}",
+                operation.name,
+                proxy.bodies()
+            );
+            assert_eq!(
+                stored(world, print_id).await,
+                before,
+                "`{}` changed a stored record for a request with {described}",
+                operation.name
+            );
+        }
+        walked.push(operation.name);
+    }
+    let declared: Vec<&str> = OPERATIONS
+        .iter()
+        .filter(|operation| operation.is_mutating())
+        .map(|operation| operation.name)
+        .collect();
+    assert_eq!(
+        walked, declared,
+        "the declared list holds an operation that changes something and this walk \
+         did not reach"
+    );
+}
+
+/// The body one mutating operation takes with the reason given — or with none.
+///
+/// The manifest it offers narrows the feedrate, so a server that wrote it before
+/// ruling on the reason would move both the stored manifest and the print's
+/// narrowings, and the record comparison would see it.
+fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
+    if operation.effect == Effect::Write {
+        return manifest_write(reason);
+    }
+    let mut body = live(operation.name).accepted;
+    let object = body.as_object_mut().expect("the body is an object");
+    match reason {
+        Some(blank) => {
+            object.insert("reason".to_owned(), json!(blank));
+        }
+        None => {
+            object.remove("reason");
+        }
+    }
+    body
+}
+
+/// Every mutating operation answers the policy's own rejection, and moves
+/// nothing.
+async fn every_mutating_operation_is_rejected_in_its_own_kind(
+    world: &Composed,
+    proxy: &Proxy,
+    print_id: PrintId,
+) {
+    let mut walked = Vec::new();
+    for operation in OPERATIONS {
+        let Effect::Mutating(_) = operation.effect else {
+            continue;
+        };
+        let plan = live(operation.name);
+        let before = stored(world, print_id).await;
+        let state_before = status(world, print_id).await["printer"]["connection"].clone();
+        proxy.forget();
+
+        let (code, answer) = ask(world, print_id, operation.name, &plan.rejected).await;
+
+        assert_eq!(code, 409, "`{}` was not rejected: {answer}", operation.name);
+        let rejection = &answer["record"]["decision"]["rejected"];
+        assert!(
+            !rejection.is_null(),
+            "`{}` answered no rejection the caller can act on: {answer}",
+            operation.name
+        );
+        if let Some(adjustable) = plan.adjustable {
+            let bounds = &rejection["out_of_bounds"];
+            assert_eq!(
+                bounds["adjustable"],
+                json!(adjustable),
+                "`{}` was rejected without naming what was out of bounds: {answer}",
+                operation.name
+            );
+            assert!(
+                !bounds["requested"].is_null() && !bounds["allowed"].is_null(),
+                "`{}` was rejected without the value asked for and the range \
+                 allowed: {answer}",
+                operation.name
+            );
+        } else {
+            assert!(
+                !rejection["actor_may_not_request"].is_null(),
+                "`{}` was rejected for something other than the actor asking: {answer}",
+                operation.name
+            );
+        }
+        assert!(
+            proxy.bodies().is_empty(),
+            "`{}` was rejected and the machine was asked {:?}",
+            operation.name,
+            proxy.bodies()
+        );
+        assert_eq!(
+            status(world, print_id).await["printer"]["connection"],
+            state_before,
+            "`{}` was rejected and the machine moved anyway",
+            operation.name
+        );
+        assert_eq!(
+            stored(world, print_id).await,
+            before,
+            "`{}` was rejected and a stored record moved anyway",
+            operation.name
+        );
+        walked.push(operation.name);
+    }
+    assert_eq!(
+        walked,
+        vocabulary(),
+        "the declared list holds a mutating operation this walk did not reject"
+    );
+}
+
+/// Every adjustment applies the duration it is given, and opens nothing without.
+async fn every_adjustment_applies_the_duration_it_is_given(world: &Composed, print_id: PrintId) {
+    let mut walked = Vec::new();
+    for operation in OPERATIONS {
+        let Effect::Mutating(_) = operation.effect else {
+            continue;
+        };
+        let plan = live(operation.name);
+        let Some(adjustable) = plan.adjustable else {
+            continue;
+        };
+
+        let mut bounded = plan.accepted.clone();
+        bounded
+            .as_object_mut()
+            .expect("the body is an object")
+            .insert("duration_s".to_owned(), json!(DURATION_S));
+        let (code, answer) = ask(world, print_id, operation.name, &bounded).await;
+        assert_eq!(code, 200, "`{}`: {answer}", operation.name);
+
+        let intervention = &answer["intervention"];
+        assert!(
+            !intervention.is_null(),
+            "`{}` was given a duration and opened no intervention: {answer}",
+            operation.name
+        );
+        assert_eq!(
+            intervention["adjustable"],
+            json!(adjustable),
+            "`{}` opened an intervention about something else: {answer}",
+            operation.name
+        );
+        assert_eq!(
+            instant(&intervention["expires_at"]) - instant(&intervention["applied_at"]),
+            DURATION_S,
+            "`{}` opened an intervention whose expiry is not the duration asked \
+             for: {answer}",
+            operation.name
+        );
+
+        let (code, answer) = ask(world, print_id, operation.name, &plan.accepted).await;
+        assert_eq!(code, 200, "`{}`: {answer}", operation.name);
+        assert!(
+            answer["intervention"].is_null(),
+            "`{}` was given no duration and opened an intervention anyway: {answer}",
+            operation.name
+        );
+        walked.push(operation.name);
+    }
+    assert_eq!(
+        walked.len(),
+        5,
+        "this walk bounded {} adjustments, and the vocabulary declares five: {walked:?}",
+        walked.len()
+    );
+}
+
+/// The order a shared machine admits: the adjustments while the print runs, then
+/// pause and resume, then the cancel that ends it, then the start that puts it
+/// back, then the acknowledgement that stops it again.
+const IN_ORDER: [&str; 10] = [
+    "set_bed_target_c",
+    "set_tool_target_c",
+    "set_feedrate_factor",
+    "set_flowrate_factor",
+    "set_fan_percent",
+    "pause",
+    "resume",
+    "cancel",
+    "start_print",
+    "acknowledge_failure",
+];
+
+/// Every mutating operation has the effect it names, at the machine itself.
+async fn every_mutating_operation_has_its_own_effect(
+    world: &Composed,
+    proxy: &Proxy,
+    print_id: PrintId,
+) {
+    let mut walked = Vec::new();
+    for name in IN_ORDER {
+        let plan = live(name);
+        proxy.forget();
+        let (code, answer) = ask(world, print_id, name, &plan.accepted).await;
+        assert_eq!(code, 200, "`{name}` was not accepted: {answer}");
+        assert_eq!(
+            answer["record"]["decision"],
+            json!("accepted"),
+            "`{name}` answered a decision that is not acceptance: {answer}"
+        );
+        assert_eq!(
+            answer["record"]["outcome"],
+            json!("succeeded"),
+            "`{name}` reached the real instance and it did not take it: {answer}"
+        );
+
+        if let Some(state) = plan.reaches {
+            until_state(world, print_id, state).await;
+        }
+        if let Some((path, value)) = plan.reported {
+            until(
+                &format!("the machine to report {path} as {value}"),
+                || async {
+                    let seen = at(&status(world, print_id).await, path).clone();
+                    if seen == value {
+                        None
+                    } else {
+                        Some(seen.to_string())
+                    }
+                },
+            )
+            .await;
+        }
+        if !plan.received.is_empty() {
+            let bodies = proxy.bodies();
+            assert!(
+                bodies.iter().any(|body| plan
+                    .received
+                    .iter()
+                    .all(|fragment| body.contains(fragment.as_str()))),
+                "`{name}` reports nothing a snapshot can read, and the instance \
+                 received no request carrying all of {:?}: {bodies:?}",
+                plan.received
+            );
+        }
+        walked.push(name);
+    }
+
+    let mut reached = walked.clone();
+    reached.sort_unstable();
+    let mut declared = vocabulary();
+    declared.sort_unstable();
+    assert_eq!(
+        reached, declared,
+        "the declared list holds a mutating operation whose effect this walk did \
+         not reach"
+    );
+}
+
+/// Every read answers the record it names, read back out of the store.
+async fn the_reads_answer_the_records_they_name(world: &Composed, print_id: PrintId) {
+    let (code, written) = ask(
+        world,
+        print_id,
+        "manifest_set",
+        &manifest_write(Some("the integration tier is narrowing the bounds")),
+    )
+    .await;
+    assert_eq!(code, 200, "{written}");
+
+    let (code, read_back) = world
+        .get(&world.operation_url("manifest_get", print_id))
+        .await;
+    assert_eq!(code, reqwest::StatusCode::OK);
+    assert_eq!(
+        read_back["manifest"],
+        manifest(),
+        "the manifest read back is not the one written"
+    );
+
+    let answered = status(world, print_id).await;
+    assert_eq!(answered["print"]["id"], json!(print_id.to_string()));
+    assert!(
+        !answered["printer"]["connection"].is_null(),
+        "the status carries nothing the machine reported: {answered}"
+    );
+
+    let (code, context) = world.get(&world.operation_url("context", print_id)).await;
+    assert_eq!(code, reqwest::StatusCode::OK);
+    assert_eq!(
+        context["context"]["manifest"],
+        manifest(),
+        "the context does not carry the manifest that was written"
+    );
+    assert_eq!(
+        context["context"]["print"]["id"],
+        json!(print_id.to_string()),
+        "the context is about another print: {context}"
+    );
+
+    let (code, events) = world.get(&world.operation_url("history", print_id)).await;
+    assert_eq!(code, reqwest::StatusCode::OK);
+    assert!(
+        events["events"]
+            .as_array()
+            .is_some_and(|found| !found.is_empty()),
+        "the history answered no events at all: {events}"
+    );
 }
 
 /// The image the alert brought is a path on this host whose contents are what
@@ -268,147 +822,47 @@ async fn stored_image_is_a_path(world: &Composed, print_id: PrintId) {
     );
 }
 
-/// An adjustment the policy bounds, and one the real machine executes.
-async fn bounded_and_executed(world: &Composed, print_id: PrintId) {
-    // The policy bounds it: the manifest narrows the feedrate to 0.8..1.2, so a
-    // value the envelope alone would allow is refused, carrying its reason, the
-    // value asked for and the range allowed.
-    let (code, refused) = act(
-        world,
-        print_id,
-        "set_feedrate_factor",
-        &body(&[("factor", json!(1.4))]),
-    )
-    .await;
-    assert_eq!(
-        code, 409,
-        "a value outside the bounds was accepted: {refused}"
-    );
-    let bounds = &refused["record"]["decision"]["rejected"]["out_of_bounds"];
-    assert_eq!(bounds["adjustable"], json!("feedrate"), "{refused}");
-    assert_eq!(bounds["requested"], json!(1.4), "{refused}");
-    assert!(!bounds["allowed"].is_null(), "{refused}");
-
-    // The bed target is one OctoPrint reports, so its effect is read back.
-    let (code, accepted) = act(
-        world,
-        print_id,
-        "set_bed_target_c",
-        &body(&[("target_c", json!(61.0))]),
-    )
-    .await;
-    assert_eq!(code, 200, "the bed target was not accepted: {accepted}");
-    until(
-        "the machine to report the bed target it was given",
-        || async {
-            let seen = status(world, print_id).await["printer"]["bed"]["target_c"]["value"].clone();
-            if seen == json!(61.0) {
-                None
-            } else {
-                Some(seen.to_string())
-            }
-        },
-    )
-    .await;
-
-    // The tool target likewise.
-    let (code, accepted) = act(
-        world,
-        print_id,
-        "set_tool_target_c",
-        &body(&[("tool", json!(0)), ("target_c", json!(205.0))]),
-    )
-    .await;
-    assert_eq!(code, 200, "the tool target was not accepted: {accepted}");
-    until(
-        "the machine to report the tool target it was given",
-        || async {
-            let seen =
-                status(world, print_id).await["printer"]["tools"][0]["target_c"]["value"].clone();
-            if seen == json!(205.0) {
-                None
-            } else {
-                Some(seen.to_string())
-            }
-        },
-    )
-    .await;
-
-    // The three OctoPrint reports nothing about: the observable is that the
-    // real instance accepted the request, which it answers only for a request
-    // it understood.
-    for (name, value) in [
-        ("set_feedrate_factor", ("factor", json!(1.1))),
-        ("set_flowrate_factor", ("factor", json!(1.05))),
-        ("set_fan_percent", ("percent", json!(55.0))),
+/// The history afterwards accounts for every step.
+async fn the_history_accounts_for_every_step(world: &Composed, print_id: PrintId) {
+    let after = history(world, print_id).await;
+    for wanted in [
+        EventKind::ObicoFailureAlert,
+        EventKind::SupervisionSessionOpened,
+        EventKind::AgentAssessment,
     ] {
-        let (code, answer) = act(world, print_id, name, &body(&[value])).await;
-        assert_eq!(code, 200, "`{name}` was not accepted: {answer}");
-        assert_eq!(
-            answer["record"]["outcome"],
-            json!("succeeded"),
-            "`{name}` reached the real instance and it did not accept it: {answer}"
+        assert!(
+            after.contains(&wanted),
+            "the history does not account for {wanted:?}: {after:?}"
         );
     }
-
-    // The optional duration is applied: the intervention carries an expiry
-    // derived from it.
-    let (code, bounded) = act(
-        world,
-        print_id,
-        "set_feedrate_factor",
-        &body(&[("factor", json!(1.05)), ("duration_s", json!(600))]),
-    )
-    .await;
-    assert_eq!(code, 200, "{bounded}");
-    assert!(
-        !bounded["intervention"].is_null(),
-        "a bounded adjustment opened no intervention: {bounded}"
-    );
 }
 
-/// The machine pauses and resumes through the API.
-async fn paused_and_resumed(world: &Composed, print_id: PrintId) {
-    let (code, answer) = act(world, print_id, "pause", &body(&[])).await;
-    assert_eq!(code, 200, "the print was not paused: {answer}");
-    until_state(world, print_id, "paused").await;
-
-    let (code, answer) = act(world, print_id, "resume", &body(&[])).await;
-    assert_eq!(code, 200, "the print was not resumed: {answer}");
-    until_state(world, print_id, "printing").await;
+/// Every record this system stores about one print, as a caller reads them.
+///
+/// The printer's own snapshot is deliberately not among them: it carries the
+/// instant it was observed at, so two reads of an unchanged machine differ.
+async fn stored(world: &Composed, print_id: PrintId) -> Value {
+    let answered = status(world, print_id).await;
+    let (_, events) = world.get(&world.operation_url("history", print_id)).await;
+    let (_, manifest) = world
+        .get(&world.operation_url("manifest_get", print_id))
+        .await;
+    json!({
+        "print": answered["print"],
+        "session": answered["session"],
+        "interventions": answered["interventions"],
+        "events": events["events"],
+        "manifest": manifest,
+    })
 }
 
-/// The machine cancels, starts, and stops on an acknowledgement.
-async fn cancelled_and_started(world: &Composed, print_id: PrintId) {
-    let (code, answer) = act(world, print_id, "cancel", &body(&[])).await;
-    assert_eq!(code, 200, "the print was not cancelled: {answer}");
-    until_state(world, print_id, "operational").await;
-
-    let (code, answer) = act(
-        world,
-        print_id,
-        "start_print",
-        &body(&[("file_name", json!(HOLD_FILE)), ("manifest", manifest())]),
-    )
-    .await;
-    assert_eq!(code, 200, "the print was not started: {answer}");
-    until_state(world, print_id, "printing").await;
-
-    // Acknowledging with `stop` is the one disposition that asks the machine
-    // for something, and stopping a print is cancelling it.
-    let event_id = printobserver_types::EventId::new();
-    let (code, answer) = act(
-        world,
-        print_id,
-        "acknowledge_failure",
-        &body(&[
-            ("event_id", json!(event_id)),
-            ("disposition", json!("stop")),
-        ]),
-    )
-    .await;
-    assert_eq!(code, 200, "the acknowledgement was not accepted: {answer}");
-    until_state(world, print_id, "operational").await;
+/// Every operation of the action vocabulary, in the order it is declared.
+fn vocabulary() -> Vec<&'static str> {
+    OPERATIONS
+        .iter()
+        .filter(|operation| matches!(operation.effect, Effect::Mutating(_)))
+        .map(|operation| operation.name)
+        .collect()
 }
 
 /// Every kind the print's history carries.
@@ -421,6 +875,13 @@ async fn history(world: &Composed, print_id: PrintId) -> Vec<EventKind> {
         .iter()
         .filter_map(|event| printobserver_types::serde_json::from_value(event["kind"].clone()).ok())
         .collect()
+}
+
+/// One instant of an answer, as whole seconds after the epoch.
+fn instant(value: &Value) -> i64 {
+    let text = value.as_str().expect("an instant is a string");
+    let parsed: printobserver_types::Timestamp = text.parse().expect("an instant is RFC 3339");
+    parsed.as_utc().timestamp()
 }
 
 /// The digest of what is at one path, lowercase hexadecimal.

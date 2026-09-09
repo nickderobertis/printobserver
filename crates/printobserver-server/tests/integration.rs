@@ -42,6 +42,10 @@ mod http_host;
 
 #[path = "instance/composition.rs"]
 mod composition;
+#[path = "instance/proxy.rs"]
+mod proxy;
+#[path = "instance/received.rs"]
+mod received;
 #[path = "instance/scripted.rs"]
 mod scripted;
 #[path = "instance/waiting.rs"]

@@ -122,7 +122,23 @@ impl IngressState {
         let counter = completed.clone();
         tokio::spawn(async move {
             while let Some(received) = incoming.recv().await {
-                handle(&supervisor, &worker_store, &vision, received).await;
+                // Handled on a thread of its own rather than on an asynchronous
+                // worker. Two of the ports this server composes do blocking work
+                // — the printer adapter speaks HTTP with the standard library,
+                // and the supervising agent's harness drives a child process in
+                // process — so handling one alert holds whatever thread it is
+                // polled on for the whole of the handling. The API this server
+                // answers on that same runtime is what the agent calls *during*
+                // its own turn, and an alert that starved it would answer the
+                // agent minutes after it asked.
+                let supervisor = Arc::clone(&supervisor);
+                let store = Arc::clone(&worker_store);
+                let vision = Arc::clone(&vision);
+                let handled = tokio::task::spawn_blocking(move || {
+                    printobserver_core::block_on(handle(&supervisor, &store, &vision, received));
+                })
+                .await;
+                debug_assert!(handled.is_ok(), "the handling of one alert panicked");
                 counter.send_modify(|count| *count += 1);
             }
         });
