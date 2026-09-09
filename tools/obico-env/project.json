@@ -1,0 +1,13 @@
+{
+  "name": "obico-env",
+  "root": "tools/obico-env",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/obico-env" },
+    "format-check": { "command": "uv run -q ruff format --check tools/obico-env" },
+    "lint": { "command": "uv run -q ruff check tools/obico-env" },
+    "typecheck": { "command": "uv run -q ty check tools/obico-env" },
+    "test-obico": { "command": "uv run -q pytest tools/obico-env/tests" }
+  }
+}

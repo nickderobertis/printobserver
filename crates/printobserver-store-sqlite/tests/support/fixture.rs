@@ -114,6 +114,8 @@ pub fn payload(kind: &str) -> EventPayload {
             print_paused: true,
             obico_print_id: Some(7),
             file_name: Some("bracket.gcode".to_owned()),
+            started_at: None,
+            ended_at: None,
         }),
         "malformed_external_event" => {
             EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {

@@ -40,7 +40,12 @@ convention = "google"
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
-pythonpath = ["tools/repo-checks/src", "python/printobserver-sdk/src", "tools/octoprint-env"]
+pythonpath = [
+    "tools/repo-checks/src",
+    "python/printobserver-sdk/src",
+    "tools/octoprint-env",
+    "tools/obico-env",
+]
 
 [tool.coverage.run]
 branch = true
@@ -60,4 +65,6 @@ root = [
     "tests/repo-e2e/tests",
     "tools/octoprint-env",
     "tools/octoprint-env/tests",
+    "tools/obico-env",
+    "tools/obico-env/tests",
 ]

@@ -28,6 +28,8 @@ fn alert() -> EventPayload {
         print_paused: true,
         obico_print_id: Some(4_411),
         file_name: Some("bracket.gcode".to_owned()),
+        started_at: None,
+        ended_at: None,
     })
 }
 
@@ -37,6 +39,8 @@ fn notification() -> EventPayload {
         notification_type: ObicoNotificationType::Paused,
         obico_print_id: Some(4_411),
         file_name: Some("bracket.gcode".to_owned()),
+        started_at: None,
+        ended_at: None,
     })
 }
 

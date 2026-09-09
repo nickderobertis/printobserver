@@ -8,5 +8,17 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+reqwest = { version = "0.13", default-features = false, features = ["http2", "rustls", "webpki-roots"] }
+
+[dev-dependencies]
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
+
 [lints]
 workspace = true
