@@ -27,7 +27,10 @@ use printobserver_server::{Effect, OPERATIONS, Operation};
 use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{EventKind, PrintId};
 
-use crate::composition::{Composed, NARROWED, SECRET, hold_the_print_running};
+use crate::composition::{
+    AGENT_DURATION_S, AGENT_FACTOR, AGENT_REFUSED_FACTOR, Composed, NARROWED, SECRET,
+    hold_the_print_running,
+};
 use crate::http_host::image_host;
 use crate::proxy::Proxy;
 use crate::scripted::Scripted;
@@ -232,7 +235,16 @@ fn live(name: &str) -> Live {
 }
 
 /// Deliver one alert to the real ingress, and wait its handling out.
-async fn deliver(world: &Composed, image_url: &str) {
+///
+/// The proxy's record and the responder's own log are forgotten first, so that
+/// everything read afterwards is *this* turn's: the machine's requests since
+/// this alert, and the actions the agent issued inside the turn it prompted.
+/// Without that boundary an assertion about "the accepted action" would be
+/// satisfied by one an earlier turn issued, and the walk would go on passing
+/// with the turn after a restart doing nothing at all.
+async fn deliver(world: &Composed, proxy: &Proxy, image_url: &str) {
+    proxy.forget();
+    world.forget_responder_log();
     let mut completions = world.server.completions();
     let status = world
         .client
@@ -313,8 +325,8 @@ pub async fn walk(instance: &Scripted) {
     let proxy = Proxy::in_front_of(&instance.url);
     let world = Composed::open(instance, &proxy.base_url()).await;
 
-    let print_id = an_alert_opens_a_print_a_session_and_an_image(&world, &host.url()).await;
-    the_agent_acted_through_the_api(&world, print_id).await;
+    let print_id = an_alert_opens_a_print_a_session_and_an_image(&world, &proxy, &host.url()).await;
+    the_agent_acted_through_the_api(&world, &proxy, print_id).await;
     the_reads_answer_the_records_they_name(&world, print_id).await;
     every_change_refuses_a_request_with_no_reason(&world, &proxy, print_id).await;
     every_mutating_operation_is_rejected_in_its_own_kind(&world, &proxy, print_id).await;
@@ -332,18 +344,16 @@ pub async fn walk(instance: &Scripted) {
         world.server.reconciliation()
     );
     let before = status(&world, print_id).await["session"]["session_name"].clone();
-    let acted_before = world.responder_log().len();
-    deliver(&world, &host.url()).await;
+    deliver(&world, &proxy, &host.url()).await;
     let after = status(&world, print_id).await;
     assert_eq!(
         after["session"]["session_name"], before,
         "the second alert did not continue the first alert's session"
     );
-    assert!(
-        world.responder_log().len() > acted_before,
-        "the turn after the restart issued no action through the API"
-    );
-    the_agent_acted_through_the_api(&world, print_id).await;
+    // The whole of the assertion again, against the boundary this alert set:
+    // the turn after a restart has to act exactly as the first one did, and a
+    // log read across both would be satisfied by the first turn alone.
+    the_agent_acted_through_the_api(&world, &proxy, print_id).await;
 
     let reconciled = history(&world, print_id).await;
     assert!(
@@ -367,9 +377,10 @@ pub async fn walk(instance: &Scripted) {
 /// The alert opens the print, stores its image, and opens a session.
 async fn an_alert_opens_a_print_a_session_and_an_image(
     world: &Composed,
+    proxy: &Proxy,
     image_url: &str,
 ) -> PrintId {
-    deliver(world, image_url).await;
+    deliver(world, proxy, image_url).await;
     let print_id = print_of(world).await;
     let recorded = history(world, print_id).await;
     assert!(
@@ -391,55 +402,230 @@ async fn an_alert_opens_a_print_a_session_and_an_image(
     print_id
 }
 
-/// The agent asked this server for something, through the running API.
+/// The agent asked this server for something, through the running API, in the
+/// turn this alert prompted.
 ///
-/// The responder issues both of its actions on every turn: one the policy
-/// admits and one it does not. What is asserted here is that the policy ruled on
-/// both, that the machine took the accepted one, that it opened the intervention
-/// the duration asked for, and that the action the server recorded carries the
-/// session the assessment beside it does.
-async fn the_agent_acted_through_the_api(world: &Composed, print_id: PrintId) {
+/// The responder issues both of its actions on every turn: one the policy admits
+/// and one it does not. What is asserted here is about **that turn alone** — the
+/// log and the machine's record were forgotten before the alert was delivered —
+/// and it is asserted at the machine and at this server's own persisted records
+/// rather than at the status the answer came under:
+///
+/// * the accepted action reached the real instance, which received the request
+///   carrying the factor that adapter converts the asked-for one to;
+/// * it opened an intervention whose expiry is the duration asked for, and that
+///   intervention is the one the API answers as still in force;
+/// * the action, the intervention and the assessment the turn wrote are all
+///   about the same print and the same session;
+/// * and the refused one is refused for the value it asked, with nothing
+///   carrying that value reaching the machine.
+async fn the_agent_acted_through_the_api(world: &Composed, proxy: &Proxy, print_id: PrintId) {
     let acted = world.responder_log();
     assert!(
         !acted.is_empty(),
-        "the agent's own turn issued no action through the API; nothing was written down"
+        "the agent's own turn issued no action through the API; nothing was written \
+         down since this alert"
     );
 
-    let taken = acted
+    let answered = |status: u16| -> Vec<&Value> {
+        acted
+            .iter()
+            .filter(|line| line["status"] == json!(status))
+            .collect()
+    };
+    let taken = answered(200);
+    let refused = answered(409);
+    assert_eq!(
+        taken.len(),
+        1,
+        "this turn issued {} accepted actions and the agent issues one: {acted:?}",
+        taken.len()
+    );
+    assert_eq!(
+        refused.len(),
+        1,
+        "this turn issued {} refused actions and the agent issues one: {acted:?}",
+        refused.len()
+    );
+    assert_eq!(
+        acted.len(),
+        2,
+        "this turn issued something beside the two actions the agent is scripted \
+         with: {acted:?}"
+    );
+
+    let accepted = &taken[0]["body"];
+    let rejected = &refused[0]["body"];
+    the_accepted_action_reached_the_machine(proxy);
+    the_accepted_action_says_what_the_agent_asked(accepted, print_id);
+    the_records_of_this_turn_are_about_one_print_and_one_session(world, print_id, accepted).await;
+    the_refused_action_says_what_it_was_refused_for(rejected, print_id);
+}
+
+/// The instance received the request the accepted action asked for, and none
+/// carrying the value the policy refused.
+///
+/// `OctoPrint` reports no applied feedrate factor at all, so the answer's own
+/// `succeeded` says only that the instance did not refuse the request — what
+/// says the request was made, and with what, is the machine's own record of it.
+fn the_accepted_action_reached_the_machine(proxy: &Proxy) {
+    let asked = percent_of_multiplier(AGENT_FACTOR).to_string();
+    let bodies = proxy.bodies();
+    assert!(
+        bodies.iter().any(|body| body.contains(asked.as_str())),
+        "the agent's accepted action answered `succeeded` and the instance received \
+         no request carrying {asked:?}: {bodies:?}"
+    );
+    let never_sent = percent_of_multiplier(AGENT_REFUSED_FACTOR).to_string();
+    assert!(
+        !bodies.iter().any(|body| body.contains(never_sent.as_str())),
+        "the value the policy refused reached the machine as {never_sent:?}: {bodies:?}"
+    );
+}
+
+/// The answer says what the agent asked, and opened the intervention it asked
+/// the change to stand for.
+fn the_accepted_action_says_what_the_agent_asked(accepted: &Value, print_id: PrintId) {
+    assert_eq!(
+        accepted["record"]["decision"],
+        json!("accepted"),
+        "{accepted}"
+    );
+    assert_eq!(
+        accepted["record"]["outcome"],
+        json!("succeeded"),
+        "{accepted}"
+    );
+    assert_eq!(
+        accepted["record"]["print_id"],
+        json!(print_id.to_string()),
+        "the agent's action was recorded against another print: {accepted}"
+    );
+    let asked_for = &accepted["record"]["request"]["action"];
+    assert_eq!(
+        asked_for["action"],
+        json!("set_feedrate_factor"),
+        "{accepted}"
+    );
+    assert_eq!(asked_for["factor"], json!(AGENT_FACTOR), "{accepted}");
+    assert_eq!(
+        asked_for["duration_s"],
+        json!(AGENT_DURATION_S),
+        "{accepted}"
+    );
+
+    let intervention = &accepted["intervention"];
+    assert!(
+        !intervention.is_null(),
+        "the bounded action the agent issued opened no intervention: {accepted}"
+    );
+    assert_eq!(intervention["adjustable"], json!("feedrate"), "{accepted}");
+    assert_eq!(
+        intervention["applied_value"],
+        json!(AGENT_FACTOR),
+        "the intervention is not about the value the agent asked for: {accepted}"
+    );
+    assert_eq!(
+        instant(&intervention["expires_at"]) - instant(&intervention["applied_at"]),
+        AGENT_DURATION_S,
+        "the intervention's expiry is not the duration the agent asked for: {accepted}"
+    );
+    assert_eq!(
+        intervention["action_id"], accepted["record"]["id"],
+        "the intervention was opened by another action: {accepted}"
+    );
+    assert_eq!(
+        intervention["print_id"],
+        json!(print_id.to_string()),
+        "the intervention is against another print: {accepted}"
+    );
+}
+
+/// The action, the intervention and the assessment this turn wrote are about
+/// one print and one session, read back out of this server's own records.
+async fn the_records_of_this_turn_are_about_one_print_and_one_session(
+    world: &Composed,
+    print_id: PrintId,
+    accepted: &Value,
+) {
+    let answered = status(world, print_id).await;
+    let session = answered["session"]["session_name"].clone();
+    assert_eq!(
+        accepted["record"]["request"]["actor"]["agent"]["session_name"], session,
+        "the action the agent issued names another session than the turn it ran in: \
+         {accepted} against {session}"
+    );
+
+    let intervention = &accepted["intervention"];
+    let held = answered["interventions"]
+        .as_array()
+        .expect("the interventions read")
         .iter()
-        .rev()
-        .find(|line| line.contains("HTTP/1.1 200"))
-        .unwrap_or_else(|| panic!("no action the agent issued was accepted: {acted:?}"));
-    let refused = acted
-        .iter()
-        .rev()
-        .find(|line| line.contains("HTTP/1.1 409"))
+        .find(|found| found["id"] == intervention["id"])
         .unwrap_or_else(|| {
             panic!(
-                "the policy took an action the agent asked outside the bounds it holds \
-                 the feedrate to: {acted:?}"
+                "the intervention the agent opened is not one this server holds in \
+                 force: {answered}"
             )
         });
+    assert_eq!(
+        held["expires_at"], intervention["expires_at"],
+        "the intervention this server holds expires at another instant: {held}"
+    );
+    assert_eq!(
+        held["action_id"], accepted["record"]["id"],
+        "the intervention this server holds was opened by another action: {held}"
+    );
+    assert_eq!(
+        held["print_id"],
+        json!(print_id.to_string()),
+        "the intervention this server holds is against another print: {held}"
+    );
 
-    assert!(
-        refused.contains("out_of_bounds") && refused.contains("2.5"),
-        "the policy refused the agent without saying what was out of bounds: {refused}"
+    let assessed = history_records(world, print_id)
+        .await
+        .into_iter()
+        // Newest first, so the first is the one this turn wrote.
+        .find(|event| event["kind"] == json!("agent_assessment"))
+        .unwrap_or_else(|| panic!("the turn wrote down no assessment for print {print_id}"));
+    assert_eq!(
+        assessed["print_id"],
+        json!(print_id.to_string()),
+        "the assessment is about another print: {assessed}"
     );
-    assert!(
-        taken.contains("\"outcome\":\"succeeded\""),
-        "the machine did not take the action the agent issued: {taken}"
+    assert_eq!(
+        assessed["payload"]["session_name"], session,
+        "the assessment names another session than the action the agent issued: \
+         {assessed}"
     );
-    assert!(
-        taken.contains("\"intervention\""),
-        "the bounded action the agent issued opened no intervention: {taken}"
-    );
+}
 
-    let session = status(world, print_id).await["session"]["session_name"].clone();
-    let named = session.as_str().expect("a session name");
+/// The refused action says the value it asked and the range it is held to, and
+/// reached nothing.
+fn the_refused_action_says_what_it_was_refused_for(rejected: &Value, print_id: PrintId) {
+    assert_eq!(
+        rejected["record"]["print_id"],
+        json!(print_id.to_string()),
+        "the refused action was recorded against another print: {rejected}"
+    );
+    let bounds = &rejected["record"]["decision"]["rejected"]["out_of_bounds"];
+    assert_eq!(
+        bounds["adjustable"],
+        json!("feedrate"),
+        "the policy refused the agent without naming what was out of bounds: {rejected}"
+    );
+    assert_eq!(
+        bounds["requested"],
+        json!(AGENT_REFUSED_FACTOR),
+        "the policy refused a value other than the one the agent asked: {rejected}"
+    );
     assert!(
-        taken.contains(named),
-        "the action the agent issued names another session than the turn it ran in: \
-         {taken} against {named}"
+        !bounds["allowed"].is_null(),
+        "the policy refused the agent without the range it holds it to: {rejected}"
+    );
+    assert!(
+        rejected["record"]["outcome"].is_null(),
+        "a refused action reached the machine anyway: {rejected}"
     );
 }
 
@@ -822,19 +1008,77 @@ async fn stored_image_is_a_path(world: &Composed, print_id: PrintId) {
     );
 }
 
-/// The history afterwards accounts for every step.
+/// The history afterwards accounts for every step, and ties them together.
+///
+/// Every kind this walk's own steps raise has to be there — the alert that
+/// started it, the session the turn opened, the assessment it wrote, and the
+/// port failure the image host's own teardown raises is deliberately *not*
+/// among them, because a walk that required one would be requiring a failure.
+/// And the events are not read as a set of kinds alone: the alert, the session
+/// and the assessment are asserted to be about the same print and the same
+/// session the agent's own action named, which is what makes the history an
+/// account of one loop rather than a list of things that happened.
 async fn the_history_accounts_for_every_step(world: &Composed, print_id: PrintId) {
-    let after = history(world, print_id).await;
+    let records = history_records(world, print_id).await;
+    let kinds: Vec<Value> = records.iter().map(|event| event["kind"].clone()).collect();
     for wanted in [
         EventKind::ObicoFailureAlert,
         EventKind::SupervisionSessionOpened,
         EventKind::AgentAssessment,
     ] {
+        let spelled = printobserver_types::serde_json::to_value(wanted).expect("a kind renders");
         assert!(
-            after.contains(&wanted),
-            "the history does not account for {wanted:?}: {after:?}"
+            kinds.contains(&spelled),
+            "the history does not account for {wanted:?}: {kinds:?}"
         );
     }
+    assert!(
+        records
+            .iter()
+            .all(|event| event["print_id"] == json!(print_id.to_string())),
+        "the history of one print carries an event about another: {records:?}"
+    );
+
+    let session = status(world, print_id).await["session"]["session_name"].clone();
+    let opened = records
+        .iter()
+        .find(|event| event["kind"] == json!("supervision_session_opened"))
+        .expect("the history accounts for the session that opened");
+    assert_eq!(
+        opened["payload"]["session_name"], session,
+        "the session the history says opened is not the one this print is watched \
+         through: {opened}"
+    );
+    for assessment in records
+        .iter()
+        .filter(|event| event["kind"] == json!("agent_assessment"))
+    {
+        assert_eq!(
+            assessment["payload"]["session_name"], session,
+            "an assessment was written into a session this print is not watched \
+             through: {assessment}"
+        );
+    }
+
+    // The alert that started it is the one the producer sent, carrying its own
+    // identifier for the print and the bytes it arrived as.
+    let alert = records
+        .iter()
+        .find(|event| event["kind"] == json!("obico_failure_alert"))
+        .expect("the history accounts for the alert");
+    assert_eq!(
+        alert["payload"]["obico_print_id"],
+        json!(OBICO_PRINT),
+        "the alert in the history is about another of the producer's prints: {alert}"
+    );
+    assert!(
+        !alert["raw"].is_null(),
+        "the alert in the history carries none of the bytes that arrived: {alert}"
+    );
+    assert!(
+        !alert["image"].is_null(),
+        "the alert in the history carries no image: {alert}"
+    );
 }
 
 /// Every record this system stores about one print, as a caller reads them.
@@ -863,6 +1107,16 @@ fn vocabulary() -> Vec<&'static str> {
         .filter(|operation| matches!(operation.effect, Effect::Mutating(_)))
         .map(|operation| operation.name)
         .collect()
+}
+
+/// Every event the print's history carries, newest first.
+async fn history_records(world: &Composed, print_id: PrintId) -> Vec<Value> {
+    let (code, answer) = world.get(&world.operation_url("history", print_id)).await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{answer}");
+    answer["events"]
+        .as_array()
+        .expect("a history is a list")
+        .clone()
 }
 
 /// Every kind the print's history carries.

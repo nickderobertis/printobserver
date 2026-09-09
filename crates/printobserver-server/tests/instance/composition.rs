@@ -48,6 +48,15 @@ pub const NARROWED: (f64, f64) = (0.8, 1.2);
 /// The file this tier's responder appends what it did to.
 pub const RESPONDER_LOG: &str = "responder-actions.log";
 
+/// The feedrate the agent asks for, inside every bound in force.
+pub const AGENT_FACTOR: f64 = 1.15;
+
+/// How long the agent asks that change to stand for.
+pub const AGENT_DURATION_S: i64 = 600;
+
+/// The feedrate the agent also asks for, outside the operator's envelope.
+pub const AGENT_REFUSED_FACTOR: f64 = 2.5;
+
 /// The server this tier drives, and everything it was composed from.
 pub struct Composed {
     /// The state directory, removed when this is dropped.
@@ -81,13 +90,33 @@ impl Composed {
         }
     }
 
-    /// Everything this tier's responder has done, one line per action.
-    pub fn responder_log(&self) -> Vec<String> {
+    /// Every action this tier's responder has issued since the log was last
+    /// forgotten, as the JSON object it wrote for each.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a line the responder wrote is not the JSON object it writes,
+    /// which is a responder that has stopped saying what it did.
+    pub fn responder_log(&self) -> Vec<printobserver_types::serde_json::Value> {
         std::fs::read_to_string(responder_log_path(&self.config))
             .unwrap_or_default()
             .lines()
-            .map(str::to_owned)
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                printobserver_types::serde_json::from_str(line)
+                    .unwrap_or_else(|error| panic!("the responder wrote {line:?}: {error}"))
+            })
             .collect()
+    }
+
+    /// Forget every action the responder has issued so far.
+    ///
+    /// The boundary one turn's actions are read against: the log is appended to
+    /// by every turn, and a journey asserting on "an accepted action" would
+    /// otherwise be satisfied by one an earlier turn issued.
+    pub fn forget_responder_log(&self) {
+        std::fs::write(responder_log_path(&self.config), "")
+            .expect("the responder's own log is writable");
     }
 
     /// Stop this server and start another over the same state directory.
@@ -401,15 +430,15 @@ fn responder_actions() -> String {
             "operation": "set_feedrate_factor",
             "body": {
                 "reason": "the extrusion width is widening on the long edges",
-                "factor": 1.15,
-                "duration_s": 600,
+                "factor": AGENT_FACTOR,
+                "duration_s": AGENT_DURATION_S,
             },
         },
         {
             "operation": "set_feedrate_factor",
             "body": {
                 "reason": "asking for more than the operator's envelope allows",
-                "factor": 2.5,
+                "factor": AGENT_REFUSED_FACTOR,
             },
         },
     ])

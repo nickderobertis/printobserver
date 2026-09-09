@@ -17,9 +17,12 @@
 //! So this responder issues its actions through the **running HTTP API**, as
 //! the agent, before it answers. It finds the server and the print the way an
 //! agent does: out of its own prompt, which carries the context command this
-//! server told the turn to run. Every action it issues, and what the server
-//! answered, is appended to the file [`LOG`] names, so a journey reads what the
-//! agent did rather than inferring it.
+//! server told the turn to run.
+//!
+//! Every action it issues is appended to the file [`LOG`] names as **one JSON
+//! object per line** — the operation, the status the server answered under, and
+//! the answer's own body parsed back — so a journey reads what the agent did
+//! and what it was told rather than matching on the text of an HTTP message.
 
 use std::io::{Read as _, Write as _};
 use std::net::TcpStream;
@@ -76,22 +79,30 @@ fn turn_from_the_prompt() -> Option<Turn> {
     Some(Turn { server, print })
 }
 
-/// Issue one action, and answer the whole of what the server said.
-fn issue(turn: &Turn, operation: &str, body: &str) -> String {
+/// One action this responder could not issue at all.
+fn refused(detail: &str) -> serde_json::Value {
+    serde_json::json!({ "status": serde_json::Value::Null, "refused": detail })
+}
+
+/// Issue one action, and answer the status and the body the server gave.
+fn issue(turn: &Turn, operation: &str, body: &str) -> serde_json::Value {
     let Some(declared) = printobserver_server::operation(operation) else {
-        return format!("no such operation {operation}");
+        return refused(&format!("no such operation {operation}"));
     };
     let path = declared.full_path().replace("{print_id}", &turn.print);
     let Some(authority) = turn.server.strip_prefix("http://") else {
-        return format!("{} is no address this responder speaks to", turn.server);
+        return refused(&format!(
+            "{} is no address this responder speaks to",
+            turn.server
+        ));
     };
     let Ok(mut stream) = TcpStream::connect(authority) else {
-        return format!("nothing is answering at {authority}");
+        return refused(&format!("nothing is answering at {authority}"));
     };
     if stream.set_read_timeout(Some(BOUND)).is_err()
         || stream.set_write_timeout(Some(BOUND)).is_err()
     {
-        return "this responder could not bound its own request".to_owned();
+        return refused("this responder could not bound its own request");
     }
     if write!(
         stream,
@@ -102,13 +113,30 @@ fn issue(turn: &Turn, operation: &str, body: &str) -> String {
     )
     .is_err()
     {
-        return "the request could not be sent".to_owned();
+        return refused("the request could not be sent");
     }
     let mut answer = String::new();
     if let Err(error) = stream.read_to_string(&mut answer) {
-        return format!("the answer could not be read: {error}; what came back was {answer:?}");
+        return refused(&format!(
+            "the answer could not be read: {error}; what came back was {answer:?}"
+        ));
     }
-    answer.replace("\r\n", " ")
+    read_answer(&answer)
+}
+
+/// The status and the body of one HTTP answer, as a journey reads them.
+fn read_answer(answer: &str) -> serde_json::Value {
+    let Some((head, body)) = answer.split_once("\r\n\r\n") else {
+        return refused(&format!(
+            "the server answered something unreadable: {answer:?}"
+        ));
+    };
+    let status = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse::<u16>().ok());
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    serde_json::json!({ "status": status, "body": parsed })
 }
 
 /// Issue every action this turn was scripted with, and write down what happened.
@@ -118,7 +146,10 @@ fn act() {
     };
     let scripted = std::env::var(ACTIONS).unwrap_or_default();
     let Some(turn) = turn_from_the_prompt() else {
-        append(&log, "this turn's prompt names no context command");
+        append(
+            &log,
+            &refused("this turn's prompt names no context command").to_string(),
+        );
         return;
     };
     let actions: serde_json::Value = serde_json::from_str(&scripted).unwrap_or_default();
@@ -135,11 +166,15 @@ fn act() {
             );
         }
         let started = std::time::Instant::now();
-        let answered = issue(&turn, operation, &body.to_string());
-        append(
-            &log,
-            &format!("{operation} [{:?}] {answered}", started.elapsed()),
-        );
+        let mut answered = issue(&turn, operation, &body.to_string());
+        if let Some(object) = answered.as_object_mut() {
+            object.insert("operation".to_owned(), serde_json::json!(operation));
+            object.insert(
+                "took_ms".to_owned(),
+                serde_json::json!(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)),
+            );
+        }
+        append(&log, &answered.to_string());
     }
 }
 
