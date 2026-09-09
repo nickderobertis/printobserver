@@ -265,10 +265,7 @@ impl From<ImageLookup> for ImageAnswer {
                 record,
                 path: Some(path),
             },
-            ImageLookup::FileMissing { record } => Self {
-                record,
-                path: None,
-            },
+            ImageLookup::FileMissing { record } => Self { record, path: None },
         }
     }
 }

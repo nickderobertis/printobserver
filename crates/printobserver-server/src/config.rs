@@ -289,7 +289,7 @@ const fn default_answer_bound_ms() -> u64 {
 /// This is the parsed document rather than the validated configuration:
 /// [`ServerConfig::load`] is what turns one into the other, and every value a
 /// later step could find wrong is ruled on there.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     crate = "printobserver_types::serde",
     deny_unknown_fields,
@@ -405,11 +405,10 @@ impl ServerConfig {
     ///
     /// The same as [`ServerConfig::load`], less the unreadable file.
     pub fn parse(text: &str, path: &Path) -> Result<Self, ConfigError> {
-        let file: ConfigFile =
-            toml::from_str(text).map_err(|error| ConfigError::Unparsable {
-                path: path.to_path_buf(),
-                detail: error.to_string(),
-            })?;
+        let file: ConfigFile = toml::from_str(text).map_err(|error| ConfigError::Unparsable {
+            path: path.to_path_buf(),
+            detail: error.to_string(),
+        })?;
         Self::validate(file)
     }
 
@@ -448,7 +447,10 @@ impl ServerConfig {
             }
             Some(name) => Some(name.trim().to_owned()),
         };
-        let skill_path = readable(ConfigField::SkillPath, file.supervisor.skill_path.as_deref())?;
+        let skill_path = readable(
+            ConfigField::SkillPath,
+            file.supervisor.skill_path.as_deref(),
+        )?;
         let prompt_template_path = readable(
             ConfigField::PromptTemplatePath,
             file.supervisor.prompt_template_path.as_deref(),
@@ -525,10 +527,7 @@ fn fan_support(named: &str) -> Result<FanSupport, ConfigError> {
             let vocabulary: Vec<&str> = FAN_VOCABULARY.iter().map(|(word, _)| *word).collect();
             ConfigError::about(
                 ConfigField::OctoprintFan,
-                format!(
-                    "{named:?} is not one of {}",
-                    vocabulary.join(" or ")
-                ),
+                format!("{named:?} is not one of {}", vocabulary.join(" or ")),
             )
         })
 }

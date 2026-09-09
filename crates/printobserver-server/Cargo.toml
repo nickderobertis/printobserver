@@ -16,7 +16,7 @@ authors.workspace = true
 test-responder = ["dep:oneharness"]
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 printobserver-core = { path = "../printobserver-core", version = "0.1.0" }
 printobserver-obico = { path = "../printobserver-obico", version = "0.1.0" }
 printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.1.0" }

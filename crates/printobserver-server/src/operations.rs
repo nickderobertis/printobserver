@@ -149,7 +149,11 @@ pub const OPERATIONS: [Operation; 16] = [
         accepts: Some(MEDIA_TYPE),
         answers: MEDIA_TYPE,
     },
-    action("pause", "/prints/{print_id}/actions/pause", ActionKind::Pause),
+    action(
+        "pause",
+        "/prints/{print_id}/actions/pause",
+        ActionKind::Pause,
+    ),
     action(
         "resume",
         "/prints/{print_id}/actions/resume",

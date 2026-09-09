@@ -71,7 +71,6 @@ pub struct HistoryParams {
 /// Panics when [`OPERATIONS`] declares an entry this function has no route for,
 /// which is a declaration and a router that have come apart — the one state
 /// this server must not come up in quietly.
-#[must_use]
 pub fn router(state: ApiState) -> Router {
     let mut api = Router::new();
     for operation in OPERATIONS {
@@ -191,7 +190,12 @@ async fn act(
 async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
     let print = match state.store.print(print_id).await {
         Ok(Some(print)) => print,
-        Ok(None) => return refusal(StatusCode::NOT_FOUND, format!("there is no print {print_id}")),
+        Ok(None) => {
+            return refusal(
+                StatusCode::NOT_FOUND,
+                format!("there is no print {print_id}"),
+            );
+        }
         Err(error) => return refusal(store_status(&error), error),
     };
     let context = match state.supervisor.context(print_id).await {
