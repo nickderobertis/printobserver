@@ -39,8 +39,12 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
 /// What the context command in a prompt begins with, which is what a turn is
-/// told to run and what this responder finds its server and its print in.
-const CONTEXT_MARKER: &str = "printobserver context --server ";
+/// told to run and what this responder finds its configuration and its print
+/// in.
+const CONTEXT_MARKER: &str = "printobserver context --config ";
+
+/// The key the client configuration names the server under.
+const SERVER_KEY: &str = "server = ";
 
 /// How long one action this responder issues may take.
 ///
@@ -70,9 +74,20 @@ fn turn_from_the_prompt() -> Option<Turn> {
     let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
     let mut words = after.split_whitespace();
-    let server = words.next()?.trim_end_matches('/').to_owned();
+    // The command names a configuration file rather than an address, because
+    // no client command of that program takes an address. This responder is
+    // not that program, so it reads the one value it needs out of the file the
+    // server wrote — which is where a real client reads it from too.
+    let configuration = std::fs::read_to_string(words.next()?).ok()?;
+    let server = configuration
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(SERVER_KEY))?
+        .trim()
+        .trim_matches('"')
+        .trim_end_matches('/')
+        .to_owned();
     let print = words
-        .skip_while(|word| *word != "--print")
+        .skip_while(|word| *word != "--print-id")
         .nth(1)?
         .trim()
         .to_owned();

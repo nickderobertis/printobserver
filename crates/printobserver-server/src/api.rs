@@ -216,12 +216,32 @@ async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) ->
     )
 }
 
-/// Read everything a supervision turn is given about one print.
+/// Read everything a supervision turn is given about one print, with the
+/// latest image materialized.
+///
+/// The path is looked up through the same store read the image operation
+/// answers from, so the two operations cannot disagree about where an image
+/// is. An image whose record is intact and whose file is gone answers no path,
+/// which is what the caller's own missing-file failure is about.
 async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
-    match state.supervisor.context(print_id).await {
-        Ok(context) => answer(StatusCode::OK, &ContextAnswer { context }),
-        Err(error) => refusal(core_status(&error), error),
+    let context = match state.supervisor.context(print_id).await {
+        Ok(context) => context,
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    let mut image_path = None;
+    if let Some(latest) = context.latest_image.as_ref() {
+        match state.store.image(latest.id).await {
+            Ok(lookup) => image_path = ImageAnswer::from(lookup).path,
+            Err(error) => return refusal(store_status(&error), error),
+        }
     }
+    answer(
+        StatusCode::OK,
+        &ContextAnswer {
+            context,
+            image_path,
+        },
+    )
 }
 
 /// Materialize one image: its record, and the absolute path its bytes are at.

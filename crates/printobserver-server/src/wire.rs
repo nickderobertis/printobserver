@@ -11,6 +11,7 @@
 use std::path::PathBuf;
 
 use printobserver_store_api::ImageLookup;
+use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, EventId, EventRecord, FileName,
@@ -244,8 +245,9 @@ impl ActionBody {
 }
 
 /// What one mutating request left behind it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ActionAnswer {
     /// The record of the request and the decision taken on it. A rejected
     /// request's rejection is here, carrying its reason, the value asked for
@@ -260,8 +262,9 @@ pub struct ActionAnswer {
 }
 
 /// What a status read answers.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct StatusAnswer {
     /// The print.
     pub print: PrintRecord,
@@ -279,11 +282,22 @@ pub struct StatusAnswer {
 }
 
 /// What a context read answers.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+///
+/// The latest image is **materialized** here rather than left as the handle
+/// [`PrintContext`] carries: the one thing a supervision turn does with an
+/// image is look at it, and a handle is not something anything can open. The
+/// path is absolute on this server's own filesystem, exactly as
+/// [`ImageAnswer`]'s is, and is absent when there is no image or when the
+/// record is intact and the file is not.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ContextAnswer {
     /// Everything a supervision turn is given about the print.
     pub context: PrintContext,
+    /// Where the latest image's bytes are, absolute on this host.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_path: Option<PathBuf>,
 }
 
 /// What an image read answers.
@@ -292,8 +306,9 @@ pub struct ContextAnswer {
 /// the answer about the bytes: nothing here renders them, encodes them or
 /// serves them. It is absent when the record is intact and the file is not,
 /// which is a different answer from there being no such image.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ImageAnswer {
     /// The record.
     pub record: ImageRecord,
@@ -315,16 +330,18 @@ impl From<ImageLookup> for ImageAnswer {
 }
 
 /// What a history read answers.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct HistoryAnswer {
     /// The print's events, newest first.
     pub events: Vec<EventRecord>,
 }
 
 /// What a manifest read or write answers.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ManifestAnswer {
     /// The manifest, when the print has one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -336,8 +353,9 @@ pub struct ManifestAnswer {
 }
 
 /// What this server answers when it will not do what it was asked.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ErrorAnswer {
     /// One line saying why, in the words of whatever refused it.
     pub error: String,
