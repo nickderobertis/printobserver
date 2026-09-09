@@ -27,3 +27,8 @@ dist/
 # The scripted OctoPrint environment the integration tier drives: an
 # instance, its own virtual environment, its logs and its API key.
 /.octoprint-env/
+
+# The self-hosted Obico environment the scheduled tier drives: Obico's own
+# sources at the pinned revision, the compose override, the build log and the
+# record of what is running.
+/.obico-env/

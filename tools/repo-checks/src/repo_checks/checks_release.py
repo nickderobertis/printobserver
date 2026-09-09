@@ -7,11 +7,11 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
 from repo_checks.parsing import jobs_of, load_workflow, programs_in, run_commands, steps_of
 
 MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
-SKIPPED_DIRECTORIES = frozenset({".git", "target", "node_modules", ".venv", ".nx", "dist"})
+SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action", "await-approval")
 HALTING_COMMANDS = ("read -p", "read -r -p")
 

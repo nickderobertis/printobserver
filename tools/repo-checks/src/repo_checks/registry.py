@@ -7,6 +7,7 @@ from collections.abc import Callable
 from repo_checks import (
     checks_ci,
     checks_integration,
+    checks_obico,
     checks_release,
     checks_repo,
     checks_suppressions,
@@ -47,6 +48,7 @@ CHECKS: dict[str, Check] = {
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,
     "integration-tier": checks_integration.integration_tier,
+    "obico-tier": checks_obico.obico_tier,
     "merge-model": checks_ci.merge_model,
     "secrets": checks_ci.secrets,
     "release-targets": checks_release.release_targets,
