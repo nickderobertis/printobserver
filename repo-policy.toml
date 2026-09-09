@@ -107,6 +107,42 @@ schedule_block = "obico-tier-schedule"
 # in every run, and how to run it by hand.
 section = "The scheduled Obico tier"
 
+[ingress]
+# The Obico ingress answer bound, and the producer's own timeout it must stay
+# below. `just check-repo` reads the shipped default and the server's own copy of
+# the producer's timeout out of the source below, reads the recorded timeout out
+# of AGENTS.md's block, and refuses a tree in which the default is not below the
+# recorded timeout, in which no timeout is recorded, or in which the two copies
+# of that number disagree.
+#
+# The recorded number is this repository's claim about an EXTERNAL producer.
+# Nothing deterministic can tell whether it is still true; the scheduled Obico
+# tier is what reconciles it against a live Obico.
+source = "crates/printobserver-server/src/config.rs"
+default_constant = "DEFAULT_INGRESS_ANSWER_BOUND_MS"
+timeout_constant = "OBICO_POSTING_TIMEOUT_MS"
+# The block in `AGENTS.md` recording the producer's timeout, its source and the
+# fact that its posting does not retry.
+timeout_block = "obico-posting-timeout"
+# The section of `AGENTS.md` that records the bound: why it is where it is, and
+# what reconciles the recorded timeout against a live Obico.
+section = "The Obico ingress answer bound"
+# The lines the block must carry, so a recording cannot lose its provenance.
+required_block_keys = ["posting timeout", "source", "release", "retries"]
+
+[service]
+# The service this repository installs. NEITHER of these is declared here: the
+# unit's name and the installer's path are read out of `AGENTS.md`'s
+# "The end-user install path" section, which is the authoritative source of both,
+# and `just check-repo` holds the tree to what that section states. What is
+# declared here is where the installer writes the unit, and the fact that it must
+# start nothing.
+unit_directory = "/etc/systemd/system"
+# Programs the installer may not invoke. Installing must not, as a side effect,
+# start a process that can move a 3D printer, so the installer names the command
+# that starts the service only in what it prints.
+may_not_invoke = ["systemctl", "service", "systemd-run"]
+
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`
 # enforces: core may depend on the type crate and the four ports and on no

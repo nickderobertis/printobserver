@@ -10,6 +10,7 @@ from repo_checks import (
     checks_obico,
     checks_release,
     checks_repo,
+    checks_service,
     checks_supervisor,
     checks_suppressions,
 )
@@ -54,6 +55,8 @@ CHECKS: dict[str, Check] = {
     "ci": checks_ci.continuous_integration,
     "integration-tier": checks_integration.integration_tier,
     "obico-tier": checks_obico.obico_tier,
+    "ingress-answer-bound": checks_service.ingress_answer_bound,
+    "service-install": checks_service.service_install,
     "merge-model": checks_ci.merge_model,
     "secrets": checks_ci.secrets,
     "release-targets": checks_release.release_targets,
