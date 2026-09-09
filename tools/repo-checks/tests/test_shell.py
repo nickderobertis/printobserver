@@ -72,11 +72,11 @@ def _repository(root: Path) -> Path:
 def test_an_ambient_git_directory_does_not_move_a_subprocess(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every hook git runs inherits `GIT_DIR`, and `pre-push` here runs the whole gate.
+    """Every hook git runs inherits `GIT_DIR`, and passes it on to what it starts.
 
-    Inherited, it would point every `git` the gate starts at the repository
-    being pushed — so a suite that inits a repository in a temporary directory
-    would commit into the developer's own tree instead.
+    Inherited, it would point every `git` a hook starts at the repository the
+    hook was invoked for — so a suite that inits a repository in a temporary
+    directory would commit into the developer's own tree instead.
     """
     pushed = _repository(tmp_path / "pushed")
     elsewhere = _repository(tmp_path / "elsewhere")

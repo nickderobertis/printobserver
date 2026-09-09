@@ -31,12 +31,11 @@ PROGRAM_NOT_FOUND = 127
 # a repository rather than describing one, so a process that inherits them works
 # on that repository however its own `cwd` was set.
 #
-# This repository's `pre-push` hook runs the whole gate, so git hands `GIT_DIR`
-# to every check, suite and journey the gate starts — and the suites init real
-# repositories in temporary directories and commit to them. Inherited, those
-# commits land in the repository being pushed instead, which is a defect that
-# only ever appears on the enforcement path and never when the same suite is run
-# by hand.
+# git hands `GIT_DIR` to every hook it runs, and so to every check, suite and
+# journey that hook starts — and the suites init real repositories in temporary
+# directories and commit to them. Inherited, those commits land in the ambient
+# repository instead, which is a defect that only ever appears on a hook's path
+# and never when the same suite is run by hand.
 GIT_LOCATION_VARIABLES = (
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -74,8 +73,8 @@ def run(
         cwd: The directory to run in.
         env: The environment to run under, or the caller's when omitted. Either
             way the variables naming a git repository are dropped, so the
-            program works on `cwd` rather than on the repository a `pre-push`
-            hook was pushing.
+            program works on `cwd` rather than on the repository a git hook
+            was invoked for.
         timeout: Seconds to wait before giving up.
         check: Raise on a non-zero exit rather than returning it.
         capture: Collect the output, or let it reach the caller's terminal when
