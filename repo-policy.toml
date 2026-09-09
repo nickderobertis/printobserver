@@ -172,6 +172,21 @@ core = "printobserver-core"
 # which one runs.
 composition_roots = ["printobserver-server", "printobserver"]
 clients = ["printobserver-sdk"]
+# The command-line program, and the two edges it may not have.
+#
+# It is a composition root — it starts the server — so the rule above permits
+# it any implementation. What it must not have is either **vendor** adapter: for
+# everything but starting the server it is a client of an already-running one,
+# and a client that could name the printer's adapter or the failure detector's
+# could reach a printer without the supervisor in between. That is the one thing
+# this program exists to make impossible, so the edge is refused here rather
+# than left to a reader.
+cli = "printobserver"
+# What it must depend on: the server it starts, and the typed client of the
+# surface it talks to.
+cli_requires = ["printobserver-server", "printobserver-sdk"]
+# What it must not, whatever layer they sit in.
+cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held
