@@ -465,16 +465,55 @@ impl World {
         }
     }
 
-    /// What the machine reports it is doing, read through this same surface.
-    pub fn reported_state(&self) -> Option<Reports> {
+    /// Put the machine on one temperature, and wait until it reports it.
+    ///
+    /// Asked for through this same surface and **without a duration**, so it
+    /// moves what the machine is holding and opens no bounded intervention.
+    /// That is what lets a journey start an adjustment from a value the
+    /// adjustment is not about: a command that asked for nothing and a machine
+    /// that did nothing would leave the old value there, and the value the
+    /// caller asked for would never appear.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the machine never reports it, saying what it is reporting.
+    pub fn machine_holds(&self, command: &str, also: &[&str], at: &str, degrees: f64) {
+        let asked = degrees.to_string();
+        let mut given: Vec<&str> = also.to_vec();
+        given.extend_from_slice(&["--target-c", &asked]);
+        let said = self.settle(command, &given);
+        for _ in 0..SETTLING_POLLS {
+            if self.reported_target(at) == Some(degrees) {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!(
+            "the machine never reported {degrees} at `{at}`: it is reporting {:?}, and the \
+             last thing asked of it said {said}",
+            self.reported_target(at)
+        );
+    }
+
+    /// The temperature the machine reports at one place in a status read.
+    pub fn reported_target(&self, at: &str) -> Option<f64> {
+        self.status().pointer(at).and_then(Value::as_f64)
+    }
+
+    /// One status read of this world's print, as the document it answers.
+    fn status(&self) -> Value {
         let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .args(["status", "--print-id", &self.print_id, "--json", "--config"])
             .arg(self.client_config())
             .output()
             .expect("a status read runs");
-        let answer: Value =
-            printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
-        match answer
+        printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null)
+    }
+
+    /// What the machine reports it is doing, read through this same surface.
+    pub fn reported_state(&self) -> Option<Reports> {
+        match self
+            .status()
             .pointer("/printer/connection")
             .and_then(Value::as_str)
         {

@@ -68,6 +68,123 @@ pub fn every_assertion_here_refuses_the_defect_it_is_about(world: &World) {
     the_output_assertion_refuses(world, &one, "image-base64");
     the_effect_assertion_refuses_a_successful_no_op(world);
     the_restoration_assertion_refuses_an_incorrect_restoration(world);
+    the_intervention_assertion_refuses_a_stale_one_carrying_the_same_value(world);
+    the_manifest_assertion_refuses_a_manifest_the_caller_did_not_give(world);
+    the_heater_assertion_refuses_a_no_op(world);
+}
+
+/// The intervention assertion refuses one that is not the one this invocation
+/// opened, however alike it looks.
+///
+/// Two adjustments of the same value in a row: the second supersedes the first,
+/// so the first is settled and the second is in force carrying **exactly** the
+/// value the first did. Held against the first invocation's own answer, a
+/// value-only match finds the second and passes; a match on the identifier
+/// that answer carried finds nothing and refuses.
+fn the_intervention_assertion_refuses_a_stale_one_carrying_the_same_value(world: &World) {
+    let fan = one_named(world, OVER);
+    let invocation = machine_readable_invocation(world, &fan);
+
+    let stale = running::run(world, &invocation);
+    let stale_said = super::answers::answered(&stale, invocation.machine_readable);
+    let fresh = running::run(world, &invocation);
+    let fresh_said = super::answers::answered(&fresh, invocation.machine_readable);
+
+    assert_ne!(
+        super::answers::at(&stale_said, "intervention.id"),
+        super::answers::at(&fresh_said, "intervention.id"),
+        "the two adjustments opened one intervention, so there is no stale one to refuse"
+    );
+    assert_eq!(
+        stale_said.get("intervention.applied_value"),
+        fresh_said.get("intervention.applied_value"),
+        "the two adjustments applied different values, so a value-only match would have \
+         refused the stale one anyway"
+    );
+    refused("a stale intervention carrying the same value", || {
+        the_effect_is_confirmed_by_reading_it_back(world, &fan, &invocation, &stale);
+    });
+}
+
+/// The manifest assertion refuses a manifest the caller did not give.
+///
+/// The variant substitutes a manifest of its own for the one its caller wrote,
+/// so what the write put in place — and what this invocation's own answer
+/// carries — is a whole document that is not the caller's. A comparison of one
+/// field of it could still match; a comparison of the whole refuses.
+fn the_manifest_assertion_refuses_a_manifest_the_caller_did_not_give(world: &World) {
+    let writing = one_named(world, "manifest-set");
+    let invocation = machine_readable_invocation(world, &writing);
+    let substituted = walk::manifest_of("something else", 1.2, &world.printable_file());
+
+    let ran = traced(
+        &variant(),
+        &invocation.arguments,
+        &substituting(world, "manifest", &substituted.to_string()),
+        &running::traces(world),
+    );
+    let said = super::answers::answered(&ran, invocation.machine_readable);
+    let written = walk::manifest_of(
+        "manifest-set",
+        super::confirming::MANIFEST_SET_FEEDRATE,
+        &world.printable_file(),
+    );
+
+    refused("a manifest the caller did not give", || {
+        super::confirming::this_answer_carries_the_manifest("manifest-set", &said, &written);
+    });
+    // What the write put in place is that substituted manifest, so the walk's
+    // own manifest is written again before anything else reads it.
+    let arguments = super::failures::succeeding(&writing);
+    let putting_back: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let _ = running::command(world, &putting_back);
+}
+
+/// The heater assertion refuses a machine that took the target and did nothing.
+///
+/// The adjustment is started from a temperature it is not about and the machine
+/// goes deaf, so every record is complete and the machine is still holding that
+/// other temperature. It is the temperature the assertion is about.
+fn the_heater_assertion_refuses_a_no_op(world: &World) {
+    let heater = super::confirming::heater_of("set-bed-target-c").expect("a bed heater");
+    let bed = one_named(world, heater.command);
+    let invocation = machine_readable_invocation(world, &bed);
+
+    super::confirming::starting_from_somewhere_else(world, heater.command);
+    if !world.machine_is_deaf(true) {
+        return;
+    }
+    let ran = running::run(world, &invocation);
+    refused("a heater no-op", || {
+        the_effect_is_confirmed_by_reading_it_back(world, &bed, &invocation, &ran);
+    });
+    world.machine_is_deaf(false);
+}
+
+/// One command of the walk, by name.
+fn one_named(world: &World, command: &str) -> Driven {
+    walk::walk(world)
+        .into_iter()
+        .find(|found| found.command.name == command)
+        .unwrap_or_else(|| panic!("this walk drives no `{command}`"))
+}
+
+/// One invocation of one command that asks for machine-readable output.
+fn machine_readable_invocation(world: &World, one: &Driven) -> crate::walk::Invocation {
+    walk::invocations(one, world)
+        .into_iter()
+        .find(|invocation| invocation.machine_readable)
+        .expect("one invocation asks for machine-readable output")
+}
+
+/// The environment that makes the variant substitute one field.
+fn substituting(world: &World, field: &str, value: &str) -> Vec<(String, String)> {
+    let mut given = under(world, "fixed-value");
+    given.retain(|(name, _)| !name.starts_with("PRINTOBSERVER_TAINT_FIELD"));
+    given.retain(|(name, _)| !name.starts_with("PRINTOBSERVER_TAINT_AS"));
+    given.push(("PRINTOBSERVER_TAINT_FIELD".to_owned(), field.to_owned()));
+    given.push(("PRINTOBSERVER_TAINT_AS".to_owned(), value.to_owned()));
+    given
 }
 
 /// The effect assertion refuses a machine that took the action and did nothing.

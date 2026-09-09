@@ -131,10 +131,16 @@ fn adjustments(world: &World) -> Vec<Driven> {
 }
 
 /// Every adjustment asks for one duration, and answers where it expires.
+///
+/// Each is started from a value the adjustment is **not** about, where the
+/// machine reports one at all: an adjustment made from the value it asks for
+/// restores to that same value, and a machine that ignored both the change and
+/// the putting back would be indistinguishable from one that did neither.
 pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec<Bounded> {
     adjustments
         .iter()
         .map(|one| {
+            super::confirming::starting_from_somewhere_else(world, &one.command.name);
             let answer = ask_for(world, one, &seconds.to_string());
             the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds)
         })
@@ -173,7 +179,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
             .unwrap_or_else(|| panic!("an intervention carries `{at}`: {answer}"))
             .clone()
     };
-    Bounded {
+    let bounded = Bounded {
         command: one.command.name.clone(),
         id: held("/intervention/id")
             .as_str()
@@ -186,7 +192,34 @@ fn the_expiry_is_the_duration_the_caller_gave(
         applied_value: held("/intervention/applied_value"),
         prior_value: answer.pointer("/intervention/prior_value").cloned(),
         expires_at: expires,
+    };
+    the_value_it_would_restore_is_not_the_value_it_applied(&bounded);
+    bounded
+}
+
+/// What an expiry would put back is not what the adjustment put in place.
+///
+/// Asserted before anything about restoring is tested, and only where the
+/// machine reports a value at all: an intervention whose prior value is the
+/// one it applied is one whose restoration nothing could observe, so a
+/// journey that reached it would be proving nothing rather than failing.
+fn the_value_it_would_restore_is_not_the_value_it_applied(bounded: &Bounded) {
+    if bounded.reported_at().is_none() {
+        return;
     }
+    let prior = bounded.prior_value.as_ref().unwrap_or_else(|| {
+        panic!(
+            "`{}` changed something the machine reports and carries no prior value, so \
+             there is nothing for its expiry to put back",
+            bounded.command
+        )
+    });
+    assert_ne!(
+        prior, &bounded.applied_value,
+        "`{}` would restore the very value it applied, so nothing about its restoration \
+         could be observed",
+        bounded.command
+    );
 }
 
 /// One instant an answer carries.
