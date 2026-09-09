@@ -464,6 +464,7 @@ def call(
         headers["X-Api-Key"] = key
     if content_type is not None:
         headers["Content-Type"] = content_type
+    # llmlint: ignore[async_typed_clients_at_boundaries] one step of a sequential bring-up
     connection = http.client.HTTPConnection(
         parts.hostname or HOST, parts.port or 80, timeout=timeout
     )

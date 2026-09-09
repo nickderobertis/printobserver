@@ -46,6 +46,7 @@ def api(
     """One GET against an instance, with or without an API key."""
     _, _, host_port = url.partition("//")
     host, _, port = host_port.partition(":")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential poll of a test's instance
     connection = http.client.HTTPConnection(host, int(port), timeout=timeout)
     try:
         connection.request("GET", path, headers={"X-Api-Key": key} if key else {})
