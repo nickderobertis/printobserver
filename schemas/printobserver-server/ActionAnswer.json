@@ -1,0 +1,1091 @@
+{
+  "$defs": {
+    "AcknowledgementDisposition": {
+      "description": "What an operator's acknowledgement of a failure event asks for next.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "Stop the print.",
+          "type": "string"
+        }
+      ]
+    },
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "ActionKind": {
+      "description": "One action of the closed vocabulary, named without its payload.\n\nThis is what a safety envelope grants and what a policy rejection names; the\npayload lives on [`PrintAction`] itself.",
+      "oneOf": [
+        {
+          "const": "pause",
+          "description": "Pause the print.",
+          "type": "string"
+        },
+        {
+          "const": "resume",
+          "description": "Resume the print.",
+          "type": "string"
+        },
+        {
+          "const": "cancel",
+          "description": "Cancel the print.",
+          "type": "string"
+        },
+        {
+          "const": "start_print",
+          "description": "Start a print of a named file.",
+          "type": "string"
+        },
+        {
+          "const": "set_feedrate_factor",
+          "description": "Set the feedrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_flowrate_factor",
+          "description": "Set the flowrate factor.",
+          "type": "string"
+        },
+        {
+          "const": "set_tool_target_c",
+          "description": "Set a tool's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_bed_target_c",
+          "description": "Set the bed's target temperature.",
+          "type": "string"
+        },
+        {
+          "const": "set_fan_percent",
+          "description": "Set the fan percentage.",
+          "type": "string"
+        },
+        {
+          "const": "acknowledge_failure",
+          "description": "Acknowledge a failure event.",
+          "type": "string"
+        }
+      ]
+    },
+    "ActionRecord": {
+      "additionalProperties": false,
+      "description": "One request, the decision taken on it, and what became of it.\n\n`executed_at` and `outcome` are both optional and are absent together: a\nrecord is written when the decision is taken, which is before — and, for a\nrejected request, instead of — anything reaching the printer.",
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/PolicyDecision",
+          "description": "The decision policy took on it."
+        },
+        "executed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When it reached the printer, if it did."
+        },
+        "id": {
+          "$ref": "#/$defs/ActionId",
+          "description": "This record's identifier, minted by the store."
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutionOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the printer made of it, if it reached the printer."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print this request was made against."
+        },
+        "request": {
+          "$ref": "#/$defs/ActionRequest",
+          "description": "The request itself."
+        }
+      },
+      "required": [
+        "id",
+        "print_id",
+        "request",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "ActionRequest": {
+      "additionalProperties": false,
+      "description": "One request an actor made, at the instant it made it.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/PrintAction",
+          "description": "What was asked for."
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who asked."
+        },
+        "requested_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When they asked."
+        }
+      },
+      "required": [
+        "action",
+        "actor",
+        "requested_at"
+      ],
+      "type": "object"
+    },
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "ActorClass": {
+      "description": "An actor class, which is what a safety envelope grants actions to.",
+      "oneOf": [
+        {
+          "const": "agent",
+          "description": "The supervising agent.",
+          "type": "string"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "ExecutionOutcome": {
+      "description": "What happened when an accepted action reached the printer.",
+      "oneOf": [
+        {
+          "const": "succeeded",
+          "description": "The printer took it.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer did not, for this reason.",
+          "properties": {
+            "failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "failed"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
+    "Intervention": {
+      "additionalProperties": false,
+      "description": "One adjustment made for a bounded time.\n\n`prior_value` is read from the printer snapshot taken before the change, and\nis absent when the printer reported none — in which case expiry restores\nnothing and the outcome says so rather than guessing a default.",
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/ActionId",
+          "description": "The action that asked for it."
+        },
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "What it changed."
+        },
+        "applied_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was applied."
+        },
+        "applied_value": {
+          "description": "What it was changed to.",
+          "format": "double",
+          "type": "number"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it stops standing."
+        },
+        "id": {
+          "$ref": "#/$defs/InterventionId",
+          "description": "This intervention's identifier, minted by the store."
+        },
+        "outcome": {
+          "$ref": "#/$defs/InterventionOutcome",
+          "description": "What became of it."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print it was made against."
+        },
+        "prior_value": {
+          "description": "What the printer reported before the change, if it reported anything.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "restored_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the prior value was put back, if it was."
+        }
+      },
+      "required": [
+        "id",
+        "print_id",
+        "action_id",
+        "adjustable",
+        "applied_value",
+        "applied_at",
+        "expires_at",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    },
+    "InterventionOutcome": {
+      "description": "What became of a bounded change.",
+      "oneOf": [
+        {
+          "const": "still_active",
+          "description": "It is still in force.",
+          "type": "string"
+        },
+        {
+          "const": "restored",
+          "description": "The prior value was put back.",
+          "type": "string"
+        },
+        {
+          "const": "restore_unavailable",
+          "description": "There was no prior value to put back.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Putting the prior value back failed.",
+          "properties": {
+            "restore_failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "restore_failed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another intervention replaced it before it expired.",
+          "properties": {
+            "superseded": {
+              "additionalProperties": false,
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that replaced it."
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "superseded"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "JobManifest": {
+      "additionalProperties": false,
+      "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
+      "properties": {
+        "allowed": {
+          "additionalProperties": false,
+          "description": "The range each named adjustable may take, inclusive.",
+          "patternProperties": {
+            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+              "$ref": "#/$defs/Range"
+            }
+          },
+          "type": "object"
+        },
+        "file_name": {
+          "description": "The file this manifest is about, as the slicer named it.",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material the job is sliced for.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Whatever else the slicer recorded.",
+          "type": "object"
+        },
+        "nozzle_diameter_mm": {
+          "description": "The nozzle the job is sliced for, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "slicer_profile": {
+          "description": "The slicer profile the job was sliced with.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "material",
+        "nozzle_diameter_mm",
+        "slicer_profile",
+        "allowed",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PolicyDecision": {
+      "description": "The decision policy took on one request.",
+      "oneOf": [
+        {
+          "const": "accepted",
+          "description": "The request may proceed.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The request may not, for this reason.",
+          "properties": {
+            "rejected": {
+              "$ref": "#/$defs/RejectionReason"
+            }
+          },
+          "required": [
+            "rejected"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintAction": {
+      "description": "The whole vocabulary an actor may ask for, and there is no other.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Pause the print.",
+          "properties": {
+            "action": {
+              "const": "pause",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Resume the print.",
+          "properties": {
+            "action": {
+              "const": "resume",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Cancel the print.",
+          "properties": {
+            "action": {
+              "const": "cancel",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Start a print of a named file, with a manifest.",
+          "properties": {
+            "action": {
+              "const": "start_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "file_name": {
+              "$ref": "#/$defs/FileName",
+              "description": "The file to print, validated as a name a file API can be asked for."
+            },
+            "manifest": {
+              "$ref": "#/$defs/JobManifest",
+              "description": "The manifest this print is bounded by."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "file_name",
+            "manifest",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the feedrate factor, where one means one hundred percent.",
+          "properties": {
+            "action": {
+              "const": "set_feedrate_factor",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "factor": {
+              "description": "The multiplier asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "factor",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the flowrate factor, where one means one hundred percent.",
+          "properties": {
+            "action": {
+              "const": "set_flowrate_factor",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "factor": {
+              "description": "The multiplier asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "factor",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set one tool's target temperature.",
+          "properties": {
+            "action": {
+              "const": "set_tool_target_c",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            },
+            "target_c": {
+              "description": "The target temperature asked for, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the bed's target temperature.",
+          "properties": {
+            "action": {
+              "const": "set_bed_target_c",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            },
+            "target_c": {
+              "description": "The target temperature asked for, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "target_c",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan percentage.",
+          "properties": {
+            "action": {
+              "const": "set_fan_percent",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "duration_s": {
+              "description": "How long the change stands for, in whole seconds.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "percent": {
+              "description": "The percentage asked for.",
+              "format": "double",
+              "type": "number"
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "percent",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Acknowledge a failure event, with a disposition.",
+          "properties": {
+            "action": {
+              "const": "acknowledge_failure",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "disposition": {
+              "$ref": "#/$defs/AcknowledgementDisposition",
+              "description": "What to do next."
+            },
+            "event_id": {
+              "$ref": "#/$defs/EventId",
+              "description": "The event being acknowledged."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "event_id",
+            "disposition",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RejectionReason": {
+      "description": "Why a request was refused.\n\nEach rejection is a distinct variant, so a consumer distinguishes them by\nmatching rather than by reading a message.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The value asked for is outside the range allowed for that adjustable.",
+          "properties": {
+            "out_of_bounds": {
+              "additionalProperties": false,
+              "properties": {
+                "adjustable": {
+                  "$ref": "#/$defs/Adjustable",
+                  "description": "The adjustable that was asked for."
+                },
+                "allowed": {
+                  "$ref": "#/$defs/Range",
+                  "description": "The range that was allowed."
+                },
+                "requested": {
+                  "description": "The value that was asked for.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "adjustable",
+                "requested",
+                "allowed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "out_of_bounds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "This actor class may not request this action at all.",
+          "properties": {
+            "actor_may_not_request": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/ActionKind",
+                  "description": "The action they asked for."
+                },
+                "actor_class": {
+                  "$ref": "#/$defs/ActorClass",
+                  "description": "The class of the actor that asked."
+                }
+              },
+              "required": [
+                "actor_class",
+                "action"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "actor_may_not_request"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "no_active_print",
+          "description": "There is no active print to act on.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer is not in a state this action is valid from.",
+          "properties": {
+            "invalid_from_state": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer is in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "invalid_from_state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The agent's minimum interval has not elapsed.",
+          "properties": {
+            "min_interval_not_elapsed": {
+              "additionalProperties": false,
+              "properties": {
+                "interval_s": {
+                  "description": "The minimum interval, in whole seconds.",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "since_last_s": {
+                  "description": "How long it has been since the last agent action, in whole seconds.",
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "interval_s",
+                "since_last_s"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "min_interval_not_elapsed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The adjustable is not one this printer has.",
+          "properties": {
+            "unsupported_adjustable": {
+              "additionalProperties": false,
+              "properties": {
+                "adjustable": {
+                  "$ref": "#/$defs/Adjustable",
+                  "description": "The adjustable this printer cannot express."
+                }
+              },
+              "required": [
+                "adjustable"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "unsupported_adjustable"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What one mutating request left behind it.",
+  "properties": {
+    "intervention": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Intervention"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bounded intervention it opened, when it opened one."
+    },
+    "printer_refusal": {
+      "description": "What the printer said, when the request reached it and it refused.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "record": {
+      "$ref": "#/$defs/ActionRecord",
+      "description": "The record of the request and the decision taken on it. A rejected\nrequest's rejection is here, carrying its reason, the value asked for\nand the range allowed, so a caller can ask again inside the range."
+    }
+  },
+  "required": [
+    "record"
+  ],
+  "title": "ActionAnswer",
+  "type": "object"
+}

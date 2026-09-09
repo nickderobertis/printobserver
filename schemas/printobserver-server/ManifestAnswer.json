@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "JobManifest": {
+      "additionalProperties": false,
+      "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
+      "properties": {
+        "allowed": {
+          "additionalProperties": false,
+          "description": "The range each named adjustable may take, inclusive.",
+          "patternProperties": {
+            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+              "$ref": "#/$defs/Range"
+            }
+          },
+          "type": "object"
+        },
+        "file_name": {
+          "description": "The file this manifest is about, as the slicer named it.",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material the job is sliced for.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Whatever else the slicer recorded.",
+          "type": "object"
+        },
+        "nozzle_diameter_mm": {
+          "description": "The nozzle the job is sliced for, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "slicer_profile": {
+          "description": "The slicer profile the job was sliced with.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "material",
+        "nozzle_diameter_mm",
+        "slicer_profile",
+        "allowed",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "ManifestNarrowing": {
+      "additionalProperties": false,
+      "description": "One adjustable whose manifest range was wider than the envelope's.",
+      "properties": {
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "The adjustable that was narrowed."
+        },
+        "applied": {
+          "$ref": "#/$defs/Range",
+          "description": "The range that stands."
+        },
+        "requested": {
+          "$ref": "#/$defs/Range",
+          "description": "The range the manifest asked for."
+        }
+      },
+      "required": [
+        "adjustable",
+        "requested",
+        "applied"
+      ],
+      "type": "object"
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a manifest read or write answers.",
+  "properties": {
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobManifest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The manifest, when the print has one."
+    },
+    "narrowings": {
+      "description": "Every range this manifest asked wider than the envelope allows, narrowed\nto the envelope's — recorded on the print, so nobody has to wonder later\nwhich bound applied.",
+      "items": {
+        "$ref": "#/$defs/ManifestNarrowing"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "narrowings"
+  ],
+  "title": "ManifestAnswer",
+  "type": "object"
+}

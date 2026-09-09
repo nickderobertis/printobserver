@@ -1,0 +1,643 @@
+{
+  "description_version": 1,
+  "media_type": "application/json",
+  "operations": [
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "status",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/status",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "StatusAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "name": "context",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/context",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ContextAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": "path",
+      "method": "GET",
+      "name": "image",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "image_id",
+          "required": true
+        }
+      ],
+      "path": "/v1/images/{image_id}",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ImageAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "history",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "limit",
+          "required": false
+        }
+      ],
+      "path": "/v1/prints/{print_id}/history",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "HistoryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "manifest_get",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/manifest",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ManifestAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "write",
+      "image_path_field": null,
+      "method": "PUT",
+      "name": "manifest_set",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "manifest",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/manifest",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ManifestAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:pause",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "pause",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/pause",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:resume",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "resume",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/resume",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:cancel",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "cancel",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/cancel",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:start_print",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "start_print",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "file_name",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "manifest",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/start_print",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:set_feedrate_factor",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "set_feedrate_factor",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "duration_s",
+          "required": false
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "factor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_feedrate_factor",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:set_flowrate_factor",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "set_flowrate_factor",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "duration_s",
+          "required": false
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "factor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_flowrate_factor",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:set_tool_target_c",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "set_tool_target_c",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "duration_s",
+          "required": false
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "target_c",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "tool",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_tool_target_c",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:set_bed_target_c",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "set_bed_target_c",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "duration_s",
+          "required": false
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "target_c",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_bed_target_c",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:set_fan_percent",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "set_fan_percent",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "duration_s",
+          "required": false
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "percent",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_fan_percent",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:acknowledge_failure",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "acknowledge_failure",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "disposition",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "event_id",
+          "required": true
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/acknowledge_failure",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    }
+  ],
+  "version_prefix": "/v1"
+}

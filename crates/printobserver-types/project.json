@@ -29,10 +29,10 @@
       "command": "cargo build -p printobserver-types --locked"
     },
     "schemas": {
-      "command": "cargo test --locked -p printobserver-types -p printobserver-printer-api -p printobserver-vision-api -p printobserver-supervisor-api -p printobserver-store-api --test schemas"
+      "command": "cargo test --locked -p printobserver-types -p printobserver-printer-api -p printobserver-vision-api -p printobserver-supervisor-api -p printobserver-store-api -p printobserver-server --test schemas"
     },
     "schemas-update": {
-      "command": "PRINTOBSERVER_SCHEMAS=write cargo test --locked -p printobserver-types -p printobserver-printer-api -p printobserver-vision-api -p printobserver-supervisor-api -p printobserver-store-api --test schemas"
+      "command": "PRINTOBSERVER_SCHEMAS=write cargo test --locked -p printobserver-types -p printobserver-printer-api -p printobserver-vision-api -p printobserver-supervisor-api -p printobserver-store-api -p printobserver-server --test schemas"
     }
   }
 }
