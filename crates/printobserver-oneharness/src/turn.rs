@@ -242,17 +242,19 @@ impl OneharnessSupervisor {
 /// the one result the run produced, and the session block naming the
 /// conversation it ran in.
 ///
-/// `OneHarness`'s report holds each of those behind an `Option`, because the
-/// same report describes runs this port never asks for — a run carrying no
-/// session handle at all, and a run whose selection left nothing to execute. A
-/// turn is neither, so the narrowing happens once, here, and every step after
-/// it holds both rather than an `Option` nobody downstream can act on.
+/// `OneHarness`'s report is the answer to every shape of run it serves — a run
+/// under no session handle, whose session block is then absent; a fan-out over
+/// several harnesses or models, whose results are then several. A turn is one
+/// harness answering one prompt under one session, so the narrowing happens
+/// once, here, and every step after it holds exactly one of each rather than a
+/// shape nobody downstream can act on.
 ///
-/// A run that answers neither is refused rather than written down. Nothing ran
-/// that this port could attribute to a conversation: the session the turn would
-/// be recorded under is one this port planned and the harness never confirmed,
-/// and a ledger carrying turns of a session that was never opened is a history
-/// that reads as though the agent had been consulted.
+/// A report of any other shape is refused rather than written down. It answers
+/// a run this port did not ask for, so nothing in it can be attributed to this
+/// print's conversation: the session such a turn would be recorded under is one
+/// this port planned and the harness never confirmed, and a ledger carrying
+/// turns of a session that was never opened is a history that reads as though
+/// the agent had been consulted.
 #[derive(Debug, Clone)]
 pub struct TurnReport {
     /// The result the run produced.
@@ -274,11 +276,15 @@ impl TurnReport {
                 detail: NO_SESSION.to_owned(),
             });
         };
-        let Some(result) = report.results.into_iter().next() else {
-            return Err(SupervisorError::Unavailable {
-                detail: NO_RESULT.to_owned(),
-            });
-        };
+        let [result] = <[RunResult; 1]>::try_from(report.results).map_err(|results| {
+            SupervisorError::Unavailable {
+                detail: if results.is_empty() {
+                    NO_RESULT.to_owned()
+                } else {
+                    format!("{}, and this turn asked one to answer once", results.len())
+                },
+            }
+        })?;
         Ok(Self { result, session })
     }
 
@@ -305,7 +311,9 @@ const NO_ANSWER: &str = "the answer carried no value the assessment schema could
 /// The detail a run that answered no session block is refused with.
 const NO_SESSION: &str = "the harness exposed no session, so the conversation cannot be continued";
 
-/// The detail a run that answered no result at all is refused with.
+/// The detail a run that answered no result at all is refused with. A run that
+/// answered more than one says how many instead: it is a different shape of run
+/// rather than one that did not happen.
 const NO_RESULT: &str = "the harness answered no result, so no turn was taken";
 
 /// Read a file the port is built from.

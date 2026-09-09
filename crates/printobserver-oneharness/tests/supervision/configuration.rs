@@ -111,11 +111,21 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
     // An object, and still no schema: nothing could be judged against it.
     let not_a_schema = fixture.path("not-a-schema.json");
     fs::write(&not_a_schema, r#"{"type": 17}"#).expect("a scratch file");
+    // A schema, and one that admits every answer there is.
+    let declares_nothing = fixture.path("empty.json");
+    fs::write(&declares_nothing, "{}").expect("a scratch file");
 
-    // Each of the three is refused naming the file. What is said about the
-    // absent one and the unparsable one is the operating system's own text and
-    // serde's own text; only the last is this crate's to promise.
-    for path in [&absent, &not_json, &not_a_document, &not_a_schema] {
+    // Each of them is refused naming the file. What is said about the absent
+    // one, the unparsable one and the one that compiles to nothing is the
+    // operating system's own text, serde's and the schema compiler's; only the
+    // array is refused in this crate's own words.
+    for path in [
+        &absent,
+        &not_json,
+        &not_a_document,
+        &not_a_schema,
+        &declares_nothing,
+    ] {
         let refused = AssessmentSchema::at(path)
             .expect_err(&format!("{} was accepted as a schema", path.display()));
         let said = refused.to_string();
@@ -134,6 +144,13 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
             .to_string()
             .contains("not a schema document"),
         "a JSON array was refused as something other than what it is"
+    );
+    assert!(
+        AssessmentSchema::at(&declares_nothing)
+            .expect_err("a schema declaring nothing was accepted")
+            .to_string()
+            .contains("declares nothing"),
+        "a schema admitting every answer was refused as something else"
     );
 
     // The generated artifact is a schema document, and reading it says so.

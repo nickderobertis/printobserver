@@ -287,8 +287,14 @@ impl AssessmentSchema {
         let text = std::fs::read_to_string(&path).map_err(|error| invalid(error.to_string()))?;
         let document: serde_json::Value =
             serde_json::from_str(&text).map_err(|error| invalid(error.to_string()))?;
-        if !document.is_object() {
-            return Err(invalid("it is JSON, but not a schema document".to_owned()));
+        match document.as_object() {
+            None => return Err(invalid("it is JSON, but not a schema document".to_owned())),
+            // `{}` compiles, and admits every answer there is. A schema that
+            // declares nothing is the absent file with extra steps.
+            Some(declarations) if declarations.is_empty() => {
+                return Err(invalid("it is a schema that declares nothing".to_owned()));
+            }
+            Some(_) => {}
         }
         // Compiled rather than inspected: a document can be an object and still
         // be no schema — a `type` that is a number, a `$ref` to nothing — and
@@ -309,9 +315,14 @@ impl AssessmentSchema {
 
 /// How the supervising agent is reached, and where its sessions live.
 ///
-/// Every path is absolute in production. Nothing here is read until the port is
-/// built, and the skill and the template are read exactly then — which is what
-/// makes editing either of them a restart rather than a rebuild.
+/// A path here is taken as it is given and resolved against the process's own
+/// working directory, as every path a program is configured with is; nothing
+/// requires it absolute, because a relative one is exactly right when the
+/// caller is a test or a checkout. What each path names is read when the port
+/// is built rather than when a turn runs — which is what makes editing the
+/// skill or the template a restart rather than a rebuild, and what makes a path
+/// that names nothing a refusal to build rather than a turn that fails hours
+/// later.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupervisorConfig {
     /// The state directory this port keeps its sessions under. It holds both

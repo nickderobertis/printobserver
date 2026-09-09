@@ -334,6 +334,40 @@ fn a_ledger_that_cannot_be_written_is_reported() {
         .expect_err("a close was recorded into a ledger that cannot be written");
 }
 
+/// A harness that answers and then exits non-zero has still taken the turn.
+///
+/// The exit code is the harness's own report on itself, and several of them
+/// answer and then exit non-zero — for a tool that failed, for a session they
+/// could not store. What decides whether a turn happened is the answer, so this
+/// is a completed turn rather than a failure, and it is the only status besides
+/// a clean exit that is one.
+#[test]
+fn a_harness_that_answers_and_exits_non_zero_still_took_the_turn() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
+    let fixture = Fixture::new("failures-nonzero");
+    let mut configured = answering(&fixture);
+    configured.harness_env.push(assignment("MOCK_EXIT=1"));
+
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(configured, &watch);
+    let print_id = PrintId::new();
+    let outcome = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
+        .expect("a harness that answered and exited non-zero was read as a failed turn");
+
+    assert_eq!(outcome.assessment.summary, "the print is fine");
+    assert_eq!(outcome.phase, SessionPhase::Created);
+    let turns = supervisor
+        .recorded_turns(&print_id)
+        .expect("the ledger is readable");
+    assert_eq!(turns.len(), 1);
+    assert_eq!(
+        turns[0].failure, None,
+        "a turn that produced an assessment was written down as a failure"
+    );
+}
+
 /// A ledger a later build wrote is refused rather than read as this build's.
 #[test]
 fn a_ledger_written_under_another_shape_is_refused() {

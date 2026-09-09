@@ -91,6 +91,15 @@ def test_a_schema_file_the_crate_carries_is_refused(tree: Callable[[], Tree]) ->
     refused(schema_source(copy.repo), "assessment-schema.json")
 
 
+def test_the_smallest_schema_the_crate_could_carry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A schema need not be the generated one, or large, to be one it carries."""
+    copy = tree()
+    copy.write(f"{CRATE}/tiny-schema.json", json.dumps({"type": "object"}))
+    refused(schema_source(copy.repo), "tiny-schema.json")
+
+
 def test_a_schemas_directory_for_the_adapter_is_refused(tree: Callable[[], Tree]) -> None:
     """A schema checked in under the adapter's own name is refused too."""
     copy = tree()

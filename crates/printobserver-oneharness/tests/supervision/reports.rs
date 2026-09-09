@@ -1,12 +1,13 @@
-//! What the port makes of a finished run's report, including the two shapes a
-//! turn cannot be written down from.
+//! What the port makes of a finished run's report, including the shapes a turn
+//! cannot be written down from.
 //!
-//! `OneHarness`'s report holds the session block and the results behind an
-//! `Option` each, because the same document describes runs this port never asks
-//! for. Every report here is one a real run answered, read off the port's own
-//! seam; the two that a turn cannot be recorded from are that report with the
-//! part in question taken away, which is the only way this system meets either
-//! of them.
+//! `OneHarness`'s report answers every shape of run it serves: its session
+//! block is absent for a run under no session handle, and its results are
+//! several for a fan-out. This port asks for neither, so a report of either
+//! shape is one it did not ask for. Every report here is one a real run
+//! answered, read off the port's own seam; the ones a turn cannot be recorded
+//! from are that report with a part taken away or repeated, which is the only
+//! way this system meets any of them.
 
 use std::sync::Arc;
 
@@ -93,6 +94,29 @@ fn a_report_with_no_session_is_no_turn() {
     assert!(
         detail(&refused).contains("exposed no session"),
         "the refusal does not say the conversation cannot be continued: {}",
+        detail(&refused)
+    );
+}
+
+/// A report answering more than once answers a run this port did not ask for.
+#[test]
+fn a_report_answering_more_than_once_is_no_turn() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let _schemas = schema_read_lock();
+    let mut report = one_real_report("reports-two-results");
+    let answered = report
+        .results
+        .first()
+        .expect("a finished run answers a result")
+        .clone();
+    report.results.push(answered);
+
+    let refused =
+        TurnReport::of(report).expect_err("a report answering twice was read as one turn");
+    assert!(
+        detail(&refused).contains("2, and this turn asked one to answer once"),
+        "the refusal does not say how many answered: {}",
         detail(&refused)
     );
 }

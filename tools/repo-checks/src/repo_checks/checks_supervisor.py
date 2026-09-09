@@ -66,8 +66,13 @@ SPAWNING_INTERFACES = (
 )
 
 # Top-level keys that make a JSON document a JSON Schema rather than ordinary
-# configuration. A project or package manifest carries none of them.
-SCHEMA_MARKERS = ("$defs", "oneOf", "properties", "required")
+# configuration. A project or package manifest carries none of them, and the
+# smallest schema anybody writes by hand — `{"type": "object"}` — carries the
+# first, which is why `type` is in the set even though a configuration file
+# could hold one: a schema this crate carries slipping past for want of a marker
+# is the failure this check exists to prevent, and an ordinary file refused for
+# looking like a schema is one somebody renames.
+SCHEMA_MARKERS = ("$defs", "$ref", "oneOf", "properties", "required", "type")
 
 
 # Every declaration of the `[supervisor]` section, by the kind it is read as.
