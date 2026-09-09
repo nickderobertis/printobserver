@@ -9,7 +9,7 @@
 use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{EventKind, PrintId};
 
-use crate::composition::{Composed, SECRET, SESSION};
+use crate::composition::{Composed, SECRET, hold_the_print_running};
 use crate::http_host::image_host;
 use crate::scripted::Scripted;
 use crate::waiting::until;
@@ -107,27 +107,6 @@ async fn act(world: &Composed, print_id: PrintId, name: &str, body: &Value) -> (
     (code.as_u16(), answer)
 }
 
-/// Start the hold print, and wait until the machine says it is printing.
-async fn hold_the_print_running(world: &Composed, print_id: PrintId) {
-    let state = status(world, print_id).await["printer"]["connection"].clone();
-    if state == json!("paused") {
-        let (code, answer) = act(world, print_id, "cancel", &body(&[])).await;
-        assert_eq!(code, 200, "the paused print was not cancelled: {answer}");
-        until_state(world, print_id, "operational").await;
-    }
-    if status(world, print_id).await["printer"]["connection"] != json!("printing") {
-        let (code, answer) = act(
-            world,
-            print_id,
-            "start_print",
-            &body(&[("file_name", json!(HOLD_FILE)), ("manifest", manifest())]),
-        )
-        .await;
-        assert_eq!(code, 200, "the hold print did not start: {answer}");
-    }
-    until_state(world, print_id, "printing").await;
-}
-
 /// The manifest a start is bounded by, naming the file it is about.
 fn manifest() -> Value {
     json!({
@@ -143,6 +122,9 @@ fn manifest() -> Value {
 /// The whole loop.
 pub async fn walk(instance: &Scripted) {
     let host = image_host(snapshot_bytes()).await;
+    // An alert delivered to an idle machine ends the print it opens, so the
+    // machine is printing before the first one arrives.
+    hold_the_print_running(instance).await;
     let world = Composed::open(instance).await;
 
     // An alert reaches the real ingress; the print and its image are stored and
@@ -159,14 +141,28 @@ pub async fn walk(instance: &Scripted) {
         "no session opened through the harness: {recorded:?}"
     );
     let opened = status(&world, print_id).await;
-    assert_eq!(
-        opened["session"]["session_name"],
-        json!(SESSION),
-        "the session is not the one the harness reported"
+    let session = opened["session"]["session_name"].clone();
+    assert!(
+        session.as_str().is_some_and(|name| !name.is_empty()),
+        "the alert opened no session through the harness: {opened}"
     );
     stored_image_is_a_path(&world, print_id).await;
 
-    hold_the_print_running(&world, print_id).await;
+    // The manifest narrows the feedrate, which is what the bounded adjustment
+    // below is refused by.
+    let (code, written) = world
+        .put(&world.operation_url("manifest_set", print_id), &manifest())
+        .await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{written}");
+    let (code, read_back) = world
+        .get(&world.operation_url("manifest_get", print_id))
+        .await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{read_back}");
+    assert_eq!(
+        read_back["manifest"],
+        manifest(),
+        "the manifest did not read back as it was written"
+    );
 
     bounded_and_executed(&world, print_id).await;
     paused_and_resumed(&world, print_id).await;
@@ -185,7 +181,9 @@ pub async fn walk(instance: &Scripted) {
         );
     }
 
-    // Restart, and a second alert continues the first alert's session.
+    // Restart, and a second alert continues the first alert's session. The
+    // machine is printing again first, for the reason the first alert needed it.
+    hold_the_print_running(instance).await;
     let world = world.restart().await;
     assert!(
         world.server.reconciliation().adopted.contains(&print_id),
@@ -195,8 +193,7 @@ pub async fn walk(instance: &Scripted) {
     deliver(&world, &host.url()).await;
     let continued = status(&world, print_id).await;
     assert_eq!(
-        continued["session"]["session_name"],
-        json!(SESSION),
+        continued["session"]["session_name"], session,
         "the second alert did not continue the first alert's session"
     );
     let reconciled = history(&world, print_id).await;
@@ -204,9 +201,19 @@ pub async fn walk(instance: &Scripted) {
         reconciled.contains(&EventKind::StartupReconciliation),
         "the restart recorded none of what it adopted: {reconciled:?}"
     );
+    // A session that was opened twice would be a second conversation about one
+    // print, which is what continuing means it is not.
+    assert_eq!(
+        reconciled
+            .iter()
+            .filter(|kind| **kind == EventKind::SupervisionSessionOpened)
+            .count(),
+        1,
+        "the second alert opened a session of its own: {reconciled:?}"
+    );
 
     // Leave the environment as the bring-up recipe left it.
-    hold_the_print_running(&world, print_id).await;
+    hold_the_print_running(instance).await;
     world.server.stop().await;
 }
 

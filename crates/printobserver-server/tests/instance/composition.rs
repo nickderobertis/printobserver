@@ -17,6 +17,7 @@ use printobserver_oneharness::{
     AssessmentSchema, EnvAssignment, HarnessIdentity, OneharnessSupervisor, SupervisorConfig,
     TurnTimeout,
 };
+use printobserver_printer_api::PrinterPort as _;
 use printobserver_server::{Ports, Running, Server, ServerConfig};
 use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::SqliteStore;
@@ -114,6 +115,22 @@ impl Composed {
         read(response).await
     }
 
+    /// Replace one record with a JSON body, and read the JSON answer.
+    pub async fn put(
+        &self,
+        url: &str,
+        body: &printobserver_types::serde_json::Value,
+    ) -> (reqwest::StatusCode, printobserver_types::serde_json::Value) {
+        let response = self
+            .client
+            .put(url)
+            .json(body)
+            .send()
+            .await
+            .expect("the server answers");
+        read(response).await
+    }
+
     /// Ask for one action, and read the JSON answer.
     pub async fn post(
         &self,
@@ -186,6 +203,72 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
     let path = root.join("config.toml");
     std::fs::write(&path, document).expect("the configuration is writable");
     ServerConfig::load(&path).expect("this tier's configuration is accepted")
+}
+
+/// The file the scripted environment uploads and this tier keeps running.
+const HOLD_FILE: &str = "hold.gcode";
+
+/// How long a real machine is given to get where it is going.
+const REACHED: Duration = Duration::from_secs(120);
+
+/// A printer speaking to the scripted instance directly.
+fn printer(instance: &Scripted) -> OctoPrintPrinter {
+    OctoPrintPrinter::new(
+        OctoPrintConfig::new(&instance.url, instance.api_key.clone())
+            .expect("the scripted instance is a configuration")
+            .with_timeout(TIMEOUT),
+    )
+}
+
+/// The hold print is running, whatever state the environment was left in.
+///
+/// This is a *precondition* rather than a step of the walk, so it goes through
+/// the printer port directly rather than through the API: the API acts on a
+/// print this system is watching, and what this establishes is the state the
+/// machine has to be in before there is one. It runs before the first alert —
+/// an alert delivered to an idle machine ends the print it opens, because a
+/// terminal state is what ends a print — before the second, and at the end, so
+/// that the other tier on this one machine finds the print it asserts is there.
+///
+/// # Panics
+///
+/// Panics when the machine cannot be got printing inside [`REACHED`].
+pub async fn hold_the_print_running(instance: &Scripted) {
+    let printer = printer(instance);
+    let state = printer.job().await.expect("a job snapshot").state;
+    if state != printobserver_types::PrinterState::Printing {
+        if state == printobserver_types::PrinterState::Paused {
+            printer
+                .cancel()
+                .await
+                .expect("the paused print is cancelled");
+            until_job(&printer, &printobserver_types::PrinterState::Operational).await;
+        }
+        if printer.job().await.expect("a job snapshot").state
+            != printobserver_types::PrinterState::Printing
+        {
+            printer
+                .start(printobserver_types::FileName::new(HOLD_FILE).expect("a file name"))
+                .await
+                .expect("the hold print starts");
+        }
+    }
+    until_job(&printer, &printobserver_types::PrinterState::Printing).await;
+}
+
+/// Wait until the machine reports one job state.
+async fn until_job(printer: &OctoPrintPrinter, wanted: &printobserver_types::PrinterState) {
+    let deadline = std::time::Instant::now() + REACHED;
+    let mut last = None;
+    while std::time::Instant::now() < deadline {
+        let seen = printer.job().await.expect("a job snapshot").state;
+        if seen == *wanted {
+            return;
+        }
+        last = Some(seen);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    panic!("waited {REACHED:?} for the machine to report {wanted:?}; it reported {last:?}");
 }
 
 /// Write one of the agent's committed assets into the state directory.
