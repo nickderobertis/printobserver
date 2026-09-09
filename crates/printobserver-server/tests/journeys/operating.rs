@@ -214,6 +214,7 @@ fn adjustment(kind: ActionKind) -> Asked {
 /// Every mutating operation has the effect it names, and only when it may.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_mutating_operation_has_its_own_effect_and_its_own_rejection() {
+    let mut walked = Vec::new();
     for operation in OPERATIONS {
         let Effect::Mutating(kind) = operation.effect else {
             continue;
@@ -223,7 +224,24 @@ async fn every_mutating_operation_has_its_own_effect_and_its_own_rejection() {
         rejects(&operation, &plan).await;
         refuses_a_request_with_no_reason(&operation).await;
         accepts(&operation, &plan).await;
+        walked.push(operation.name);
     }
+
+    // The declared list holds no mutating operation this walk did not reach.
+    let declared: Vec<&str> = OPERATIONS
+        .iter()
+        .filter(|operation| matches!(operation.effect, Effect::Mutating(_)))
+        .map(|operation| operation.name)
+        .collect();
+    assert_eq!(
+        walked, declared,
+        "the declared list holds a mutating operation this walk did not reach"
+    );
+    assert!(
+        walked.len() >= 10,
+        "this walk reached {} operations, which is not the action vocabulary",
+        walked.len()
+    );
 }
 
 /// The accepted body has the effect the operation names.
@@ -433,6 +451,33 @@ async fn every_adjustment_applies_the_duration_it_is_given() {
         );
         world.server.stop().await;
     }
+}
+
+/// The operations beside the action vocabulary this journey drives.
+///
+/// `image` is the one it does not: an image answer is a path, and what that
+/// path has to be is `images.rs`'s whole subject. The two together are compared
+/// against the declared set below, so neither can fall behind it.
+const DRIVEN_HERE: [&str; 5] = [
+    "status",
+    "context",
+    "history",
+    "manifest_get",
+    "manifest_set",
+];
+
+/// Every operation beside the action vocabulary is driven by some journey.
+#[test]
+fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
+    let mut covered: Vec<&str> = DRIVEN_HERE.to_vec();
+    covered.push("image");
+    covered.sort_unstable();
+    let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
+    declared.sort_unstable();
+    assert_eq!(
+        covered, declared,
+        "an operation beside the action vocabulary is driven by no journey"
+    );
 }
 
 /// Every read answers the record it names, read back out of the store.
