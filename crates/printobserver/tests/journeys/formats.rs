@@ -37,7 +37,6 @@ pub fn both_renderings_carry_the_same_fields(world: &World) {
     }
 
     for one in walk::walk(world) {
-        world.wants(one.reports);
         let arguments = failures::succeeding(&one);
         both_ways(world, &arguments, &one.operation(), Answer::Success);
         if one.operation().action_kind().is_some() {
@@ -90,7 +89,18 @@ pub fn the_two_renderings_agree(
 }
 
 /// One invocation, in one rendering.
+///
+/// The machine is put back where the command needs it before **each** run
+/// rather than before the pair: an action moves it, so the second run of a
+/// resume would be one the policy refuses from the state the first left — and
+/// the two renderings would then be of two different answers.
 fn run(world: &World, arguments: &[String], machine_readable: bool) -> Ran {
+    if let Some(one) = walk::walk(world)
+        .into_iter()
+        .find(|found| Some(&found.command.name) == arguments.first())
+    {
+        world.wants(one.reports);
+    }
     let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     if machine_readable {
         asked.push("--json");

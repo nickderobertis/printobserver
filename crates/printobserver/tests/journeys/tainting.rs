@@ -10,6 +10,16 @@
 //! connects directly **only** when machine-readable output and an explicit
 //! configuration file are both given. It is here so that the cross-product's
 //! combination coverage is proved rather than asserted.
+//!
+//! # Two of the defects are the machine's rather than the program's
+//!
+//! An effect assertion is about what happened at the machine, so what makes it
+//! bite is a machine that does not do what it is asked. The stood-in one can be
+//! told to answer success and change nothing, which is the **successful no-op**
+//! — every action reaches it, every action is taken, the record says so, and
+//! nothing moved — and to be told that only once an adjustment has landed,
+//! which is an **incorrect restoration**: the record says the prior value went
+//! back and the machine is still holding the adjusted one.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -22,8 +32,11 @@ use crate::traced::{Ran, traced};
 use crate::walk::{self, Driven};
 use crate::world::World;
 
-use super::confirming::{only_the_configured_endpoint, the_request_carries_the_callers_values};
-use super::running;
+use super::confirming::{
+    only_the_configured_endpoint, the_effect_is_confirmed_by_reading_it_back,
+    the_request_carries_the_callers_values,
+};
+use super::{durations, running};
 
 /// The variant of this program that carries one defect.
 fn variant() -> PathBuf {
@@ -53,7 +66,105 @@ pub fn every_assertion_here_refuses_the_defect_it_is_about(world: &World) {
     the_request_assertion_refuses(world, &one, "fixed-reason");
     the_output_assertion_refuses(world, &one, "image-bytes");
     the_output_assertion_refuses(world, &one, "image-base64");
+    the_effect_assertion_refuses_a_successful_no_op(world);
+    the_restoration_assertion_refuses_an_incorrect_restoration(world);
 }
+
+/// The effect assertion refuses a machine that took the action and did nothing.
+///
+/// The request reaches the machine, the machine answers success, and the record
+/// carries both the request and its execution — everything a walk that stopped
+/// at `ActionRequested` would accept. What the assertion is about is the state
+/// the action was supposed to produce, and this machine never reaches it.
+fn the_effect_assertion_refuses_a_successful_no_op(world: &World) {
+    if !world.machine_is_deaf(true) {
+        return;
+    }
+    let paused = walk::walk(world)
+        .into_iter()
+        .find(|found| found.command.name == "pause")
+        .expect("this walk drives a pause");
+    let invocation = walk::invocations(&paused, world)
+        .into_iter()
+        .find(|invocation| invocation.machine_readable)
+        .expect("one invocation asks for machine-readable output");
+
+    let ran = running::run(world, &invocation);
+    the_record_a_weaker_check_would_have_accepted_is_there(world, &ran, &invocation);
+    refused("a successful no-op", || {
+        the_effect_is_confirmed_by_reading_it_back(world, &paused, &invocation, &ran);
+    });
+    world.machine_is_deaf(false);
+    world.wants(Reports::Printing);
+}
+
+/// The no-op left behind everything a check of the record alone looks at.
+///
+/// Both events are there, about this very action, carrying what the caller
+/// asked for — so the refusal above is the state assertion doing the work
+/// rather than the record having gone missing. That is what makes this a
+/// **successful** no-op rather than a failure wearing one's clothes.
+fn the_record_a_weaker_check_would_have_accepted_is_there(
+    world: &World,
+    ran: &Ran,
+    invocation: &crate::walk::Invocation,
+) {
+    assert_eq!(
+        ran.code,
+        Some(0),
+        "the no-op did not succeed, so it is not the violation this is about: {}",
+        ran.said()
+    );
+    let action_id = super::answers::at(
+        &super::answers::answered(ran, invocation.machine_readable),
+        "record.id",
+    );
+    let read = running::read(
+        world,
+        &["history", "--print-id", &world.print_id, "--limit", "40"],
+    );
+    for kind in ["action_requested", "action_executed"] {
+        assert!(
+            read.get("events")
+                .and_then(Value::as_array)
+                .is_some_and(|events| events.iter().any(|event| {
+                    event.get("kind").and_then(Value::as_str) == Some(kind)
+                        && event.pointer("/payload/action_id").and_then(Value::as_str)
+                            == Some(action_id.as_str())
+                })),
+            "the no-op left no `{kind}` for this action, so a check of the record alone \
+             would have refused it for the wrong reason: {read}"
+        );
+    }
+}
+
+/// The restoration assertion refuses a machine that never put the value back.
+///
+/// The adjustment lands on a machine that honours it, and the machine goes deaf
+/// before the expiry sweep reaches it — so the restoring call is answered with
+/// success, the record says `restored`, and the machine is still holding the
+/// adjusted value. That is exactly what a check of the record alone would
+/// accept and what a check of the value refuses.
+fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
+    if !world.machine_is_deaf(false) {
+        return;
+    }
+    let heater = walk::walk(world)
+        .into_iter()
+        .find(|found| found.command.name == "set-bed-target-c")
+        .expect("this walk drives a bed target");
+
+    let opened = durations::each_asks_for(world, std::slice::from_ref(&heater), SHORT);
+    durations::the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
+    world.machine_is_deaf(true);
+    refused("an incorrect restoration", || {
+        durations::the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+    });
+    world.machine_is_deaf(false);
+}
+
+/// How long the adjustment the restoration defect is driven over stands for.
+const SHORT: i64 = 2;
 
 /// The command of the walk every defect is driven over.
 fn the_command(world: &World) -> Driven {

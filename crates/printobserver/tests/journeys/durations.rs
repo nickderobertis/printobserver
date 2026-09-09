@@ -12,14 +12,32 @@
 //! program's own acceptance rule turns on, with the rejected values sitting
 //! immediately beneath it.
 //!
-//! # What the two short values add
+//! # What the two short values add, and when they are read
 //!
 //! The recorded expiry alone does not separate restoring at the right time from
 //! restoring early and from never restoring. So at the two short values the
-//! journey reads back, through this same program, that the adjustment is still
-//! in force shortly **before** that instant and gone shortly **after** it —
-//! with the record saying the prior value was put back where the machine
-//! reported one, and saying there was none where it did not.
+//! journey reads twice, and **both reads are scheduled against the expiry the
+//! record itself carries** rather than against the moment the request was made:
+//! once at that instant less [`MARGIN`] and once at it plus [`MARGIN`]. Each
+//! read records the instant it was taken at, and every intervention is asserted
+//! to have been read before its own expiry and after its own expiry — so a read
+//! that drifted is a failure rather than a silent weakening.
+//!
+//! # What is read, and what the machine can be read for
+//!
+//! Where the machine reports a value for what was adjusted, that **value** is
+//! what is asserted: the adjusted value shortly before the expiry and the prior
+//! value shortly after it. That is the whole claim, and it is what a record
+//! saying `restored` over a machine that never moved fails —
+//! `journeys/tainting.rs` drives exactly that.
+//!
+//! Three of the five adjustables have no such value, and that is a fact about
+//! the machine rather than a gap here: `OctoPrint` reports no applied feedrate
+//! factor, no applied flowrate factor and no fan setting, and there is no
+//! endpoint of it that does — the adapter says so in its own words. For those
+//! three the journey makes the positive claim instead of accepting a weaker
+//! one: the machine is asserted to report **no** value for that adjustable, and
+//! the expiry is asserted to say exactly that there was nothing to put back.
 
 use core::time::Duration;
 use std::collections::BTreeMap;
@@ -39,17 +57,42 @@ use super::running;
 /// The durations this program refuses, each sitting outside what it accepts.
 const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 
-/// How long after an expiry a journey looks for what became of it.
-const AFTER: Duration = Duration::from_millis(600);
+/// How far either side of a recorded expiry a journey reads.
+///
+/// Short enough that "shortly before" is inside the shortest duration this
+/// program accepts, and long enough that a read started there finishes on the
+/// right side of the instant it is about.
+pub const MARGIN: Duration = Duration::from_millis(400);
 
 /// What one accepted adjustment left behind.
-struct Bounded {
+pub struct Bounded {
     /// The command that asked for it.
-    command: String,
+    pub command: String,
     /// The intervention it opened.
-    id: String,
-    /// Whether the machine had reported a value to put back.
-    had_a_prior_value: bool,
+    pub id: String,
+    /// What it changed.
+    pub adjustable: String,
+    /// What it changed that to.
+    pub applied_value: Value,
+    /// What the machine reported before it, when the machine reports one.
+    pub prior_value: Option<Value>,
+    /// When it stops standing.
+    pub expires_at: Timestamp,
+}
+
+impl Bounded {
+    /// Where a status read carries the machine's own value for what this
+    /// changed, for an adjustable the machine reports at all.
+    fn reported_at(&self) -> Option<String> {
+        match self.adjustable.as_str() {
+            "bed_target" => Some("/printer/bed/target_c/value".to_owned()),
+            held if held.starts_with("tool_target:") => {
+                let tool = held.split(':').nth(1)?;
+                Some(format!("/printer/tools/{tool}/target_c/value"))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Every adjustment, over the whole corpus.
@@ -64,8 +107,8 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
 
     for seconds in [MIN_DURATION_SECONDS, MIN_DURATION_SECONDS + 2] {
         let opened = each_asks_for(world, &adjustments, seconds);
-        std::thread::sleep(Duration::from_secs(u64::try_from(seconds).expect("seconds")) + AFTER);
-        the_prior_value_is_back(world, &opened);
+        the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
+        the_prior_value_is_back_shortly_after_it_expires(world, &opened);
     }
     let _ = each_asks_for(world, &adjustments, MAX_DURATION_SECONDS);
 
@@ -87,16 +130,15 @@ fn adjustments(world: &World) -> Vec<Driven> {
         .collect()
 }
 
-/// Every adjustment asks for one duration, and is still in force before it.
-fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec<Bounded> {
-    let mut opened = Vec::new();
-    for one in adjustments {
-        let answer = ask_for(world, one, &seconds.to_string());
-        let bounded = the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds);
-        it_is_in_force(world, &bounded, &answer);
-        opened.push(bounded);
-    }
-    opened
+/// Every adjustment asks for one duration, and answers where it expires.
+pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec<Bounded> {
+    adjustments
+        .iter()
+        .map(|one| {
+            let answer = ask_for(world, one, &seconds.to_string());
+            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds)
+        })
+        .collect()
 }
 
 /// One adjustment, asked for with one duration.
@@ -125,14 +167,25 @@ fn the_expiry_is_the_duration_the_caller_gave(
         "`{}` asked for {seconds} seconds and the record expires somewhere else",
         one.command.name
     );
+    let held = |at: &str| {
+        answer
+            .pointer(at)
+            .unwrap_or_else(|| panic!("an intervention carries `{at}`: {answer}"))
+            .clone()
+    };
     Bounded {
         command: one.command.name.clone(),
-        id: answer
-            .pointer("/intervention/id")
-            .and_then(Value::as_str)
-            .expect("an intervention has an identifier")
+        id: held("/intervention/id")
+            .as_str()
+            .expect("an identifier is text")
             .to_owned(),
-        had_a_prior_value: answer.pointer("/intervention/prior_value").is_some(),
+        adjustable: held("/intervention/adjustable")
+            .as_str()
+            .expect("an adjustable is named")
+            .to_owned(),
+        applied_value: held("/intervention/applied_value"),
+        prior_value: answer.pointer("/intervention/prior_value").cloned(),
+        expires_at: expires,
     }
 }
 
@@ -146,48 +199,147 @@ fn instant(answer: &Value, at: &str) -> Timestamp {
         .expect("an instant this system wrote")
 }
 
-/// The adjustment is still in force shortly before it expires.
-fn it_is_in_force(world: &World, bounded: &Bounded, answer: &Value) {
-    let applied = answer
-        .pointer("/intervention/applied_value")
-        .expect("an intervention carries what it changed to")
-        .clone();
-    let read = running::read(world, &["status", "--print-id", &world.print_id]);
-    let held = in_force(&read);
-    assert_eq!(
-        held.get(&bounded.id),
-        Some(&applied),
-        "`{}` is not in force shortly before it expires: {read}",
-        bounded.command
-    );
+/// Wait until a margin before one instant, and answer when the wait ended.
+fn just_before(when: Timestamp, margin: Duration) -> Timestamp {
+    wait(when, -i64::try_from(margin.as_micros()).expect("a margin"))
+}
+
+/// Wait until a margin after one instant, and answer when the wait ended.
+fn just_after(when: Timestamp, margin: Duration) -> Timestamp {
+    wait(when, i64::try_from(margin.as_micros()).expect("a margin"))
+}
+
+/// Wait until one instant shifted by a count of microseconds.
+///
+/// The instant is computed against the record's own expiry rather than against
+/// the moment the request was made, which is what makes both reads scheduled
+/// relative to the thing they are about.
+fn wait(when: Timestamp, shift: i64) -> Timestamp {
+    let until =
+        when.as_utc().timestamp_micros() + shift - Timestamp::now().as_utc().timestamp_micros();
+    if until > 0 {
+        std::thread::sleep(Duration::from_micros(u64::try_from(until).expect("a wait")));
+    }
+    Timestamp::now()
+}
+
+/// The adjusted value is in place shortly before each one expires.
+///
+/// One read for the batch, taken before the earliest expiry among them: every
+/// intervention is then asserted to have been read before **its own**, so a
+/// read that arrived late fails here rather than passing for having been taken
+/// at all.
+pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
+    let earliest = opened
+        .iter()
+        .map(|bounded| bounded.expires_at)
+        .min()
+        .expect("this journey opened an intervention");
+    let at = just_before(earliest, MARGIN);
+    let status = running::read(world, &["status", "--print-id", &world.print_id]);
+    let held = in_force(&status);
+
+    for bounded in opened {
+        assert!(
+            at < bounded.expires_at,
+            "`{}` was read at {at}, which is not before it expires at {}",
+            bounded.command,
+            bounded.expires_at
+        );
+        assert_eq!(
+            held.get(&bounded.id),
+            Some(&bounded.applied_value),
+            "`{}` is not in force shortly before it expires: {status}",
+            bounded.command
+        );
+        the_machine_reports(&status, bounded, Some(&bounded.applied_value), "adjusted");
+    }
 }
 
 /// The prior value is back shortly after each one expired.
-fn the_prior_value_is_back(world: &World, opened: &[Bounded]) {
-    let read = running::read(world, &["status", "--print-id", &world.print_id]);
-    let held = in_force(&read);
+pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &[Bounded]) {
+    let latest = opened
+        .iter()
+        .map(|bounded| bounded.expires_at)
+        .max()
+        .expect("this journey opened an intervention");
+    let at = just_after(latest, MARGIN);
+    let status = running::read(world, &["status", "--print-id", &world.print_id]);
+    let held = in_force(&status);
     let history = running::read(
         world,
         &["history", "--print-id", &world.print_id, "--limit", "40"],
     );
+
     for bounded in opened {
         assert!(
+            at > bounded.expires_at,
+            "`{}` was read at {at}, which is not after it expires at {}",
+            bounded.command,
+            bounded.expires_at
+        );
+        assert!(
             !held.contains_key(&bounded.id),
-            "`{}` is still in force after it expired: {read}",
+            "`{}` is still in force after it expired: {status}",
             bounded.command
         );
-        let expected = if bounded.had_a_prior_value {
-            "restored"
-        } else {
-            "restore_unavailable"
-        };
-        assert_eq!(
-            expiry_outcome(&history, &bounded.id).as_deref(),
-            Some(expected),
-            "`{}` expired and the record does not say the prior value was put back",
-            bounded.command
-        );
+        the_machine_reports(&status, bounded, bounded.prior_value.as_ref(), "prior");
+        the_expiry_says_what_became_of_it(&history, bounded);
     }
+}
+
+/// The machine reports one value for what an intervention changed.
+///
+/// For an adjustable the machine reports at all, the value is asserted outright
+/// — and its prior value is asserted to be one there was, because an
+/// intervention over a machine that reported nothing has nothing to put back.
+/// For the three it reports nothing about, the positive claim is made instead:
+/// the machine is asserted to report no value for that adjustable, which is
+/// what makes the expiry below say there was none rather than this journey
+/// assuming it.
+fn the_machine_reports(status: &Value, bounded: &Bounded, expected: Option<&Value>, which: &str) {
+    let Some(at) = bounded.reported_at() else {
+        assert!(
+            bounded.prior_value.is_none(),
+            "`{}` carries a prior value for an adjustable the machine reports nothing \
+             about: {status}",
+            bounded.command
+        );
+        return;
+    };
+    let expected = expected.unwrap_or_else(|| {
+        panic!(
+            "`{}` changed something the machine reports and carries no prior value, so \
+             there is nothing for its expiry to put back: {status}",
+            bounded.command
+        )
+    });
+    let reported = status
+        .pointer(&at)
+        .unwrap_or_else(|| panic!("the machine reports no `{at}`: {status}"));
+    assert_eq!(
+        reported, expected,
+        "`{}` left the machine reporting {reported} where the {which} value is {expected}",
+        bounded.command
+    );
+}
+
+/// The expiry says what became of one intervention.
+fn the_expiry_says_what_became_of_it(history: &Value, bounded: &Bounded) {
+    let expected = if bounded.reported_at().is_some() {
+        "restored"
+    } else {
+        // The machine reports no value for this adjustable, which the read
+        // above has just asserted, so there was nothing to put back and the
+        // record says exactly that.
+        "restore_unavailable"
+    };
+    assert_eq!(
+        expiry_outcome(history, &bounded.id).as_deref(),
+        Some(expected),
+        "`{}` expired and the record does not say `{expected}`",
+        bounded.command
+    );
 }
 
 /// Every intervention in force, by its identifier and the value it applied.

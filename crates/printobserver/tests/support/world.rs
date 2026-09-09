@@ -216,6 +216,49 @@ impl World {
         }
     }
 
+    /// Tell a stood-in machine to answer success and change nothing, or to
+    /// stop, and put the temperatures it reports back when it stops.
+    ///
+    /// The successful no-op, which is the violation this tier's own effect
+    /// assertions are driven over. Only a socket can be told to be one; a real
+    /// machine either does what it is asked or says why it will not.
+    pub fn machine_is_deaf(&self, deaf: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.deaf(deaf);
+                if !deaf {
+                    machine.holds_its_starting_temperatures();
+                }
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
+    /// Wait until the machine reports one state, without asking it for
+    /// anything.
+    ///
+    /// This is what separates a command that worked from a successful no-op:
+    /// nothing here moves the machine, so a state it never reaches is one the
+    /// command did not produce. A socket honours what it is asked at once; a
+    /// real machine takes its own time, which is what the polling is for.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the machine never reports it, saying what it is reporting.
+    pub fn settles_at(&self, state: Reports, after: &str) {
+        for _ in 0..SETTLING_POLLS {
+            if self.reported_state() == Some(state) {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!(
+            "`{after}` did not leave the machine reporting {state:?}: it is reporting {:?}",
+            self.reported_state()
+        );
+    }
+
     /// The file this world's printer can be asked to print.
     pub fn printable_file(&self) -> String {
         printable_file(&self.printer)
@@ -423,7 +466,7 @@ impl World {
     }
 
     /// What the machine reports it is doing, read through this same surface.
-    fn reported_state(&self) -> Option<Reports> {
+    pub fn reported_state(&self) -> Option<Reports> {
         let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .args(["status", "--print-id", &self.print_id, "--json", "--config"])
             .arg(self.client_config())
