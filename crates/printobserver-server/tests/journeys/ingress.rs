@@ -51,8 +51,8 @@ async fn post(world: &World, body: &str, token: Option<&str>) -> reqwest::Status
         .status()
 }
 
-/// Every event this server has recorded, whatever print it belongs to.
-async fn recorded(world: &World) -> Vec<printobserver_types::EventRecord> {
+/// Every event recorded against a print this server still holds open.
+async fn recorded_against_open_prints(world: &World) -> Vec<printobserver_types::EventRecord> {
     let mut found = Vec::new();
     for print in world
         .store
@@ -75,6 +75,53 @@ async fn recorded(world: &World) -> Vec<printobserver_types::EventRecord> {
         );
     }
     found
+}
+
+/// The secret is taken from the header as well as from the query.
+///
+/// `Obico`'s own plugin is configured with a URL and nothing else, so the query
+/// form is the one a real producer carries — and a caller that can set headers
+/// should not have to put a secret in a URL that ends up in an access log.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_secret_is_taken_from_the_header_as_well_as_from_the_query() {
+    let host = image_host(snapshot_bytes()).await;
+    let world = World::open().await;
+    let mut completions = world.server.completions();
+
+    let accepted = world
+        .client
+        .post(world.server.ingress_url())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(printobserver_server::TOKEN_HEADER, SECRET)
+        .body(failure_alert(4211, &host.url()).to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(accepted, reqwest::StatusCode::ACCEPTED);
+    completions.changed().await.expect("the handling finishes");
+    assert_eq!(
+        world.agent.turns().len(),
+        1,
+        "a post authenticated by the header did not reach the loop"
+    );
+
+    let refused = world
+        .client
+        .post(world.server.ingress_url())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(printobserver_server::TOKEN_HEADER, "not-the-secret")
+        .body(failure_alert(4211, &host.url()).to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(
+        refused,
+        reqwest::StatusCode::UNAUTHORIZED,
+        "a header carrying the wrong secret was taken"
+    );
+    world.server.stop().await;
 }
 
 /// A post carrying no valid secret is refused, and written down.
@@ -163,7 +210,7 @@ async fn the_committed_sample_is_taken_and_handled() {
 
     completions.changed().await.expect("the handling finishes");
 
-    let events = recorded(&world).await;
+    let events = recorded_against_open_prints(&world).await;
     let alert = events
         .iter()
         .find(|event| event.kind() == EventKind::ObicoFailureAlert)
@@ -303,7 +350,7 @@ async fn what_the_ingress_says_about_itself_carries_no_secret() {
                 )
                 .expect("the adapter is built"),
             ),
-            SECRET.to_owned(),
+            printobserver_server::SharedSecret::new(SECRET).expect("a secret"),
             world.server.config().ingress_answer_bound,
         );
 

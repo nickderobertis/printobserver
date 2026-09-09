@@ -92,6 +92,39 @@ def test_an_installer_that_writes_the_unit_elsewhere_is_refused(
     refused(findings, "which is where the service manager reads units from")
 
 
+def test_an_installer_granting_an_action_the_contracts_do_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The names the installed configuration grants are the contracts' vocabulary."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace('"pause", "resume"', '"pause", "reboot"'),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "grants `reboot`")
+
+
+def test_an_installer_that_prints_the_next_command_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """Saying which command starts the service is not running it.
+
+    The whole point of the separation is that the installer *names* the command
+    an operator runs next, so a check that could not tell saying from running
+    would refuse the one correct script.
+    """
+    printing = tree()
+    printing.write(
+        INSTALLER,
+        printing.read(INSTALLER) + '\necho "run: systemctl enable --now $UNIT_NAME" >&2\n',
+    )
+
+    accepted(service_install(printing.repo))
+
+
 def test_a_shipped_bound_at_the_producers_timeout_is_refused(tree: Callable[[], Tree]) -> None:
     """A bound Obico has already given up on is no bound at all."""
     broken = tree()

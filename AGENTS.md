@@ -370,17 +370,13 @@ caution about it: the supported host is a small ARM board beside the printer, an
 a bound set just under the producer's is one the first slow moment on that board
 exceeds — after which the alert is gone, because nothing posts it again. A
 configured bound at or above the recorded timeout is refused where it is
-configured, naming the field.
+configured, naming the field, and `just check-repo`'s `ingress-answer-bound`
+holds the shipped default and the server's own copy of that timeout to the block
+above.
 
-`just check-repo`'s `ingress-answer-bound` check reads the shipped default and
-the server's own copy of the producer's timeout beside the block above, and
-refuses a tree in which the default is not below the recorded timeout, in which
-no timeout is recorded, or in which the two copies of that number disagree.
-
-That recorded number is this repository's claim about an external producer, and
-what reconciles it against a live Obico is the scheduled Obico tier above: this
-check holds the tree to what is written down, and only a running Obico can say
-whether what is written down is still true.
+The recorded number is this repository's claim about an external producer.
+Nothing deterministic can tell whether it is still true; the scheduled Obico
+tier above is what reconciles it against a live Obico.
 
 ## The end-user install path
 
@@ -466,13 +462,12 @@ machine, so starting the supervisor stays a decision somebody takes rather than
 something that happens while they are installing. Do not fold these two steps
 back together.
 
-The service installer is committed and runs: `scripts/install-service.sh` puts
-those four things in place and starts nothing, and it is the `server` node that
-made it so. `just check-repo`'s `service-install` check reads this section beside
-the tree and refuses one in which the unit's name or the installer's path differs
-from what is written above, or in which that installer enables or starts
-anything. The three routes are the `sdks` node's to make executable, and the
-distributions and the install script do not exist yet.
+`just check-repo`'s `service-install` reads this section beside the tree and
+refuses one in which the unit's name or the installer's path differs from what is
+written above, or in which that installer enables or starts anything.
+
+What makes the three routes executable is the `sdks` node, and what makes the two
+commands executable is the `server` node — each held to this section.
 
 ## Commits, releases, and merging
 

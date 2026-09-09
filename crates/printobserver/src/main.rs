@@ -76,6 +76,17 @@ fn read_serve(arguments: &[String]) -> Invocation {
                 detail: format!("`{CONFIG_OPTION}` takes the path of a configuration file."),
             };
         };
+        // A second one is refused rather than taken. This program reads ONE
+        // configuration file, and silently running under the last of two is a
+        // service running under a file nobody meant it to.
+        if config.is_some() {
+            return Invocation::Refused {
+                detail: format!(
+                    "`{CONFIG_OPTION}` was given twice, and this program runs under one \
+                     configuration file."
+                ),
+            };
+        }
         config = Some(PathBuf::from(path));
     }
     match config {

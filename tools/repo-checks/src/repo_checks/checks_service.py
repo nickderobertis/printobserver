@@ -21,8 +21,10 @@ still true of a live `Obico` is the scheduled `Obico` tier's to say.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -51,6 +53,9 @@ RECORDED_TIMEOUT = re.compile(r"^-\s*posting timeout:\s*`(?P<milliseconds>[0-9_]
 
 # A shell line that opens a heredoc, and the delimiter it ends at.
 HEREDOC_OPEN = re.compile(r"<<-?(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)")
+
+# `"pause"` and the rest, as the configuration template's grants spell them.
+QUOTED_NAME = re.compile(r'"([a-z_]+)"')
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,11 +99,12 @@ def _named(repo: Repo) -> tuple[Named | None, list[str]]:
 def _executes(script: str, program: str) -> list[int]:
     """The line numbers on which `script` runs `program` as a command.
 
-    A line inside a heredoc is what the script *prints*, and a comment is what
-    it says, so neither is a command it runs. The installer names the command
-    that starts the service in exactly those two places and runs it nowhere,
-    which is the whole point of the separation, so a check that could not tell
-    them apart would refuse the correct script.
+    A line inside a heredoc is what the script *prints*, a line beginning with
+    `echo` or `printf` is what it *says*, and a comment is what it explains — so
+    none of the three is a command it runs. The installer names the command that
+    starts the service in exactly those places and runs it nowhere, which is the
+    whole point of the separation, so a check that could not tell them apart
+    would refuse the correct script.
     """
     found: list[int] = []
     delimiter: str | None = None
@@ -112,7 +118,7 @@ def _executes(script: str, program: str) -> list[int]:
             delimiter = opened["delimiter"]
             continue
         stripped = line.strip()
-        if stripped.startswith("#"):
+        if stripped.startswith(("#", "echo ", "printf ")):
             continue
         if re.search(rf"(^|[;&|]\s*|\bsudo\s+){re.escape(program)}\b", stripped):
             found.append(number)
@@ -172,7 +178,56 @@ def service_install(repo: Repo) -> list[str]:
                 f"the service and starts nothing: this service commands a 3D printer, "
                 f"so installing must not start a process that can move a machine"
             )
+
+    findings.extend(_granted_findings(repo, named.installer, script, service))
     return findings
+
+
+def _granted_findings(
+    repo: Repo, installer: str, script: str, service: dict[str, Any]
+) -> list[str]:
+    """The template grants actions the contracts declare, and no others.
+
+    The names in the installed configuration's grants are the contracts'
+    vocabulary rather than the installer's, and there is no way to generate a
+    shell heredoc from a Rust enum — so what holds them together is this: the
+    generated action schema is read, and a name the template grants that the
+    contracts do not declare is refused.
+    """
+    table = service.get("granting_table")
+    if not isinstance(table, str) or table not in script:
+        return [
+            f"`{installer}` carries no `{table}` table, so nothing here reads the "
+            f"actions its configuration grants"
+        ]
+    try:
+        schema_path = policy_strings(
+            policy_table(repo, "supervisor"), ("action_schema",), "supervisor"
+        )["action_schema"]
+    except PolicyValueError as error:
+        return [str(error)]
+    if not repo.exists(schema_path):
+        return [f"`{schema_path}` is absent: it is the action vocabulary this reads"]
+    declared = {
+        variant.get("properties", {}).get("action", {}).get("const")
+        for variant in json.loads(repo.read(schema_path)).get("oneOf", [])
+        if isinstance(variant, dict)
+    }
+    if not declared:
+        return [f"`{schema_path}` declares no action, so it is not the vocabulary"]
+
+    granted: set[str] = set()
+    for line in script[script.index(table) + len(table) :].splitlines():
+        if line.startswith("["):
+            break
+        granted.update(QUOTED_NAME.findall(line))
+    if not granted:
+        return [f"`{installer}`'s `{table}` grants nothing at all"]
+    return [
+        f"`{installer}` grants `{name}`, which the action vocabulary at "
+        f"`{schema_path}` does not declare"
+        for name in sorted(granted - declared)
+    ]
 
 
 def ingress_answer_bound(repo: Repo) -> list[str]:

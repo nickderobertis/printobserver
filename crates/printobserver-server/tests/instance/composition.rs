@@ -342,10 +342,7 @@ async fn start(config: &ServerConfig) -> (Running, Arc<dyn StorePort>) {
     let store: Arc<dyn StorePort> =
         Arc::new(SqliteStore::open(&config.state_dir).expect("the store opens"));
     let printer = Arc::new(OctoPrintPrinter::new(
-        OctoPrintConfig::new(&config.octoprint_url, config.octoprint_api_key.clone())
-            .expect("the scripted instance is a configuration")
-            .with_timeout(TIMEOUT)
-            .with_fan(config.octoprint_fan),
+        config.octoprint.clone().with_timeout(TIMEOUT),
     ));
     let server = Server::start_with(
         config.clone(),

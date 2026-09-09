@@ -40,6 +40,10 @@ fn an_invocation_this_program_does_not_answer_to_is_refused() {
         (vec!["server"], "configuration"),
         (vec!["server", "--fast"], "--fast"),
         (vec!["server", "--config"], "--config"),
+        (
+            vec!["server", "--config", "one.toml", "--config", "another.toml"],
+            "twice",
+        ),
     ] {
         let (code, said) = run(&arguments);
         assert_eq!(code, Some(1), "`{arguments:?}` was accepted: {said}");

@@ -201,8 +201,12 @@ pub const OPERATIONS: [Operation; 16] = [
     ),
 ];
 
-/// The six reads this server serves beside the action vocabulary.
-pub const READS: [&str; 6] = [
+/// The six operations this server serves beside the action vocabulary.
+///
+/// Five of them read and the sixth writes a manifest, which asks nothing of the
+/// machine; what they have in common is that none of them is an action of the
+/// vocabulary the contracts declare.
+pub const BESIDE_THE_ACTIONS: [&str; 6] = [
     "status",
     "context",
     "image",

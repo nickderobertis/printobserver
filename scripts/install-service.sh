@@ -36,20 +36,59 @@ die() {
     exit 1
 }
 
+# Every value this script is given is written into a TOML document and into a
+# systemd unit, neither of which has an escape for a quote, a backslash or a
+# newline. So a value carrying one is refused here rather than producing a unit
+# the service manager reads as something else.
+plain() {
+    [ -n "$2" ] || die "$1 is empty"
+    case "$2" in
+        *[\"\\]*)
+            die "$1 carries a quote or a backslash, which a unit file and a TOML \
+document have no escape for"
+            ;;
+    esac
+    case "$2" in
+        *"
+"*)
+            die "$1 carries a newline, which a unit file reads as the end of a setting"
+            ;;
+    esac
+}
+
+# A system user name, as `useradd` and a unit's `User=` take one: a letter or an
+# underscore, then letters, digits, underscores and hyphens.
+user_name() {
+    case "$1" in
+        [a-z_]*) ;;
+        *) die "$1 is not a system user name: it does not begin with a letter or an \
+underscore" ;;
+    esac
+    case "$1" in
+        *[!a-z0-9_-]*)
+            die "$1 is not a system user name: it carries something other than \
+letters, digits, underscores and hyphens"
+            ;;
+    esac
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --root)
             [ "$#" -ge 2 ] || die "--root takes a directory"
+            plain "--root" "$2"
             ROOT="$2"
             shift 2
             ;;
         --binary)
             [ "$#" -ge 2 ] || die "--binary takes the path of the $PROGRAM program"
+            plain "--binary" "$2"
             BINARY="$2"
             shift 2
             ;;
         --user)
             [ "$#" -ge 2 ] || die "--user takes a user name"
+            user_name "$2"
             SERVICE_USER="$2"
             shift 2
             ;;
@@ -78,6 +117,7 @@ if [ -z "$SERVICE_USER" ]; then
         echo "install-service.sh: not running as root, so the service will run as \
 $SERVICE_USER" >&2
     fi
+    user_name "$SERVICE_USER"
 fi
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
@@ -109,24 +149,22 @@ if [ -n "$ROOT" ]; then
     RUNTIME_STATE="$STATE_DIR"
 fi
 
-mkdir -p "$BIN_DIR" "$CONF_DIR" "$UNIT_DIR"
+mkdir -p "$BIN_DIR" "$CONF_DIR" "$UNIT_DIR" ||
+    die "$ROOT/ could not be made writable for the install. Run this as root, or pass \
+--root a directory you own."
 
-# 1. The program.
-install -m 0755 "$BINARY" "$INSTALLED_BINARY"
+install -m 0755 "$BINARY" "$INSTALLED_BINARY" ||
+    die "$BINARY could not be installed to $INSTALLED_BINARY"
 
-# 2. The state directory, private to the service's own user.
-#
-# 0700 and owned by that user: this directory holds the whole record of what a
-# printer did and what an agent decided, including the snapshots. Nothing else
-# on the machine has any business reading it.
-mkdir -p "$STATE_DIR"
-chown "$SERVICE_USER" "$STATE_DIR"
-chmod 0700 "$STATE_DIR"
+# 0700 and owned by the service's own user: this directory holds the whole
+# record of what a printer did and what an agent decided, including the
+# snapshots. Nothing else on the machine has any business reading it.
+mkdir -p "$STATE_DIR" || die "$STATE_DIR could not be created"
+chown "$SERVICE_USER" "$STATE_DIR" || die "$STATE_DIR could not be handed to $SERVICE_USER"
+chmod 0700 "$STATE_DIR" || die "$STATE_DIR could not be made private"
 
-# 3. The configuration, which carries the OctoPrint key and the ingress secret.
-#
-# An existing one is left exactly as it is: a reinstall must not overwrite the
-# operator's own values with a template's.
+# An existing configuration is left exactly as it is: a reinstall must not
+# overwrite the operator's own values with a template's.
 if [ -e "$INSTALLED_CONFIG" ]; then
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
 else
@@ -156,10 +194,10 @@ harness = "claude-code"
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.
 # Anything that can post to the ingress can pause a printer.
 shared_secret = ""
-# How long the ingress may take to answer, in milliseconds. Obico posts
-# best-effort with a five second timeout and does not retry, so this stays well
-# below it.
-answer_bound_ms = 1000
+# The answer bound is left out on purpose. The default this program ships is
+# already below the timeout Obico posts under, and writing that number here
+# would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
+# answer bound".
 
 # What any actor may ask for at all. A manifest may narrow these; nothing may
 # widen them.
@@ -186,7 +224,6 @@ CONFIG
     chmod 0600 "$INSTALLED_CONFIG"
 fi
 
-# 4. The unit, where the service manager reads units from.
 cat >"$INSTALLED_UNIT" <<UNIT
 [Unit]
 Description=printobserver, a supervision layer between a 3D printer and an agent
@@ -212,14 +249,7 @@ WantedBy=multi-user.target
 UNIT
 chmod 0644 "$INSTALLED_UNIT"
 
-cat >&2 <<DONE
-install-service.sh: in place, and nothing has been started.
-  program        $INSTALLED_BINARY
-  configuration  $INSTALLED_CONFIG
-  state          $STATE_DIR (owned by $SERVICE_USER, mode 0700)
-  unit           $INSTALLED_UNIT
-
-Edit the configuration, then start the service yourself:
-
-  sudo systemctl enable --now $UNIT_NAME
-DONE
+echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, \
+$STATE_DIR and $INSTALLED_UNIT; nothing was started." >&2
+echo "install-service.sh: edit $INSTALLED_CONFIG, then run: sudo systemctl enable \
+--now $UNIT_NAME" >&2

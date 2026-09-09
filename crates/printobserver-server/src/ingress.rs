@@ -44,6 +44,7 @@ use printobserver_types::{
 use printobserver_vision_api::VisionPort;
 use tokio::sync::{mpsc, watch};
 
+use crate::config::SharedSecret;
 use crate::wire::{ErrorAnswer, IngressAnswer};
 
 /// The header a caller that can set headers carries the shared secret in.
@@ -83,8 +84,9 @@ pub struct TokenParam {
 pub struct IngressState {
     /// Where an unauthenticated post is written down.
     store: Arc<dyn StorePort>,
-    /// The secret every post must carry.
-    secret: Arc<String>,
+    /// The secret every post must carry, which is a value nothing can read out
+    /// of this state: what it offers is the comparison rather than the value.
+    secret: Arc<SharedSecret>,
     /// How long taking a body may take before the post is refused.
     bound: core::time::Duration,
     /// The seam between the answer and the handling.
@@ -111,7 +113,7 @@ impl IngressState {
         supervisor: Arc<Supervisor>,
         store: Arc<dyn StorePort>,
         vision: Arc<ObicoVision>,
-        secret: String,
+        secret: SharedSecret,
         bound: core::time::Duration,
     ) -> Self {
         let (queue, mut incoming) = mpsc::channel::<Received>(QUEUE_DEPTH);
@@ -179,27 +181,6 @@ async fn record_unread(store: &Arc<dyn StorePort>, body: RawBytes, detail: Strin
         .await;
 }
 
-/// Whether a post carried the shared secret this server requires.
-///
-/// Compared over the whole of both values rather than by an early return on the
-/// first differing byte, so that the time this takes says nothing about how
-/// much of the secret a caller guessed.
-fn carries_secret(expected: &str, offered: Option<&str>) -> bool {
-    let Some(offered) = offered else {
-        return false;
-    };
-    if offered.len() != expected.len() {
-        return false;
-    }
-    expected
-        .bytes()
-        .zip(offered.bytes())
-        .fold(0_u8, |difference, (left, right)| {
-            difference | (left ^ right)
-        })
-        == 0
-}
-
 /// Take one body `Obico` posted.
 pub(crate) async fn receive(
     State(state): State<IngressState>,
@@ -213,7 +194,7 @@ pub(crate) async fn receive(
         .map(str::to_owned)
         .or(params.token);
     let body = RawBytes::new(body.to_vec());
-    if !carries_secret(&state.secret, offered.as_deref()) {
+    if !state.secret.matches(offered.as_deref()) {
         record_unread(
             &state.store,
             body,
@@ -235,7 +216,7 @@ pub(crate) async fn receive(
     )
     .await;
     match taken {
-        Ok(Ok(())) => rendered(StatusCode::ACCEPTED, &IngressAnswer { accepted: true }),
+        Ok(Ok(())) => rendered(StatusCode::ACCEPTED, &IngressAnswer),
         // Either the worker is too far behind to take this inside the bound, or
         // it has stopped. Refusing inside the bound is the answer Obico can act
         // on; holding past it is an alert Obico has already abandoned.

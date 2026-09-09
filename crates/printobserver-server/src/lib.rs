@@ -42,13 +42,13 @@ pub mod wire;
 pub use api::{ApiState, router};
 pub use config::{
     ASSETS_DIRECTORY, ConfigError, ConfigField, ConfigFile, DEFAULT_INGRESS_ANSWER_BOUND_MS,
-    FAN_VOCABULARY, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection, ServerConfig,
-    SupervisorSection,
+    FAN_VOCABULARY, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED,
+    ServerConfig, SharedSecret, SupervisorSection,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
-    Effect, INGRESS_PATH, MEDIA_TYPE, Method, OPERATIONS, Operation, READS, VERSION_PREFIX,
-    operation,
+    BESIDE_THE_ACTIONS, Effect, INGRESS_PATH, MEDIA_TYPE, Method, OPERATIONS, Operation,
+    VERSION_PREFIX, operation,
 };
 pub use reconcile::{Reconciliation, overdue, reconcile};
 pub use server::{

@@ -7,6 +7,7 @@
 //! otherwise have come up half-working, and what each answers is the thing an
 //! operator has to change.
 
+use printobserver_oneharness::ModelName;
 use printobserver_server::{ConfigField, Server, StartError};
 use tempfile::TempDir;
 
@@ -299,7 +300,10 @@ async fn a_skill_and_a_template_the_operator_supplied_are_what_is_used() {
         running.config().prompt_template_path.as_deref(),
         Some(template.as_path())
     );
-    assert_eq!(running.config().model.as_deref(), Some("claude-opus-5"));
+    assert_eq!(
+        running.config().model.as_ref().map(ModelName::as_str),
+        Some("claude-opus-5")
+    );
     // The one this program carries is written into the state directory only
     // when the operator supplied none.
     assert!(
@@ -371,4 +375,85 @@ async fn an_assets_directory_nothing_can_be_written_into_refuses_the_start() {
         matches!(refusal, StartError::State { .. }),
         "the refusal is not about the state directory: {refusal}"
     );
+}
+
+/// One way a value can be written wrongly: what it is, the field it is about,
+/// what the refusal has to say, and the change that makes it so.
+struct Wrongly {
+    /// What the case is, for a reader of a failure message.
+    described: &'static str,
+    /// The field the refusal must name.
+    field: ConfigField,
+    /// What the refusal must say.
+    saying: &'static str,
+    /// The one value it changes.
+    change: Box<dyn Fn(&mut toml::Value)>,
+}
+
+/// Every value the safety envelope and the ingress bound refuse is refused
+/// where it is configured.
+///
+/// The field walk gives each field one unacceptable value of its own kind;
+/// these are the other ways the same two fields can be written wrongly, and
+/// each of them is a supervisor that would otherwise have come up granting
+/// nothing, or answering an alert Obico had already abandoned.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_other_way_the_envelope_and_the_bound_can_be_wrong_is_refused() {
+    let answering = silent_host().await;
+    let base = base_url(&answering);
+    let cases = [
+        Wrongly {
+            described: "an envelope allowing nothing",
+            field: ConfigField::SafetyEnvelope,
+            saying: "no adjustable at all",
+            change: Box::new(|document: &mut toml::Value| {
+                set(
+                    document,
+                    "safety.allowed",
+                    toml::Value::Table(toml::Table::new()),
+                );
+            }),
+        },
+        Wrongly {
+            described: "an agent interval that is not a count of seconds",
+            field: ConfigField::SafetyEnvelope,
+            saying: "count of seconds",
+            change: Box::new(|document: &mut toml::Value| {
+                set(
+                    document,
+                    "safety.agent_min_interval_s",
+                    toml::Value::Integer(-30),
+                );
+            }),
+        },
+        Wrongly {
+            described: "an answer bound of zero",
+            field: ConfigField::IngressAnswerBoundMs,
+            saying: "run out of time before it starts",
+            change: Box::new(|document: &mut toml::Value| {
+                set(document, "ingress.answer_bound_ms", toml::Value::Integer(0));
+            }),
+        },
+    ];
+
+    for case in cases {
+        let root = TempDir::new().expect("a journey's own root");
+        let started = started_with(root.path(), &base, case.change).await;
+
+        let Err(refusal) = started else {
+            panic!("{} was accepted", case.described);
+        };
+        assert_eq!(
+            refusal.field(),
+            Some(case.field),
+            "{} was refused naming {:?}: {refusal}",
+            case.described,
+            refusal.field()
+        );
+        assert!(
+            refusal.to_string().contains(case.saying),
+            "{} was refused without saying why: {refusal}",
+            case.described
+        );
+    }
 }

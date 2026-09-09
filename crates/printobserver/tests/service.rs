@@ -99,9 +99,19 @@ impl Installed {
     }
 }
 
-/// Run the committed installer against a root this journey owns, installing the
-/// real `printobserver` program.
+/// Run the committed installer against a root this journey owns.
 fn install(under: &Path) -> Installed {
+    let (installed, run) = installing(under, &["--binary", env!("CARGO_BIN_EXE_printobserver")]);
+    assert!(
+        run.status.success(),
+        "the installer failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    installed
+}
+
+/// Run the committed installer with the arguments given, and answer what it did.
+fn installing(under: &Path, arguments: &[&str]) -> (Installed, std::process::Output) {
     let (bin, recording) = shims(under);
     let root = under.join("target-root");
     let path = format!(
@@ -112,17 +122,26 @@ fn install(under: &Path) -> Installed {
     let run = Command::new(repo_root().join(INSTALLER))
         .arg("--root")
         .arg(&root)
-        .arg("--binary")
-        .arg(env!("CARGO_BIN_EXE_printobserver"))
+        .args(arguments)
         .env("PATH", path)
         .output()
         .expect("the installer runs");
-    assert!(
-        run.status.success(),
-        "the installer failed: {}",
-        String::from_utf8_lossy(&run.stderr)
-    );
-    Installed { root, recording }
+    (Installed { root, recording }, run)
+}
+
+/// A directory holding a `printobserver` on PATH, which is what any of the
+/// install path's three routes leaves behind.
+fn program_on_path(under: &Path) -> PathBuf {
+    let bin = under.join("bin");
+    std::fs::create_dir_all(&bin).expect("a bin directory");
+    let placed = bin.join("printobserver");
+    std::fs::copy(env!("CARGO_BIN_EXE_printobserver"), &placed).expect("the program is copyable");
+    let mut mode = std::fs::metadata(&placed)
+        .expect("the program is there")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
+    std::fs::set_permissions(&placed, mode).expect("the program is executable");
+    bin
 }
 
 /// One `Key=Value` of an installed unit.
@@ -404,5 +423,117 @@ fn answer_nothing(mut stream: TcpStream) {
     let _ = stream.write_all(
         b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\
           Connection: close\r\n\r\n{}",
+    );
+}
+
+/// The installer takes the program the install path's routes left on PATH.
+///
+/// Every one of the three routes puts `printobserver` on the caller's path and
+/// none of them tells this script where: finding it there is what makes the
+/// install path two commands rather than three.
+#[test]
+fn the_installer_takes_the_program_the_routes_left_on_path() {
+    let under = TempDir::new().expect("a journey's own root");
+    // `program_on_path` writes into the same `bin` the shims go in, so the
+    // installer meets both on one PATH: the program it should take, and the
+    // `systemctl` it must not run.
+    program_on_path(under.path());
+    let (installed, run) = installing(under.path(), &[]);
+
+    assert!(
+        run.status.success(),
+        "the installer did not find the program on PATH: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(installed.binary().is_file());
+    assert!(!installed.recording.exists(), "something was started");
+}
+
+/// An installer that can find no program says so, and puts nothing in place.
+#[test]
+fn an_installer_that_can_find_no_program_says_so() {
+    let under = TempDir::new().expect("a journey's own root");
+    // No `program_on_path`, and this repository's own program is under `target`
+    // rather than on anybody's PATH, so what the installer meets is a machine
+    // none of the three routes has been taken on.
+    let (installed, run) = installing(under.path(), &[]);
+    let root = installed.root.clone();
+
+    assert!(
+        !run.status.success(),
+        "the installer installed a program it never found"
+    );
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.contains("--binary") && said.contains("PATH"),
+        "the refusal says nothing a caller can act on: {said}"
+    );
+    assert!(
+        !root.join("etc/systemd/system").join(UNIT_NAME).exists(),
+        "a unit was written for a program that was never found"
+    );
+}
+
+/// A reinstall leaves the operator's own configuration exactly as it is.
+///
+/// The values an operator fills in are the `OctoPrint` key and the ingress
+/// secret, and a reinstall that wrote the template back over them would be an
+/// upgrade that silently unconfigured the service.
+#[test]
+fn a_reinstall_leaves_the_operators_own_configuration_alone() {
+    let under = TempDir::new().expect("a journey's own root");
+    let installed = install(under.path());
+    let filled = std::fs::read_to_string(installed.configuration())
+        .expect("the configuration reads")
+        .replace("api_key = \"\"", "api_key = \"the-operators-own-key\"");
+    std::fs::write(installed.configuration(), &filled).expect("the configuration is writable");
+
+    let again = install(under.path());
+
+    assert_eq!(
+        std::fs::read_to_string(again.configuration()).expect("the configuration reads"),
+        filled,
+        "a reinstall wrote the template back over the operator's own values"
+    );
+}
+
+/// A user name the service manager could not run as is refused.
+#[test]
+fn a_user_name_the_service_manager_could_not_run_as_is_refused() {
+    let under = TempDir::new().expect("a journey's own root");
+    for offered in ["bad name", "Printobserver", "-leading-hyphen"] {
+        let (_, run) = installing(
+            under.path(),
+            &[
+                "--binary",
+                env!("CARGO_BIN_EXE_printobserver"),
+                "--user",
+                offered,
+            ],
+        );
+        assert!(
+            !run.status.success(),
+            "`{offered}` was taken as a user the service runs as"
+        );
+        assert!(
+            String::from_utf8_lossy(&run.stderr).contains("is not a system user name"),
+            "`{offered}` was refused without saying why"
+        );
+    }
+}
+
+/// A value a unit file has no escape for is refused where it is given.
+#[test]
+fn a_value_a_unit_file_has_no_escape_for_is_refused() {
+    let run = Command::new(repo_root().join(INSTALLER))
+        .arg("--root")
+        .arg("/tmp/a\"quoted\"root")
+        .output()
+        .expect("the installer runs");
+
+    assert!(!run.status.success(), "a root carrying a quote was taken");
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("no escape for"),
+        "the refusal says nothing about why it cannot be written"
     );
 }

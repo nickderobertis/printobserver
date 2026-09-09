@@ -142,6 +142,13 @@ unit_directory = "/etc/systemd/system"
 # start a process that can move a 3D printer, so the installer names the command
 # that starts the service only in what it prints.
 may_not_invoke = ["systemctl", "service", "systemd-run"]
+# The configuration template the installer writes grants each actor class a set
+# of actions, and those names are the CONTRACTS' vocabulary rather than this
+# script's. `just check-repo` reads the generated action schema
+# (`supervisor.action_schema`) and refuses a template naming an action the
+# contracts do not declare, so a vocabulary that moves cannot leave an installed
+# configuration granting something that no longer exists.
+granting_table = "[safety.actions]"
 
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`

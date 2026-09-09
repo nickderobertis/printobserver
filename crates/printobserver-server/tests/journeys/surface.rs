@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use printobserver_server::{Effect, MEDIA_TYPE, Method, OPERATIONS, Operation, READS};
+use printobserver_server::{BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERATIONS, Operation};
 use printobserver_types::PrintAction;
 use printobserver_types::serde_json::{Value, json};
 
@@ -77,7 +77,7 @@ fn required() -> BTreeSet<String> {
         "the contracts declare only {} actions, which is not the vocabulary",
         found.len()
     );
-    found.extend(READS.iter().map(|name| (*name).to_owned()));
+    found.extend(BESIDE_THE_ACTIONS.iter().map(|name| (*name).to_owned()));
     found
 }
 

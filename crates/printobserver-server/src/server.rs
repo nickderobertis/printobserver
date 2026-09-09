@@ -19,10 +19,8 @@ use axum::Router;
 use axum::routing::post;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
-use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter};
-use printobserver_oneharness::{
-    AssessmentSchema, HarnessIdentity, ModelName, OneharnessSupervisor, SupervisorConfig,
-};
+use printobserver_octoprint::OctoPrintPrinter;
+use printobserver_oneharness::{AssessmentSchema, OneharnessSupervisor, SupervisorConfig};
 use printobserver_printer_api::{PrinterError, PrinterPort};
 use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::SqliteStore;
@@ -180,11 +178,7 @@ impl Server {
                     detail: error.to_string(),
                 })?,
             );
-        let printer = Arc::new(OctoPrintPrinter::new(
-            OctoPrintConfig::new(&config.octoprint_url, config.octoprint_api_key.clone())
-                .map_err(|error| octoprint_refusal(&error))?
-                .with_fan(config.octoprint_fan),
-        ));
+        let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
             ObicoVision::new(ObicoVisionConfig::default()).map_err(|error| StartError::State {
@@ -281,15 +275,6 @@ impl Server {
     }
 }
 
-/// The two `OctoPrint` configuration refusals, as the fields they are about.
-fn octoprint_refusal(error: &printobserver_octoprint::ConfigError) -> StartError {
-    let field = match error {
-        printobserver_octoprint::ConfigError::EmptyApiKey => ConfigField::OctoprintApiKey,
-        _ => ConfigField::OctoprintUrl,
-    };
-    StartError::Configuration(ConfigError::about(field, error.to_string()))
-}
-
 /// Ask the machine whether the address and the key are the ones it answers to.
 ///
 /// Only the two answers that are *about the configuration* refuse a start. A
@@ -362,22 +347,13 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         AssessmentSchema::at(&schema_path).map_err(|error| StartError::Supervisor {
             detail: error.to_string(),
         })?;
-    let harness = HarnessIdentity::new(&config.harness).map_err(|error| {
-        StartError::Configuration(ConfigError::about(ConfigField::Harness, error.to_string()))
-    })?;
-    let model = match &config.model {
-        None => None,
-        Some(name) => Some(ModelName::new(name).map_err(|error| {
-            StartError::Configuration(ConfigError::about(ConfigField::Model, error.to_string()))
-        })?),
-    };
     OneharnessSupervisor::open(SupervisorConfig {
         state_dir: config.state_dir.clone(),
         skill_path,
         prompt_template_path,
         assessment_schema,
-        harness,
-        model,
+        harness: config.harness.clone(),
+        model: config.model.clone(),
         working_dir: config.state_dir.clone(),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
         harness_bin: None,

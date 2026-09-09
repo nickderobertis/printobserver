@@ -33,7 +33,8 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use printobserver_octoprint::FanSupport;
+use printobserver_octoprint::{FanSupport, OctoPrintConfig};
+use printobserver_oneharness::{HarnessIdentity, ModelName};
 use printobserver_types::SafetyEnvelope;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -340,30 +341,91 @@ pub struct ConfigFile {
     pub ingress: IngressSection,
 }
 
+/// The shared secret the ingress requires of every post.
+///
+/// Neither rendering of this type shows the value, so it cannot reach a log
+/// record, a panic message or an error's own text by being formatted — and the
+/// comparison that admits a post lives here rather than at the endpoint, so
+/// there is no way to read the secret out in order to compare it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SharedSecret(String);
+
+/// What a secret renders as, wherever a value carrying one is rendered.
+pub const REDACTED: &str = "<redacted>";
+
+impl SharedSecret {
+    /// The secret this text names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] when the text is empty or is nothing but
+    /// whitespace: anything that can post to the ingress can pause a printer,
+    /// and a secret nothing has to carry is no secret.
+    pub fn new(value: &str) -> Result<Self, ConfigError> {
+        if value.trim().is_empty() {
+            return Err(ConfigError::about(
+                ConfigField::IngressSharedSecret,
+                "it is empty, and anything that can post to the ingress can pause a printer",
+            ));
+        }
+        Ok(Self(value.to_owned()))
+    }
+
+    /// Whether a post carried this secret.
+    ///
+    /// Compared over the whole of both values with the two lengths mixed in,
+    /// rather than by returning at the first difference or at a length
+    /// mismatch, so that how long this takes says nothing about how much of the
+    /// secret a caller guessed.
+    #[must_use]
+    pub fn matches(&self, offered: Option<&str>) -> bool {
+        let Some(offered) = offered else {
+            return false;
+        };
+        let expected = self.0.as_bytes();
+        let mut difference = expected.len() ^ offered.len();
+        for (index, byte) in offered.bytes().enumerate() {
+            let against = expected[index % expected.len().max(1)];
+            difference |= usize::from(byte ^ against);
+        }
+        difference == 0
+    }
+}
+
+impl core::fmt::Display for SharedSecret {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(REDACTED)
+    }
+}
+
+impl core::fmt::Debug for SharedSecret {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "SharedSecret({REDACTED})")
+    }
+}
+
 /// One running server's validated configuration.
 ///
-/// Every value here is one no later step has to re-examine: a path that could
-/// not be made is not representable, an address that could not be parsed is
-/// not representable, and a bound outside what this program admits is not
-/// representable.
+/// Every value here is one no later step has to re-examine, and where a
+/// validated type for one already exists it is that type rather than the text
+/// it was written as: the `OctoPrint` instance is the adapter's own
+/// configuration, which redacts the key it carries; the harness and the model
+/// are the supervisor adapter's own names; and the ingress secret is a value
+/// neither rendering of which shows.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerConfig {
     /// Where the store, the images and the sessions live.
     pub state_dir: PathBuf,
     /// The address the API and the ingress are served on.
     pub listen: SocketAddr,
-    /// The base URL the `OctoPrint` instance answers on.
-    pub octoprint_url: String,
-    /// The key that instance authenticates every request by.
-    pub octoprint_api_key: String,
-    /// Whether the machine has a part-cooling fan this server may command.
-    pub octoprint_fan: FanSupport,
+    /// Everything the printer adapter needs to reach the instance.
+    pub octoprint: OctoPrintConfig,
     /// The operator's safety envelope.
     pub safety: SafetyEnvelope,
     /// The harness identity turns run on.
-    pub harness: String,
+    pub harness: HarnessIdentity,
     /// The model turns are pinned to, when one is pinned.
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// The skill to send as every turn's system prompt, when the operator
     /// supplied one.
     pub skill_path: Option<PathBuf>,
@@ -372,7 +434,7 @@ pub struct ServerConfig {
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
-    pub ingress_shared_secret: String,
+    pub ingress_shared_secret: SharedSecret,
 }
 
 impl ServerConfig {
@@ -418,15 +480,17 @@ impl ServerConfig {
         let state_dir =
             state_directory(required(ConfigField::StateDir, file.state_dir)?.as_path())?;
         let listen = listen_address(&required(ConfigField::Listen, file.listen)?)?;
-        let octoprint_fan = fan_support(&file.octoprint.fan)?;
-        let octoprint_url = named(ConfigField::OctoprintUrl, file.octoprint.url)?;
-        let octoprint_api_key = named(ConfigField::OctoprintApiKey, file.octoprint.api_key)?;
+        let octoprint = octoprint(&file.octoprint)?;
         let safety = required(ConfigField::SafetyEnvelope, file.safety)?;
         check_envelope(&safety)?;
-        let harness = named(ConfigField::Harness, file.supervisor.harness)?;
+        let harness = HarnessIdentity::new(&named(ConfigField::Harness, file.supervisor.harness)?)
+            .map_err(|error| ConfigError::about(ConfigField::Harness, error.to_string()))?;
         let model = match file.supervisor.model {
             None => None,
-            Some(name) => Some(named(ConfigField::Model, Some(name))?),
+            Some(name) => Some(
+                ModelName::new(&named(ConfigField::Model, Some(name))?)
+                    .map_err(|error| ConfigError::about(ConfigField::Model, error.to_string()))?,
+            ),
         };
         let skill_path = readable(
             ConfigField::SkillPath,
@@ -437,14 +501,14 @@ impl ServerConfig {
             file.supervisor.prompt_template_path.as_deref(),
         )?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
-        let ingress_shared_secret =
-            named(ConfigField::IngressSharedSecret, file.ingress.shared_secret)?;
+        let ingress_shared_secret = SharedSecret::new(&required(
+            ConfigField::IngressSharedSecret,
+            file.ingress.shared_secret,
+        )?)?;
         Ok(Self {
             state_dir,
             listen,
-            octoprint_url,
-            octoprint_api_key,
-            octoprint_fan,
+            octoprint,
             safety,
             harness,
             model,
@@ -509,6 +573,23 @@ fn listen_address(named: &str) -> Result<SocketAddr, ConfigError> {
             format!("{named:?} is no address to listen on: {error}"),
         )
     })
+}
+
+/// Everything the printer adapter needs to reach the instance, refused by the
+/// field whose value it could not take.
+fn octoprint(section: &OctoprintSection) -> Result<OctoPrintConfig, ConfigError> {
+    let fan = fan_support(&section.fan)?;
+    let url = named(ConfigField::OctoprintUrl, section.url.clone())?;
+    let key = named(ConfigField::OctoprintApiKey, section.api_key.clone())?;
+    OctoPrintConfig::new(&url, key)
+        .map(|configured| configured.with_fan(fan))
+        .map_err(|error| {
+            let field = match error {
+                printobserver_octoprint::ConfigError::EmptyApiKey => ConfigField::OctoprintApiKey,
+                _ => ConfigField::OctoprintUrl,
+            };
+            ConfigError::about(field, error.to_string())
+        })
 }
 
 /// The fan setting one word of the vocabulary names.

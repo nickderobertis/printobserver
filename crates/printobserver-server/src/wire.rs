@@ -305,11 +305,23 @@ impl ErrorAnswer {
 }
 
 /// What the ingress answers a post it accepted.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(crate = "printobserver_types::serde")]
-pub struct IngressAnswer {
-    /// Whether the body was taken for handling.
-    pub accepted: bool,
+///
+/// It carries no field, because the only thing it could carry is that the post
+/// was accepted and this is the answer only an accepted post gets. It
+/// serializes as `{"accepted": true}`, which is what a caller reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IngressAnswer;
+
+impl Serialize for IngressAnswer {
+    fn serialize<S: printobserver_types::serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        use printobserver_types::serde::ser::SerializeStruct as _;
+        let mut state = serializer.serialize_struct("IngressAnswer", 1)?;
+        state.serialize_field("accepted", &true)?;
+        state.end()
+    }
 }
 
 #[cfg(test)]
