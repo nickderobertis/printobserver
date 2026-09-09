@@ -332,6 +332,18 @@ async fn start(
     (server, store)
 }
 
+/// The body a manifest write takes: the manifest, and why it is being written.
+///
+/// A manifest narrows what any actor may ask for, so replacing one carries a
+/// reason exactly as every other change does.
+#[must_use]
+pub fn manifest_write(manifest: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "reason": "a journey is writing the bounds this print runs under",
+        "manifest": manifest,
+    })
+}
+
 /// One `Obico` failure alert, as the producer posts it.
 ///
 /// The committed sample is what the ingress journeys post; this is what a

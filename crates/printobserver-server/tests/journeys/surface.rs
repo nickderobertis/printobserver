@@ -19,7 +19,7 @@ use printobserver_server::{BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERA
 use printobserver_types::PrintAction;
 use printobserver_types::serde_json::{Value, json};
 
-use crate::world::World;
+use crate::world::{World, manifest_write};
 
 /// One route as the server serves it: the whole path, and its two media types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -247,7 +247,7 @@ async fn every_declared_route_is_served_and_answers_json() {
         let (status, _) = match operation.method {
             Method::Get => world.get(&url.replace("{image_id}", &image_id())).await,
             Method::Post => world.post(&url, &body_for(&operation)).await,
-            Method::Put => world.put(&url, &manifest()).await,
+            Method::Put => world.put(&url, &manifest_write(&manifest())).await,
         };
         assert_ne!(
             status,

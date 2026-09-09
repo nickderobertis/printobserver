@@ -18,7 +18,7 @@ use tempfile::TempDir;
 use crate::agent::StandInAgent;
 use crate::failing_store::{DETAIL, FailingStore};
 use crate::printer::RecordingPrinter;
-use crate::world::{document, write};
+use crate::world::{document, manifest_write, write};
 
 /// One server over the store given, in a root of its own.
 async fn served(root: &std::path::Path, store: Arc<dyn StorePort>) -> Result<Running, StartError> {
@@ -84,7 +84,7 @@ async fn every_operation_answers_this_servers_own_failure_when_the_store_has() {
         let request = match operation.method {
             Method::Get => client.get(&url),
             Method::Post => client.post(&url).json(&body(operation.action_kind())),
-            Method::Put => client.put(&url).json(&manifest()),
+            Method::Put => client.put(&url).json(&manifest_write(&manifest())),
         };
         let response = request.send().await.expect("the server answers");
         let status = response.status();

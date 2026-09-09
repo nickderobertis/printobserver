@@ -20,7 +20,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::http_host::image_host;
 use crate::ingress::snapshot_bytes;
-use crate::world::{SECRET, World, failure_alert};
+use crate::world::{SECRET, World, failure_alert, manifest_write};
 
 /// One alert with an image, handled to completion; answers the print and image.
 async fn stored_image(world: &World, bytes: Vec<u8>) -> (PrintId, ImageId) {
@@ -145,7 +145,7 @@ async fn no_route_this_server_serves_answers_image_bytes() {
         let (_, answer) = match operation.method {
             Method::Get => world.get(&url).await,
             Method::Post => world.post(&url, &accepted_body(&operation)).await,
-            Method::Put => world.put(&url, &manifest()).await,
+            Method::Put => world.put(&url, &manifest_write(&manifest())).await,
         };
         let rendered = answer.to_string();
         for (spelling, needle) in &forbidden {

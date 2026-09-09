@@ -14,8 +14,8 @@ use printobserver_store_api::ImageLookup;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, EventId, EventRecord, FileName,
-    ImageRecord, Intervention, JobManifest, JobSnapshot, PrintContext, PrintRecord,
-    PrinterSnapshot, SupervisionSession,
+    ImageRecord, Intervention, JobManifest, JobSnapshot, ManifestNarrowing, PrintContext,
+    PrintRecord, PrinterSnapshot, SupervisionSession,
 };
 
 /// Why a request could not be turned into one action of the vocabulary.
@@ -83,6 +83,56 @@ fn missing<T>(named: &str) -> Result<T, BodyRefusal> {
     })
 }
 
+/// The reason a mutating request carries, refused when it carries none.
+///
+/// One rule for every mutating operation, whether it asks something of the
+/// machine or writes a record: a change nobody gave a reason for is one the
+/// history cannot account for afterwards, and the answer to it is the same
+/// refusal whichever operation it arrived at.
+///
+/// # Errors
+///
+/// Returns [`BodyRefusal`] when the reason is absent or is nothing but
+/// whitespace.
+pub fn reason_of(reason: Option<&str>) -> Result<String, BodyRefusal> {
+    match reason.map(str::trim) {
+        Some(reason) if !reason.is_empty() => Ok(reason.to_owned()),
+        _ => Err(BodyRefusal {
+            detail: "every mutating request carries a `reason`, and this one carries none"
+                .to_owned(),
+        }),
+    }
+}
+
+/// One request to replace a print's manifest.
+///
+/// It carries a reason for the same reason every action does: a manifest
+/// narrows what any actor may ask for, so replacing one is a change to the
+/// bounds a print runs under rather than a note about it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+pub struct ManifestBody {
+    /// Why the manifest is being replaced.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// The manifest to write.
+    pub manifest: JobManifest,
+}
+
+impl ManifestBody {
+    /// The reason this request carries, refused when it carries none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BodyRefusal`] when the reason is absent or is nothing but
+    /// whitespace. It is checked **before** the manifest is written, so a
+    /// request without one leaves the stored manifest and the print's
+    /// narrowings exactly as they were.
+    pub fn reason(&self) -> Result<String, BodyRefusal> {
+        reason_of(self.reason.as_deref())
+    }
+}
+
 impl ActionBody {
     /// The reason this request carries, refused when it carries none.
     ///
@@ -93,13 +143,7 @@ impl ActionBody {
     /// checked before the action is assembled, so a request without one reaches
     /// neither the policy, the printer nor the record.
     pub fn reason(&self) -> Result<String, BodyRefusal> {
-        match self.reason.as_deref().map(str::trim) {
-            Some(reason) if !reason.is_empty() => Ok(reason.to_owned()),
-            _ => Err(BodyRefusal {
-                detail: "every mutating request carries a `reason`, and this one carries none"
-                    .to_owned(),
-            }),
-        }
+        reason_of(self.reason.as_deref())
     }
 
     /// The action this request asks for.
@@ -285,6 +329,10 @@ pub struct ManifestAnswer {
     /// The manifest, when the print has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manifest: Option<JobManifest>,
+    /// Every range this manifest asked wider than the envelope allows, narrowed
+    /// to the envelope's — recorded on the print, so nobody has to wonder later
+    /// which bound applied.
+    pub narrowings: Vec<ManifestNarrowing>,
 }
 
 /// What this server answers when it will not do what it was asked.

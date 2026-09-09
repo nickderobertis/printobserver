@@ -108,6 +108,17 @@ impl Operation {
             _ => None,
         }
     }
+
+    /// Whether this operation changes something.
+    ///
+    /// Asking the machine for an action and replacing the manifest a print runs
+    /// under are both changes, and both carry a reason. What separates them is
+    /// whether the policy has anything to rule on — not whether the caller has
+    /// to say why.
+    #[must_use]
+    pub const fn is_mutating(&self) -> bool {
+        matches!(self.effect, Effect::Mutating(_) | Effect::Write)
+    }
 }
 
 /// One mutating operation, at the path its action is asked for under.
@@ -259,8 +270,23 @@ mod tests {
     fn a_mutating_operation_names_its_action_and_a_read_names_none() {
         for declared in OPERATIONS {
             match declared.effect {
-                Effect::Mutating(kind) => assert_eq!(declared.action_kind(), Some(kind)),
-                Effect::Read | Effect::Write => assert_eq!(declared.action_kind(), None),
+                Effect::Mutating(kind) => {
+                    assert_eq!(declared.action_kind(), Some(kind));
+                    assert!(declared.is_mutating());
+                }
+                Effect::Write => {
+                    assert_eq!(declared.action_kind(), None);
+                    assert!(
+                        declared.is_mutating(),
+                        "`{}` writes a record and is not held to the reason every \
+                         change carries",
+                        declared.name
+                    );
+                }
+                Effect::Read => {
+                    assert_eq!(declared.action_kind(), None);
+                    assert!(!declared.is_mutating());
+                }
             }
         }
     }

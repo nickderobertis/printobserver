@@ -107,6 +107,14 @@ async fn act(world: &Composed, print_id: PrintId, name: &str, body: &Value) -> (
     (code.as_u16(), answer)
 }
 
+/// The body a manifest write takes: the manifest, and why it is written.
+fn manifest_write() -> Value {
+    json!({
+        "reason": "the integration tier is writing the bounds this print runs under",
+        "manifest": manifest(),
+    })
+}
+
 /// The manifest a start is bounded by, naming the file it is about.
 fn manifest() -> Value {
     json!({
@@ -151,7 +159,10 @@ pub async fn walk(instance: &Scripted) {
     // The manifest narrows the feedrate, which is what the bounded adjustment
     // below is refused by.
     let (code, written) = world
-        .put(&world.operation_url("manifest_set", print_id), &manifest())
+        .put(
+            &world.operation_url("manifest_set", print_id),
+            &manifest_write(),
+        )
         .await;
     assert_eq!(code, reqwest::StatusCode::OK, "{written}");
     let (code, read_back) = world

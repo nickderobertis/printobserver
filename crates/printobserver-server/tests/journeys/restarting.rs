@@ -20,7 +20,7 @@ use printobserver_types::{Adjustable, EventKind, EventPayload, EventSource, Prin
 
 use crate::http_host::image_host;
 use crate::ingress::snapshot_bytes;
-use crate::world::{SECRET, World, failure_alert};
+use crate::world::{SECRET, World, failure_alert, manifest_write};
 
 /// How long the bounded intervention this journey opens stands for.
 const DURATION_S: i64 = 5;
@@ -119,7 +119,7 @@ async fn write_everything(world: &World, image_url: &str) -> Written {
     let (status, _) = world
         .put(
             &world.operation_url(&path("manifest_set"), print_id),
-            &manifest,
+            &manifest_write(&manifest),
         )
         .await;
     assert_eq!(status, reqwest::StatusCode::OK);

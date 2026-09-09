@@ -27,17 +27,15 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Router, routing::MethodRouter};
-use printobserver_core::{CoreError, Supervisor};
+use printobserver_core::{CoreError, Supervisor, effective_bounds};
 use printobserver_store_api::{HistoryQuery, StoreError, StorePort};
 use printobserver_types::serde::Deserialize;
-use printobserver_types::{
-    ActionKind, ExecutionOutcome, ImageId, JobManifest, PolicyDecision, PrintId,
-};
+use printobserver_types::{ActionKind, ExecutionOutcome, ImageId, PolicyDecision, PrintId};
 
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, StatusAnswer,
+    ManifestAnswer, ManifestBody, StatusAnswer,
 };
 
 /// What every handler is given: the supervisor, and the store beside it.
@@ -255,25 +253,57 @@ async fn history(
 
 /// Read one print's manifest.
 async fn manifest_get(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
-    match state.store.manifest(print_id).await {
-        Ok(manifest) => answer(StatusCode::OK, &ManifestAnswer { manifest }),
-        Err(error) => refusal(store_status(&error), error),
-    }
+    let manifest = match state.store.manifest(print_id).await {
+        Ok(manifest) => manifest,
+        Err(error) => return refusal(store_status(&error), error),
+    };
+    let narrowings = match state.store.print(print_id).await {
+        Ok(print) => print.map(|record| record.narrowings).unwrap_or_default(),
+        Err(error) => return refusal(store_status(&error), error),
+    };
+    answer(
+        StatusCode::OK,
+        &ManifestAnswer {
+            manifest,
+            narrowings,
+        },
+    )
 }
 
 /// Write one print's manifest.
+///
+/// A manifest narrows what any actor may ask for, so replacing one is a change
+/// to the bounds a print runs under and carries a reason like every other
+/// change. The reason is ruled on **before** anything is written, so a request
+/// without one leaves the stored manifest and the print's narrowings as they
+/// were — and every range it asked wider than the envelope allows is recorded
+/// on the print, exactly as it is when a start attaches one.
 async fn manifest_set(
     State(state): State<ApiState>,
     Path(print_id): Path<PrintId>,
-    Json(manifest): Json<JobManifest>,
+    Json(body): Json<ManifestBody>,
 ) -> Response {
-    if let Err(error) = state.store.put_manifest(print_id, manifest.clone()).await {
+    if let Err(rejected) = body.reason() {
+        return refusal(StatusCode::BAD_REQUEST, rejected);
+    }
+    let narrowed = effective_bounds(&state.supervisor.config().envelope, Some(&body.manifest));
+    if let Err(error) = state
+        .store
+        .put_manifest(print_id, body.manifest.clone())
+        .await
+    {
         return refusal(store_status(&error), error);
+    }
+    for narrowing in narrowed.narrowings.clone() {
+        if let Err(error) = state.store.record_narrowing(print_id, narrowing).await {
+            return refusal(store_status(&error), error);
+        }
     }
     answer(
         StatusCode::OK,
         &ManifestAnswer {
-            manifest: Some(manifest),
+            manifest: Some(body.manifest),
+            narrowings: narrowed.narrowings,
         },
     )
 }

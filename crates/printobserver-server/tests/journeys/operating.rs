@@ -222,7 +222,6 @@ async fn every_mutating_operation_has_its_own_effect_and_its_own_rejection() {
         let plan = asked(kind);
 
         rejects(&operation, &plan).await;
-        refuses_a_request_with_no_reason(&operation).await;
         accepts(&operation, &plan).await;
         walked.push(operation.name);
     }
@@ -242,6 +241,95 @@ async fn every_mutating_operation_has_its_own_effect_and_its_own_rejection() {
         "this walk reached {} operations, which is not the action vocabulary",
         walked.len()
     );
+}
+
+/// Every operation that changes something refuses a request with no reason.
+///
+/// The walk is over every operation the declared list marks as changing
+/// something — the ten of the action vocabulary **and the manifest write**,
+/// which replaces the bounds a print runs under. Each is driven twice, with the
+/// reason left out and with one that is nothing but whitespace, and what is
+/// asserted is not the status: it is that every record this system stores is
+/// exactly as it was and the machine was asked nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_operation_that_changes_something_refuses_a_request_with_no_reason() {
+    let mut walked = Vec::new();
+    for operation in OPERATIONS {
+        if !operation.is_mutating() {
+            continue;
+        }
+        refuses_a_request_with_no_reason(&operation).await;
+        walked.push(operation.name);
+    }
+
+    let declared: Vec<&str> = OPERATIONS
+        .iter()
+        .filter(|operation| operation.is_mutating())
+        .map(|operation| operation.name)
+        .collect();
+    assert_eq!(
+        walked, declared,
+        "the declared list holds an operation that changes something and this walk \
+         did not reach"
+    );
+    assert!(
+        walked.contains(&"manifest_set"),
+        "the manifest write is a change and this walk did not reach it: {walked:?}"
+    );
+}
+
+/// A manifest write records what it narrowed, and the print carries it.
+///
+/// Writing a manifest is not a note about a print: it narrows what any actor
+/// may ask for, and a range it asks *wider* than the envelope allows is
+/// narrowed to the envelope's and recorded — so that nobody reading the history
+/// afterwards has to wonder which bound applied.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_manifest_write_records_what_it_narrowed() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+
+    let (status, written) = world
+        .put(
+            &world.operation_url(&path("manifest_set"), print_id),
+            &crate::world::manifest_write(&wider_than_the_envelope()),
+        )
+        .await;
+
+    assert_eq!(status, reqwest::StatusCode::OK, "{written}");
+    assert_eq!(
+        written["narrowings"][0]["adjustable"],
+        json!("feedrate"),
+        "a manifest asking wider than the envelope recorded no narrowing: {written}"
+    );
+    assert_eq!(
+        written["narrowings"][0]["applied"]["max"],
+        json!(1.5),
+        "the narrowing does not carry the range that stands: {written}"
+    );
+
+    let (_, read_back) = world
+        .get(&world.operation_url(&path("manifest_get"), print_id))
+        .await;
+    assert_eq!(
+        read_back["narrowings"], written["narrowings"],
+        "the narrowing was not recorded on the print: {read_back}"
+    );
+    let (_, status_answer) = world
+        .get(&world.operation_url(&path("status"), print_id))
+        .await;
+    assert_eq!(
+        status_answer["print"]["narrowings"], written["narrowings"],
+        "the print does not carry what its manifest narrowed: {status_answer}"
+    );
+    world.server.stop().await;
+}
+
+/// A manifest asking for a range the envelope does not allow.
+fn wider_than_the_envelope() -> Value {
+    let mut manifest = manifest();
+    manifest["allowed"] = json!({ "feedrate": { "min": 0.1, "max": 9.0 } });
+    manifest
 }
 
 /// The accepted body has the effect the operation names.
@@ -342,58 +430,111 @@ async fn rejects(operation: &Operation, plan: &Asked) {
 }
 
 /// A request carrying no reason reaches neither the machine nor the record.
+///
+/// Driven with the reason left out and with one that is nothing but
+/// whitespace, because a server that trimmed nothing would take the second and
+/// write a change whose recorded reason says nothing.
 async fn refuses_a_request_with_no_reason(operation: &Operation) {
-    let world = World::open().await;
-    let print_id = world.open_print().await;
-    let history = world.operation_url(
-        &printobserver_server::operation("history")
-            .expect("history is served")
-            .full_path(),
-        print_id,
-    );
-    let (_, before) = world.get(&history).await;
-    let url = world.operation_url(&operation.full_path(), print_id);
+    for (described, reason) in [
+        ("no reason at all", None),
+        ("a reason that is only whitespace", Some("   ")),
+    ] {
+        let world = World::open().await;
+        let print_id = world.open_print().await;
+        // A manifest already written, so that a refused write is asserted
+        // against a record that exists rather than against an absence.
+        let (status, _) = world
+            .put(
+                &world.operation_url(&path("manifest_set"), print_id),
+                &crate::world::manifest_write(&manifest()),
+            )
+            .await;
+        assert_eq!(status, reqwest::StatusCode::OK);
+        world.printer.forget();
+        let before = stored_records(&world, print_id).await;
 
-    let mut reasonless = asked(
-        operation
-            .action_kind()
-            .expect("this is a mutating operation"),
-    )
-    .accepted;
-    reasonless
-        .as_object_mut()
-        .expect("the body is an object")
-        .remove("reason");
+        let url = world.operation_url(&operation.full_path(), print_id);
+        let body = reasonless_body(operation, reason);
+        let (status, answer) = match operation.method {
+            printobserver_server::Method::Put => world.put(&url, &body).await,
+            _ => world.post(&url, &body).await,
+        };
 
-    let (status, answer) = world.post(&url, &reasonless).await;
+        assert_eq!(
+            status,
+            reqwest::StatusCode::BAD_REQUEST,
+            "`{}` took a request carrying {described}: {answer}",
+            operation.name
+        );
+        assert!(
+            answer["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("reason"),
+            "`{}` refused a request carrying {described} without saying so: {answer}",
+            operation.name
+        );
+        assert!(
+            world.printer.calls().is_empty(),
+            "`{}` carried a request with {described} to the machine: {:?}",
+            operation.name,
+            world.printer.calls()
+        );
+        assert_eq!(
+            stored_records(&world, print_id).await,
+            before,
+            "`{}` changed a stored record for a request with {described} that it refused",
+            operation.name
+        );
+        world.server.stop().await;
+    }
+}
 
-    assert_eq!(
-        status,
-        reqwest::StatusCode::BAD_REQUEST,
-        "`{}` took a request carrying no reason: {answer}",
-        operation.name
-    );
-    assert!(
-        answer["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("reason"),
-        "`{}` refused a reasonless request without saying so: {answer}",
-        operation.name
-    );
-    assert!(
-        world.printer.calls().is_empty(),
-        "`{}` carried a reasonless request to the machine: {:?}",
-        operation.name,
-        world.printer.calls()
-    );
-    let (_, after) = world.get(&history).await;
-    assert_eq!(
-        before, after,
-        "`{}` wrote a record for a request it refused",
-        operation.name
-    );
-    world.server.stop().await;
+/// Every record this system stores about one print, as a caller reads them.
+///
+/// The printer's own snapshot is deliberately not among them: it carries the
+/// instant it was observed at, so two reads of an unchanged machine differ.
+async fn stored_records(world: &World, print_id: printobserver_types::PrintId) -> Value {
+    let (_, status) = world
+        .get(&world.operation_url(&path("status"), print_id))
+        .await;
+    let (_, history) = world
+        .get(&world.operation_url(&path("history"), print_id))
+        .await;
+    let (_, manifest) = world
+        .get(&world.operation_url(&path("manifest_get"), print_id))
+        .await;
+    json!({
+        "print": status["print"],
+        "session": status["session"],
+        "interventions": status["interventions"],
+        "events": history["events"],
+        "manifest": manifest,
+    })
+}
+
+/// The body one mutating operation takes, carrying the reason given — or none.
+///
+/// The manifest it offers is deliberately *not* the one already stored: it asks
+/// for a range the envelope does not allow, so a server that wrote it before
+/// ruling on the reason would move both the stored manifest and the print's
+/// narrowings, and the record comparison would see it. A body that wrote back
+/// what was already there would leave that comparison proving nothing.
+fn reasonless_body(operation: &Operation, reason: Option<&str>) -> Value {
+    let mut body = match operation.action_kind() {
+        Some(kind) => asked(kind).accepted,
+        None => crate::world::manifest_write(&wider_than_the_envelope()),
+    };
+    let object = body.as_object_mut().expect("the body is an object");
+    match reason {
+        Some(blank) => {
+            object.insert("reason".to_owned(), json!(blank));
+        }
+        None => {
+            object.remove("reason");
+        }
+    }
+    body
 }
 
 /// Every adjustment applies the duration it is given, and opens nothing without
@@ -490,7 +631,7 @@ async fn every_read_answers_the_record_it_names() {
     let (status, written) = world
         .put(
             &world.operation_url(&path("manifest_set"), print_id),
-            &manifest,
+            &crate::world::manifest_write(&manifest),
         )
         .await;
     assert_eq!(status, reqwest::StatusCode::OK, "{written}");
