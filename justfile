@@ -43,9 +43,9 @@ check:
 #
 # Every recipe that reaches Nx runs this first, because `bunx nx` fails outright
 # in a clone that has never been bootstrapped — and every publication of this
-# repository is made from a clone cut fresh for it, where the `pre-push` hook
-# runs the whole gate. So the gate installs what it needs rather than requiring
-# a person to run `just bootstrap` in a directory nothing hands them.
+# repository is made from a clone cut fresh for it, which no one runs `just
+# bootstrap` in. So a tier installs what it needs rather than requiring a person
+# to run it in a directory nothing hands them.
 #
 # The install is the locked one: it can neither resolve nor record anything
 # `bun.lock` does not already describe, and it reports `no changes` without

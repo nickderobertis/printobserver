@@ -1,10 +1,10 @@
 """The gate runs in a clone that has never been bootstrapped.
 
 Every publication of this repository is made from a clone cut fresh for it, and
-the `pre-push` hook runs the whole gate there. Nothing installs the workspace's
-JavaScript dependencies in such a clone, so before this journey existed the
-first tier died on `NX Could not find Nx modules` and no change could be pushed
-at all.
+a tier run there — by a hook, by a person, or by the pull request's own jobs —
+finds nothing installed. Nothing installs the workspace's JavaScript
+dependencies in such a clone, so before this journey existed the first tier
+died on `NX Could not find Nx modules` and no change could be pushed at all.
 
 Each journey below drives the real recipe over a real copy carrying no
 installed dependencies. Nothing is mocked: `just` runs, `bun` installs, `nx`
