@@ -9,7 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use printobserver_types::{PrintId, SupervisionSession, Timestamp};
+use printobserver_types::{PrintId, SessionPhase, SupervisionSession, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// The directory under the state directory this port keeps its ledgers in.
@@ -186,7 +186,7 @@ impl PrintLedger {
         &mut self,
         name: &str,
         harness_identity: &str,
-        opened: bool,
+        phase: SessionPhase,
         at: Timestamp,
     ) -> SupervisionSession {
         let known = self
@@ -195,7 +195,7 @@ impl PrintLedger {
             .rposition(|session| session.session_name == name && session.closed_at.is_none());
         if let Some(index) = known {
             let session = &mut self.sessions[index];
-            if opened {
+            if phase == SessionPhase::Created {
                 session.created_at = at;
             }
             session.last_turn_at = at;

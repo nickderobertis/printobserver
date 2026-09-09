@@ -15,7 +15,7 @@ use printobserver_supervisor_api::{
 use printobserver_types::serde_json::Value;
 use printobserver_types::{AgentAssessment, PrintId, SessionPhase, SupervisionSession, Timestamp};
 
-use crate::config::{SupervisorConfig, TurnSeam};
+use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{PrintLedger, RecordedTurn};
 use crate::prompt::{NO_IMAGE, PromptTemplate};
 
@@ -208,7 +208,8 @@ impl OneharnessSupervisor {
             Err(error) => return Err(unavailable(&error)),
         };
 
-        self.record(&mut ledger, print_id, &TurnReport::of(outcome.report)?)
+        let reported = TurnReport::of(outcome.report, &session, &self.config.harness)?;
+        self.record(&mut ledger, print_id, &reported)
     }
 
     /// Write down what a finished run did, and answer the caller.
@@ -222,7 +223,7 @@ impl OneharnessSupervisor {
         let session = ledger.record_session(
             &reported.session.name,
             &reported.result.harness_id,
-            reported.session.phase == HarnessPhase::Create,
+            reported.phase(),
             at,
         );
         let answer = assessment(&reported.result);
@@ -264,18 +265,37 @@ pub struct TurnReport {
 }
 
 impl TurnReport {
-    /// Narrow one finished run's report to the turn it reports.
+    /// Narrow one finished run's report to the turn it reports, given the
+    /// session and the harness identity that turn asked for.
+    ///
+    /// Both are checked rather than read: what goes into the ledger is what a
+    /// restart continues this print's conversation from, so a report about
+    /// another session, or from another identity, is one this print's history
+    /// must not absorb — however it came to be answered.
     ///
     /// # Errors
     ///
     /// Returns [`SupervisorError::Unavailable`] when the run answered no
-    /// session block, or no result at all.
-    pub fn of(report: RunReport) -> Result<Self, SupervisorError> {
+    /// session block, no result at all, more than one result, or a session or
+    /// identity other than the one asked for.
+    pub fn of(
+        report: RunReport,
+        asked_session: &str,
+        asked_harness: &HarnessIdentity,
+    ) -> Result<Self, SupervisorError> {
         let Some(session) = report.session else {
             return Err(SupervisorError::Unavailable {
                 detail: NO_SESSION.to_owned(),
             });
         };
+        if session.name != asked_session {
+            return Err(SupervisorError::Unavailable {
+                detail: format!(
+                    "the harness answered about session `{}`, and this turn asked about `{asked_session}`",
+                    session.name
+                ),
+            });
+        }
         let [result] = <[RunResult; 1]>::try_from(report.results).map_err(|results| {
             SupervisorError::Unavailable {
                 detail: if results.is_empty() {
@@ -285,6 +305,14 @@ impl TurnReport {
                 },
             }
         })?;
+        if result.harness_id != asked_harness.as_str() {
+            return Err(SupervisorError::Unavailable {
+                detail: format!(
+                    "`{}` answered this turn, and it was asked of `{asked_harness}`",
+                    result.harness_id
+                ),
+            });
+        }
         Ok(Self { result, session })
     }
 
