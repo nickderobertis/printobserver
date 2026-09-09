@@ -1,9 +1,5 @@
 # printobserver-oneharness
 
-Rules for this crate. The repository-wide layer is the root `AGENTS.md`;
-what is here governs the supervision turn and applies when working in this
-crate.
-
 ## The supervision turn
 
 The supervising agent is reached through `printobserver-oneharness`, which
