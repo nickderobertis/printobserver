@@ -50,6 +50,11 @@ The second enables and starts the service:
 sudo systemctl enable --now printobserver.service
 ```
 
+Between the two, edit `/etc/printobserver/config.toml`: the installer writes a
+template, and the OctoPrint address and key and the shared secret the Obico
+ingress requires are yours to fill in. Every value is validated when the service
+starts, and one that cannot work is refused naming the field it is about.
+
 Enabling and starting is a command of its own rather than something the
 installer does, **because this service commands a 3D printer**: installing a
 package must not, as a side effect, start a process that can move a machine.
