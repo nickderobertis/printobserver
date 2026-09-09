@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
-from repo_checks.model import Repo
+from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     fenced_commands,
@@ -96,29 +96,13 @@ class JobKind(StrEnum):
     OTHER = "other"
 
 
-class PolicyValueError(ValueError):
-    """`repo-policy.toml` declares a value a check cannot act on."""
-
-
 class WorkflowValueError(ValueError):
     """A committed workflow declares something a check cannot derive from."""
 
 
-def _policy_table(repo: Repo, name: str) -> dict[str, Any]:
-    """One table of `repo-policy.toml`, or an empty one where it declares none.
-
-    `repo.policy` is whatever the TOML reader handed back, so a table read here
-    may be absent or may not be a table at all. Both leave the readers below with
-    nothing to find, which each of them already has a finding for, rather than an
-    attribute error on a value nobody narrowed.
-    """
-    table = repo.policy.get(name)
-    return table if isinstance(table, dict) else {}
-
-
 def _bring_up_command(repo: Repo) -> str:
     """The command line the printer-integration job is recognized by, or empty."""
-    recipe = _policy_table(repo, "integration").get("bring_up")
+    recipe = policy_table(repo, "integration").get("bring_up")
     if not isinstance(recipe, str) or not recipe.strip():
         return ""
     return f"just {recipe.strip()}"
@@ -135,7 +119,7 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
         PolicyValueError: If the declaration is absent, empty, or names anything
             that is not one of `JobKind`.
     """
-    declared = _policy_table(repo, "workflows").get("platform_dependent_kinds")
+    declared = policy_table(repo, "workflows").get("platform_dependent_kinds")
     if not isinstance(declared, list) or not declared:
         msg = (
             "`repo-policy.toml` declares no non-empty "
@@ -443,33 +427,15 @@ def install_path_section(repo: Repo) -> list[str]:
     return findings
 
 
-def _policy_strings(table: dict[str, Any], keys: tuple[str, ...], where: str) -> dict[str, str]:
-    """The named values of a policy table, each of them a non-empty string.
-
-    Raises:
-        PolicyValueError: If one is absent or carries anything else. A reader
-            taking them unnarrowed would abort the whole tier on a malformed file
-            rather than report the one thing wrong with it.
-    """
-    found: dict[str, str] = {}
-    for key in keys:
-        value = table.get(key)
-        if not isinstance(value, str) or not value.strip():
-            msg = f"`repo-policy.toml` declares no `{where}.{key}` string"
-            raise PolicyValueError(msg)
-        found[key] = value.strip()
-    return found
-
-
 def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     """Every fetch URL names this repository, its base branch and the declared path."""
     try:
-        repository = _policy_strings(
-            _policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
+        repository = policy_strings(
+            policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
         )
         expected = set(
-            _policy_strings(
-                _policy_table(repo, "workflows"),
+            policy_strings(
+                policy_table(repo, "workflows"),
                 ("install_script_path", "install_service_script_path"),
                 "workflows",
             ).values()

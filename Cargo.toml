@@ -27,6 +27,22 @@ license = "MIT"
 repository = "https://github.com/nickderobertis/printobserver"
 authors = ["Nick DeRobertis"]
 
+# The dependency versions the crates of this workspace inherit.
+#
+# A version stated here is stated once: a crate naming one of these writes
+# `<name>.workspace = true` and cannot drift from the rest of the workspace on
+# the version, the features, or the path of a sibling crate. Inheriting is
+# opt-in per crate, so a crate that still pins its own is unaffected by this
+# table and builds exactly as it did.
+[workspace.dependencies]
+jsonschema = { version = "0.34", default-features = false }
+oneharness-core = "0.12.3"
+oneharness = "0.11.4"
+printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.1.0" }
+printobserver-types = { path = "crates/printobserver-types", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"
