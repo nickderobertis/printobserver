@@ -70,8 +70,8 @@ def _a_merge_is_in_progress(repo: Repo) -> bool:
     textually identical to what git generates.
 
     `run` drops the variables naming a repository, so this asks about the tree
-    the hook was pointed at rather than about whichever repository a `pre-push`
-    hook further out happened to be pushing. A tree that is no git repository
+    the hook was pointed at rather than about whichever repository an outer
+    git invocation happened to name. A tree that is no git repository
     at all answers no, and its subject is ruled on as usual.
     """
     located = run(["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"], cwd=repo.root)

@@ -166,10 +166,10 @@ def node_install(repo: Repo) -> list[str]:
     """Every recipe that reaches Nx installs the JavaScript dependencies first.
 
     `bunx nx` fails outright in a clone whose dependencies have never been
-    installed, and the `pre-push` hook runs the whole gate in exactly such a
-    clone every time this repository is published from a fresh one. So a recipe
-    reaching Nx heals that state before it gets there, and heals it from the
-    committed lockfile rather than from whatever the registry offers today.
+    installed, and every publication of this repository is made from exactly
+    such a clone, cut fresh for it. So a recipe reaching Nx heals that state
+    before it gets there, and heals it from the committed lockfile rather than
+    from whatever the registry offers today.
     """
     parsed = recipes(repo.justfile)
     install = parsed.get(NODE_INSTALL_RECIPE)
