@@ -9,9 +9,13 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+printobserver-sdk = { path = "../printobserver-sdk", version = "0.1.0" }
 printobserver-server = { path = "../printobserver-server", version = "0.1.0" }
 printobserver-types.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# The one document format this program's own configuration is written in. It
+# reads a file the operator wrote, which may be the server's own.
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
 
 [dev-dependencies]
 # The store the service keeps its record in, so that a journey can put a print

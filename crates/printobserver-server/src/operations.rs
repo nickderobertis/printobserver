@@ -311,12 +311,14 @@ fn declared(
     entries: &'static [(&'static str, bool, ValueKind)],
     located: Located,
 ) -> impl Iterator<Item = Parameter> {
-    entries.iter().map(move |&(name, required, kind)| Parameter {
-        name: name.to_owned(),
-        required,
-        located,
-        kind,
-    })
+    entries
+        .iter()
+        .map(move |&(name, required, kind)| Parameter {
+            name: name.to_owned(),
+            required,
+            located,
+            kind,
+        })
 }
 
 /// The values one path template takes, in the order it takes them.

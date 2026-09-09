@@ -1390,12 +1390,14 @@ dependencies = [
 name = "printobserver"
 version = "0.1.0"
 dependencies = [
+ "printobserver-sdk",
  "printobserver-server",
  "printobserver-store-api",
  "printobserver-store-sqlite",
  "printobserver-types",
  "tempfile",
  "tokio",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
