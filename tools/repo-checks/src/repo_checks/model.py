@@ -7,9 +7,30 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
-# Directories a tool or a run produced, which the committed tree's own
-# declarations are never found under.
-NOT_THE_TREE = frozenset({"node_modules", "target", ".venv", ".octoprint-env"})
+# Directories nothing in this repository commits: build products, installed
+# dependencies, and the environments the printer and Obico tiers provision. A
+# manifest, a suppression directive or a project file under one of these is
+# somebody else's source, and a check that read it would report a finding nobody
+# here can act on.
+#
+# It lives here rather than in each check because it was three copies before,
+# and the copy `checks_release` carried had already fallen behind the others:
+# an Obico clone under `.obico-env` was refused for carrying a version field in
+# Obico's own `package.json`. A new provisioned environment lands here once.
+UNCOMMITTED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        "target",
+        "node_modules",
+        ".venv",
+        ".nx",
+        "dist",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".octoprint-env",
+        ".obico-env",
+    }
+)
 
 
 class Repo:
@@ -65,7 +86,7 @@ class Repo:
         return [
             project
             for project in sorted(self.root.glob("**/project.json"))
-            if not any(part in NOT_THE_TREE for part in project.parts)
+            if not UNCOMMITTED_DIRECTORIES & set(project.relative_to(self.root).parts)
         ]
 
     @cached_property
