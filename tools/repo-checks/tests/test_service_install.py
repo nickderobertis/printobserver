@@ -27,6 +27,7 @@ from treecopy import Tree
 INSTALLER = "scripts/install-service.sh"
 AGENTS = "AGENTS.md"
 SOURCE = "crates/printobserver-server/src/config.rs"
+POLICY = "repo-policy.toml"
 
 
 def test_the_committed_installer_is_accepted(committed: Repo) -> None:
@@ -183,3 +184,214 @@ def test_a_block_that_lost_its_provenance_is_refused(tree: Callable[[], Tree]) -
     findings = ingress_answer_bound(broken.repo)
 
     refused(findings, "records no `source`")
+
+
+def test_a_section_that_names_no_unit_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing here names the unit this repository installs."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            "sudo systemctl enable --now printobserver.service",
+            "sudo start-the-service-somehow",
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states no `systemctl enable --now")
+
+
+def test_a_section_that_fetches_no_installer_is_refused(tree: Callable[[], Tree]) -> None:
+    """The section has to state the command that fetches the installer."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            "https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh",
+            "https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh",
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states no command fetching")
+
+
+def test_a_policy_naming_no_installer_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check that cannot read what the installer is has nothing to hold."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            'install_service_script_path = "scripts/install-service.sh"',
+            "",
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "install_service_script_path")
+
+
+def test_an_installer_that_cannot_be_run_is_refused(tree: Callable[[], Tree]) -> None:
+    """The install path's own command runs this file, so it has to be runnable."""
+    broken = tree()
+    broken.repo.path(INSTALLER).chmod(0o644)
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "is not executable")
+
+
+def test_an_installer_naming_no_unit_at_all_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing in the tree can be held to the unit the install path names."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace('UNIT_NAME="printobserver.service"', "UNIT=x"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries no `UNIT_NAME")
+
+
+def test_a_policy_naming_no_unit_directory_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check that cannot read where units go has nothing to hold."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace('unit_directory = "/etc/systemd/system"', ""),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "service.unit_directory")
+
+
+def test_an_installer_granting_nothing_is_refused(tree: Callable[[], Tree]) -> None:
+    """A configuration granting nothing is a service no actor can ask anything of."""
+    broken = tree()
+    text = broken.read(INSTALLER)
+    start = text.index("[safety.actions]")
+    broken.write(INSTALLER, text[: start + len("[safety.actions]")] + "\nCONFIG\n")
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "grants nothing at all")
+
+
+def test_an_installer_with_no_granting_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing here reads the actions the installed configuration grants."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace("[safety.actions]", "[safety.grants]"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries no `[safety.actions]` table")
+
+
+def test_a_policy_naming_no_action_schema_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check with no vocabulary to read cannot hold the grants to one."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            'action_schema = "schemas/printobserver-types/PrintAction.json"', ""
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "supervisor.action_schema")
+
+
+def test_an_absent_action_schema_is_refused(tree: Callable[[], Tree]) -> None:
+    """The generated vocabulary has to be there to be read."""
+    broken = tree()
+    broken.remove("schemas/printobserver-types/PrintAction.json")
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "is the action vocabulary this reads")
+
+
+def test_an_action_schema_declaring_nothing_is_refused(tree: Callable[[], Tree]) -> None:
+    """A document that declares no action is not the vocabulary."""
+    broken = tree()
+    broken.write("schemas/printobserver-types/PrintAction.json", "{}")
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "declares no action")
+
+
+def test_a_policy_naming_no_ingress_source_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check with nowhere to read the shipped bound from has nothing to hold."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace('source = "crates/printobserver-server/src/config.rs"', ""),
+    )
+
+    findings = ingress_answer_bound(broken.repo)
+
+    refused(findings, "ingress.source")
+
+
+def test_a_tree_with_no_ingress_section_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing states why the bound is where it is."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            "## The Obico ingress answer bound", "## The ingress answer bound"
+        ),
+    )
+
+    findings = ingress_answer_bound(broken.repo)
+
+    refused(findings, "carries no `The Obico ingress answer bound` section")
+
+
+def test_a_tree_with_no_timeout_block_is_refused(tree: Callable[[], Tree]) -> None:
+    """A recorded claim with no block to record it in is no claim."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace("[//]: # (BEGIN obico-posting-timeout)", ""),
+    )
+
+    findings = ingress_answer_bound(broken.repo)
+
+    refused(findings, "obico-posting-timeout")
+
+
+def test_an_absent_ingress_source_is_refused(tree: Callable[[], Tree]) -> None:
+    """The file the bound is shipped in has to be there."""
+    broken = tree()
+    broken.remove(SOURCE)
+
+    findings = ingress_answer_bound(broken.repo)
+
+    refused(findings, "where the bound is shipped")
+
+
+def test_a_source_declaring_neither_constant_is_refused(tree: Callable[[], Tree]) -> None:
+    """A tree that ships no stated default, and carries no copy of the timeout."""
+    broken = tree()
+    broken.write(
+        SOURCE,
+        broken.read(SOURCE)
+        .replace("pub const DEFAULT_INGRESS_ANSWER_BOUND_MS: u64", "const SHIPPED: u64")
+        .replace("pub const OBICO_POSTING_TIMEOUT_MS: u64", "const PRODUCER: u64"),
+    )
+
+    findings = ingress_answer_bound(broken.repo)
+
+    refused(findings, "ships no stated default")
+    refused(findings, "carries no copy of the producer's own timeout")
