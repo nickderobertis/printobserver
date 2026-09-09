@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from collections.abc import Callable
 
 from repo_checks.checks_repo import workspace
@@ -175,6 +176,51 @@ def test_an_implementation_depending_on_another_is_refused(
     findings = workspace(broken.repo)
 
     refused(findings, "no implementation crate may depend on another")
+
+
+def test_a_client_depending_on_an_implementation_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Only the composition roots may name an implementation."""
+    broken = tree()
+    broken.write(
+        "crates/printobserver-sdk/Cargo.toml",
+        with_only_dependencies(
+            broken.read("crates/printobserver-sdk/Cargo.toml"), "printobserver-octoprint"
+        ),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "may name an implementation")
+
+
+def test_the_server_is_the_only_crate_that_names_an_implementation(
+    committed: Repo,
+) -> None:
+    """The rule permits every composition root, and one of them uses it.
+
+    `printobserver` reaches the implementations through `printobserver-server`
+    rather than naming them itself, so the tree this repository ships has
+    exactly one crate that names one. A second would not be refused by the rule
+    above — a composition root is allowed to — so it is asserted here, where a
+    reader can see which crate that is.
+    """
+    implementations = set(committed.policy["crates"]["implementations"])
+    naming = sorted(
+        name
+        for name in committed.crate_names
+        if implementations
+        & set(
+            tomllib.loads(
+                (committed.path(f"crates/{name}") / "Cargo.toml").read_text(encoding="utf-8")
+            )
+            .get("dependencies", {})
+            .keys()
+        )
+    )
+
+    equal(naming, ["printobserver-server"])
 
 
 def test_core_may_depend_on_a_port(tree: Callable[[], Tree]) -> None:
