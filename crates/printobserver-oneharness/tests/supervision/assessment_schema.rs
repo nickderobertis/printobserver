@@ -65,7 +65,6 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
     let generated = generated_assessment_schema();
     let conforming = assessment("the first layer is down", "high");
 
-    // --- Identity -----------------------------------------------------------
     // The schema on the run request is the generated assessment schema's own
     // checked-in artifact, not a file this crate carries.
     let (accepted, requests) = drive(&fixture, &generated, &conforming);
@@ -88,8 +87,8 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
         "the schema the answer is constrained by is a file this crate carries"
     );
 
-    // --- The three scripted answers ----------------------------------------
-    // One conforming, and it reads back with the fields it carried.
+    // The first of three scripted answers: one conforming, and it reads back
+    // with the fields it carried.
     let outcome = accepted.expect("a conforming answer is accepted");
     assert_eq!(outcome.assessment.summary, "the first layer is down");
     assert_eq!(outcome.assessment.confidence, Confidence::High);
@@ -136,10 +135,11 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
         "an answer that is not JSON was accepted: {refused:?}"
     );
 
-    // --- Drift --------------------------------------------------------------
-    // The checked-in artifact itself, held still against every other suite that
-    // reads the schema tree, and restored by a guard rather than by the last
-    // line of this journey — so the tree comes back even from a panic here.
+    // What the port validates against is the artifact on disk rather than a
+    // copy of its bytes, which is what changing that artifact tells apart. The
+    // artifact is held still against every other suite that reads the schema
+    // tree, and restored by a guard rather than by the last line of this
+    // journey — so the tree comes back even from a panic here.
     let held = HeldArtifact::hold(&generated);
     let (before, _) = drive(&fixture, &generated, &conforming);
     before.expect("the conforming answer is accepted against the artifact");
