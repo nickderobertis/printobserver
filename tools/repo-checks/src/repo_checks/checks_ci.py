@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
@@ -74,16 +76,223 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
-def _job_kind(name: str, job: dict[str, Any], path: ip.InstallPath) -> str:
-    """Classify a job by what its own steps run."""
+# What a matrix cell substitutes into a job's name. GitHub evaluates the
+# expression per cell, so this is what turns one declared name into one status
+# context per platform.
+MATRIX_EXPRESSION = re.compile(r"\$\{\{\s*matrix\.platform\.(?P<key>[A-Za-z0-9_-]+)\s*\}\}")
+
+
+class JobKind(StrEnum):
+    """What a workflow job is, judged by what its own steps run.
+
+    A closed set: `repo-policy.toml` may name only these, and every comparison
+    below is against a member rather than a bare string.
+    """
+
+    GATE = "gate"
+    INTEGRATION = "integration"
+    LLMLINT = "llmlint"
+    INSTALL = "install"
+    OTHER = "other"
+
+
+class PolicyValueError(ValueError):
+    """`repo-policy.toml` declares a value a check cannot act on."""
+
+
+class WorkflowValueError(ValueError):
+    """A committed workflow declares something a check cannot derive from."""
+
+
+def _policy_table(repo: Repo, name: str) -> dict[str, Any]:
+    """One table of `repo-policy.toml`, or an empty one where it declares none.
+
+    `repo.policy` is whatever the TOML reader handed back, so a table read here
+    may be absent or may not be a table at all. Both leave the readers below with
+    nothing to find, which each of them already has a finding for, rather than an
+    attribute error on a value nobody narrowed.
+    """
+    table = repo.policy.get(name)
+    return table if isinstance(table, dict) else {}
+
+
+def _bring_up_command(repo: Repo) -> str:
+    """The command line the printer-integration job is recognized by, or empty."""
+    recipe = _policy_table(repo, "integration").get("bring_up")
+    if not isinstance(recipe, str) or not recipe.strip():
+        return ""
+    return f"just {recipe.strip()}"
+
+
+def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
+    """The job kinds `repo-policy.toml` declares platform-dependent.
+
+    Validated rather than coerced: a misspelt or mistyped declaration would
+    silently stop the matrix rule applying to any job at all, which is a check
+    that passes because it inspected nothing.
+
+    Raises:
+        PolicyValueError: If the declaration is absent, empty, or names anything
+            that is not one of `JobKind`.
+    """
+    declared = _policy_table(repo, "workflows").get("platform_dependent_kinds")
+    if not isinstance(declared, list) or not declared:
+        msg = (
+            "`repo-policy.toml` declares no non-empty "
+            "`workflows.platform_dependent_kinds` list, so no job could be held "
+            "to the supported-platform list"
+        )
+        raise PolicyValueError(msg)
+    known = {kind.value for kind in JobKind}
+    kinds: set[JobKind] = set()
+    for entry in declared:
+        name = entry.strip() if isinstance(entry, str) else entry
+        if name not in known:
+            msg = (
+                f"`repo-policy.toml`'s `workflows.platform_dependent_kinds` names "
+                f"{entry!r}, which is not one of the job kinds these checks "
+                f"classify ({', '.join(sorted(known))})"
+            )
+            raise PolicyValueError(msg)
+        kinds.add(JobKind(name))
+    return frozenset(kinds)
+
+
+def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> JobKind:
+    """Classify a job by what its own steps run, not by what it is called.
+
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; every field this reads is narrowed before use.
+    """
     commands = run_commands(job)
+    if bring_up and bring_up in commands:
+        return JobKind.INTEGRATION
     if "just check" in commands and "just bootstrap" in commands:
-        return "gate"
+        return JobKind.GATE
     if any(command.startswith("just lint-llm-diff") for command in commands):
-        return "llmlint"
+        return JobKind.LLMLINT
     if any(command in path.canonical for command in commands):
-        return "install"
-    return "other"
+        return JobKind.INSTALL
+    return JobKind.OTHER
+
+
+@dataclass(frozen=True, slots=True)
+class StatusContext:
+    """One check run a workflow reports, under the name it reports it by.
+
+    That name — not the job's key — is what a branch-protection rule requires,
+    so it is what `AGENTS.md`'s required-checks record has to name.
+    """
+
+    name: str
+    file: str
+    job: str
+    kind: JobKind
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixCell:
+    """One cell of a job's `platform` matrix, as a check-run name can read it.
+
+    The field names are the workflow author's own, so that set is open; what is
+    closed is what a value may be. `read` settles it, and `fields` holds only
+    what survived, so nothing downstream re-checks a value it was handed.
+    """
+
+    where: str
+    fields: Mapping[str, str]
+    declared: frozenset[str]
+
+    @classmethod
+    def read(cls, entry: dict[str, Any], where: str) -> MatrixCell:
+        """Read one declared cell of a matrix.
+
+        `entry` is the mapping the YAML reader handed back, so its values are
+        `Any` at that deserialization boundary; this is the one place they stop
+        being. A field carrying anything but a non-empty scalar is not one a
+        check-run name can be built from, so it is kept out rather than coerced,
+        and `declared` remembers it was there so `substituted` can say which of
+        the two went wrong.
+        """
+        return cls(
+            where,
+            {
+                str(key): str(value)
+                for key, value in entry.items()
+                if isinstance(value, str | int) and str(value).strip()
+            },
+            frozenset(str(key) for key in entry),
+        )
+
+    def substituted(self, base: str) -> str:
+        """`base` with this cell's own values put into it.
+
+        Raises:
+            WorkflowValueError: If `base` interpolates a field this cell has not
+                got. Substituting an empty string there would derive a context
+                nothing reports, and the record would then read as having drifted
+                rather than as the typo in the workflow that it is.
+        """
+
+        def value(found: re.Match[str]) -> str:
+            key = found["key"]
+            if key in self.fields:
+                return self.fields[key]
+            if key in self.declared:
+                msg = (
+                    f"{self.where}'s name interpolates `{found[0]}`, whose value is not "
+                    f"something a status context can be named after"
+                )
+            else:
+                carried = ", ".join(f"`{one}`" for one in sorted(self.fields)) or "nothing"
+                msg = (
+                    f"{self.where}'s name interpolates `{found[0]}`, but its matrix "
+                    f"cells carry {carried}"
+                )
+            raise WorkflowValueError(msg)
+
+        return MATRIX_EXPRESSION.sub(value, base)
+
+
+def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
+    """The check-run name each of a job's cells reports under.
+
+    GitHub names a check run after the job's `name` where it sets one and after
+    the job's key otherwise, substituting the cell's own matrix values into it. A
+    matrixed job whose name interpolates none of them therefore reports every
+    cell under one repeated name, which this returns as the repetition it is
+    rather than collapsing.
+
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; the name is narrowed here and the cells by
+    `MatrixCell.read`.
+
+    Raises:
+        WorkflowValueError: If a cell cannot be substituted into the name.
+    """
+    declared = job.get("name")
+    base = declared if isinstance(declared, str) and declared else job_name
+    entries = _matrix_platforms(job)
+    if entries is None:
+        return [base]
+    return [MatrixCell.read(entry, where).substituted(base) for entry in entries]
+
+
+def status_contexts(repo: Repo) -> list[StatusContext]:
+    """Every check run the committed workflows report, one per matrix cell.
+
+    Raises:
+        WorkflowValueError: If a job's name cannot be resolved to the names its
+            cells report under.
+    """
+    path = ip.parse(repo.agents_md)
+    bring_up = _bring_up_command(repo)
+    return [
+        StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up))
+        for file_name, workflow in _workflows(repo).items()
+        for job_name, job in jobs_of(workflow).items()
+        for name in _context_names(job_name, job, f"{file_name}: job `{job_name}`")
+    ]
 
 
 def platforms(repo: Repo) -> list[str]:
@@ -91,6 +300,11 @@ def platforms(repo: Repo) -> list[str]:
     try:
         declared = platforms_of(repo)
     except MarkerBlockMissingError as error:
+        return [str(error)]
+
+    try:
+        dependent = platform_dependent_kinds(repo)
+    except PolicyValueError as error:
         return [str(error)]
 
     findings: list[str] = []
@@ -110,24 +324,42 @@ def platforms(repo: Repo) -> list[str]:
     declared_ids = [item.id for item in declared]
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
-    # The printer integration job's matrix is the `integration-tier` check's:
-    # it is the one matrix the exclusions recorded in AGENTS.md may narrow, and
-    # a rule stated in two places is a rule that can disagree with itself.
-    brings_up = f"just {repo.policy.get('integration', {}).get('bring_up', '')}".strip()
+    bring_up = _bring_up_command(repo)
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if brings_up != "just" and brings_up in run_commands(job):
-                continue
+            kind = _job_kind(job, path, bring_up)
             entries = _matrix_platforms(job)
-            kind = _job_kind(job_name, job, path)
-            if entries is None:
-                if kind in {"gate", "llmlint", "install"}:
+            if kind == JobKind.INTEGRATION:
+                # The printer integration job's matrix is the `integration-tier`
+                # check's: it is the one matrix the exclusions recorded in
+                # AGENTS.md may narrow, and a rule stated in two places is a
+                # rule that can disagree with itself.
+                continue
+            if kind not in dependent:
+                if entries is not None:
                     findings.append(
-                        f"{file_name}: job `{job_name}` is a {kind} job but declares no "
-                        f"platform matrix"
+                        f"{file_name}: job `{job_name}` declares a platform matrix, but "
+                        f"`repo-policy.toml` names only "
+                        f"{', '.join(f'`{one.value}`' for one in sorted(dependent))} as "
+                        f"platform-dependent: running a job with no platform-dependent "
+                        f"behaviour once per platform is repetition rather than coverage, "
+                        f"and for a non-deterministic one it is two independent verdicts "
+                        f"on one change"
                     )
                 continue
-            ids = [entry.get("id") for entry in entries]
+            if entries is None:
+                findings.append(
+                    f"{file_name}: job `{job_name}` is a {kind} job but declares no platform matrix"
+                )
+                continue
+            cells = [MatrixCell.read(entry, f"{file_name}: job `{job_name}`") for entry in entries]
+            findings.extend(
+                f"{file_name}: job `{job_name}`'s matrix has a cell whose `id` is not a "
+                f"platform name, so there is nothing to hold to AGENTS.md's list"
+                for cell in cells
+                if "id" not in cell.fields
+            )
+            ids = [cell.fields["id"] for cell in cells if "id" in cell.fields]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, "
                 f"which AGENTS.md's supported-platform list does not"
@@ -141,10 +373,12 @@ def platforms(repo: Repo) -> list[str]:
                 if wanted not in ids
             )
             findings.extend(
-                f"{file_name}: job `{job_name}`'s matrix runs `{entry.get('id')}` on "
-                f"`{entry.get('runner')}`, but AGENTS.md declares `{runners[entry['id']]}`"
-                for entry in entries
-                if entry.get("id") in runners and entry.get("runner") != runners[entry["id"]]
+                f"{file_name}: job `{job_name}`'s matrix runs `{cell.fields['id']}` on "
+                f"`{cell.fields.get('runner')}`, but AGENTS.md declares "
+                f"`{runners[cell.fields['id']]}`"
+                for cell in cells
+                if cell.fields.get("id") in runners
+                and cell.fields.get("runner") != runners[cell.fields["id"]]
             )
     return findings
 
@@ -209,13 +443,39 @@ def install_path_section(repo: Repo) -> list[str]:
     return findings
 
 
+def _policy_strings(table: dict[str, Any], keys: tuple[str, ...], where: str) -> dict[str, str]:
+    """The named values of a policy table, each of them a non-empty string.
+
+    Raises:
+        PolicyValueError: If one is absent or carries anything else. A reader
+            taking them unnarrowed would abort the whole tier on a malformed file
+            rather than report the one thing wrong with it.
+    """
+    found: dict[str, str] = {}
+    for key in keys:
+        value = table.get(key)
+        if not isinstance(value, str) or not value.strip():
+            msg = f"`repo-policy.toml` declares no `{where}.{key}` string"
+            raise PolicyValueError(msg)
+        found[key] = value.strip()
+    return found
+
+
 def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     """Every fetch URL names this repository, its base branch and the declared path."""
-    repository = repo.policy["repository"]
-    expected = {
-        repo.policy["workflows"]["install_script_path"],
-        repo.policy["workflows"]["install_service_script_path"],
-    }
+    try:
+        repository = _policy_strings(
+            _policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
+        )
+        expected = set(
+            _policy_strings(
+                _policy_table(repo, "workflows"),
+                ("install_script_path", "install_service_script_path"),
+                "workflows",
+            ).values()
+        )
+    except PolicyValueError as error:
+        return [str(error)]
     prefix = (
         f"https://raw.githubusercontent.com/{repository['owner']}/"
         f"{repository['name']}/{repository['base_branch']}/"
@@ -280,6 +540,7 @@ def continuous_integration(repo: Repo) -> list[str]:
     from repo_checks.parsing import recipes as parse_recipes
 
     path = ip.parse(repo.agents_md)
+    bring_up = _bring_up_command(repo)
     declared_recipes = set(parse_recipes(repo.justfile))
     findings: list[str] = []
 
@@ -288,12 +549,12 @@ def continuous_integration(repo: Repo) -> list[str]:
     install: list[tuple[str, str, dict[str, Any]]] = []
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            kind = _job_kind(job_name, job, path)
-            if kind == "gate":
+            kind = _job_kind(job, path, bring_up)
+            if kind == JobKind.GATE:
                 gate = (file_name, job_name, job)
-            elif kind == "llmlint":
+            elif kind == JobKind.LLMLINT:
                 llmlint = (file_name, job_name, job)
-            elif kind == "install":
+            elif kind == JobKind.INSTALL:
                 install.append((file_name, job_name, job))
 
     if gate is None:
@@ -373,7 +634,7 @@ def _install_job_findings(
 
 
 def merge_model(repo: Repo) -> list[str]:
-    """Every job `AGENTS.md` records as required is a job the configuration declares."""
+    """Every check `AGENTS.md` records as required is one the configuration reports."""
     try:
         required = [
             line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")
@@ -385,22 +646,46 @@ def merge_model(repo: Repo) -> list[str]:
     if not required:
         findings.append("AGENTS.md records no required check at all")
 
-    path = ip.parse(repo.agents_md)
-    declared: dict[str, str] = {}
-    kinds: dict[str, str] = {}
-    for file_name, workflow in _workflows(repo).items():
-        for job_name, job in jobs_of(workflow).items():
-            declared[job_name] = file_name
-            kinds[job_name] = _job_kind(job_name, job, path)
+    try:
+        reported = status_contexts(repo)
+    except WorkflowValueError as error:
+        return [*findings, str(error)]
+
+    by_name: dict[str, list[StatusContext]] = {}
+    for context in reported:
+        by_name.setdefault(context.name, []).append(context)
 
     findings.extend(
         f"AGENTS.md records `{name}` as a required check, but no committed workflow "
-        f"declares a job by that name"
+        f"reports a status context by that name; the names they report are "
+        f"{', '.join(f'`{one}`' for one in sorted(by_name))}"
         for name in required
-        if name not in declared
+        if name not in by_name
     )
-    for kind, label in (("gate", "complete-gate"), ("llmlint", "judged-lint")):
-        if not any(kinds.get(name) == kind for name in required):
+    findings.extend(
+        f"AGENTS.md records `{name}` as a required check, but {len(by_name[name])} "
+        f"matrix cells of job `{by_name[name][0].job}` report under that one name, so "
+        f"a rule requiring it cannot say which of them was green"
+        for name in required
+        if name in by_name and len(by_name[name]) > 1
+    )
+    # Every context a required job reports is required too: a gate required on
+    # one platform and not the other is a merge path the other never blocked.
+    required_jobs = {
+        (context.file, context.job) for name in required for context in by_name.get(name, [])
+    }
+    findings.extend(
+        f"AGENTS.md records some but not all of job `{context.job}`'s status contexts as "
+        f"required: `{context.name}` is not one of them, so a change could merge with "
+        f"that cell red"
+        for context in sorted(set(reported), key=lambda one: one.name)
+        if (context.file, context.job) in required_jobs and context.name not in required
+    )
+    for kind, label in (
+        (JobKind.GATE, "complete-gate"),
+        (JobKind.LLMLINT, "judged-lint"),
+    ):
+        if not any(context.kind == kind for name in required for context in by_name.get(name, [])):
             findings.append(f"AGENTS.md's required checks omit the {label} job")
 
     if "takes no direct push" not in repo.agents_md:
@@ -417,6 +702,7 @@ def secrets(repo: Repo) -> list[str]:
     findings: list[str] = []
 
     path = ip.parse(repo.agents_md)
+    bring_up = _bring_up_command(repo)
     for file_path in repo.workflow_paths:
         text = file_path.read_text(encoding="utf-8")
         findings.extend(
@@ -446,7 +732,7 @@ def secrets(repo: Repo) -> list[str]:
 
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if _job_kind(job_name, job, path) != "llmlint":
+            if _job_kind(job, path, bring_up) != JobKind.LLMLINT:
                 continue
             used = sorted(
                 {

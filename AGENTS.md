@@ -172,6 +172,13 @@ matrices is derived from; `just check-repo` refuses a matrix that names a
 platform this list does not, or omits one it does. No matrix can be narrowed
 independently of this list.
 
+A matrix belongs to a job whose behaviour depends on the platform, and
+`repo-policy.toml`'s `workflows.platform_dependent_kinds` is that set. Jobs of
+those kinds are held to this list; `just check-repo` refuses a platform matrix on
+any other job, because a second cell over the non-deterministic judged tier would
+not be a second platform but a second, independent verdict on one diff — free to
+pass and fail the same content while both are required checks.
+
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
@@ -434,17 +441,23 @@ The pull request title becomes the squash subject, which is the commit release
 automation reads, so it is linted against Conventional Commits as a required
 check.
 
-The jobs required to be green before a pull request can merge:
+The status contexts required to be green before a pull request can merge. These
+are **check-run names, not job keys**: a branch-protection rule names a check by
+the name GitHub reports it under, and a matrixed job reports one check run per
+cell. That is why the gate appears twice — its `name` carries the cell's platform
+so the two are distinguishable — and why the judged tier appears once, with no
+platform in its name at all.
 
 [//]: # (BEGIN required-checks)
-- `gate`
+- `gate (linux-x86_64)`
+- `gate (linux-aarch64)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)
 
-`just check-repo` refuses a required name with no job behind it. Applying these
-settings to the repository itself is a person's action through GitHub — it needs
-these jobs to exist first — and is tracked as its own task of this plan.
+`just check-repo` derives those contexts from the committed workflows and refuses
+a record that disagrees with them. Applying the settings themselves to the
+repository is a person's action through GitHub.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`
