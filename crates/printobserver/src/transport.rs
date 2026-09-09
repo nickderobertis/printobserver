@@ -81,8 +81,11 @@ pub fn send(
         address: address.clone(),
         detail,
     };
-    let mut stream =
-        TcpStream::connect(config.server).map_err(|error| failing(error.to_string()))?;
+    // The kind rather than the operating system's own text: what a caller needs
+    // is which of the ways this can fail happened, and a raw transport error in
+    // a message is a number nobody can act on.
+    let mut stream = TcpStream::connect(config.server)
+        .map_err(|error| failing(format!("{:?}", error.kind())))?;
 
     // The credential is read here and nowhere else, and the whole request is
     // assembled in one place, so there is one line in this program that can put
@@ -107,14 +110,17 @@ pub fn send(
          Connection: close\r\n{authenticating}{carried}",
         config.server
     );
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| failing(format!("the request could not be sent: {error}")))?;
+    stream.write_all(request.as_bytes()).map_err(|error| {
+        failing(format!(
+            "the request could not be sent ({:?})",
+            error.kind()
+        ))
+    })?;
 
     let mut answer = Vec::new();
     stream
         .read_to_end(&mut answer)
-        .map_err(|error| failing(format!("the answer could not be read: {error}")))?;
+        .map_err(|error| failing(format!("the answer could not be read ({:?})", error.kind())))?;
     read_answer(&answer).map_err(failing)
 }
 

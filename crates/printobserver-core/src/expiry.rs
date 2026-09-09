@@ -229,10 +229,42 @@ impl Supervisor {
             .settle_intervention(intervention.id, outcome)
             .await?;
         Ok(match settled {
-            printobserver_store_api::SettleOutcome::Settled { intervention } => {
-                intervention.outcome
+            // Written into the print's own history, because what became of a
+            // bounded change is the whole point of it having been bounded: an
+            // outcome that reached the intervention row and went no further
+            // would be one no read of this system could answer.
+            printobserver_store_api::SettleOutcome::Settled {
+                intervention: settled,
+            } => {
+                self.append_expiry_event(intervention, settled.outcome.clone())
+                    .await?;
+                settled.outcome
             }
             printobserver_store_api::SettleOutcome::AlreadySettled { outcome } => outcome,
         })
+    }
+
+    /// Write what became of one bounded intervention into the print's history.
+    async fn append_expiry_event(
+        &self,
+        intervention: &Intervention,
+        outcome: InterventionOutcome,
+    ) -> Result<(), CoreError> {
+        self.store()
+            .append_event(printobserver_store_api::EventDraft {
+                print_id: Some(intervention.print_id),
+                source: printobserver_types::EventSource::System,
+                received_at: self.clock().now(),
+                payload: printobserver_types::EventPayload::InterventionExpired(
+                    printobserver_types::InterventionExpiredPayload {
+                        intervention_id: intervention.id,
+                        adjustable: intervention.adjustable,
+                        outcome,
+                    },
+                ),
+                raw: None,
+            })
+            .await?;
+        Ok(())
     }
 }
