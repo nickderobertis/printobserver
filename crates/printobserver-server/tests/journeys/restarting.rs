@@ -18,7 +18,7 @@ use printobserver_types::contract::Sample as _;
 use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{Adjustable, EventKind, EventPayload, EventSource, PrintId, Timestamp};
 
-use crate::hosts::image_host;
+use crate::http_host::image_host;
 use crate::ingress::snapshot_bytes;
 use crate::world::{SECRET, World, failure_alert};
 

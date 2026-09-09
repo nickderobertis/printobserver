@@ -1,17 +1,10 @@
-//! Two real hosts on the loopback address these journeys need.
+//! A real HTTP host on the loopback address, serving one answer.
 //!
-//! [`image_host`] serves the snapshot an alert names, so that the vision
-//! adapter this server composes does its real fetch rather than a mocked one.
-//!
-//! [`silent_host`] answers every request with an empty JSON document. It is
-//! what the configuration walk points the `OctoPrint` address at: that walk
-//! drives the real composition root, which asks the machine whether the address
-//! and the key are the ones it answers to, and what it needs is an address that
-//! *answers* — not an `OctoPrint`. It carries no `OctoPrint` path, header or
-//! response shape, because only the adapter crate may construct one.
+//! The snapshot an alert names is fetched by the `Obico` adapter this server
+//! composes, so what it fetches from has to be a real host: a mocked client
+//! would be exactly the layer these journeys exist to drive.
 
 use core::fmt::Write as _;
-use core::time::Duration;
 use std::net::SocketAddr;
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -22,14 +15,14 @@ use tokio::task::JoinHandle;
 #[derive(Debug)]
 pub struct Host {
     /// Where it is listening.
-    address: SocketAddr,
+    pub address: SocketAddr,
     /// The task accepting connections, aborted when this host is dropped.
     serving: JoinHandle<()>,
 }
 
 impl Host {
     /// Start a host serving this body under this content type.
-    pub async fn serving(content_type: &'static str, body: Vec<u8>, delay: Duration) -> Self {
+    pub async fn serving(content_type: &'static str, body: Vec<u8>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -37,7 +30,7 @@ impl Host {
         let serving = tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 let body = body.clone();
-                tokio::spawn(async move { respond(stream, content_type, body, delay).await });
+                tokio::spawn(async move { respond(stream, content_type, body).await });
             }
         });
         Self { address, serving }
@@ -47,12 +40,6 @@ impl Host {
     #[must_use]
     pub fn url(&self) -> String {
         format!("http://{}/snapshot.jpg", self.address)
-    }
-
-    /// The base URL a caller reaches it at.
-    #[must_use]
-    pub fn base_url(&self) -> String {
-        format!("http://{}", self.address)
     }
 }
 
@@ -64,34 +51,11 @@ impl Drop for Host {
 
 /// A host serving one snapshot as an image.
 pub async fn image_host(body: Vec<u8>) -> Host {
-    Host::serving("image/jpeg", body, Duration::ZERO).await
-}
-
-/// A host that answers, and says nothing else.
-pub async fn silent_host() -> Host {
-    Host::serving("application/json", b"{}".to_vec(), Duration::ZERO).await
-}
-
-/// An address nothing is listening on.
-///
-/// A port is bound to learn one that is free and then released, so what a
-/// caller meets is a refused connection rather than a served refusal.
-pub async fn unreachable_address() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    address
+    Host::serving("image/jpeg", body).await
 }
 
 /// Read one request and write the answer.
-async fn respond(
-    mut stream: TcpStream,
-    content_type: &'static str,
-    body: Vec<u8>,
-    delay: Duration,
-) {
+async fn respond(mut stream: TcpStream, content_type: &'static str, body: Vec<u8>) {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 1024];
     while !request.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -100,7 +64,6 @@ async fn respond(
             Ok(read) => request.extend_from_slice(&buffer[..read]),
         }
     }
-    tokio::time::sleep(delay).await;
     let mut head = String::from("HTTP/1.1 200 OK\r\n");
     let _ = write!(head, "Content-Type: {content_type}\r\n");
     let _ = write!(head, "Content-Length: {}\r\n", body.len());

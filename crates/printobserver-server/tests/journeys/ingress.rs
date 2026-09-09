@@ -19,7 +19,7 @@ use printobserver_store_api::HistoryQuery;
 use printobserver_types::EventKind;
 
 use crate::agent::StandInAgent;
-use crate::hosts::image_host;
+use crate::http_host::image_host;
 use crate::printer::RecordingPrinter;
 use crate::world::{SECRET, World, committed_sample, failure_alert};
 

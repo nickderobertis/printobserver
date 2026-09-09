@@ -7,10 +7,12 @@
 
 #[path = "support/agent.rs"]
 mod agent;
-#[path = "support/hosts.rs"]
-mod hosts;
+#[path = "support/http_host.rs"]
+mod http_host;
 #[path = "support/printer.rs"]
 mod printer;
+#[path = "support/probes.rs"]
+mod probes;
 #[path = "support/world.rs"]
 mod world;
 

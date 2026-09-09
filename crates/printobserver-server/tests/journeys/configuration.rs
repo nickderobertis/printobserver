@@ -27,7 +27,7 @@ use printobserver_server::{ConfigField, ConfigFile, Server};
 use printobserver_types::serde_json::Value;
 use tempfile::TempDir;
 
-use crate::hosts::{silent_host, unreachable_address};
+use crate::probes::{base_url, silent_host, unreachable_address};
 use crate::world::{document, remove, set, write};
 
 /// The fields this program is required to take, whatever else it declares.
@@ -132,7 +132,7 @@ async fn every_declared_field_is_refused_naming_itself() {
     // about: a server refused for an unreachable machine would pass the
     // OctoPrint-address journey for the wrong reason on every other one.
     let reachable = silent_host().await;
-    let base = reachable.base_url();
+    let base = base_url(&reachable);
 
     for field in ConfigField::ALL {
         let root = TempDir::new().expect("a journey's own root");
@@ -163,7 +163,7 @@ async fn every_declared_field_is_refused_naming_itself() {
 async fn the_base_configuration_starts_a_server() {
     let reachable = silent_host().await;
     let root = TempDir::new().expect("a journey's own root");
-    let path = write(root.path(), &document(root.path(), &reachable.base_url()));
+    let path = write(root.path(), &document(root.path(), &base_url(&reachable)));
 
     let running = Server::start(&path)
         .await
