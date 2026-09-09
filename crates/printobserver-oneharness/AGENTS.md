@@ -83,14 +83,16 @@ been consulted.
 
 ## Testing it costs no model call
 
-OneHarness publishes a deterministic responder that replaces the provider
-process while keeping its real argument construction, parsing, session store and
-schema validation. It resolves to the current executable, so this repository
-ships a test-only binary that delegates to it and points a run's binary override
-there. Everything from the run request down is the real OneHarness; only the
-paid provider is replaced, and nothing doubles the port. The binary is behind a
-feature that is off by default, because what a consumer installs should carry
-neither it nor the dependency behind it.
+The one thing a journey here may replace is the paid provider process, and it
+is replaced by the deterministic responder OneHarness publishes for the purpose
+— which keeps that engine's own argument construction, parsing, session store
+and schema validation. Everything from the run request down is therefore the
+real OneHarness, and nothing doubles the port: a double would prove this
+repository's idea of the engine rather than the engine.
+
+What that costs is a binary of this repository's own for the engine to resolve
+to, and it is kept off what a consumer installs — a test seam that ships is a
+paid provider somebody can replace in production.
 
 That suite also **writes** to the checked-in schema tree, which is the one place
 it acts on something outside its own scratch directory. Proving the answer is
