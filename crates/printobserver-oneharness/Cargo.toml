@@ -17,6 +17,7 @@ authors.workspace = true
 test-responder = ["dep:oneharness"]
 
 [dependencies]
+jsonschema.workspace = true
 oneharness-core.workspace = true
 printobserver-supervisor-api.workspace = true
 printobserver-types.workspace = true

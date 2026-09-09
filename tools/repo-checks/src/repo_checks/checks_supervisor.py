@@ -141,7 +141,14 @@ def supervisor_policy(repo: Repo) -> SupervisorPolicy:
 
 
 def spawn_free(repo: Repo) -> list[str]:
-    """No source of the supervisor adapter uses a process-spawning interface."""
+    """No source of the adapter names one of the spawning interfaces below.
+
+    That is the whole of what this establishes, and it is deliberately keyed on
+    the interfaces rather than on the executables: a rule looking for the word
+    `oneharness` is one a computed name walks past, while every construction of
+    a child process in Rust goes through one of the spellings in
+    `SPAWNING_INTERFACES`, whatever it would run.
+    """
     try:
         policy = supervisor_policy(repo)
     except PolicyValueError as error:
@@ -167,7 +174,15 @@ def spawn_free(repo: Repo) -> list[str]:
 
 
 def _is_json_schema(path: Path) -> bool:
-    """Whether one JSON file is a JSON Schema rather than configuration."""
+    """Whether one JSON file reads as a JSON Schema rather than configuration.
+
+    A heuristic, and it errs towards refusing: a document declaring a
+    json-schema.org `$schema`, or carrying one of the top-level keys a schema is
+    built from, is treated as one. Configuration that happened to carry
+    `properties` would be refused with it, which is the direction to be wrong in
+    — the alternative is a schema this crate carries slipping past for want of a
+    marker.
+    """
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except OSError, json.JSONDecodeError:
@@ -181,7 +196,11 @@ def _is_json_schema(path: Path) -> bool:
 
 
 def schema_source(repo: Repo) -> list[str]:
-    """The supervisor adapter carries no schema of its own."""
+    """The generated schema is in the tree and the adapter carries no JSON one.
+
+    JSON is the only representation this reads, because it is the only one the
+    contracts' generation target writes and the only one `OneHarness` is handed.
+    """
     try:
         policy = supervisor_policy(repo)
     except PolicyValueError as error:
@@ -217,6 +236,18 @@ def schema_source(repo: Repo) -> list[str]:
     return findings
 
 
+def _variant_of(arm: object) -> str | None:
+    """The variant one arm of the action vocabulary tags, if it tags one."""
+    for step in ("properties", "action"):
+        if not isinstance(arm, dict):
+            return None
+        arm = arm.get(step, {})
+    if not isinstance(arm, dict):
+        return None
+    tag = arm.get("const")
+    return tag if isinstance(tag, str) else None
+
+
 @dataclass(frozen=True, slots=True)
 class ActionVocabulary:
     """What one reading of the generated action vocabulary found."""
@@ -238,19 +269,17 @@ def _action_variants(repo: Repo, relative: str) -> ActionVocabulary:
             (), (f"the generated action vocabulary `{relative}` is not JSON: {error}",)
         )
     # The artifact is JSON the generation target wrote, so every value below is
-    # `Any` until it is narrowed: an arm that is not a mapping, or tags nothing,
-    # declares no variant and is skipped rather than trusted.
+    # `Any` until it is narrowed — and the narrowing goes all the way down: an
+    # arm that is not a mapping, whose `properties` is not one, or whose
+    # `action` is not one, declares no variant and is skipped. Reading a nested
+    # value without that would fail the tier with an attribute error on a
+    # generated file rather than with what is wrong with it.
     arms = schema.get("oneOf") if isinstance(schema, dict) else None
-    variants = (
-        tuple(
-            tag
-            for arm in arms
-            if isinstance(arm, dict)
-            for tag in [arm.get("properties", {}).get("action", {}).get("const")]
-            if isinstance(tag, str)
-        )
-        if isinstance(arms, list)
-        else ()
+    variants = tuple(
+        tag
+        for arm in (arms if isinstance(arms, list) else ())
+        for tag in [_variant_of(arm)]
+        if tag is not None
     )
     if not variants:
         return ActionVocabulary(
@@ -304,7 +333,14 @@ def prompt_template(repo: Repo) -> list[str]:
 
 
 def schema_lock(repo: Repo) -> list[str]:
-    """Every suite that reads the checked-in schema tree locks the same file."""
+    """Every declared holder names the one lock file and takes a lock on it.
+
+    The set of holders is `repo-policy.toml`'s rather than derived: a suite
+    reading the schema tree is not something this can recognize from a source,
+    so a new one joins by being declared, and that declaration is what this
+    holds to the one name. What it establishes is that no two declared holders
+    lock two different files, which is the failure mode a lock has.
+    """
     try:
         policy = supervisor_policy(repo)
     except PolicyValueError as error:

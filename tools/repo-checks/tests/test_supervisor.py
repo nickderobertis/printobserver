@@ -336,6 +336,26 @@ def test_an_action_vocabulary_whose_arms_name_no_variant_is_refused(
     refused(prompt_template(copy.repo), "declares no variants")
 
 
+def test_an_arm_whose_nested_values_are_not_mappings_is_skipped(
+    tree: Callable[[], Tree],
+) -> None:
+    """A generated file this check cannot read is a finding, never a traceback.
+
+    Every step down into an arm is narrowed, so an arm whose `properties` or
+    whose `action` is something other than a mapping declares no variant and is
+    passed over — leaving the arms that do declare one still refused.
+    """
+    copy = tree()
+    schema = json.loads(copy.read(ACTION_SCHEMA))
+    variant = schema["oneOf"][0]["properties"]["action"]["const"]
+    schema["oneOf"].insert(0, {"type": "object", "properties": ["action"]})
+    schema["oneOf"].insert(1, {"type": "object", "properties": {"action": "pause_print"}})
+    copy.write(ACTION_SCHEMA, json.dumps(schema, indent=2))
+    copy.append(TEMPLATE, f"\n\nThen run `printobserver {variant}`.\n")
+
+    refused(prompt_template(copy.repo), f"printobserver {variant}")
+
+
 def test_an_arm_naming_no_variant_does_not_hide_the_ones_that_do(
     tree: Callable[[], Tree],
 ) -> None:

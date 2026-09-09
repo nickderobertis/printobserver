@@ -275,8 +275,9 @@ impl AssessmentSchema {
     /// # Errors
     ///
     /// Returns [`ConfigError::AssessmentSchemaInvalid`] when the file cannot be
-    /// read, is not JSON, or is not a JSON object — the three shapes that
-    /// constrain nothing whatever `OneHarness` later makes of them.
+    /// read, is not JSON, or is not a schema an answer could be judged against
+    /// — each of them a file that constrains nothing whatever `OneHarness`
+    /// later makes of it.
     pub fn at(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         let invalid = |detail: String| ConfigError::AssessmentSchemaInvalid {
@@ -289,6 +290,13 @@ impl AssessmentSchema {
         if !document.is_object() {
             return Err(invalid("it is JSON, but not a schema document".to_owned()));
         }
+        // Compiled rather than inspected: a document can be an object and still
+        // be no schema — a `type` that is a number, a `$ref` to nothing — and
+        // every such file constrains an answer exactly as little as an absent
+        // one does. Compiling it is what tells those apart, and it is the same
+        // work `OneHarness` does per run, hours later and about an answer
+        // rather than about the configuration that caused it.
+        jsonschema::validator_for(&document).map_err(|error| invalid(error.to_string()))?;
         Ok(Self(path))
     }
 

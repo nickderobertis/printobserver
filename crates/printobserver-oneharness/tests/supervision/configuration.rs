@@ -108,11 +108,14 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
     fs::write(&not_json, "this is not a schema").expect("a scratch file");
     let not_a_document = fixture.path("an-array.json");
     fs::write(&not_a_document, r#"["summary", "confidence"]"#).expect("a scratch file");
+    // An object, and still no schema: nothing could be judged against it.
+    let not_a_schema = fixture.path("not-a-schema.json");
+    fs::write(&not_a_schema, r#"{"type": 17}"#).expect("a scratch file");
 
     // Each of the three is refused naming the file. What is said about the
     // absent one and the unparsable one is the operating system's own text and
     // serde's own text; only the last is this crate's to promise.
-    for path in [&absent, &not_json, &not_a_document] {
+    for path in [&absent, &not_json, &not_a_document, &not_a_schema] {
         let refused = AssessmentSchema::at(path)
             .expect_err(&format!("{} was accepted as a schema", path.display()));
         let said = refused.to_string();

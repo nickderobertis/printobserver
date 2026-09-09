@@ -1365,6 +1365,7 @@ dependencies = [
 name = "printobserver-oneharness"
 version = "0.1.0"
 dependencies = [
+ "jsonschema 0.34.0",
  "oneharness",
  "oneharness-core",
  "printobserver-supervisor-api",
