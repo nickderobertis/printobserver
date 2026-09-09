@@ -1,11 +1,12 @@
 //! What the port is built with, and the seam a caller watches a turn through.
 //!
 //! Every field of a configuration that could be wrong carries a type that
-//! cannot: a harness identity is non-empty because the only way to make one
-//! rejects the empty string, a turn timeout is non-zero because it wraps a
-//! non-zero integer, and an environment assignment has a `KEY=VALUE` shape
-//! because it is a name and a value rather than a line somebody wrote. A
-//! configuration this module hands back is therefore one no later check has to
+//! cannot: a harness identity and a pinned model are non-empty because the only
+//! way to make one rejects the empty string, a turn timeout is non-zero because
+//! it wraps a non-zero integer, an environment assignment has a `KEY=VALUE`
+//! shape because it is a name and a value rather than a line somebody wrote,
+//! and an assessment schema is a document because making one reads it. A
+//! configuration this module hands back is therefore one no later step has to
 //! re-examine — there is no representable value for it to find.
 
 use core::fmt;
