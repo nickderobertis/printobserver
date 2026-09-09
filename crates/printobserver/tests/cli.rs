@@ -52,6 +52,36 @@ fn an_invocation_this_program_does_not_answer_to_is_refused() {
         ),
         (vec!["context", "--quickly"], "--quickly"),
         (
+            vec![
+                "context",
+                "--server",
+                "ftp://x:1",
+                "--print",
+                "01a08000-0000-7000-8000-000000000001",
+            ],
+            "http://",
+        ),
+        (
+            vec![
+                "context",
+                "--server",
+                "http://not-an-address",
+                "--print",
+                "01a08000-0000-7000-8000-000000000001",
+            ],
+            "not an address and a port",
+        ),
+        (
+            vec![
+                "context",
+                "--server",
+                "http://127.0.0.1:1",
+                "--print",
+                "a print\r\nGET /elsewhere",
+            ],
+            "is not a print this system minted",
+        ),
+        (
             vec!["context", "--print", "a", "--print", "b", "--server", "s"],
             "twice",
         ),
@@ -111,6 +141,65 @@ fn a_server_this_program_does_not_speak_to_is_refused() {
         said.contains("https://elsewhere.example"),
         "the refusal does not name the address: {said}"
     );
+}
+
+/// An answer that is not one this program can read is refused rather than
+/// printed.
+///
+/// A truncated answer would hand the supervising agent a document that parses
+/// as less than the supervisor said, which is the one thing a context read must
+/// not do quietly.
+#[test]
+fn an_answer_this_program_cannot_read_is_refused_rather_than_printed() {
+    for (described, answer) in [
+        ("an answer with no head at all", "not http at all"),
+        (
+            "an answer declaring no length",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}",
+        ),
+        (
+            "an answer declaring more than it sent",
+            "HTTP/1.1 200 OK\r\nContent-Length: 400\r\n\r\n{}",
+        ),
+        (
+            "an answer with no status",
+            "GARBLED\r\nContent-Length: 2\r\n\r\n{}",
+        ),
+    ] {
+        let address = answering_with(answer);
+
+        let (code, said) = run(&[
+            "context",
+            "--server",
+            &format!("http://{address}"),
+            "--print",
+            "01a08000-0000-7000-8000-000000000001",
+        ]);
+
+        assert_eq!(code, Some(1), "{described} was taken: {said}");
+        assert!(
+            said.contains("could not read that context"),
+            "{described} was refused without saying so: {said}"
+        );
+    }
+}
+
+/// A host answering one fixed thing to every request, for as long as this
+/// process runs.
+fn answering_with(answer: &'static str) -> std::net::SocketAddr {
+    use std::io::{Read as _, Write as _};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = stream;
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            let _ = stream.write_all(answer.as_bytes());
+        }
+    });
+    address
 }
 
 /// A configuration that is not there refuses the start, naming the path.

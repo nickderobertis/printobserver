@@ -107,7 +107,8 @@ if [ -z "$BINARY" ]; then
 fi
 [ -n "$BINARY" ] || die "no $PROGRAM program on PATH. Take one of the three routes \
 AGENTS.md's install path states, or pass --binary."
-[ -x "$BINARY" ] || die "$BINARY is not an executable program"
+[ -x "$BINARY" ] || die "$BINARY is not executable. Run \`chmod +x $BINARY\`, or pass \
+--binary the program one of the install path's three routes put on your path."
 
 if [ -z "$SERVICE_USER" ]; then
     if [ "$(id -u)" -eq 0 ]; then
@@ -123,7 +124,8 @@ fi
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     [ "$(id -u)" -eq 0 ] || die "there is no user $SERVICE_USER and this is not root"
     useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER" ||
-        die "the system user $SERVICE_USER could not be created"
+        die "the system user $SERVICE_USER could not be created. Create it yourself \
+(\`useradd --system $SERVICE_USER\`), or pass --user a user that already exists."
 fi
 
 # The four places, spelled once. Everything below writes into one of them.
@@ -149,26 +151,39 @@ if [ -n "$ROOT" ]; then
     RUNTIME_STATE="$STATE_DIR"
 fi
 
+# What every failed write here says, so that the two heredocs below can name it
+# without a line continuation inside a quoted string, which reads as a syntax
+# error to a shell linter.
+WRITE_REFUSED="a file could not be written under $ROOT/. Run this as root, or pass \
+--root a directory you can write to."
+
 mkdir -p "$BIN_DIR" "$CONF_DIR" "$UNIT_DIR" ||
     die "$ROOT/ could not be made writable for the install. Run this as root, or pass \
 --root a directory you own."
 
 install -m 0755 "$BINARY" "$INSTALLED_BINARY" ||
-    die "$BINARY could not be installed to $INSTALLED_BINARY"
+    die "$BINARY could not be copied to $INSTALLED_BINARY. Run this as root, or pass \
+--root a directory you can write to."
 
 # 0700 and owned by the service's own user: this directory holds the whole
 # record of what a printer did and what an agent decided, including the
 # snapshots. Nothing else on the machine has any business reading it.
-mkdir -p "$STATE_DIR" || die "$STATE_DIR could not be created"
-chown "$SERVICE_USER" "$STATE_DIR" || die "$STATE_DIR could not be handed to $SERVICE_USER"
-chmod 0700 "$STATE_DIR" || die "$STATE_DIR could not be made private"
+mkdir -p "$STATE_DIR" ||
+    die "$STATE_DIR could not be created. Run this as root, or pass --root a directory \
+you can write to."
+chown "$SERVICE_USER" "$STATE_DIR" ||
+    die "$STATE_DIR could not be handed to $SERVICE_USER. Run this as root, or pass \
+--user the user running this script."
+chmod 0700 "$STATE_DIR" ||
+    die "$STATE_DIR could not be made private. Run this as root, or pass --root a \
+directory you own."
 
 # An existing configuration is left exactly as it is: a reinstall must not
 # overwrite the operator's own values with a template's.
 if [ -e "$INSTALLED_CONFIG" ]; then
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
 else
-    cat >"$INSTALLED_CONFIG" <<CONFIG
+    cat >"$INSTALLED_CONFIG" <<CONFIG || die "$WRITE_REFUSED"
 # printobserver's one configuration file.
 #
 # Every value below is validated when the service starts, and a value that
@@ -220,11 +235,13 @@ agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
 CONFIG
-    chown "$SERVICE_USER" "$INSTALLED_CONFIG"
-    chmod 0600 "$INSTALLED_CONFIG"
+    chown "$SERVICE_USER" "$INSTALLED_CONFIG" ||
+        die "$INSTALLED_CONFIG could not be handed to $SERVICE_USER. Run this as root."
+    chmod 0600 "$INSTALLED_CONFIG" ||
+        die "$INSTALLED_CONFIG could not be made private. Run this as root."
 fi
 
-cat >"$INSTALLED_UNIT" <<UNIT
+cat >"$INSTALLED_UNIT" <<UNIT || die "$WRITE_REFUSED"
 [Unit]
 Description=printobserver, a supervision layer between a 3D printer and an agent
 Documentation=https://github.com/nickderobertis/printobserver
@@ -247,9 +264,9 @@ ReadWritePaths=$RUNTIME_STATE
 [Install]
 WantedBy=multi-user.target
 UNIT
-chmod 0644 "$INSTALLED_UNIT"
+chmod 0644 "$INSTALLED_UNIT" ||
+    die "$INSTALLED_UNIT could not be made readable. Run this as root."
 
-echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, \
-$STATE_DIR and $INSTALLED_UNIT; nothing was started." >&2
-echo "install-service.sh: edit $INSTALLED_CONFIG, then run: sudo systemctl enable \
---now $UNIT_NAME" >&2
+echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE_DIR \
+and $INSTALLED_UNIT and started nothing; edit $INSTALLED_CONFIG, then run: sudo \
+systemctl enable --now $UNIT_NAME" >&2

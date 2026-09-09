@@ -24,11 +24,12 @@
 //! would be, and it is the request the supervising agent's own turn makes.
 
 use std::io::{Read as _, Write as _};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use printobserver_server::Server;
+use printobserver_types::PrintId;
 
 /// What the program was asked to do.
 #[derive(Debug, PartialEq, Eq)]
@@ -43,9 +44,9 @@ enum Invocation {
     /// Read one print's whole context from a running supervisor.
     Context {
         /// Where that supervisor is answering.
-        server: String,
+        server: SocketAddr,
         /// The print to read.
-        print: String,
+        print: PrintId,
     },
     /// The arguments do not name anything this program does.
     Refused {
@@ -62,6 +63,9 @@ const SERVER_OPTION: &str = "--server";
 
 /// The option `context` takes to name the print.
 const PRINT_OPTION: &str = "--print";
+
+/// The one scheme this program reaches a supervisor over: it is on this host.
+const SCHEME: &str = "http://";
 
 /// The command surface, which is also what an unknown invocation is answered
 /// with.
@@ -149,32 +153,49 @@ fn read_context(arguments: &[String]) -> Invocation {
         }
         *held = Some(value.clone());
     }
-    match (server, print) {
-        (Some(server), Some(print)) => Invocation::Context { server, print },
-        _ => Invocation::Refused {
+    let (Some(server), Some(print)) = (server, print) else {
+        return Invocation::Refused {
             detail: format!(
                 "`context` needs the server it reads from and the print it reads.\n\n{USAGE}"
             ),
+        };
+    };
+    // Both are parsed here rather than carried as text. The print reaches an
+    // HTTP request target, and a value carrying a space or a line ending would
+    // be a second request rather than a print; the identifier this system mints
+    // admits neither.
+    let Some(authority) = server.trim().strip_prefix(SCHEME) else {
+        return Invocation::Refused {
+            detail: format!(
+                "`{server}` is not an address this program speaks to: it is \
+                             reached over {SCHEME}"
+            ),
+        };
+    };
+    let Ok(server) = authority.trim_end_matches('/').parse::<SocketAddr>() else {
+        return Invocation::Refused {
+            detail: format!("`{authority}` is not an address and a port"),
+        };
+    };
+    match print.parse::<PrintId>() {
+        Ok(print) => Invocation::Context { server, print },
+        Err(error) => Invocation::Refused {
+            detail: format!("`{print}` is not a print this system minted: {error}"),
         },
     }
 }
 
 /// Read one print's whole context, and print what the supervisor answered.
-fn context(server: &str, print: &str) -> Result<String, String> {
-    let authority = server
-        .trim()
-        .strip_prefix("http://")
-        .ok_or_else(|| format!("{server} is not an address this program speaks to"))?
-        .trim_end_matches('/');
+fn context(server: SocketAddr, print: PrintId) -> Result<String, String> {
     let path = printobserver_server::operation("context")
         .ok_or_else(|| "this program serves no context read".to_owned())?
         .full_path()
-        .replace("{print_id}", print);
-    let mut stream = TcpStream::connect(authority)
-        .map_err(|error| format!("nothing is answering at {authority}: {error}"))?;
+        .replace("{print_id}", &print.to_string());
+    let mut stream = TcpStream::connect(server)
+        .map_err(|error| format!("nothing is answering at {server}: {error}"))?;
     write!(
         stream,
-        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nAccept: {}\r\n\
+        "GET {path} HTTP/1.1\r\nHost: {server}\r\nAccept: {}\r\n\
          Connection: close\r\n\r\n",
         printobserver_server::MEDIA_TYPE
     )
@@ -183,16 +204,44 @@ fn context(server: &str, print: &str) -> Result<String, String> {
     stream
         .read_to_string(&mut answer)
         .map_err(|error| format!("the answer could not be read: {error}"))?;
+    let (status, body) = read_answer(&answer)?;
+    if status != 200 {
+        return Err(format!(
+            "the supervisor answered {status} for print {print}: {body}"
+        ));
+    }
+    Ok(body)
+}
+
+/// The status and the whole body of one HTTP answer.
+///
+/// The body is taken as the length the answer declares rather than as whatever
+/// arrived: an answer that declared more than it sent is a truncated context,
+/// and printing it would hand the agent a document that parses as less than the
+/// supervisor said.
+fn read_answer(answer: &str) -> Result<(u16, String), String> {
     let (head, body) = answer
         .split_once("\r\n\r\n")
         .ok_or_else(|| format!("the supervisor answered something unreadable: {answer}"))?;
-    if !head.starts_with("HTTP/1.1 200") {
+    let status = head
+        .split_whitespace()
+        .nth(1)
+        .filter(|_| head.starts_with("HTTP/1.1 "))
+        .and_then(|code| code.parse::<u16>().ok())
+        .ok_or_else(|| format!("the supervisor answered no status: {head}"))?;
+    let declared = head
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .ok_or_else(|| format!("the supervisor declared no length for what it answered: {head}"))?;
+    if body.len() != declared {
         return Err(format!(
-            "the supervisor refused to read print {print}: {}",
-            body.trim()
+            "the supervisor declared {declared} bytes and sent {}",
+            body.len()
         ));
     }
-    Ok(body.trim().to_owned())
+    Ok((status, body.to_owned()))
 }
 
 /// Run the supervisor until the service manager stops it.
@@ -218,7 +267,7 @@ fn main() -> ExitCode {
             eprintln!("{detail}");
             ExitCode::FAILURE
         }
-        Invocation::Context { server, print } => match context(&server, &print) {
+        Invocation::Context { server, print } => match context(server, print) {
             Ok(answered) => {
                 println!("{answered}");
                 ExitCode::SUCCESS

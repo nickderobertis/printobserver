@@ -354,7 +354,8 @@ declares in its own configuration with a stated default.
 
 The timeout that bound has to stay below is Obico's rather than this
 repository's, so it is written down here as a claim about an external producer,
-with the release it was read from.
+with the release it was read from — and the scheduled tier above is what
+reconciles that claim against a live Obico.
 
 [//]: # (BEGIN obico-posting-timeout)
 - posting timeout: `5000` ms
@@ -373,10 +374,6 @@ configured bound at or above the recorded timeout is refused where it is
 configured, naming the field, and `just check-repo`'s `ingress-answer-bound`
 holds the shipped default and the server's own copy of that timeout to the block
 above.
-
-The recorded number is this repository's claim about an external producer.
-Nothing deterministic can tell whether it is still true; the scheduled Obico
-tier above is what reconciles it against a live Obico.
 
 ## The end-user install path
 

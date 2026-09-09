@@ -104,23 +104,49 @@ def _executes(script: str, program: str) -> list[int]:
     starts the service in exactly those places and runs it nowhere, which is the
     whole point of the separation, so a check that could not tell them apart
     would refuse the correct script.
+
+    A line ending in a backslash continues into the next, and both are one
+    command: they are joined before any of that is decided, so the second half
+    of an `echo` is read as part of the `echo` rather than as a command of its
+    own.
     """
     found: list[int] = []
+    for number, command in _commands(script):
+        if command.startswith(("#", "echo ", "printf ")):
+            continue
+        if re.search(rf"(^|[;&|]\s*|\bsudo\s+){re.escape(program)}\b", command):
+            found.append(number)
+    return found
+
+
+def _commands(script: str) -> list[tuple[int, str]]:
+    """Every command a script runs, with the line it starts on.
+
+    Heredoc bodies are dropped — they are what the script writes rather than
+    what it runs — and a line continued with a backslash is joined to the one
+    after it.
+    """
+    found: list[tuple[int, str]] = []
     delimiter: str | None = None
+    started: int | None = None
+    joined = ""
     for number, line in enumerate(script.splitlines(), start=1):
         if delimiter is not None:
             if line.strip() == delimiter:
                 delimiter = None
             continue
-        opened = HEREDOC_OPEN.search(line)
+        if started is None:
+            started = number
+            joined = ""
+        joined += line.strip()
+        if line.rstrip().endswith("\\"):
+            joined = joined[:-1]
+            continue
+        opened = HEREDOC_OPEN.search(joined)
         if opened:
             delimiter = opened["delimiter"]
-            continue
-        stripped = line.strip()
-        if stripped.startswith(("#", "echo ", "printf ")):
-            continue
-        if re.search(rf"(^|[;&|]\s*|\bsudo\s+){re.escape(program)}\b", stripped):
-            found.append(number)
+        found.append((started, joined))
+        started = None
     return found
 
 

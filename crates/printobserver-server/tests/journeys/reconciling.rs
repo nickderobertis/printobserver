@@ -296,3 +296,121 @@ async fn a_print_with_no_open_session_is_adopted_without_being_resumed() {
     );
     running.stop().await;
 }
+
+/// An intervention whose restoration is refused does not cost the rest.
+///
+/// The value an intervention should restore is put back **through the ordinary
+/// policy**, so a prior value the envelope no longer admits is refused exactly
+/// as a fresh request for it would be — and the intervention is settled saying
+/// so rather than left active, because the expiry did happen. One that fails
+/// this way must not stop the start reaching the ones after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
+    let root = TempDir::new().expect("a journey's own root");
+    let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
+    let config = ServerConfig::load(&path).expect("the configuration is accepted");
+
+    let print_id = {
+        let store = SqliteStore::open(&config.state_dir).expect("the store opens");
+        let print = store
+            .open_print(Some(4211), None)
+            .await
+            .expect("a print opens");
+        // Two overdue interventions, in the order the store answers them: the
+        // first would restore a feedrate the envelope does not admit, and the
+        // second a fan percentage it does.
+        for (adjustable, prior) in [(Adjustable::Feedrate, 9.0), (Adjustable::Fan, 40.0)] {
+            let action = store
+                .record_action(
+                    ActionRequest {
+                        action: PrintAction::SetFanPercent {
+                            percent: 80.0,
+                            duration_s: Some(30),
+                            reason: "before the restart".to_owned(),
+                            actor: Actor::Operator,
+                        },
+                        actor: Actor::Operator,
+                        requested_at: Timestamp::now(),
+                    },
+                    PolicyDecision::Accepted,
+                )
+                .await
+                .expect("an action is recorded");
+            store
+                .open_intervention(
+                    action.id,
+                    adjustable,
+                    Some(prior),
+                    80.0,
+                    Timestamp::from_unix_seconds(1_700_000_000).expect("an instant"),
+                    Timestamp::from_unix_seconds(1_700_000_030).expect("an instant"),
+                )
+                .await
+                .expect("an intervention opens");
+        }
+        print.id
+    };
+
+    let printer = RecordingPrinter::printing();
+    let store: Arc<dyn StorePort> =
+        Arc::new(SqliteStore::open(&config.state_dir).expect("the store reopens"));
+    let running = Server::start_with(
+        config,
+        Ports {
+            printer: Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
+            store: Arc::clone(&store),
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await
+    .expect("the server starts");
+
+    assert_eq!(
+        running.reconciliation().expired.len(),
+        2,
+        "an intervention whose restoration was refused cost the one after it: {:?}",
+        running.reconciliation()
+    );
+    assert!(
+        printer.calls().contains(&Call::Fan(40.0)),
+        "the second intervention's value did not go back: {:?}",
+        printer.calls()
+    );
+    assert!(
+        !printer
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::Feedrate(_))),
+        "a value the envelope does not admit reached the machine: {:?}",
+        printer.calls()
+    );
+
+    let outcomes: Vec<StartupOutcome> = store
+        .history(HistoryQuery {
+            print_id,
+            kinds: vec![EventKind::StartupReconciliation],
+            since: None,
+            until: None,
+            limit: None,
+        })
+        .await
+        .expect("the history reads")
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            EventPayload::StartupReconciliation(payload) => Some(payload.outcome),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        outcomes.iter().any(|outcome| matches!(
+            outcome,
+            StartupOutcome::InterventionExpired { outcome, .. }
+                if matches!(outcome, printobserver_types::InterventionOutcome::RestoreFailed { .. })
+        )),
+        "the refused restoration was not recorded as one: {outcomes:?}"
+    );
+    running.stop().await;
+}

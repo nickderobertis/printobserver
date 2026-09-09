@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 printobserver-server = { path = "../printobserver-server", version = "0.1.0" }
+printobserver-types.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
@@ -18,7 +19,6 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 # to read that print's context — which is the one thing a supervision turn does.
 printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
 printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.1.0" }
-printobserver-types.workspace = true
 tempfile = "3"
 
 [lints]
