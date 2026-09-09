@@ -348,7 +348,6 @@ fn a_ledger_written_under_another_shape_is_refused() {
             "print_id": print_id,
             "sessions": [],
             "turns": [],
-            "supervisor_notes": "a field this build has never heard of",
         }),
     );
 
