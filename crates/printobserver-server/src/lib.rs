@@ -47,13 +47,14 @@ pub use config::{
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
-    BESIDE_THE_ACTIONS, Effect, INGRESS_PATH, MEDIA_TYPE, Method, OPERATIONS, Operation,
-    VERSION_PREFIX, operation,
+    Answer, BESIDE_THE_ACTIONS, CONTEXT_IMAGE_PATH_FIELD, Effect, IMAGE_PATH_FIELD, INGRESS_PATH,
+    Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter, VERSION_PREFIX, ValueKind,
+    operation,
 };
 pub use reconcile::{Reconciliation, overdue, reconcile};
 pub use server::{
-    CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE, Server, StartError,
-    TURN_PROMPT, context_command,
+    CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE,
+    Server, StartError, TURN_PROMPT, context_command,
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,

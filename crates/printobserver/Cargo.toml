@@ -9,16 +9,53 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+printobserver-sdk = { path = "../printobserver-sdk", version = "0.1.0" }
 printobserver-server = { path = "../printobserver-server", version = "0.1.0" }
 printobserver-types.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# The one document format this program's own configuration is written in. It
+# reads a file the operator wrote, which may be the server's own.
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+
+[features]
+# Test-only. Builds `printobserver-tainted`, which is this program's own library
+# with exactly one thing done wrong — the variant this crate's tier drives its
+# own assertions over, so that each is proven to refuse a violation rather than
+# to pass for want of one. Off by default, so nothing an ordinary consumer
+# installs carries it.
+test-fixtures = []
+
+[[bin]]
+name = "printobserver"
+path = "src/main.rs"
+
+[[bin]]
+name = "printobserver-tainted"
+path = "src/bin/tainted.rs"
+required-features = ["test-fixtures"]
+
+[[test]]
+name = "journeys"
+path = "tests/journeys.rs"
+required-features = ["test-fixtures"]
 
 [dev-dependencies]
+# `display` is a test-only need: a journey builds the supervisor's own
+# configuration as values and renders it, so what it writes is a document rather
+# than a string somebody has to keep well formed by hand.
+toml = { version = "0.9", default-features = false, features = ["display", "parse", "serde"] }
 # The store the service keeps its record in, so that a journey can put a print
 # in the state directory the installer created and then ask the running program
 # to read that print's context — which is the one thing a supervision turn does.
 printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
 printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.1.0" }
+# The validator the format journey holds a machine-readable answer to its own
+# declared response schema with — a real parser and a real schema validator
+# rather than a comparison of field names.
+jsonschema.workspace = true
+# The digest an image record declares, so a journey can open the file at the
+# path a materialization printed and check it is that image.
+sha2 = "0.10"
 tempfile = "3"
 
 [lints]

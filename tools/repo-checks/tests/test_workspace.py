@@ -223,6 +223,61 @@ def test_the_server_is_the_only_crate_that_names_an_implementation(
     equal(naming, ["printobserver-server"])
 
 
+# What the command-line program must depend on, so a fixture that is about one
+# forbidden edge carries everything else the rule requires and fails on that
+# edge alone.
+CLI = "crates/printobserver/Cargo.toml"
+CLI_REQUIRES = ("printobserver-server", "printobserver-sdk")
+
+
+def test_the_command_line_program_names_the_server_and_the_client(
+    committed: Repo,
+) -> None:
+    """The tree this repository ships has the two edges the rule requires."""
+    manifest = tomllib.loads(committed.path(CLI).read_text(encoding="utf-8"))
+    for required in CLI_REQUIRES:
+        contains(str(sorted(manifest["dependencies"])), required)
+    accepted(workspace(committed))
+
+
+def test_the_command_line_program_naming_a_vendor_adapter_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The edge that would let a client reach a printer without the supervisor.
+
+    Driven over each forbidden adapter in turn rather than one of them: the
+    command-line program is a composition root, so the rule that stops every
+    other crate naming an implementation permits it one — and what makes these
+    two different is that it is a *client* of a running server for everything
+    but starting one.
+    """
+    for edge in ("printobserver-octoprint", "printobserver-obico"):
+        broken = tree()
+        broken.write(
+            CLI,
+            with_only_dependencies(broken.read(CLI), *CLI_REQUIRES, edge),
+        )
+
+        findings = workspace(broken.repo)
+
+        refused(findings, f"`printobserver` depends on `{edge}`")
+
+
+def test_the_command_line_program_missing_the_client_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A command line that is not built on the client of the surface it calls."""
+    broken = tree()
+    broken.write(
+        CLI,
+        with_only_dependencies(broken.read(CLI), "printobserver-server"),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "printobserver-sdk")
+
+
 def test_core_may_depend_on_a_port(tree: Callable[[], Tree]) -> None:
     """The rule forbids the edges it names and permits the ones it allows."""
     allowed = tree()

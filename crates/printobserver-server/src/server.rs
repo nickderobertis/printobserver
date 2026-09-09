@@ -12,7 +12,7 @@
 //! a tier drives is the server this file starts.
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
@@ -38,16 +38,45 @@ use crate::reconcile::{Reconciliation, overdue, reconcile};
 /// The program a supervision turn runs to read its print's context.
 pub const CONTEXT_PROGRAM: &str = "printobserver";
 
+/// The file this server writes the address it took into, under the state
+/// directory, for the clients that run beside it.
+pub const CLIENT_CONFIG_FILE: &str = "client.toml";
+
 /// The command a supervision turn runs to read its print's context.
 ///
-/// This program's own context read, against the print the turn is about and the
-/// address this server took — which is the bound address rather than the
-/// configured one, because a configuration may ask for any free port and a turn
-/// has to reach the one that was taken.
+/// This program's own context read, against the print the turn is about and
+/// the configuration file naming the address this server took — which is the
+/// bound address rather than the configured one, because a configuration may
+/// ask for any free port and a turn has to reach the one that was taken.
 /// `printobserver-oneharness` substitutes the print for the placeholder.
+///
+/// The address travels in a file rather than on the command line because no
+/// client command of that program takes one: where a server is and what
+/// authenticates to it are configuration, and a command line that could carry
+/// them is a command line that could be pointed anywhere.
 #[must_use]
-pub fn context_command(address: SocketAddr) -> String {
-    format!("{CONTEXT_PROGRAM} context --server http://{address} --print {{print_id}}")
+pub fn context_command(client_config: &Path) -> String {
+    format!(
+        "{CONTEXT_PROGRAM} context --config {} --print-id {{print_id}}",
+        client_config.display()
+    )
+}
+
+/// Write the configuration the clients beside this server read it by.
+///
+/// One file naming the address that was actually bound, so a supervision turn
+/// — and an operator on this host — reaches this server without being told
+/// where it is. It carries no credential: this server requires none of its API
+/// callers, and a file this program wrote carrying one would be a secret
+/// nobody chose to store.
+fn write_client_config(directory: &Path, address: SocketAddr) -> Result<PathBuf, StartError> {
+    let path = directory.join(CLIENT_CONFIG_FILE);
+    std::fs::write(&path, format!("[client]\nserver = \"http://{address}\"\n")).map_err(
+        |error| StartError::State {
+            detail: format!("{} could not be written: {error}", path.display()),
+        },
+    )?;
+    Ok(path)
 }
 
 /// The file name the agent's skill is materialized under.
@@ -228,6 +257,7 @@ impl Server {
             address: config.listen,
             detail: error.to_string(),
         })?;
+        let client_config = write_client_config(&config.state_dir, address)?;
         let clock = Arc::new(SystemClock);
         let due = overdue(&ports.store, clock.now()).await.map_err(|error| {
             StartError::Reconciliation {
@@ -235,7 +265,7 @@ impl Server {
             }
         })?;
         let supervisor = Supervisor::new(
-            CoreConfig::new(config.safety.clone(), context_command(address)),
+            CoreConfig::new(config.safety.clone(), context_command(&client_config)),
             Arc::clone(&ports.printer),
             Arc::clone(&ports.store),
             Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,

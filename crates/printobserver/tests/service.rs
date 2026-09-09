@@ -278,6 +278,44 @@ fn the_installed_unit_passes_the_service_managers_own_verifier() {
     );
 }
 
+/// Fill in the installed configuration template exactly as an operator would.
+///
+/// The two values the template leaves blank, an `OctoPrint` address that
+/// answers, and a port the operating system chooses — and nothing else, so what
+/// the started service runs under is the file the installer wrote.
+fn fill_in(configuration: &Path) {
+    let answering = silent_host();
+    let filled = std::fs::read_to_string(configuration)
+        .expect("the configuration reads")
+        .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
+        .replace(
+            "shared_secret = \"\"",
+            "shared_secret = \"a-shared-secret\"",
+        )
+        .replace(
+            "url = \"http://127.0.0.1:5000\"",
+            &format!("url = \"http://{answering}\""),
+        )
+        .replace("listen = \"127.0.0.1:8420\"", "listen = \"127.0.0.1:0\"");
+    std::fs::write(configuration, filled).expect("the configuration is writable");
+}
+
+/// The configuration the running server wrote for the clients beside it.
+///
+/// It names the address that was actually bound rather than the one that was
+/// configured, which is what lets a supervision turn reach a server started on
+/// a port the operating system chose.
+fn client_configuration(state: &Path, address: &str) -> PathBuf {
+    let path = state.join(printobserver_server::CLIENT_CONFIG_FILE);
+    assert!(
+        std::fs::read_to_string(&path)
+            .expect("the server wrote the configuration its clients read")
+            .contains(address),
+        "the configuration the server wrote does not name the address it bound"
+    );
+    path
+}
+
 /// The unit's own start command starts a server that answers the API.
 #[test]
 fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
@@ -305,20 +343,7 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
             .last()
             .expect("the start command names the configuration it runs under"),
     );
-    let answering = silent_host();
-    let filled = std::fs::read_to_string(&configuration)
-        .expect("the configuration reads")
-        .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
-        .replace(
-            "shared_secret = \"\"",
-            "shared_secret = \"a-shared-secret\"",
-        )
-        .replace(
-            "url = \"http://127.0.0.1:5000\"",
-            &format!("url = \"http://{answering}\""),
-        )
-        .replace("listen = \"127.0.0.1:8420\"", "listen = \"127.0.0.1:0\"");
-    std::fs::write(&configuration, filled).expect("the configuration is writable");
+    fill_in(&configuration);
 
     // A print in the state directory the installer created, so the context read
     // below has something to read. This is what an alert would have opened.
@@ -344,13 +369,16 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
     );
 
     // The command a supervision turn runs to read its print's context is this
-    // program's own, and it reads from the server this program started.
+    // program's own, and it reads from the server this program started. It is
+    // given no address: the server wrote the one it bound into its own state
+    // directory, which is where every client beside it reads it from.
+    let client_config = client_configuration(&installed.state(), &address);
     let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .args([
             "context",
-            "--server",
-            &format!("http://{address}"),
-            "--print",
+            "--config",
+            &client_config.display().to_string(),
+            "--print-id",
             &print_id,
         ])
         .output()
@@ -369,9 +397,9 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
     let refused = Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .args([
             "context",
-            "--server",
-            &format!("http://{address}"),
-            "--print",
+            "--config",
+            &client_config.display().to_string(),
+            "--print-id",
             absent_print(),
         ])
         .output()

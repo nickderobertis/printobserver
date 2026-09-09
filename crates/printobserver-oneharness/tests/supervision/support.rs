@@ -372,6 +372,6 @@ pub fn turn(print_id: PrintId, event: EventRecord, image: Option<PathBuf>) -> Tu
         print_id,
         event,
         image_path: image,
-        context_command: format!("printobserver context --print {print_id}"),
+        context_command: format!("printobserver context --print-id {print_id}"),
     }
 }

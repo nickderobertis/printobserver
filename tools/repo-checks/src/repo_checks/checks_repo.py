@@ -287,6 +287,32 @@ def workspace(repo: Repo) -> list[str]:
                 f"no implementation crate may depend on another"
                 for edge in sorted(edges & implementations - {name})
             )
+        if name == crates.get("cli"):
+            findings.extend(_cli_edges(crates, name, edges))
+    return findings
+
+
+def _cli_edges(crates: dict[str, Any], name: str, edges: set[str]) -> list[str]:
+    """The command-line program's own two rules about what it may name.
+
+    It is a composition root, so the rule above permits it any implementation.
+    What it must not have is either vendor adapter: for everything but starting
+    the server it is a client of an already-running one, and a client that could
+    name the printer's adapter or the failure detector's could reach a printer
+    without the supervisor in between.
+    """
+    forbidden = set(crates.get("cli_forbids", []))
+    required = set(crates.get("cli_requires", []))
+    findings = [
+        f"`{name}` depends on `{edge}`: the command-line program is a client of a running "
+        f"server for everything but starting one, and a client that can name a vendor's "
+        f"adapter can reach that vendor without the supervisor in between"
+        for edge in sorted(edges & forbidden)
+    ]
+    findings.extend(
+        f"`{name}` does not depend on `{edge}`, which it is the client of"
+        for edge in sorted(required - edges)
+    )
     return findings
 
 

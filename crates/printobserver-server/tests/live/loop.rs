@@ -763,12 +763,14 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
             "`{}` was rejected and the machine moved anyway",
             operation.name
         );
-        assert_eq!(
-            stored(world, print_id).await,
-            before,
-            "`{}` was rejected and a stored record moved anyway",
-            operation.name
-        );
+        nothing_moved_but_the_record_of_the_rejection(
+            world,
+            print_id,
+            &before,
+            &answer["record"]["id"],
+            operation.name,
+        )
+        .await;
         walked.push(operation.name);
     }
     assert_eq!(
@@ -1098,6 +1100,42 @@ async fn stored(world: &Composed, print_id: PrintId) -> Value {
         "events": events["events"],
         "manifest": manifest,
     })
+}
+
+/// A rejected request left the record exactly as it was, plus the two events
+/// that put the rejection in the print's own history.
+///
+/// The reason a mutating request carries is what makes that history worth
+/// reading afterwards, so a rejection **does** move the record: it writes down
+/// what was asked for and what the policy made of it, and nothing else.
+async fn nothing_moved_but_the_record_of_the_rejection(
+    world: &Composed,
+    print_id: PrintId,
+    before: &Value,
+    action_id: &Value,
+    named: &str,
+) {
+    let mut after = stored(world, print_id).await;
+    let events = after["events"]
+        .as_array()
+        .expect("a history answers a list")
+        .clone();
+    let written: Vec<&Value> = events.iter().take(2).collect();
+    for (event, kind) in written.iter().zip(["action_rejected", "action_requested"]) {
+        assert_eq!(
+            event["kind"], kind,
+            "`{named}` was rejected and the newest events are not the record of that: {event}"
+        );
+        assert_eq!(
+            event["payload"]["action_id"], *action_id,
+            "`{named}` was rejected and the events written are about another action: {event}"
+        );
+    }
+    after["events"] = json!(events[2..]);
+    assert_eq!(
+        after, *before,
+        "`{named}` was rejected and something beside the record of that rejection moved"
+    );
 }
 
 /// Every operation of the action vocabulary, in the order it is declared.

@@ -27,7 +27,11 @@ impl Clock for SystemClock {
     }
 }
 
-/// The instant `seconds` after `instant`, saturating rather than wrapping.
+/// The instant `seconds` after `instant`.
+///
+/// Sub-second precision is kept: a bounded change asked to stand for a minute
+/// stands for a minute, rather than for a minute less however far into a second
+/// it happened to be made.
 ///
 /// # Errors
 ///
@@ -37,7 +41,7 @@ pub fn plus_seconds(
     instant: Timestamp,
     seconds: i64,
 ) -> Result<Timestamp, printobserver_types::TimestampError> {
-    Timestamp::from_unix_seconds(unix_seconds(instant).saturating_add(seconds))
+    instant.plus_seconds(seconds)
 }
 
 /// How many whole seconds `later` is after `earlier`, saturating.

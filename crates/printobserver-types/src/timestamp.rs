@@ -10,7 +10,7 @@ use core::fmt;
 use core::str::FromStr;
 use std::borrow::Cow;
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, TimeDelta, Utc};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 
@@ -61,6 +61,27 @@ impl Timestamp {
                 detail: format!(
                     "{seconds} seconds from the Unix epoch is not a representable instant"
                 ),
+            })
+    }
+
+    /// The instant this many seconds after this one.
+    ///
+    /// Sub-second precision is kept rather than dropped: an adjustment asked to
+    /// stand for a minute stands for a minute, rather than for a minute less
+    /// however far into a second it happened to be made.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the result is not a representable instant.
+    pub fn plus_seconds(self, seconds: i64) -> Result<Self, TimestampError> {
+        // `try_seconds` rather than `seconds`: a count of seconds that is not a
+        // representable span is answered here rather than raised, because the
+        // caller is a duration somebody asked for.
+        TimeDelta::try_seconds(seconds)
+            .and_then(|span| self.0.checked_add_signed(span))
+            .map(Self)
+            .ok_or_else(|| TimestampError {
+                detail: format!("{seconds} seconds after {self} is not a representable instant"),
             })
     }
 
