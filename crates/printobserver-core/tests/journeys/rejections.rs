@@ -210,10 +210,13 @@ fn every_rejection_is_reached_and_changes_nothing_at_the_printer() {
         );
         assert_eq!(
             refused.writes,
-            vec![Call::RecordAction(PolicyDecision::Rejected(
-                expected.clone()
-            ))],
-            "{expected:?} wrote something beside the record of its own rejection"
+            vec![
+                Call::RecordAction(PolicyDecision::Rejected(expected.clone())),
+                Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
+                Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
+            ],
+            "{expected:?} wrote something beside the record of its own rejection and the \
+             two events that put that rejection in the print's own history"
         );
         decisions.push(refused.decision);
     }
@@ -287,6 +290,8 @@ fn a_rejection_while_an_event_is_handled_leaves_the_loops_own_writes_standing() 
             Call::AppendEvent(printobserver_types::EventKind::ObicoFailureAlert),
             Call::PutImage,
             Call::RecordAction(rejection.clone()),
+            Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
+            Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
             Call::AppendEvent(printobserver_types::EventKind::SupervisionSessionOpened),
             Call::PutSession,
             Call::AppendEvent(printobserver_types::EventKind::AgentAssessment),

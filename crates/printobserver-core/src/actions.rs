@@ -1,5 +1,14 @@
 //! The one path an action takes, whoever asked for it.
 //!
+//! # An action is written into the history as it happens
+//!
+//! Every request appends [`EventKind::ActionRequested`], carrying the whole
+//! action — its own values and the reason the actor gave for it. A rejection
+//! appends the decision beside it and an execution appends what it opened. The
+//! reason a mutating request is required to carry is what makes the history
+//! worth reading afterwards, and a reason that reached the `actions` table and
+//! no further would be a reason nothing could ever read back.
+//!
 //! The agent, an operator, the command line and a client all arrive here. There
 //! is no second path: [`Supervisor::request_action`] gathers what the decision
 //! is taken from, takes it, and hands the pair to
@@ -7,8 +16,10 @@
 //! crate that reaches an action method of the printer port.
 
 use printobserver_types::{
-    ActionRecord, ActionRequest, ActorClass, Adjustable, Intervention, InterventionOutcome,
-    PolicyDecision, PrintAction, PrintId, PrintRecord, PrinterSnapshot, Timestamp,
+    ActionExecutedPayload, ActionRecord, ActionRejectedPayload, ActionRequest,
+    ActionRequestedPayload, Actor, ActorClass, Adjustable, EventPayload, EventSource, Intervention,
+    InterventionOutcome, PolicyDecision, PrintAction, PrintId, PrintRecord, PrinterSnapshot,
+    Timestamp,
 };
 
 use crate::bounds::{Bounds, effective_bounds};
@@ -33,6 +44,15 @@ impl ActionOutcome {
     #[must_use]
     pub const fn decision(&self) -> &PolicyDecision {
         &self.record.decision
+    }
+}
+
+/// Where an event about one actor's action came from.
+const fn source_of(actor: &Actor) -> EventSource {
+    match actor.class() {
+        ActorClass::Agent => EventSource::Agent,
+        ActorClass::Operator => EventSource::Operator,
+        ActorClass::System => EventSource::System,
     }
 }
 
@@ -111,6 +131,28 @@ impl Supervisor {
             requested_at,
         };
         let issued = self.issue_decided_action(request, decision).await?;
+        let source = source_of(&actor);
+        self.append_action_event(
+            print_id,
+            source,
+            EventPayload::ActionRequested(ActionRequestedPayload {
+                action_id: issued.record.id,
+                action: action.clone(),
+                actor: actor.clone(),
+            }),
+        )
+        .await?;
+        if let PolicyDecision::Rejected(_) = &issued.record.decision {
+            self.append_action_event(
+                print_id,
+                source,
+                EventPayload::ActionRejected(ActionRejectedPayload {
+                    action_id: issued.record.id,
+                    decision: issued.record.decision.clone(),
+                }),
+            )
+            .await?;
+        }
         if !issued.succeeded() {
             return Ok(ActionOutcome {
                 record: issued.record,
@@ -127,11 +169,39 @@ impl Supervisor {
         let intervention = self
             .open_bounded_intervention(print_id, &action, &issued, snapshot.as_ref(), requested_at)
             .await?;
+        self.append_action_event(
+            print_id,
+            source,
+            EventPayload::ActionExecuted(ActionExecutedPayload {
+                action_id: issued.record.id,
+                intervention_id: intervention.as_ref().map(|opened| opened.id),
+            }),
+        )
+        .await?;
         Ok(ActionOutcome {
             record: issued.record,
             executed: issued.executed,
             intervention,
         })
+    }
+
+    /// Append one event about an action, sourced from whoever asked for it.
+    async fn append_action_event(
+        &self,
+        print_id: PrintId,
+        source: EventSource,
+        payload: EventPayload,
+    ) -> Result<(), CoreError> {
+        self.store()
+            .append_event(printobserver_store_api::EventDraft {
+                print_id: Some(print_id),
+                source,
+                received_at: self.clock().now(),
+                payload,
+                raw: None,
+            })
+            .await?;
+        Ok(())
     }
 
     /// The bounds in force for one print: the envelope, narrowed by its manifest.
