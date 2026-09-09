@@ -396,6 +396,77 @@ fn a_ledger_written_under_another_shape_is_refused() {
     );
 }
 
+/// A ledger whose sessions and turns do not agree with each other is refused.
+///
+/// Each of these would be read as this print's history and none of it would be:
+/// a session of another print, a session named outside the sequence this build
+/// names them in, and a turn recorded against a session the print never opened.
+#[test]
+fn a_ledger_that_does_not_agree_with_itself_is_refused() {
+    let fixture = Fixture::new("failures-disagreeing");
+    let print_id = PrintId::new();
+    let other = PrintId::new();
+    let mine = SessionName::of(&print_id, 1).to_string();
+
+    let session = |owner: PrintId, name: &str| {
+        serde_json::json!({
+            "print_id": owner,
+            "session_name": name,
+            "harness_identity": HARNESS,
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_turn_at": "2026-01-01T00:00:00Z",
+        })
+    };
+    let ledger = |sessions: serde_json::Value, turns: serde_json::Value| {
+        serde_json::json!({
+            "schema_version": "1",
+            "print_id": print_id,
+            "sessions": sessions,
+            "turns": turns,
+        })
+    };
+
+    for (disagreement, document, naming) in [
+        (
+            "a session of another print",
+            ledger(
+                serde_json::json!([session(other, &mine)]),
+                serde_json::json!([]),
+            ),
+            "this is the ledger of print",
+        ),
+        (
+            "a session named outside the sequence",
+            ledger(
+                serde_json::json!([session(print_id, "print-something-else")]),
+                serde_json::json!([]),
+            ),
+            "this build names it",
+        ),
+        (
+            "a turn of a session never opened",
+            ledger(
+                serde_json::json!([]),
+                serde_json::json!([{ "session_name": mine, "ran_at": "2026-01-01T00:00:00Z" }]),
+            ),
+            "which this print has never opened",
+        ),
+    ] {
+        write_ledger(&fixture, &print_id, &document);
+        let watch = Arc::new(Watch::default());
+        let supervisor = port(answering(&fixture), &watch);
+        let refused = supervisor
+            .recorded_sessions(&print_id)
+            .err()
+            .unwrap_or_else(|| panic!("{disagreement} was read as this print's history"));
+        let said = detail(&refused);
+        assert!(
+            said.contains(naming),
+            "{disagreement} was refused for something else: {said}"
+        );
+    }
+}
+
 /// A recorded turn that names no conversation is refused on the way back in.
 ///
 /// The ledger exists to say which conversation each turn belongs to, so a turn

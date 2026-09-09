@@ -149,6 +149,9 @@ impl PrintLedger {
                         ledger.print_id
                     )));
                 }
+                ledger
+                    .agrees_with_itself()
+                    .map_err(|detail| io::Error::other(format!("{}: {detail}", path.display())))?;
                 Ok(ledger)
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self {
@@ -159,6 +162,47 @@ impl PrintLedger {
             }),
             Err(error) => Err(error),
         }
+    }
+
+    /// Whether the sessions and turns read back are this print's own history.
+    ///
+    /// Three things a ledger this build wrote is always true of, and each of
+    /// them is what makes the file answer the question it exists for. A session
+    /// of another print, a session named outside the sequence, or a turn
+    /// recorded against a session that is not here — each would be read as this
+    /// print's history and none of it would be. They are refused rather than
+    /// dropped: a history missing the turn that mattered reads exactly like one
+    /// where nothing happened.
+    fn agrees_with_itself(&self) -> Result<(), String> {
+        for (index, session) in self.sessions.iter().enumerate() {
+            if session.print_id != self.print_id {
+                return Err(format!(
+                    "session `{}` is of print {}, and this is the ledger of print {}",
+                    session.session_name, session.print_id, self.print_id
+                ));
+            }
+            let expected = SessionName::of(&self.print_id, index + 1);
+            if session.session_name != expected.as_str() {
+                return Err(format!(
+                    "session {} of this print is named `{}`, and this build names it `{expected}`",
+                    index + 1,
+                    session.session_name
+                ));
+            }
+        }
+        for turn in &self.turns {
+            if !self
+                .sessions
+                .iter()
+                .any(|session| session.session_name == turn.session_name.as_str())
+            {
+                return Err(format!(
+                    "a turn is recorded against session `{}`, which this print has never opened",
+                    turn.session_name
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Write the ledger back, creating the directory it lives in on the way.
