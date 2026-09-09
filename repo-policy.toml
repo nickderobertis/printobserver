@@ -80,6 +80,33 @@ bring_down = "octoprint-down"
 # matrix is the supported-platform list minus whatever it names.
 exclusions_block = "virtual-printer-exclusions"
 
+[obico]
+# The scheduled Obico tier, and the two recipes that bracket it. These names are
+# the one source: `just check-repo` holds the committed workflow to them, so a
+# workflow that ran something other than this repository's own recipes, or
+# omitted the bring-up or the bring-down, is refused.
+#
+# The tier is deliberately not one of `gate.tiers` and `just check-repo` refuses
+# a tree in which it is: it builds Obico's own images, starts four containers
+# including a machine-learning service, and waits a real failure alert out, so it
+# is minutes of startup that every gate run would otherwise pay for. It runs on a
+# schedule instead, which is what `triggers` below is about.
+tier = "test-obico"
+bring_up = "obico-up"
+bring_down = "obico-down"
+workflow = "obico.yml"
+# The ONLY triggers that workflow may carry. A schedule it names and a manual
+# invocation, and nothing that fires on a change: a tier this expensive that ran
+# on every push would be the gate again under another name.
+triggers = ["schedule", "workflow_dispatch"]
+# The block in `AGENTS.md` recording the schedule the tier runs on. It and the
+# workflow's own `cron` entries are checked against each other, so a schedule
+# recorded in prose cannot drift from the one that actually fires.
+schedule_block = "obico-tier-schedule"
+# The section of `AGENTS.md` that records the tier: what it proves, why it is not
+# in every run, and how to run it by hand.
+section = "The scheduled Obico tier"
+
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`
 # enforces: core may depend on the type crate and the four ports and on no
@@ -102,6 +129,32 @@ core = "printobserver-core"
 # which one runs.
 composition_roots = ["printobserver-server", "printobserver"]
 clients = ["printobserver-sdk"]
+
+[octoprint]
+# The one crate that may know what an OctoPrint is. Everything above
+# `printobserver-octoprint` is written as though printers were normal, and the
+# moment a second crate constructs an OctoPrint request there are two places a
+# vendor's own vocabulary has to be kept right — which is the coupling the port
+# exists to remove. `just check-repo` reads every Rust source under `crates/`
+# other than this crate's and refuses a line carrying one of the markers below.
+#
+# A comment-only line is exempt, so a crate may *say* `/api/job` while no crate
+# but this one may *build* one.
+crate = "printobserver-octoprint"
+# What constructing an OctoPrint request looks like in a Rust source: the header
+# OctoPrint authenticates by, and the paths this port speaks to. These are
+# OctoPrint's own surface rather than this system's; a crate that wanted one of
+# these spellings for a route of its own would be reconciling with this list
+# deliberately rather than colliding with it silently.
+request_markers = [
+    "X-Api-Key",
+    "/api/printer",
+    "/api/job",
+    "/api/files",
+    "/api/connection",
+    "/api/version",
+    "/api/settings",
+]
 
 [manifests]
 # The only manifests permitted to carry a version field, because release

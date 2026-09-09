@@ -7,6 +7,31 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+# Directories nothing in this repository commits: build products, installed
+# dependencies, and the environments the printer and Obico tiers provision. A
+# manifest, a suppression directive or a project file under one of these is
+# somebody else's source, and a check that read it would report a finding nobody
+# here can act on.
+#
+# It lives here rather than in each check because it was three copies before,
+# and the copy `checks_release` carried had already fallen behind the others:
+# an Obico clone under `.obico-env` was refused for carrying a version field in
+# Obico's own `package.json`. A new provisioned environment lands here once.
+UNCOMMITTED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        "target",
+        "node_modules",
+        ".venv",
+        ".nx",
+        "dist",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".octoprint-env",
+        ".obico-env",
+    }
+)
+
 
 class Repo:
     """A committed tree, and the declarations its checks read."""
@@ -54,6 +79,15 @@ class Repo:
         if not directory.is_dir():
             return []
         return sorted(p for p in directory.iterdir() if p.suffix in {".yml", ".yaml"})
+
+    @cached_property
+    def project_paths(self) -> list[Path]:
+        """Every committed `project.json` of the Nx graph, in a stable order."""
+        return [
+            project
+            for project in sorted(self.root.glob("**/project.json"))
+            if not UNCOMMITTED_DIRECTORIES & set(project.relative_to(self.root).parts)
+        ]
 
     @cached_property
     def crate_dirs(self) -> list[Path]:

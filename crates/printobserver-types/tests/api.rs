@@ -228,7 +228,7 @@ fn a_payload_belongs_to_one_kind() {
         EventPayload::sample_full().kind(),
         EventKind::ObicoFailureAlert
     );
-    assert_eq!(EventKind::ALL.len(), 11);
+    assert_eq!(EventKind::ALL.len(), 12);
     assert_eq!(
         AcknowledgementDisposition::sample_full(),
         AcknowledgementDisposition::Watch

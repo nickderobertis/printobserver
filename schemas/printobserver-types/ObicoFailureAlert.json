@@ -34,11 +34,18 @@
       ]
     },
     "ObicoPrintInfo": {
-      "description": "The `print` object, which the producer sends when there is a print.",
+      "description": "The `print` object, which the producer sends when there is a print.\n\nEach instant has **three** input states rather than two, and the option and\nthe enum carry one each: a number is [`ObicoTimestamp::Seconds`], the empty\nstring the producer sends for a print that has not started or ended is\n[`ObicoTimestamp::NotReported`], and a field the producer omits altogether\nis `None`. The last two both mean the producer reported no instant, and\nneither is refused and neither is an epoch date; they are held apart here\nonly so that a body round-trips back into exactly the form it arrived in.",
       "properties": {
         "ended_at": {
-          "$ref": "#/$defs/ObicoTimestamp",
-          "description": "When the print ended."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObicoTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print ended, absent when the producer omits the field."
         },
         "filename": {
           "description": "The file being printed.",
@@ -50,15 +57,20 @@
           "type": "integer"
         },
         "started_at": {
-          "$ref": "#/$defs/ObicoTimestamp",
-          "description": "When the print started."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObicoTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the print started, absent when the producer omits the field."
         }
       },
       "required": [
         "id",
-        "filename",
-        "started_at",
-        "ended_at"
+        "filename"
       ],
       "type": "object"
     },
