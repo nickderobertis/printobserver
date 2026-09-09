@@ -8,7 +8,11 @@
 
 use std::sync::Arc;
 
-use printobserver_oneharness::{ConfigError, EnvAssignment, HarnessIdentity, TurnTimeout};
+use std::fs;
+
+use printobserver_oneharness::{
+    AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, TurnTimeout,
+};
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId};
 
@@ -75,6 +79,66 @@ fn an_assignment_with_no_key_equals_value_shape_is_refused() {
     assert_eq!(json.to_string(), r#"MOCK_STDOUT={"a":"b=c"}"#);
 }
 
+/// A model nobody pinned is the absence of a name rather than an empty one.
+#[test]
+fn a_model_named_as_nothing_is_not_a_pin() {
+    for empty in ["", "  "] {
+        assert_eq!(
+            ModelName::new(empty),
+            Err(ConfigError::ModelNameEmpty),
+            "`{empty:?}` was accepted as a model"
+        );
+    }
+    assert_eq!(
+        ModelName::new(" claude-opus-5 ")
+            .expect("a pinned model")
+            .as_str(),
+        "claude-opus-5"
+    );
+}
+
+/// A file that constrains no answer is refused where it is named, rather than
+/// hours later as every answer being turned away.
+#[test]
+fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
+    let fixture = Fixture::new("configuration-schema");
+
+    let absent = fixture.path("no-such-schema.json");
+    let not_json = fixture.path("not-json.json");
+    fs::write(&not_json, "this is not a schema").expect("a scratch file");
+    let not_a_document = fixture.path("an-array.json");
+    fs::write(&not_a_document, r#"["summary", "confidence"]"#).expect("a scratch file");
+
+    // Each of the three is refused naming the file. What is said about the
+    // absent one and the unparsable one is the operating system's own text and
+    // serde's own text; only the last is this crate's to promise.
+    for path in [&absent, &not_json, &not_a_document] {
+        let refused = AssessmentSchema::at(path)
+            .expect_err(&format!("{} was accepted as a schema", path.display()));
+        let said = refused.to_string();
+        assert!(
+            said.contains(&path.display().to_string()),
+            "the refusal does not name the file: {said}"
+        );
+        let (_, why) = said
+            .split_once("does not constrain an answer: ")
+            .unwrap_or_else(|| panic!("the refusal does not say why: {said}"));
+        assert!(!why.is_empty(), "the refusal says why with nothing: {said}");
+    }
+    assert!(
+        AssessmentSchema::at(&not_a_document)
+            .expect_err("an array was accepted as a schema")
+            .to_string()
+            .contains("not a schema document"),
+        "a JSON array was refused as something other than what it is"
+    );
+
+    // The generated artifact is a schema document, and reading it says so.
+    let named =
+        AssessmentSchema::at(generated_assessment_schema()).expect("the generated artifact");
+    assert_eq!(named.path(), generated_assessment_schema());
+}
+
 /// What the constrained values say is what reaches `OneHarness`.
 #[test]
 fn the_run_request_carries_what_the_constrained_configuration_says() {
@@ -90,6 +154,7 @@ fn the_run_request_carries_what_the_constrained_configuration_says() {
         always("SID-CONFIG", &assessment("the print is fine", "high")),
     );
     configured.turn_timeout = TurnTimeout::new(97).expect("a bound");
+    configured.model = Some(ModelName::new("a-pinned-model").expect("a pinned model"));
     configured.harness_env.push(assignment("MOCK_EXTRA=beside"));
     let supervisor = port(configured, &watch);
 
@@ -104,6 +169,7 @@ fn the_run_request_carries_what_the_constrained_configuration_says() {
         .expect("the port built a run request");
     assert_eq!(request.harness, vec![HARNESS.to_owned()]);
     assert_eq!(request.timeout, Some(97));
+    assert_eq!(request.model, vec!["a-pinned-model".to_owned()]);
     assert!(
         request.env.iter().any(|line| line == "MOCK_EXTRA=beside"),
         "the assignment did not reach the run request as KEY=VALUE: {:?}",

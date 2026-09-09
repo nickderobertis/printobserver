@@ -136,11 +136,11 @@ impl OneharnessSupervisor {
         RunRequest {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
-            model: self.config.model.clone().into_iter().collect(),
+            model: self.config.model.iter().map(ToString::to_string).collect(),
             system: Some(self.skill.clone()),
             session: Some(session.to_owned()),
             session_dir: Some(self.config.state_dir.join(HARNESS_SESSIONS_DIRECTORY)),
-            schema: Some(self.config.assessment_schema_path.clone()),
+            schema: Some(self.config.assessment_schema.path().to_path_buf()),
             timeout: Some(self.config.turn_timeout.seconds()),
             cwd: Some(self.config.working_dir.clone()),
             env: self

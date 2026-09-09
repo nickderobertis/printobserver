@@ -236,7 +236,7 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
     let permissive = fixture.path("anything.json");
     fs::write(&permissive, r#"{"type": "object"}"#).expect("a scratch schema");
 
-    let mut configured = config(
+    let configured = config(
         &fixture,
         HARNESS,
         &permissive,
@@ -245,7 +245,6 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
             &serde_json::json!({ "summary": 17 }).to_string(),
         ),
     );
-    configured.assessment_schema_path = permissive;
     let refused = watched_turn(configured).expect_err("an answer the type refuses was handed on");
     assert!(
         matches!(refused, SupervisorError::InvalidAnswer { .. }),

@@ -37,7 +37,7 @@
 //!
 //! # The answer is constrained by the generated schema
 //!
-//! [`SupervisorConfig::assessment_schema_path`] names the assessment schema the
+//! [`SupervisorConfig::assessment_schema`] names the assessment schema the
 //! contracts generate, and the path is what reaches `OneHarness`: this crate
 //! carries no schema of its own and embeds none, so the constraint the agent
 //! answers under is the one the types declare.
@@ -48,8 +48,8 @@ mod prompt;
 mod turn;
 
 pub use config::{
-    ConfigError, EnvAssignment, HarnessIdentity, RunReportObserver, RunRequestObserver,
-    SupervisorConfig, TurnSeam, TurnTimeout,
+    AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
+    RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
 pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, session_name};
 pub use prompt::{

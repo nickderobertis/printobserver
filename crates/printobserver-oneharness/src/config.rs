@@ -10,7 +10,7 @@
 
 use core::fmt;
 use core::num::NonZeroU64;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use oneharness_core::domain::report::RunReport;
@@ -32,6 +32,16 @@ pub enum ConfigError {
         /// Why it is not one.
         detail: &'static str,
     },
+    /// The model was named as nothing, or as whitespace. A model nobody pinned
+    /// is `None`; an empty name is a pin nothing can honour.
+    ModelNameEmpty,
+    /// The file named as the assessment schema is not a schema document.
+    AssessmentSchemaInvalid {
+        /// The path that was named.
+        path: String,
+        /// Why nothing there constrains an answer.
+        detail: String,
+    },
 }
 
 impl fmt::Display for ConfigError {
@@ -51,6 +61,10 @@ impl fmt::Display for ConfigError {
                     formatter,
                     "`{text}` is not a KEY=VALUE environment assignment: {detail}"
                 )
+            }
+            Self::ModelNameEmpty => write!(formatter, "the model is named as nothing"),
+            Self::AssessmentSchemaInvalid { path, detail } => {
+                write!(formatter, "`{path}` does not constrain an answer: {detail}")
             }
         }
     }
@@ -199,6 +213,91 @@ impl fmt::Display for EnvAssignment {
     }
 }
 
+/// The model a turn is pinned to, when one is pinned.
+///
+/// A model nobody pinned is the absence of one of these rather than an empty
+/// one: `OneHarness` reads an empty name as a model it cannot find, which
+/// reaches a caller as a harness that will not run rather than as the
+/// configuration mistake it is.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ModelName(String);
+
+impl ModelName {
+    /// The model this text names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ModelNameEmpty`] when the text is empty or is
+    /// nothing but whitespace.
+    pub fn new(name: &str) -> Result<Self, ConfigError> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(ConfigError::ModelNameEmpty);
+        }
+        Ok(Self(trimmed.to_owned()))
+    }
+
+    /// The model as `OneHarness` spells it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ModelName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// The schema an answer is constrained by, named as a path `OneHarness` reads
+/// per run.
+///
+/// Checked where it is named rather than where it is used: nothing about a
+/// schema is read until a turn runs, so a path that is not there — or is there
+/// and is not a document at all — would otherwise surface as every answer being
+/// refused, hours after the configuration that caused it.
+///
+/// What this cannot establish is that the document is the *generated* artifact
+/// rather than a schema somebody wrote: no property of a document says which
+/// target produced it. That is a claim about the tree and is made there —
+/// `just check-repo` refuses a tree in which this crate carries a schema of its
+/// own, and one journey changes the generated artifact on disk and watches what
+/// the port accepts move with it, which a document read here could not tell
+/// apart from a copy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssessmentSchema(PathBuf);
+
+impl AssessmentSchema {
+    /// The schema at this path, read to be sure something is there.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::AssessmentSchemaInvalid`] when the file cannot be
+    /// read, is not JSON, or is not a JSON object — the three shapes that
+    /// constrain nothing whatever `OneHarness` later makes of them.
+    pub fn at(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
+        let path = path.into();
+        let invalid = |detail: String| ConfigError::AssessmentSchemaInvalid {
+            path: path.display().to_string(),
+            detail,
+        };
+        let text = std::fs::read_to_string(&path).map_err(|error| invalid(error.to_string()))?;
+        let document: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| invalid(error.to_string()))?;
+        if !document.is_object() {
+            return Err(invalid("it is JSON, but not a schema document".to_owned()));
+        }
+        Ok(Self(path))
+    }
+
+    /// The path handed to `OneHarness`, which reads it per run.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// How the supervising agent is reached, and where its sessions live.
 ///
 /// Every path is absolute in production. Nothing here is read until the port is
@@ -215,12 +314,11 @@ pub struct SupervisorConfig {
     /// The committed prompt template, whose three slots one turn fills.
     pub prompt_template_path: PathBuf,
     /// The generated assessment schema the agent's answer is constrained by.
-    /// The path is handed to `OneHarness`, which reads it per run.
-    pub assessment_schema_path: PathBuf,
+    pub assessment_schema: AssessmentSchema,
     /// The harness identity turns run on.
     pub harness: HarnessIdentity,
     /// The model, when one is pinned rather than left to the harness.
-    pub model: Option<String>,
+    pub model: Option<ModelName>,
     /// The working directory each harness process runs in.
     pub working_dir: PathBuf,
     /// How long one turn is given.

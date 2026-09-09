@@ -520,14 +520,6 @@ comment-only line so a crate may *say* `/api/job` while no crate but the adapter
 may *build* one — and refuses a tree in which the adapter itself constructs
 none, because a rule guarding a boundary nothing is on has stopped being a rule.
 
-## The supervision turn
-
-The supervising agent is reached through `printobserver-oneharness`, which
-drives OneHarness's own Rust crate API **in process**. The rules governing
-that crate — what may spawn, what a prompt may say, what constrains the
-answer, and what a session holds — are in
-`crates/printobserver-oneharness/AGENTS.md`, beside the code they bind.
-
 ## Tests are the only QA loop
 
 Never mock the layer under test. Drive the real artifact across real boundaries

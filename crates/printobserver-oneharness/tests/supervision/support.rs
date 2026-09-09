@@ -20,8 +20,8 @@ use oneharness_core::domain::report::RunReport;
 use oneharness_core::io::run::RunRequest;
 use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_oneharness::{
-    EnvAssignment, HarnessIdentity, OneharnessSupervisor, RunReportObserver, RunRequestObserver,
-    SupervisorConfig, TurnSeam, TurnTimeout,
+    AssessmentSchema, EnvAssignment, HarnessIdentity, OneharnessSupervisor, RunReportObserver,
+    RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
 use printobserver_supervisor_api::TurnRequest;
 use printobserver_types::{
@@ -175,6 +175,12 @@ impl Fixture {
     }
 }
 
+/// One assessment schema a journey constrains an answer by.
+pub fn schema(path: &Path) -> AssessmentSchema {
+    AssessmentSchema::at(path)
+        .unwrap_or_else(|error| panic!("a journey names a schema to constrain an answer: {error}"))
+}
+
 /// One harness identity a journey names.
 pub fn identity(name: &str) -> HarnessIdentity {
     HarnessIdentity::new(name).expect("a journey names a harness")
@@ -191,14 +197,14 @@ pub fn assignment(text: &str) -> EnvAssignment {
 pub fn config(
     fixture: &Fixture,
     harness: &str,
-    schema: &Path,
+    constraint: &Path,
     env: Vec<EnvAssignment>,
 ) -> SupervisorConfig {
     SupervisorConfig {
         state_dir: fixture.state_dir(),
         skill_path: skill_path(),
         prompt_template_path: template_path(),
-        assessment_schema_path: schema.to_path_buf(),
+        assessment_schema: schema(constraint),
         harness: identity(harness),
         model: None,
         working_dir: fixture.root.join("work"),
