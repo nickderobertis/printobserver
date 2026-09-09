@@ -157,6 +157,17 @@ impl RecordingPrinter {
         held.job.state = state;
     }
 
+    /// Make it report a value JSON denotes no spelling of.
+    ///
+    /// A disconnected thermistor and a division by a zero-valued reading both
+    /// produce one, and the contracts refuse to emit one rather than writing
+    /// `null` for it — so this is what a machine having that kind of bad day
+    /// looks like from here.
+    pub fn reporting_nothing_denotable(&self) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.snapshot.feedrate_factor = Some(feedrate(f64::NAN));
+    }
+
     /// What one adjustable reads as now, when the machine reports it.
     #[must_use]
     pub fn value_of(&self, adjustable: Adjustable) -> Option<f64> {

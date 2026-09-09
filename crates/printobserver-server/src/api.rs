@@ -277,3 +277,77 @@ async fn manifest_set(
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use printobserver_core::CoreError;
+    use printobserver_store_api::StoreError;
+
+    use super::{core_status, store_status};
+
+    /// Every refusal the store can make is answered under a status a caller can
+    /// act on: what it asked for, what is not there, and what went wrong here.
+    #[test]
+    fn every_store_refusal_is_answered_under_a_status_a_caller_can_act_on() {
+        for (error, expected) in [
+            (
+                StoreError::NotFound {
+                    what: "print".to_owned(),
+                },
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                StoreError::LimitRefused {
+                    limit: 1_000,
+                    asked_for: 2_000,
+                },
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                StoreError::ConstraintRefused {
+                    constraint: "actions.decision".to_owned(),
+                },
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                StoreError::Database {
+                    detail: "the disk is full".to_owned(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+            (
+                StoreError::Io {
+                    detail: "the disk is full".to_owned(),
+                },
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ] {
+            assert_eq!(store_status(&error), expected, "{error}");
+        }
+    }
+
+    /// A print nothing holds is not found; a port that failed is this server's
+    /// own failure rather than the caller's.
+    #[test]
+    fn a_print_nothing_holds_is_not_found_and_a_port_failure_is_this_servers_own() {
+        assert_eq!(
+            core_status(&CoreError::NoSuchPrint {
+                print_id: printobserver_types::PrintId::new(),
+            }),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            core_status(&CoreError::Store(StoreError::NotFound {
+                what: "print".to_owned(),
+            })),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            core_status(&CoreError::Unrepresentable {
+                detail: "an instant".to_owned(),
+            }),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}

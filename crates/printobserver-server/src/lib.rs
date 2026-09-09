@@ -43,7 +43,7 @@ pub use api::{ApiState, router};
 pub use config::{
     ASSETS_DIRECTORY, ConfigError, ConfigField, ConfigFile, DEFAULT_INGRESS_ANSWER_BOUND_MS,
     FAN_VOCABULARY, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection, ServerConfig,
-    SupervisorSection, example_envelope,
+    SupervisorSection,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
@@ -53,6 +53,7 @@ pub use operations::{
 pub use reconcile::{Reconciliation, overdue, reconcile};
 pub use server::{
     CONTEXT_COMMAND, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE, Server, StartError,
+    TURN_PROMPT,
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,

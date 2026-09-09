@@ -7,6 +7,8 @@
 
 #[path = "support/agent.rs"]
 mod agent;
+#[path = "support/failing_store.rs"]
+mod failing_store;
 #[path = "support/http_host.rs"]
 mod http_host;
 #[path = "support/printer.rs"]
@@ -18,6 +20,8 @@ mod world;
 
 #[path = "journeys/configuration.rs"]
 mod configuration;
+#[path = "journeys/failing.rs"]
+mod failing;
 #[path = "journeys/images.rs"]
 mod images;
 #[path = "journeys/ingress.rs"]
@@ -26,6 +30,8 @@ mod ingress;
 mod operating;
 #[path = "journeys/reconciling.rs"]
 mod reconciling;
+#[path = "journeys/refusing.rs"]
+mod refusing;
 #[path = "journeys/restarting.rs"]
 mod restarting;
 #[path = "journeys/surface.rs"]

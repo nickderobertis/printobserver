@@ -30,14 +30,13 @@
 //! records that number, where it was read and why the default is where it is,
 //! and `just check-repo` refuses a tree in which the two disagree.
 
-use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use printobserver_octoprint::FanSupport;
+use printobserver_types::SafetyEnvelope;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{ActionKind, ActorClass, Adjustable, Range, SafetyEnvelope};
 
 /// The answer bound this repository ships, in milliseconds.
 ///
@@ -374,39 +373,6 @@ pub struct ServerConfig {
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
     pub ingress_shared_secret: String,
-}
-
-/// A safety envelope wide enough to be worth writing down, for the
-/// configuration this repository ships as an example.
-#[must_use]
-pub fn example_envelope() -> SafetyEnvelope {
-    let mut allowed = BTreeMap::new();
-    allowed.insert(Adjustable::Feedrate, Range::new(0.5, 1.5));
-    allowed.insert(Adjustable::Flowrate, Range::new(0.9, 1.1));
-    allowed.insert(Adjustable::Fan, Range::new(0.0, 100.0));
-    allowed.insert(Adjustable::BedTarget, Range::new(0.0, 110.0));
-    allowed.insert(Adjustable::ToolTarget { tool: 0 }, Range::new(0.0, 260.0));
-    let every = vec![
-        ActionKind::Pause,
-        ActionKind::Resume,
-        ActionKind::Cancel,
-        ActionKind::StartPrint,
-        ActionKind::SetFeedrateFactor,
-        ActionKind::SetFlowrateFactor,
-        ActionKind::SetToolTargetC,
-        ActionKind::SetBedTargetC,
-        ActionKind::SetFanPercent,
-        ActionKind::AcknowledgeFailure,
-    ];
-    let mut actions = BTreeMap::new();
-    actions.insert(ActorClass::Operator, every.clone());
-    actions.insert(ActorClass::System, every.clone());
-    actions.insert(ActorClass::Agent, every);
-    SafetyEnvelope {
-        allowed,
-        actions,
-        agent_min_interval_s: 0,
-    }
 }
 
 impl ServerConfig {

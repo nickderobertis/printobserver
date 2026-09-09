@@ -251,3 +251,72 @@ async fn a_body_this_system_cannot_read_is_written_down() {
     assert_eq!(written[0].0, "malformed_external_event");
     world.server.stop().await;
 }
+
+/// The ingress refuses, inside its bound, what it cannot take.
+///
+/// The queue between the answer and the handling is what lets the answer
+/// precede it, and it is bounded on purpose: a body the worker is too far
+/// behind to take is refused inside the bound rather than held past it, because
+/// past the bound is an alert Obico has already abandoned.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_the_ingress_cannot_take_is_refused_inside_its_bound() {
+    let host = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    agent.taking(DWELL);
+    let world = World::open_with(RecordingPrinter::printing(), agent).await;
+    let bound = world.server.config().ingress_answer_bound;
+    let body = failure_alert(4211, &host.url()).to_string();
+
+    // One more than the worker can be holding and the queue can be carrying, so
+    // the last of them meets a queue with nowhere to put it.
+    let mut refused = 0;
+    let started = std::time::Instant::now();
+    for _ in 0..=(printobserver_server::QUEUE_DEPTH + 1) {
+        if post(&world, &body, Some(SECRET)).await == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            refused += 1;
+        }
+    }
+    let taken = started.elapsed();
+
+    assert!(
+        refused > 0,
+        "the queue took more than it can hold, so nothing here is bounded"
+    );
+    assert!(
+        taken < bound * u32::try_from(printobserver_server::QUEUE_DEPTH + 2).expect("a count"),
+        "the ingress held a body it could not take past its own {bound:?} bound: {taken:?}"
+    );
+    world.server.stop().await;
+}
+
+/// What the ingress says about itself carries no secret.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_the_ingress_says_about_itself_carries_no_secret() {
+    let world = World::open().await;
+    let ingress =
+        printobserver_server::IngressState::start(
+            std::sync::Arc::clone(world.server.supervisor()),
+            std::sync::Arc::clone(world.server.store()),
+            std::sync::Arc::new(
+                printobserver_obico::ObicoVision::new(
+                    printobserver_obico::ObicoVisionConfig::default(),
+                )
+                .expect("the adapter is built"),
+            ),
+            SECRET.to_owned(),
+            world.server.config().ingress_answer_bound,
+        );
+
+    let rendered = format!("{ingress:?}");
+
+    assert!(
+        !rendered.contains(SECRET),
+        "a rendering of the ingress carries the secret it requires: {rendered}"
+    );
+    assert!(
+        rendered.contains("IngressState"),
+        "a rendering of the ingress says nothing about what it is: {rendered}"
+    );
+    assert_eq!(*ingress.completions().borrow(), 0);
+    world.server.stop().await;
+}

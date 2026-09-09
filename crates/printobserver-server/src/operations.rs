@@ -216,3 +216,78 @@ pub const READS: [&str; 6] = [
 pub fn operation(name: &str) -> Option<&'static Operation> {
     OPERATIONS.iter().find(|declared| declared.name == name)
 }
+
+#[cfg(test)]
+mod tests {
+    use printobserver_types::ActionKind;
+
+    use super::{Effect, MEDIA_TYPE, Method, OPERATIONS, VERSION_PREFIX, operation};
+
+    /// Every method is spelled the way the wire spells it.
+    #[test]
+    fn every_method_is_spelled_as_the_wire_spells_it() {
+        for (method, spelling) in [
+            (Method::Get, "GET"),
+            (Method::Post, "POST"),
+            (Method::Put, "PUT"),
+        ] {
+            assert_eq!(method.as_str(), spelling);
+            assert_eq!(method.to_string(), spelling);
+        }
+    }
+
+    /// An operation's whole path carries the one versioned prefix.
+    #[test]
+    fn every_operation_sits_beneath_the_one_versioned_prefix() {
+        for declared in OPERATIONS {
+            let whole = declared.full_path();
+            assert!(
+                whole.starts_with(VERSION_PREFIX),
+                "`{}` is served at {whole}",
+                declared.name
+            );
+            assert_eq!(declared.answers, MEDIA_TYPE);
+        }
+    }
+
+    /// A mutating operation names the action it asks for, and a read names none.
+    #[test]
+    fn a_mutating_operation_names_its_action_and_a_read_names_none() {
+        for declared in OPERATIONS {
+            match declared.effect {
+                Effect::Mutating(kind) => assert_eq!(declared.action_kind(), Some(kind)),
+                Effect::Read | Effect::Write => assert_eq!(declared.action_kind(), None),
+            }
+        }
+    }
+
+    /// A mutating operation takes JSON and answers JSON; a read takes no body.
+    ///
+    /// The two constructors are the only way an entry of the declared list is
+    /// made, so this is the shape every entry has by construction.
+    #[test]
+    fn a_mutating_operation_takes_a_body_and_a_read_takes_none() {
+        let mutating = super::action(
+            "pause",
+            "/prints/{print_id}/actions/pause",
+            ActionKind::Pause,
+        );
+        assert_eq!(mutating.method, Method::Post);
+        assert_eq!(mutating.accepts, Some(MEDIA_TYPE));
+        assert_eq!(mutating.answers, MEDIA_TYPE);
+        assert_eq!(mutating.action_kind(), Some(ActionKind::Pause));
+
+        let reading = super::read("status", "/prints/{print_id}/status");
+        assert_eq!(reading.method, Method::Get);
+        assert_eq!(reading.accepts, None);
+        assert_eq!(reading.answers, MEDIA_TYPE);
+        assert_eq!(reading.effect, Effect::Read);
+    }
+
+    /// An operation this server does not serve is answered as none.
+    #[test]
+    fn an_operation_this_server_does_not_serve_is_answered_as_none() {
+        assert_eq!(operation("pause").map(|found| found.name), Some("pause"));
+        assert!(operation("reboot").is_none());
+    }
+}

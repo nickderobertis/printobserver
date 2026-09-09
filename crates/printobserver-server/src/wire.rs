@@ -311,3 +311,132 @@ pub struct IngressAnswer {
     /// Whether the body was taken for handling.
     pub accepted: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use printobserver_types::contract::Sample as _;
+    use printobserver_types::{ActionKind, Actor, ImageRecord};
+
+    use super::{ActionBody, ErrorAnswer, ImageAnswer, ImageLookup};
+
+    /// A body carrying nothing but a reason and an actor.
+    fn bare() -> ActionBody {
+        ActionBody {
+            reason: Some("a test is asking".to_owned()),
+            actor: Actor::Operator,
+            duration_s: None,
+            factor: None,
+            target_c: None,
+            percent: None,
+            tool: None,
+            file_name: None,
+            manifest: None,
+            event_id: None,
+            disposition: None,
+        }
+    }
+
+    /// Every action that needs a value it was not given is refused naming it.
+    ///
+    /// The walk is over the whole vocabulary rather than a sample: an action
+    /// that quietly defaulted a value nobody sent would be one this server
+    /// carried to a printer on the caller's behalf.
+    #[test]
+    fn every_action_that_needs_a_value_it_was_not_given_is_refused_naming_it() {
+        let needed = [
+            (ActionKind::StartPrint, "file_name"),
+            (ActionKind::SetFeedrateFactor, "factor"),
+            (ActionKind::SetFlowrateFactor, "factor"),
+            (ActionKind::SetToolTargetC, "tool"),
+            (ActionKind::SetBedTargetC, "target_c"),
+            (ActionKind::SetFanPercent, "percent"),
+            (ActionKind::AcknowledgeFailure, "event_id"),
+        ];
+        for (kind, named) in needed {
+            let refusal = bare()
+                .into_action(kind)
+                .expect_err("this action needs a value the body does not carry");
+            assert!(
+                refusal.to_string().contains(named),
+                "{kind:?} was refused without naming `{named}`: {refusal}"
+            );
+        }
+    }
+
+    /// The second value each two-valued action needs is named in its turn.
+    #[test]
+    fn the_second_value_a_two_valued_action_needs_is_named_in_its_turn() {
+        let mut starting = bare();
+        starting.file_name = Some(printobserver_types::FileName::new("a.gcode").expect("a name"));
+        assert!(
+            starting
+                .into_action(ActionKind::StartPrint)
+                .expect_err("a start needs a manifest")
+                .to_string()
+                .contains("manifest")
+        );
+
+        let mut tool = bare();
+        tool.tool = Some(0);
+        assert!(
+            tool.into_action(ActionKind::SetToolTargetC)
+                .expect_err("a tool target needs a temperature")
+                .to_string()
+                .contains("target_c")
+        );
+
+        let mut acknowledgement = bare();
+        acknowledgement.event_id = Some(printobserver_types::EventId::new());
+        assert!(
+            acknowledgement
+                .into_action(ActionKind::AcknowledgeFailure)
+                .expect_err("an acknowledgement needs a disposition")
+                .to_string()
+                .contains("disposition")
+        );
+    }
+
+    /// A reason that is nothing but whitespace is no reason.
+    #[test]
+    fn a_reason_that_is_nothing_but_whitespace_is_no_reason() {
+        let mut blank = bare();
+        blank.reason = Some("   ".to_owned());
+        assert!(blank.reason().is_err());
+        let mut absent = bare();
+        absent.reason = None;
+        assert!(absent.reason().is_err());
+        assert_eq!(bare().reason().expect("a reason"), "a test is asking");
+    }
+
+    /// An image whose file is gone answers the record and no path.
+    ///
+    /// A different answer from there being no such image, which is what tells a
+    /// caller the history is intact and the file is not.
+    #[test]
+    fn an_image_whose_file_is_gone_answers_the_record_and_no_path() {
+        let record = ImageRecord::sample_full();
+        let missing = ImageAnswer::from(ImageLookup::FileMissing {
+            record: record.clone(),
+        });
+        assert_eq!(missing.record, record);
+        assert_eq!(missing.path, None);
+
+        let found = ImageAnswer::from(ImageLookup::Found {
+            record: record.clone(),
+            path: "/var/lib/printobserver/images/ab/cd".into(),
+        });
+        assert_eq!(
+            found.path.as_deref(),
+            Some(std::path::Path::new("/var/lib/printobserver/images/ab/cd"))
+        );
+    }
+
+    /// A refusal answers in the words of whatever refused it.
+    #[test]
+    fn a_refusal_answers_in_the_words_of_whatever_refused_it() {
+        assert_eq!(
+            ErrorAnswer::saying("the disk is full").error,
+            "the disk is full"
+        );
+    }
+}

@@ -52,6 +52,13 @@ pub const PROMPT_FILE: &str = "turn-prompt.md";
 /// The file name the assessment schema is materialized under.
 pub const SCHEMA_FILE: &str = "assessment-schema.json";
 
+/// The prompt template this program carries and materializes.
+///
+/// The adapter's own committed asset rather than a copy of it, so what an
+/// installed program fills a turn with and what `just check-repo` reads are one
+/// file.
+pub const TURN_PROMPT: &str = printobserver_oneharness::DEFAULT_TURN_PROMPT;
+
 /// The four implementations one running server was composed from.
 ///
 /// A tier that stands in for a machine hands these in; [`Server::start`] builds
@@ -339,11 +346,7 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
     };
     let prompt_template_path = match &config.prompt_template_path {
         Some(path) => path.clone(),
-        None => materialize(
-            &assets,
-            PROMPT_FILE,
-            printobserver_oneharness::DEFAULT_TURN_PROMPT,
-        )?,
+        None => materialize(&assets, PROMPT_FILE, TURN_PROMPT)?,
     };
     let schema_path = materialize(
         &assets,

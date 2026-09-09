@@ -227,3 +227,72 @@ async fn a_start_over_an_empty_store_adopts_nothing() {
     );
     running.stop().await;
 }
+
+/// A print with no session, and one whose session was closed, are adopted
+/// without being resumed.
+///
+/// Resuming a session that was closed would reopen a conversation somebody
+/// ended, and there is nothing to resume for a print that never had one — but
+/// both prints are still adopted, because a print with no end recorded is one
+/// this supervisor goes on watching whatever else it holds.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_with_no_open_session_is_adopted_without_being_resumed() {
+    let root = TempDir::new().expect("a journey's own root");
+    let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
+    let config = ServerConfig::load(&path).expect("the configuration is accepted");
+
+    let (silent, closed) = {
+        let store = SqliteStore::open(&config.state_dir).expect("the store opens");
+        let silent = store
+            .open_print(Some(1), None)
+            .await
+            .expect("a print opens")
+            .id;
+        let closed = store
+            .open_print(Some(2), None)
+            .await
+            .expect("a second print opens")
+            .id;
+        store
+            .put_session(printobserver_types::SupervisionSession {
+                print_id: closed,
+                session_name: "watch-2".to_owned(),
+                harness_identity: "claude-code".to_owned(),
+                created_at: Timestamp::now(),
+                last_turn_at: Timestamp::now(),
+                closed_at: Some(Timestamp::now()),
+                close_reason: Some("the print ended".to_owned()),
+            })
+            .await
+            .expect("a closed session is written");
+        (silent, closed)
+    };
+
+    let store: Arc<dyn StorePort> =
+        Arc::new(SqliteStore::open(&config.state_dir).expect("the store reopens"));
+    let running = Server::start_with(
+        config,
+        Ports {
+            printer: RecordingPrinter::printing()
+                as Arc<dyn printobserver_printer_api::PrinterPort>,
+            store,
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await
+    .expect("the server starts");
+
+    let adopted = running.reconciliation();
+    assert!(
+        adopted.adopted.contains(&silent) && adopted.adopted.contains(&closed),
+        "a print left open was not adopted: {adopted:?}"
+    );
+    assert!(
+        adopted.resumed.is_empty(),
+        "a session that was never open, or was closed, was resumed: {adopted:?}"
+    );
+    running.stop().await;
+}

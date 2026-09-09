@@ -17,6 +17,12 @@ pub async fn silent_host() -> Host {
     Host::serving("application/json", b"{}".to_vec()).await
 }
 
+/// A host that refuses every caller, the way an instance refuses a key it does
+/// not know.
+pub async fn refusing_host() -> Host {
+    Host::answering("403 Forbidden", "application/json", b"{}".to_vec()).await
+}
+
 /// The base URL a caller reaches one host at.
 #[must_use]
 pub fn base_url(host: &Host) -> String {

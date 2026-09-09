@@ -319,8 +319,20 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
          JSON:\n{answer}"
     );
 
-    let _ = child.kill();
-    let _ = child.wait();
+    // Stopping it is the signal a service manager stops a unit with, and the
+    // program answers it by shutting the server down and exiting successfully —
+    // which is what makes `Restart=on-failure` mean what the unit says it does.
+    let stopped = Command::new("kill")
+        .arg("-TERM")
+        .arg(child.id().to_string())
+        .status()
+        .expect("the signal is sent");
+    assert!(stopped.success(), "the signal was not sent");
+    let finished = child.wait().expect("the program exits");
+    assert!(
+        finished.success(),
+        "the program did not exit cleanly when it was stopped: {finished:?}"
+    );
 }
 
 /// An identifier of a print nothing holds, spelled the one way this system

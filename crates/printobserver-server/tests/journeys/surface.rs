@@ -269,6 +269,47 @@ async fn every_declared_route_is_served_and_answers_json() {
     world.server.stop().await;
 }
 
+/// What a running server says about itself carries no secret.
+///
+/// A long-running host writes down what it came up as, and the two things that
+/// would be worst to find in that record are the `OctoPrint` key and the
+/// ingress secret. Neither is in any of these renderings.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_a_running_server_says_about_itself_carries_no_secret() {
+    let world = World::open().await;
+    let state = printobserver_server::ApiState {
+        supervisor: std::sync::Arc::clone(world.server.supervisor()),
+        store: std::sync::Arc::clone(world.server.store()),
+    };
+    let rendered = format!(
+        "{state:?} {:?} {:?}",
+        world.server,
+        printobserver_server::Ports {
+            printer: std::sync::Arc::clone(&world.printer)
+                as std::sync::Arc<dyn printobserver_printer_api::PrinterPort>,
+            store: std::sync::Arc::clone(world.server.store()),
+            vision: std::sync::Arc::new(
+                printobserver_obico::ObicoVision::new(
+                    printobserver_obico::ObicoVisionConfig::default()
+                )
+                .expect("the adapter is built")
+            ),
+            agent: std::sync::Arc::clone(&world.agent)
+                as std::sync::Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        }
+    );
+
+    assert!(
+        !rendered.contains(crate::world::SECRET),
+        "a rendering of this server carries the ingress secret: {rendered}"
+    );
+    assert!(
+        rendered.contains("ApiState") && rendered.contains("Running") && rendered.contains("Ports"),
+        "a rendering of this server says nothing about what it is: {rendered}"
+    );
+    world.server.stop().await;
+}
+
 /// A route that takes a body refuses one that is not JSON.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_body_that_is_not_json_is_refused() {
