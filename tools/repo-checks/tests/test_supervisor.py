@@ -22,8 +22,9 @@ from repo_checks.checks_supervisor import (
     schema_lock,
     schema_source,
     spawn_free,
+    supervisor_policy,
 )
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -356,3 +357,82 @@ def test_a_declared_holder_that_is_absent_is_refused(tree: Callable[[], Tree]) -
     copy.remove(holder)
 
     refused(schema_lock(copy.repo), "declared schema-lock holder")
+
+
+def test_the_committed_policy_reads_as_the_declarations_the_checks_act_on(
+    committed: Repo,
+) -> None:
+    """The section as it stands narrows to the values these checks are written in."""
+    policy = supervisor_policy(committed)
+
+    equal(policy.adapter, "printobserver-oneharness")
+    equal(policy.context_read in policy.reads, True)
+    equal(len(policy.schema_lock_holders), 2)
+
+
+def _retype(copy: Tree, key: str, replacement: str) -> None:
+    """Rewrite one declaration of the `[supervisor]` section.
+
+    A declaration runs to the line that closes it, so a list written over
+    several lines is replaced whole rather than leaving its entries behind as
+    TOML nothing can parse.
+    """
+    text = copy.read(POLICY)
+    start = text.index("[supervisor]")
+    end = text.index("[octoprint]")
+    lines = text[start:end].splitlines(keepends=True)
+    first = next(index for index, line in enumerate(lines) if line.startswith(f"{key} = "))
+    last = first
+    depth = lines[first].count("[") - lines[first].count("]")
+    while depth:
+        last += 1
+        depth += lines[last].count("[") - lines[last].count("]")
+    rewritten = lines[:first] + ([f"{replacement}\n"] if replacement else []) + lines[last + 1 :]
+    copy.write(POLICY, text[:start] + "".join(rewritten) + text[end:])
+
+
+def test_a_declaration_the_checks_read_as_a_name_is_refused_when_it_is_not_one(
+    tree: Callable[[], Tree],
+) -> None:
+    """Every check names the key rather than failing the tier with a traceback."""
+    copy = tree()
+    _retype(copy, "adapter", "adapter = 7")
+    repo = copy.repo
+
+    for findings in (
+        spawn_free(repo),
+        schema_source(repo),
+        prompt_template(repo),
+        schema_lock(repo),
+    ):
+        refused(findings, "no `supervisor.adapter` string")
+
+
+def test_a_declaration_read_as_a_name_is_refused_when_it_is_missing(
+    tree: Callable[[], Tree],
+) -> None:
+    """A key a check acts on is refused where the section is parsed."""
+    copy = tree()
+    _retype(copy, "context_read", "")
+
+    refused(prompt_template(copy.repo), "no `supervisor.context_read` string")
+
+
+def test_a_declaration_read_as_a_list_is_refused_when_it_is_not_one(
+    tree: Callable[[], Tree],
+) -> None:
+    """A list read as a string would walk its characters, so it is refused first."""
+    copy = tree()
+    _retype(copy, "reads", 'reads = "status"')
+
+    refused(prompt_template(copy.repo), "no non-empty `supervisor.reads` list")
+
+
+def test_a_list_holding_something_that_is_not_a_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """One entry that is not a name is refused naming what was declared."""
+    copy = tree()
+    _retype(copy, "schema_lock_holders", "schema_lock_holders = [7]")
+
+    refused(schema_lock(copy.repo), "which is not a name")

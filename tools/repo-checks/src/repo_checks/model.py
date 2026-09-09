@@ -1,4 +1,11 @@
-"""The tree a check reads."""
+"""The tree a check reads, and the narrowing of what it declares.
+
+`repo-policy.toml` is whatever the TOML reader handed back, so every value a
+check acts on starts out as `Any`. The readers at the foot of this module are
+where that stops: each narrows one declaration and raises `PolicyValueError`
+when it cannot, so a malformed policy is one finding naming the key rather than
+an attribute error out of whichever check happened to read it first.
+"""
 
 from __future__ import annotations
 
@@ -101,3 +108,57 @@ class Repo:
     def crate_names(self) -> list[str]:
         """Every crate name of the Cargo workspace, in a stable order."""
         return [p.name for p in self.crate_dirs]
+
+
+class PolicyValueError(ValueError):
+    """`repo-policy.toml` declares a value a check cannot act on."""
+
+
+def policy_table(repo: Repo, name: str) -> dict[str, Any]:
+    """One table of `repo-policy.toml`, or an empty one where it declares none.
+
+    `repo.policy` is whatever the TOML reader handed back, so a table read here
+    may be absent or may not be a table at all. Both leave a reader with nothing
+    to find, which is a finding of its own rather than an attribute error on a
+    value nobody narrowed.
+    """
+    table = repo.policy.get(name)
+    return table if isinstance(table, dict) else {}
+
+
+def policy_strings(table: dict[str, Any], keys: tuple[str, ...], where: str) -> dict[str, str]:
+    """The named values of a policy table, each of them a non-empty string.
+
+    Raises:
+        PolicyValueError: If one is absent or carries anything else. A reader
+            taking them unnarrowed would abort the whole tier on a malformed file
+            rather than report the one thing wrong with it.
+    """
+    found: dict[str, str] = {}
+    for key in keys:
+        value = table.get(key)
+        if not isinstance(value, str) or not value.strip():
+            msg = f"`repo-policy.toml` declares no `{where}.{key}` string"
+            raise PolicyValueError(msg)
+        found[key] = value.strip()
+    return found
+
+
+def policy_string_list(table: dict[str, Any], key: str, where: str) -> tuple[str, ...]:
+    """One named value of a policy table, a non-empty list of non-empty strings.
+
+    Raises:
+        PolicyValueError: If it is absent, is not a list, is empty, or holds
+            anything that is not a non-empty string.
+    """
+    value = table.get(key)
+    if not isinstance(value, list) or not value:
+        msg = f"`repo-policy.toml` declares no non-empty `{where}.{key}` list"
+        raise PolicyValueError(msg)
+    entries: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry.strip():
+            msg = f"`repo-policy.toml`'s `{where}.{key}` names {entry!r}, which is not a name"
+            raise PolicyValueError(msg)
+        entries.append(entry.strip())
+    return tuple(entries)

@@ -31,10 +31,16 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import (
+    PolicyValueError,
+    Repo,
+    policy_string_list,
+    policy_strings,
+    policy_table,
+)
 
 # Every way a Rust source starts a process. Each is refused wherever it appears
 # in the adapter's sources, whatever executable it would name — which is what
@@ -64,20 +70,83 @@ SPAWNING_INTERFACES = (
 SCHEMA_MARKERS = ("$defs", "oneOf", "properties", "required")
 
 
-def _adapter(repo: Repo) -> tuple[dict[str, Any], str] | None:
-    """The `[supervisor]` policy and the crate it is about."""
-    policy = repo.policy.get("supervisor")
-    if not policy:
-        return None
-    return policy, str(policy["adapter"])
+# Every declaration of the `[supervisor]` section, by the kind it is read as.
+# A key here is one the checks below act on, so its absence or its wrong type is
+# refused where the section is parsed rather than met as an attribute error
+# inside whichever check happened to read it first.
+POLICY_NAMES = (
+    "adapter",
+    "prompt_template",
+    "skill",
+    "assessment_schema",
+    "action_schema",
+    "program",
+    "context_read",
+    "schema_lock",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SupervisorPolicy:
+    """The `[supervisor]` section of `repo-policy.toml`, narrowed once."""
+
+    #: The one crate implementing the supervisor port.
+    adapter: str
+    #: The committed prompt template a turn fills.
+    prompt_template: str
+    #: The committed skill sent as every turn's system prompt.
+    skill: str
+    #: The generated assessment schema the agent's answer is constrained by.
+    assessment_schema: str
+    #: The generated action vocabulary the forbidden set is derived from.
+    action_schema: str
+    #: The program whose operations the template may not name.
+    program: str
+    #: The one operation the template may name, because it is a read.
+    context_read: str
+    #: The file every suite reading the checked-in schema tree locks.
+    schema_lock: str
+    #: The reads this system exposes beside the action vocabulary.
+    reads: tuple[str, ...]
+    #: Every suite declared to take the schema lock.
+    schema_lock_holders: tuple[str, ...]
+
+
+def supervisor_policy(repo: Repo) -> SupervisorPolicy:
+    """Read the `[supervisor]` section, narrowing every value the checks act on.
+
+    Raises:
+        PolicyValueError: If the section is absent, or declares a key these
+            checks read as something other than what they read it as. A check
+            reading it unnarrowed would fail the tier with a traceback naming a
+            key nobody outside these sources has heard of.
+    """
+    table = policy_table(repo, "supervisor")
+    if not table:
+        msg = "`repo-policy.toml` declares no `[supervisor]` section"
+        raise PolicyValueError(msg)
+    named = policy_strings(table, POLICY_NAMES, "supervisor")
+    return SupervisorPolicy(
+        adapter=named["adapter"],
+        prompt_template=named["prompt_template"],
+        skill=named["skill"],
+        assessment_schema=named["assessment_schema"],
+        action_schema=named["action_schema"],
+        program=named["program"],
+        context_read=named["context_read"],
+        schema_lock=named["schema_lock"],
+        reads=policy_string_list(table, "reads", "supervisor"),
+        schema_lock_holders=policy_string_list(table, "schema_lock_holders", "supervisor"),
+    )
 
 
 def spawn_free(repo: Repo) -> list[str]:
     """No source of the supervisor adapter uses a process-spawning interface."""
-    found = _adapter(repo)
-    if found is None:
-        return ["`repo-policy.toml` declares no `[supervisor]` section"]
-    _, adapter = found
+    try:
+        policy = supervisor_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+    adapter = policy.adapter
 
     sources = repo.path("crates") / adapter / "src"
     if not sources.is_dir():
@@ -113,11 +182,12 @@ def _is_json_schema(path: Path) -> bool:
 
 def schema_source(repo: Repo) -> list[str]:
     """The supervisor adapter carries no schema of its own."""
-    found = _adapter(repo)
-    if found is None:
-        return ["`repo-policy.toml` declares no `[supervisor]` section"]
-    policy, adapter = found
-    generated = str(policy["assessment_schema"])
+    try:
+        policy = supervisor_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+    adapter = policy.adapter
+    generated = policy.assessment_schema
 
     findings: list[str] = []
     if not repo.exists(generated):
@@ -147,25 +217,46 @@ def schema_source(repo: Repo) -> list[str]:
     return findings
 
 
-def _action_variants(repo: Repo, relative: str) -> tuple[list[str], list[str]]:
+@dataclass(frozen=True, slots=True)
+class ActionVocabulary:
+    """What one reading of the generated action vocabulary found."""
+
+    #: Every variant the artifact declares, in the order it declares them.
+    variants: tuple[str, ...]
+    #: Why the reading found none, when it found none.
+    problems: tuple[str, ...]
+
+
+def _action_variants(repo: Repo, relative: str) -> ActionVocabulary:
     """Every variant the generated action vocabulary declares, and why not."""
     if not repo.exists(relative):
-        return [], [f"the generated action vocabulary `{relative}` is absent"]
+        return ActionVocabulary((), (f"the generated action vocabulary `{relative}` is absent",))
     try:
         schema = json.loads(repo.read(relative))
     except json.JSONDecodeError as error:
-        return [], [f"the generated action vocabulary `{relative}` is not JSON: {error}"]
-    arms = schema.get("oneOf")
-    if not isinstance(arms, list):
-        return [], [f"the generated action vocabulary `{relative}` declares no variants"]
-    variants: list[str] = []
-    for arm in arms:
-        tag = arm.get("properties", {}).get("action", {}).get("const")
-        if isinstance(tag, str):
-            variants.append(tag)
+        return ActionVocabulary(
+            (), (f"the generated action vocabulary `{relative}` is not JSON: {error}",)
+        )
+    # The artifact is JSON the generation target wrote, so every value below is
+    # `Any` until it is narrowed: an arm that is not a mapping, or tags nothing,
+    # declares no variant and is skipped rather than trusted.
+    arms = schema.get("oneOf") if isinstance(schema, dict) else None
+    variants = (
+        tuple(
+            tag
+            for arm in arms
+            if isinstance(arm, dict)
+            for tag in [arm.get("properties", {}).get("action", {}).get("const")]
+            if isinstance(tag, str)
+        )
+        if isinstance(arms, list)
+        else ()
+    )
     if not variants:
-        return [], [f"the generated action vocabulary `{relative}` declares no variants"]
-    return variants, []
+        return ActionVocabulary(
+            (), (f"the generated action vocabulary `{relative}` declares no variants",)
+        )
+    return ActionVocabulary(variants, ())
 
 
 def _spellings(name: str) -> set[str]:
@@ -175,16 +266,16 @@ def _spellings(name: str) -> set[str]:
 
 def prompt_template(repo: Repo) -> list[str]:
     """The committed template names no operation of this program but the one read."""
-    found = _adapter(repo)
-    if found is None:
-        return ["`repo-policy.toml` declares no `[supervisor]` section"]
-    policy, _ = found
+    try:
+        policy = supervisor_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
 
-    template = str(policy["prompt_template"])
-    skill = str(policy["skill"])
-    program = str(policy["program"])
-    context_read = str(policy["context_read"])
-    reads = [str(name) for name in policy["reads"]]
+    template = policy.prompt_template
+    skill = policy.skill
+    program = policy.program
+    context_read = policy.context_read
+    reads = policy.reads
 
     findings: list[str] = []
     if not repo.exists(skill):
@@ -194,13 +285,13 @@ def prompt_template(repo: Repo) -> list[str]:
             f"`repo-policy.toml`'s supervisor.context_read names `{context_read}`, "
             f"which its `reads` do not"
         )
-    variants, problems = _action_variants(repo, str(policy["action_schema"]))
-    findings.extend(problems)
+    vocabulary = _action_variants(repo, policy.action_schema)
+    findings.extend(vocabulary.problems)
     if not repo.exists(template):
         return [*findings, f"the committed prompt template `{template}` is absent"]
 
     text = repo.read(template)
-    forbidden = {name for name in [*variants, *reads] if name != context_read}
+    forbidden = {name for name in [*vocabulary.variants, *reads] if name != context_read}
     for name in sorted(forbidden):
         for spelling in sorted(_spellings(name)):
             if re.search(rf"\b{re.escape(program)}\s+{re.escape(spelling)}\b", text):
@@ -214,12 +305,12 @@ def prompt_template(repo: Repo) -> list[str]:
 
 def schema_lock(repo: Repo) -> list[str]:
     """Every suite that reads the checked-in schema tree locks the same file."""
-    found = _adapter(repo)
-    if found is None:
-        return ["`repo-policy.toml` declares no `[supervisor]` section"]
-    policy, _ = found
-    name = str(policy["schema_lock"])
-    holders = [str(path) for path in policy["schema_lock_holders"]]
+    try:
+        policy = supervisor_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+    name = policy.schema_lock
+    holders = policy.schema_lock_holders
 
     findings: list[str] = []
     if len(holders) < 2:
