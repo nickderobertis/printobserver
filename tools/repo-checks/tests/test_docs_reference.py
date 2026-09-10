@@ -257,3 +257,17 @@ def test_an_expiry_behaviour_naming_a_test_that_is_not_there_is_refused(
     )
 
     refused(reference(copy.repo), "this repository carries no such test")
+
+
+def test_an_architecture_document_that_points_at_no_command_surface_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The surface it says the agent uses is the one that document inventories."""
+    copy = tree()
+    copy.edit(
+        ARCHITECTURE,
+        "[the command surface](command-surface.md) is the whole of",
+        "the surface described here is the whole of",
+    )
+
+    refused(reference(copy.repo), "does not point at `docs/reference/command-surface.md`")

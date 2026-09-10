@@ -81,16 +81,27 @@ def test_a_skill_carrying_an_argument_table_is_refused(tree: Callable[[], Tree])
 def test_a_skill_carrying_an_argument_list_as_prose_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The same list written as prose or as bullets is the same list."""
+    """A list of arguments written as a sentence is still a list of arguments."""
     copy = tree()
     copy.append(
         SKILL,
-        "\nThe adjustment takes the print it is about, the multiplier asked for and, "
-        "optionally, the seconds it stands for.\n",
+        "\nThe adjustment takes print_id, factor and reason, and duration_s when the "
+        "change is meant to be temporary.\n",
     )
-    accepted(skill(copy.repo), describing="prose that names no option")
 
-    copy.append(SKILL, "\n- the print it is about, given as --print-id\n")
+    refused(skill(copy.repo), "names `print_id`")
+
+
+def test_a_skill_carrying_an_argument_list_as_bullets_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """And so is one written as bullets rather than as a table."""
+    copy = tree()
+    copy.append(
+        SKILL,
+        "\n- --print-id — the print it is about\n- --factor — the multiplier asked for\n",
+    )
+
     refused(skill(copy.repo), "names the option `--print-id`")
 
 

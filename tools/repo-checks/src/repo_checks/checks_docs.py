@@ -65,6 +65,13 @@ OPTION = re.compile(r"(?<![\w-])--[a-z][a-z0-9-]*")
 #: A backticked token, which is how a document names something in the tree.
 BACKTICKED = re.compile(r"`([^`]+)`")
 
+#: A word that could be the name of an option or of a value a request carries.
+#:
+#: Compound rather than any word: `reason` is a field of every mutating request
+#: and is also the ordinary English word the skill has to use, while `print_id`,
+#: `duration-s` and `image_path` are spellings nothing but this surface has.
+COMPOUND = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+(?![\w-])")
+
 #: Punctuation that makes a line a fragment of a JSON document or schema.
 SCHEMA_PUNCTUATION = ('":', '{"', "$ref", "oneOf", "$defs")
 
@@ -222,6 +229,7 @@ def _reference_material(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
                 f"generated into a reference document of their own."
             )
         named = [token for token in BACKTICKED.findall(line) if token in vocabulary]
+        named.extend(token for token in COMPOUND.findall(line) if token in vocabulary)
         if named:
             findings.append(
                 f"{where} names `{named[0]}`, which is part of the command surface or of "
@@ -410,6 +418,23 @@ def _architecture(repo: Repo, where: str, text: str, surface: Surface) -> list[s
     findings = _inventory(
         entries_of(section_of(text, "The crates")), repo.crate_names, where, "crate"
     )
+    # The surface it says the agent works through is the one the command-surface
+    # document inventories, rather than a surface it describes for itself.
+    inventoried = next(
+        (
+            document.path
+            for document in docs_policy(repo).documents
+            if Path(document.path).name == "command-surface.md"
+        ),
+        "",
+    )
+    reaching = section_of(text, "Why the agent reaches this system the way an operator does")
+    if inventoried and Path(inventoried).name not in reaching:
+        findings.append(
+            f"`{where}` says the agent reaches this system the way an operator does and "
+            f"does not point at `{inventoried}`, which is the document that inventories "
+            f"that surface"
+        )
     core = policy_table(repo, "crates").get("core")
     if not isinstance(core, str):
         return [*findings, "`repo-policy.toml` declares no `crates.core`"]
