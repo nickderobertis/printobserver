@@ -16,9 +16,6 @@
     "lint": {
       "command": "cargo clippy -p printobserver --all-targets --features test-fixtures --locked -- -D warnings"
     },
-    "typecheck": {
-      "command": "cargo check -p printobserver --all-targets --features test-fixtures --locked"
-    },
     "test": {
       "command": "cargo llvm-cov nextest -p printobserver --features test-fixtures --no-report --no-tests=pass -E 'not binary(integration)'"
     },

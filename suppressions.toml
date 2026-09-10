@@ -56,12 +56,6 @@ file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
 reason = "Whole-file, and the rule is about the whole file: every external input it takes is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing and PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — and each package name is a constant in the file rather than anything a caller supplies, so no untrusted input is executed anywhere in it."
 
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "scripts/setup-llmlint.sh"
-site = "readonly LLMLINT_MIN"
-reason = "The dependency floor selects the validator release the existing real `just lint-llm-validate` gate runs; the installer's control flow and its user-visible contract are unchanged, so there is no new behavior for an end-to-end test to drive."
-
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]
@@ -151,3 +145,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/environment.py"
 site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Keep the OctoPrint journey in the required gate"
+reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Keep the OctoPrint journey in the required gate"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."

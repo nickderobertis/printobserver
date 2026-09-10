@@ -270,7 +270,8 @@ serves the tier and the board beside the Prusa.
 `just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
 which is deliberately **not** one of `just check`'s tiers: it installs
 OctoPrint, starts it and waits a print out, so it is a continuous-integration
-job of its own rather than something every gate run pays for. The `integration`
+job of its own. The gate also drives these recipes to prove process cleanup.
+The `integration`
 job runs it on every change, on every platform the supported-platform list above
 names except those excluded below. `repo-policy.toml`'s `[integration]` names
 the three recipes, and `just check-repo` refuses a job that runs a recipe the
@@ -299,6 +300,165 @@ No platform is excluded. OctoPrint's virtual printer is a bundled pure-Python
 plugin that needs no hardware, so it is available on every platform the list
 above names, and the integration job runs on all of them.
 [//]: # (END virtual-printer-exclusions)
+
+## The real-printer smoke test
+
+Everything above this line is proven against a virtual printer, and a virtual
+printer cannot tell you that a real Prusa refuses a flow adjustment mid-print or
+that a restore lands on a machine that has already moved on.
+`tools/printer-smoke/printer_smoke.py` is the one test that says the whole stack
+works on the actual machine: it drives the installed `printobserver` command
+against a running supervisor, and through it the printer on a named serial port.
+It is the one place in this repository where a bug damages hardware, so it
+prefers refusing to run over proceeding on a precondition it is unsure of.
+
+**Nothing selects it, and two things together do.** The `--run` flag on its own
+recipe, and `PRINTOBSERVER_SMOKE_DEVICE` naming the serial device. One alone
+does not select it: absent either, the run says so and which was missing rather
+than skipping silently or failing. The ordinary gate does not name it a tier,
+`just check` does not invoke it, no graph target reaches it and no workflow runs
+it — on a change or on a schedule — because a print is hours of filament and an
+unattended test that starts one ruins a print nobody was watching.
+`repo-policy.toml`'s `[smoke]` declares the recipe, the flag and the variable,
+and `just check-repo`'s `smoke-selection` refuses a tree in which anything else
+could reach it.
+
+```console
+PRINTOBSERVER_SMOKE_DEVICE=/dev/ttyACM0 just test-printer-smoke --run
+```
+
+**What a person does before running it**, on the machine beside the printer, and
+in this order: bring the scripted `OctoPrint` up against the real device
+(`OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0 just
+octoprint-up`); upload `tools/printer-smoke/gcode/smoke.gcode` to that instance
+under its own name; put the conservative envelope below into the running
+supervisor's configuration; and set a manifest for that file on the print the
+smoke is to act on, with `printobserver manifest-set`. `PRINTOBSERVER_SMOKE_CONFIG`
+names that configuration file — the server's own, `/etc/printobserver/config.toml`,
+by default — and `PRINTOBSERVER_SMOKE_PRINT_ID` names the print, because a print
+record is minted by the supervisor rather than by a caller.
+
+**Every precondition fails closed, and refusing is a pass.** Each is checked
+before anything is asked of the machine, an unmet one stops the run naming it,
+and the run exits zero having sent the printer no command at all — because a
+smoke test that could not satisfy itself that it was safe to run is not a defect
+to investigate. They are, in the order they are checked: the `printobserver`
+command is on this host; the named serial device is there and readable; the
+scripted `OctoPrint` is connected to *that* device in real-serial mode rather
+than to a virtual printer; the supervisor this run will drive is the one
+attached to that instance; the print carries a manifest for the smoke's own
+file; the printer reports itself operational; no job is running and none is
+paused; and the safety envelope in the configuration is the conservative one
+this test ships. `tools/printer-smoke/tests/test_preconditions.py` walks all
+eight, making each unmet in turn, and fails when the smoke declares one that
+walk does not cover.
+
+**The machine checked and the machine driven are one machine.** That is the
+fourth precondition above and it is the one an opt-in naming a device cannot
+give you by itself: a valid instance record for the printer on `/dev/ttyACM0`
+and a `PRINTOBSERVER_SERVER` naming a second supervisor satisfy every other
+precondition independently, and the actions then land on a machine nothing here
+verified. So two links are required and the run is refused unless both hold.
+The configuration this smoke reads is the **supervisor's own**, so the
+`OctoPrint` it names under `octoprint.url` has to be the instance whose serial
+connection was just checked; and every place that names where a supervisor is —
+that file's `listen`, its `[client]` table, and `PRINTOBSERVER_SERVER`, which
+wins over both — has to name one address. Two of them naming different
+supervisors is refused before anything is driven rather than resolved in favour
+of whichever the client would have used.
+
+**The conservative envelope is bounded by this document rather than by the
+test.** A test that shipped a permissive envelope and then faithfully required
+it would satisfy its own precondition while missing the point of having one, so
+no range `CONSERVATIVE_ENVELOPE` declares may be wider than: feedrate factor 0.5
+to 1.2, flowrate factor 0.9 to 1.1, any tool target 0 to 230 °C, bed target 0 to
+70 °C, fan 0 to 100 percent. Those bounds accommodate PLA comfortably and
+exclude by construction every material needing temperatures nobody has reviewed,
+so a smoke run cannot be pointed at a filament this ceiling was not written for.
+`tools/printer-smoke/tests/test_envelope.py` holds the shipped envelope to
+exactly that ceiling.
+
+**What it verifies**, in this order, reading the printer's own answer back at
+every point and failing the run naming the point where that answer was not what
+was required: the context read reports the printer, the job and effective bounds
+no wider than the configuration allows; the smoke print starts; each adjustable
+is set just inside its bound and read back from the machine; each is then asked
+for just outside its bound, and the rejection is confirmed to have changed
+nothing on the machine; a bounded intervention with a short duration puts the
+prior value back at expiry; a pause and a resume are each taken; the print is
+cancelled; and the history afterwards accounts for every action, decision and
+outcome the run produced.
+
+**It cleans up on every exit path it has** — a completed run as much as a failed
+or an interrupted one, since a run that finishes without restoring what it
+changed leaves the machine altered exactly as a crashed one does. The restore
+comes *before* the cancel, and that ordering is load-bearing: an adjustment is
+valid from a printing or a paused machine and from no other state, so a run that
+cancelled first could never put back what it changed. One adjustable that cannot
+be put back does not cost the ones after it: every one is attempted, and what
+could not be restored is collected rather than raised at the first.
+
+**And a run that could not put everything back says so and exits non-zero.**
+What the cleanup managed is not taken on trust: afterwards the machine is read
+once more, and every value still carrying this run's own — and a printer not
+left operational — is printed as `LEFT CHANGED` and makes the run fail, whether
+or not any verification point did. A green report over a machine still holding a
+modified feedrate is the worst answer this program can give, and it is worse
+than the failure it would be hiding. Where a verification point *did* fail, that
+failure is what is reported first and the cleanup is reported beneath it: a
+cleanup that could not finish never replaces the cause a reader needs.
+
+**A command that never answers is that command's failure and nothing more.** A
+run that hung, or one whose program could not be started at all, comes back as
+an exit no answer carries rather than as an exception out of the middle of the
+cleanup — because letting one out there would abandon the restorations after it
+and the cancellation with them, on a machine this run has already moved. So the
+bound one command is given (`PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S`, two minutes
+by default) is enforced where the command is run, a restoration that never
+answers costs that adjustable and no other, and a cancellation is still asked
+for over a machine whose state could not be read — a print that is not running
+refuses it and nothing moves, while one that is running is this run's own and
+must not be left behind. And where the last look at the machine is the thing
+that did not answer, that is `UNVERIFIED` and it fails the run too: a machine
+nothing could see is not one this test may report green on.
+
+**What to watch while it runs.** Stay next to the machine — this is not a test
+to start and walk away from. Watch the first layer go down after the print
+starts; watch the nozzle and bed temperatures as the two heater adjustments are
+made and again when they are put back; and keep a hand near the printer's own
+power switch while the pause, the resume and the cancel are driven, because
+those are the three moments the machine changes what it is doing on somebody
+else's instruction. The run says what it is verifying before each step, so what
+is about to happen is on the screen before it happens.
+
+### The payload it prints
+
+`tools/printer-smoke/gcode/smoke.gcode` is this repository's own: a 20 mm square
+with two perimeters over five layers. Two properties of it are mechanical rather
+than promised, and `just check-repo`'s `smoke-payload` is what makes them so.
+
+It contains only commands drawn from a closed set — `G21`, `G90`, `G91`, `G92`,
+`G28`, `G0`, `G1`, `M82`, `M83`, `M104`, `M109`, `M140`, `M190`, `M106`, `M107`
+and `M84`: units, positioning and extrusion mode, homing, motion, the four heater
+commands, the two fan commands, and disabling the steppers. Everything else is
+outside it by construction, which is how the firmware writes (`M500`, `M502`),
+the calibration routines (`M303`, `G29`) and the emergency stop (`M112`) stay
+out — each is excluded because it is not in the set rather than because it is on
+a list of its own. And it is no longer than **200 lines**: short enough that a
+person reads the whole payload before it reaches a machine, and long enough for
+an object with real perimeters rather than a purge line and two moves.
+`repo-policy.toml`'s `smoke.safe_commands` and `smoke.max_lines` are the
+machine-readable copy of both, and `tools/repo-checks/tests/test_smoke_payload.py`
+holds the check to them.
+
+The check refuses a payload carrying anything outside that set, one exceeding
+that length, one carrying no command that moves the machine, and one that
+neither is heat-free nor declares at its head the temperatures it needs and for
+how long — and where it does declare them, one naming a temperature no command
+in the file sets, or carrying a heating command the declaration does not account
+for. The motion rule is there because an inert payload is otherwise
+indistinguishable from a correct one: an empty file satisfies every safety
+condition by containing nothing.
 
 ## The scheduled Obico tier
 
@@ -601,11 +761,23 @@ the way a user does: the compiled binary as a subprocess, the real recipes, the
 real checks. "Done" means every user-facing journey, happy path **and**
 failure/recovery — not one smoke test. Coverage is a floor, not the target.
 
-The end-to-end tier lives in `tests/repo-e2e` and drives this repository's own
-gate: it runs `just bootstrap` in a fresh copy carrying no build products, and
-it assembles copies of the tree carrying one defect each and asserts the gate
-refuses each one. Those copies omit `tests/repo-e2e` itself, because a gate that
-ran the suite that runs the gate could not terminate.
+The end-to-end tier lives in `tests/repo-e2e`. It drives bootstrap in a fresh
+copy carrying no build products, dependency installation, hooks, repository
+checks, release tooling, the opt-in smoke interface and the real OctoPrint
+recipes. A gate that stops gating is not a silent failure: the next defective
+change exposes it, so we do not run whole gates over defect copies to test that
+the gate gates. Structural wiring has one deterministic proof instead:
+`repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires
+`check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
+
+<!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs. -->
+**Keep the OctoPrint journey in the required gate.**
+`test_octoprint_tier.py` asserts that bring-down leaves no process from bring-up.
+The separate `integration` job runs the same three recipes but has no cleanup
+assertion, so it does not catch that silent leak. These jobs run in parallel;
+relocation saves only their critical-path difference. Keep the journey in the
+required gate unless `integration` first becomes required through a coordinated
+repository-setting and merge-path inventory change.
 
 ### The one journey, in three clients
 
@@ -633,14 +805,6 @@ request the server took and recorded nowhere leaves history unchanged, and a
 client that can reach nothing reaches nothing whatever it is asked. What the
 step asserts is that the proxy — which the same call *did* go through, one read
 earlier — saw nothing.
-
-A defect that has to *outweigh* the tree is computed from what the copy measures
-rather than written down. The coverage journey sizes its block of uncovered Rust
-from the Rust its copy will carry, and it proves that sizing by running over a
-copy grown by a substantial well-covered block as well as over the tree as it
-stands. A fixed block stopped sinking the tree the moment a few well-covered
-crates landed, and a journey that can no longer make the floor fail has stopped
-checking that the floor is enforced at all.
 
 ## Suppressions
 

@@ -13,6 +13,7 @@ from repo_checks import (
     checks_release,
     checks_repo,
     checks_service,
+    checks_smoke,
     checks_supervisor,
     checks_suppressions,
 )
@@ -60,6 +61,8 @@ CHECKS: dict[str, Check] = {
     "install-path-not-narrowed": checks_ci.install_path_not_narrowed,
     "integration-tier": checks_integration.integration_tier,
     "obico-tier": checks_obico.obico_tier,
+    "smoke-payload": checks_smoke.smoke_payload,
+    "smoke-selection": checks_smoke.smoke_selection,
     "ingress-answer-bound": checks_service.ingress_answer_bound,
     "service-install": checks_service.service_install,
     "merge-model": checks_ci.merge_model,

@@ -48,6 +48,7 @@ pythonpath = [
     "python/printobserver-sdk/integration",
     "tools/octoprint-env",
     "tools/obico-env",
+    "tools/printer-smoke",
 ]
 
 [tool.coverage.run]
@@ -81,4 +82,6 @@ root = [
     "tools/octoprint-env/tests",
     "tools/obico-env",
     "tools/obico-env/tests",
+    "tools/printer-smoke",
+    "tools/printer-smoke/tests",
 ]
