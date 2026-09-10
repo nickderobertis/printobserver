@@ -186,3 +186,15 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/project.json"
 site = "metadata"
 reason = "Proving regeneration from a missing or corrupted committed surface requires forbidden tree surgery. The existing reference test compares the committed manifest to the actual runtime surface serialized by write mode."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/lib.rs"
+site = "pub const REFERENCE_DIRECTORY:"
+reason = "The immutable literal reference is not a field or caller-supplied path, so callers cannot assign escaping values. The documentation bundle check holds consumers to the declared layout."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/lib.rs"
+site = "pub const DEFAULT_REFERENCES:"
+reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."

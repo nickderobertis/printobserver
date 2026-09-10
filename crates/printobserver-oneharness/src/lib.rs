@@ -71,6 +71,7 @@ pub const DEFAULT_TURN_PROMPT: &str = include_str!("../assets/turn-prompt.md");
 /// resolves the same way in the checkout — where `assets/reference` is the
 /// repository's own `docs/reference` — and on an installed host, where the
 /// composition root writes them beside the skill it materialized.
+// llmlint: ignore[invalid_states_unrepresentable] This is the immutable literal "reference", not a field or caller-supplied path. No API can assign an absolute or traversing value to this constant; the docs bundle check holds its consumers to the declared layout.
 pub const REFERENCE_DIRECTORY: &str = "reference";
 
 /// Every reference document the skill links to, as bytes in the built artifact.
@@ -85,6 +86,7 @@ pub const REFERENCE_DIRECTORY: &str = "reference";
 /// skill's own directory, and its bytes. `just check-repo` holds this array to
 /// the document set `repo-policy.toml` declares, in both directions, so a
 /// document the skill may link to is one this array carries.
+// llmlint: ignore[invalid_states_unrepresentable] This immutable array contains seven literal bundle paths, not caller-constructed entries. The docs bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references.
 pub const DEFAULT_REFERENCES: [(&str, &str); 7] = [
     (
         "reference/api-and-clients.md",
