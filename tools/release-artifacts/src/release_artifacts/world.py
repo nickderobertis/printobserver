@@ -415,11 +415,18 @@ class World:
             if found is not None:
                 return found
             time.sleep(0.2)
-        msg = "the ingress accepted the alert and no print and image were recorded"
+        msg = "the ingress accepted the alert but did not finish preparing its print and image"
         raise WorldError(msg)
 
     def _recorded(self) -> tuple[str, str, str] | None:
-        """The print, image and event the ingress opened, read out of the store."""
+        """The print and image, once the ingress has finished observing the printer.
+
+        Image storage precedes the asynchronous handler's printer read. Returning
+        at that point lets a journey cancel before the handler samples the
+        machine, causing it to close the print over that transient idle state.
+        The turn's assessment or failure is recorded after the context read, so
+        either is the readiness boundary before a client may change the printer.
+        """
         store = self.state / STORE
         if not store.is_file():
             return None
@@ -430,11 +437,16 @@ class World:
             events = connection.execute(
                 "SELECT id FROM events WHERE kind = 'obico_failure_alert'"
             ).fetchall()
+            prepared = connection.execute(
+                "SELECT id FROM events WHERE kind = 'agent_assessment' "
+                "OR (kind = 'port_failure' "
+                "AND json_extract(payload, '$.payload.site') = 'supervision_turn')"
+            ).fetchall()
         except sqlite3.DatabaseError:
             return None
         finally:
             connection.close()
-        if not prints or not images or not events:
+        if not prints or not images or not events or not prepared:
             return None
         return str(prints[0][0]), str(images[0][0]), str(events[0][0])
 
