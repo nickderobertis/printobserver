@@ -12,17 +12,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from journey import REPO_ROOT, copy_tracked, run
+from journey import REPO_ROOT, run
 from repo_checks.expect import contains, passing, truth
 
-BUILD_PRODUCTS = (".venv", "node_modules", "target", ".nx", "dist", ".git")
+BUILD_PRODUCTS = (".venv", "node_modules", "target", ".nx", "dist")
 
 
 def test_bootstrap_brings_a_clean_clone_to_a_state_in_which_the_gate_runs(
     tmp_path: Path,
 ) -> None:
     """`just bootstrap` then a declared tier, in a directory that started with nothing."""
-    clone = copy_tracked(tmp_path / "clean-clone")
+    clone = tmp_path / "clean-clone"
+    # The install-path check compares against committed history, which a real
+    # clone carries even though it carries none of the source's build products.
+    passing(run(["git", "clone", "--no-local", str(REPO_ROOT), str(clone)], cwd=tmp_path))
     for product in BUILD_PRODUCTS:
         truth(
             not (clone / product).exists(),
