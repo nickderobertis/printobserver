@@ -1,13 +1,8 @@
 """The end-to-end tier: journeys that drive this repository's own gate.
 
-Each journey copies the committed tree, breaks it in exactly one way, and runs
-the real recipes over the copy. Nothing is mocked — `just` runs, `cargo` runs,
-`nx` runs, and the assertion is on what the gate said.
-
-A copy's `tests/repo-e2e` is replaced by a single trivial test, because the
-suite doing the copying is the suite the copy would otherwise run: a gate that
-ran the suite that runs the gate could not terminate. Everything else about the
-copy is the committed tree.
+Journeys copy the committed tree and run its real recipes and checks. Nothing
+is mocked — `just` runs, `cargo` runs, `nx` runs, and assertions describe what
+those public interfaces report and leave behind.
 
 Every run below is captured through `capture`, which pins the colouring on and
 then strips it back out. Both halves of that are load-bearing, and the reason is
@@ -29,17 +24,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # introducer, numeric and private parameters, intermediates, final byte — and an
 # OSC sequence, which `nx` uses for hyperlinks and which ends at BEL or at ST.
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)")
-PLACEHOLDER_SUITE = '''"""The meta-suite a gate copy runs in place of the one driving the copy."""
-
-from pathlib import Path
-
-from repo_checks.expect import truth
-
-
-def test_the_gate_copy_is_this_repository() -> None:
-    """The tier runs; the real journeys are the ones driving this copy."""
-    truth(Path("repo-policy.toml").is_file(), describing="the copy to carry repo-policy.toml")
-'''
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -138,11 +122,6 @@ class GateCopy:
         for itself.
         """
         self.root = copy_tracked(root)
-        suite = self.root / "tests" / "repo-e2e" / "tests"
-        shutil.rmtree(suite, ignore_errors=True)
-        suite.mkdir(parents=True)
-        (suite / "test_placeholder.py").write_text(PLACEHOLDER_SUITE, encoding="utf-8")
-
         for args in (
             ["init", "-q", "-b", "main"],
             ["add", "-A"],
@@ -172,10 +151,6 @@ class GateCopy:
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-
-    def append(self, relative: str, text: str) -> None:
-        """Add to a file of the copy."""
-        self.write(relative, self.read(relative) + text)
 
     def edit(self, relative: str, old: str, new: str) -> None:
         """Replace one exact fragment, refusing a no-op edit."""

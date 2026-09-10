@@ -16,9 +16,6 @@
     "lint": {
       "command": "cargo clippy -p printobserver-sdk --all-targets --locked -- -D warnings"
     },
-    "typecheck": {
-      "command": "cargo check -p printobserver-sdk --all-targets --locked"
-    },
     "test": {
       "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass"
     },

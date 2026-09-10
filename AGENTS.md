@@ -270,7 +270,8 @@ serves the tier and the board beside the Prusa.
 `just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
 which is deliberately **not** one of `just check`'s tiers: it installs
 OctoPrint, starts it and waits a print out, so it is a continuous-integration
-job of its own rather than something every gate run pays for. The `integration`
+job of its own. The gate also drives these recipes to prove process cleanup.
+The `integration`
 job runs it on every change, on every platform the supported-platform list above
 names except those excluded below. `repo-policy.toml`'s `[integration]` names
 the three recipes, and `just check-repo` refuses a job that runs a recipe the
@@ -760,19 +761,23 @@ the way a user does: the compiled binary as a subprocess, the real recipes, the
 real checks. "Done" means every user-facing journey, happy path **and**
 failure/recovery — not one smoke test. Coverage is a floor, not the target.
 
-The end-to-end tier lives in `tests/repo-e2e` and drives this repository's own
-gate: it runs `just bootstrap` in a fresh copy carrying no build products, and
-it assembles copies of the tree carrying one defect each and asserts the gate
-refuses each one. Those copies omit `tests/repo-e2e` itself, because a gate that
-ran the suite that runs the gate could not terminate.
+The end-to-end tier lives in `tests/repo-e2e`. It drives bootstrap in a fresh
+copy carrying no build products, dependency installation, hooks, repository
+checks, release tooling, the opt-in smoke interface and the real OctoPrint
+recipes. A gate that stops gating is not a silent failure: the next defective
+change exposes it, so we do not run whole gates over defect copies to test that
+the gate gates. Structural wiring has one deterministic proof instead:
+`repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires
+`check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
 
-A defect that has to *outweigh* the tree is computed from what the copy measures
-rather than written down. The coverage journey sizes its block of uncovered Rust
-from the Rust its copy will carry, and it proves that sizing by running over a
-copy grown by a substantial well-covered block as well as over the tree as it
-stands. A fixed block stopped sinking the tree the moment a few well-covered
-crates landed, and a journey that can no longer make the floor fail has stopped
-checking that the floor is enforced at all.
+<!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs. -->
+**Keep the OctoPrint journey in the required gate.**
+`test_octoprint_tier.py` asserts that bring-down leaves no process from bring-up.
+The separate `integration` job runs the same three recipes but has no cleanup
+assertion, so it does not catch that silent leak. These jobs run in parallel;
+relocation saves only their critical-path difference. Keep the journey in the
+required gate unless `integration` first becomes required through a coordinated
+repository-setting and merge-path inventory change.
 
 ## Suppressions
 
