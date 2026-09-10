@@ -193,3 +193,209 @@ def _optional(client: Client, taken: str, name: str) -> bool:
     if client.language == "python":
         return re.search(rf"\b{spelled}: [^,]*= None", taken) is not None
     return re.search(rf"\b{spelled}: Option<", taken) is not None
+
+
+#: The annotation a schema carries when a string is a byte sequence rather than
+#: text. The contracts' generator writes it for a type holding bytes.
+BYTE_ENCODING = "contentEncoding"
+
+#: The annotation a schema carries when a string is content of a media type.
+#: Anything under `image/` is image content, and no answer of this server may
+#: carry one: an image is a path on the server's own filesystem, and a client
+#: that could be handed the bytes would be a second way to move them.
+CONTENT_TYPE = "contentMediaType"
+
+#: The prefix an image's own media type carries.
+IMAGE_MEDIA = "image/"
+
+#: The types the contracts declare for an image, neither of which may declare
+#: a field carrying its bytes. The walk asserts it reaches them, so the rule
+#: guards a boundary something is actually on.
+IMAGE_TYPES = ("ImageRecord", "ImageRef")
+
+
+def response_shapes(repo: Repo) -> list[str]:
+    """No shape this server answers carries an image, at any depth.
+
+    Every response shape the server declares is walked transitively — each
+    declared field and each variant payload in turn — and refused if it carries
+    a byte-sequence field or a string declared as carrying image content. The
+    walk is over the schemas themselves rather than over the generated clients,
+    and it holds for all three at once, because each client's response types
+    correspond to these schemas under `generated_clients` above.
+
+    A byte-sequence field is refused unless `repo-policy.toml` records it by
+    type and field with a reason. One entry stands there today — the external
+    producer's own body, recorded verbatim so an alert this system cannot read
+    is written down rather than dropped — and a *new* byte-sequence field
+    cannot appear in a response shape unnoticed, which is the whole point of
+    walking rather than looking where an image would be.
+    """
+    import json
+
+    from contract_codegen.schemas import OPERATIONS_FILE, SERVER_DIR, TYPES_DIR
+
+    schemas: dict[str, dict[str, object]] = {}
+    for directory in (TYPES_DIR, SERVER_DIR):
+        for path in sorted((repo.root / directory).glob("*.json")):
+            if path.name != OPERATIONS_FILE:
+                schemas[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+
+    described = json.loads(repo.read(f"{SERVER_DIR}/{OPERATIONS_FILE}"))
+    roots = sorted(
+        {
+            str(answer["type"])
+            for operation in described["operations"]
+            for answer in operation["responses"]
+        }
+    )
+    if not roots:
+        return ["the server describes no answer shape at all, so this walk reads nothing"]
+
+    permitted = _permitted_byte_fields(repo)
+    findings: list[str] = []
+    reached: set[str] = set()
+    seen_sites: set[tuple[str, str]] = set()
+    # One finding per site rather than one per answer shape that reaches it: a
+    # field two answers both carry is one thing to fix.
+    for root in roots:
+        if root not in schemas:
+            findings.append(
+                f"the server describes `{root}` as an answer shape, and no checked-in "
+                f"schema declares it"
+            )
+            continue
+        reached.add(root)
+        findings.extend(
+            _walk(
+                schemas,
+                schemas[root],
+                (root, ""),
+                root,
+                frozenset({root}),
+                reached,
+                permitted,
+                seen_sites,
+            )
+        )
+
+    findings = list(dict.fromkeys(findings))
+    findings.extend(
+        f"`repo-policy.toml` records `{owner}.{field}` as a byte-sequence field a "
+        f"response shape may carry, and this walk reaches no such field: an "
+        f"exception guarding nothing has stopped being one"
+        for owner, field in sorted(permitted)
+        if (owner, field) not in seen_sites
+    )
+    findings.extend(
+        f"no shape this server answers reaches `{named}`, so this walk says nothing "
+        f"about the one type an image travels as"
+        for named in IMAGE_TYPES
+        if named not in reached
+    )
+    return findings
+
+
+def _permitted_byte_fields(repo: Repo) -> dict[tuple[str, str], str]:
+    """Every byte-sequence field a response shape may carry, with its reason."""
+    from repo_checks.model import policy_table
+
+    recorded: dict[tuple[str, str], str] = {}
+    declared = policy_table(repo, "clients").get("byte_sequence")
+    for entry in declared if isinstance(declared, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        owner = str(entry.get("type", ""))
+        field = str(entry.get("field", ""))
+        reason = str(entry.get("reason", "")).strip()
+        if owner and field and reason:
+            recorded[owner, field] = reason
+    return recorded
+
+
+def _walk(
+    schemas: dict[str, dict[str, object]],
+    node: object,
+    site: tuple[str, str],
+    current: str,
+    entered: frozenset[str],
+    reached: set[str],
+    permitted: dict[tuple[str, str], str],
+    seen_sites: set[tuple[str, str]],
+) -> list[str]:
+    """Every finding one shape carries, following each field and each payload.
+
+    `site` is the type and field a finding is reported against — the type that
+    *declares* the field rather than whichever type the field's own reference
+    resolves to, because a reader answering the finding edits the declaration.
+    `current` is the type whose properties are being descended into, which is
+    what a nested field's site is taken from.
+    """
+    from contract_codegen.schemas import REF_PREFIX
+
+    if isinstance(node, list):
+        return [
+            finding
+            for branch in node
+            for finding in _walk(
+                schemas, branch, site, current, entered, reached, permitted, seen_sites
+            )
+        ]
+    if not isinstance(node, dict):
+        return []
+
+    reference = node.get("$ref")
+    if isinstance(reference, str) and reference.startswith(REF_PREFIX):
+        named = reference.removeprefix(REF_PREFIX)
+        reached.add(named)
+        if named in entered or named not in schemas:
+            return []
+        return _walk(
+            schemas, schemas[named], site, named, entered | {named}, reached, permitted, seen_sites
+        )
+
+    owner, field = site
+    findings: list[str] = []
+    if BYTE_ENCODING in node:
+        seen_sites.add(site)
+        if site not in permitted:
+            findings.append(
+                f"the shape this server answers carries `{owner}.{field}`, a "
+                f"byte-sequence field ({BYTE_ENCODING}: {node[BYTE_ENCODING]!r}). No "
+                f"answer of this server may carry bytes unless "
+                f"`repo-policy.toml`'s `clients.byte_sequence` records it with a reason"
+            )
+    declared_media = node.get(CONTENT_TYPE)
+    if isinstance(declared_media, str) and declared_media.startswith(IMAGE_MEDIA):
+        findings.append(
+            f"the shape this server answers carries `{owner}.{field}`, a string "
+            f"declared as carrying image content ({CONTENT_TYPE}: {declared_media!r}). "
+            f"An image is a path on this server's own filesystem, and no answer of it "
+            f"carries the bytes"
+        )
+
+    for key, value in node.items():
+        if key == "$defs":
+            # The copy of the referenced types the generator inlined. This walk
+            # follows the reference to that type's own file, so reading these
+            # would be reading every shape whether an answer reaches it or not.
+            continue
+        if key == "properties" and isinstance(value, dict):
+            for name, shape in value.items():
+                findings.extend(
+                    _walk(
+                        schemas,
+                        shape,
+                        (current, str(name)),
+                        current,
+                        entered,
+                        reached,
+                        permitted,
+                        seen_sites,
+                    )
+                )
+            continue
+        findings.extend(
+            _walk(schemas, value, site, current, entered, reached, permitted, seen_sites)
+        )
+    return findings

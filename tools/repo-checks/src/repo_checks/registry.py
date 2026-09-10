@@ -62,6 +62,7 @@ CHECKS: dict[str, Check] = {
     "secrets": checks_ci.secrets,
     "generated-clients": checks_clients.generated_clients,
     "client-surface": checks_clients.client_surface,
+    "response-shapes": checks_clients.response_shapes,
     "release-targets": checks_release.release_targets,
     "release-automation": checks_release.release_automation,
     "base-files": base_files,

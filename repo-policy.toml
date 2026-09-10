@@ -225,6 +225,28 @@ schema_lock_holders = [
     "crates/printobserver-oneharness/tests/supervision/support.rs",
 ]
 
+[clients]
+# Every byte-sequence field a shape this server ANSWERS may carry, each with
+# the reason it may. `just check-repo`'s `response-shapes` walks every response
+# shape the server declares — each declared field and each variant payload in
+# turn — and refuses one it reaches that is not recorded here. A string
+# declared as carrying image content is refused outright and has no exception:
+# an image is a path on the server's own filesystem, and no answer of it
+# carries the bytes.
+#
+# The point of walking rather than looking where an image would be is that a
+# NEW byte-sequence field cannot appear in a response shape unnoticed.
+[[clients.byte_sequence]]
+type = "EventRecord"
+field = "raw"
+reason = """
+The external producer's own body, recorded exactly as received so that an alert \
+this system cannot read is written down rather than dropped. It is Obico's JSON \
+notification rather than image content — Obico sends a snapshot as a URL — and \
+the two types an image travels as, `ImageRecord` and `ImageRef`, declare no \
+field of bytes at all.
+"""
+
 [octoprint]
 # The one crate that may know what an OctoPrint is. Everything above
 # `printobserver-octoprint` is written as though printers were normal, and the

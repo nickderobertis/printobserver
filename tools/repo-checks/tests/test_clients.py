@@ -12,7 +12,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from repo_checks.checks_clients import CLIENTS, client_surface, generated_clients
+from repo_checks.checks_clients import (
+    CLIENTS,
+    client_surface,
+    generated_clients,
+    response_shapes,
+)
 from repo_checks.expect import accepted, refused, refused_naming
 from treecopy import REPO_ROOT, Tree, copy_tree
 
@@ -260,3 +265,89 @@ def test_every_client_is_read_by_the_surface_check(
         broken.remove(client.generated)
 
         refused(client_surface(broken.repo), f"the {client.language} client carries no")
+
+
+def test_no_shape_this_server_answers_carries_an_image(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """The tree this repository ships is accepted by the shape walk."""
+    accepted(response_shapes(client_tree().repo))
+
+
+def test_a_byte_sequence_field_a_response_reaches_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A new byte-sequence field cannot appear in a response shape unnoticed."""
+    broken = client_tree()
+
+    def add(properties: dict[str, object], required: list[str]) -> None:
+        properties["thumbnail"] = {
+            "contentEncoding": "base64",
+            "description": "The image, inline.",
+            "type": "string",
+        }
+        required.append("thumbnail")
+
+    _alter(broken, add)
+
+    refused_naming(response_shapes(broken.repo), "ImageRecord.thumbnail", "byte-sequence")
+
+
+def test_a_string_declared_as_image_content_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A string declared as an image is refused outright, with no exception."""
+    broken = client_tree()
+
+    def add(properties: dict[str, object], required: list[str]) -> None:
+        properties["rendered"] = {
+            "contentMediaType": "image/jpeg",
+            "description": "The image, as a string.",
+            "type": "string",
+        }
+        required.append("rendered")
+
+    _alter(broken, add)
+
+    refused_naming(response_shapes(broken.repo), "ImageRecord.rendered", "image content")
+
+
+def test_a_byte_sequence_field_the_policy_records_is_accepted(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A recorded field is accepted, and only while the record carries a reason."""
+    reasoned = client_tree()
+    accepted(response_shapes(reasoned.repo))
+
+    unreasoned = client_tree()
+    unreasoned.edit(
+        "repo-policy.toml",
+        'type = "EventRecord"\nfield = "raw"\nreason = """',
+        'type = "EventRecord"\nfield = "raw"\nunreason = """',
+    )
+
+    refused_naming(response_shapes(unreasoned.repo), "EventRecord.raw", "byte-sequence")
+
+
+def test_a_recorded_field_no_response_reaches_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """An exception guarding nothing has stopped being one."""
+    broken = client_tree()
+    broken.edit("repo-policy.toml", 'field = "raw"', 'field = "no_such_field"')
+
+    refused_naming(response_shapes(broken.repo), "EventRecord.no_such_field", "guarding nothing")
+
+
+def test_a_response_shape_the_contracts_do_not_declare_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A described answer nothing declares is reported rather than walked past."""
+    broken = client_tree()
+    broken.edit(
+        "schemas/printobserver-server/operations.json",
+        '"type": "StatusAnswer"',
+        '"type": "NoSuchAnswer"',
+    )
+
+    refused(response_shapes(broken.repo), "NoSuchAnswer")
