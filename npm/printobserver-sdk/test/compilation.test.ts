@@ -39,4 +39,7 @@ test("a mutating call that leaves the reason out does not compile", async () => 
   expect(status).not.toBe(0);
   expect(said).toContain("omitted-reason.fixture.ts");
   expect(said).toContain("Expected 2 arguments, but got 1");
-});
+  // Generous, and for one reason: this runs a whole type check, beside every
+  // other project's own tier. A default timeout would fail on a loaded machine
+  // and say nothing about the client.
+}, 300_000);
