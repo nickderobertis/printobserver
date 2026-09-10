@@ -280,3 +280,9 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
 reason = "This one test reads the committed workflow on purpose, and it is the only way the thing it proves can be proven at all: that a release's own run is keyed on a point no release can reach before its artifacts are published, and that it takes the version from that release. A GitHub trigger cannot be fired from a journey, and waiting for a real release would mean this property was established by nobody until the next one. What it reads it then DRIVES: the selector it finds in that workflow's own `env` is what the journeys beside it pass to the real recipes against a stand-in forge. Every other journey in this file goes through `just`."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every read of a registry goes through, immediately below the `Request` it was handed."

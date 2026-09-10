@@ -237,6 +237,7 @@ def _asked(url: str) -> bytes:
         url, headers={"Accept": "application/json", "User-Agent": AGENT}
     )
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] The same one site as above.
         with urllib.request.urlopen(request, timeout=ASK_TIMEOUT_SECONDS) as answer:  # noqa: S310
             read: bytes = answer.read()
     except urllib.error.HTTPError as refused:
@@ -343,8 +344,21 @@ def released(bases: Bases) -> tuple[str, ...]:
             raise RegistryError(msg)
         # Neither a draft nor a pre-release is a release a run of this may be
         # keyed on: the forge marks both, and what a release-time run proves is
-        # what an ordinary user's own install would resolve to.
-        if entry.get("draft") or entry.get("prerelease"):
+        # what an ordinary user's own install would resolve to. Read by
+        # truthiness, a `"false"` somebody's mirror answered with would be a
+        # release skipped, so each is the boolean its protocol serves or the
+        # listing is refused.
+        marked = False
+        for flag in ("draft", "prerelease"):
+            reading = entry.get(flag, False)
+            if not isinstance(reading, bool):
+                msg = (
+                    f"{bases.listing} lists {entry['tag_name']} with a `{flag}` of "
+                    f"{reading!r}, which is not the boolean its protocol serves"
+                )
+                raise RegistryError(msg)
+            marked = marked or reading
+        if marked:
             continue
         # And a tag naming no version this proof can select is not one either.
         if tag := supported_version(entry["tag_name"]):

@@ -741,3 +741,17 @@ def test_a_pre_release_the_forge_lists_is_not_a_release_a_run_is_keyed_on(
         "0.4.0",
         describing="the version a release-time run proves",
     )
+
+
+def test_a_release_flag_that_is_not_a_boolean_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """Read by truthiness, a `"false"` somebody answered with is a release skipped."""
+    registries.serve("0.4.0")
+    registries.answers(FORGE_PREFIX, b'[{"tag_name": "v0.4.0", "prerelease": "false"}]')
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        released(bases)
+
+    contains(str(refused.value), "not the boolean its protocol serves", describing="what it said")
