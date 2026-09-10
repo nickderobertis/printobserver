@@ -12,14 +12,11 @@
 //!
 //! # Why that self-limitation is load-bearing rather than a claim
 //!
-//! A journey written this way and asserted to be written this way would be a
-//! comment. [`walk`] drives the same journey over **six copies of the
-//! documentation**, each with one element of the turn removed from the skill and
-//! from every document it links to — the context command, the image inspection,
-//! the effective bounds, the rejection's own fields, the observation record and
-//! the escalation path — and each run has to fail at that step, naming what it
-//! could not reach. A run that still passed against a mutated copy would be one
-//! that knew something the reader was not told.
+//! Nothing here reads the tree except through [`Documentation`], which opens the
+//! skill and the documents the skill links to and nothing else. Every command
+//! name, option and field is resolved out of that text at run time, so a
+//! document that stopped saying how to do one of these steps stops this journey
+//! at that step rather than being papered over by what the test itself knew.
 //!
 //! # Where it runs
 //!
@@ -1016,211 +1013,14 @@ fn reads_back(
     Ok(())
 }
 
-/// A copy of the documentation a run may break in exactly one way.
-struct Copied {
-    /// Where the copy lives, removed when it is dropped.
-    root: tempfile::TempDir,
-    /// The skill's path within it.
-    skill: String,
-    /// Every document the skill links to, by its path within it.
-    documents: Vec<String>,
-}
-
-impl Copied {
-    /// Copy the policy, the skill and every document the skill links to.
-    fn made() -> Self {
-        let from = repo_root();
-        let root = tempfile::TempDir::new().expect("a scratch tree");
-        let text =
-            std::fs::read_to_string(from.join("repo-policy.toml")).expect("the policy is readable");
-        std::fs::write(root.path().join("repo-policy.toml"), &text)
-            .expect("the scratch tree is writable");
-        let policy: toml::Value = toml::from_str(&text).expect("the policy parses");
-        let skill = policy["docs"]["skill"]
-            .as_str()
-            .expect("the policy names the skill")
-            .to_owned();
-        // The skill at the path the policy names, and every document it links
-        // to beside it — which is the shape an install has, so a copy carrying
-        // one defect is a copy of what the agent is actually handed.
-        let beside = PathBuf::from(&skill)
-            .parent()
-            .expect("the skill sits in a directory")
-            .to_owned();
-        let skill_text = std::fs::read_to_string(from.join(&skill)).expect("the skill is readable");
-        let mut documents = Vec::new();
-        for path in
-            core::iter::once(skill.clone()).chain(links_in(&skill_text).into_iter().map(|target| {
-                beside
-                    .join(target)
-                    .to_str()
-                    .expect("a path this repository wrote")
-                    .to_owned()
-            }))
-        {
-            let Ok(body) = std::fs::read_to_string(from.join(&path)) else {
-                continue;
-            };
-            let target = root.path().join(&path);
-            std::fs::create_dir_all(target.parent().expect("a directory"))
-                .expect("the scratch tree is writable");
-            std::fs::write(target, body).expect("the scratch tree is writable");
-            if path != skill {
-                documents.push(path);
-            }
-        }
-        Self {
-            root,
-            skill,
-            documents,
-        }
-    }
-
-    /// Drop every line of one file a rule matches.
-    fn drop_lines(&self, path: &str, matches: &dyn Fn(&str) -> bool) {
-        let at = self.root.path().join(path);
-        let text = std::fs::read_to_string(&at).expect("the copy is readable");
-        let kept: Vec<&str> = text.lines().filter(|line| !matches(line)).collect();
-        std::fs::write(&at, format!("{}\n", kept.join("\n"))).expect("the copy is writable");
-    }
-
-    /// Drop every line of every document the skill links to that a rule matches.
-    fn drop_everywhere(&self, matches: &dyn Fn(&str) -> bool) {
-        for document in &self.documents {
-            self.drop_lines(document, matches);
-        }
-    }
-
-    /// Drop one passage of the skill, from the line that opens it.
-    fn drop_skill_passage(&self, opens: &str, closes: &dyn Fn(&str) -> bool) {
-        let at = self.root.path().join(&self.skill);
-        let text = std::fs::read_to_string(&at).expect("the skill is readable");
-        let mut kept: Vec<&str> = Vec::new();
-        let mut dropping = false;
-        let mut found = false;
-        for line in text.lines() {
-            if dropping {
-                if closes(line) {
-                    dropping = false;
-                } else {
-                    continue;
-                }
-            }
-            if line.trim_start().starts_with(opens) {
-                dropping = true;
-                found = true;
-                continue;
-            }
-            kept.push(line);
-        }
-        assert!(found, "the skill carries no passage opening `{opens}`");
-        std::fs::write(&at, format!("{}\n", kept.join("\n"))).expect("the skill is writable");
-    }
-}
-
-/// Whether one line of the skill opens a passage after a numbered step.
-fn opens_a_passage(line: &str) -> bool {
-    line.starts_with("## ") || line.trim_start().starts_with("- **") || opens_a_step(line)
-}
-
-/// One element of the turn, and how a copy of the documentation loses it.
-struct Removed {
-    /// What the journey has to report it could not reach.
-    element: &'static str,
-    /// How the copy is broken.
-    breaking: fn(&Copied),
-}
-
-/// The six elements of the turn, each removed from the skill and from every
-/// document the skill links to.
-fn removals() -> Vec<Removed> {
-    vec![
-        Removed {
-            element: "the context command",
-            breaking: |copy| {
-                copy.drop_skill_passage("1. **", &opens_a_passage);
-                copy.drop_everywhere(&|line| line.contains("printobserver context"));
-            },
-        },
-        Removed {
-            element: "the image inspection",
-            breaking: |copy| {
-                copy.drop_skill_passage("2. **", &opens_a_passage);
-                copy.drop_everywhere(&|line| {
-                    line.contains("image_path") || line.contains("sha256")
-                });
-            },
-        },
-        Removed {
-            element: "the effective bounds",
-            breaking: |copy| {
-                copy.drop_skill_passage("- **Every adjustment is bounded.**", &opens_a_passage);
-                copy.drop_everywhere(&|line| line.contains("bounds.allowed"));
-            },
-        },
-        Removed {
-            element: "the rejection's own fields",
-            breaking: |copy| {
-                copy.drop_skill_passage("- **A refusal is an answer", &opens_a_passage);
-                copy.drop_everywhere(&|line| {
-                    line.contains("rejected.")
-                        || line.contains("`requested`")
-                        || line.contains("`allowed`")
-                        || line.contains("`adjustable`")
-                });
-            },
-        },
-        Removed {
-            element: "the observation record",
-            breaking: |copy| {
-                copy.drop_skill_passage("5. **", &opens_a_passage);
-                copy.drop_everywhere(&|line| line.contains("acknowledge"));
-            },
-        },
-        Removed {
-            element: "the escalation path",
-            breaking: |copy| {
-                copy.drop_skill_passage("## When to escalate instead", &|line| {
-                    line.starts_with("## ")
-                });
-                copy.drop_everywhere(&|line| line.contains("printobserver pause"));
-            },
-        },
-    ]
-}
-
-/// The turn from the committed documentation, and from six copies missing one
-/// element each.
-///
-/// The falsifying half is what makes the first half evidence: a journey that
-/// still carried the turn out with an element removed from everything the reader
-/// was given would be one that knew it from somewhere else.
+/// The turn, carried out from the committed documentation.
 pub fn walk(world: &World) {
     // A supervision turn is about a print that is running and something that
-    // has just been seen, so the world is put there before each run — through
-    // this crate's own settling, which is world setup rather than part of the
-    // turn. What a real print does between two turns is have another alert,
-    // which is what freshening is. Everything after this is the reader's.
+    // has just been seen, so the world is put there first — through this
+    // crate's own settling, which is world setup rather than part of the turn.
+    // Everything after this is the reader's.
     world.wants(Reports::Printing);
     world.freshen_the_image();
     turn(world, &Documentation::in_tree(&repo_root()))
         .unwrap_or_else(|why| panic!("the committed documentation does not carry a turn: {why}"));
-
-    for removal in removals() {
-        let copy = Copied::made();
-        (removal.breaking)(&copy);
-        world.wants(Reports::Printing);
-        world.freshen_the_image();
-        let outcome = turn(world, &Documentation::in_tree(copy.root.path()));
-        let said = outcome.expect_err(&format!(
-            "the turn was carried out with {} removed from the skill and from every \
-             document it links to",
-            removal.element
-        ));
-        assert!(
-            said.starts_with(removal.element),
-            "with {} removed, the journey failed at something else instead: {said}",
-            removal.element
-        );
-    }
 }

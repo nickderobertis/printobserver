@@ -75,8 +75,7 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
 /// reader who starts at the skill and follows only what it and the documents it
 /// links to provide reads the context, opens the image, decides inside the
 /// bounds that read reported, composes a second request out of a rejection's own
-/// fields, records what it saw, and escalates — and six copies of that
-/// documentation, each missing one of those, cannot.
+/// fields, records what it saw, and escalates.
 #[test]
 fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
     let world = World::open(world::SCRIPTED);

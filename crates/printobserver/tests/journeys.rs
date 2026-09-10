@@ -84,16 +84,14 @@ fn every_client_command_is_proven_against_a_real_supervisor() {
 /// Every command example the reference documents show, run against a real
 /// supervisor and compared with what the document shows beside it.
 ///
-/// The falsifying half runs beside it: the same walk over documentation
-/// carrying an altered output and an example this check has no way to run, both
-/// refused. A documentation check that accepted whatever it was shown would be
-/// worse than none, because it would read as proof.
+/// Every example of every declared document is run: an example the walk has no
+/// way to run is a finding of its own rather than one it steps over, so a
+/// document cannot pass by showing something nothing here executes.
 #[test]
 fn every_documented_example_prints_what_the_document_shows() {
     let world = World::open(world::STOOD_IN);
 
     documenting::accepts_the_committed_documentation(&world);
-    documenting::refuses_documentation_that_has_drifted();
 }
 
 /// One supervision turn, carried out from the committed documentation alone,

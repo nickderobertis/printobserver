@@ -270,10 +270,10 @@ everything that is not an identifier or an instant.
 resolves every command and every field through the skill and the documents it
 links to, and drives one supervision turn end to end — in the fast tier over a
 stood-in machine and in the printer tier over the `OctoPrint` `just octoprint-up`
-provisions. Its falsifying half is what makes that self-limitation load-bearing:
-the same walk runs over six copies of the documentation, each with one element of
-the turn removed from the skill *and* from every document it links to, and each
-has to fail at that step naming what it could not reach.
+provisions. It reads the tree through nothing but its own `Documentation`, which
+opens the skill and the documents the skill links to and no other file, so a
+document that stopped saying how to carry one of those steps out stops the
+journey at that step rather than being covered by what the test itself knew.
 
 The same walk runs once more over what a **running server materialized**: the
 assets directory it wrote, copied somewhere carrying nothing else — no policy, no

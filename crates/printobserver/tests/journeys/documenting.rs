@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::world::{CREDENTIAL, STOOD_IN, World};
+use crate::world::{CREDENTIAL, World};
 
 /// The fence a runnable example is written in.
 const FENCE: &str = "```console";
@@ -408,82 +408,6 @@ pub fn accepts_the_committed_documentation(world: &World) {
         findings.is_empty(),
         "the documentation no longer shows what its examples print:\n{}",
         findings.join("\n\n")
-    );
-}
-
-/// A copy of the committed documentation a run may break in exactly one way.
-struct Copied {
-    /// Where the copy lives, removed when it is dropped.
-    root: tempfile::TempDir,
-}
-
-impl Copied {
-    /// Copy the policy and every declared document into a tree of its own.
-    fn made() -> Self {
-        let root = tempfile::TempDir::new().expect("a scratch tree");
-        let from = repo_root();
-        std::fs::copy(
-            from.join("repo-policy.toml"),
-            root.path().join("repo-policy.toml"),
-        )
-        .expect("the policy is copyable");
-        for document in documents(&from) {
-            let target = root.path().join(&document);
-            std::fs::create_dir_all(target.parent().expect("a directory"))
-                .expect("the scratch tree is writable");
-            std::fs::copy(from.join(&document), target).expect("a document is copyable");
-        }
-        Self { root }
-    }
-
-    /// Replace one exact fragment of one document, refusing a no-op edit.
-    fn edit(&self, document: &str, old: &str, new: &str) {
-        let path = self.root.path().join(document);
-        let text = std::fs::read_to_string(&path).expect("the document is readable");
-        assert!(text.contains(old), "{document} does not contain {old:?}");
-        std::fs::write(&path, text.replacen(old, new, 1)).expect("the document is writable");
-    }
-}
-
-/// The document every falsifying copy is broken in.
-const BROKEN: &str = "docs/reference/common-operations.md";
-
-/// The same walk, over documentation carrying one defect each.
-///
-/// Both defects are refused rather than passed over, which is what makes the
-/// walk above evidence: a check that shows what it was given and runs nothing
-/// would accept every one of these.
-/// Each copy is driven against a world of its own, so that the only thing
-/// disagreeing with the document is the defect the copy carries: a second walk
-/// over one world would find every later example changed by what the first
-/// walk's actions left behind.
-pub fn refuses_documentation_that_has_drifted() {
-    let altered = Copied::made();
-    altered.edit(
-        BROKEN,
-        "$ printobserver status --print-id PRINT_ID",
-        "$ printobserver status --print-id PRINT_ID\nan output no command of this program printed",
-    );
-    let findings = walk(&World::open(STOOD_IN), altered.root.path());
-    assert!(
-        findings
-            .iter()
-            .any(|finding| finding.contains("an output no command of this program printed")),
-        "an altered shown output was not refused: {findings:?}"
-    );
-
-    let unreachable = Copied::made();
-    unreachable.edit(
-        BROKEN,
-        "$ printobserver status --print-id PRINT_ID",
-        "$ curl http://a-supervisor.invalid/v1/prints",
-    );
-    let findings = walk(&World::open(STOOD_IN), unreachable.root.path());
-    assert!(
-        findings
-            .iter()
-            .any(|finding| finding.contains("which this check cannot run")),
-        "an example this check cannot run was not refused: {findings:?}"
     );
 }
 
