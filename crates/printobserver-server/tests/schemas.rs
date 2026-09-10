@@ -53,14 +53,15 @@ fn answer_type(operation: &Operation, answer: Answer) -> String {
 /// One operation, as a consumer outside this crate reads it.
 fn described(operation: &Operation) -> Value {
     let parameters: Vec<Value> = operation
-        .request()
+        .request_shapes()
         .into_iter()
-        .map(|parameter| {
+        .map(|(parameter, shape)| {
             json!({
                 "name": parameter.name,
                 "required": parameter.required,
                 "located": format!("{:?}", parameter.located).to_lowercase(),
                 "kind": format!("{:?}", parameter.kind).to_lowercase(),
+                "shape": shape,
             })
         })
         .collect();
@@ -181,6 +182,55 @@ fn the_description_names_every_operation_and_no_other() {
         .map(|operation| operation.name.to_owned())
         .collect();
     assert_eq!(described, served);
+}
+
+/// Every value a request carries is described with a shape a consumer can type.
+///
+/// A generated client needs the contracts' own type where the value is one of
+/// theirs, and a scalar shape where it is not. A description that said only
+/// `structured` would leave a generator typing a manifest as anything.
+#[test]
+fn every_value_a_request_carries_is_described_with_a_shape() {
+    let mut named_types = 0_usize;
+    for operation in &OPERATIONS {
+        for (parameter, shape) in operation.request_shapes() {
+            let referenced = shape.get("$ref").and_then(Value::as_str);
+            // A value that may be absent is declared as its own type or null,
+            // which is a list of names rather than a name.
+            let scalar = shape.get("type").is_some_and(Value::is_string)
+                || shape
+                    .get("type")
+                    .and_then(Value::as_array)
+                    .is_some_and(|names| names.iter().any(Value::is_string));
+            assert!(
+                referenced.is_some() || scalar,
+                "`{}` describes `{}` as {shape}, which is neither one of the contracts' \
+                 own types nor a scalar",
+                operation.name,
+                parameter.name
+            );
+            if let Some(reference) = referenced {
+                named_types += 1;
+                let name = reference
+                    .strip_prefix("#/$defs/")
+                    .expect("a reference names one of the contracts' own types");
+                assert!(
+                    schema_files::schema_dir("printobserver-types")
+                        .join(format!("{name}.json"))
+                        .is_file(),
+                    "`{}` describes `{}` as `{name}`, which the contracts check in no \
+                     schema for",
+                    operation.name,
+                    parameter.name
+                );
+            }
+        }
+    }
+    assert!(
+        named_types > 0,
+        "no request value is described by one of the contracts' own types, so this \
+         walk is over shapes nothing types"
+    );
 }
 
 /// Every described operation carries the values its own request declares.

@@ -14,7 +14,10 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/status",
@@ -37,7 +40,10 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/context",
@@ -60,7 +66,10 @@
           "kind": "text",
           "located": "path",
           "name": "image_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/images/{image_id}",
@@ -83,13 +92,19 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "integer",
           "located": "query",
           "name": "limit",
-          "required": false
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/history",
@@ -112,7 +127,10 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/manifest",
@@ -135,19 +153,28 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "manifest",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/JobManifest"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/manifest",
@@ -170,19 +197,30 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/pause",
@@ -209,19 +247,30 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/resume",
@@ -248,19 +297,30 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/cancel",
@@ -287,31 +347,50 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "file_name",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/FileName",
+            "description": "The file to print, validated as a name a file API can be asked for."
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "manifest",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/JobManifest",
+            "description": "The manifest this print is bounded by."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/start_print",
@@ -338,31 +417,55 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
-          "required": false
+          "required": false,
+          "shape": {
+            "description": "How long the change stands for, in whole seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         },
         {
           "kind": "number",
           "located": "body",
           "name": "factor",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The multiplier asked for.",
+            "format": "double",
+            "type": "number"
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/set_feedrate_factor",
@@ -389,31 +492,55 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
-          "required": false
+          "required": false,
+          "shape": {
+            "description": "How long the change stands for, in whole seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         },
         {
           "kind": "number",
           "located": "body",
           "name": "factor",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The multiplier asked for.",
+            "format": "double",
+            "type": "number"
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/set_flowrate_factor",
@@ -440,37 +567,66 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
-          "required": false
+          "required": false,
+          "shape": {
+            "description": "How long the change stands for, in whole seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         },
         {
           "kind": "number",
           "located": "body",
           "name": "target_c",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The target temperature asked for, in degrees Celsius.",
+            "format": "double",
+            "type": "number"
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "tool",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The tool, in the printer's own numbering.",
+            "format": "int64",
+            "type": "integer"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/set_tool_target_c",
@@ -497,31 +653,55 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
-          "required": false
+          "required": false,
+          "shape": {
+            "description": "How long the change stands for, in whole seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         },
         {
           "kind": "number",
           "located": "body",
           "name": "target_c",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The target temperature asked for, in degrees Celsius.",
+            "format": "double",
+            "type": "number"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/set_bed_target_c",
@@ -548,31 +728,55 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
-          "required": false
+          "required": false,
+          "shape": {
+            "description": "How long the change stands for, in whole seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         },
         {
           "kind": "number",
           "located": "body",
           "name": "percent",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "The percentage asked for.",
+            "format": "double",
+            "type": "number"
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/set_fan_percent",
@@ -599,31 +803,50 @@
           "kind": "text",
           "located": "path",
           "name": "print_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
         },
         {
           "kind": "structured",
           "located": "body",
           "name": "actor",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "disposition",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/AcknowledgementDisposition",
+            "description": "What to do next."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "event_id",
-          "required": true
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/EventId",
+            "description": "The event being acknowledged."
+          }
         },
         {
           "kind": "text",
           "located": "body",
           "name": "reason",
-          "required": true
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/actions/acknowledge_failure",
