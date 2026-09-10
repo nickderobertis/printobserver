@@ -49,6 +49,7 @@ CHECKS: dict[str, Check] = {
     "recipes": checks_repo.recipe_set,
     "node-install": checks_repo.node_install,
     "workspace": checks_repo.workspace,
+    "module-names": checks_repo.module_names,
     "octoprint-client": checks_repo.octoprint_client,
     "supervisor-spawn-free": checks_supervisor.spawn_free,
     "supervisor-schema-source": checks_supervisor.schema_source,
