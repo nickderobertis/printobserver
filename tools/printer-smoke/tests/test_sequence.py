@@ -47,7 +47,16 @@ def test_the_smoke_drives_the_sequence_in_the_order_it_declares(world: World) ->
         ],
         describing="the operations the run asked the machine for, in order",
     )
-    equal(issued[-1], "history", describing="the last read the run makes")
+    truth(
+        issued.index("cancel") < issued.index("history"),
+        describing="the history read to come after the cancel it accounts for",
+    )
+    equal(
+        set(issued[issued.index("history") + 1 :]),
+        {"status"},
+        describing="the reads after the history, which are the cleanup's own last look "
+        "at the machine and ask it for nothing",
+    )
 
 
 def test_the_context_read_comes_before_anything_is_started(world: World) -> None:

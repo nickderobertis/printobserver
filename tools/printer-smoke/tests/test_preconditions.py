@@ -39,6 +39,16 @@ def _a_virtual_printer(world: World) -> dict[str, str]:
     return {}
 
 
+def _another_supervisor(world: World) -> dict[str, str]:
+    """Point the variable that wins over the file at a supervisor of its own.
+
+    `test_binding.py` is where this one is driven properly, over a second
+    supervisor that then asserts nothing reached it. Here it is the one line
+    that makes the precondition unmet, so that the walk covers it too.
+    """
+    return {"PRINTOBSERVER_SERVER": "http://127.0.0.1:1"}
+
+
 def _no_manifest_for_the_payload(world: World) -> dict[str, str]:
     """Leave the print carrying a manifest for somebody else's file."""
     world.substitute.manifest = dict(world.substitute.manifest, file_name="somebody-elses.gcode")
@@ -75,6 +85,7 @@ UNMET: dict[str, Callable[[World], dict[str, str]]] = {
     "printobserver-command": _no_program,
     "serial-device": _no_device,
     "octoprint-serial-mode": _a_virtual_printer,
+    "supervisor-binding": _another_supervisor,
     "smoke-manifest": _no_manifest_for_the_payload,
     "printer-operational": _a_printer_that_is_not_operational,
     "no-job-running": _a_job_already_running,

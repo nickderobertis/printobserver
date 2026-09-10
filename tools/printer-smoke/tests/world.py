@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from machine import Machine
-from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME
+from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
 from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -196,23 +196,38 @@ def write_the_record(state_dir: Path, url: str, device: str, *, mode: str = "ser
 
 
 def write_the_configuration(
-    path: Path, url: str, envelope: dict[str, tuple[float, float]] | None = None
+    path: Path,
+    url: str,
+    envelope: dict[str, tuple[float, float]] | None = None,
+    *,
+    octoprint_url: str | None = None,
+    client_server: str | None = None,
 ) -> None:
     """Write the supervisor's own configuration file, which the smoke also reads.
+
+    The server's own file rather than a client's: it says where the supervisor
+    was told to listen and which OctoPrint that supervisor drives, which is the
+    pair the smoke's binding precondition holds to the instance it verified.
 
     Args:
         path: Where to write it.
         url: Where the supervisor answers.
         envelope: The safety envelope it configures, or the conservative one.
+        octoprint_url: The OctoPrint it says the supervisor drives, or `url`.
+        client_server: A `[client] server` to write beside `listen`, when one
+            is wanted — a configuration pointing a client somewhere else.
     """
     allowed = CONSERVATIVE_ENVELOPE if envelope is None else envelope
     lines = [
-        "[client]",
-        f'server = "{url}"',
-        f'credential = "{CREDENTIAL}"',
+        f'listen = "{address_of(url)}"',
         "",
-        "[safety.allowed]",
+        "[octoprint]",
+        f'url = "{url if octoprint_url is None else octoprint_url}"',
+        "",
     ]
+    if client_server is not None:
+        lines.extend(["[client]", f'server = "{client_server}"', ""])
+    lines.append("[safety.allowed]")
     lines.extend(
         f'"{name}" = {{ min = {low}, max = {high} }}' for name, (low, high) in allowed.items()
     )

@@ -17,6 +17,13 @@ issued while failing every one of these.
 `refusals` are **failures**: one operation answered as a server that could not
 do it. They are what a cleanup walk needs — a run that fails at a stage without
 the machine being unable to clean up afterwards.
+
+The policy this stands in for is the supervisor's own in one respect that
+matters to a cleanup: an adjustment is valid from a printing or a paused
+machine and from no other state, so one asked for after a cancel is refused
+here exactly as `printobserver-core`'s own `valid_from` refuses it. Without
+that, a cleanup that put values back after the print had ended would pass here
+and be refused by the real thing.
 """
 
 from __future__ import annotations
@@ -60,6 +67,7 @@ ASKED: dict[str, str] = {
 #: Every fault this substitute can be scripted with, and there is no other.
 FAULTS = (
     "adjustment-ignored",
+    "cancel-cools-the-heaters",
     "out-of-bounds-applied",
     "expiry-not-restored",
     "pause-not-taken",
@@ -291,6 +299,10 @@ class Machine:
 
         adjustable = ADJUSTMENTS.get(operation)
         if adjustable is not None:
+            if self.printer.connection not in {PRINTING, PAUSED}:
+                decision = {"rejected": {"invalid_from_state": {"state": self.printer.connection}}}
+                self._record("action_rejected", {"action_id": action_id, "decision": decision})
+                return 409, {"record": self._record_of(action_id, decision)}
             asked = float(body[ASKED[adjustable]])
             low, high = self.envelope[adjustable]
             if not low <= asked <= high:
@@ -352,6 +364,12 @@ class Machine:
             printer.connection = printer.job_state = PRINTING
         elif operation == "cancel" and "cancel-not-taken" not in self.faults:
             printer.connection = printer.job_state = OPERATIONAL
+            if "cancel-cools-the-heaters" in self.faults:
+                # What a real machine's own end-of-print script does: the
+                # heaters go off with the print, after which no adjustment is
+                # valid from the state it is now in.
+                printer.values["tool_target:0"] = 0.0
+                printer.values["bed_target"] = 0.0
         self._record("action_executed", {"action_id": action_id, "intervention_id": None})
         return 200, {"record": self._record_of(action_id, "accepted")}
 

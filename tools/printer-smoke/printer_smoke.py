@@ -64,6 +64,11 @@ DEFAULT_CONFIG = "/etc/printobserver/config.toml"
 #: rather than by a caller, so the one to act on is named rather than guessed.
 PRINT_ENV = "PRINTOBSERVER_SMOKE_PRINT_ID"
 
+#: The variable that points a client at a supervisor, which wins over the
+#: configuration file. This smoke reads it so that it can refuse one naming a
+#: supervisor other than the one attached to the printer it verified.
+SERVER_ENV = "PRINTOBSERVER_SERVER"
+
 #: The program to drive. The installed `printobserver`, unless a host names another.
 PROGRAM_ENV = "PRINTOBSERVER_SMOKE_PROGRAM"
 PROGRAM = "printobserver"
@@ -194,6 +199,11 @@ def asked(value: float) -> float:
     return round(value, 4)
 
 
+def address_of(named: str) -> str:
+    """One supervisor address, spelled the one way two of them can be compared."""
+    return named.strip().removeprefix("http://").removeprefix("https://").rstrip("/")
+
+
 def say(message: str) -> None:
     """Report one line of what this smoke is doing, or refusing to do."""
     print(f"printer-smoke: {message}", flush=True)
@@ -282,9 +292,11 @@ class Smoke:
     settle_s: float
     duration_s: int
     manifest: object = None
+    record: dict[str, object] = field(default_factory=dict)
     bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
     found: dict[str, float] = field(default_factory=dict)
     actions: list[str] = field(default_factory=list)
+    left_changed: list[str] = field(default_factory=list)
     started: bool = False
     cleaned: bool = False
 
@@ -564,7 +576,6 @@ class Smoke:
             raise VerificationError(
                 STEP_CANCEL, f"the printer reports the job {running!r} after the cancel"
             )
-        self.cleaned = True
 
     def step_history(self) -> None:
         """Read the history, and require every action, decision and outcome in it.
@@ -602,21 +613,33 @@ class Smoke:
     def restore(self, step: str) -> None:
         """Put every adjustable this run changed back to the value it found there.
 
+        Every adjustable is attempted, and one that could not be put back does
+        not cost the rest: a run that gave up on the first failure would leave
+        the machine holding every value after it.
+
         Args:
             step: The verification point to blame a failure on.
 
         Raises:
-            VerificationError: If one of them could not be put back.
+            VerificationError: Naming every one that could not be put back,
+                after each has been attempted.
         """
+        unrestored: list[str] = []
         for knob in KNOBS:
             value = self.found.get(knob.adjustable)
             if value is None:
                 continue
             if number_at(self.status(), knob.reported_at) == value:
                 continue
-            self.act(step, knob.command, *knob.asking(value))
-            self.requires(step, knob.reported_at, value, numeric=True)
+            try:
+                self.act(step, knob.command, *knob.asking(value))
+                self.requires(step, knob.reported_at, value, numeric=True)
+            except VerificationError as failure:
+                unrestored.append(f"`{knob.adjustable}` ({failure.detail})")
+                continue
             say(f"`{knob.adjustable}` is {value:g} again, which is where this run found it")
+        if unrestored:
+            raise VerificationError(step, f"these were not put back: {', '.join(unrestored)}")
 
     def clean_up(self) -> None:
         """Cancel the print and put back what this run changed, whatever happened.
@@ -625,7 +648,10 @@ class Smoke:
         altered exactly as a crashed one does, so this runs on every exit path —
         and it reports what it could not do rather than raising, because a
         cleanup that failed must not replace the failure it was cleaning up
-        after.
+        after. What it could not put back is left in `left_changed`, which is
+        read off the machine afterwards and is what makes the run exit non-zero
+        naming it: a green report over a machine still carrying this run's own
+        values is the worst answer this program could give.
         """
         if self.cleaned:
             return
@@ -640,6 +666,28 @@ class Smoke:
                 doing()
             except VerificationError as failure:
                 say(f"cleanup could not {what}: {failure.detail}")
+        self.left_changed = self.still_changed()
+
+    def still_changed(self) -> list[str]:
+        """Everything the machine is holding that this run did not find there.
+
+        Read off the machine rather than inferred from what the cleanup managed
+        to do: a restore that was accepted and did not take leaves the machine
+        altered exactly as one that was refused, and what a person needs is
+        which values are still this run's own.
+        """
+        document = self.status()
+        changed = [
+            f"`{knob.adjustable}` is {number_at(document, knob.reported_at)!r} rather than "
+            f"the {value:g} this run found there"
+            for knob in KNOBS
+            for value in [self.found.get(knob.adjustable)]
+            if value is not None and number_at(document, knob.reported_at) != value
+        ]
+        reported = at(document, "/printer/connection")
+        if reported != OPERATIONAL:
+            changed.append(f"the printer reports {reported!r} rather than `{OPERATIONAL}`")
+        return changed
 
     def _cancel_quietly(self) -> None:
         """Cancel the print, when the machine still reports one to cancel.
@@ -741,6 +789,73 @@ def _octoprint_on_the_device(smoke: Smoke) -> str | None:
             f"{url} is connected to {port!r} rather than to {smoke.device!r}: this smoke "
             f"drives the machine that OctoPrint is on"
         )
+    smoke.record = record
+    return None
+
+
+def _configuration(smoke: Smoke) -> tuple[object, str | None]:
+    """The configuration document, or why it could not be read."""
+    if not smoke.config.is_file():
+        return None, (
+            f"{smoke.config} is not there: name the running supervisor's own file with {CONFIG_ENV}"
+        )
+    try:
+        return tomllib.loads(smoke.config.read_text(encoding="utf-8")), None
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        return None, f"{smoke.config} could not be read: {error}"
+
+
+def _bound_to_the_verified_printer(smoke: Smoke) -> str | None:
+    """The supervisor this run drives is the one attached to the printer it verified.
+
+    Two links, and the run is refused unless both hold. The configuration this
+    smoke reads is the **supervisor's own**, so the `OctoPrint` it names has to
+    be the instance whose serial connection and device the precondition before
+    this one checked. And every place that names where a supervisor is — that
+    file's `listen`, its `[client]` table, and the variable that wins over both —
+    has to name one address, because a command sent somewhere else acts on a
+    machine nothing here verified. Checking a device on one printer and driving
+    another is the failure this smoke exists to make impossible, and it is the
+    one an opt-in naming a device cannot catch by itself.
+    """
+    document, unreadable = _configuration(smoke)
+    if unreadable is not None:
+        return unreadable
+
+    attached = at(document, "/octoprint/url")
+    if not isinstance(attached, str):
+        return (
+            f"{smoke.config} names no OctoPrint under `octoprint.url`, so it is not the "
+            f"running supervisor's own configuration and nothing here can tell which "
+            f"printer that supervisor drives"
+        )
+    verified = smoke.record.get("url")
+    if not isinstance(verified, str) or address_of(attached) != address_of(verified):
+        return (
+            f"{smoke.config} names the supervisor's OctoPrint as {attached!r}, and the "
+            f"instance this run verified is at {verified!r}: the printer checked and the "
+            f"printer driven would be different machines"
+        )
+
+    named: list[tuple[str, str]] = []
+    for where, value in (
+        (f"{smoke.config}'s `[client] server`", at(document, "/client/server")),
+        (f"{smoke.config}'s `listen`", at(document, "/listen")),
+        (SERVER_ENV, os.environ.get(SERVER_ENV)),
+    ):
+        if isinstance(value, str) and value.strip():
+            named.append((where, address_of(value)))
+    if not named:
+        return (
+            f"nothing names where the supervisor is: {smoke.config} carries neither "
+            f"`listen` nor a `[client] server`, and {SERVER_ENV} is unset"
+        )
+    disagreeing = [f"{where} names {address}" for where, address in named]
+    if len({address for _, address in named}) > 1:
+        return (
+            f"two things name different supervisors and one of them would be driven: "
+            f"{'; '.join(disagreeing)}"
+        )
     return None
 
 
@@ -786,14 +901,9 @@ def _nothing_is_printing(smoke: Smoke) -> str | None:
 
 def _conservative_envelope(smoke: Smoke) -> str | None:
     """The configured safety envelope is the conservative one this test ships."""
-    if not smoke.config.is_file():
-        return (
-            f"{smoke.config} is not there: name the running supervisor's own file with {CONFIG_ENV}"
-        )
-    try:
-        document = tomllib.loads(smoke.config.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        return f"{smoke.config} could not be read: {error}"
+    document, unreadable = _configuration(smoke)
+    if unreadable is not None:
+        return unreadable
     allowed = at(document, "/safety/allowed")
     if not isinstance(allowed, dict):
         return f"{smoke.config} configures no safety envelope"
@@ -818,6 +928,7 @@ PRECONDITIONS: tuple[tuple[str, Callable[[Smoke], str | None]], ...] = (
     ("printobserver-command", _command_present),
     ("serial-device", _device_readable),
     ("octoprint-serial-mode", _octoprint_on_the_device),
+    ("supervisor-binding", _bound_to_the_verified_printer),
     ("smoke-manifest", _manifest_present),
     ("printer-operational", _printer_operational),
     ("no-job-running", _nothing_is_printing),
@@ -854,8 +965,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Returns:
         Zero when this test was not selected, when a precondition refused it and
-        when it passed; one when a verification point was not satisfied or the
-        run was interrupted.
+        when it passed and left the machine as it found it; one when a
+        verification point was not satisfied, when the run was interrupted, and
+        when the cleanup could not put back something this run changed — the
+        last of those whether or not anything else went wrong, because a green
+        report over a machine still holding this run's own values is the worst
+        answer this program could give.
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
     environ = dict(os.environ)
@@ -888,18 +1003,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         STEP_CANCEL: smoke.step_cancel,
         STEP_HISTORY: smoke.step_history,
     }
+    outcome = 0
     try:
         for step in SEQUENCE:
             say(f"verifying `{step}`")
             steps[step]()
     except VerificationError as failure:
+        # Said here rather than after the cleanup, so that what a reader meets
+        # first is the failure this run is about. What the cleanup could not do
+        # is reported beneath it and never in its place.
         say(f"FAILED at `{failure.step}`: {failure.detail}")
-        return 1
+        outcome = 1
     except KeyboardInterrupt:
         say("interrupted: putting the machine back before stopping")
-        return 1
+        outcome = 1
     finally:
         smoke.clean_up()
+
+    for still in smoke.left_changed:
+        say(f"LEFT CHANGED: {still}")
+    if smoke.left_changed:
+        say("this run did not leave the machine as it found it. Put it right before printing.")
+        return 1
+    if outcome != 0:
+        return outcome
     say(f"passed: this stack drove {smoke.device} through {', '.join(SEQUENCE)}")
     return 0
 

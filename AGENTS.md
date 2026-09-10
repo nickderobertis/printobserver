@@ -344,12 +344,27 @@ smoke test that could not satisfy itself that it was safe to run is not a defect
 to investigate. They are, in the order they are checked: the `printobserver`
 command is on this host; the named serial device is there and readable; the
 scripted `OctoPrint` is connected to *that* device in real-serial mode rather
-than to a virtual printer; the print carries a manifest for the smoke's own
+than to a virtual printer; the supervisor this run will drive is the one
+attached to that instance; the print carries a manifest for the smoke's own
 file; the printer reports itself operational; no job is running and none is
 paused; and the safety envelope in the configuration is the conservative one
 this test ships. `tools/printer-smoke/tests/test_preconditions.py` walks all
-seven, making each unmet in turn, and fails when the smoke declares one that
+eight, making each unmet in turn, and fails when the smoke declares one that
 walk does not cover.
+
+**The machine checked and the machine driven are one machine.** That is the
+fourth precondition above and it is the one an opt-in naming a device cannot
+give you by itself: a valid instance record for the printer on `/dev/ttyACM0`
+and a `PRINTOBSERVER_SERVER` naming a second supervisor satisfy every other
+precondition independently, and the actions then land on a machine nothing here
+verified. So two links are required and the run is refused unless both hold.
+The configuration this smoke reads is the **supervisor's own**, so the
+`OctoPrint` it names under `octoprint.url` has to be the instance whose serial
+connection was just checked; and every place that names where a supervisor is —
+that file's `listen`, its `[client]` table, and `PRINTOBSERVER_SERVER`, which
+wins over both — has to name one address. Two of them naming different
+supervisors is refused before anything is driven rather than resolved in favour
+of whichever the client would have used.
 
 **The conservative envelope is bounded by this document rather than by the
 test.** A test that shipped a permissive envelope and then faithfully required
@@ -378,7 +393,19 @@ or an interrupted one, since a run that finishes without restoring what it
 changed leaves the machine altered exactly as a crashed one does. The restore
 comes *before* the cancel, and that ordering is load-bearing: an adjustment is
 valid from a printing or a paused machine and from no other state, so a run that
-cancelled first could never put back what it changed.
+cancelled first could never put back what it changed. One adjustable that cannot
+be put back does not cost the ones after it: every one is attempted, and what
+could not be restored is collected rather than raised at the first.
+
+**And a run that could not put everything back says so and exits non-zero.**
+What the cleanup managed is not taken on trust: afterwards the machine is read
+once more, and every value still carrying this run's own — and a printer not
+left operational — is printed as `LEFT CHANGED` and makes the run fail, whether
+or not any verification point did. A green report over a machine still holding a
+modified feedrate is the worst answer this program can give, and it is worse
+than the failure it would be hiding. Where a verification point *did* fail, that
+failure is what is reported first and the cleanup is reported beneath it: a
+cleanup that could not finish never replaces the cause a reader needs.
 
 **What to watch while it runs.** Stay next to the machine — this is not a test
 to start and walk away from. Watch the first layer go down after the print

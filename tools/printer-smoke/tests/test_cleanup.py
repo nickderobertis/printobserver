@@ -11,7 +11,7 @@ carries the value it found there, and the printer is operational.
 from __future__ import annotations
 
 import pytest
-from repo_checks.expect import contains, equal, truth
+from repo_checks.expect import absent, contains, equal, truth
 from world import World
 
 #: Each stage that has already sent something to the printer, and the operation
@@ -89,3 +89,56 @@ def test_a_run_failed_at_a_stage_leaves_the_machine_as_it_found_it(
     equal(run.returncode, 1, describing=f"the exit of a run failed at `{stage}`")
     contains(run.stdout, f"FAILED at `{stage}`", describing="what the failed run said")
     left_as_found(world, found, after=f"a run failed at `{stage}`")
+
+
+def test_a_run_whose_cleanup_cannot_put_a_value_back_exits_non_zero(world: World) -> None:
+    """A machine whose cancel cools its heaters is one this run cannot fully put back.
+
+    Every verification point passes and the run still fails, because what it
+    leaves behind is the machine holding this run's own values. A green report
+    over that is the worst answer this program can give, so it is the one this
+    asserts against.
+    """
+    world.substitute.fail("cancel-cools-the-heaters")
+
+    run = world.smoke("--run")
+
+    equal(run.returncode, 1, describing="the exit of a run that left the machine changed")
+    absent(run.stdout, "passed:", describing="what a run that left the machine changed said")
+    absent(run.stdout, "FAILED at", describing="what it said: no verification point failed")
+    contains(run.stdout, "LEFT CHANGED: `tool_target:0`", describing="what it said")
+    contains(run.stdout, "LEFT CHANGED: `bed_target`", describing="what it said")
+
+
+def test_a_restore_that_cannot_be_made_is_still_attempted_for_the_rest(world: World) -> None:
+    """One value that cannot be put back does not cost the four after it.
+
+    The feedrate's own restore is refused for the rest of the run — the fourth
+    request of it onwards, which is the one the cleanup makes. Every other
+    adjustable is put back, the run exits non-zero, and what it reports first is
+    the verification point that failed rather than the cleanup beneath it.
+    """
+    found = dict(world.substitute.printer.values)
+    world.substitute.refuse("set_feedrate_factor", times=99, after=3)
+
+    run = world.smoke("--run")
+
+    equal(run.returncode, 1, describing="the exit of a run that could not put a value back")
+    for name in ("flowrate", "tool_target:0", "bed_target", "fan"):
+        equal(
+            world.substitute.held(name),
+            found[name],
+            describing=f"`{name}`, which the failed restore of `feedrate` must not have cost",
+        )
+    truth(
+        world.substitute.held("feedrate") != found["feedrate"],
+        describing="the feedrate to be the one this run could not put back",
+    )
+    contains(run.stdout, "LEFT CHANGED: `feedrate`", describing="what it said")
+    said = run.stdout.splitlines()
+    truth(
+        next(i for i, line in enumerate(said) if "FAILED at" in line)
+        < next(i for i, line in enumerate(said) if "LEFT CHANGED" in line),
+        describing="the verification point that failed to be reported before the cleanup, "
+        f"so that the cleanup never replaces it as the cause; it said:\n{run.stdout}",
+    )
