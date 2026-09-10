@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import RegistryError
 from release_artifacts.registries import prove as prove_registry
-from release_artifacts.standin import Registries
+from release_artifacts.standin import Registries, StandinError
 from release_artifacts.targets import TargetError, declared
 from release_artifacts.world import World, WorldError, scripted_printer
 
@@ -93,54 +94,106 @@ def main(argv: list[str] | None = None) -> int:
     repo = Repo(arguments.root)
 
     try:
-        if arguments.command == "list":
-            for target in declared(repo.root):
-                print(f"{target.id}\t{target.description}")
-            return 0
-        if arguments.command == "stage-release":
-            staged = staged_release(repo, arguments.into, arguments.binary)
-            print(f"staged {staged}", file=sys.stderr)
-            return 0
-        if arguments.command == "world":
-            return _world(repo, arguments)
-        if arguments.command == "standin":
-            return _standin(repo, arguments)
-        if arguments.command == "publish":
-            for line in publish(repo, arguments.into, dict(os.environ)):
-                print(line)
-            return 0
-        if arguments.command == "prove":
-            if not arguments.target:
-                print("prove takes --target <id>; `list` names them", file=sys.stderr)
-                return 2
-            if arguments.registry:
-                proof = prove_registry(repo, arguments.target, arguments.into, dict(os.environ))
-                print(proof.report)
-                return proof.exit_status
-            print(prove(repo, arguments.target, arguments.into, arguments.binary))
-            return 0
-        if arguments.command == "build-all":
-            for built in build_all(repo, arguments.into, arguments.binary):
-                for path in built.paths:
-                    print(f"{built.target}\t{path}")
-            return 0
-        if not arguments.target:
-            print("build takes --target <id>; `list` names them", file=sys.stderr)
-            return 2
-        built = build(repo, arguments.target, arguments.into, arguments.binary)
-        for path in built.paths:
-            print(f"{built.target}\t{path}")
+        match arguments.command:
+            case "list":
+                for target in declared(repo.root):
+                    print(f"{target.id}\t{target.description}")
+            case "stage-release":
+                staged = staged_release(repo, arguments.into, arguments.binary)
+                print(f"staged {staged}", file=sys.stderr)
+            case "world":
+                return _world(repo, arguments)
+            case "standin":
+                return _standin(repo, arguments)
+            case "publish":
+                for line in publish(repo, arguments.into, dict(os.environ)):
+                    print(line)
+            case "prove":
+                return _prove(repo, arguments)
+            case "build-all":
+                for built in build_all(repo, arguments.into, arguments.binary):
+                    for path in built.paths:
+                        print(f"{built.target}\t{path}")
+            case _:
+                return _build(repo, arguments)
     except (
         BuildError,
         InstallError,
         PublishError,
         RegistryError,
+        StandinError,
         TargetError,
         WorldError,
     ) as refused:
         print(f"release-artifacts: {refused}", file=sys.stderr)
         return 1
     return 0
+
+
+def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Prove one artifact: what this tree built, or what its registry serves.
+
+    A proof's own answer is the exit status, and the report goes wherever a
+    reader of that answer looks: a pass to standard output, and the two
+    failures to standard error beside every other diagnostic this program
+    writes.
+    """
+    if not arguments.target:
+        print("prove takes --target <id>; `list` names them", file=sys.stderr)
+        return 2
+    if arguments.registry:
+        proof = prove_registry(repo, arguments.target, arguments.into, dict(os.environ))
+        print(proof.report, file=sys.stdout if proof.exit_status == 0 else sys.stderr)
+        return proof.exit_status
+    print(prove(repo, arguments.target, arguments.into, arguments.binary))
+    return 0
+
+
+def _build(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Build one declared target, and say where each file it wrote went."""
+    if not arguments.target:
+        print("build takes --target <id>; `list` names them", file=sys.stderr)
+        return 2
+    built = build(repo, arguments.target, arguments.into, arguments.binary)
+    for path in built.paths:
+        print(f"{built.target}\t{path}")
+    return 0
+
+
+#: A version a caller may ask the stand-in registries to serve: three numbers,
+#: which is every version release automation writes into this workspace.
+SERVABLE = re.compile(r"^v?\d+\.\d+\.\d+$")
+
+
+def _version(given: str, *, option: str) -> str:
+    """One version a caller named, as the registries serve it.
+
+    Raises:
+        StandinError: If it is not a version release automation would have
+            written. Everything a caller names here reaches a package
+            manifest, a wheel's own file name and a path on disk, so it is
+            validated where it arrives rather than where it lands.
+    """
+    if not SERVABLE.match(given.strip()):
+        msg = (
+            f"`{option} {given}` is not a version to serve: it must be three numbers, "
+            f"as `0.1.0` or `v0.1.0`"
+        )
+        raise StandinError(msg)
+    return given.strip().removeprefix("v")
+
+
+def _mislabelled(given: str) -> tuple[str, str]:
+    """The version a package is served as, and the one its program reports.
+
+    Raises:
+        StandinError: If either side is missing or is not a version.
+    """
+    served, separator, reported = given.partition("=")
+    if not separator:
+        msg = f"`--mislabelled {given}` names no reported version: write it as `0.1.0=0.2.0`"
+        raise StandinError(msg)
+    return _version(served, option="--mislabelled"), _version(reported, option="--mislabelled")
 
 
 def _standin(repo: Repo, arguments: argparse.Namespace) -> int:
@@ -152,17 +205,21 @@ def _standin(repo: Repo, arguments: argparse.Namespace) -> int:
     which is what a journey does when it is done — and what the operating system
     does for it if that journey is killed.
     """
+    serving = [_version(str(version), option="--serves") for version in arguments.serves]
+    broken = [_version(str(version), option="--broken") for version in arguments.broken]
+    mislabelled = [_mislabelled(str(pair)) for pair in arguments.mislabelled]
+    released = [_version(str(tag), option="--release") for tag in arguments.release]
+
     registries = Registries(repo, arguments.into)
     try:
-        for version in arguments.serves:
-            registries.serve(str(version))
-        for version in arguments.broken:
-            registries.serve(str(version), broken=True)
-        for pair in arguments.mislabelled:
-            served, _, reported = str(pair).partition("=")
+        for version in serving:
+            registries.serve(version)
+        for version in broken:
+            registries.serve(version, broken=True)
+        for served, reported in mislabelled:
             registries.serve(served, reported=reported)
-        for tag in arguments.release:
-            registries.release(str(tag))
+        for tag in released:
+            registries.release(f"v{tag}")
         print(json.dumps({"base": registries.base}), flush=True)
         sys.stdin.read()
     finally:

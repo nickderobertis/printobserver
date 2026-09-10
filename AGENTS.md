@@ -689,75 +689,54 @@ commands executable is the `server` node — each held to this section.
 
 ## The registry install-path proof
 
-The three routes above are the whole delivery story, and until this tier existed
-nothing here proved any of them. What was proven was an artifact **built from the
-committed tree** — `just prove-route-pypi`, `prove-route-npm` and
-`prove-route-script`, which the `artifact-route-*` jobs run on every change, and
-which contact no registry at all. Those answer a question worth answering, and
-they are the only ones that can be answered before a release; they are also
-green over a repository nothing can install, which is the state this one was in
-for two days.
+`just prove-route-*` proves an artifact **built from the committed tree**, which
+is the only proof a change can run before anything is published — and is green
+over a repository nothing can install. `just test-install-proof` is the other
+half: per route and per platform, that the registry that route is taken from
+serves the version under test, that what it serves installs with no Rust
+toolchain on the path, and that the program the install left runs and reports
+that version. `SERVED AND PROVEN`, `SERVED AND NOT PROVEN` and `NOT SERVED` are
+told apart by exit status, because a build to repair and a publish that did not
+happen are two different next actions.
 
-**What it proves.** Per route, and per platform the supported-platform list
-names: that the registry that route is taken from serves the version under test,
-that what it serves installs into an environment holding no copy of these
-sources and with no Rust toolchain on the path, and that the program the install
-put there runs and reports that version. Three outcomes, told apart by their
-words and by their exit statuses, because they are three different next
-actions — and only the first is a pass:
+**Which version is proven is never the number in this tree.** That is whatever
+release automation last wrote into the workspace, and what a user gets is
+whatever the registry is serving. `PRINTOBSERVER_PROOF_VERSION` names it — a
+version, or `release` for the newest release the forge published — and naming
+none proves the newest each registry serves.
 
-- `SERVED AND PROVEN` — the registry served it, it installed, and the program
-  reported the version under test.
-- `SERVED AND NOT PROVEN` — the registry served it and something after that
-  failed. An artifact that does not work.
-- `NOT SERVED` — the registry serves nothing for the version under test. A
-  publish that did not happen.
+**Why it is not in every run.** It reads the real registries, so over a change it
+could only report what was published before that change. `repo-policy.toml`'s
+`gate.tiers` does not name it and `just check-repo` refuses a tree in which it
+does.
 
-**Which version is proven.** The one the caller names; the newest release the
-forge published, where the caller says `release`; and otherwise the newest the
-registry itself serves. Never the number in the committed tree — that is
-whatever release automation last wrote into the workspace, and what a user gets
-is whatever the registry is serving. A registry not serving the selected version
-is `NOT SERVED` rather than something the selection quietly steps around.
-
-**Why it is not in every run.** It reads the real package registries, so over a
-change it could only ever report what was published *before* that change — and
-it can say nothing at all about the artifact under review. `repo-policy.toml`'s
-`gate.tiers` does not name it, `just check` does not invoke it, and
-`just check-repo` refuses a tree in which either changes.
-
-**When it runs.** After a release, on a schedule, and on a manual invocation.
-The release-time trigger is the `release-plz` **workflow having finished** rather
-than the GitHub Release being published: that workflow cuts the release in its
-`release` job and builds and publishes the artifacts in the two jobs *after* it,
-so a proof keyed on the release itself would measure the version before it. The
-cron below and the workflow's own are checked against each other, so this
-paragraph cannot drift from what actually fires.
+**When it runs, and the sequencing trap in the way.** After a release, on the
+schedule below, and on a manual invocation. The release-time trigger is the
+`release-plz` workflow **having finished** rather than the GitHub Release being
+published: that workflow cuts the release in its `release` job and builds and
+publishes the artifacts in the two jobs *after* it, so a proof keyed on the
+release itself measures the version before it. The cron below and the workflow's
+own are checked against each other.
 
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
 [//]: # (END install-proof-schedule)
 
-**How to run it by hand.** `PRINTOBSERVER_PROOF_VERSION` names the version to
-prove — a number, or `release` — and naming none proves the newest each registry
-serves. It installs into `dist/proof/`, and it needs no Rust toolchain.
-
-```console
-just test-install-proof
-```
+**How to run it by hand**, against the real registries:
 
 ```console
 PRINTOBSERVER_PROOF_VERSION=release just test-install-proof
 ```
 
-Nothing here publishes to a registry in order to prove a point, so every
-registry is reachable somewhere else: `PRINTOBSERVER_PROOF_REGISTRIES` points all
-three at one address, and `release-artifacts standin` stands that address up —
-a Python index serving real wheels, a JavaScript registry serving real packages,
-and a forge listing releases with their artifacts and digests. That is what the
-suites drive, so a registry serving nothing, one serving something that cannot be
-run, and one serving something that works are each proven to come back as the
-outcome they are.
+```console
+just test-install-proof
+```
+
+Nothing here publishes to a registry in order to prove a point, so
+`PRINTOBSERVER_PROOF_REGISTRIES` points all three of them at one address and
+`release-artifacts standin` stands that address up — which is what this
+repository's own suites drive every outcome through.
+`docs/reference/testing.md` records the tier beside the others.
 
 ## Commits, releases, and merging
 

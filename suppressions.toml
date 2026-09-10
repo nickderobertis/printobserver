@@ -238,3 +238,9 @@ rule = "S324"
 file = "tools/release-artifacts/src/release_artifacts/standin.py"
 site = "hashlib.sha1(raw)"
 reason = "S324 is right that SHA-1 is not a hash to choose, and this one is not chosen: `dist.shasum` in a packument of the JavaScript registry is SHA-1 by that registry's own protocol, and a stand-in serving anything else is one `npm` refuses to install from. It is a digest an installer checks a tarball against rather than a security decision of this repository, and the `integrity` field beside it — which is what a modern `npm` prefers — carries SHA-512."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/release-artifacts/tests/test_registries.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "The judged tier read this suite as expensive work that belongs in a tier of its own. It is where its neighbours are: `test_taking.py` in the same directory installs all three routes for real and `test_clients.py` builds the `printobserver` program and starts a real supervisor, so what edges this project's `test` target is what it proves rather than what it costs. Moving one of the four out would split identical work across two projects, and it would leave `registries.py` and `standin.py` measured by no tier that carries a coverage floor — the end-to-end tier is not measured. The end-to-end journeys over the same behaviour, which drive the real recipes, are in `tests/repo-e2e` where that tier's own work belongs."

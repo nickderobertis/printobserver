@@ -28,6 +28,7 @@ import hashlib
 import json
 import threading
 from collections.abc import Mapping
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -35,6 +36,10 @@ from repo_checks.model import Repo
 
 from release_artifacts import packages, platforms, targets
 from release_artifacts.build import CHECKSUMS, PROGRAM
+
+# The one version ordering. A stand-in that sorted versions its own way could
+# serve a newest the proof selecting from it disagreed about.
+from release_artifacts.registries import ordered
 
 #: The program a served package carries: it runs, and it says which version it
 #: is, which is the whole of what a route's own proof reads back from it.
@@ -63,6 +68,19 @@ NPM_PREFIX = "/npm"
 FORGE_PREFIX = "/forge/releases"
 
 
+class StandinError(ValueError):
+    """A caller asked the stand-in registries to serve something they cannot."""
+
+
+@dataclass(frozen=True, slots=True)
+class Answer:
+    """What this stand-in answers one read with."""
+
+    content_type: str
+    body: bytes
+    status: int = 200
+
+
 class Registries:
     """The three registries a route is taken from, answering on one address."""
 
@@ -76,8 +94,7 @@ class Registries:
         self.repo = repo
         self.into = into
         self.asked: list[str] = []
-        self._answers: dict[str, tuple[str, bytes]] = {}
-        self._statuses: dict[str, int] = {}
+        self._answers: dict[str, Answer] = {}
         self._wheels: dict[str, str] = {}
         self._manifests: dict[str, dict[str, object]] = {}
         self._tags: list[str] = []
@@ -149,12 +166,12 @@ class Registries:
         """
         if tag not in self._tags:
             self._tags.append(tag)
-        self._answers[FORGE_PREFIX] = (
-            "application/json",
+        self.answers(
+            FORGE_PREFIX,
             json.dumps(
                 [
                     {"tag_name": tag, "draft": False, "prerelease": False}
-                    for tag in sorted(self._tags, key=_ordered, reverse=True)
+                    for tag in sorted(self._tags, key=ordered, reverse=True)
                 ]
             ).encode(),
         )
@@ -163,6 +180,7 @@ class Registries:
         self,
         path: str,
         body: bytes,
+        *,
         content_type: str = "application/json",
         status: int = 200,
     ) -> None:
@@ -173,8 +191,7 @@ class Registries:
         drivable against: what a reader needs then is a stop naming the
         registry rather than an outcome about a publish nothing could read.
         """
-        self._answers[path] = (content_type, body)
-        self._statuses[path] = status
+        self._answers[path] = Answer(content_type, body, status)
 
     def stop(self) -> None:
         """Stop answering, leaving no thread behind."""
@@ -182,14 +199,13 @@ class Registries:
         self._server.server_close()
         self._serving.join(timeout=10)
 
-    def answer(self, path: str) -> tuple[int, str, bytes]:
+    def answer(self, path: str) -> Answer:
         """What this stand-in answers one read with."""
         self.asked.append(path)
-        asked = path.rstrip("/") or "/"
-        found = self._answers.get(asked)
+        found = self._answers.get(path.rstrip("/") or "/")
         if found is None:
-            return 404, "text/plain", f"{path} is not served here\n".encode()
-        return self._statuses.get(asked, 200), found[0], found[1]
+            return Answer("text/plain", f"{path} is not served here\n".encode(), 404)
+        return found
 
     def _serve_wheel(self, version: str, program: Path | None) -> None:
         """Assemble a wheel and serve it, with the index an installer reads."""
@@ -209,12 +225,13 @@ class Registries:
             wheel.add_script(PROGRAM, program)
         written = wheel.write(self.into / "pypi")
         self._wheels[version] = written.name
-        self._answers[f"{PYPI_PREFIX}/files/{written.name}"] = (
-            "application/octet-stream",
+        self.answers(
+            f"{PYPI_PREFIX}/files/{written.name}",
             written.read_bytes(),
+            content_type="application/octet-stream",
         )
-        self._answers[f"{PYPI_PREFIX}/pypi/{name}/json"] = (
-            "application/json",
+        self.answers(
+            f"{PYPI_PREFIX}/pypi/{name}/json",
             json.dumps(
                 {
                     "info": {"name": name, "version": _newest(self._wheels)},
@@ -226,9 +243,10 @@ class Registries:
             f'<a href="{self.base}{PYPI_PREFIX}/files/{file_name}">{file_name}</a><br>'
             for file_name in sorted(self._wheels.values())
         )
-        self._answers[f"{PYPI_PREFIX}/simple/{name}"] = (
-            "text/html",
+        self.answers(
+            f"{PYPI_PREFIX}/simple/{name}",
             f"<!DOCTYPE html>\n<html><body>\n{links}\n</body></html>\n".encode(),
+            content_type="text/html",
         )
 
     def _serve_package(self, version: str, program: Path | None) -> None:
@@ -252,9 +270,10 @@ class Registries:
         written = packages.packed(package, manifest, archive, self.into / "npm")
         raw = written.read_bytes()
         tarball = f"{self.base}{NPM_PREFIX}/{name}/-/{written.name}"
-        self._answers[f"{NPM_PREFIX}/{name}/-/{written.name}"] = (
-            "application/octet-stream",
+        self.answers(
+            f"{NPM_PREFIX}/{name}/-/{written.name}",
             raw,
+            content_type="application/octet-stream",
         )
         self._manifests[version] = {
             **manifest,
@@ -265,8 +284,8 @@ class Registries:
                 + base64.b64encode(hashlib.sha512(raw).digest()).decode("ascii"),
             },
         }
-        self._answers[f"{NPM_PREFIX}/{name}"] = (
-            "application/json",
+        self.answers(
+            f"{NPM_PREFIX}/{name}",
             json.dumps(
                 {
                     "_id": name,
@@ -288,21 +307,17 @@ class Registries:
         written = archive.write(self.into / "releases" / version / asset)
         digests = packages.checksums([written])
         for under in (f"{FORGE_PREFIX}/download/v{version}", f"{FORGE_PREFIX}/latest/download"):
-            self._answers[f"{under}/{asset}"] = ("application/octet-stream", written.read_bytes())
-            self._answers[f"{under}/{CHECKSUMS}"] = ("text/plain", digests)
-
-
-def _ordered(version: str) -> tuple[int, ...]:
-    """One version as it sorts, and last of all where it is not three numbers."""
-    parts = version.removeprefix("v").split(".")
-    if len(parts) != 3 or not all(part.isdigit() for part in parts):
-        return (-1,)
-    return tuple(int(part) for part in parts)
+            self.answers(
+                f"{under}/{asset}",
+                written.read_bytes(),
+                content_type="application/octet-stream",
+            )
+            self.answers(f"{under}/{CHECKSUMS}", digests, content_type="text/plain")
 
 
 def _newest(served: Mapping[str, object]) -> str:
     """The newest version a registry below serves, as its own answer states it."""
-    return max(served, key=_ordered, default="")
+    return max(served, key=ordered, default="")
 
 
 def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
@@ -315,12 +330,12 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             """Answer whatever an installer asked for."""
-            status, content_type, body = registries.answer(self.path)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
+            answer = registries.answer(self.path)
+            self.send_response(answer.status)
+            self.send_header("Content-Type", answer.content_type)
+            self.send_header("Content-Length", str(len(answer.body)))
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(answer.body)
 
         def log_message(self, format: str, *args: object) -> None:
             """Say nothing: a stand-in whose log is the output is not signal."""

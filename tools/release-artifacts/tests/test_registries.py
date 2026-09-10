@@ -13,6 +13,8 @@ something that cannot be run does not pass and says so distinctly, one serving
 something mislabelled does not pass, and one serving a working artifact passes.
 """
 
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] This suite sits with its neighbours rather than in a tier of its own: `test_taking.py` in this same directory installs all three routes for real, and `test_clients.py` builds the `printobserver` program and starts a real supervisor. What edges this project's `test` target is what it proves — the artifacts and the routes — and moving one of the four out would split identical work across two projects while leaving `registries.py` and `standin.py` unmeasured by the tier that carries the coverage floor.
+
 from __future__ import annotations
 
 import io
@@ -29,6 +31,7 @@ from release_artifacts.registries import (
     RELEASE,
     Bases,
     Outcome,
+    Proof,
     RegistryError,
     ordered,
     prove,
@@ -37,7 +40,7 @@ from release_artifacts.registries import (
     served,
     take,
 )
-from release_artifacts.standin import FORGE_PREFIX, PYPI_PREFIX, Registries
+from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Registries
 from release_artifacts.targets import named
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
@@ -62,14 +65,12 @@ def registries(repo: Repo, tmp_path: Path) -> Iterator[Registries]:
 
 
 @pytest.fixture
-def proving(
-    repo: Repo, registries: Registries, tmp_path: Path
-) -> Callable[..., tuple[Outcome, str, int]]:
+def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[..., Proof]:
     """Take one route from the stand-in registries and prove what they served."""
 
-    def prove_route(identifier: str, wanted: str = "") -> tuple[Outcome, str, int]:
+    def prove_route(identifier: str, wanted: str = "") -> Proof:
         into = tmp_path / identifier.replace(":", "-").replace("/", "-") / (wanted or "newest")
-        proof = prove(
+        return prove(
             repo,
             identifier,
             into,
@@ -78,99 +79,105 @@ def proving(
                 PRINTOBSERVER_PROOF_VERSION: wanted,
             },
         )
-        return proof.outcome, proof.report, proof.exit_status
 
     return prove_route
 
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_a_registry_serving_a_working_artifact_is_a_pass(
-    identifier: str, registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    identifier: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """What the registry serves is installed with no Rust toolchain, run, and read back."""
     registries.serve("0.4.0")
 
-    outcome, report, status = proving(identifier)
+    proof = proving(identifier)
 
-    equal(outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`")
-    equal(status, 0, describing="the exit a pass answers with")
-    contains(report, "printobserver 0.4.0", describing="what the installed program reported")
-    contains(report, "Rust toolchain on the install path: none", describing=report)
+    equal(proof.outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 0, describing="the exit a pass answers with")
+    contains(proof.report, "printobserver 0.4.0", describing="what the installed program reported")
+    contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
 
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_a_registry_serving_nothing_for_the_version_under_test_is_not_served(
-    identifier: str, registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    identifier: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """A publish that did not happen is reported as that rather than as a broken artifact."""
     registries.serve("0.4.0")
 
-    outcome, report, status = proving(identifier, UNSERVED)
+    proof = proving(identifier, UNSERVED)
 
-    equal(outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
-    equal(status, 3, describing="the exit a version nothing serves answers with")
-    contains(report, "NOT SERVED", describing=report)
-    contains(report, "0.4.0", describing="what the registry does serve")
-    contains(report, "publish that did not happen", describing=report)
+    equal(proof.outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 3, describing="the exit a version nothing serves answers with")
+    contains(proof.report, "NOT SERVED", describing=proof.report)
+    contains(proof.report, "0.4.0", describing="what the registry does serve")
+    contains(proof.report, "publish that did not happen", describing=proof.report)
 
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_a_registry_serving_no_version_at_all_cannot_pass(
-    identifier: str, proving: Callable[..., tuple[Outcome, str, int]]
+    identifier: str, proving: Callable[..., Proof]
 ) -> None:
     """The state this repository was actually in: green checks over nothing published."""
-    outcome, report, status = proving(identifier)
+    proof = proving(identifier)
 
-    equal(outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
-    equal(status, 3, describing="the exit a registry serving nothing answers with")
-    contains(report, "no version at all", describing=report)
+    equal(proof.outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 3, describing="the exit a registry serving nothing answers with")
+    contains(proof.report, "no version at all", describing=proof.report)
 
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serves(
-    identifier: str, registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    identifier: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """Served and not proven is a build to repair, and it is not `NOT SERVED`."""
     registries.serve("0.5.0", broken=True)
 
-    outcome, report, status = proving(identifier)
+    proof = proving(identifier)
 
-    equal(outcome, Outcome.NOT_PROVEN, describing=f"the proof of `{identifier}`")
-    equal(status, 1, describing="the exit a served artifact that does not work answers with")
-    contains(report, "SERVED AND NOT PROVEN", describing=report)
-    contains(report, "did not work here", describing=report)
-    truth("NOT SERVED" not in report.partition("\n")[0], describing="the two to be told apart")
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing=f"the proof of `{identifier}`")
+    equal(
+        proof.exit_status,
+        1,
+        describing="the exit a served artifact that does not work answers with",
+    )
+    contains(proof.report, "SERVED AND NOT PROVEN", describing=proof.report)
+    contains(proof.report, "did not work here", describing=proof.report)
+    truth(
+        "NOT SERVED" not in proof.report.partition("\n")[0],
+        describing="the two outcomes to be told apart",
+    )
 
 
 def test_an_artifact_reporting_another_version_does_not_pass(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """Installing is not enough: what the program says it is has to be what was proven."""
     registries.serve("0.6.0", reported="0.1.0")
 
-    outcome, report, status = proving("pypi:printobserver-cli")
+    proof = proving("pypi:printobserver-cli")
 
-    equal(outcome, Outcome.NOT_PROVEN, describing="the proof of a mislabelled artifact")
-    equal(status, 1, describing="the exit it answers with")
-    contains(report, "not the version under test", describing=report)
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing="the proof of a mislabelled artifact")
+    equal(proof.exit_status, 1, describing="the exit it answers with")
+    contains(proof.report, "not the version under test", describing=proof.report)
 
 
 def test_the_version_a_caller_names_is_the_one_proven(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """A named version is taken rather than whatever the registry serves newest."""
     registries.serve("0.7.0")
     registries.serve("0.8.0")
 
-    outcome, report, _ = proving("npm:printobserver-cli", "0.7.0")
+    proof = proving("npm:printobserver-cli", "0.7.0")
 
-    equal(outcome, Outcome.PROVEN, describing="the proof of the named version")
-    contains(report, "printobserver 0.7.0", describing=report)
-    contains(report, "named by the caller", describing=report)
+    equal(proof.outcome, Outcome.PROVEN, describing="the proof of the named version")
+    contains(proof.report, "printobserver 0.7.0", describing=proof.report)
+    contains(proof.report, "named by the caller", describing=proof.report)
 
 
 def test_the_release_a_run_is_keyed_on_is_taken_from_the_forge(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """`release` takes the newest release the forge published, and not the newest served.
 
@@ -181,47 +188,54 @@ def test_the_release_a_run_is_keyed_on_is_taken_from_the_forge(
     registries.serve("0.9.0")
     registries.serve(UNSERVED, listed=False)
 
-    outcome, report, _ = proving("pypi:printobserver-cli", RELEASE)
+    proof = proving("pypi:printobserver-cli", RELEASE)
 
-    equal(outcome, Outcome.PROVEN, describing="the proof of the released version")
-    contains(report, "printobserver 0.9.0", describing=report)
-    contains(report, "the newest release the forge published", describing=report)
+    equal(proof.outcome, Outcome.PROVEN, describing="the proof of the released version")
+    contains(proof.report, "printobserver 0.9.0", describing=proof.report)
+    contains(proof.report, "the newest release the forge published", describing=proof.report)
 
 
 def test_a_release_no_registry_serves_is_an_observable_failure(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """The release-time proof cannot conceal a release nothing published for."""
     registries.serve("0.9.0")
     registries.release(f"v{UNSERVED}")
 
-    outcome, report, status = proving("pypi:printobserver-cli", RELEASE)
+    proof = proving("pypi:printobserver-cli", RELEASE)
 
-    equal(outcome, Outcome.NOT_SERVED, describing="the proof of an unpublished release")
-    equal(status, 3, describing="the exit it answers with")
-    contains(report, UNSERVED, describing=report)
+    equal(proof.outcome, Outcome.NOT_SERVED, describing="the proof of an unpublished release")
+    equal(proof.exit_status, 3, describing="the exit it answers with")
+    contains(proof.report, UNSERVED, describing=proof.report)
 
 
 def test_a_forge_listing_no_release_selects_nothing(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """A run keyed on a release, before there is one, is refused rather than guessed."""
-    outcome, report, _ = proving("npm:printobserver-cli", RELEASE)
+    proof = proving("npm:printobserver-cli", RELEASE)
 
-    equal(outcome, Outcome.NOT_SERVED, describing="the proof with no release to key on")
-    contains(report, "it lists none", describing=report)
+    equal(proof.outcome, Outcome.NOT_SERVED, describing="the proof with no release to key on")
+    contains(proof.report, "it lists none", describing=proof.report)
 
 
 def test_the_stated_command_of_the_route_is_what_the_report_names(
-    registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    registries: Registries, proving: Callable[..., Proof]
 ) -> None:
-    """The install-path section is the source of the route, including in a proof of it."""
+    """The install-path section is the source of the route, including in a proof of it.
+
+    A pass names the command that did the installing, and a failure names the
+    route it belongs to as well — because what a reader of a failure needs is
+    everything this run knew, and what a reader of a pass needs is the answer.
+    """
     registries.serve("0.4.0")
 
-    _, report, _ = proving("pypi:printobserver-cli")
+    passed = proving("pypi:printobserver-cli").report
+    refused = proving("pypi:printobserver-cli", UNSERVED).report
 
-    contains(report, "pip install printobserver-cli", describing=report)
-    contains(report, "Route 1", describing=report)
+    contains(passed, "`pip install printobserver-cli` installed", describing=passed)
+    contains(refused, "pip install printobserver-cli", describing=refused)
+    contains(refused, "Route 1", describing=refused)
 
 
 def test_the_real_registries_are_where_a_run_with_no_stand_in_reads(repo: Repo) -> None:
@@ -329,10 +343,10 @@ def test_the_stand_in_answers_nothing_for_a_path_it_does_not_serve(
     registries: Registries,
 ) -> None:
     """A registry serving no such name answers as a registry does, and not with bytes."""
-    status, _, body = registries.answer("/npm/no-such-package")
+    answer = registries.answer("/npm/no-such-package")
 
-    equal(status, 404, describing="what a name nothing is published under answers")
-    contains(body.decode(), "not served here", describing="what it said")
+    equal(answer.status, 404, describing="what a name nothing is published under answers")
+    contains(answer.body.decode(), "not served here", describing="what it said")
 
 
 def test_the_recipe_this_tier_runs_reports_the_outcome_as_its_exit(
@@ -449,7 +463,7 @@ def test_the_stand_in_registries_are_started_by_their_own_command(
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_an_artifact_that_installs_and_leaves_no_program_does_not_pass(
-    identifier: str, registries: Registries, proving: Callable[..., tuple[Outcome, str, int]]
+    identifier: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
     """The other way a published artifact is broken: nothing on the path at all.
 
@@ -459,11 +473,11 @@ def test_an_artifact_that_installs_and_leaves_no_program_does_not_pass(
     """
     registries.serve("0.4.3", carries_program=False)
 
-    outcome, report, status = proving(identifier)
+    proof = proving(identifier)
 
-    equal(outcome, Outcome.NOT_PROVEN, describing=f"the proof of `{identifier}`")
-    equal(status, 1, describing="the exit an artifact leaving no program answers with")
-    contains(report, "SERVED AND NOT PROVEN", describing=report)
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 1, describing="the exit an artifact leaving no program answers with")
+    contains(proof.report, "SERVED AND NOT PROVEN", describing=proof.report)
 
 
 def test_a_registry_refusing_the_read_is_a_stop_naming_it(
@@ -505,3 +519,132 @@ def test_a_tree_declaring_no_repository_cannot_say_where_its_releases_are(
         Bases.read(Repo(tmp_path), {})
 
     contains(str(refused.value), "repository.owner", describing="what it said")
+
+
+def test_a_registry_answering_a_shape_its_protocol_does_not_serve_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """A malformed metadata document is not a registry serving nothing.
+
+    Read past, it would come back as `NOT SERVED` — which sends a reader to
+    repair a publish that happened, and is the one confusion this proof exists
+    to remove.
+    """
+    registries.serve("0.4.0")
+    registries.answers(f"{PYPI_PREFIX}/pypi/printobserver-cli/json", b'{"releases": "all of them"}')
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "pypi:printobserver-cli"))
+
+    contains(str(refused.value), "not the mapping of versions", describing="what it said")
+
+
+def test_a_registry_answering_something_other_than_a_document_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """A body that is JSON and is not that registry's own document is refused."""
+    registries.answers(f"{NPM_PREFIX}/printobserver-cli", b"[1, 2, 3]")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "npm:printobserver-cli"))
+
+    contains(str(refused.value), "metadata document", describing="what it said")
+
+
+def test_a_release_listing_carrying_something_that_is_not_a_release_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """Dropped silently, the newest release could be the one that went missing."""
+    registries.answers(FORGE_PREFIX, b'[{"tag_name": "v0.4.0"}, {"name": "no tag at all"}]')
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        released(bases)
+
+    contains(str(refused.value), "not a release with a tag", describing="what it said")
+
+
+def test_the_stand_in_refuses_a_version_that_is_not_one_to_serve(
+    repo: Repo, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Everything a caller names here reaches a manifest, a file name and a path."""
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+
+    equal(
+        main(
+            [
+                "standin",
+                "--serves",
+                "../../etc",
+                "--into",
+                str(tmp_path / "refused"),
+                "--root",
+                str(repo.root),
+            ]
+        ),
+        1,
+        describing="the exit a version nothing can serve answers with",
+    )
+
+    contains(capsys.readouterr().err, "is not a version to serve", describing="what it said")
+
+
+def test_the_stand_in_refuses_a_mislabelling_that_names_one_version(
+    repo: Repo, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--mislabelled` names the version served and the one the program reports."""
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+
+    equal(
+        main(
+            [
+                "standin",
+                "--mislabelled",
+                "0.1.0",
+                "--into",
+                str(tmp_path / "refused-pair"),
+                "--root",
+                str(repo.root),
+            ]
+        ),
+        1,
+        describing="the exit a mislabelling naming one version answers with",
+    )
+
+    contains(capsys.readouterr().err, "names no reported version", describing="what it said")
+
+
+def test_a_failing_proof_reports_where_a_reader_of_a_failure_looks(
+    repo: Repo,
+    registries: Registries,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pass goes to standard output, and the two failures to standard error."""
+    registries.serve("0.4.0")
+    monkeypatch.setenv(PRINTOBSERVER_PROOF_REGISTRIES, registries.base)
+    monkeypatch.setenv(PRINTOBSERVER_PROOF_VERSION, UNSERVED)
+
+    equal(
+        main(
+            [
+                "prove",
+                "--registry",
+                "--target",
+                "npm:printobserver-cli",
+                "--into",
+                str(tmp_path / "cli-not-served"),
+                "--root",
+                str(repo.root),
+            ]
+        ),
+        3,
+        describing="the exit a version nothing serves answers with",
+    )
+
+    said = capsys.readouterr()
+    contains(said.err, "NOT SERVED", describing="what a reader of a failure is shown")
+    equal(said.out, "", describing="what a failing proof writes to standard output")

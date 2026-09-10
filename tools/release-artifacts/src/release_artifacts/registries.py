@@ -239,28 +239,50 @@ def _answered(url: str) -> object:
         raise RegistryError(msg) from unreadable
 
 
+def _versions(url: str, field: str) -> list[str]:
+    """The versions one registry's own metadata document lists under `field`.
+
+    Refused rather than read past where the body is not the shape that
+    registry's protocol declares. A malformed answer read as an empty mapping
+    would come back as `NOT SERVED`, which sends a reader to repair a publish
+    that happened — the one confusion this whole proof exists to remove.
+
+    Raises:
+        RegistryError: If the registry could not be asked, or answered
+            something other than a document with that mapping in it.
+    """
+    answer = _answered(url)
+    if answer is None:
+        return []
+    if not isinstance(answer, dict):
+        msg = f"{url} answered something other than the metadata document its protocol serves"
+        raise RegistryError(msg)
+    listed = answer.get(field, {})
+    if not isinstance(listed, dict):
+        msg = f"{url} answered a `{field}` that is not the mapping of versions its protocol serves"
+        raise RegistryError(msg)
+    return [str(version) for version in listed]
+
+
 def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
     """Every version the registry serving one target serves, newest last.
 
     Raises:
-        RegistryError: If the registry could not be asked, or nothing here
-            knows how to ask the one that serves this target.
+        RegistryError: If the registry could not be asked, answered something
+            other than its own protocol, or is one nothing here knows how to
+            ask.
     """
     match target.registry:
         case "pypi":
-            answer = _answered(f"{bases.pypi}/pypi/{target.name}/json")
-            found = answer.get("releases", {}) if isinstance(answer, dict) else {}
-            versions = list(found) if isinstance(found, dict) else []
+            versions = _versions(f"{bases.pypi}/pypi/{target.name}/json", "releases")
         case "npm":
-            answer = _answered(f"{bases.npm}/{target.name}")
-            found = answer.get("versions", {}) if isinstance(answer, dict) else {}
-            versions = list(found) if isinstance(found, dict) else []
+            versions = _versions(f"{bases.npm}/{target.name}", "versions")
         case "release":
             versions = [tag.removeprefix("v") for tag in released(bases)]
         case _:
             msg = f"nothing here knows how to ask what serves `{target.id}`"
             raise RegistryError(msg)
-    return tuple(sorted({str(version) for version in versions}, key=ordered))
+    return tuple(sorted(set(versions), key=ordered))
 
 
 def released(bases: Bases) -> tuple[str, ...]:
@@ -278,8 +300,13 @@ def released(bases: Bases) -> tuple[str, ...]:
         raise RegistryError(msg)
     tags: set[str] = set()
     for entry in answer:
-        if isinstance(entry, dict) and isinstance(entry.get("tag_name"), str):
-            tags.add(entry["tag_name"])
+        # Dropped silently, this is a release the proof would go on to say
+        # nothing about — and where the dropped one was the newest, a
+        # release-time run would prove the one before it.
+        if not isinstance(entry, dict) or not isinstance(entry.get("tag_name"), str):
+            msg = f"{bases.listing} lists {entry!r}, which is not a release with a tag"
+            raise RegistryError(msg)
+        tags.add(entry["tag_name"])
     return tuple(sorted(tags, key=ordered))
 
 
@@ -502,6 +529,10 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
             ),
         )
     reached = [name for name in TOOLCHAIN if shutil.which(name, path=without_rust()["PATH"])]
+    # A pass is two lines. Everything a reader of a pass needs is which version
+    # was proven, where that version came from, what installed it and what the
+    # program said — and everything else this run knows is what a reader of a
+    # FAILURE needs, which is why the two are not the same report.
     return Proof(
         target.id,
         Outcome.PROVEN,
@@ -509,11 +540,10 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
             target,
             Outcome.PROVEN,
             [
-                *preamble,
-                f"installed: {installed}",
-                f"reported: {version}",
-                TOOLCHAIN_REPORT.format(", ".join(reached) or "none"),
+                f"`{stated or target.id}` installed {version} — "
+                f"{TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}"
             ],
+            summary=f"{selected.version} ({selected.whence})",
         ),
     )
 
@@ -543,9 +573,10 @@ def _refused(
     )
 
 
-def _rendered(target: targets.Target, outcome: Outcome, lines: list[str]) -> str:
+def _rendered(target: targets.Target, outcome: Outcome, lines: list[str], summary: str = "") -> str:
     """One proof's whole answer, as a reader of a run reads it."""
-    return "\n".join([f"{target.id}: {outcome}", *(f"  {line}" for line in lines)])
+    headline = f"{target.id}: {outcome}"
+    return "\n".join([f"{headline} {summary}".rstrip(), *(f"  {line}" for line in lines)])
 
 
 def _stated_command(repo: Repo, target: targets.Target) -> str:
