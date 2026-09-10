@@ -10,6 +10,7 @@ omits a link to one that is, or one of the nine things it owes is gone.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from repo_checks.checks_docs import skill
 from repo_checks.docs import docs_policy
@@ -138,9 +139,12 @@ def test_a_skill_omitting_a_declared_document_is_refused(tree: Callable[[], Tree
     """Everything the skill does not say has to be reachable from it."""
     copy = tree()
     dropped = docs_policy(copy.repo).documents[-1].path
+    # The skill links to it by the path it sits at beside the skill, which is
+    # the path an installed program reproduces.
+    linked = f"reference/{Path(dropped).name}"
     copy.write(
         SKILL,
-        "\n".join(line for line in copy.read(SKILL).splitlines() if f"({dropped})" not in line)
+        "\n".join(line for line in copy.read(SKILL).splitlines() if f"({linked})" not in line)
         + "\n",
     )
 
@@ -196,3 +200,70 @@ def test_a_skill_omitting_any_of_the_nine_things_it_owes_is_refused(
         copy.write(SKILL, _without(copy.read(SKILL), element.marker))
 
         refused(skill(copy.repo), f"carries nothing saying {element.name}")
+
+
+def test_a_skill_link_that_climbs_out_of_its_own_directory_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An installed program can only carry what sits beside the skill it wrote."""
+    copy = tree()
+    copy.append(SKILL, "\n- [Somewhere else](../../../docs/reference/testing.md)\n")
+
+    refused(skill(copy.repo), "which climbs out of the skill's own directory")
+
+
+def test_a_skill_link_to_an_address_rather_than_a_path_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A link off the host is one an agent with no network cannot follow."""
+    copy = tree()
+    copy.append(SKILL, "\n- [Somewhere else](https://example.invalid/testing.md)\n")
+
+    refused(skill(copy.repo), "which is not a path beside the skill")
+
+
+def test_a_declared_document_the_artifact_does_not_bundle_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An install carrying the skill and not what it points at is dead links.
+
+    The skill's links resolve in a checkout whether or not the built artifact
+    carries the documents, so nothing about the skill itself catches this: it
+    shows up in front of an agent on a host with no repository. This is what
+    catches it here instead.
+    """
+    copy = tree()
+    policy = docs_policy(copy.repo)
+    dropped = Path(policy.documents[-1].path).name
+    source = copy.read(policy.bundle_source)
+    copy.write(
+        policy.bundle_source,
+        "\n".join(
+            line
+            for line in source.splitlines()
+            if f"{policy.bundle_directory}/{dropped}" not in line
+        )
+        + "\n",
+    )
+
+    refused(skill(copy.repo), f"bundles no reference document for `{policy.documents[-1].path}`")
+
+
+def test_a_bundled_document_this_repository_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """And a document travelling in the artifact that nothing declares is refused too."""
+    copy = tree()
+    policy = docs_policy(copy.repo)
+    copy.write(f"{policy.bundle_assets}/{policy.bundle_directory}/loose.md", "# Loose\n")
+    added = (
+        '    (\n        "reference/loose.md",\n'
+        '        include_str!("../assets/reference/loose.md"),\n    ),'
+    )
+    copy.edit(
+        policy.bundle_source,
+        "pub const DEFAULT_REFERENCES: [(&str, &str); 7] = [",
+        f"pub const DEFAULT_REFERENCES: [(&str, &str); 8] = [\n{added}",
+    )
+
+    refused(skill(copy.repo), "which this repository declares no reference document for")

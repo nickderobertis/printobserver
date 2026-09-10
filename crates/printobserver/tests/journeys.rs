@@ -65,6 +65,8 @@ mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
 
+use printobserver_server as server_assets;
+
 use world::World;
 
 // journey: every-command-against-a-real-supervisor
@@ -108,4 +110,20 @@ fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
     let world = World::open(world::STOOD_IN);
 
     documented::walk(&world);
+}
+
+// journey: a-supervision-turn-from-the-installed-assets-alone
+/// One supervision turn from what the running server materialized, and nothing
+/// else.
+///
+/// The skill an installed program writes links out for everything it does not
+/// say itself, and the agent that reads it stands in a state directory rather
+/// than in a checkout. This copies what the server wrote into a directory
+/// carrying nothing else, opens every link the skill carries there, and carries
+/// the whole turn out of that copy.
+#[test]
+fn the_installed_assets_carry_one_supervision_turn() {
+    let world = World::open(world::STOOD_IN);
+
+    documenting::the_installed_assets_carry_the_turn(&world);
 }

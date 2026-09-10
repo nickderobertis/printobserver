@@ -65,6 +65,57 @@ pub const DEFAULT_SKILL: &str = include_str!("../assets/printobserver-skill.md")
 /// [`DEFAULT_SKILL`] is here.
 pub const DEFAULT_TURN_PROMPT: &str = include_str!("../assets/turn-prompt.md");
 
+/// Where the reference documents sit, relative to the skill's own directory.
+///
+/// The skill links to them by this path and nothing else, so one relative link
+/// resolves the same way in the checkout — where `assets/reference` is the
+/// repository's own `docs/reference` — and on an installed host, where the
+/// composition root writes them beside the skill it materialized.
+pub const REFERENCE_DIRECTORY: &str = "reference";
+
+/// Every reference document the skill links to, as bytes in the built artifact.
+///
+/// [`DEFAULT_SKILL`] is deliberately short and links out for everything else,
+/// which is a promise an installed program has to keep: a link to a file no
+/// install carries is worse than no link at all. So the documents travel with
+/// the skill, and the composition root writes them beside it — an installed
+/// host has no checkout to read them out of.
+///
+/// Each entry is the path the document is materialized at, relative to the
+/// skill's own directory, and its bytes. `just check-repo` holds this array to
+/// the document set `repo-policy.toml` declares, in both directions, so a
+/// document the skill may link to is one this array carries.
+pub const DEFAULT_REFERENCES: [(&str, &str); 7] = [
+    (
+        "reference/api-and-clients.md",
+        include_str!("../assets/reference/api-and-clients.md"),
+    ),
+    (
+        "reference/architecture.md",
+        include_str!("../assets/reference/architecture.md"),
+    ),
+    (
+        "reference/command-surface.md",
+        include_str!("../assets/reference/command-surface.md"),
+    ),
+    (
+        "reference/common-operations.md",
+        include_str!("../assets/reference/common-operations.md"),
+    ),
+    (
+        "reference/intervention-policy.md",
+        include_str!("../assets/reference/intervention-policy.md"),
+    ),
+    (
+        "reference/schemas.md",
+        include_str!("../assets/reference/schemas.md"),
+    ),
+    (
+        "reference/testing.md",
+        include_str!("../assets/reference/testing.md"),
+    ),
+];
+
 pub use config::{
     AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
     RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,

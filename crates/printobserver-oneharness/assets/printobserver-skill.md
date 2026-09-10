@@ -15,8 +15,8 @@ yours to build on.
 ## The normal workflow
 
 Five steps, in this order, every turn. The commands are in
-[the command surface](docs/reference/command-surface.md), and
-[common operations](docs/reference/common-operations.md) shows a worked example
+[the command surface](reference/command-surface.md), and
+[common operations](reference/common-operations.md) shows a worked example
 of each one you can follow as it is written.
 
 1. **Read the context.** One read gives you the whole picture: the printer, the
@@ -38,7 +38,7 @@ of each one you can follow as it is written.
    somebody reading the record afterwards can act on, and, when the change is
    meant to be temporary, with the time it should stand for. Every adjustment
    goes through the same policy an operator's does, and
-   [the intervention policy](docs/reference/intervention-policy.md) is where the
+   [the intervention policy](reference/intervention-policy.md) is where the
    bounds, the rejections and what happens when a bounded change expires are
    written down. If nothing should change, do not ask for anything.
 5. **Record what you saw.** Acknowledge the failure event you were handed, with
@@ -79,17 +79,17 @@ have decided needs a person.
 
 ## Where everything else is
 
-- [The command surface](docs/reference/command-surface.md) — every command, its
+- [The command surface](reference/command-surface.md) — every command, its
   arguments, its output and how it fails.
-- [Common operations](docs/reference/common-operations.md) — a worked example of
+- [Common operations](reference/common-operations.md) — a worked example of
   each one.
-- [The intervention policy](docs/reference/intervention-policy.md) — where
+- [The intervention policy](reference/intervention-policy.md) — where
   bounds come from, what a rejection carries, and what expiry does.
-- [The API and the clients](docs/reference/api-and-clients.md) — the same
+- [The API and the clients](reference/api-and-clients.md) — the same
   surface over HTTP, for a program rather than a command line.
-- [The schemas](docs/reference/schemas.md) — the exact shape of everything this
+- [The schemas](reference/schemas.md) — the exact shape of everything this
   system answers.
-- [The architecture](docs/reference/architecture.md) — what each part owns and
+- [The architecture](reference/architecture.md) — what each part owns and
   why you reach this system the way an operator does.
-- [Testing](docs/reference/testing.md) — what this repository proves about
+- [Testing](reference/testing.md) — what this repository proves about
   itself, and when.

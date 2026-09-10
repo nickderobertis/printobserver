@@ -38,6 +38,9 @@ POLICY_NAMES = (
     "journey_block",
     "journey_marker",
     "example_fence",
+    "bundle_source",
+    "bundle_assets",
+    "bundle_directory",
 )
 
 #: The declarations of `[docs]` read as whole numbers.
@@ -86,6 +89,12 @@ class DocsPolicy:
     journey_marker: str
     #: The fence a runnable example is written in.
     example_fence: str
+    #: The source that carries the reference documents into the artifact.
+    bundle_source: str
+    #: The directory that source reads them out of.
+    bundle_assets: str
+    #: The directory the skill links to them under, beside itself.
+    bundle_directory: str
     #: The nine things the skill owes.
     elements: tuple[SkillElement, ...]
     #: Every reference document, in the order they are declared.
@@ -148,6 +157,9 @@ def docs_policy(repo: Repo) -> DocsPolicy:
         journey_block=named["journey_block"],
         journey_marker=named["journey_marker"],
         example_fence=named["example_fence"],
+        bundle_source=named["bundle_source"],
+        bundle_assets=named["bundle_assets"],
+        bundle_directory=named["bundle_directory"],
         elements=tuple(elements),
         documents=tuple(documents),
     )

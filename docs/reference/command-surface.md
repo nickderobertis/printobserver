@@ -7,8 +7,10 @@ and the commands — each with its arguments, its output and its failures.
 Nothing here is a list somebody maintains. The set of commands is one per
 operation the server serves, and each command's options are that operation's own
 declared request — for an action, the fields the contracts' action vocabulary
-declares for that variant. `docs/reference/surface.json` is that declaration,
-written out by the program itself, and the check behind this document reads it.
+declares for that variant. The program writes that declaration out as
+`surface.json` in this repository's own `docs/reference`, and the check behind
+this document reads it there — it is a repository artifact rather than something
+an installed copy of these documents carries.
 
 ## What a command is made of
 

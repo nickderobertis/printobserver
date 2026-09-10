@@ -486,3 +486,65 @@ pub fn refuses_documentation_that_has_drifted() {
         "an example this check cannot run was not refused: {findings:?}"
     );
 }
+
+/// The directory the server materializes the agent's own assets into.
+const ASSETS: &str = "assets";
+
+/// Copy one directory tree into another, recursively.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("the scratch tree is writable");
+    for entry in std::fs::read_dir(from).expect("the assets directory is readable") {
+        let path = entry.expect("a readable directory entry").path();
+        let target = to.join(path.file_name().expect("a file name"));
+        if path.is_dir() {
+            copy_tree(&path, &target);
+        } else {
+            std::fs::copy(&path, &target).expect("an asset is copyable");
+        }
+    }
+}
+
+/// One supervision turn from the assets an installed program wrote, alone.
+///
+/// # What this is about
+///
+/// The skill links out for everything it does not say itself, and until the
+/// composition root wrote the documents beside it those links resolved in a
+/// checkout and nowhere else — which is the one place the supervising agent
+/// never is. An installed host has the state directory the server created and
+/// no repository at all.
+///
+/// So this takes what the running server materialized, copies it into a
+/// directory of its own carrying **nothing else** — no `repo-policy.toml`, no
+/// `docs`, no checkout to fall back to — and carries the whole turn out of that
+/// copy. Every link the skill carries is opened there first, so a document the
+/// artifact does not bundle fails here by name rather than in front of an agent.
+pub fn the_installed_assets_carry_the_turn(world: &World) {
+    let installed = world.root.path().join("state").join(ASSETS);
+    let alone = tempfile::TempDir::new().expect("a scratch tree");
+    copy_tree(&installed, alone.path());
+
+    let skill = alone.path().join(crate::server_assets::SKILL_FILE);
+    assert!(
+        skill.is_file(),
+        "the server materialized no skill at {}",
+        skill.display()
+    );
+    let text = std::fs::read_to_string(&skill).expect("the materialized skill is readable");
+    let links = crate::documented::links_in(&text);
+    assert!(!links.is_empty(), "the materialized skill links to nothing");
+    for target in &links {
+        let at = alone.path().join(target);
+        assert!(
+            at.is_file(),
+            "the skill an installed program wrote links to `{target}`, and the assets it \
+             wrote beside it carry no such file. An install that carried the skill and not \
+             what it points at hands the agent a dead link."
+        );
+    }
+
+    crate::documented::turn(world, &crate::documented::Documentation::beside(&skill))
+        .unwrap_or_else(|why| {
+            panic!("the assets an installed program wrote do not carry a turn: {why}")
+        });
+}

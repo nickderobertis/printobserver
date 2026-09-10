@@ -89,7 +89,7 @@ struct Step {
 /// The skill and nothing but the documents it links to: a document this
 /// repository ships and the skill does not link to is one the reader never
 /// reaches, so it is not read here either.
-struct Documentation {
+pub struct Documentation {
     /// The skill's own text.
     skill: String,
     /// Every document the skill links to, by the path it links to it at.
@@ -104,8 +104,29 @@ fn repo_root() -> PathBuf {
 }
 
 impl Documentation {
-    /// Read the skill of one tree, and every document it links to.
-    fn read(root: &Path) -> Self {
+    /// Read one skill and every document it links to, from beside it.
+    ///
+    /// Links are resolved against the skill's **own directory** rather than
+    /// against a tree root, because that is the anchor an install reproduces:
+    /// the server writes the reference documents beside the skill it
+    /// materialized and stands the agent in that directory. So this reads a
+    /// checkout and a state directory the same way, which is what lets the same
+    /// walk run over both.
+    pub fn beside(skill_path: &Path) -> Self {
+        let beside = skill_path.parent().expect("the skill sits in a directory");
+        let skill = std::fs::read_to_string(skill_path)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", skill_path.display()));
+        let mut linked = BTreeMap::new();
+        for target in links_in(&skill) {
+            if let Ok(body) = std::fs::read_to_string(beside.join(&target)) {
+                linked.insert(target, body);
+            }
+        }
+        Self { skill, linked }
+    }
+
+    /// The skill of one checkout, found the way the policy declares it.
+    pub fn in_tree(root: &Path) -> Self {
         let text =
             std::fs::read_to_string(root.join("repo-policy.toml")).expect("the policy is readable");
         let policy: toml::Value =
@@ -113,14 +134,7 @@ impl Documentation {
         let skill_path = policy["docs"]["skill"]
             .as_str()
             .expect("the policy names the skill");
-        let skill = std::fs::read_to_string(root.join(skill_path)).expect("the skill is readable");
-        let mut linked = BTreeMap::new();
-        for target in links_in(&skill) {
-            if let Ok(body) = std::fs::read_to_string(root.join(&target)) {
-                linked.insert(target, body);
-            }
-        }
-        Self { skill, linked }
+        Self::beside(&root.join(skill_path))
     }
 
     /// The paragraph of the skill one numbered workflow step is written in.
@@ -258,7 +272,7 @@ fn opens_a_step(line: &str) -> bool {
 }
 
 /// Every markdown link target one document carries.
-fn links_in(text: &str) -> Vec<String> {
+pub fn links_in(text: &str) -> Vec<String> {
     let mut found = Vec::new();
     let mut rest = text;
     while let Some(open) = rest.find("](") {
@@ -496,8 +510,7 @@ fn unreachable(element: &str, why: &str) -> String {
 // Why: `suppressions.toml`, which is where this repository keeps the reason
 // for every suppression standing in the tree.
 #[expect(clippy::too_many_lines)]
-pub fn turn(world: &World, root: &Path) -> Result<(), String> {
-    let documentation = Documentation::read(root);
+pub fn turn(world: &World, documentation: &Documentation) -> Result<(), String> {
     let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]);
 
     // 1. Read the context.
@@ -857,7 +870,7 @@ pub fn turn(world: &World, root: &Path) -> Result<(), String> {
     );
     reads_back(
         world,
-        &documentation,
+        documentation,
         OBSERVATION_REASON,
         "the observation record",
     )?;
@@ -894,7 +907,7 @@ pub fn turn(world: &World, root: &Path) -> Result<(), String> {
     );
     reads_back(
         world,
-        &documentation,
+        documentation,
         ESCALATION_REASON,
         "the escalation path",
     )?;
@@ -1027,10 +1040,24 @@ impl Copied {
             .as_str()
             .expect("the policy names the skill")
             .to_owned();
+        // The skill at the path the policy names, and every document it links
+        // to beside it — which is the shape an install has, so a copy carrying
+        // one defect is a copy of what the agent is actually handed.
+        let beside = PathBuf::from(&skill)
+            .parent()
+            .expect("the skill sits in a directory")
+            .to_owned();
+        let skill_text = std::fs::read_to_string(from.join(&skill)).expect("the skill is readable");
         let mut documents = Vec::new();
-        for path in core::iter::once(skill.clone()).chain(links_in(
-            &std::fs::read_to_string(from.join(&skill)).expect("the skill is readable"),
-        )) {
+        for path in
+            core::iter::once(skill.clone()).chain(links_in(&skill_text).into_iter().map(|target| {
+                beside
+                    .join(target)
+                    .to_str()
+                    .expect("a path this repository wrote")
+                    .to_owned()
+            }))
+        {
             let Ok(body) = std::fs::read_to_string(from.join(&path)) else {
                 continue;
             };
@@ -1176,7 +1203,7 @@ pub fn walk(world: &World) {
     // which is what freshening is. Everything after this is the reader's.
     world.wants(Reports::Printing);
     world.freshen_the_image();
-    turn(world, &repo_root())
+    turn(world, &Documentation::in_tree(&repo_root()))
         .unwrap_or_else(|why| panic!("the committed documentation does not carry a turn: {why}"));
 
     for removal in removals() {
@@ -1184,7 +1211,7 @@ pub fn walk(world: &World) {
         (removal.breaking)(&copy);
         world.wants(Reports::Printing);
         world.freshen_the_image();
-        let outcome = turn(world, copy.root.path());
+        let outcome = turn(world, &Documentation::in_tree(copy.root.path()));
         let said = outcome.expect_err(&format!(
             "the turn was carried out with {} removed from the skill and from every \
              document it links to",

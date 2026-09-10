@@ -332,6 +332,21 @@ surface_manifest = "docs/reference/surface.json"
 schema_document = "docs/reference/schemas.md"
 schema_directory = "schemas"
 
+# What carries the reference documents into the built artifact, and the
+# directory the skill links to them under.
+#
+# The skill links out for everything it does not say itself, and an install that
+# carried the skill and none of what it points at would hand the agent dead
+# links. So the documents are `include_str!`-ed into the adapter that ships the
+# skill and written beside it on an installed host. `just check-repo` holds that
+# array to the documents declared below, in both directions, resolving both
+# sides on the filesystem — `crates/printobserver-oneharness/assets/reference`
+# is this repository's own `docs/reference`, so a document is bundled by being
+# the document rather than by being spelled the same way.
+bundle_source = "crates/printobserver-oneharness/src/lib.rs"
+bundle_assets = "crates/printobserver-oneharness/assets"
+bundle_directory = "reference"
+
 # The block of `AGENTS.md` carrying the journey inventory, and the marker a
 # journey test carries on the line above it. `just check-repo` refuses a marked
 # journey the block does not name and a name the tree carries no journey for.

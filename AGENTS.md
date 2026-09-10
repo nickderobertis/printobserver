@@ -227,6 +227,21 @@ what it may not carry: `docs.skill_element` names the nine passages it must have
 in its own text — the role, the boundaries, the statement that no path sends a
 command to the printer, the escalation path, and each of the five workflow steps.
 
+**The skill's links have to survive being installed.** The skill is deliberately
+short and links out for everything else, and the agent that reads it stands in a
+state directory on a machine with no checkout — so a link that resolved only in
+this repository would be a dead link everywhere it is actually read. Three things
+hold that together, and `just check-repo` enforces all three. The documents are
+`include_str!`-ed into `printobserver-oneharness` beside the skill, which is what
+`crates/printobserver-oneharness/assets/reference` — a symlink to
+`docs/reference`, so there is one copy — is for. `agent_for` writes them into the
+assets directory beside the skill it materialized, and stands the harness in that
+directory. And the skill links to them by a plain relative path under
+`reference/`, so the same link resolves from the skill's own location and from
+where the agent is standing, in the checkout and on the installed host alike. A
+link that climbs out of that directory, or names an address rather than a path,
+is refused where it is written.
+
 **Three artifacts are generated, and none is edited by hand.** `just
 docs-generate` writes all three and `just check-repo` refuses a tree in which any
 has drifted:
@@ -259,6 +274,13 @@ provisions. Its falsifying half is what makes that self-limitation load-bearing:
 the same walk runs over six copies of the documentation, each with one element of
 the turn removed from the skill *and* from every document it links to, and each
 has to fail at that step naming what it could not reach.
+
+The same walk runs once more over what a **running server materialized**: the
+assets directory it wrote, copied somewhere carrying nothing else — no policy, no
+`docs`, no checkout to fall back on. Every link the installed skill carries is
+opened there first. That is the tier that would have caught the arrangement this
+replaced, where the documents existed only in the repository and the agent was
+stood in a directory none of them was in.
 
 ## Supported platforms
 
@@ -698,6 +720,9 @@ journeys. Marking one is a deliberate line in the same change that adds it.
   committed skill and follows only what it and the documents it links to
   provide carries one supervision turn out end to end, against a real server
   backed by a real `OctoPrint`.
+- `a-supervision-turn-from-the-installed-assets-alone` — the same turn out of
+  what a running server materialized into a fresh state directory and nothing
+  else, with every link the installed skill carries opened there first.
 - `documented-examples-print-what-they-show` — every command example in every
   reference document, run exactly as written against a real server, printing
   exactly what the document shows beside it.

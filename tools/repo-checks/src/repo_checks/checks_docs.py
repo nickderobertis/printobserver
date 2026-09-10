@@ -32,7 +32,7 @@ import json
 import re
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from repo_checks.docs import (
@@ -80,6 +80,9 @@ COMMAND_ENTRY_LABELS = ("**Output.**", "**Failures.**")
 
 #: The shape a document writes a test function's name in.
 TEST_NAME = re.compile(r"^[a-z][a-z0-9_]{19,}$")
+
+#: How the source that ships the skill names an asset it carries into the artifact.
+BUNDLED = re.compile(r'include_str!\("\.\./assets/([^"]+)"\)')
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +180,7 @@ def skill(repo: Repo) -> list[str]:
 
     findings.extend(_reference_material(repo, policy, text))
     findings.extend(_skill_links(repo, policy, text))
+    findings.extend(_bundled_references(repo, policy))
     # Markers are matched over whitespace-normalized text, so a passage that
     # wraps at a different column is the same passage. What removing the passage
     # removes is the marker, which is what this is about.
@@ -240,18 +244,77 @@ def _reference_material(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
 
 
 def _skill_links(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
-    """The skill links to every declared document, and to nothing that is absent."""
+    """The skill links to every declared document, by a path an install can keep.
+
+    Links are resolved **relative to the skill's own file** rather than to the
+    repository root, because that is the anchor an installed program can
+    reproduce: the composition root writes the reference documents beside the
+    skill it materialized, and runs the agent with that directory as its working
+    directory. A link that escaped that directory would resolve in a checkout and
+    nowhere else, so one is refused here rather than discovered by an agent.
+    """
+    beside = repo.path(policy.skill).parent
     targets = links_of(text)
-    findings = [
-        f"`{policy.skill}` links to `{target}`, and there is no such document"
-        for target in sorted(set(targets))
-        if not repo.exists(target)
-    ]
+    findings: list[str] = []
+    reached: set[Path] = set()
+    for target in sorted(set(targets)):
+        if target.startswith(("/", "#")) or "://" in target:
+            findings.append(
+                f"`{policy.skill}` links to `{target}`, which is not a path beside the "
+                f"skill. An installed program materializes the documents beside the "
+                f"skill it wrote, so a link it cannot reproduce is a dead link there."
+            )
+            continue
+        if ".." in PurePosixPath(target).parts:
+            findings.append(
+                f"`{policy.skill}` links to `{target}`, which climbs out of the skill's "
+                f"own directory. An installed program can only carry what sits beside "
+                f"the skill it materialized."
+            )
+            continue
+        resolved = (beside / target).resolve()
+        if not resolved.exists():
+            findings.append(f"`{policy.skill}` links to `{target}`, and there is no such document")
+            continue
+        reached.add(resolved)
     findings.extend(
         f"`{policy.skill}` links to no declared reference document `{document.path}`. "
         f"Everything the skill does not say itself has to be reachable from it."
         for document in policy.documents
-        if document.path not in targets
+        if repo.path(document.path).resolve() not in reached
+    )
+    return findings
+
+
+def _bundled_references(repo: Repo, policy: DocsPolicy) -> list[str]:
+    """The built artifact carries every document the skill is allowed to link to.
+
+    Read off the `include_str!` calls of the source that ships the skill and
+    compared with the declared documents **on the filesystem**, so a document is
+    bundled by being that document rather than by being spelled the same way.
+    """
+    if not repo.exists(policy.bundle_source):
+        return [
+            f"the source that bundles the reference documents, `{policy.bundle_source}`, is absent"
+        ]
+    beside = repo.path(policy.bundle_assets)
+    carried = {
+        (beside / captured).resolve()
+        for captured in BUNDLED.findall(repo.read(policy.bundle_source))
+        if captured.startswith(f"{policy.bundle_directory}/")
+    }
+    declared = {repo.path(document.path).resolve(): document.path for document in policy.documents}
+    findings = [
+        f"`{policy.bundle_source}` bundles no reference document for `{path}`. The skill "
+        f"links to it, and an install that carried the skill and not the document would "
+        f"hand the agent a dead link."
+        for resolved, path in sorted(declared.items(), key=lambda entry: entry[1])
+        if resolved not in carried
+    ]
+    findings.extend(
+        f"`{policy.bundle_source}` bundles `{resolved}`, which this repository declares no "
+        f"reference document for"
+        for resolved in sorted(carried - set(declared))
     )
     return findings
 
