@@ -11,10 +11,13 @@ writers the published artifacts are assembled by.
 What stands in is the **registry**. The program each served package carries is a
 small one of this module's own that says which version it is, because what a
 proof driven against this is about is the resolution, the install and the run
-rather than the program inside. The shape of the published artifacts — the
-per-platform wheel tag, the launcher and the platform package beside it — is
-what `just prove-route-*` proves instead, over artifacts built from the
-committed tree.
+rather than the program inside. The *shape* each registry serves is the
+published one: route 2's launcher and the per-platform packages it resolves
+through are served under two names, because the failure that shape has and no
+other is reachable from a registry alone — a launcher published without the
+package beside it installs clean, since an optional dependency nothing serves
+is one `npm` skips, and leaves a program on the path that cannot run. Nothing
+proving a local build ever resolves anything, so nothing there can see it.
 
 One base address covers all three, because a proof that read one registry from a
 stand-in and another from the real internet would be a proof of neither: the
@@ -31,11 +34,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote
 
 from repo_checks.model import Repo
 
 from release_artifacts import packages, platforms, targets
-from release_artifacts.build import CHECKSUMS, PROGRAM
+from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 
 # The one version ordering. A stand-in that sorted versions its own way could
 # serve a newest the proof selecting from it disagreed about.
@@ -96,7 +100,11 @@ class Registries:
         self.asked: list[str] = []
         self._answers: dict[str, Answer] = {}
         self._wheels: dict[str, str] = {}
-        self._manifests: dict[str, dict[str, object]] = {}
+        #: Every package of the JavaScript registry this serves, by its own
+        #: name and then by version: the launcher and the per-platform
+        #: packages beside it are separate names with separate packuments,
+        #: exactly as the published ones are.
+        self._manifests: dict[str, dict[str, dict[str, object]]] = {}
         self._tags: list[str] = []
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -129,6 +137,7 @@ class Registries:
         broken: bool = False,
         listed: bool = True,
         carries_program: bool = True,
+        platform_package: bool = True,
     ) -> None:
         """Serve one version from every registry, and list its release.
 
@@ -144,6 +153,13 @@ class Registries:
             carries_program: Serve a package that installs and leaves no
                 program on the path at all, which is the other way an artifact
                 a registry serves can be broken.
+            platform_package: Serve the per-platform packages the launcher of
+                route 2 resolves the program through. Serving the launcher
+                without them is a publish that reached one package and not the
+                one beside it — and it is the failure of that route that hides
+                best, because an optional dependency nothing published is one
+                `npm` skips: the install reports success, and what it left on
+                the path cannot run.
         """
         body = BROKEN if broken else STAND_IN.format(PROGRAM=PROGRAM, reported=reported or version)
         program = self.into / f"program-{version}" / PROGRAM
@@ -151,9 +167,10 @@ class Registries:
         program.write_text(body, encoding="utf-8")
         program.chmod(0o755)
 
-        self._serve_wheel(version, program if carries_program else None)
-        self._serve_package(version, program if carries_program else None)
-        self._serve_release(version, program if carries_program else None)
+        carried = program if carries_program else None
+        self._serve_wheel(version, carried)
+        self._serve_package(version, carried, per_platform=platform_package)
+        self._serve_release(version, carried)
         if listed:
             self.release(f"v{version}")
 
@@ -200,9 +217,14 @@ class Registries:
         self._serving.join(timeout=10)
 
     def answer(self, path: str) -> Answer:
-        """What this stand-in answers one read with."""
+        """What this stand-in answers one read with.
+
+        Decoded before it is looked up, because `npm` asks for a scoped
+        package under its name percent-encoded — `@printobserver%2fcli-...` —
+        and what is served is the name itself.
+        """
         self.asked.append(path)
-        found = self._answers.get(path.rstrip("/") or "/")
+        found = self._answers.get(unquote(path).rstrip("/") or "/")
         if found is None:
             return Answer("text/plain", f"{path} is not served here\n".encode(), 404)
         return found
@@ -249,49 +271,94 @@ class Registries:
             content_type="text/html",
         )
 
-    def _serve_package(self, version: str, program: Path | None) -> None:
-        """Assemble a package of the JavaScript registry and serve its packument."""
-        name = self.names["npm"]
-        package = packages.NodePackage(
+    def _serve_package(self, version: str, program: Path | None, *, per_platform: bool) -> None:
+        """Assemble route 2's packages and serve a packument for each name.
+
+        What that route publishes is a **launcher** and one package per
+        supported platform beside it: the launcher carries no program of its
+        own and names those packages as optional dependencies, and the
+        caller's own package manager resolves whichever one their operating
+        system and processor select. A stand-in serving one package with the
+        program in it would serve a shape nothing publishes, and the failure
+        it could then never produce is the one this route hides best — the
+        launcher published and its platform package missing, which installs
+        clean and leaves a program on the path that cannot run.
+        """
+        supported = platforms.supported(self.repo)
+        if program is not None and per_platform:
+            for platform in supported:
+                system, processor = platform.npm
+                carried = packages.Archive()
+                carried.add(
+                    f"{packages.PACKAGE_ROOT}/bin/{PROGRAM}", program.read_bytes(), executable=True
+                )
+                self._publish(
+                    self._package(platform.npm_package, version),
+                    carried,
+                    os=[system],
+                    cpu=[processor],
+                    bin={PROGRAM: f"bin/{PROGRAM}"},
+                    files=["bin"],
+                )
+
+        beside = packages.Archive()
+        declared: dict[str, object] = {
+            "type": "module",
+            "files": ["bin"],
+            # Named whether or not anything serves them: what makes an absent
+            # platform package the quiet failure it is, is that the launcher
+            # goes on declaring one.
+            "optionalDependencies": {platform.npm_package: version for platform in supported},
+        }
+        if program is not None:
+            beside.add(
+                f"{packages.PACKAGE_ROOT}/bin/{PROGRAM}.mjs",
+                self.repo.read(LAUNCHER).encode(),
+                executable=True,
+            )
+            declared["bin"] = {PROGRAM: f"bin/{PROGRAM}.mjs"}
+        self._publish(self._package(self.names["npm"], version), beside, **declared)
+
+    def _package(self, name: str, version: str) -> packages.NodePackage:
+        """What one package of the JavaScript registry says about itself."""
+        return packages.NodePackage(
             name=name,
             version=version,
             description="A stand-in for the command-line distribution.",
             license="MIT",
             repository=self.base,
         )
-        archive = packages.Archive()
-        carried: dict[str, object] = {"files": ["bin"]}
-        if program is not None:
-            archive.add(
-                f"{packages.PACKAGE_ROOT}/bin/{PROGRAM}", program.read_bytes(), executable=True
-            )
-            carried["bin"] = {PROGRAM: f"bin/{PROGRAM}"}
-        manifest = package.manifest(**carried)
+
+    def _publish(
+        self, package: packages.NodePackage, archive: packages.Archive, **declared: object
+    ) -> None:
+        """Serve one package's tarball, and the packument every version of it is in."""
+        manifest = package.manifest(**declared)
         written = packages.packed(package, manifest, archive, self.into / "npm")
         raw = written.read_bytes()
-        tarball = f"{self.base}{NPM_PREFIX}/{name}/-/{written.name}"
         self.answers(
-            f"{NPM_PREFIX}/{name}/-/{written.name}",
+            f"{NPM_PREFIX}/{package.name}/-/{written.name}",
             raw,
             content_type="application/octet-stream",
         )
-        self._manifests[version] = {
+        versions = self._manifests.setdefault(package.name, {})
+        versions[package.version] = {
             **manifest,
             "dist": {
-                "tarball": tarball,
+                "tarball": f"{self.base}{NPM_PREFIX}/{package.name}/-/{written.name}",
                 "shasum": hashlib.sha1(raw).hexdigest(),  # noqa: S324
                 "integrity": "sha512-"
                 + base64.b64encode(hashlib.sha512(raw).digest()).decode("ascii"),
             },
         }
         self.answers(
-            f"{NPM_PREFIX}/{name}",
+            f"{NPM_PREFIX}/{package.name}",
             json.dumps(
                 {
-                    "_id": name,
-                    "name": name,
-                    "dist-tags": {"latest": _newest(self._manifests)},
-                    "versions": self._manifests,
+                    "_id": package.name,
+                    "name": package.name,
+                    "dist-tags": {"latest": _newest(versions)},
+                    "versions": versions,
                 }
             ).encode(),
         )

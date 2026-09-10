@@ -494,6 +494,33 @@ def test_an_artifact_that_installs_and_leaves_no_program_does_not_pass(
     contains(proof.report, "SERVED AND NOT PROVEN", describing=proof.report)
 
 
+def test_a_launcher_whose_platform_package_was_never_published_does_not_pass(
+    registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """Route 2's quietest failure: the launcher served, and the package beside it not.
+
+    The launcher declares one package per supported platform as an optional
+    dependency, and an optional dependency nothing serves is one `npm` skips —
+    so the install **reports success** and what it leaves on the path cannot
+    run. Nothing that proves a local build resolves anything from a registry,
+    which is why this is invisible everywhere but here.
+    """
+    registries.serve("0.4.4", platform_package=False)
+
+    proof = proving("npm:printobserver-cli")
+
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing="the proof of a launcher on its own")
+    equal(
+        proof.exit_status, 1, describing="the exit a served route that does not work answers with"
+    )
+    contains(proof.report, "SERVED AND NOT PROVEN", describing=proof.report)
+    contains(proof.report, "is not installed", describing="what the launcher itself said")
+    truth(
+        "NOT SERVED" not in proof.report.partition("\n")[0],
+        describing="a launcher that was served to be told from one that was not",
+    )
+
+
 def test_a_registry_refusing_the_read_is_a_stop_naming_it(
     repo: Repo, registries: Registries
 ) -> None:
