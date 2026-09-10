@@ -40,6 +40,28 @@ rust = 95
 python = 95
 typescript = 95
 
+[llmlint]
+# The judged-lint tier. Like the two tiers below it declares a `tier` recipe,
+# which is what the documentation check reads every tier outside the gate off —
+# so this tier is inventoried by being declared here rather than by a check
+# knowing its name.
+#
+# It is deliberately NOT one of `gate.tiers`: it is non-deterministic and needs
+# a harness credential, and a gate that could not run without one would stop
+# being the deterministic gate. So it is a continuous-integration job of its
+# own, in the workflow named below, and `just check-repo` refuses a gate job
+# that runs it.
+#
+# `validate` is its deterministic half, which the job runs first so that a
+# config, plugin or suppression slip fails without spending a harness call;
+# `whole_tree` is the same judge over the tree rather than over a diff, which
+# nothing in continuous integration runs.
+tier = "lint-llm-diff"
+validate = "lint-llm-validate"
+whole_tree = "lint-llm"
+setup = "setup-llmlint"
+workflow = "ci.yml"
+
 [suppressions]
 # The ONE way to suppress a diagnostic in this repository. Every suppression
 # directive in the tree needs an entry here naming the rule, the file, the site

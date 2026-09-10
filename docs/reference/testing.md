@@ -5,9 +5,11 @@ that are not in the gate — why they are outside it and what runs them instead.
 This document covers the tiers the gate runs and the tiers outside the gate.
 
 The set of tiers is not written down here. It is `repo-policy.toml`'s
-`gate.tiers` together with the printer and Obico tiers that file declares, and a
-check reads that declaration beside this document: a tier with no entry and an
-entry with no tier are both refused.
+`gate.tiers` together with every other table of that file that declares a `tier`
+recipe, and a check reads that declaration beside this document: a tier with no
+entry and an entry with no tier are both refused. A tier declared there joins
+this document's inventory by being declared, so one nobody thought to write up
+is a failing check rather than a gap.
 
 `just check` is the whole gate, and it is strict in all five senses —
 formatting, linting, type checking and tests each fail the build on an issue,
@@ -37,7 +39,7 @@ all targets, `ty` over the Python projects, and `tsc` over the Node ones.
 Runs every project's tests, recording line coverage as they run. This is where
 the unit tests, the contract tests over the generated schemas, and the journeys
 that drive the real binary against a real server live — everything except the
-two tiers below and the printer's own integration binary.
+three tiers below and the printer's own integration binary.
 
 ### coverage
 
@@ -76,6 +78,36 @@ copies of the tree carrying one defect each and asserts the gate refuses every
 one of them.
 
 ## The tiers outside the gate
+
+### lint-llm-diff
+
+**What it proves.** That this change reads the way this repository asks code to
+read, judged by an LLM against rules a deterministic linter cannot express —
+whether a script's output is signal, whether a contract has one source, whether
+a test drives the real artifact. The rules are not written here either: they
+come from the plugin packs `llmlint.yml` pins by version, and every finding
+carries the rationale behind it. `just lint-llm-diff` judges the merge-base diff
+against `origin/main`, which is the form continuous integration runs;
+`just lint-llm` is the same judge over the whole tree, which nothing in
+continuous integration runs. `just lint-llm-validate` is the tier's
+deterministic half — the config, the pinned plugins and the suppression
+allowlist — and it runs first, so a slip in any of those fails without spending
+a harness call.
+
+**Why it is outside the gate.** Two reasons, and each alone would be enough. It
+is non-deterministic: the same diff can come back with different findings, and a
+tier that does that cannot be the one a developer runs to know whether their
+change is ready. And it needs a harness credential, so a gate that could not run
+without one would stop being the gate that runs anywhere. `just check` therefore
+does not invoke it, and a check refuses a tree in which it does.
+
+**When it runs.** On every change, as a continuous-integration job of its own —
+the `llmlint` job of `.github/workflows/ci.yml`, which fires on every pull
+request and on every push to `main`, and which is a required check. It carries no
+platform matrix: a second cell over a text diff would be a second verdict from a
+non-deterministic judge rather than a second platform. The judge is an agent the
+runner does not otherwise carry, so `just setup-llmlint` installs one before the
+tier runs.
 
 ### test-integration
 

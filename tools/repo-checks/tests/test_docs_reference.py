@@ -171,6 +171,34 @@ def test_a_testing_entry_with_the_wrong_schedule_is_refused(tree: Callable[[], T
     refused(reference(copy.repo), "does not give the schedule the committed configuration")
 
 
+def test_a_testing_document_omitting_the_judged_lint_tier_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The judged tier is in no `gate.tiers`, which is how it went undocumented once."""
+    copy = tree()
+    text = copy.read(TESTING)
+    copy.write(
+        TESTING,
+        text[: text.index("### lint-llm-diff")] + text[text.index("### test-integration") :],
+    )
+
+    refused(reference(copy.repo), "carries no entry for the tier `lint-llm-diff`")
+
+
+def test_a_tier_declared_after_this_document_was_written_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A tier is owed an entry by being declared, rather than by a check knowing its name."""
+    copy = tree()
+    copy.edit(
+        "repo-policy.toml",
+        "\n[llmlint]\n",
+        '\n[smoke]\ntier = "test-smoke"\n\n[llmlint]\n',
+    )
+
+    refused(reference(copy.repo), "carries no entry for the tier `test-smoke`")
+
+
 def test_an_architecture_entry_with_no_crate_behind_it_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

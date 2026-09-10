@@ -554,8 +554,14 @@ def _tier_schedules(repo: Repo) -> tuple[list[str], dict[str, str]]:
     gate = policy_table(repo, "gate")
     tiers = list(policy_string_list(gate, "tiers", "gate"))
     schedules: dict[str, str] = {}
-    for name in ("integration", "obico"):
-        table = policy_table(repo, name)
+    # Every tier outside the gate is a table of `repo-policy.toml` declaring a
+    # `tier` recipe, and they are found by that rather than by being named here.
+    # Naming them was how the judged-lint tier came to be undocumented: it is
+    # neither a gate tier nor one of the two this loop used to ask for, so the
+    # inventory was complete without it and nothing said so.
+    for _, table in sorted(repo.policy.items()):
+        if not isinstance(table, dict):
+            continue
         tier = table.get("tier")
         if not isinstance(tier, str):
             continue
