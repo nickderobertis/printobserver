@@ -30,7 +30,6 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
 
 from repo_checks.docs import (
     DocsPolicy,
@@ -83,17 +82,74 @@ BUNDLED = re.compile(r'include_str!\("\.\./assets/([^"]+)"\)')
 
 
 @dataclass(frozen=True, slots=True)
+class CommandOption:
+    """One CLI spelling and the request field it supplies."""
+
+    option: str
+    field: str
+
+
+@dataclass(frozen=True, slots=True)
+class Command:
+    """The part of a generated command declaration the documentation reads."""
+
+    name: str
+    operation: str | None
+    options: tuple[CommandOption, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Surface:
     """The command surface, read off the artifact the program generates."""
 
-    #: Every command, by the name a caller types.
-    commands: dict[str, dict[str, Any]]
-    #: Every public operation, by the name the server declares it under.
+    commands: dict[str, Command]
     operations: tuple[str, ...]
-    #: Every option every command takes of its own, and the four global ones.
     options: frozenset[str]
-    #: Every value name a request carries.
     fields: frozenset[str]
+
+
+def _name(value: object, where: str) -> str:
+    """Read a required name at the JSON boundary.
+
+    Raises:
+        ValueError: If the value is not a nonempty string.
+    """
+    if not isinstance(value, str) or not value.strip():
+        msg = f"{where} must be a nonempty string"
+        raise ValueError(msg)
+    return value
+
+
+def _command(value: object, where: str) -> Command:
+    """Narrow one manifest command before any documentation rule consumes it.
+
+    Raises:
+        ValueError: If the command or any option has the wrong shape.
+    """
+    if not isinstance(value, dict):
+        msg = f"{where} must be an object"
+        raise ValueError(msg)
+    name = _name(value.get("command"), f"{where}.command")
+    operation = value.get("operation")
+    if operation is not None:
+        operation = _name(operation, f"{where}.operation")
+    options = value.get("options")
+    if not isinstance(options, list):
+        msg = f"{where}.options must be a list"
+        raise ValueError(msg)
+    parsed = []
+    for index, option in enumerate(options):
+        site = f"{where}.options[{index}]"
+        if not isinstance(option, dict):
+            msg = f"{site} must be an object"
+            raise ValueError(msg)
+        parsed.append(
+            CommandOption(
+                option=_name(option.get("option"), f"{site}.option"),
+                field=_name(option.get("field"), f"{site}.field"),
+            )
+        )
+    return Command(name=name, operation=operation, options=tuple(parsed))
 
 
 def _read_surface(repo: Repo, policy: DocsPolicy) -> Surface | str:
@@ -111,19 +167,30 @@ def _read_surface(repo: Repo, policy: DocsPolicy) -> Surface | str:
     entries = document.get("commands") if isinstance(document, dict) else None
     if not isinstance(entries, list) or not entries:
         return f"the generated surface manifest `{policy.surface_manifest}` names no command"
-    commands = {entry["command"]: entry for entry in entries if isinstance(entry, dict)}
-    options = {
-        option["option"] for entry in commands.values() for option in entry.get("options", [])
-    }
-    options.update(document.get("global_options", []))
+    try:
+        commands: dict[str, Command] = {}
+        for index, entry in enumerate(entries):
+            command = _command(entry, f"commands[{index}]")
+            if command.name in commands:
+                msg = f"commands repeats `{command.name}`"
+                raise ValueError(msg)
+            commands[command.name] = command
+        globals_ = document.get("global_options", [])
+        if not isinstance(globals_, list):
+            msg = "global_options must be a list"
+            raise ValueError(msg)
+        options = {
+            _name(option, f"global_options[{index}]") for index, option in enumerate(globals_)
+        }
+    except ValueError as error:
+        return f"the generated surface manifest `{policy.surface_manifest}` is invalid: {error}"
+    options.update(option.option for command in commands.values() for option in command.options)
     return Surface(
         commands=commands,
-        operations=tuple(
-            entry["operation"] for entry in commands.values() if entry.get("operation")
-        ),
+        operations=tuple(command.operation for command in commands.values() if command.operation),
         options=frozenset(options),
         fields=frozenset(
-            option["field"] for entry in commands.values() for option in entry.get("options", [])
+            option.field for command in commands.values() for option in command.options
         ),
     )
 
@@ -139,9 +206,9 @@ def _reference_vocabulary(repo: Repo, policy: DocsPolicy, surface: Surface) -> s
     """
     vocabulary = set(surface.options) | set(surface.fields) | set(surface.commands)
     vocabulary |= {option.lstrip("-") for option in surface.options}
-    for _, _, path in schema_members(repo, policy.schema_directory):
+    for member in schema_members(repo, policy.schema_directory):
         try:
-            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema = json.loads(member.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
         if isinstance(schema, dict) and isinstance(schema.get("properties"), dict):
@@ -430,10 +497,10 @@ def _command_surface(repo: Repo, where: str, text: str, surface: Surface) -> lis
             continue
         body = entry_body(text, name)
         findings.extend(
-            f"`{where}`'s `{name}` entry does not name the argument `{option['option']}`, "
+            f"`{where}`'s `{name}` entry does not name the argument `{option.option}`, "
             f"which that command declares"
-            for option in command.get("options", [])
-            if f"`{option['option']}`" not in body
+            for option in command.options
+            if f"`{option.option}`" not in body
         )
         findings.extend(
             f"`{where}`'s `{name}` entry states no {label.strip('*.').lower()}"
@@ -700,7 +767,7 @@ def schema_document(repo: Repo) -> list[str]:
     text = repo.read(policy.schema_document)
     named = entries_of(text)
     findings = _inventory(
-        named, [name for _, name, _ in members], policy.schema_document, "schema-emitting type"
+        named, [member.name for member in members], policy.schema_document, "schema-emitting type"
     )
     if text != schema_document_text(repo, policy):
         findings.append(

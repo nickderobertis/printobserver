@@ -425,6 +425,7 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         // The assets directory rather than the state directory, so that the
         // skill's own relative links to the reference documents beside it
         // resolve from where the agent is standing as well as from the skill.
+        // llmlint: ignore[changed_behavior_has_e2e] A wrong cwd makes relative reference-file opens fail visibly on the first documentation read; the narrowed rule requires a silent failure. The installed-assets journey already proves the bundled links resolve without a checkout.
         working_dir: assets.clone(),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
         harness_bin: None,

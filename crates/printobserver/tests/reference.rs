@@ -144,9 +144,7 @@ fn the_checked_in_surface_manifest_is_what_the_program_declares() {
 #[test]
 fn the_artifact_names_every_command_the_surface_has() {
     let path = repo_root().join(MANIFEST);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return;
-    };
+    let text = std::fs::read_to_string(&path).expect("the generated surface manifest is readable");
     let found: Value =
         printobserver_types::serde_json::from_str(&text).expect("the artifact is JSON");
     let named: Vec<String> = found["commands"]

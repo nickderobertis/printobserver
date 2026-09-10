@@ -5,10 +5,6 @@ publishes for it. This document covers the one versioned prefix, how a request i
 authenticated, the operations — one entry each — and the clients, one entry per
 method each of them exports.
 
-It is the same surface [the command surface](command-surface.md) describes; that
-document is for a person at a terminal and this one is for a program. Every shape
-named here is in [the schemas](schemas.md), generated from the types themselves.
-
 ## The one versioned prefix
 
 Every public operation is served beneath `/v1`, takes `application/json` where it

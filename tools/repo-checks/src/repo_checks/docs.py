@@ -221,8 +221,16 @@ def opening_statement(text: str) -> str:
     return " ".join(said)
 
 
-#: The crates whose schema directories make up the declared schema set.
-def schema_members(repo: Repo, directory: str) -> list[tuple[str, str, Path]]:
+@dataclass(frozen=True, slots=True)
+class SchemaMember:
+    """One type in the contracts' generated schema set."""
+
+    crate: str
+    name: str
+    path: Path
+
+
+def schema_members(repo: Repo, directory: str) -> list[SchemaMember]:
     """Every member of the declared schema set: its crate, its name and its file.
 
     The set is read off the tree the contracts' own generation target writes and
@@ -234,8 +242,8 @@ def schema_members(repo: Repo, directory: str) -> list[tuple[str, str, Path]]:
     root = repo.path(directory)
     if not root.is_dir():
         return []
-    found = [(path.parent.name, path.stem, path) for path in sorted(root.glob("*/*.json"))]
-    return sorted(found, key=lambda member: (member[1], member[0]))
+    found = [SchemaMember(path.parent.name, path.stem, path) for path in root.glob("*/*.json")]
+    return sorted(found, key=lambda member: (member.name, member.crate))
 
 
 def schema_document_text(repo: Repo, policy: DocsPolicy) -> str:
@@ -268,11 +276,11 @@ def schema_document_text(repo: Repo, policy: DocsPolicy) -> str:
         "## The schemas",
         "",
     ]
-    for crate, name, path in members:
-        schema = json.loads(path.read_text(encoding="utf-8"))
-        lines.append(f"### {name}")
+    for member in members:
+        schema = json.loads(member.path.read_text(encoding="utf-8"))
+        lines.append(f"### {member.name}")
         lines.append("")
-        lines.append(f"Declared by `{crate}`.")
+        lines.append(f"Declared by `{member.crate}`.")
         lines.append("")
         lines.append("```json")
         lines.extend(json.dumps(schema, indent=2, sort_keys=True).splitlines())

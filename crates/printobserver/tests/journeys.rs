@@ -94,7 +94,7 @@ fn every_documented_example_prints_what_the_document_shows() {
     documenting::accepts_the_committed_documentation(&world);
 }
 
-/// One supervision turn, carried out from the committed documentation alone,
+/// The documented operator workflow, carried out from the documentation alone,
 /// against a real supervisor over a stood-in machine.
 ///
 /// The printer tier runs the same walk against the `OctoPrint` `just
@@ -102,13 +102,13 @@ fn every_documented_example_prints_what_the_document_shows() {
 /// that made the documentation unfollowable is refused before the printer tier
 /// runs.
 #[test]
-fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
+fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone() {
     let world = World::open(world::STOOD_IN);
 
     documented::walk(&world);
 }
 
-/// One supervision turn from what the running server materialized, and nothing
+/// The documented operator workflow from the running server's assets, and nothing
 /// else.
 ///
 /// The skill an installed program writes links out for everything it does not
@@ -117,7 +117,7 @@ fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
 /// carrying nothing else, opens every link the skill carries there, and carries
 /// the whole turn out of that copy.
 #[test]
-fn the_installed_assets_carry_one_supervision_turn() {
+fn the_installed_assets_carry_the_documented_operator_workflow() {
     let world = World::open(world::STOOD_IN);
 
     documenting::the_installed_assets_carry_the_turn(&world);

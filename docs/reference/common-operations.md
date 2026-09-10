@@ -18,8 +18,7 @@ arguments, so every example below is the command and nothing else.
 - `PRINTOBSERVER_SERVER` — the address the supervisor is listening on.
 - `PRINTOBSERVER_CREDENTIAL` — the credential it was configured with.
 
-A configuration file does the same job and `--config <path>` names one; see
-[the command surface](command-surface.md).
+A configuration file does the same job and `--config <path>` names one.
 
 Four words in the examples stand for values that are yours rather than
 this document's, and three stand for values that differ on every run:

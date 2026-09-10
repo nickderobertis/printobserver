@@ -79,12 +79,6 @@ have decided needs a person.
 
 ## Where everything else is
 
-- [The command surface](reference/command-surface.md) — every command, its
-  arguments, its output and how it fails.
-- [Common operations](reference/common-operations.md) — a worked example of
-  each one.
-- [The intervention policy](reference/intervention-policy.md) — where
-  bounds come from, what a rejection carries, and what expiry does.
 - [The API and the clients](reference/api-and-clients.md) — the same
   surface over HTTP, for a program rather than a command line.
 - [The schemas](reference/schemas.md) — the exact shape of everything this

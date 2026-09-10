@@ -507,7 +507,7 @@ fn unreachable(element: &str, why: &str) -> String {
 // Why: `suppressions.toml`, which is where this repository keeps the reason
 // for every suppression standing in the tree.
 #[expect(clippy::too_many_lines)]
-pub fn turn(world: &World, documentation: &Documentation) -> Result<(), String> {
+pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result<(), String> {
     let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]);
 
     // 1. Read the context.
@@ -1021,6 +1021,6 @@ pub fn walk(world: &World) {
     // Everything after this is the reader's.
     world.wants(Reports::Printing);
     world.freshen_the_image();
-    turn(world, &Documentation::in_tree(&repo_root()))
+    operator_workflow(world, &Documentation::in_tree(&repo_root()))
         .unwrap_or_else(|why| panic!("the committed documentation does not carry a turn: {why}"));
 }

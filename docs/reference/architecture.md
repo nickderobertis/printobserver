@@ -130,8 +130,8 @@ impossible.
 
 The supervising agent has no surface of its own. It works through the
 `printobserver` command — the same commands, the same options, the same policy,
-the same record — and [the command surface](command-surface.md) is the whole of
-what either of them can do.
+the same record. The `command-surface.md` inventory is shared by both actors;
+there is no agent-only command.
 
 Three things follow, and they are the reason for the arrangement.
 
@@ -148,5 +148,4 @@ to hold.
 
 And what the agent may ask for is narrowed by configuration rather than by code:
 the safety envelope grants actions per actor class, so an operator can give an
-agent less than they have themselves without anything being rebuilt. See
-[the intervention policy](intervention-policy.md).
+agent less than they have themselves without anything being rebuilt.

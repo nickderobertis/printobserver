@@ -30,13 +30,6 @@
 //! Nothing in a document is typed out by hand, so a document cannot show an
 //! output the program has never produced.
 //!
-//! # And it is proven to refuse
-//!
-//! [`falsifying`] drives this same walk over copies of the documentation
-//! carrying one defect each: a shown output that has been altered, and an
-//! example this check has no way to run. A check that has never refused
-//! anything is one nobody has proven refuses anything.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -467,7 +460,7 @@ pub fn the_installed_assets_carry_the_turn(world: &World) {
         );
     }
 
-    crate::documented::turn(world, &crate::documented::Documentation::beside(&skill))
+    crate::documented::operator_workflow(world, &crate::documented::Documentation::beside(&skill))
         .unwrap_or_else(|why| {
             panic!("the assets an installed program wrote do not carry a turn: {why}")
         });

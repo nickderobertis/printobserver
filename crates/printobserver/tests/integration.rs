@@ -68,7 +68,7 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
     tier::run(&world, tier::AGAINST_A_REAL_MACHINE);
 }
 
-/// One supervision turn, carried out from the committed documentation alone,
+/// The documented operator workflow, carried out from the documentation alone,
 /// against a real supervisor backed by a real `OctoPrint`.
 ///
 /// The same walk the fast tier runs, over the machine beside the printer: a
@@ -77,7 +77,7 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
 /// bounds that read reported, composes a second request out of a rejection's own
 /// fields, records what it saw, and escalates.
 #[test]
-fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
+fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone() {
     let world = World::open(world::SCRIPTED);
 
     documented::walk(&world);
