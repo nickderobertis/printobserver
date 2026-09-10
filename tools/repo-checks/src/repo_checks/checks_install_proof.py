@@ -83,6 +83,10 @@ class Declared:
     version_input: str
     #: The word meaning "the newest release the forge published".
     release_selector: str
+    #: The variable pointing every registry somewhere other than the real ones.
+    standin_env: str
+    #: The module that reads both of those variables.
+    version_source: str
     #: The `AGENTS.md` block recording the schedule it runs on.
     schedule_block: str
     #: The `AGENTS.md` section recording the tier.
@@ -137,6 +141,7 @@ def install_proof(repo: Repo) -> list[str]:
     triggers = triggers_of(workflow)
     findings.extend(_trigger_findings(repo, declared, triggers, relative))
     findings.extend(_version_findings(declared, workflow, relative))
+    findings.extend(_consumer_findings(repo, declared))
     findings.extend(_job_findings(repo, declared, workflow, relative))
     findings.extend(_schedule_findings(repo, declared, triggers, relative))
     findings.extend(_prose_findings(repo, declared))
@@ -339,6 +344,31 @@ def _version_findings(policy: Declared, workflow: dict[str, Any], relative: str)
         if variable in (job.get("env") or {})
     )
     return findings
+
+
+def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
+    """The module reading the two variables declares the names this file does.
+
+    The rest of this check reconciles the policy, the workflow and the prose,
+    and all three could agree while the code reading them named something else
+    — which is a tier that runs, proves the wrong version, and says so nowhere.
+    """
+    if not repo.exists(policy.version_source):
+        return [
+            f"`repo-policy.toml` names {policy.version_source} as what reads the version "
+            f"under test, and this repository commits no such file"
+        ]
+    source = repo.read(policy.version_source)
+    # The quoted literal rather than the name anywhere in the file: what
+    # reaches an environment lookup is the string, and a module that renamed it
+    # while still discussing the old name in a docstring is exactly the drift
+    # this closes.
+    return [
+        f"{policy.version_source} declares no `{variable}`, which is the name "
+        f"`repo-policy.toml` and the committed workflow use for it"
+        for variable in (policy.version_env, policy.standin_env)
+        if f'"{variable}"' not in source
+    ]
 
 
 def _job_findings(

@@ -102,6 +102,12 @@ class Outcome(StrEnum):
 #: driving this needs no output parsing to know which repair it is looking at.
 EXIT = {Outcome.PROVEN: 0, Outcome.NOT_PROVEN: 1, Outcome.NOT_SERVED: 3}
 
+#: And the exit a registry that could not be ASKED answers with, which is none
+#: of the three: an unreachable or refusing registry is a network rather than a
+#: release or a build, and sharing an exit with `SERVED AND NOT PROVEN` would
+#: send a reader to repair an artifact nothing here even read.
+UNREADABLE = 4
+
 
 class RegistryError(RuntimeError):
     """A registry could not be asked what it serves."""
@@ -187,7 +193,7 @@ class Proof:
         return EXIT[self.outcome]
 
 
-def supported(version: str) -> str:
+def supported_version(version: str) -> str:
     """One version this proof can select, or nothing where it is not one.
 
     Every version reaching this comes from outside — a registry's metadata, a
@@ -288,7 +294,9 @@ def _versions(url: str, field: str) -> list[str]:
     # neither what "the newest" means here nor something to hand a package
     # manager — so it is dropped where it arrives rather than carried to
     # whichever line would have tripped over it.
-    return [supported(str(version)) for version in listed if supported(str(version))]
+    return [
+        supported_version(str(version)) for version in listed if supported_version(str(version))
+    ]
 
 
 def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
@@ -335,7 +343,7 @@ def released(bases: Bases) -> tuple[str, ...]:
             raise RegistryError(msg)
         # A tag naming no version this proof can select is not a release a run
         # of it may be keyed on.
-        if tag := supported(entry["tag_name"]):
+        if tag := supported_version(entry["tag_name"]):
             tags.add(tag)
     return tuple(sorted(tags, key=ordered))
 
@@ -348,7 +356,7 @@ def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
     """
     named = wanted.strip()
     if named and named != RELEASE:
-        version = supported(named)
+        version = supported_version(named)
         if not version:
             msg = (
                 f"`{PRINTOBSERVER_PROOF_VERSION}={named}` is no version to prove: it must "
@@ -510,6 +518,17 @@ def _reported(program: Path, cwd: Path) -> str:
     ).strip()
 
 
+def _reported_as(version: str, said: str) -> bool:
+    """Whether what the installed program said is the version under test.
+
+    A substring is not the answer: `printobserver 10.3.0` contains `0.3.0`, so
+    a proof of one release would pass over the artifact of another — which is
+    the whole failure this tier exists to catch, arriving through the check for
+    it.
+    """
+    return version in said.replace(",", " ").split()
+
+
 def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) -> Proof:
     """Take one route from its own registry and prove what it served.
 
@@ -552,7 +571,7 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
                 ],
             ),
         )
-    if selected.version not in version:
+    if not _reported_as(selected.version, version):
         return Proof(
             target.id,
             Outcome.NOT_PROVEN,

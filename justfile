@@ -145,19 +145,12 @@ prove-route-npm:
 prove-route-script:
     uv run -q python -m release_artifacts prove --target release:printobserver --into dist/proof/route-script
 
-# Prove each end-user route against what its own registry actually serves.
+# Prove one end-user route against what its own registry actually serves.
 #
 # One recipe per route, because the three are alternatives and a reader chasing
-# a failure wants the one that failed. Each asks that registry what it serves,
-# installs the version under test into a throwaway environment with no Rust
-# toolchain on the path, and runs the program the install left there — reporting
-# `SERVED AND PROVEN`, `SERVED AND NOT PROVEN` or `NOT SERVED`, of which only
-# the first exits zero.
-#
-# PRINTOBSERVER_PROOF_VERSION names the version to prove: a number, `release`
-# for the newest release the forge published, or nothing for the newest each
-# registry serves. PRINTOBSERVER_PROOF_REGISTRIES points every registry at one
-# stand-in address instead of the real ones.
+# a failure wants the one that failed. PRINTOBSERVER_PROOF_VERSION names the
+# version to prove and PRINTOBSERVER_PROOF_REGISTRIES points every registry
+# somewhere other than the real ones; each exits zero only on a pass.
 prove-registry-pypi:
     uv run -q python -m release_artifacts prove --registry --target pypi:printobserver-cli --into dist/proof/registry-pypi
 
@@ -168,13 +161,8 @@ prove-registry-script:
     uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
 
 # The registry install-path proof: all three routes, which is how a person runs
-# this tier by hand.
-#
-# Deliberately not one of `just check`'s tiers, and `just check-repo` refuses a
-# tree in which it is: it reads the real package registries, so over a change it
-# could only ever report what was published before that change.
-# `.github/workflows/install-path.yml` runs it after a release and on a
-# schedule; `AGENTS.md`'s "The registry install-path proof" is the rest.
+# this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
+# is, why it is not one of `just check`'s tiers, and when it runs.
 test-install-proof:
     just prove-registry-pypi
     just prove-registry-npm

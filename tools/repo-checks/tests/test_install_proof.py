@@ -347,3 +347,29 @@ def test_a_declaration_whose_triggers_are_not_a_list_of_events_is_refused(
     )
 
     refused(install_proof(broken.repo), "declares no triggers")
+
+
+def test_a_consumer_naming_another_variable_is_refused(tree: Callable[[], Tree]) -> None:
+    """The policy, the workflow and the prose could agree while the code did not."""
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/registries.py",
+        'PRINTOBSERVER_PROOF_REGISTRIES = "PRINTOBSERVER_PROOF_REGISTRIES"',
+        'PRINTOBSERVER_PROOF_REGISTRIES = "PRINTOBSERVER_REGISTRY_STAND_IN"',
+    )
+
+    refused(install_proof(broken.repo), "declares no `PRINTOBSERVER_PROOF_REGISTRIES`")
+
+
+def test_a_declaration_naming_a_consumer_that_is_not_there_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A drift gate over a file nothing commits reconciles nothing."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        'version_source = "tools/release-artifacts/src/release_artifacts/registries.py"',
+        'version_source = "tools/release-artifacts/src/release_artifacts/registry.py"',
+    )
+
+    refused(install_proof(broken.repo), "commits no such file")

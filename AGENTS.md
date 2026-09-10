@@ -691,13 +691,9 @@ commands executable is the `server` node — each held to this section.
 
 `just prove-route-*` proves an artifact **built from the committed tree**, which
 is the only proof a change can run before anything is published — and is green
-over a repository nothing can install. `just test-install-proof` is the other
-half: per route and per platform, that the registry that route is taken from
-serves the version under test, that what it serves installs with no Rust
-toolchain on the path, and that the program the install left runs and reports
-that version. `SERVED AND PROVEN`, `SERVED AND NOT PROVEN` and `NOT SERVED` are
-told apart by exit status, because a build to repair and a publish that did not
-happen are two different next actions.
+over a repository nothing can install, which is what green route checks were
+saying here while all three routes were unusable. `just test-install-proof` is
+the other half, and `docs/reference/testing.md` records what it proves.
 
 **Which version is proven is never the number in this tree.** That is whatever
 release automation last wrote into the workspace, and what a user gets is
@@ -730,7 +726,6 @@ just test-install-proof
 
 Nothing here publishes to a registry in order to prove a point, so
 `PRINTOBSERVER_PROOF_REGISTRIES` points all three of them somewhere else.
-`docs/reference/testing.md` records this tier beside the others.
 
 ## Commits, releases, and merging
 

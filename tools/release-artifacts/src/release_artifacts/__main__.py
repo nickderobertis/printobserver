@@ -13,7 +13,7 @@ from repo_checks.model import Repo
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
-from release_artifacts.registries import RegistryError, supported
+from release_artifacts.registries import UNREADABLE, RegistryError, supported_version
 from release_artifacts.registries import prove as prove_registry
 from release_artifacts.standin import Registries, StandinError
 from release_artifacts.targets import TargetError, declared
@@ -141,7 +141,13 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
         print("prove takes --target <id>; `list` names them", file=sys.stderr)
         return 2
     if arguments.registry:
-        proof = prove_registry(repo, arguments.target, arguments.into, dict(os.environ))
+        try:
+            proof = prove_registry(repo, arguments.target, arguments.into, dict(os.environ))
+        except RegistryError as unreadable:
+            # An exit of its own, and not one of the three outcomes: a registry
+            # nothing could read is a network rather than a release or a build.
+            print(f"release-artifacts: {unreadable}", file=sys.stderr)
+            return UNREADABLE
         print(proof.report, file=sys.stdout if proof.exit_status == 0 else sys.stderr)
         return proof.exit_status
     print(prove(repo, arguments.target, arguments.into, arguments.binary))
@@ -172,7 +178,7 @@ def _version(given: str, *, option: str) -> str:
             manifest, a wheel's own file name and a path on disk, so it is
             validated where it arrives rather than where it lands.
     """
-    version = supported(given)
+    version = supported_version(given)
     if not version:
         msg = (
             f"`{option} {given}` is not a version to serve: it must be three numbers, "

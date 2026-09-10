@@ -1,32 +1,16 @@
 # The end-user install path, proven against what the registries actually serve.
 #
-# Two jobs per ROUTE, because the three routes are alternatives to one another
-# and each answers for itself:
-#
-# `prove-registry-*` is the tier. It asks that route's own registry what it
-# serves, installs the version under test into a throwaway environment with no
-# Rust toolchain on the path, and runs the program the install left there —
-# reporting `SERVED AND PROVEN`, `SERVED AND NOT PROVEN` or `NOT SERVED`, of
-# which only the first exits zero. `AGENTS.md`'s "The registry install-path
-# proof" is what it is; `repo-policy.toml`'s `[install_proof]` is the
-# machine-readable half, and `just check-repo` refuses a tree in which they
-# disagree.
-#
-# `install-route-*` runs the install path's own stated commands, in the order
-# `AGENTS.md`'s "The end-user install path" states them. Every step below is
-# one of that section's commands and `just check-repo` refuses one that is not,
+# Two jobs per ROUTE, because the three routes are alternatives to one another.
+# `prove-registry-*` runs the tier `AGENTS.md`'s "The registry install-path
+# proof" records; `install-route-*` runs that path's own stated commands, in the
+# order `AGENTS.md`'s "The end-user install path" states them — and `just
+# check-repo` refuses a step of one of those jobs that section does not state,
 # so this workflow cannot grow an install nobody declared.
 #
-# Both are matrixed over the supported-platform list, which is derived from
-# that same section rather than narrowable here.
-#
-# ON EVERY TRIGGER but a change. The tier reads the real registries, so over a
-# change it could only ever report what was published before it. The
-# release-time trigger is the `release-plz` workflow HAVING FINISHED rather
-# than the GitHub Release being published: that workflow cuts the release in
-# its `release` job and builds and publishes the artifacts in the two jobs
-# after it, so a proof keyed on the release itself would measure the version
-# before it.
+# The one thing a reader has to know that is not written down elsewhere: the
+# release-time trigger is `release-plz` HAVING FINISHED rather than the release
+# being published, because that workflow cuts the release before the two jobs
+# that build and publish its artifacts.
 
 name: install-path
 

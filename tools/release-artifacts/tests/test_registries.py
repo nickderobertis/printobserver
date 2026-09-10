@@ -29,6 +29,7 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
+    UNREADABLE,
     Bases,
     Outcome,
     Proof,
@@ -42,7 +43,7 @@ from release_artifacts.registries import (
 )
 from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Registries
 from release_artifacts.targets import named
-from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 
 #: The three routes an end user gets the program by, each taken from its own
@@ -149,11 +150,17 @@ def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serve
     )
 
 
+@pytest.mark.parametrize("reported", ["0.1.0", "10.6.0"])
 def test_an_artifact_reporting_another_version_does_not_pass(
-    registries: Registries, proving: Callable[..., Proof]
+    reported: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
-    """Installing is not enough: what the program says it is has to be what was proven."""
-    registries.serve("0.6.0", reported="0.1.0")
+    """Installing is not enough: what the program says it is has to be what was proven.
+
+    `10.6.0` is the case a substring comparison passes: it contains `0.6.0`, so
+    a proof of one release would go green over the artifact of another — which
+    is the failure this tier exists to catch, arriving through the check for it.
+    """
+    registries.serve("0.6.0", reported=reported)
 
     proof = proving("pypi:printobserver-cli")
 
@@ -396,30 +403,37 @@ def test_the_recipe_this_tier_runs_reports_the_outcome_as_its_exit(
 
 
 def test_the_command_line_refuses_a_registry_it_cannot_reach(
-    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    repo: Repo,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An unreachable registry comes back as a refusal rather than as an outcome."""
+    """An unreachable registry answers with an exit of its own.
+
+    Sharing one with `SERVED AND NOT PROVEN` would send a reader to repair an
+    artifact nothing here even read.
+    """
     monkeypatch.setenv(PRINTOBSERVER_PROOF_REGISTRIES, "http://127.0.0.1:1")
     monkeypatch.setenv(PRINTOBSERVER_PROOF_VERSION, "")
 
-    failing(
-        (
-            main(
-                [
-                    "prove",
-                    "--registry",
-                    "--target",
-                    "pypi:printobserver-cli",
-                    "--into",
-                    str(tmp_path / "cli-unreachable"),
-                    "--root",
-                    str(repo.root),
-                ]
-            ),
-            "",
+    equal(
+        main(
+            [
+                "prove",
+                "--registry",
+                "--target",
+                "pypi:printobserver-cli",
+                "--into",
+                str(tmp_path / "cli-unreachable"),
+                "--root",
+                str(repo.root),
+            ]
         ),
-        naming="",
+        UNREADABLE,
+        describing="the exit a registry nothing could read answers with",
     )
+
+    contains(capsys.readouterr().err, "could not be reached", describing="what it said")
 
 
 def test_the_stand_in_registries_are_started_by_their_own_command(

@@ -29,6 +29,7 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
+    UNREADABLE,
 )
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.shell import start
@@ -212,14 +213,19 @@ def test_a_registry_serving_nothing_for_the_version_under_test_does_not_pass(
     contains(said, SERVED, describing="what the registry does serve")
 
 
-@pytest.mark.parametrize("recipe", list(ROUTES))
 def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serves(
-    recipe: str, standing_in: Callable[..., Standin]
+    standing_in: Callable[..., Standin],
 ) -> None:
-    """Served and not proven is a build to repair, and it is a different answer."""
+    """Served and not proven is a build to repair, and it is a different answer.
+
+    One route rather than three: what differs between them is the install, and
+    this is about the answer a recipe gives once an install has happened —
+    which `tools/release-artifacts/tests/test_registries.py` drives for all
+    three without paying for three more installs here.
+    """
     registries = standing_in("--broken", SERVED)
 
-    code, said = _recipe(recipe, registries.base)
+    code, said = _recipe("prove-registry-npm", registries.base)
 
     failing((code, said), naming="SERVED AND NOT PROVEN")
     equal(code, 1, describing="the exit a served artifact that does not work answers with")
@@ -295,6 +301,7 @@ def test_a_registry_that_cannot_be_reached_is_neither_outcome() -> None:
     code, said = _recipe("prove-registry-npm", "http://127.0.0.1:1")
 
     failing((code, said), naming="could not be reached")
+    equal(code, UNREADABLE, describing="the exit a registry nothing could read answers with")
     truth("NOT SERVED" not in said, describing=f"neither outcome to be reported: {said}")
 
 

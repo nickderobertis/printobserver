@@ -167,6 +167,13 @@ release_conclusion = "github.event.workflow_run.conclusion == 'success'"
 version_env = "PRINTOBSERVER_PROOF_VERSION"
 version_input = "version"
 release_selector = "release"
+# Where every registry is read from when nothing points them elsewhere, and the
+# module that reads both variables. `just check-repo` holds that module's own
+# literals to the two names above, so the workflow that sets one, this
+# declaration, and the code that reads them cannot drift apart — which the
+# workflow-against-policy check alone would not catch.
+standin_env = "PRINTOBSERVER_PROOF_REGISTRIES"
+version_source = "tools/release-artifacts/src/release_artifacts/registries.py"
 # The block in `AGENTS.md` recording the schedule the tier runs on.
 schedule_block = "install-proof-schedule"
 # The section of `AGENTS.md` that records the tier: what it proves, why it is
