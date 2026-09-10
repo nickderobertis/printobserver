@@ -710,9 +710,6 @@ and on a manual invocation:
 just test-install-proof
 ```
 
-The constraints the proof itself is keyed to are with the project that carries
-it, at `tools/release-artifacts/AGENTS.md`.
-
 ## Commits, releases, and merging
 
 **Merge model.** A change reaches `main` through a pull request, squash-merged,
