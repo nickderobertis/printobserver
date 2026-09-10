@@ -39,6 +39,8 @@ mod answers;
 mod carrying;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/documented.rs"]
+mod documented;
 #[path = "journeys/durations.rs"]
 mod durations;
 #[path = "journeys/failures.rs"]
@@ -65,4 +67,21 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
     let world = World::open(world::SCRIPTED);
 
     tier::run(&world, tier::AGAINST_A_REAL_MACHINE);
+}
+
+// journey: a-supervision-turn-from-the-documentation-alone
+/// One supervision turn, carried out from the committed documentation alone,
+/// against a real supervisor backed by a real `OctoPrint`.
+///
+/// The same walk the fast tier runs, over the machine beside the printer: a
+/// reader who starts at the skill and follows only what it and the documents it
+/// links to provide reads the context, opens the image, decides inside the
+/// bounds that read reported, composes a second request out of a rejection's own
+/// fields, records what it saw, and escalates — and six copies of that
+/// documentation, each missing one of those, cannot.
+#[test]
+fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
+    let world = World::open(world::SCRIPTED);
+
+    documented::walk(&world);
 }

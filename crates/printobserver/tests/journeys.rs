@@ -44,6 +44,8 @@ mod answers;
 mod carrying;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/documented.rs"]
+mod documented;
 #[path = "journeys/documenting.rs"]
 mod documenting;
 #[path = "journeys/durations.rs"]
@@ -92,4 +94,18 @@ fn every_documented_example_prints_what_the_document_shows() {
 
     documenting::accepts_the_committed_documentation(&world);
     documenting::refuses_documentation_that_has_drifted();
+}
+
+/// One supervision turn, carried out from the committed documentation alone,
+/// against a real supervisor over a stood-in machine.
+///
+/// The printer tier runs the same walk against the `OctoPrint` `just
+/// octoprint-up` provisioned, which is where the journey inventory's entry for
+/// it points; this is the same walk in every gate, so a change that made the
+/// documentation unfollowable is refused before the printer tier runs.
+#[test]
+fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
+    let world = World::open(world::STOOD_IN);
+
+    documented::walk(&world);
 }
