@@ -44,8 +44,25 @@ def _declared() -> tuple[tuple[str, ...], str]:
     return tuple(workflows["waived_steps"]), str(workflows["waived_report"])
 
 
+def _taking_the_waiver() -> tuple[str, ...]:
+    """Every job of the committed workflow that lets the waived steps fail.
+
+    Read from the steps that carry the waived ids rather than from the ones
+    that carry a report: a job is asked for a report BECAUSE it took the
+    waiver, so a set derived from the reports could never notice the job that
+    dropped one.
+    """
+    workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
+    waived, _ = _declared()
+    return tuple(
+        name
+        for name, job in workflow["jobs"].items()
+        if set(waived) <= {str(step.get("id", "")) for step in job.get("steps", [])}
+    )
+
+
 def _reports() -> dict[str, str]:
-    """The report step each install job of the committed workflow carries, by job."""
+    """The report step each job of the committed workflow carries, by job."""
     workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
     _, summary = _declared()
     found: dict[str, str] = {}
@@ -76,15 +93,24 @@ def _said(command: str, into: Path, installed: str, started: str) -> str:
 
 
 def test_every_install_job_that_takes_the_waiver_carries_a_report() -> None:
-    """One report per install job, and the job it names is the one it is in."""
+    """One report per job that takes it, and the job it names is the one it is in.
+
+    Asked of the jobs taking the waiver rather than of the jobs carrying a
+    report: the second set cannot contain the job this is looking for.
+    """
+    taking = _taking_the_waiver()
     reports = _reports()
 
-    truth(bool(reports), describing=f"{WORKFLOW} to carry a report step at all")
-    for name, command in reports.items():
-        contains(command, name, describing=f"the report of job `{name}` to name that route")
+    truth(bool(taking), describing=f"{WORKFLOW} to have a job taking the waiver at all")
+    for name in taking:
+        contains(
+            reports.get(name, ""),
+            name,
+            describing=f"job `{name}` takes the waiver, and its report to name that route",
+        )
 
 
-@pytest.mark.parametrize("job", sorted(_reports()))
+@pytest.mark.parametrize("job", sorted(_taking_the_waiver()))
 def test_a_run_whose_service_was_established_says_so(job: str, tmp_path: Path) -> None:
     """Both commands reached, and the run says both reached."""
     said = _said(_reports()[job], tmp_path, ESTABLISHED, ESTABLISHED)
@@ -94,7 +120,7 @@ def test_a_run_whose_service_was_established_says_so(job: str, tmp_path: Path) -
     truth(NOT_ESTABLISHED not in said, describing=f"nothing reported as not reached: {said}")
 
 
-@pytest.mark.parametrize("job", sorted(_reports()))
+@pytest.mark.parametrize("job", sorted(_taking_the_waiver()))
 def test_a_run_whose_service_was_not_established_says_that_instead(
     job: str, tmp_path: Path
 ) -> None:
@@ -112,7 +138,7 @@ def test_a_run_whose_service_was_not_established_says_that_instead(
     )
 
 
-@pytest.mark.parametrize("job", sorted(_reports()))
+@pytest.mark.parametrize("job", sorted(_taking_the_waiver()))
 def test_each_of_the_two_commands_is_reported_apart_from_the_other(
     job: str, tmp_path: Path
 ) -> None:
