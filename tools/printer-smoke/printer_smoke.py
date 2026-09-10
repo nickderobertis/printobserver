@@ -183,6 +183,17 @@ RUNNING_STATES = ("printing", "paused")
 OPERATIONAL = "operational"
 
 
+def asked(value: float) -> float:
+    """One value as this smoke asks for it, and so as it must be read back.
+
+    A bound stepped inside is arithmetic on floats, and `1.2 - 2 * 0.05` is not
+    `1.1`: the value that reaches the machine is the one this program prints,
+    so the value it then requires the machine to report is that one and not the
+    one the subtraction produced.
+    """
+    return round(value, 4)
+
+
 def say(message: str) -> None:
     """Report one line of what this smoke is doing, or refusing to do."""
     print(f"printer-smoke: {message}", flush=True)
@@ -441,7 +452,7 @@ class Smoke:
         """
         for knob in KNOBS:
             low, high = self.bounds[knob.adjustable]
-            value = high - knob.step
+            value = asked(high - knob.step)
             if value < low:
                 raise VerificationError(
                     STEP_ADJUST_INSIDE,
@@ -470,7 +481,7 @@ class Smoke:
         """
         for knob in KNOBS:
             _, high = self.bounds[knob.adjustable]
-            value = high + knob.step
+            value = asked(high + knob.step)
             held = number_at(self.status(), knob.reported_at)
             answer = self.ask(
                 knob.command, "--actor", ACTOR, "--reason", REASON, *knob.asking(value)
@@ -502,7 +513,7 @@ class Smoke:
         """
         knob = KNOBS[0]
         low, high = self.bounds[knob.adjustable]
-        value = high - 2 * knob.step
+        value = asked(high - 2 * knob.step)
         if value < low:
             raise VerificationError(
                 STEP_INTERVENTION,

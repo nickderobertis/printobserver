@@ -24,6 +24,7 @@ command sets is as wrong as a command no declaration accounts for.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -35,6 +36,7 @@ from repo_checks.model import (
     policy_strings,
     policy_table,
 )
+from repo_checks.parsing import jobs_of, load_workflow, recipes, run_commands
 
 # The first word of a command line: a `G` or an `M` and its number.
 COMMAND = re.compile(r"^[GM][0-9]+$")
@@ -239,3 +241,114 @@ def smoke_payload(repo: Repo) -> list[str]:
             f"test prints, which is not there"
         ]
     return gcode_findings(repo, relative)
+
+
+def smoke_selection(repo: Repo) -> list[str]:
+    """Nothing selects the real-printer smoke test automatically.
+
+    The one thing here that drives a machine capable of destroying itself is
+    reached by one recipe, given one flag, with one variable naming the device.
+    So this refuses a tree in which the ordinary gate, a graph target, a
+    continuous-integration job or a scheduled workflow could reach it — each of
+    which would be an unattended run that starts a print nobody was watching.
+    """
+    policy: dict[str, Any] = policy_table(repo, "smoke")
+    if not policy:
+        return ["`repo-policy.toml` declares no `[smoke]` section"]
+    named = policy_strings(policy, ("script", "recipe", "flag", "device_env"), "smoke")
+    script, recipe, flag = named["script"], named["recipe"], named["flag"]
+
+    findings: list[str] = []
+    if not repo.exists(script):
+        findings.append(
+            f"`repo-policy.toml` names {script} as the real-printer smoke test, which is not there"
+        )
+    findings.extend(_recipe_findings(repo, recipe, script, flag))
+    findings.extend(_gate_findings(repo, recipe))
+    findings.extend(_graph_findings(repo, recipe, script))
+    findings.extend(_workflow_findings(repo, recipe, script))
+    if repo.exists(script) and named["device_env"] not in repo.read(script):
+        findings.append(
+            f"{script} does not read `{named['device_env']}`, which is one of the two "
+            f"inputs that select it"
+        )
+    return findings
+
+
+def _recipe_findings(repo: Repo, recipe: str, script: str, flag: str) -> list[str]:
+    """The one recipe that runs it runs it, and passes its arguments through."""
+    parsed = recipes(repo.justfile)
+    found = parsed.get(recipe)
+    if found is None:
+        return [
+            f"`repo-policy.toml` names `just {recipe}` as the real-printer smoke test's "
+            f"recipe, which the recipe set does not declare"
+        ]
+    body = "\n".join(found.body)
+    findings: list[str] = []
+    if script not in body:
+        findings.append(f"the `{recipe}` recipe does not run {script}")
+    if "{{" not in body:
+        findings.append(
+            f"the `{recipe}` recipe passes no argument through to {script}: `{flag}` is one "
+            f"of the two inputs that select the smoke test, and a recipe that swallowed it "
+            f"would leave the other input selecting it alone"
+        )
+    return findings
+
+
+def _gate_findings(repo: Repo, recipe: str) -> list[str]:
+    """The gate neither declares it a tier nor invokes it."""
+    findings: list[str] = []
+    if recipe in repo.policy.get("gate", {}).get("tiers", []):
+        findings.append(
+            f"`repo-policy.toml`'s gate.tiers names `{recipe}`, which is the real-printer "
+            f"smoke test: every gate run would then drive the machine"
+        )
+    check = recipes(repo.justfile).get("check")
+    if check is None:
+        return findings
+    invoked = {
+        line.split()[1]
+        for line in check.body
+        if line.split()[:1] == ["just"] and len(line.split()) > 1
+    } | set(check.dependencies)
+    if recipe in invoked:
+        findings.append(
+            f"the `check` recipe invokes `just {recipe}`, which drives the real printer"
+        )
+    return findings
+
+
+def _graph_findings(repo: Repo, recipe: str, script: str) -> list[str]:
+    """No graph target reaches it, so no fan-out tier can select it."""
+    findings: list[str] = []
+    for project in repo.project_paths:
+        data = json.loads(project.read_text(encoding="utf-8"))
+        name = data.get("name", project.parent.name)
+        for target, spec in (data.get("targets") or {}).items():
+            command = spec.get("command")
+            if not isinstance(command, str):
+                continue
+            if script in command or f"just {recipe}" in command:
+                findings.append(
+                    f"the graph target `{name}:{target}` runs the real-printer smoke test: "
+                    f"a target is what a fan-out tier selects, and nothing may select this one"
+                )
+    return findings
+
+
+def _workflow_findings(repo: Repo, recipe: str, script: str) -> list[str]:
+    """No committed workflow runs it, on a change or on a schedule."""
+    findings: list[str] = []
+    for path in repo.workflow_paths:
+        workflow = load_workflow(path)
+        for job, spec in jobs_of(workflow).items():
+            findings.extend(
+                f"the `{job}` job of {path.name} runs the real-printer smoke test "
+                f"(`{command}`): continuous integration runs beside no printer, and an "
+                f"unattended run of this starts a print nobody is watching"
+                for command in run_commands(spec)
+                if script in command or f"just {recipe}" in command
+            )
+    return findings
