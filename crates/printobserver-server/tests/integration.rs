@@ -54,6 +54,7 @@ mod waiting;
 #[path = "live/loop.rs"]
 mod whole_loop;
 
+// journey: the-whole-loop-against-a-real-printer-and-a-real-harness
 /// The whole loop, in the one order a shared machine admits.
 #[test]
 fn the_whole_loop_is_proven_against_a_real_octoprint_and_a_real_harness() {

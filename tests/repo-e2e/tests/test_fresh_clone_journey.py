@@ -25,6 +25,7 @@ PACKAGE_JSON = "package.json"
 UNDESCRIBED_DEPENDENCY = '"left-pad": "^1.3.0",\n    "@types/bun": "^1.4.1"'
 
 
+# journey: a-gate-tier-in-a-clone-that-never-bootstrapped
 def test_a_gate_tier_runs_in_a_clone_that_never_bootstrapped(
     gate_copy: Callable[..., GateCopy],
 ) -> None:

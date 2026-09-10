@@ -114,6 +114,22 @@ def _rule_on_subject(repo: Repo, subject: str, what: str) -> int:
     return 0
 
 
+def docs_schemas_write(repo: Repo) -> int:
+    """Write the generated schema document from the schema set the contracts write.
+
+    The one way that document is produced. It is regenerated rather than edited,
+    and `just check-repo` refuses a tree whose committed document is not what
+    this writes.
+    """
+    from repo_checks.docs import docs_policy, schema_document_text
+
+    policy = docs_policy(repo)
+    target = repo.path(policy.schema_document)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(schema_document_text(repo, policy), encoding="utf-8")
+    return 0
+
+
 def coverage(repo: Repo) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records."""
     floors = repo.policy["gate"]["coverage"]

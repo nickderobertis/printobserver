@@ -16,7 +16,14 @@ from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
 from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
-COMMANDS = ("install-tools", "install-hooks", "commit-msg", "pr-title", "coverage")
+COMMANDS = (
+    "install-tools",
+    "install-hooks",
+    "commit-msg",
+    "pr-title",
+    "coverage",
+    "docs-schemas-write",
+)
 
 # The checks that read a base revision as well as the tree: what a change adds,
 # and what it takes away.
@@ -41,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         return commands.install_tools(repo)
     if parsed.name == "install-hooks":
         return commands.install_hooks(repo)
+    if parsed.name == "docs-schemas-write":
+        return commands.docs_schemas_write(repo)
     if parsed.name == "coverage":
         return commands.coverage(repo)
     if parsed.name == "pr-title":

@@ -44,6 +44,8 @@ mod answers;
 mod carrying;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/documenting.rs"]
+mod documenting;
 #[path = "journeys/durations.rs"]
 mod durations;
 #[path = "journeys/failures.rs"]
@@ -63,6 +65,7 @@ mod tier;
 
 use world::World;
 
+// journey: every-command-against-a-real-supervisor
 /// The whole tier, over one supervisor.
 ///
 /// One world rather than one per journey: the supervisor is a process and the
@@ -73,4 +76,20 @@ fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
     tier::run(&world, tier::WHOLE);
+}
+
+// journey: documented-examples-print-what-they-show
+/// Every command example the reference documents show, run against a real
+/// supervisor and compared with what the document shows beside it.
+///
+/// The falsifying half runs beside it: the same walk over documentation
+/// carrying an altered output and an example this check has no way to run, both
+/// refused. A documentation check that accepted whatever it was shown would be
+/// worse than none, because it would read as proof.
+#[test]
+fn every_documented_example_prints_what_the_document_shows() {
+    let world = World::open(world::STOOD_IN);
+
+    documenting::accepts_the_committed_documentation(&world);
+    documenting::refuses_documentation_that_has_drifted();
 }

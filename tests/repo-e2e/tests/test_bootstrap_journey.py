@@ -18,6 +18,7 @@ from repo_checks.expect import contains, passing, truth
 BUILD_PRODUCTS = (".venv", "node_modules", "target", ".nx", "dist", ".git")
 
 
+# journey: bootstrapping-a-clean-clone
 def test_bootstrap_brings_a_clean_clone_to_a_state_in_which_the_gate_runs(
     tmp_path: Path,
 ) -> None:

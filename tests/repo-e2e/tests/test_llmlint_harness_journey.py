@@ -141,6 +141,7 @@ def harness_host(tmp_path: Path, uv_cache: Path) -> Callable[..., HarnessHost]:
     return make
 
 
+# journey: the-judged-tier-on-a-host-carrying-no-agent
 def test_a_host_carrying_no_agent_gets_one(
     gate_copy: Callable[..., GateCopy], harness_host: Callable[..., HarnessHost]
 ) -> None:

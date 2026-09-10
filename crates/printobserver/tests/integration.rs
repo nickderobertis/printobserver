@@ -58,6 +58,7 @@ mod tier;
 
 use world::World;
 
+// journey: every-command-against-a-real-printer
 /// Every client command, against the machine beside the printer.
 #[test]
 fn every_client_command_is_proven_against_a_real_octoprint() {

@@ -615,6 +615,73 @@ stands. A fixed block stopped sinking the tree the moment a few well-covered
 crates landed, and a journey that can no longer make the floor fail has stopped
 checking that the floor is enforced at all.
 
+## The journey inventory
+
+Every user-facing journey the suite covers has an entry here, so that coverage
+is auditable rather than asserted. A journey is a test that drives a real
+artifact end to end on behalf of one of this system's users — the operator, the
+supervising agent, or whoever maintains this repository — and it is marked as one
+by a `journey:` comment on the line above its declaration. `just check-repo`
+enumerates those markers and refuses a marked journey this block does not name,
+and a name in this block that no marked test carries. The two cannot drift.
+
+The marker rather than a naming convention, because "user-facing journey" is a
+judgement about what a test is for, and a rule guessing it from a name would
+either miss the journeys or sweep in several thousand assertions that are not
+journeys. Marking one is a deliberate line in the same change that adds it.
+
+[//]: # (BEGIN journey-inventory)
+- `every-command-against-a-real-supervisor` — every client command, in every
+  input form, against a supervisor the `server` command started, with the
+  request read at the wire and the effect read back through the same surface.
+- `every-command-against-a-real-printer` — the same cross-product against the
+  `OctoPrint` `just octoprint-up` provisioned, where a machine takes its own
+  time to do what it was asked.
+- `the-whole-loop-against-a-real-printer-and-a-real-harness` — an alert reaching
+  a supervision turn, the turn reaching the policy, and the policy reaching a
+  real machine, with only the paid provider process replaced.
+- `a-supervision-turn-from-the-documentation-alone` — a reader who starts at the
+  committed skill and follows only what it and the documents it links to
+  provide carries one supervision turn out end to end, against a real server
+  backed by a real `OctoPrint`.
+- `documented-examples-print-what-they-show` — every command example in every
+  reference document, run exactly as written against a real server, printing
+  exactly what the document shows beside it.
+- `the-installed-command-runs` — the built program runs as a subprocess and
+  answers for itself.
+- `a-program-nothing-configured-says-what-to-configure` — a caller who has
+  configured no supervisor is told which file and which variables configure one.
+- `installing-the-service-starts-nothing` — the committed installer puts the
+  binary, the state directory, the configuration and the unit in place, and
+  starts nothing that could move a printer.
+- `starting-the-installed-service` — the unit's own start command starts a
+  program that answers the API.
+- `bootstrapping-a-clean-clone` — `just bootstrap` brings a copy carrying no
+  build products to a state in which the gate runs.
+- `a-gate-tier-in-a-clone-that-never-bootstrapped` — a gate tier heals the
+  JavaScript install itself rather than failing in a clone nobody bootstrapped.
+- `the-gate-refuses-a-defective-tree` — the gate accepts the committed tree and
+  refuses copies of it carrying one defect each, coverage floor included.
+- `publishing-a-branch-once-main-has-moved` — merging the base into a branch
+  produces a commit the committed hook admits by its state rather than by its
+  wording.
+- `the-judged-tier-on-a-host-carrying-no-agent` — a host with no agent installed
+  gets one, and the judged tier reaches the step that runs it.
+- `the-release-program-accepts-this-tree` — the release program the toolchain
+  installs accepts this repository's committed release configuration.
+- `the-printer-tier-runs-between-its-bracketing-recipes` — the integration job
+  runs the tier between the bring-up and the bring-down recipes, on every
+  platform with no exclusion recorded.
+- `the-committed-workflows-validate` — every committed workflow parses, pins its
+  actions and runs only allowlisted commands.
+- `the-platform-matrices-follow-the-supported-list` — every platform-dependent
+  job's matrix is the supported-platform list, and no other job carries one.
+- `the-python-client-project-passes-every-gate-target` — the Python client
+  distribution declares every gate target and passes each of them.
+- `the-node-client-project-passes-every-gate-target` — the Node client
+  distribution declares every gate target and passes each of them.
+[//]: # (END journey-inventory)
+
 ## Suppressions
 
 `suppressions.toml` is the only way to suppress a diagnostic here. Every

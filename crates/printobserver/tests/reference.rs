@@ -160,6 +160,12 @@ fn the_artifact_names_every_command_the_surface_has() {
                 .to_owned()
         })
         .collect();
-    let declared: Vec<String> = surface().iter().map(|command| command.name.clone()).collect();
-    assert_eq!(named, declared, "{MANIFEST} does not name the surface's own commands");
+    let declared: Vec<String> = surface()
+        .iter()
+        .map(|command| command.name.clone())
+        .collect();
+    assert_eq!(
+        named, declared,
+        "{MANIFEST} does not name the surface's own commands"
+    );
 }

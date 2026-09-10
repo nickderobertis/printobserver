@@ -28,6 +28,7 @@ def running(pid: int) -> bool:
     return True
 
 
+# journey: the-printer-tier-runs-between-its-bracketing-recipes
 def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     gate_copy: Callable[[], GateCopy],
 ) -> None:

@@ -191,6 +191,7 @@ fn permissions(path: &Path) -> (u32, Vec<String>) {
     (mode, extra)
 }
 
+// journey: installing-the-service-starts-nothing
 /// The installer places four things and starts nothing.
 #[test]
 fn the_installer_places_four_things_and_starts_nothing() {
@@ -316,6 +317,7 @@ fn client_configuration(state: &Path, address: &str) -> PathBuf {
     path
 }
 
+// journey: starting-the-installed-service
 /// The unit's own start command starts a server that answers the API.
 #[test]
 fn the_units_own_start_command_starts_a_server_that_answers_the_api() {

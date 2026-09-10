@@ -1,0 +1,488 @@
+//! Every command example the reference documents show, run against a real
+//! server and compared with what the document shows beside it.
+//!
+//! # What a reader copies is what this ran
+//!
+//! An example is a fenced `console` block. A line beginning `$ ` is a command,
+//! and every line after it up to the next command is what that command printed
+//! — standard output first and then standard error, which is the order a
+//! terminal shows them in. `$ echo $?` is a command of the example like any
+//! other and prints the status the one before it exited with, so a documented
+//! failure shows its exit without the document carrying an annotation nobody
+//! could run.
+//!
+//! # Placeholders, and why there are any
+//!
+//! Every identifier this system mints is a UUID version 7 and every instant is
+//! the instant it happened, so an example printed with the ones one run
+//! produced would be an example that never matched again. The commands and the
+//! outputs are written with placeholders instead: before a command runs each is
+//! replaced with this world's own value, and after it runs the same
+//! substitution is undone over what it printed. The comparison is byte-for-byte
+//! over everything that is not an identifier or an instant, and a reader running
+//! the command with their own print's identifier sees the same document with
+//! theirs in it.
+//!
+//! # Written rather than transcribed
+//!
+//! Run under `PRINTOBSERVER_DOCS=write` — which is what `just docs-generate`
+//! does — this **rewrites** each block with what the command actually printed.
+//! Nothing in a document is typed out by hand, so a document cannot show an
+//! output the program has never produced.
+//!
+//! # And it is proven to refuse
+//!
+//! [`falsifying`] drives this same walk over copies of the documentation
+//! carrying one defect each: a shown output that has been altered, and an
+//! example this check has no way to run. A check that has never refused
+//! anything is one nobody has proven refuses anything.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use crate::world::{CREDENTIAL, STOOD_IN, World};
+
+/// The fence a runnable example is written in.
+const FENCE: &str = "```console";
+
+/// What a command line in an example begins with.
+const PROMPT: &str = "$ ";
+
+/// The one command an example may run that is not this program.
+const EXIT_READ: &str = "echo $?";
+
+/// The variable that makes this walk write the examples rather than check them.
+const WRITING: &str = "PRINTOBSERVER_DOCS";
+
+/// One command of one example, and what it printed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Step {
+    /// The command line, exactly as the document writes it.
+    command: String,
+    /// What it printed, exactly as the document writes it.
+    output: Vec<String>,
+}
+
+/// One fenced example of one document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Example {
+    /// The document it is in, relative to the tree it was read from.
+    document: String,
+    /// The line the fence opens on, one-based, for a finding that names it.
+    line: usize,
+    /// Its commands, in the order the reader runs them.
+    steps: Vec<Step>,
+}
+
+/// The repository root, from this crate's own directory.
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+}
+
+/// Whether this run writes the examples rather than checking them.
+fn writing() -> bool {
+    std::env::var(WRITING).is_ok_and(|mode| mode == "write")
+}
+
+/// Every reference document this repository declares, in the order it does.
+///
+/// Read from `repo-policy.toml` rather than listed here: a document this
+/// repository declares and this walk did not reach would be an example nobody
+/// ran, which is the thing this walk exists to make impossible.
+fn documents(root: &Path) -> Vec<String> {
+    let text =
+        std::fs::read_to_string(root.join("repo-policy.toml")).expect("the policy is readable");
+    let policy: toml::Value =
+        toml::from_str(&text).unwrap_or_else(|error| panic!("the policy parses: {error}"));
+    policy["docs"]["document"]
+        .as_array()
+        .expect("the policy declares reference documents")
+        .iter()
+        .map(|entry| {
+            entry["path"]
+                .as_str()
+                .expect("each document declares its path")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// Every runnable example one document carries, in the order it carries them.
+fn examples_in(root: &Path, document: &str) -> Vec<Example> {
+    let text = std::fs::read_to_string(root.join(document))
+        .unwrap_or_else(|error| panic!("{document} is readable: {error}"));
+    let mut found = Vec::new();
+    let mut inside: Option<(usize, Vec<Step>)> = None;
+    for (index, line) in text.lines().enumerate() {
+        match inside.as_mut() {
+            None => {
+                if line.trim_end() == FENCE {
+                    inside = Some((index + 1, Vec::new()));
+                }
+            }
+            Some((line_number, steps)) => {
+                if line.starts_with("```") {
+                    found.push(Example {
+                        document: document.to_owned(),
+                        line: *line_number,
+                        steps: core::mem::take(steps),
+                    });
+                    inside = None;
+                } else if let Some(command) = line.strip_prefix(PROMPT) {
+                    steps.push(Step {
+                        command: command.trim_end().to_owned(),
+                        output: Vec::new(),
+                    });
+                } else if let Some(step) = steps.last_mut() {
+                    step.output.push(line.to_owned());
+                } else {
+                    // A block whose first line is not a command: kept as a step
+                    // whose command is that line, so the run refuses it by name
+                    // rather than passing over it.
+                    steps.push(Step {
+                        command: line.trim_end().to_owned(),
+                        output: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+    found
+}
+
+/// What each placeholder stands for in this world.
+fn bindings(world: &World) -> BTreeMap<&'static str, String> {
+    BTreeMap::from([
+        ("PRINT_ID", world.print_id.clone()),
+        ("IMAGE_ID", world.image_id.clone()),
+        ("EVENT_ID", world.event_id.clone()),
+        ("FILE", world.printable_file()),
+        (
+            "STATE_DIR",
+            world.root.path().join("state").display().to_string(),
+        ),
+    ])
+}
+
+/// One command line, with each placeholder replaced by this world's value.
+fn bound(command: &str, bindings: &BTreeMap<&'static str, String>) -> String {
+    let mut written = command.to_owned();
+    for (name, value) in bindings {
+        written = written.replace(name, value);
+    }
+    written
+}
+
+/// Split one command line into words, honouring single and double quotes.
+///
+/// Deliberately small: an example is a command a reader types, so the only
+/// shell syntax it may carry is quoting. Anything else reaches the run as a
+/// word and is refused there rather than being interpreted.
+fn words(line: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut started = false;
+    for letter in line.chars() {
+        if let Some(open) = quote {
+            if letter == open {
+                quote = None;
+            } else {
+                current.push(letter);
+            }
+        } else if matches!(letter, '\'' | '"') {
+            quote = Some(letter);
+            started = true;
+        } else if letter.is_whitespace() {
+            if started || !current.is_empty() {
+                found.push(core::mem::take(&mut current));
+                started = false;
+            }
+        } else {
+            current.push(letter);
+        }
+    }
+    if started || !current.is_empty() {
+        found.push(current);
+    }
+    found
+}
+
+/// Whether one word is a UUID as this system spells one.
+fn is_identifier(word: &str) -> bool {
+    let groups: Vec<usize> = word.split('-').map(str::len).collect();
+    groups == vec![8, 4, 4, 4, 12]
+        && word
+            .chars()
+            .all(|letter| letter == '-' || letter.is_ascii_hexdigit() && !letter.is_uppercase())
+}
+
+/// Whether one word is an instant as this system spells one.
+fn is_instant(word: &str) -> bool {
+    let bytes = word.as_bytes();
+    bytes.len() >= 20
+        && word.ends_with('Z')
+        && bytes[4] == b'-'
+        && bytes[10] == b'T'
+        && word
+            .chars()
+            .all(|letter| letter.is_ascii_digit() || matches!(letter, '-' | ':' | 'T' | 'Z' | '.'))
+}
+
+/// Replace every whitespace-separated word one rule matches.
+fn replace_matching(text: &str, matches: fn(&str) -> bool, with: &str) -> String {
+    text.split_inclusive(char::is_whitespace)
+        .map(|piece| {
+            let trimmed = piece.trim_end();
+            if matches(trimmed) {
+                format!("{with}{}", &piece[trimmed.len()..])
+            } else {
+                piece.to_owned()
+            }
+        })
+        .collect()
+}
+
+/// Replace every value this world minted with the placeholder standing for it.
+fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> String {
+    let mut ordered: Vec<(&&str, &String)> = bindings.iter().collect();
+    // Longest first, so a state directory that is a prefix of an image path is
+    // replaced before anything inside it.
+    ordered.sort_by_key(|(_, value)| core::cmp::Reverse(value.len()));
+    let mut written = printed.to_owned();
+    for (name, value) in ordered {
+        written = written.replace(value.as_str(), name);
+    }
+    written = replace_matching(&written, is_identifier, "ID");
+    replace_matching(&written, is_instant, "TIMESTAMP")
+}
+
+/// Run one command line, or say why this check cannot.
+fn run_one(
+    world: &World,
+    command: &str,
+    bindings: &BTreeMap<&'static str, String>,
+    last_status: Option<i32>,
+) -> Result<(String, Option<i32>), String> {
+    if command == EXIT_READ {
+        let status = last_status.ok_or_else(|| {
+            "it reads the status of a command, and no command ran before it".to_owned()
+        })?;
+        return Ok((format!("{status}\n"), Some(status)));
+    }
+    let given = words(&bound(command, bindings));
+    let (program, arguments) = given
+        .split_first()
+        .ok_or_else(|| "it is an empty command line".to_owned())?;
+    if program != "printobserver" {
+        return Err(format!(
+            "it runs `{program}`, and an example may only run `printobserver` or `{EXIT_READ}`"
+        ));
+    }
+    let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .args(arguments)
+        .envs(world.environment(CREDENTIAL))
+        .output()
+        .map_err(|error| error.to_string())?;
+    Ok((
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        ),
+        ran.status.code(),
+    ))
+}
+
+/// Run one example against a real server, and say every way it disagreed.
+fn run(world: &World, example: &Example) -> (Vec<Step>, Vec<String>) {
+    let bindings = bindings(world);
+    let mut produced = Vec::new();
+    let mut findings = Vec::new();
+    let mut last_status = None;
+    if example.steps.is_empty() {
+        findings.push(format!(
+            "{}:{} is a console block carrying no command, so nothing runs it",
+            example.document, example.line
+        ));
+        return (produced, findings);
+    }
+    for step in &example.steps {
+        let (printed, status) = match run_one(world, &step.command, &bindings, last_status) {
+            Ok(outcome) => outcome,
+            Err(why) => {
+                findings.push(format!(
+                    "{}:{} shows `{}`, which this check cannot run: {why}",
+                    example.document, example.line, step.command
+                ));
+                produced.push(step.clone());
+                continue;
+            }
+        };
+        last_status = status;
+        let shown: Vec<String> = abstracted(&printed, &bindings)
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        if shown != step.output {
+            findings.push(format!(
+                "{}:{} shows `{}` printing\n{}\nand it printed\n{}",
+                example.document,
+                example.line,
+                step.command,
+                step.output.join("\n"),
+                shown.join("\n")
+            ));
+        }
+        produced.push(Step {
+            command: step.command.clone(),
+            output: shown,
+        });
+    }
+    (produced, findings)
+}
+
+/// Rewrite one document's blocks with what its examples actually printed.
+fn rewrite(root: &Path, document: &str, produced: &[Example]) {
+    let path = root.join(document);
+    let text = std::fs::read_to_string(&path).expect("the document is readable");
+    let mut written: Vec<String> = Vec::new();
+    let mut blocks = produced.iter();
+    let mut inside = false;
+    for line in text.lines() {
+        if inside {
+            if line.starts_with("```") {
+                written.push(line.to_owned());
+                inside = false;
+            }
+            continue;
+        }
+        written.push(line.to_owned());
+        if line.trim_end() == FENCE {
+            inside = true;
+            if let Some(example) = blocks.next() {
+                for step in &example.steps {
+                    written.push(format!("{PROMPT}{}", step.command));
+                    written.extend(step.output.iter().cloned());
+                }
+            }
+        }
+    }
+    std::fs::write(&path, format!("{}\n", written.join("\n"))).expect("the document is writable");
+}
+
+/// Run every example of every declared document of one tree.
+fn walk(world: &World, root: &Path) -> Vec<String> {
+    let mut findings = Vec::new();
+    let mut ran = 0_usize;
+    for document in documents(root) {
+        let mut produced = Vec::new();
+        for example in examples_in(root, &document) {
+            let (steps, said) = run(world, &example);
+            ran += 1;
+            findings.extend(said);
+            produced.push(Example {
+                document: example.document.clone(),
+                line: example.line,
+                steps,
+            });
+        }
+        if writing() {
+            rewrite(root, &document, &produced);
+        }
+    }
+    assert!(ran > 0, "no declared document carries a runnable example");
+    findings
+}
+
+/// Every documented example prints exactly what its document shows.
+pub fn accepts_the_committed_documentation(world: &World) {
+    let findings = walk(world, &repo_root());
+    if writing() {
+        return;
+    }
+    assert!(
+        findings.is_empty(),
+        "the documentation no longer shows what its examples print:\n{}",
+        findings.join("\n\n")
+    );
+}
+
+/// A copy of the committed documentation a run may break in exactly one way.
+struct Copied {
+    /// Where the copy lives, removed when it is dropped.
+    root: tempfile::TempDir,
+}
+
+impl Copied {
+    /// Copy the policy and every declared document into a tree of its own.
+    fn made() -> Self {
+        let root = tempfile::TempDir::new().expect("a scratch tree");
+        let from = repo_root();
+        std::fs::copy(
+            from.join("repo-policy.toml"),
+            root.path().join("repo-policy.toml"),
+        )
+        .expect("the policy is copyable");
+        for document in documents(&from) {
+            let target = root.path().join(&document);
+            std::fs::create_dir_all(target.parent().expect("a directory"))
+                .expect("the scratch tree is writable");
+            std::fs::copy(from.join(&document), target).expect("a document is copyable");
+        }
+        Self { root }
+    }
+
+    /// Replace one exact fragment of one document, refusing a no-op edit.
+    fn edit(&self, document: &str, old: &str, new: &str) {
+        let path = self.root.path().join(document);
+        let text = std::fs::read_to_string(&path).expect("the document is readable");
+        assert!(text.contains(old), "{document} does not contain {old:?}");
+        std::fs::write(&path, text.replacen(old, new, 1)).expect("the document is writable");
+    }
+}
+
+/// The document every falsifying copy is broken in.
+const BROKEN: &str = "docs/reference/common-operations.md";
+
+/// The same walk, over documentation carrying one defect each.
+///
+/// Both defects are refused rather than passed over, which is what makes the
+/// walk above evidence: a check that shows what it was given and runs nothing
+/// would accept every one of these.
+/// Each copy is driven against a world of its own, so that the only thing
+/// disagreeing with the document is the defect the copy carries: a second walk
+/// over one world would find every later example changed by what the first
+/// walk's actions left behind.
+pub fn refuses_documentation_that_has_drifted() {
+    let altered = Copied::made();
+    altered.edit(
+        BROKEN,
+        "$ printobserver status --print-id PRINT_ID",
+        "$ printobserver status --print-id PRINT_ID\nan output no command of this program printed",
+    );
+    let findings = walk(&World::open(STOOD_IN), altered.root.path());
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.contains("an output no command of this program printed")),
+        "an altered shown output was not refused: {findings:?}"
+    );
+
+    let unreachable = Copied::made();
+    unreachable.edit(
+        BROKEN,
+        "$ printobserver status --print-id PRINT_ID",
+        "$ curl http://a-supervisor.invalid/v1/prints",
+    );
+    let findings = walk(&World::open(STOOD_IN), unreachable.root.path());
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.contains("which this check cannot run")),
+        "an example this check cannot run was not refused: {findings:?}"
+    );
+}

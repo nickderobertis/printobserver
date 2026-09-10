@@ -50,6 +50,7 @@ def test_the_committed_step_runs_the_release_program_the_toolchain_installs() ->
     contains((REPO_ROOT / "repo-policy.toml").read_text(encoding="utf-8"), "release-plz")
 
 
+# journey: the-release-program-accepts-this-tree
 def test_the_program_accepts_the_committed_arguments_and_configuration() -> None:
     """Neither the argument list nor the release configuration is one it rejects."""
     result = run(

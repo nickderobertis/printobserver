@@ -52,6 +52,7 @@ MATRIX = """    strategy:
 """
 
 
+# journey: the-platform-matrices-follow-the-supported-list
 def test_the_tier_accepts_the_committed_configuration(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
