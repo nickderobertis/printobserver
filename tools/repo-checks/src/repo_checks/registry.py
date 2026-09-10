@@ -67,7 +67,6 @@ CHECKS: dict[str, Check] = {
     "docs-skill": checks_docs.skill,
     "docs-reference": checks_docs.reference,
     "docs-schemas": checks_docs.schema_document,
-    "docs-journeys": checks_docs.journeys,
 }
 
 # `workflows` is run by `just lint-workflows` rather than by `just check-repo`,

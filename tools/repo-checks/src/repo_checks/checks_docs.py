@@ -1,6 +1,6 @@
 """The agent-facing documentation, held to the things it documents.
 
-Four checks, and each of them reads the tree rather than the document's own
+Three checks, and each of them reads the tree rather than the document's own
 claims about itself.
 
 `skill` holds the committed skill to the two bounds `repo-policy.toml` declares,
@@ -21,9 +21,6 @@ less.
 
 `schema_document` holds the generated schema document to the schema set the
 contracts' own generation target maintains, in both directions.
-
-`journeys` holds `AGENTS.md`'s journey inventory to the journeys the suite
-actually carries, in both directions.
 """
 
 from __future__ import annotations
@@ -711,87 +708,3 @@ def schema_document(repo: Repo) -> list[str]:
             f"rather than written: run `just docs-generate`."
         )
     return findings
-
-
-def journeys(repo: Repo) -> list[str]:
-    """`AGENTS.md`'s journey inventory names every journey the suite carries, and no other."""
-    try:
-        policy = docs_policy(repo)
-    except PolicyValueError as error:
-        return [str(error)]
-
-    from repo_checks.parsing import MarkerBlockMissingError, marker_block
-
-    try:
-        entries = marker_block(repo.agents_md, policy.journey_block)
-    except MarkerBlockMissingError as error:
-        return [str(error)]
-
-    listed: list[str] = []
-    findings: list[str] = []
-    for entry in entries:
-        if not entry.startswith("- "):
-            continue
-        name, _, said = entry[2:].partition(" — ")
-        name = name.strip("`")
-        listed.append(name)
-        if not said.strip():
-            findings.append(f"the journey inventory names `{name}` and says nothing about it")
-
-    marked = _marked_journeys(repo, policy.journey_marker)
-    findings.extend(
-        f"the journey `{name}` in `{where}` carries the journey marker and the inventory "
-        f"in `AGENTS.md` does not name it"
-        for name, where in sorted(marked.items())
-        if name not in listed
-    )
-    findings.extend(
-        f"the journey inventory names `{name}`, and no test in this repository carries "
-        f"that journey's marker"
-        for name in listed
-        if name not in marked
-    )
-    return findings
-
-
-def _marked_journeys(repo: Repo, marker: str) -> dict[str, str]:
-    """Every journey the suite carries, by the name its marker gives it.
-
-    A journey is a test whose declaration carries the marker on a line above it.
-    The convention is what makes the inventory auditable: a check enumerates
-    the marked tests rather than guessing which of several thousand assertions
-    is a user-facing journey.
-    """
-    found: dict[str, str] = {}
-    pattern = re.compile(rf"^\s*(?://|#)\s*{re.escape(marker)}\s*(?P<name>\S.*)$")
-    for path in sorted([*repo.root.rglob("*.rs"), *repo.root.rglob("*.py")]):
-        relative = path.relative_to(repo.root)
-        if UNCOMMITTED_DIRECTORIES & set(relative.parts):
-            continue
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for number, line in enumerate(lines):
-            match = pattern.match(line)
-            # The marker names the test it sits above, so a marker with no test
-            # under it names no journey and is not one. Attributes and
-            # decorators sit between the two, so the walk reads past them.
-            if match and _declares_a_test(lines[number + 1 :]):
-                found[match["name"].strip()] = str(relative)
-    return found
-
-
-#: How a test declaration opens, in each language a journey is written in.
-TEST_DECLARATIONS = ("#[test]", "#[tokio::test]", "def test_", "async fn ", "fn ")
-
-
-def _declares_a_test(rest: list[str]) -> bool:
-    """Whether the lines below a marker declare a test rather than something else."""
-    for line in rest:
-        stripped = line.strip()
-        if not stripped:
-            return False
-        if stripped.startswith(("#[", "@", "///", "//!")) and not stripped.startswith(
-            ("#[test]", "#[tokio::test]")
-        ):
-            continue
-        return stripped.startswith(TEST_DECLARATIONS)
-    return False

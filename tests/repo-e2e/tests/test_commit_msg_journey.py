@@ -92,7 +92,6 @@ def publishable_branch(copy: GateCopy) -> None:
     passing(git(copy, "checkout", "-q", "work"), describing="git checkout work")
 
 
-# journey: publishing-a-branch-once-main-has-moved
 def test_a_publication_merges_the_base_into_the_branch(
     gate_copy: Callable[..., GateCopy],
 ) -> None:

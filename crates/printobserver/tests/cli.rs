@@ -51,7 +51,6 @@ fn nothing_listening() -> String {
     format!("http://{address}")
 }
 
-// journey: the-installed-command-runs
 /// The program prints its surface and exits zero.
 #[test]
 fn the_installed_command_runs_and_exits_zero() {
@@ -188,7 +187,6 @@ fn a_duration_outside_what_this_program_declares_is_refused() {
     }
 }
 
-// journey: a-program-nothing-configured-says-what-to-configure
 /// A program nothing configured says which file to write and what to set.
 #[test]
 fn a_program_nothing_configured_says_what_to_configure() {

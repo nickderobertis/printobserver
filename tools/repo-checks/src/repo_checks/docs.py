@@ -35,8 +35,6 @@ POLICY_NAMES = (
     "surface_manifest",
     "schema_document",
     "schema_directory",
-    "journey_block",
-    "journey_marker",
     "example_fence",
     "bundle_source",
     "bundle_assets",
@@ -83,10 +81,6 @@ class DocsPolicy:
     schema_document: str
     #: The tree the contracts' generation target writes the schema set into.
     schema_directory: str
-    #: The `AGENTS.md` block carrying the journey inventory.
-    journey_block: str
-    #: The marker a journey test carries on the line above it.
-    journey_marker: str
     #: The fence a runnable example is written in.
     example_fence: str
     #: The source that carries the reference documents into the artifact.
@@ -154,8 +148,6 @@ def docs_policy(repo: Repo) -> DocsPolicy:
         surface_manifest=named["surface_manifest"],
         schema_document=named["schema_document"],
         schema_directory=named["schema_directory"],
-        journey_block=named["journey_block"],
-        journey_marker=named["journey_marker"],
         example_fence=named["example_fence"],
         bundle_source=named["bundle_source"],
         bundle_assets=named["bundle_assets"],

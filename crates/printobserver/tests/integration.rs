@@ -60,7 +60,6 @@ mod tier;
 
 use world::World;
 
-// journey: every-command-against-a-real-printer
 /// Every client command, against the machine beside the printer.
 #[test]
 fn every_client_command_is_proven_against_a_real_octoprint() {
@@ -69,7 +68,6 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
     tier::run(&world, tier::AGAINST_A_REAL_MACHINE);
 }
 
-// journey: a-supervision-turn-from-the-documentation-alone
 /// One supervision turn, carried out from the committed documentation alone,
 /// against a real supervisor backed by a real `OctoPrint`.
 ///

@@ -62,7 +62,6 @@ def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: 
     contains(justfile, f"nx run-many -t {target}")
 
 
-# journey: the-python-client-project-passes-every-gate-target
 def test_the_committed_project_passes_every_python_target(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
@@ -73,7 +72,6 @@ def test_the_committed_project_passes_every_python_target(
         passing(_run_target(clean, PYTHON_PROJECT, target), describing=f"{PYTHON_PROJECT}:{target}")
 
 
-# journey: the-node-client-project-passes-every-gate-target
 def test_the_committed_project_passes_every_typescript_target(
     gate_copy: Callable[[], GateCopy],
 ) -> None:

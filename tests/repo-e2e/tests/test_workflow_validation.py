@@ -19,7 +19,6 @@ from repo_checks.expect import failing, passing
 CI = ".github/workflows/ci.yml"
 
 
-# journey: the-committed-workflows-validate
 def test_the_validation_accepts_the_committed_configuration(
     gate_copy: Callable[[], GateCopy],
 ) -> None:

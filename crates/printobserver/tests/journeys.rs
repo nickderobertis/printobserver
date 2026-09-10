@@ -69,7 +69,6 @@ use printobserver_server as server_assets;
 
 use world::World;
 
-// journey: every-command-against-a-real-supervisor
 /// The whole tier, over one supervisor.
 ///
 /// One world rather than one per journey: the supervisor is a process and the
@@ -82,7 +81,6 @@ fn every_client_command_is_proven_against_a_real_supervisor() {
     tier::run(&world, tier::WHOLE);
 }
 
-// journey: documented-examples-print-what-they-show
 /// Every command example the reference documents show, run against a real
 /// supervisor and compared with what the document shows beside it.
 ///
@@ -102,9 +100,9 @@ fn every_documented_example_prints_what_the_document_shows() {
 /// against a real supervisor over a stood-in machine.
 ///
 /// The printer tier runs the same walk against the `OctoPrint` `just
-/// octoprint-up` provisioned, which is where the journey inventory's entry for
-/// it points; this is the same walk in every gate, so a change that made the
-/// documentation unfollowable is refused before the printer tier runs.
+/// octoprint-up` provisioned; this is the same walk in every gate, so a change
+/// that made the documentation unfollowable is refused before the printer tier
+/// runs.
 #[test]
 fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
     let world = World::open(world::STOOD_IN);
@@ -112,7 +110,6 @@ fn one_supervision_turn_is_carried_out_from_the_documentation_alone() {
     documented::walk(&world);
 }
 
-// journey: a-supervision-turn-from-the-installed-assets-alone
 /// One supervision turn from what the running server materialized, and nothing
 /// else.
 ///

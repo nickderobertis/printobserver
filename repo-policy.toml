@@ -369,12 +369,6 @@ bundle_source = "crates/printobserver-oneharness/src/lib.rs"
 bundle_assets = "crates/printobserver-oneharness/assets"
 bundle_directory = "reference"
 
-# The block of `AGENTS.md` carrying the journey inventory, and the marker a
-# journey test carries on the line above it. `just check-repo` refuses a marked
-# journey the block does not name and a name the tree carries no journey for.
-journey_block = "journey-inventory"
-journey_marker = "journey:"
-
 # Where a documented example is run from, so a reader copying one runs what this
 # repository ran. `console` is the fence, `$ ` opens a command line, and the
 # lines after it are what that command printed.

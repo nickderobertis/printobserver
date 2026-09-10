@@ -145,7 +145,6 @@ def coverage_defect(root: Path, helpers: int) -> str:
     return covered + undriven_rust(added) + driving
 
 
-# journey: the-gate-refuses-a-defective-tree
 def test_the_gate_accepts_the_committed_tree(gate_copy: Callable[[], GateCopy]) -> None:
     """The clean tree the defect copies are made from passes the whole gate."""
     clean = gate_copy()
