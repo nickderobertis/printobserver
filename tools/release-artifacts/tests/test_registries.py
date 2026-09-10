@@ -13,8 +13,6 @@ something that cannot be run does not pass and says so distinctly, one serving
 something mislabelled does not pass, and one serving a working artifact passes.
 """
 
-# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
-
 from __future__ import annotations
 
 import io
@@ -55,6 +53,8 @@ ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobser
 UNSERVED = "9.9.9"
 
 
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] The same reason as above it.
 @pytest.fixture
 def registries(repo: Repo, tmp_path: Path) -> Iterator[Registries]:
     """The three registries, answering on one address, serving nothing yet."""
@@ -716,3 +716,28 @@ def test_a_tag_naming_no_version_is_not_a_release_a_run_is_keyed_on(
     bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
 
     equal(released(bases), ("0.4.0",), describing="the releases a run can be keyed on")
+
+
+def test_a_pre_release_the_forge_lists_is_not_a_release_a_run_is_keyed_on(
+    repo: Repo, registries: Registries
+) -> None:
+    """The forge marks a draft and a pre-release, and a run is keyed on neither.
+
+    What a release-time run proves is what an ordinary user's own install would
+    resolve to, and neither of those is that.
+    """
+    registries.serve("0.4.0")
+    registries.answers(
+        FORGE_PREFIX,
+        b'[{"tag_name": "v0.9.0", "prerelease": true, "draft": false},'
+        b' {"tag_name": "v0.8.0", "prerelease": false, "draft": true},'
+        b' {"tag_name": "v0.4.0", "prerelease": false, "draft": false}]',
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(released(bases), ("0.4.0",), describing="the releases a run can be keyed on")
+    equal(
+        select(bases, named(repo.root, "pypi:printobserver-cli"), RELEASE).version,
+        "0.4.0",
+        describing="the version a release-time run proves",
+    )

@@ -6,9 +6,6 @@ the release declaration, the committed workflow and `AGENTS.md`, and those are
 the files this repository ships.
 """
 
-# `assert` is how pytest states an assertion and how it produces the failure
-# message a reader acts on; suppressions.toml carries the reason.
-
 from __future__ import annotations
 
 from collections.abc import Callable

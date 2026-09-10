@@ -321,7 +321,7 @@ def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
 
 
 def released(bases: Bases) -> tuple[str, ...]:
-    """Every release the forge lists, newest last.
+    """Every release the forge lists that a run may be keyed on, newest last.
 
     Raises:
         RegistryError: If the forge could not be asked, or answered a listing
@@ -341,8 +341,12 @@ def released(bases: Bases) -> tuple[str, ...]:
         if not isinstance(entry, dict) or not isinstance(entry.get("tag_name"), str):
             msg = f"{bases.listing} lists {entry!r}, which is not a release with a tag"
             raise RegistryError(msg)
-        # A tag naming no version this proof can select is not a release a run
-        # of it may be keyed on.
+        # Neither a draft nor a pre-release is a release a run of this may be
+        # keyed on: the forge marks both, and what a release-time run proves is
+        # what an ordinary user's own install would resolve to.
+        if entry.get("draft") or entry.get("prerelease"):
+            continue
+        # And a tag naming no version this proof can select is not one either.
         if tag := supported_version(entry["tag_name"]):
             tags.add(tag)
     return tuple(sorted(tags, key=ordered))

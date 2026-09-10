@@ -152,6 +152,7 @@ def _selected_by_a_release_run() -> str:
     raise AssertionError(message)
 
 
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published() -> None:
     """The release's own proof is keyed on the release workflow having finished.
 

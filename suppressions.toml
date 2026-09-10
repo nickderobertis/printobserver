@@ -268,3 +268,15 @@ rule = "live_tier_compiles_and_requires_credential"
 file = ".github/workflows/install-path.yml"
 site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/release-artifacts/tests/test_registries.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "This one test reads the committed workflow on purpose, and it is the only way the thing it proves can be proven at all: that a release's own run is keyed on a point no release can reach before its artifacts are published, and that it takes the version from that release. A GitHub trigger cannot be fired from a journey, and waiting for a real release would mean this property was established by nobody until the next one. What it reads it then DRIVES: the selector it finds in that workflow's own `env` is what the journeys beside it pass to the real recipes against a stand-in forge. Every other journey in this file goes through `just`."

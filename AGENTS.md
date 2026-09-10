@@ -691,9 +691,8 @@ commands executable is the `server` node — each held to this section.
 
 `just prove-route-*` proves an artifact **built from the committed tree**, which
 is the only proof a change can run before anything is published — and is green
-over a repository nothing can install, which is what green route checks were
-saying here while all three routes were unusable. `just test-install-proof` is
-the other half, and `docs/reference/testing.md` records what it proves.
+over a repository nothing can install. `just test-install-proof` is the other
+half.
 
 **Which version is proven is never the number in this tree.** That is whatever
 release automation last wrote into the workspace, and what a user gets is
