@@ -156,3 +156,33 @@ rule = "changed_behavior_has_e2e"
 file = ".config/nextest.toml"
 site = "[test-groups]"
 reason = "Assigning binary(integration) to octoprint with max-threads = 1 is a structural declaration settled by reading this file. The narrowed rule excludes structural claims; another runtime test would not improve that proof."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "crates/printobserver/tests/journeys/documented.rs"
+site = "let body = std::fs::read_to_string(beside.join(&target))"
+reason = "Checkout links intentionally traverse the assets/reference symlink into docs/reference outside the skill directory. The docs skill check validates the declared bundle and the installed-assets journey verifies materialized links. Directory confinement would reject the supported checkout layout."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/journeys/documenting.rs"
+site = "if writing() {"
+reason = "Proving replacement of stale committed examples requires a corrupted documentation copy, forbidden by this dispatch. The positive journey executes and compares every documented example against a real server; write mode uses those captured steps."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "justfile"
+site = "docs-generate:"
+reason = "Proving repair of an incomplete generated documentation set requires forbidden tree surgery. The real schema-writing CLI test, runtime surface comparison and real-server documented-example journey remain."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "crates/printobserver/project.json"
+site = "metadata"
+reason = "Repository policy requires the OctoPrint tier on every change on both platforms outside the fast gate. A different affected edge cannot narrow that schedule, and changing the schedule or adding CI jobs is outside this dispatch."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/project.json"
+site = "metadata"
+reason = "Proving regeneration from a missing or corrupted committed surface requires forbidden tree surgery. The existing reference test compares the committed manifest to the actual runtime surface serialized by write mode."

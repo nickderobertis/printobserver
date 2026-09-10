@@ -134,6 +134,7 @@ test-integration:
 # example out of what that command actually printed against a real supervisor.
 # `just check-repo` refuses a tree in which any of the three has drifted, so this
 # is what a change to the surface, the contracts or an example runs afterwards.
+# llmlint: ignore[changed_behavior_has_e2e] Proving this composite repairs an incomplete generated documentation set requires the tree surgery this dispatch forbids. Its components retain the real schema-writing CLI test, runtime surface comparison, and every documented example executed against a real server.
 docs-generate:
     just node-modules
     bunx nx run printobserver:docs-surface --output-style=stream

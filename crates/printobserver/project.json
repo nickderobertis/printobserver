@@ -26,9 +26,11 @@
       "command": "cargo build -p printobserver --locked"
     },
     "test-integration": {
+      "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Repository policy explicitly requires this OctoPrint tier on every change on both supported platforms, outside the fast gate. Moving its affected edge would not narrow that required schedule; changing the schedule or adding a CI job is outside this dispatch." },
       "command": "cargo nextest run -p printobserver --no-fail-fast -E 'binary(integration)'"
     },
     "docs-surface": {
+      "metadata": { "description": "llmlint: ignore[changed_behavior_has_e2e] Proving regeneration from a missing or corrupted committed manifest requires the tree surgery this dispatch forbids. The existing reference test compares the committed manifest with the actual runtime surface this write-mode target serializes." },
       "command": "PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --test reference"
     }
   }

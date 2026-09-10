@@ -100,6 +100,45 @@ fn repo_root() -> PathBuf {
         .join("..")
 }
 
+/// A declared path cannot bypass its root lexically.
+fn validate_relative_path(value: &str) {
+    let path = Path::new(value);
+    assert!(
+        !path.is_absolute()
+            && !path
+                .components()
+                .any(|part| part == std::path::Component::ParentDir),
+        "repository path `{value}` must be relative without parent traversal"
+    );
+}
+
+/// Policy paths name existing repository assets, including symlinks within the tree.
+pub fn validate_repository_path(root: &Path, value: &str) {
+    validate_relative_path(value);
+    let resolved = root.join(value).canonicalize().expect("the asset exists");
+    assert!(
+        resolved.starts_with(root.canonicalize().expect("the repository exists")),
+        "repository path `{value}` resolves outside the repository"
+    );
+}
+
+/// Inline asset declarations cannot escape their root, including through symlinks.
+#[test]
+fn repository_asset_paths_stay_inside_their_root() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let root = directory.path();
+    std::fs::write(root.join("guide.md"), "A guide.\n").expect("write an inline asset");
+    validate_repository_path(root, "guide.md");
+    std::os::unix::fs::symlink(root.parent().expect("a parent"), root.join("escape"))
+        .expect("create an escaping symlink");
+    for value in [root.to_str().expect("a UTF-8 path"), "../outside", "escape"] {
+        assert!(
+            std::panic::catch_unwind(|| validate_repository_path(root, value)).is_err(),
+            "{value} must be refused"
+        );
+    }
+}
+
 impl Documentation {
     /// Read one skill and every document it links to, from beside it.
     ///
@@ -115,6 +154,8 @@ impl Documentation {
             .unwrap_or_else(|error| panic!("{} is readable: {error}", skill_path.display()));
         let mut linked = BTreeMap::new();
         for target in links_in(&skill) {
+            validate_relative_path(&target);
+            // llmlint: ignore[boundary_inputs_validated] Checkout references intentionally follow the assets/reference symlink outside the skill directory into docs/reference. The docs skill check validates this declared bundle; the installed-assets journey proves its materialized links without a checkout. Confining links to the skill directory would reject the supported checkout layout.
             let body = std::fs::read_to_string(beside.join(&target)).unwrap_or_else(|error| {
                 panic!("linked document `{target}` must be readable: {error}")
             });
@@ -132,6 +173,7 @@ impl Documentation {
         let skill_path = policy["docs"]["skill"]
             .as_str()
             .expect("the policy names the skill");
+        validate_repository_path(root, skill_path);
         Self::beside(&root.join(skill_path))
     }
 

@@ -95,10 +95,11 @@ fn documents(root: &Path) -> Vec<String> {
         .expect("the policy declares reference documents")
         .iter()
         .map(|entry| {
-            entry["path"]
+            let path = entry["path"]
                 .as_str()
-                .expect("each document declares its path")
-                .to_owned()
+                .expect("each document declares its path");
+            super::documented::validate_repository_path(root, path);
+            path.to_owned()
         })
         .collect()
 }
@@ -410,6 +411,7 @@ fn walk(world: &World, root: &Path) -> Vec<String> {
                 steps,
             });
         }
+        // llmlint: ignore[changed_behavior_has_e2e] Proving replacement of stale committed examples requires a corrupted documentation copy, explicitly forbidden by this dispatch. The positive example journey executes every example against a real server and compares its output; this mode writes those same captured steps.
         if writing() {
             rewrite(root, &document, &produced);
         }
