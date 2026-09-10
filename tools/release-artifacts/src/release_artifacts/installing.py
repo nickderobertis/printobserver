@@ -114,7 +114,11 @@ def _only(paths: tuple[Path, ...], suffix: str, describing: str) -> Path:
 def python_client(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python client, installed the way an application takes it."""
     environment = into / "env"
-    _ran(["uv", "venv", str(environment)], cwd=into, describing="making a Python environment")
+    _ran(
+        ["uv", "venv", "--clear", str(environment)],
+        cwd=into,
+        describing="making a Python environment",
+    )
     wheel = _only(built.paths, ".whl", built.target)
     _ran(
         ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
@@ -191,7 +195,11 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python-registry route, taken with no Rust toolchain on the path."""
     environment = into / "env"
-    _ran(["uv", "venv", str(environment)], cwd=into, describing="making a Python environment")
+    _ran(
+        ["uv", "venv", "--clear", str(environment)],
+        cwd=into,
+        describing="making a Python environment",
+    )
     wheel = _only(built.paths, ".whl", built.target)
     _ran(
         ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],

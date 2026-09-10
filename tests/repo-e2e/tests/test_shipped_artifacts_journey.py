@@ -120,6 +120,18 @@ def test_each_route_leaves_a_runnable_program_on_the_path(identifier: str, recip
     contains(said, f"printobserver {_version()}", describing=f"what `just {recipe}` said")
 
 
+@pytest.mark.parametrize(
+    ("recipe", "expected"),
+    [("prove-client-python", "smoke: contract"), ("prove-route-pypi", "printobserver")],
+)
+def test_python_proofs_can_be_repeated(recipe: str, expected: str) -> None:
+    """A second proof installs and runs the artifact in its disposable environment."""
+    for attempt in range(2):
+        code, said = _recipe(recipe)
+        passing((code, said), describing=f"`just {recipe}`, attempt {attempt + 1}")
+        contains(said, f"{expected} {_version()}", describing=f"what `just {recipe}` said")
+
+
 def test_no_route_is_installed_with_a_rust_toolchain_on_the_path() -> None:
     """A route that needed one on the installing host would fail here."""
     from repo_checks.shell import run as shell_run
