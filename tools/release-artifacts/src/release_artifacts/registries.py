@@ -149,6 +149,22 @@ NEXT_PUBLISH = (
     "Next: the `release-plz` run that cut v{version} is where this was to be published — "
     "its `artifacts` and `publish` jobs. Re-running them publishes what {where} is missing."
 )
+#: And for the answer that is neither: a body no registry protocol describes.
+#: Nothing was proven or disproven, so the next step is at the address rather
+#: than in this repository — this proof reads those documents and cannot repair
+#: one.
+NEXT_MALFORMED = (
+    "Next: nothing was proven or disproven here. Ask that address for the same document "
+    "by hand: what answered is the registry — or whatever `{standin}` pointed this at — "
+    "rather than anything this repository publishes."
+)
+#: And for a checkout that cannot say which release the run at a commit cut.
+#: Every one of these is a question about the clone rather than about a release,
+#: and answering it needs the commit and the tags that name it.
+NEXT_CHECKOUT = (
+    "Next: this needs a checkout carrying that commit and its tags — `fetch-depth: 0` on "
+    "the job's own checkout step, or `git fetch --tags` on a clone made by hand."
+)
 
 
 class RegistryError(RuntimeError):
@@ -189,7 +205,8 @@ class Bases:
             msg = (
                 "`repo-policy.toml` declares no `repository.owner` and "
                 "`repository.name`, so nothing can say where this repository's "
-                "own releases are listed"
+                "own releases are listed. Next: declare both in that file's "
+                "`[repository]` table, which is the one place they are written."
             )
             raise RegistryError(msg)
         standing_in = environment.get(PRINTOBSERVER_PROOF_REGISTRIES, "").strip().rstrip("/")
@@ -284,12 +301,14 @@ def cut_at(root: Path, commit: str) -> str:
             f"{root} does not carry the commit {named}, so it cannot say which release "
             f"the run at it cut. A clone without that commit and its tags answers `no "
             f"release` for every commit there is, which passes over every publish "
-            f"rather than failing:\n{carried.stderr}"
+            f"rather than failing:\n{carried.stderr}\n{NEXT_CHECKOUT}"
         )
         raise RegistryError(msg)
     listed = run(["git", "tag", "--points-at", named], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
     if listed.returncode != 0:
-        msg = f"{root} could not be asked which tags name {named}:\n{listed.stderr}"
+        msg = (
+            f"{root} could not be asked which tags name {named}:\n{listed.stderr}\n{NEXT_CHECKOUT}"
+        )
         raise RegistryError(msg)
     cut = sorted(
         {supported_version(tag) for tag in listed.stdout.split() if supported_version(tag)},
@@ -298,7 +317,9 @@ def cut_at(root: Path, commit: str) -> str:
     if len(cut) > 1:
         msg = (
             f"{named} is named by {', '.join(cut)}, and which release the run at that "
-            f"commit cut is then not something a tag can answer"
+            f"commit cut is then not something a tag can answer. Next: that run's own "
+            f"`release-plz` log says which version it cut — prove that one by naming it "
+            f"in `{PRINTOBSERVER_PROOF_VERSION}`."
         )
         raise RegistryError(msg)
     return cut[0] if cut else ""
@@ -329,7 +350,11 @@ def _asked(url: str) -> bytes:
             second would send a reader to repair a release that is fine.
     """
     if urlsplit(url).scheme not in {"http", "https"}:
-        msg = f"{url} is not an address this asks a registry over"
+        msg = (
+            f"{url} is not an address this asks a registry over. Next: "
+            f"`{PRINTOBSERVER_PROOF_REGISTRIES}` is what points the three registries "
+            f"somewhere other than the real ones, and it names one `http` or `https` base."
+        )
         raise RegistryError(msg)
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(  # noqa: S310
@@ -369,7 +394,10 @@ def _answered(url: str) -> object:
     try:
         return json.loads(raw)
     except (UnicodeError, json.JSONDecodeError) as unreadable:
-        msg = f"{url} answered something other than the JSON its protocol serves"
+        msg = (
+            f"{url} answered something other than the JSON its protocol serves. "
+            f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
         raise RegistryError(msg) from unreadable
 
 
@@ -389,11 +417,17 @@ def _versions(url: str, field: str) -> list[str]:
     if answer is None:
         return []
     if not isinstance(answer, dict):
-        msg = f"{url} answered something other than the metadata document its protocol serves"
+        msg = (
+            f"{url} answered something other than the metadata document its protocol "
+            f"serves. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
         raise RegistryError(msg)
     listed = answer.get(field, {})
     if not isinstance(listed, dict):
-        msg = f"{url} answered a `{field}` that is not the mapping of versions its protocol serves"
+        msg = (
+            f"{url} answered a `{field}` that is not the mapping of versions its protocol "
+            f"serves. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
         raise RegistryError(msg)
     # Only the versions this proof can select. A registry serving a
     # pre-release beside the real ones is ordinary, and one of those is
@@ -421,7 +455,11 @@ def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
         case "release":
             versions = list(released(bases))
         case _:
-            msg = f"nothing here knows how to ask what serves `{target.id}`"
+            msg = (
+                f"nothing here knows how to ask what serves `{target.id}`. Next: "
+                f"`release-targets.toml` declares that target's `registry`, and the "
+                f"registries this proof reads are `pypi`, `npm` and `release`."
+            )
             raise RegistryError(msg)
     return tuple(sorted(set(versions), key=ordered))
 
@@ -437,7 +475,10 @@ def released(bases: Bases) -> tuple[str, ...]:
     if answer is None:
         return ()
     if not isinstance(answer, list):
-        msg = f"{bases.listing} answered something other than a list of releases"
+        msg = (
+            f"{bases.listing} answered something other than a list of releases. "
+            f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
         raise RegistryError(msg)
     tags: set[str] = set()
     for entry in answer:
@@ -445,7 +486,10 @@ def released(bases: Bases) -> tuple[str, ...]:
         # nothing about — and where the dropped one was the newest, a
         # release-time run would prove the one before it.
         if not isinstance(entry, dict) or not isinstance(entry.get("tag_name"), str):
-            msg = f"{bases.listing} lists {entry!r}, which is not a release with a tag"
+            msg = (
+                f"{bases.listing} lists {entry!r}, which is not a release with a tag. "
+                f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+            )
             raise RegistryError(msg)
         # Neither a draft nor a pre-release is a release a run of this may be
         # keyed on: the forge marks both, and what a release-time run proves is
@@ -459,7 +503,8 @@ def released(bases: Bases) -> tuple[str, ...]:
             if not isinstance(reading, bool):
                 msg = (
                     f"{bases.listing} lists {entry['tag_name']} with a `{flag}` of "
-                    f"{reading!r}, which is not the boolean its protocol serves"
+                    f"{reading!r}, which is not the boolean its protocol serves. "
+                    f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
                 )
                 raise RegistryError(msg)
             marked = marked or reading

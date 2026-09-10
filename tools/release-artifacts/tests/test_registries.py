@@ -235,6 +235,56 @@ def test_every_failure_says_what_to_do_next_and_the_two_repairs_say_different_th
     contains(str(unreadable.value), "re-run this once", describing="what a network says to do")
 
 
+#: Every shape of answer no registry protocol here describes, as what to answer
+#: with and which route asking for it meets it. None of them is either of the
+#: two repairs a proof reports: nothing was proven or disproven, so what a
+#: reader needs is a next step at the address rather than in this repository.
+MALFORMED = [
+    (f"{PYPI_PREFIX}/pypi/printobserver-cli/json", b"not json", "pypi:printobserver-cli"),
+    (
+        f"{PYPI_PREFIX}/pypi/printobserver-cli/json",
+        b'{"releases": "all of them"}',
+        "pypi:printobserver-cli",
+    ),
+    (f"{NPM_PREFIX}/printobserver-cli", b"[1, 2, 3]", "npm:printobserver-cli"),
+    (FORGE_PREFIX, b'{"message": "not a list of releases"}', "release:printobserver"),
+    (
+        FORGE_PREFIX,
+        b'[{"tag_name": "v0.4.0"}, {"name": "no tag at all"}]',
+        "release:printobserver",
+    ),
+    (
+        FORGE_PREFIX,
+        b'[{"tag_name": "v0.4.0", "prerelease": "false"}]',
+        "release:printobserver",
+    ),
+]
+
+
+@pytest.mark.parametrize(("path", "body", "identifier"), MALFORMED)
+def test_a_registry_answering_what_no_protocol_describes_says_what_to_do_next(
+    repo: Repo, registries: Registries, path: str, body: bytes, identifier: str
+) -> None:
+    """Naming the malformed answer and not where to start is one step short of use.
+
+    This is the third answer beside the two repairs, and the one whose reader is
+    most likely to start in the wrong place: sent to a publish or a build, they
+    would be repairing something that is fine. What answered is the registry —
+    or whatever the caller pointed this at — so that is where the message sends
+    them.
+    """
+    registries.serve("0.4.0")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+    registries.answers(path, body)
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, identifier))
+
+    said = str(refused.value)
+    contains(said, "Next:", describing=said)
+    contains(said, PRINTOBSERVER_PROOF_REGISTRIES, describing="where a reader is sent")
+
+
 def _next(report: str) -> str:
     """The next action one report states, as a reader finds it."""
     return report.partition("Next:")[2].strip()
@@ -1060,6 +1110,35 @@ def test_a_checkout_that_does_not_carry_the_commit_is_refused(checkout: Checkout
         cut_at(checkout.path, "0" * 40)
 
     contains(str(refused.value), "does not carry the commit", describing="what it said")
+
+
+def test_a_checkout_that_cannot_say_which_release_a_run_cut_says_what_to_do_next(
+    checkout: Checkout,
+) -> None:
+    """Both of these are questions about the clone rather than about a release.
+
+    One needs the commit and its tags, which a shallow checkout does not carry;
+    the other needs somebody to say which of two tags is the release to prove,
+    and the run that cut it is the only thing that knows.
+    """
+    with pytest.raises(RegistryError) as missing:
+        cut_at(checkout.path, "0" * 40)
+
+    contains(str(missing.value), "Next:", describing=str(missing.value))
+    contains(str(missing.value), "git fetch --tags", describing="what repairs a clone")
+
+    tagged = run(["git", "tag", "v0.7.0", checkout.at["0.6.0"]], cwd=checkout.path, timeout=60)
+    truth(tagged.returncode == 0, describing=tagged.stderr)
+
+    with pytest.raises(RegistryError) as ambiguous:
+        cut_at(checkout.path, checkout.at["0.6.0"])
+
+    contains(str(ambiguous.value), "Next:", describing=str(ambiguous.value))
+    contains(
+        str(ambiguous.value),
+        PRINTOBSERVER_PROOF_VERSION,
+        describing="how a reader proves the release they meant",
+    )
 
 
 def test_a_commit_that_is_no_object_name_is_refused(checkout: Checkout) -> None:
