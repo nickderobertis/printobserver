@@ -135,6 +135,21 @@ EXIT = {Outcome.PROVEN: 0, Outcome.NOT_PROVEN: 1, Outcome.NOT_SERVED: 3}
 UNREADABLE = 4
 
 
+#: What to do about each of the two failures, beside the words naming them. A
+#: report that tells a reader which repair they are looking at and not where to
+#: start it has stopped one step short of being any use — and this tier is read
+#: by somebody chasing a broken release, who has the least time to work it out.
+NEXT_BUILD = (
+    "Next: this is a build to repair rather than a release. `just prove-route-*` proves "
+    "the same route over an artifact built from the committed tree, which reproduces this "
+    "without waiting for a publish."
+)
+NEXT_PUBLISH = (
+    "Next: the `release-plz` run that cut v{version} is where this was to be published — "
+    "its `artifacts` and `publish` jobs. Re-running them publishes what {where} is missing."
+)
+
+
 class RegistryError(RuntimeError):
     """A registry could not be asked what it serves."""
 
@@ -326,10 +341,16 @@ def _asked(url: str) -> bytes:
     except urllib.error.HTTPError as refused:
         if refused.code == 404:
             return b""
-        msg = f"{url} refused the read that asks what it serves ({refused})"
+        msg = (
+            f"{url} refused the read that asks what it serves ({refused}). Nothing was "
+            f"proven or disproven here: re-run this once that registry answers."
+        )
         raise RegistryError(msg) from refused
     except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
-        msg = f"{url} could not be reached to ask what it serves ({unreachable})"
+        msg = (
+            f"{url} could not be reached to ask what it serves ({unreachable}). Nothing "
+            f"was proven or disproven here: re-run this once that registry answers."
+        )
         raise RegistryError(msg) from unreachable
     return read
 
@@ -682,6 +703,7 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
                     *preamble,
                     f"{where} serves {selected.version}, and what it serves did not work here:",
                     str(refused),
+                    NEXT_BUILD,
                 ],
             ),
         )
@@ -698,6 +720,7 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
                     f"reported: {version}",
                     f"which is not the version under test: an installed "
                     f"{PROGRAM} answers `--version` with `{_answers(selected.version)}`",
+                    NEXT_BUILD,
                 ],
             ),
         )
@@ -736,6 +759,7 @@ def _refused(
                 f"{where} serves {serves} for `{target.name}`",
                 "Nothing was installed: this is a publish that did not happen rather "
                 "than an artifact that does not work.",
+                NEXT_PUBLISH.format(version=selected.version or "it", where=where),
             ],
         ),
     )

@@ -197,6 +197,48 @@ def test_an_artifact_that_prints_the_version_without_answering_with_it_does_not_
     contains(proof.report, "printobserver 0.4.5", describing="the answer that would have proven it")
 
 
+def test_every_failure_says_what_to_do_next_and_the_two_repairs_say_different_things(
+    repo: Repo, registries: Registries, proving: Callable[..., Proof], tmp_path: Path
+) -> None:
+    """Naming the repair and not where to start it stops one step short of use.
+
+    This tier is read by somebody chasing a broken release, and the two repairs
+    are somebody else's job: a publish that did not happen is a run to re-run,
+    and an artifact that does not work is a build to reproduce locally. A
+    report giving both the same next action would send half its readers to the
+    wrong one.
+    """
+    registries.serve("0.4.0")
+    registries.serve("0.5.0", broken=True)
+
+    unpublished = proving("pypi:printobserver-cli", UNSERVED).report
+    unusable = proving("pypi:printobserver-cli", "0.5.0").report
+
+    contains(unpublished, "Next:", describing=unpublished)
+    contains(unusable, "Next:", describing=unusable)
+    contains(unpublished, "publish", describing="where an unpublished release is repaired")
+    contains(unusable, "build to repair", describing="where a broken artifact is repaired")
+    truth(
+        _next(unpublished) != _next(unusable),
+        describing="the two repairs to send a reader to different places",
+    )
+
+    with pytest.raises(RegistryError) as unreadable:
+        prove(
+            repo,
+            "pypi:printobserver-cli",
+            tmp_path / "unreachable-next",
+            {PRINTOBSERVER_PROOF_REGISTRIES: "http://127.0.0.1:1"},
+        )
+
+    contains(str(unreadable.value), "re-run this once", describing="what a network says to do")
+
+
+def _next(report: str) -> str:
+    """The next action one report states, as a reader finds it."""
+    return report.partition("Next:")[2].strip()
+
+
 def test_the_version_a_caller_names_is_the_one_proven(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
