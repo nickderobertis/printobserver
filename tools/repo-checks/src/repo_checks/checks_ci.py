@@ -633,12 +633,78 @@ def continuous_integration(repo: Repo) -> list[str]:
             f"rather than a job of its own"
         )
 
-    findings.extend(_install_job_findings(path, install))
+    findings.extend(_install_job_findings(repo, path, install))
+    return findings
+
+
+def _waived(repo: Repo) -> tuple[tuple[str, ...], str]:
+    """The steps of an install job whose failure does not fail it, and what it costs."""
+    declared = repo.policy.get("workflows", {})
+    steps = declared.get("waived_steps")
+    named = (
+        tuple(str(step) for step in steps)
+        if isinstance(steps, list) and all(isinstance(step, str) and step.strip() for step in steps)
+        else ()
+    )
+    return named, str(declared.get("waived_report", "")).strip()
+
+
+def _reporting_findings(
+    repo: Repo, file_name: str, job_name: str, job: dict[str, Any]
+) -> list[str]:
+    """The two waived commands carry their ids, and the run says what they reached.
+
+    Their failure not failing the job is the waiver, and this is its price: a
+    completed run has to tell a route whose service came up from one whose did
+    not. Unreported, a green job says nothing about whether the service was
+    ever established — which is a credential-dependent failure disappearing,
+    and is exactly what making them non-fatal must not buy.
+    """
+    waived, summary = _waived(repo)
+    if not waived or not summary:
+        return [
+            "`repo-policy.toml`'s `[workflows]` declares no `waived_steps` and "
+            "`waived_report`, so nothing can say which steps of an install job may fail "
+            "without failing it, or what a run must then report"
+        ]
+    where = f"{file_name}: install job `{job_name}`"
+    findings: list[str] = []
+    carried = {str(step.get("id", "")): step for step in steps_of(job)}
+    for wanted in waived:
+        step = carried.get(wanted)
+        if step is None:
+            findings.append(
+                f"{where} declares no `{wanted}` step, so nothing of this run can report "
+                f"what that command reached"
+            )
+        elif step.get("continue-on-error") is not True:
+            findings.append(
+                f"{where}: step `{wanted}` is fatal, and the two commands after the routes "
+                f"cannot succeed unattended — made fatal this job fails on every run "
+                f"whatever the world looks like, which is how it went unread"
+            )
+    if findings:
+        return findings
+
+    # `outcome` and not `conclusion`: `continue-on-error` is what makes
+    # `conclusion` read `success` for a step that failed, so a report reading
+    # it would say every route's service came up every time.
+    reporting = [
+        command
+        for command in run_commands(job)
+        if summary in command and all(f"{wanted}.outcome" in str(job) for wanted in waived)
+    ]
+    if not reporting:
+        findings.append(
+            f"{where} lets {', '.join(f'`{step}`' for step in waived)} fail without failing "
+            f"it, and writes neither outcome into `${summary}`: a reader of a green run "
+            f"cannot then tell a route whose service was established from one whose was not"
+        )
     return findings
 
 
 def _install_job_findings(
-    path: ip.InstallPath, install: list[tuple[str, str, dict[str, Any]]]
+    repo: Repo, path: ip.InstallPath, install: list[tuple[str, str, dict[str, Any]]]
 ) -> list[str]:
     """One job per route, each running that route and then the two commands, in order."""
     findings: list[str] = []
@@ -648,14 +714,20 @@ def _install_job_findings(
                 f"AGENTS.md names route `{route.heading}` (`{route.command}`), for which "
                 f"the committed configuration declares no install job"
             )
+    _, summary = _waived(repo)
     for file_name, job_name, job in install:
         commands = run_commands(job)
         findings.extend(
             f"{file_name}: install job `{job_name}` runs `{command}`, which AGENTS.md's "
             f"`{ip.SECTION_HEADING}` does not state"
             for command in commands
-            if command not in path.canonical
+            # The one command such a job may run beside the stated ones: the
+            # report the waiver above costs. It installs nothing and reaches no
+            # registry — it writes what the two waived steps reached into the
+            # run's own summary.
+            if command not in path.canonical and not (summary and summary in command)
         )
+        findings.extend(_reporting_findings(repo, file_name, job_name, job))
         positions = [commands.index(c) if c in commands else -1 for c in path.commands]
         for stated, position in zip(path.commands, positions, strict=True):
             if position < 0:

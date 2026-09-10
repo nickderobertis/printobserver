@@ -450,6 +450,27 @@ platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
 install_script_path = "scripts/install.sh"
 install_service_script_path = "scripts/install-service.sh"
 
+# The two commands after the routes are the ONLY steps of an install job whose
+# failure does not fail it, and the price of that waiver is that the run says
+# what they reached.
+#
+# Neither can succeed unattended: the installer resolves the program with
+# `command -v` under a sudo `secure_path` that excludes where two of the three
+# routes put it, and the unit will not start on a configuration template that
+# ships an OctoPrint key and an ingress secret the server refuses as empty.
+# Made fatal, the workflow fails on every run whatever the world looks like,
+# which is how it went unread. Made non-fatal and unreported, a green job says
+# nothing about whether the service was ever established — and a
+# credential-dependent failure that nobody can see has disappeared.
+#
+# So `just check-repo` requires each of them to carry the step id below, and
+# requires a step of that job to write BOTH of their outcomes into the run's
+# own summary. `outcome` and not `conclusion`: `continue-on-error` is what
+# makes `conclusion` read `success` for a step that failed, so a report reading
+# it would say every route's service came up every time.
+waived_steps = ["install-service", "start-service"]
+waived_report = "GITHUB_STEP_SUMMARY"
+
 [agent]
 # The narrow command allowlist. `just check-repo` derives the set of programs
 # this repository's own recipes and graph targets invoke and requires the

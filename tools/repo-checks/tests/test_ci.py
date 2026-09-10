@@ -16,9 +16,17 @@ CI = ".github/workflows/ci.yml"
 INSTALL = ".github/workflows/install-path.yml"
 #: The install-service step of the first install job, as the workflow spells it.
 SERVICE_STEP = (
-    "      - continue-on-error: true\n"
+    "      - id: install-service\n"
+    "        continue-on-error: true\n"
     "        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/"
     "printobserver/main/scripts/install-service.sh | sudo sh\n"
+)
+
+#: The step that starts it, as the workflow spells it.
+START_STEP = (
+    "      - id: start-service\n"
+    "        continue-on-error: true\n"
+    "        run: sudo systemctl enable --now printobserver.service\n"
 )
 
 FOURTH_ROUTE = """
@@ -189,17 +197,72 @@ def test_an_install_job_checking_after_the_service_commands_is_refused(
     """A program that does not run must not reach a service before anything looked."""
     broken = tree()
     broken.edit(INSTALL, "      - run: printobserver --version\n", "")
-    broken.edit(
-        INSTALL,
-        "      - continue-on-error: true\n        run: sudo systemctl enable --now "
-        "printobserver.service\n",
-        "      - continue-on-error: true\n        run: sudo systemctl enable --now "
-        "printobserver.service\n      - run: printobserver --version\n",
-    )
+    broken.edit(INSTALL, START_STEP, START_STEP + "      - run: printobserver --version\n")
 
     findings = continuous_integration(broken.repo)
 
     refused(findings, "after the commands that put the service in place")
+
+
+def test_an_install_job_that_swallows_the_service_commands_silently_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The waiver's price: a completed run says what the two commands reached.
+
+    Their failure not failing the job is what keeps this workflow from failing
+    on every run whatever the world looks like. Unreported, that buys a green
+    job saying nothing about whether the service was ever established — which
+    is a credential-dependent failure disappearing.
+    """
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        "        run: 'echo \"install-route-pypi: service installation $INSTALLED, "
+        'service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"\'',
+        "        run: true",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "cannot then tell a route whose service was established")
+
+
+def test_an_install_job_whose_waived_step_is_fatal_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Made fatal, the job fails on every run — which is how it went unread."""
+    broken = tree()
+    broken.edit(INSTALL, START_STEP, START_STEP.replace("        continue-on-error: true\n", ""))
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "is fatal")
+
+
+def test_an_install_job_whose_waived_step_carries_no_id_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Nothing of the run can report what a step it cannot name reached."""
+    broken = tree()
+    broken.edit(INSTALL, "      - id: install-service\n", "      - id: installs-the-service\n")
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "declares no `install-service` step")
+
+
+def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing here guesses which steps may fail without failing their job."""
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'waived_steps = ["install-service", "start-service"]',
+        "waived_steps = []",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "declares no `waived_steps`")
 
 
 def test_an_install_step_the_section_does_not_state_is_refused(
@@ -223,8 +286,8 @@ def test_a_spelling_disagreement_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.edit(
         INSTALL,
-        "        run: sudo systemctl enable --now printobserver.service\n\n  install-route-npm:",
-        "        run: systemctl enable --now printobserver.service\n\n  install-route-npm:",
+        "        run: sudo systemctl enable --now printobserver.service\n",
+        "        run: systemctl enable --now printobserver.service\n",
     )
 
     findings = continuous_integration(broken.repo)

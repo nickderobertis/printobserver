@@ -190,10 +190,26 @@ jobs:
       # the installer is `crates/printobserver/tests/service.rs`, which drives
       # the committed installer against a throwaway root and starts the program
       # by the installed unit's own start command.
-      - continue-on-error: true
+      #
+      # So each is non-fatal AND each is reported: the step after them writes
+      # what both reached into this run's own summary, so a reader of a green
+      # job can tell a route whose service came up from one whose did not
+      # without opening this file. A failure that is reported has not
+      # disappeared, which is the whole of what the waiver costs.
+      - id: install-service
+        continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - continue-on-error: true
+      - id: start-service
+        continue-on-error: true
         run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-pypi: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-npm:
     name: install-route-npm (${{ matrix.platform.id }})
@@ -212,10 +228,20 @@ jobs:
       - uses: actions/setup-node@v5
       - run: npm install -g printobserver-cli
       - run: printobserver --version
-      - continue-on-error: true
+      - id: install-service
+        continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - continue-on-error: true
+      - id: start-service
+        continue-on-error: true
         run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-npm: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-script:
     name: install-route-script (${{ matrix.platform.id }})
@@ -233,7 +259,17 @@ jobs:
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
       - run: printobserver --version
-      - continue-on-error: true
+      - id: install-service
+        continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - continue-on-error: true
+      - id: start-service
+        continue-on-error: true
         run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-script: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
