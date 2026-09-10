@@ -675,24 +675,27 @@ def _rejection_vocabulary(repo: Repo, policy: DocsPolicy) -> set[str] | str:
         return f"{invalid}: expected a non-empty `oneOf` array"
     named: set[str] = set()
     for arm in arms:
-        if not isinstance(arm, dict):
-            return f"{invalid}: each `oneOf` arm must be an object"
-        if "const" in arm:
-            if not isinstance(arm["const"], str):
+        match arm:
+            case {"const": str(tag)}:
+                named.add(tag)
+            case {"const": _}:
                 return f"{invalid}: a variant's `const` must be a string"
-            named.add(arm["const"])
-            continue
-        properties = arm.get("properties")
-        if not isinstance(properties, dict) or not properties:
-            return f"{invalid}: a variant must declare `const` or non-empty `properties`"
-        for tag, body in properties.items():
-            if not isinstance(body, dict):
-                return f"{invalid}: `{tag}` must be an object"
-            fields = body.get("properties", {})
-            if not isinstance(fields, dict):
-                return f"{invalid}: `{tag}.properties` must be an object"
-            named.add(tag)
-            named |= set(fields)
+            case {"properties": dict(properties)} if properties:
+                for tag, body in properties.items():
+                    match body:
+                        case {"properties": dict(fields)}:
+                            named.add(tag)
+                            named |= set(fields)
+                        case {"properties": _}:
+                            return f"{invalid}: `{tag}.properties` must be an object"
+                        case dict():
+                            named.add(tag)
+                        case _:
+                            return f"{invalid}: `{tag}` must be an object"
+            case dict():
+                return f"{invalid}: a variant must declare `const` or non-empty `properties`"
+            case _:
+                return f"{invalid}: each `oneOf` arm must be an object"
     return named
 
 

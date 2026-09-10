@@ -234,23 +234,30 @@ fn documented_arguments_require_closed_quotes() {
 
 /// Whether one word is a UUID as this system spells one.
 fn is_identifier(word: &str) -> bool {
-    let groups: Vec<usize> = word.split('-').map(str::len).collect();
-    groups == vec![8, 4, 4, 4, 12]
-        && word
-            .chars()
-            .all(|letter| letter == '-' || letter.is_ascii_hexdigit() && !letter.is_uppercase())
+    word.parse::<printobserver_types::ActionId>().is_ok()
+        && matches!(word.as_bytes().get(19), Some(b'8'..=b'b'))
 }
 
 /// Whether one word is an instant as this system spells one.
 fn is_instant(word: &str) -> bool {
-    let bytes = word.as_bytes();
-    bytes.len() >= 20
-        && word.ends_with('Z')
-        && bytes[4] == b'-'
-        && bytes[10] == b'T'
-        && word
-            .chars()
-            .all(|letter| letter.is_ascii_digit() || matches!(letter, '-' | ':' | 'T' | 'Z' | '.'))
+    word.parse::<printobserver_types::Timestamp>()
+        .is_ok_and(|instant| instant.to_string() == word)
+}
+
+/// Unexpected output must survive normalization so the example comparison reports it.
+#[test]
+fn output_abstraction_preserves_malformed_identifiers_and_instants() {
+    let output = "01900000-0000-7000-8000-000000000000 2024-02-29T12:34:56Z\n\
+                  01900000-0000-4000-8000-000000000000\n\
+                  01900000-0000-7000-0000-000000000000\n\
+                  2024-02-30T12:34:56Z 2024-02-29T123456Z\n";
+    assert_eq!(
+        abstracted(output, &BTreeMap::new()),
+        "ID TIMESTAMP\n\
+         01900000-0000-4000-8000-000000000000\n\
+         01900000-0000-7000-0000-000000000000\n\
+         2024-02-30T12:34:56Z 2024-02-29T123456Z\n"
+    );
 }
 
 /// Replace every whitespace-separated word one rule matches.

@@ -172,7 +172,7 @@ reason = "Proving repair of an incomplete generated documentation set requires f
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "crates/printobserver/project.json"
-site = "metadata"
+site = "test-integration"
 reason = "Repository policy requires the OctoPrint tier on every change on both platforms outside the fast gate. A different affected edge cannot narrow that schedule, and changing the schedule or adding CI jobs is outside this dispatch."
 
 [[suppression]]
