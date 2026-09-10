@@ -12,5 +12,11 @@ authors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+# The digest an image record declares, so the journey can open the file at the
+# path a materialization answered and check it is that image.
+sha2 = "0.10"
+tempfile = "3"
+
 [lints]
 workspace = true

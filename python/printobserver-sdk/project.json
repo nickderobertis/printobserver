@@ -2,14 +2,28 @@
   "name": "printobserver-sdk-python",
   "root": "python/printobserver-sdk",
   "projectType": "library",
-  "tags": ["lang:python", "type:client"],
+  "tags": [
+    "lang:python",
+    "type:client"
+  ],
   "targets": {
-    "format": { "command": "uv run -q ruff format python/printobserver-sdk" },
-    "format-check": { "command": "uv run -q ruff format --check python/printobserver-sdk" },
-    "lint": { "command": "uv run -q ruff check python/printobserver-sdk" },
-    "typecheck": { "command": "uv run -q ty check python/printobserver-sdk" },
+    "format": {
+      "command": "uv run -q ruff format python/printobserver-sdk"
+    },
+    "format-check": {
+      "command": "uv run -q ruff format --check python/printobserver-sdk"
+    },
+    "lint": {
+      "command": "uv run -q ruff check python/printobserver-sdk"
+    },
+    "typecheck": {
+      "command": "uv run -q ty check python/printobserver-sdk"
+    },
     "test": {
       "command": "uv run -q coverage run -m pytest python/printobserver-sdk/tests"
+    },
+    "test-integration": {
+      "command": "uv run -q pytest python/printobserver-sdk/integration"
     }
   }
 }

@@ -4,10 +4,29 @@
   "projectType": "library",
   "tags": ["lang:typescript", "type:client"],
   "targets": {
-    "format": { "command": "bunx biome format --write npm/printobserver-sdk" },
-    "format-check": { "command": "bunx biome format npm/printobserver-sdk" },
-    "lint": { "command": "bunx biome lint npm/printobserver-sdk" },
-    "typecheck": { "command": "bunx tsc --noEmit -p npm/printobserver-sdk/tsconfig.json" },
-    "test": { "command": "bun test", "options": { "cwd": "npm/printobserver-sdk" } }
+    "format": {
+      "command": "bunx biome format --write npm/printobserver-sdk"
+    },
+    "format-check": {
+      "command": "bunx biome format npm/printobserver-sdk"
+    },
+    "lint": {
+      "command": "bunx biome lint npm/printobserver-sdk"
+    },
+    "typecheck": {
+      "command": "bunx tsc --noEmit -p npm/printobserver-sdk/tsconfig.json"
+    },
+    "test": {
+      "command": "bun test test",
+      "options": {
+        "cwd": "npm/printobserver-sdk"
+      }
+    },
+    "test-integration": {
+      "command": "bun test .",
+      "options": {
+        "cwd": "npm/printobserver-sdk/integration"
+      }
+    }
   }
 }

@@ -31,6 +31,20 @@
 //! server answers an absolute path on **its own** filesystem, and this client
 //! hands that path back exactly as it was answered.
 //!
+//! # The reason is not something a caller can leave out
+//!
+//! Every mutating method takes it as an argument, so a call that omits it does
+//! not compile. That is the whole of the enforcement in this client: there is
+//! no run-time refusal for an omission, because there is no way to make one.
+//!
+//! ```compile_fail
+//! use printobserver_sdk::{Actor, Client};
+//!
+//! let client = Client::new("http://127.0.0.1:8420", Actor::Operator);
+//! // No reason: this does not compile, which is the point.
+//! let _ = client.pause("0198f0a1-2b3c-7d4e-8f90-123456789abc");
+//! ```
+//!
 //! ```no_run
 //! use printobserver_sdk::{Actor, Client};
 //!

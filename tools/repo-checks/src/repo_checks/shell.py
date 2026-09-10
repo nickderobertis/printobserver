@@ -143,9 +143,13 @@ def start(
         raise FileNotFoundError(message)
     return subprocess.Popen(  # noqa: S603
         [program, *argv[1:]],
-        cwd=cwd,
-        env=without_ambient_git(os.environ if env is None else env),
+        # Its input is a pipe the caller holds rather than whatever the caller
+        # inherited: a program held up until its input closes would stop the
+        # moment it was started under a test runner, which redirects one.
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=without_ambient_git(os.environ if env is None else env),
         text=True,
     )

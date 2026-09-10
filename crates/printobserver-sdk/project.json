@@ -20,7 +20,10 @@
       "command": "cargo check -p printobserver-sdk --all-targets --locked"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass"
+      "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass -E 'not binary(integration)'"
+    },
+    "test-integration": {
+      "command": "cargo nextest run -p printobserver-sdk --no-fail-fast -E 'binary(integration)'"
     },
     "build": {
       "command": "cargo build -p printobserver-sdk --locked"

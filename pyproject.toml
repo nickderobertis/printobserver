@@ -45,6 +45,7 @@ pythonpath = [
     "tools/contract-codegen/src",
     "tools/release-artifacts/src",
     "python/printobserver-sdk/src",
+    "python/printobserver-sdk/integration",
     "tools/octoprint-env",
     "tools/obico-env",
 ]
@@ -74,6 +75,7 @@ root = [
     "tools/release-artifacts/tests",
     "python/printobserver-sdk/src",
     "python/printobserver-sdk/tests",
+    "python/printobserver-sdk/integration",
     "tests/repo-e2e/tests",
     "tools/octoprint-env",
     "tools/octoprint-env/tests",

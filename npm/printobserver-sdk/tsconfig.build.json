@@ -6,12 +6,7 @@
     "rootDir": "src",
     "declaration": true,
     "rewriteRelativeImportExtensions": true,
-    "lib": [
-      "ES2023",
-      "DOM"
-    ]
+    "lib": ["ES2023", "DOM"]
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

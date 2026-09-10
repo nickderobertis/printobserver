@@ -1,0 +1,8 @@
+# The printer-integration tier's own configuration.
+#
+# The fast tier's `bunfig.toml` holds this package to a line-coverage floor,
+# which is right for a suite that drives every method against a stub host and
+# wrong for one journey against a real machine: `repo-policy.toml` records the
+# floor and `just coverage` enforces it over the tier that measures it.
+[test]
+coverage = false

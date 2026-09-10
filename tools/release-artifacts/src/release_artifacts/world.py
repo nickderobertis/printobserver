@@ -75,6 +75,8 @@ class Running:
     image_id: str
     #: Where its record and its images live.
     state: Path
+    #: The file a journey against this world starts a print of.
+    file_name: str
 
 
 class WorldError(RuntimeError):
@@ -175,13 +177,17 @@ def _machine_handler(machine: Machine) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def _configuration(state: Path, machine: str) -> str:
+def _configuration(state: Path, printer: Printer) -> str:
     """The one configuration file the supervisor reads, as a document."""
     return json.dumps(
         {
             "state_dir": str(state),
             "listen": "127.0.0.1:0",
-            "octoprint": {"url": machine, "api_key": "a-provisioned-key", "fan": "commandable"},
+            "octoprint": {
+                "url": printer.url,
+                "api_key": printer.api_key,
+                "fan": "commandable",
+            },
             "supervisor": {"harness": "claude-code"},
             "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
             "safety": {
@@ -215,14 +221,66 @@ def _configuration(state: Path, machine: str) -> str:
     )
 
 
-class World:
-    """A stand-in machine, a real supervisor over it, and a print to read."""
+#: Where `just octoprint-up` keeps what it started, and the two files this
+#: reads out of it. There is no fallback and no skip: a tier that quietly
+#: passed against no printer would prove nothing.
+OCTOPRINT_STATE = ".octoprint-env"
+OCTOPRINT_RECORD = "instance.json"
+OCTOPRINT_KEY = "api-key"
 
-    def __init__(self, program: Path, root: Path) -> None:
-        """Bring one up under `root`, running the program at `program`."""
+#: The file the scripted environment starts a print of, which is what a journey
+#: against it starts again.
+HOLD_FILE = "hold.gcode"
+
+
+@dataclass(frozen=True, slots=True)
+class Printer:
+    """Where the machine on the far side of the printer port answers."""
+
+    url: str
+    api_key: str
+    #: Whether it is a real `OctoPrint` rather than the stand-in below.
+    scripted: bool
+
+
+def scripted_printer(root: Path) -> Printer:
+    """The `OctoPrint` `just octoprint-up` started.
+
+    Raises:
+        WorldError: If the environment is not up, naming the recipe that brings
+            one up.
+    """
+    state = root / OCTOPRINT_STATE
+    record = state / OCTOPRINT_RECORD
+    key = state / OCTOPRINT_KEY
+    if not record.is_file() or not key.is_file():
+        msg = (
+            f"the scripted OctoPrint environment is not up: {record} could not be read. "
+            f"Run `just octoprint-up` first; this tier drives a real OctoPrint and has "
+            f"no fixture to fall back to."
+        )
+        raise WorldError(msg)
+    described = json.loads(record.read_text(encoding="utf-8"))
+    return Printer(
+        url=str(described["url"]), api_key=key.read_text(encoding="utf-8").strip(), scripted=True
+    )
+
+
+class World:
+    """A machine, a real supervisor over it, and a print to read."""
+
+    def __init__(self, program: Path, root: Path, printer: Printer | None = None) -> None:
+        """Bring one up under `root`, running the program at `program`.
+
+        `printer` is the machine the supervisor reaches. Given none, a stand-in
+        on a real socket is started; given the scripted `OctoPrint`, that is
+        what the supervisor drives and the stand-in serves only the snapshot the
+        alert below names.
+        """
         self.program = program
         self.root = root
         self.machine = Machine()
+        self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
         self.state = root / "state"
         self.state.mkdir(parents=True, exist_ok=True)
         self._supervisor: subprocess.Popen[str] | None = None
@@ -246,9 +304,13 @@ class World:
         Raises:
             WorldError: If the supervisor did not come up, or opened no print.
         """
+        # A state directory a previous run left behind still carries the
+        # address that run bound. Reading it would point a journey at a
+        # supervisor that stopped, so it goes before this one starts.
+        (self.state / CLIENT_CONFIG).unlink(missing_ok=True)
         configuration = self.root / "supervisor.toml"
         configuration.write_text(
-            _as_toml(json.loads(_configuration(self.state, self.machine.url))),
+            _as_toml(json.loads(_configuration(self.state, self.printer))),
             encoding="utf-8",
         )
         self._supervisor = start(
@@ -257,7 +319,13 @@ class World:
         )
         server = self._await_address()
         print_id, image_id = self._open_a_print(server)
-        return Running(server=server, print_id=print_id, image_id=image_id, state=self.state)
+        return Running(
+            server=server,
+            print_id=print_id,
+            image_id=image_id,
+            state=self.state,
+            file_name=HOLD_FILE,
+        )
 
     def stop(self) -> None:
         """Stop the supervisor and the machine, leaving no process behind."""
