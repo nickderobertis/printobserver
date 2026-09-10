@@ -6,6 +6,7 @@
 # integration binary would drive the one `OctoPrint` `just octoprint-up`
 # provisioned at the same time — one cancelling the print the other is asserting
 # is running.
+# llmlint: ignore[changed_behavior_has_e2e] Assigning the integration binary to a group with max-threads = 1 is a structural declaration settled by reading this file, which the narrowed rule excludes; no runtime proof is owed.
 [test-groups]
 octoprint = { max-threads = 1 }
 

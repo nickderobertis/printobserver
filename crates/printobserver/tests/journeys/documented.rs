@@ -369,7 +369,7 @@ fn bound(command: &str, bindings: &Bindings) -> String {
 }
 
 /// Split one command line into words, honouring single and double quotes.
-fn words(line: &str) -> Vec<String> {
+fn words(line: &str) -> Result<Vec<String>, String> {
     let mut found = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -393,15 +393,42 @@ fn words(line: &str) -> Vec<String> {
             current.push(letter);
         }
     }
+    if let Some(open) = quote {
+        return Err(format!("unmatched {open} quote in documented command"));
+    }
     if started || !current.is_empty() {
         found.push(current);
     }
-    found
+    Ok(found)
+}
+
+/// Quoting must close before a documented command can be executed.
+#[test]
+fn documented_arguments_require_closed_quotes() {
+    for line in [
+        "printobserver pause --reason 'check",
+        "printobserver pause --reason \"check",
+    ] {
+        let error = words(line).expect_err("an unclosed quote is refused");
+        assert!(error.contains("unmatched"), "{error}");
+    }
+    assert_eq!(
+        words("printobserver pause --reason 'look at it' --actor \"operator\"")
+            .expect("closed quotes are accepted"),
+        [
+            "printobserver",
+            "pause",
+            "--reason",
+            "look at it",
+            "--actor",
+            "operator"
+        ]
+    );
 }
 
 /// Run one documented command line against this world's supervisor.
 fn run(world: &World, command: &str) -> Answer {
-    let given = words(command);
+    let given = words(command).expect("documented arguments have closed quotes");
     let (program, arguments) = given.split_first().expect("a command line");
     assert_eq!(program, PROGRAM, "a documented example runs this program");
     let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
@@ -421,7 +448,7 @@ fn run(world: &World, command: &str) -> Answer {
 
 /// Replace the value one option carries on a documented command line.
 fn with_option(command: &str, option: &str, value: &str) -> String {
-    let mut given = words(command);
+    let mut given = words(command).expect("documented arguments have closed quotes");
     let at = given
         .iter()
         .position(|word| word == option)
@@ -442,7 +469,7 @@ fn with_option(command: &str, option: &str, value: &str) -> String {
 
 /// Every way one documented command names a value, as option and value.
 fn options(command: &str) -> Vec<(String, String)> {
-    let given = words(command);
+    let given = words(command).expect("documented arguments have closed quotes");
     given
         .windows(2)
         .filter(|pair| pair[0].starts_with("--"))

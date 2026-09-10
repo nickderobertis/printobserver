@@ -140,8 +140,7 @@ failure alert out: tens of minutes on a cold runner.
 
 **When it runs.** On a schedule and on a manual invocation, and on no trigger
 that fires on a change. The schedule is the cron `17 4 * * 1` —
-`.github/workflows/obico.yml` is where it is declared, and `AGENTS.md` records
-the same cron so the prose cannot drift from what fires. `just obico-up` and
+`.github/workflows/obico.yml` is where it is declared. `just obico-up` and
 `just obico-down` bracket it.
 
 A divergence this tier finds is a finding to report rather than a defect of this

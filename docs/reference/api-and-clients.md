@@ -193,4 +193,4 @@ section grows an entry for each of them when they do.
 
 The `printobserver-cli` distributions on those two registries are a different
 thing again: they carry the command-line program rather than a client of this
-API. `AGENTS.md`'s "The end-user install path" is where they are declared.
+API.

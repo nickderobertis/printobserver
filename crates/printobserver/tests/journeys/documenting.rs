@@ -174,7 +174,7 @@ fn bound(command: &str, bindings: &BTreeMap<&'static str, String>) -> String {
 /// Deliberately small: an example is a command a reader types, so the only
 /// shell syntax it may carry is quoting. Anything else reaches the run as a
 /// word and is refused there rather than being interpreted.
-fn words(line: &str) -> Vec<String> {
+fn words(line: &str) -> Result<Vec<String>, String> {
     let mut found = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -198,10 +198,37 @@ fn words(line: &str) -> Vec<String> {
             current.push(letter);
         }
     }
+    if let Some(open) = quote {
+        return Err(format!("unmatched {open} quote in documented command"));
+    }
     if started || !current.is_empty() {
         found.push(current);
     }
-    found
+    Ok(found)
+}
+
+/// Quoting must close before a documented command can be executed.
+#[test]
+fn documented_arguments_require_closed_quotes() {
+    for line in [
+        "printobserver pause --reason 'check",
+        "printobserver pause --reason \"check",
+    ] {
+        let error = words(line).expect_err("an unclosed quote is refused");
+        assert!(error.contains("unmatched"), "{error}");
+    }
+    assert_eq!(
+        words("printobserver pause --reason 'look at it' --actor \"operator\"")
+            .expect("closed quotes are accepted"),
+        [
+            "printobserver",
+            "pause",
+            "--reason",
+            "look at it",
+            "--actor",
+            "operator"
+        ]
+    );
 }
 
 /// Whether one word is a UUID as this system spells one.
@@ -266,7 +293,7 @@ fn run_one(
         })?;
         return Ok((format!("{status}\n"), Some(status)));
     }
-    let given = words(&bound(command, bindings));
+    let given = words(&bound(command, bindings))?;
     let (program, arguments) = given
         .split_first()
         .ok_or_else(|| "it is an empty command line".to_owned())?;

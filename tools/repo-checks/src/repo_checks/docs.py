@@ -19,7 +19,6 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from repo_checks.model import (
     PolicyValueError,
@@ -95,7 +94,7 @@ class DocsPolicy:
     documents: tuple[Document, ...]
 
 
-def _entries(table: dict[str, Any], key: str) -> list[dict[str, Any]]:
+def _entries(table: dict[str, object], key: str) -> list[dict[str, object]]:
     """The array-of-tables one key holds, or nothing where it holds none."""
     value = table.get(key)
     if not isinstance(value, list):

@@ -150,3 +150,9 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "working_dir: assets.clone(),"
 reason = "A wrong working directory makes the agent's relative reference-file opens fail with a missing-path error on its first documentation read. That failure is visible to the supervising agent, not silent, so the rule's silent-failure condition is not met. The installed-assets journey already proves the bundled links resolve without a checkout; a billed harness turn would re-prove file resolution."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = ".config/nextest.toml"
+site = "[test-groups]"
+reason = "Assigning binary(integration) to octoprint with max-threads = 1 is a structural declaration settled by reading this file. The narrowed rule excludes structural claims; another runtime test would not improve that proof."
