@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from repo_checks.model import Repo
 
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
+from release_artifacts.publishing import PublishError, publish
 from release_artifacts.targets import TargetError, declared
 
 
@@ -38,6 +40,10 @@ def main(argv: list[str] | None = None) -> int:
             staged = staged_release(repo, arguments.into, arguments.binary)
             print(f"staged {staged}", file=sys.stderr)
             return 0
+        if arguments.command == "publish":
+            for line in publish(repo, arguments.into, dict(os.environ)):
+                print(line)
+            return 0
         if arguments.command == "prove":
             if not arguments.target:
                 print("prove takes --target <id>; `list` names them", file=sys.stderr)
@@ -55,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         built = build(repo, arguments.target, arguments.into, arguments.binary)
         for path in built.paths:
             print(f"{built.target}\t{path}")
-    except (BuildError, InstallError, TargetError) as refused:
+    except (BuildError, InstallError, PublishError, TargetError) as refused:
         print(f"release-artifacts: {refused}", file=sys.stderr)
         return 1
     return 0

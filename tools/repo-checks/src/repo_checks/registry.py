@@ -54,6 +54,9 @@ CHECKS: dict[str, Check] = {
     "platforms": checks_ci.platforms,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,
+    "artifact-jobs": checks_ci.artifact_jobs,
+    "install-script": checks_ci.install_script_path,
+    "install-path-not-narrowed": checks_ci.install_path_not_narrowed,
     "integration-tier": checks_integration.integration_tier,
     "obico-tier": checks_obico.obico_tier,
     "ingress-answer-bound": checks_service.ingress_answer_bound,
@@ -65,6 +68,7 @@ CHECKS: dict[str, Check] = {
     "response-shapes": checks_clients.response_shapes,
     "release-targets": checks_release.release_targets,
     "release-automation": checks_release.release_automation,
+    "publish-credentials": checks_release.publish_credentials,
     "base-files": base_files,
     "suppressions": checks_suppressions.suppressions,
 }

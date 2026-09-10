@@ -109,6 +109,14 @@ generate-clients:
 build-artifacts:
     uv run -q python -m release_artifacts build-all
 
+# Publish every built artifact to the registry its own consumers install from.
+#
+# Run by release automation after `just build-artifacts`, never by hand. Each
+# registry is authenticated by an API token carried in a repository secret,
+# which `gh-secrets.json` is the authoritative list of.
+publish-artifacts:
+    uv run -q python -m release_artifacts publish
+
 # Take each shipped artifact the way its own consumer takes it, and prove it.
 #
 # One recipe per artifact, because the six are separable and a reader chasing a

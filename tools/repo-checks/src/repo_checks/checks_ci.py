@@ -21,6 +21,10 @@ from repo_checks.parsing import (
     steps_of,
 )
 
+#: The prefix every recipe that takes one shipped artifact the way its own
+#: consumer takes it is named with.
+PROVE_PREFIX = "prove-"
+
 PLATFORM_LINE = re.compile(
     r"^- `(?P<id>[a-z0-9_-]+)` — runner `(?P<runner>[^`]+)`, Rust target `(?P<target>[^`]+)`, "
     r"service manager `(?P<service_manager>[^`]+)`, install path: (?P<install>yes|no)$"
@@ -93,6 +97,7 @@ class JobKind(StrEnum):
     INTEGRATION = "integration"
     LLMLINT = "llmlint"
     INSTALL = "install"
+    ARTIFACT = "artifact"
     OTHER = "other"
 
 
@@ -142,7 +147,9 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
     return frozenset(kinds)
 
 
-def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> JobKind:
+def _job_kind(
+    job: dict[str, Any], path: ip.InstallPath, bring_up: str, artifact: tuple[str, ...] = ()
+) -> JobKind:
     """Classify a job by what its own steps run, not by what it is called.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
@@ -157,7 +164,30 @@ def _job_kind(job: dict[str, Any], path: ip.InstallPath, bring_up: str) -> JobKi
         return JobKind.LLMLINT
     if any(command in path.canonical for command in commands):
         return JobKind.INSTALL
+    if any(command in artifact for command in commands):
+        return JobKind.ARTIFACT
     return JobKind.OTHER
+
+
+def artifact_commands(repo: Repo) -> tuple[str, ...]:
+    """Every command a job that builds or proves a shipped artifact runs.
+
+    An artifact job is platform-dependent for the reason the three end-user
+    routes exist: each carries the `printobserver` program **already built for
+    the platform**, so a build or an install of one on a second platform is a
+    second thing proven rather than the same thing twice.
+    """
+    from repo_checks.parsing import recipes as parse_recipes
+
+    declared = policy_table(repo, "release")
+    building = str(declared.get("build_recipe", "")).strip()
+    named = [f"just {building}"] if building else []
+    named.extend(
+        f"just {name}"
+        for name in sorted(parse_recipes(repo.justfile))
+        if name.startswith(PROVE_PREFIX)
+    )
+    return tuple(named)
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,8 +301,9 @@ def status_contexts(repo: Repo) -> list[StatusContext]:
     """
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
+    artifact = artifact_commands(repo)
     return [
-        StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up))
+        StatusContext(name, file_name, job_name, _job_kind(job, path, bring_up, artifact))
         for file_name, workflow in _workflows(repo).items()
         for job_name, job in jobs_of(workflow).items()
         for name in _context_names(job_name, job, f"{file_name}: job `{job_name}`")
@@ -309,9 +340,10 @@ def platforms(repo: Repo) -> list[str]:
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
+    artifact = artifact_commands(repo)
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            kind = _job_kind(job, path, bring_up)
+            kind = _job_kind(job, path, bring_up, artifact)
             entries = _matrix_platforms(job)
             if kind == JobKind.INTEGRATION:
                 # The printer integration job's matrix is the `integration-tier`
@@ -507,6 +539,7 @@ def continuous_integration(repo: Repo) -> list[str]:
 
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
+    artifact = artifact_commands(repo)
     declared_recipes = set(parse_recipes(repo.justfile))
     findings: list[str] = []
 
@@ -515,7 +548,7 @@ def continuous_integration(repo: Repo) -> list[str]:
     install: list[tuple[str, str, dict[str, Any]]] = []
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            kind = _job_kind(job, path, bring_up)
+            kind = _job_kind(job, path, bring_up, artifact)
             if kind == JobKind.GATE:
                 gate = (file_name, job_name, job)
             elif kind == JobKind.LLMLINT:
@@ -669,6 +702,7 @@ def secrets(repo: Repo) -> list[str]:
 
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
+    artifact = artifact_commands(repo)
     for file_path in repo.workflow_paths:
         text = file_path.read_text(encoding="utf-8")
         findings.extend(
@@ -698,7 +732,7 @@ def secrets(repo: Repo) -> list[str]:
 
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
-            if _job_kind(job, path, bring_up) != JobKind.LLMLINT:
+            if _job_kind(job, path, bring_up, artifact) != JobKind.LLMLINT:
                 continue
             used = sorted(
                 {
@@ -759,4 +793,192 @@ def workflow_policy(repo: Repo) -> list[str]:
                     for program in programs_in(command)
                     if program not in allowed
                 )
+    return findings
+
+
+#: What `release-targets.toml` says of a target release automation assembles
+#: rather than publishes straight from the workspace.
+ASSEMBLED = "release-artifacts"
+
+
+def _shipped(repo: Repo) -> list[dict[str, Any]]:
+    """Every artifact this repository ships beside the crates it publishes."""
+    return [
+        target
+        for target in repo.read_toml("release-targets.toml").get("target", [])
+        if str(target.get("built_by", "")).strip() == ASSEMBLED
+    ]
+
+
+def _proving(repo: Repo) -> dict[str, str]:
+    """Which recipe takes each shipped artifact the way its own consumer does.
+
+    Read out of the recipe's own body — the target it names — rather than out
+    of a list beside it, so a recipe pointed at another artifact is one this
+    stops finding for the artifact it used to prove.
+    """
+    from repo_checks.parsing import recipes as parse_recipes
+
+    found: dict[str, str] = {}
+    for name, recipe in parse_recipes(repo.justfile).items():
+        if not name.startswith(PROVE_PREFIX):
+            continue
+        for line in recipe.body:
+            words = line.split()
+            if "prove" not in words or "--target" not in words:
+                continue
+            found[words[words.index("--target") + 1]] = name
+    return found
+
+
+def artifact_jobs(repo: Repo) -> list[str]:
+    """One job per shipped artifact, taking it the way its own consumer does.
+
+    Each of the three clients has a job that builds it, installs it and runs
+    that client's own smoke check; each of the three end-user routes has one
+    that builds its artifact and takes it the way that route's own command
+    takes it, once per platform `AGENTS.md`'s install-path section names. That
+    section is the authority for both sets rather than the matrix beside them,
+    because a check reading the matrix is satisfied by narrowing the matrix.
+    """
+    try:
+        wanted = [platform.id for platform in platforms_of(repo)]
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+
+    path = ip.parse(repo.agents_md)
+    proving = _proving(repo)
+    findings: list[str] = []
+    jobs: dict[str, tuple[str, str, dict[str, Any]]] = {}
+    for file_name, workflow in _workflows(repo).items():
+        for job_name, job in jobs_of(workflow).items():
+            for command in run_commands(job):
+                recipe = command.removeprefix("just ").strip()
+                if recipe.startswith(PROVE_PREFIX):
+                    jobs[recipe] = (file_name, job_name, job)
+
+    routed = {
+        str(target.get("route", "")).strip(): str(target.get("id", ""))
+        for target in _shipped(repo)
+        if str(target.get("route", "")).strip()
+    }
+    for target in _shipped(repo):
+        identifier = str(target.get("id", ""))
+        recipe = proving.get(identifier)
+        if recipe is None:
+            findings.append(
+                f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
+                f"recipe builds it, installs it and proves what it installed"
+            )
+            continue
+        if recipe not in jobs:
+            findings.append(
+                f"the committed configuration declares no job running `just {recipe}`, "
+                f"so nothing builds `{identifier}`, installs it and proves it"
+            )
+            continue
+        file_name, job_name, job = jobs[recipe]
+        entries = _matrix_platforms(job) or []
+        named = {str(entry["id"]) for entry in entries if isinstance(entry, dict) and "id" in entry}
+        findings.extend(
+            f"{file_name}: job `{job_name}` builds `{identifier}` on {sorted(named) or 'no'} "
+            f"platform(s), and AGENTS.md names `{platform}`"
+            for platform in wanted
+            if platform not in named
+        )
+
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for which "
+        f"the committed configuration declares no job of its own: the three routes are "
+        f"alternatives, and a route with no job is a route nothing proves"
+        for route in path.routes
+        if route.heading not in routed
+    )
+    return findings
+
+
+def install_script_path(repo: Repo) -> list[str]:
+    """The install script is committed at exactly the path its own fetch URL names.
+
+    Without this the section could go on offering a runnable one-line command
+    that fetches nothing.
+    """
+    path = ip.parse(repo.agents_md)
+    findings: list[str] = []
+    fetched = False
+    for command in path.canonical:
+        match = ip.RAW_URL.search(command)
+        if match is None:
+            continue
+        script = match.group(0).rpartition("/main/")[2]
+        if not script:
+            findings.append(f"`{command}` fetches a URL naming no path in this repository")
+            continue
+        fetched = True
+        if not repo.exists(script):
+            findings.append(
+                f"AGENTS.md's `{ip.SECTION_HEADING}` states `{command}`, and this "
+                f"repository commits no {script}: the command it offers fetches nothing"
+            )
+    if not fetched:
+        findings.append(
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states no command that fetches a script "
+            f"from this repository"
+        )
+    return findings
+
+
+def install_path_not_narrowed(repo: Repo) -> list[str]:
+    """The install path still names every platform and route it was cut with.
+
+    Read out of the base branch's own commit rather than out of this tree,
+    because everything else about the platform set and the route set is derived
+    from that section — so a change that deleted an entry from it and narrowed
+    the automation to match would satisfy every other check here.
+    """
+    from repo_checks.model import PolicyValueError, policy_strings, policy_table
+    from repo_checks.shell import run
+
+    try:
+        base = policy_strings(policy_table(repo, "repository"), ("base_branch",), "repository")[
+            "base_branch"
+        ]
+    except PolicyValueError as error:
+        return [str(error)]
+
+    was: str | None = None
+    for reference in (f"origin/{base}", base):
+        found = run(["git", "show", f"{reference}:AGENTS.md"], cwd=repo.root)
+        if found.returncode == 0:
+            was = found.stdout
+            break
+    if was is None:
+        return [
+            f"neither `origin/{base}` nor `{base}` is in this repository's history, so "
+            f"nothing can say whether the install path has been narrowed"
+        ]
+
+    findings: list[str] = []
+    try:
+        before = {
+            match["id"]
+            for line in marker_block(was, "supported-platforms")
+            if (match := PLATFORM_LINE.match(line))
+        }
+        now = {platform.id for platform in platforms_of(repo)}
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+    findings.extend(
+        f"AGENTS.md's supported-platform list named `{platform}` on `{base}` and no "
+        f"longer does: every artifact, matrix and route here is derived from that list, "
+        f"so narrowing it narrows all of them at once"
+        for platform in sorted(before - now)
+    )
+
+    stated = {route.heading for route in ip.parse(repo.agents_md).routes}
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` stated route `{heading}` on `{base}` and no "
+        f"longer does: a route deleted here is a way to the program nobody has any more"
+        for heading in sorted({route.heading for route in ip.parse(was).routes} - stated)
+    )
     return findings

@@ -273,6 +273,21 @@ request_markers = [
     "/api/settings",
 ]
 
+[release]
+# The two recipes release automation runs, and the only way a check tells one
+# job from another. `build_recipe` builds every artifact `release-targets.toml`
+# declares beside the crates — one build per platform AGENTS.md's own list
+# names, because each of the three end-user routes carries the program already
+# built for the platform. `publish_recipe` puts them where their consumers
+# install them from.
+#
+# The credentials are deliberately NOT named here. Each registry's token is
+# what the publishing tool reads from its environment, and `gh-secrets.json` is
+# the authoritative list of what this repository holds; a name repeated here
+# would be a second answer to a question that manifest already answers.
+build_recipe = "build-artifacts"
+publish_recipe = "publish-artifacts"
+
 [manifests]
 # The only manifests permitted to carry a version field, because release
 # automation writes every one of them. A version anywhere else is one a person
@@ -299,7 +314,7 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # that may carry a platform matrix. A job's kind is what its own steps run, not
 # what it is called. `just check-repo` holds these to AGENTS.md's
 # supported-platform list and refuses a platform matrix on any other job.
-platform_dependent_kinds = ["gate", "integration", "install"]
+platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
 # The install script the `sdks` node commits, and the path the install-path
 # section's fetch URL must name.
 install_script_path = "scripts/install.sh"
