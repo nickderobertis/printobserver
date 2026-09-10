@@ -39,6 +39,7 @@ declaring it a tier or by invoking it from `check` — is refused.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -99,6 +100,8 @@ class Declared:
     version_input: str
     #: The word meaning "the newest release the forge published".
     release_selector: str
+    #: The constant the module below declares that word as.
+    selector_constant: str
     #: The variable pointing every registry somewhere other than the real ones.
     standin_env: str
     #: The module that reads both of those variables.
@@ -424,7 +427,7 @@ def _version_findings(
 
 
 def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
-    """The module reading the two variables declares the names this file does.
+    """The module reading the two variables and the selector declares what this file does.
 
     The rest of this check reconciles the policy, the workflow and the prose,
     and all three could agree while the code reading them named something else
@@ -440,12 +443,48 @@ def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
     # reaches an environment lookup is the string, and a module that renamed it
     # while still discussing the old name in a docstring is exactly the drift
     # this closes.
-    return [
+    findings = [
         f"{policy.version_source} declares no `{variable}`, which is the name "
         f"`repo-policy.toml` and the committed workflow use for it"
         for variable in (policy.version_env, policy.standin_env)
         if f'"{variable}"' not in source
     ]
+    findings.extend(_selector_findings(source, policy))
+    return findings
+
+
+def _selector_findings(source: str, policy: Declared) -> list[str]:
+    """The word meaning "the newest release the forge published" is one word.
+
+    `repo-policy.toml` declares it and the module reading it declares it again
+    as a constant of its own, and until this the two were two copies with
+    nothing comparing them. They matter to each other because that word is what
+    a caller types into the manual invocation: moved on one side alone, what a
+    person names is a version string nothing serves, and the run answers
+    `NOT SERVED` over a release that is fine.
+
+    The CONSTANT is what is named rather than the word searched for. `"release"`
+    is also the registry a forge listing is read from in that same module, so a
+    check hunting the bare literal would find one of those and pass over a
+    selector that had been renamed out from under the declaration.
+    """
+    declared = re.search(
+        rf'^{re.escape(policy.selector_constant)} = "([^"]*)"', source, re.MULTILINE
+    )
+    if declared is None:
+        return [
+            f"{policy.version_source} declares no `{policy.selector_constant}` constant, "
+            f"which is what `repo-policy.toml` names as the word meaning `the newest "
+            f"release the forge published` (`{policy.release_selector}`)"
+        ]
+    if declared.group(1) != policy.release_selector:
+        return [
+            f"{policy.version_source}'s `{policy.selector_constant}` is "
+            f"`{declared.group(1)}` and `repo-policy.toml` declares "
+            f"`{policy.release_selector}`: the word a caller types to prove the newest "
+            f"release is then a version nothing serves"
+        ]
+    return []
 
 
 def _job_findings(

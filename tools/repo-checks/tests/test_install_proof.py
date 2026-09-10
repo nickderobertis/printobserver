@@ -475,6 +475,44 @@ def test_a_consumer_naming_another_variable_is_refused(tree: Callable[[], Tree])
     refused(install_proof(broken.repo), "declares no `PRINTOBSERVER_PROOF_REGISTRIES`")
 
 
+def test_a_consumer_renaming_the_selector_out_from_under_the_policy_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The word a caller types to prove the newest release is one word, in one place.
+
+    Moved on the code's side alone, `PRINTOBSERVER_PROOF_VERSION=release` is a
+    version string nothing serves and the run answers `NOT SERVED` over a
+    release that is fine.
+    """
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/registries.py",
+        'RELEASE = "release"',
+        'RELEASE = "newest"',
+    )
+
+    refused(install_proof(broken.repo), "and `repo-policy.toml` declares `release`")
+
+
+def test_a_consumer_declaring_no_selector_constant_at_all_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A gate keyed on a constant that is not there reconciles nothing.
+
+    The constant is what the declaration names, rather than the bare word:
+    `"release"` is also the registry a forge listing is read from in that same
+    module, so a check hunting the literal would find one of those.
+    """
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/registries.py",
+        'RELEASE = "release"',
+        'NEWEST = "release"',
+    )
+
+    refused(install_proof(broken.repo), "declares no `RELEASE` constant")
+
+
 def test_a_declaration_naming_a_consumer_that_is_not_there_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

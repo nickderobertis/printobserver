@@ -180,11 +180,17 @@ release_recipe = "release-version"
 version_env = "PRINTOBSERVER_PROOF_VERSION"
 version_input = "version"
 release_selector = "release"
+# The constant the module below declares that word as. The constant is NAMED
+# here rather than the word searched for, because `"release"` is also the
+# registry a forge listing is read from in that same module: a check hunting the
+# bare literal would find one of those and pass over a selector renamed out from
+# under this declaration.
+selector_constant = "RELEASE"
 # Where every registry is read from when nothing points them elsewhere, and the
-# module that reads both variables. `just check-repo` holds that module's own
-# literals to the two names above, so the workflow that sets one, this
-# declaration, and the code that reads them cannot drift apart — which the
-# workflow-against-policy check alone would not catch.
+# module that reads the two variables and declares the selector. `just
+# check-repo` holds that module's own literals to the three names above, so the
+# workflow that sets one, this declaration, and the code that reads them cannot
+# drift apart — which the workflow-against-policy check alone would not catch.
 standin_env = "PRINTOBSERVER_PROOF_REGISTRIES"
 version_source = "tools/release-artifacts/src/release_artifacts/registries.py"
 # The block in `AGENTS.md` recording the schedule the tier runs on.
