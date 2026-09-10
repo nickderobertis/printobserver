@@ -17,17 +17,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from repo_checks.checks_docs import (
     Surface,
     _architecture,
     _intervention_policy,
     _reference_material,
+    _rejection_vocabulary,
     reference,
     schema_document,
     skill,
 )
 from repo_checks.docs import docs_policy
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 
 #: A `[docs]` declaration these checks can act on, naming nothing that is there.
@@ -200,3 +202,57 @@ def test_an_intervention_policy_with_no_rejection_schema_says_so(tmp_path: Path)
     findings = _intervention_policy(repo, "guide.md", "# A guide\n", EMPTY)
     refused(findings, "names no source the server reads the safety envelope from")
     refused(findings, "generate no `RejectionReason` schema")
+
+
+@pytest.mark.parametrize(
+    ("schema", "diagnostic"),
+    [
+        ("{", "Expecting property name"),
+        ("[]", "expected an object"),
+        ('{"oneOf": {}}', "non-empty `oneOf` array"),
+        ('{"oneOf": []}', "non-empty `oneOf` array"),
+        ('{"oneOf": [null]}', "each `oneOf` arm must be an object"),
+        ('{"oneOf": [{"const": 1}]}', "`const` must be a string"),
+        ('{"oneOf": [{}]}', "non-empty `properties`"),
+        ('{"oneOf": [{"properties": {"limit": null}}]}', "`limit` must be an object"),
+        (
+            '{"oneOf": [{"properties": {"limit": {"properties": []}}}]}',
+            "`limit.properties` must be an object",
+        ),
+    ],
+)
+def test_an_unreadable_rejection_schema_is_a_finding(
+    tmp_path: Path, schema: str, diagnostic: str
+) -> None:
+    """The policy check diagnoses its input instead of raising or skipping variants."""
+    repo = _declaring(tmp_path)
+    _write(tmp_path, "schemas/printobserver-types/RejectionReason.json", schema)
+
+    findings = _intervention_policy(repo, "guide.md", "# A guide\n", EMPTY)
+
+    refused(findings, "RejectionReason.json` is not a readable rejection schema")
+    refused(findings, diagnostic)
+
+
+def test_rejection_vocabulary_reads_unit_and_payload_variants(tmp_path: Path) -> None:
+    """Inline schemas contribute their tags and payload field names to the inventory."""
+    repo = _declaring(tmp_path)
+    _write(
+        tmp_path,
+        "schemas/printobserver-types/RejectionReason.json",
+        json.dumps(
+            {
+                "oneOf": [
+                    {"const": "idle"},
+                    {"properties": {"limit": {"properties": {"requested": {"type": "number"}}}}},
+                    {"properties": {"message": {"type": "string"}}},
+                ]
+            }
+        ),
+    )
+
+    equal(
+        _rejection_vocabulary(repo, docs_policy(repo)),
+        {"idle", "limit", "requested", "message"},
+        describing="the rejection tags and fields",
+    )

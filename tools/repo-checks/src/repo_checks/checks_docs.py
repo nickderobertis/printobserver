@@ -666,17 +666,36 @@ def _rejection_vocabulary(repo: Repo, policy: DocsPolicy) -> set[str] | str:
     path = repo.path(policy.schema_directory) / "printobserver-types" / "RejectionReason.json"
     if not path.is_file():
         return "the contracts generate no `RejectionReason` schema to read a rejection off"
-    schema = json.loads(path.read_text(encoding="utf-8"))
+    invalid = f"`{path.relative_to(repo.root)}` is not a readable rejection schema"
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return f"{invalid}: {error}"
+    if not isinstance(schema, dict):
+        return f"{invalid}: expected an object"
+    arms = schema.get("oneOf")
+    if not isinstance(arms, list) or not arms:
+        return f"{invalid}: expected a non-empty `oneOf` array"
     named: set[str] = set()
-    for arm in schema.get("oneOf", []):
+    for arm in arms:
         if not isinstance(arm, dict):
-            continue
-        if isinstance(arm.get("const"), str):
+            return f"{invalid}: each `oneOf` arm must be an object"
+        if "const" in arm:
+            if not isinstance(arm["const"], str):
+                return f"{invalid}: a variant's `const` must be a string"
             named.add(arm["const"])
-        for tag, body in (arm.get("properties") or {}).items():
+            continue
+        properties = arm.get("properties")
+        if not isinstance(properties, dict) or not properties:
+            return f"{invalid}: a variant must declare `const` or non-empty `properties`"
+        for tag, body in properties.items():
+            if not isinstance(body, dict):
+                return f"{invalid}: `{tag}` must be an object"
+            fields = body.get("properties", {})
+            if not isinstance(fields, dict):
+                return f"{invalid}: `{tag}.properties` must be an object"
             named.add(tag)
-            if isinstance(body, dict) and isinstance(body.get("properties"), dict):
-                named |= set(body["properties"])
+            named |= set(fields)
     return named
 
 

@@ -212,8 +212,7 @@ The skill is the supervising agent's whole initial context. Keep it short and
 put reference material in the documents it links to. `[docs]` in
 `repo-policy.toml` declares that surface and its enforced bounds.
 References must remain reachable beside the materialized skill after install,
-on a host with no checkout. Documentation generation and editing rules live in
-`docs/AGENTS.md`.
+on a host with no checkout.
 
 ## Supported platforms
 
