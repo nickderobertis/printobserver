@@ -9,6 +9,7 @@ that is genuinely one of their inputs.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from repo_checks.checks_docs import (
@@ -226,4 +227,14 @@ def test_a_bundled_document_this_repository_does_not_declare_is_refused(committe
     refused(
         _bundled_references(committed, policy, source),
         "which this repository declares no reference document for",
+    )
+
+
+def test_a_skill_read_beside_no_surface_manifest_is_refused(committed: Repo) -> None:
+    """The reference vocabulary is read off the manifest; absent, nothing is refused."""
+    policy = replace(_policy(committed), surface_manifest="docs/reference/nothing.json")
+
+    refused(
+        _reference_material(committed, policy, "A sentence about a print.\n"),
+        "is absent",
     )

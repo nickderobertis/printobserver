@@ -16,14 +16,16 @@ from repo_checks.checks_docs import (
     _architecture,
     _command_surface,
     _common_operations,
+    _crate_dependencies,
     _document_frame,
+    _exported_methods,
     _intervention_policy,
     _read_surface,
     _testing,
     reference,
 )
 from repo_checks.docs import Document, docs_policy, entry_body
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 
 COMMANDS = "docs/reference/command-surface.md"
@@ -355,4 +357,42 @@ def test_an_expiry_behaviour_naming_a_test_that_is_not_there_is_refused(committe
     refused(
         _intervention_policy(committed, POLICY, text, _surface(committed)),
         "this repository carries no such test",
+    )
+
+
+def test_a_crate_the_workspace_has_no_manifest_for_names_no_dependency(committed: Repo) -> None:
+    """The dependency direction is read off a manifest, and reads back nothing without one."""
+    equal(_crate_dependencies(committed, "printobserver-telemetry"), set())
+
+
+def test_a_client_the_workspace_has_no_sources_for_exports_no_method(committed: Repo) -> None:
+    """A client entry is held to the client's own sources, and there are none."""
+    equal(_exported_methods(committed, "printobserver-telemetry"), [])
+
+
+def test_an_architecture_document_stating_no_dependency_direction_is_refused(
+    committed: Repo,
+) -> None:
+    """A section that says why the rule holds and never says what it is states nothing."""
+    text = "\n".join(
+        line
+        for line in committed.read(ARCHITECTURE).splitlines()
+        if "`printobserver-core` depends" not in line
+    )
+
+    refused(
+        _architecture(committed, ARCHITECTURE, text, _surface(committed)),
+        "states no dependency direction for `printobserver-core`",
+    )
+
+
+def test_an_intervention_policy_naming_no_source_for_the_bounds_is_refused(
+    committed: Repo,
+) -> None:
+    """Where the bounds come from is a file in this tree, named so the claim is held to it."""
+    text = _edited(committed, POLICY, "## Where the bounds come from", "## Where bounds begin")
+
+    refused(
+        _intervention_policy(committed, POLICY, text, _surface(committed)),
+        "names no source the server reads the safety envelope from",
     )
