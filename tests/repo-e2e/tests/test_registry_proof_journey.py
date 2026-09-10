@@ -256,6 +256,7 @@ def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published
         )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.mark.parametrize("recipe", list(ROUTES))
 def test_each_route_is_proven_against_what_its_registry_serves(
     recipe: str, standing_in: Callable[..., Standin]

@@ -276,6 +276,12 @@ site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. So there is no edge to put this behind that would spare an unrelated change anything: a project of its own would carry the same target name and be run by the same `nx run-many` the tier already is. If that ceases to be true — if this repository grows per-project end-to-end targets — this suppression stops being right, and a reader can see that from this sentence."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
