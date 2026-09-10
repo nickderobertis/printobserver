@@ -19,6 +19,32 @@ from repo_checks.shell import run
 from test_docs_policy import DECLARED
 
 
+def tool_packages(committed: Repo) -> str:
+    """The tool packages the checks' own CLI imports, absolute, read from the justfile.
+
+    Read rather than restated, so a package this repository grows is one this
+    test finds without being told: the checks over the generated clients import
+    the generator's own model, so `repo_checks` no longer imports from its own
+    source root alone. Absolute because the CLI below runs with its working
+    directory outside any checkout, where a relative root resolves to nothing.
+
+    Args:
+        committed: The committed tree, whose justfile declares the set.
+
+    Returns:
+        The roots, joined as a search path.
+
+    Raises:
+        AssertionError: If the justfile exports none.
+    """
+    for line in committed.justfile.splitlines():
+        if line.startswith("export PYTHONPATH :="):
+            roots = line.partition(":=")[2].strip().strip('"').split(":")
+            return os.pathsep.join(str(committed.path(root)) for root in roots)
+    message = "the justfile exports no PYTHONPATH, and the checks' own tools live on it"
+    raise AssertionError(message)
+
+
 def test_the_committed_schema_document_is_accepted(committed: Repo) -> None:
     """The document this repository ships is what the types generate."""
     accepted(schema_document(committed))
@@ -34,7 +60,7 @@ def test_schema_generation_cli_writes_the_declared_schema(tmp_path: Path, commit
     result = run(
         [sys.executable, "-m", "repo_checks", "docs-schemas-write"],
         cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(committed.path("tools/repo-checks/src"))},
+        env={**os.environ, "PYTHONPATH": tool_packages(committed)},
     )
 
     passing(result)

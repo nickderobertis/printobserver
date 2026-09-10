@@ -64,6 +64,7 @@ def run(
     timeout: float | None = None,
     check: bool = False,
     capture: bool = True,
+    stdin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a program by absolute path.
 
@@ -79,6 +80,9 @@ def run(
         check: Raise on a non-zero exit rather than returning it.
         capture: Collect the output, or let it reach the caller's terminal when
             the program's own progress is what a reader needs.
+        stdin: Text to hand the program on its standard input. A formatter that
+            reads what it is to lay out this way never touches the tree, which
+            is what lets a drift check run one over a file it must not write.
 
     Returns:
         The completed process. A program that is not on PATH comes back with
@@ -96,10 +100,56 @@ def run(
         return subprocess.CompletedProcess(argv, PROGRAM_NOT_FOUND, "", f"{argv[0]}: not found\n")
     return subprocess.run(  # noqa: S603
         [program, *argv[1:]],
+        input=stdin,
         cwd=cwd,
         env=without_ambient_git(os.environ if env is None else env),
         timeout=timeout,
         capture_output=capture,
         text=True,
         check=check,
+    )
+
+
+def start(
+    argv: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.Popen[str]:
+    """Start a long-running program by absolute path, and answer it.
+
+    `run` waits; this does not, because some of what this repository drives is
+    a server a journey then makes requests of. Everything `run`'s own comment
+    says applies here for the same reasons: the executable is resolved against
+    PATH so `S607` is fixed rather than suppressed, `S603` has one more
+    reviewable site rather than one at every caller, and the variables naming a
+    git repository are dropped so the program works on `cwd`.
+
+    Args:
+        argv: The program and its arguments. Never a shell string.
+        cwd: The directory to run in.
+        env: The environment to run under, or the caller's when omitted.
+
+    Returns:
+        The running process, with both of its streams captured.
+
+    Raises:
+        FileNotFoundError: If the program is not on PATH. A caller waiting on a
+            process that was never started would wait for its whole timeout.
+    """
+    program = shutil.which(argv[0])
+    if program is None:
+        message = f"{argv[0]}: not found on PATH"
+        raise FileNotFoundError(message)
+    return subprocess.Popen(  # noqa: S603
+        [program, *argv[1:]],
+        # Its input is a pipe the caller holds rather than whatever the caller
+        # inherited: a program held up until its input closes would stop the
+        # moment it was started under a test runner, which redirects one.
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=without_ambient_git(os.environ if env is None else env),
+        text=True,
     )

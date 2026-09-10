@@ -787,6 +787,33 @@ relocation saves only their critical-path difference. Keep the journey in the
 required gate unless `integration` first becomes required through a coordinated
 repository-setting and merge-path inventory change.
 
+### The one journey, in three clients
+
+The nine steps all three clients drive are declared once, in
+`repo_checks.checks_journeys`, and each journey marks its own in its own
+language's comments — `journey step 4: start`. `just check-repo`'s
+`journey-completeness` holds every marker to the code beside it, so a step
+deleted, renamed, or left with nothing under its marker is refused in whichever
+client lost it.
+
+**Only the orderings that are load-bearing are asked for**, and `ORDERINGS` is
+the whole of them: the manifest is written before the print is started so the
+print runs under it, both adjustments come after it has started and before
+history is read so history has them to account for, and the print is cancelled
+last. Everything else is the journey author's to arrange — which of the two
+reads comes first, and where the call the client refuses to make is written,
+prove the same thing in any order, and a check demanding one arrangement would
+be a check over layout rather than over the walk.
+
+**A call the client refuses to make is proven by a recording proxy in front of
+the real supervisor**, and by nothing else. The seventh step is that a mutating
+call with an empty reason reaches no server at all, and neither unchanged
+history nor a client pointed at an address nothing listens on says that: a
+request the server took and recorded nowhere leaves history unchanged, and a
+client that can reach nothing reaches nothing whatever it is asked. What the
+step asserts is that the proxy — which the same call *did* go through, one read
+earlier — saw nothing.
+
 ## Suppressions
 
 `suppressions.toml` is the only way to suppress a diagnostic here. Every

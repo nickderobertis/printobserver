@@ -357,3 +357,65 @@ def octoprint_client(repo: Repo) -> list[str]:
             f"`repo-policy.toml` names no longer describe one"
         )
     return findings
+
+
+def _importable_names(repo: Repo, root: str) -> dict[str, str]:
+    """The top-level modules and packages one search root offers, by name.
+
+    `conftest` and `test_*` are excluded because pytest places those by path —
+    it prepends each test file's own directory — so nothing imports them by a
+    bare name and two roots may carry one without either becoming ambiguous.
+
+    Args:
+        repo: The tree to read.
+        root: A repository-relative search root.
+
+    Returns:
+        Each importable top-level name, mapped to where it comes from.
+    """
+    directory = repo.path(root)
+    if not directory.is_dir():
+        return {}
+    offered: dict[str, str] = {}
+    for entry in sorted(directory.iterdir()):
+        if entry.name.startswith("test_") or entry.stem == "conftest":
+            continue
+        if entry.is_file() and entry.suffix == ".py":
+            offered[entry.stem] = f"{root}/{entry.name}"
+        elif entry.is_dir() and (entry / "__init__.py").exists():
+            offered[entry.name] = f"{root}/{entry.name}"
+    return offered
+
+
+def module_names(repo: Repo) -> list[str]:
+    """No two of the type checker's search roots offer one top-level name.
+
+    Every root in `[tool.ty.environment]` is a bare directory on the search
+    path, so `import world` resolves by the order those roots are listed rather
+    than to the module beside the file importing it. Two roots offering one name
+    is therefore not a tie: the one listed second loses, and its own importers
+    silently resolve to a module declaring none of the members they name.
+
+    It cost this repository a gate: `python/printobserver-sdk/integration` is
+    listed ahead of `tools/printer-smoke/tests`, and each carried a `world`, so
+    printer-smoke's tests type-checked against the clients' supervisor and
+    reported thirteen unresolved imports against a module that was never theirs.
+
+    Args:
+        repo: The tree to read.
+
+    Returns:
+        One finding per name more than one root offers.
+    """
+    roots = repo.read_toml("pyproject.toml")["tool"]["ty"]["environment"]["root"]
+    offered: dict[str, list[str]] = {}
+    for root in roots:
+        for name, where in _importable_names(repo, str(root)).items():
+            offered.setdefault(name, []).append(where)
+    return [
+        f"`{name}` is offered by more than one search root ({', '.join(sorted(places))}): "
+        f"a bare import of it resolves by root order rather than to the module beside "
+        f"whichever file imports it"
+        for name, places in sorted(offered.items())
+        if len(places) > 1
+    ]

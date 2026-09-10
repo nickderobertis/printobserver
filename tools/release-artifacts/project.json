@@ -1,0 +1,15 @@
+{
+  "name": "release-artifacts",
+  "root": "tools/release-artifacts",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/release-artifacts" },
+    "format-check": { "command": "uv run -q ruff format --check tools/release-artifacts" },
+    "lint": { "command": "uv run -q ruff check tools/release-artifacts" },
+    "typecheck": { "command": "uv run -q ty check tools/release-artifacts" },
+    "test": {
+      "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests"
+    }
+  }
+}

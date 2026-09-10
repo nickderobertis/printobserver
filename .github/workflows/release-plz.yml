@@ -3,7 +3,11 @@
 # request this opens is the only human action in a release.
 #
 # `release-plz.toml` is the configuration; `release-targets.toml` declares what
-# reaches which registry.
+# reaches which registry. Every target that declaration names beside the crates
+# is built here — one build per platform AGENTS.md's supported-platform list
+# names, because each of the three end-user routes carries the program already
+# built for the platform — and then published under an API token carried in a
+# repository secret.
 
 name: release-plz
 
@@ -60,3 +64,59 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  artifacts:
+    name: artifacts (${{ matrix.platform.id }})
+    # One build per supported platform: each of the three end-user routes ships
+    # the `printobserver` program already built for the platform, and a
+    # platform nothing built for is a route that host cannot take.
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just build-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.platform.id }}
+          path: dist
+
+  publish:
+    name: publish
+    needs: artifacts
+    # No platform matrix: publishing is one upload of what every platform's
+    # build produced, and a second cell would be a second upload of the same
+    # bytes.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*
+          merge-multiple: true
+          path: dist
+      # Every registry is authenticated by an API token carried in a repository
+      # secret rather than by a keyless trusted publisher: `gh-secrets.json` is
+      # the authoritative list of what this repository holds, and a publish
+      # authenticated by something outside it would be a credential nobody
+      # declared.
+      - run: just publish-artifacts
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}

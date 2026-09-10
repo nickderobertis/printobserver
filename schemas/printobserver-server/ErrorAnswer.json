@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What this server answers when it will not do what it was asked.",
+  "properties": {
+    "error": {
+      "description": "One line saying why, in the words of whatever refused it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "title": "ErrorAnswer",
+  "type": "object"
+}

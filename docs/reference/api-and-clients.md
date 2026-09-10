@@ -175,22 +175,139 @@ client added or removed moves what this section owes with it.
 
 ### printobserver-sdk
 
-The Rust client of the surface above: a typed, async client and its request and
-answer types. It depends on the contracts and an HTTP client and on nothing else
-— a client that could reach the core or the server would be a second copy of the
-server.
+The Rust client is typed and blocking. Its request and response types and its
+operation methods are generated from the committed schemas. It carries its own
+HTTP transport and depends on neither the core nor the server. Construct a
+`Client` with an address and an `Actor`; the actor accompanies every action.
 
-It exports no method yet. The crate is published and the toolchain around it is
-in place; the methods land with the `sdks` node, and this section grows one entry
-per method the moment they do, because the check behind this document reads the
-client's own exports rather than a list written here.
+Every generated mutating method requires a reason and refuses an empty or
+whitespace-only reason before sending a request. Adjustment methods also take
+`duration_s: Option<i64>`. A policy refusal returns `ClientError::Rejected`
+carrying a `Rejection` with `reason`, `requested`, `allowed`, and the complete
+action answer. Image answers preserve absolute paths on the server's host.
 
-This repository also carries Python and Node client packages, at
-`python/printobserver-sdk` and `npm/printobserver-sdk`. Neither exports anything
-yet and neither is in `repo-policy.toml`'s declared client list, so neither owes
-an entry here; both join that list when the `sdks` node writes them, and this
-section grows an entry for each of them when they do.
+The Python distribution `printobserver-sdk` and npm distribution
+`@printobserver/sdk`, implemented at `python/printobserver-sdk` and
+`npm/printobserver-sdk`, expose the same generated operation names and response
+shapes. Their package metadata records the server contract version, as does
+Rust's `CONTRACT_VERSION`. The `printobserver-cli` registry distributions carry
+the command-line program; they are separate from these client libraries.
 
-The `printobserver-cli` distributions on those two registries are a different
-thing again: they carry the command-line program rather than a client of this
-API.
+#### new
+
+`Client::new(address, actor)` constructs a client without making a request.
+The address accepts `http://host:port` or `host:port`.
+
+#### with_credential
+
+`client.with_credential(credential)` returns the client configured to send the
+credential as a bearer token.
+
+#### address
+
+`client.address()` reads the configured host and port.
+
+#### actor
+
+`client.actor()` reads the actor used by generated action methods.
+
+#### status
+
+`client.status(print_id)` calls the status operation and returns `StatusAnswer`.
+
+#### context
+
+`client.context(print_id)` returns `ContextAnswer`, including the latest image's
+materialized path on the server's host.
+
+#### image
+
+`client.image(image_id)` returns `ImageAnswer` with the image record and path.
+
+#### history
+
+`client.history(print_id, limit)` returns `HistoryAnswer`; `limit` is optional.
+
+#### manifest_get
+
+`client.manifest_get(print_id)` returns the print's `ManifestAnswer`.
+
+#### manifest_set
+
+`client.manifest_set(print_id, reason, manifest)` writes the manifest and returns
+`ManifestAnswer`.
+
+#### pause
+
+`client.pause(print_id, reason)` pauses the print and returns `ActionAnswer`.
+
+#### resume
+
+`client.resume(print_id, reason)` resumes the print and returns `ActionAnswer`.
+
+#### cancel
+
+`client.cancel(print_id, reason)` cancels the print and returns `ActionAnswer`.
+
+#### start_print
+
+`client.start_print(print_id, file_name, manifest, reason)` starts the named file
+under its manifest and returns `ActionAnswer`.
+
+#### set_feedrate_factor
+
+`client.set_feedrate_factor(print_id, factor, reason, duration_s)` requests a
+feedrate multiplier and returns `ActionAnswer`.
+
+#### set_flowrate_factor
+
+`client.set_flowrate_factor(print_id, factor, reason, duration_s)` requests a
+flowrate multiplier and returns `ActionAnswer`.
+
+#### set_tool_target_c
+
+`client.set_tool_target_c(print_id, reason, target_c, tool, duration_s)` requests
+a tool temperature and returns `ActionAnswer`.
+
+#### set_bed_target_c
+
+`client.set_bed_target_c(print_id, reason, target_c, duration_s)` requests a bed
+temperature and returns `ActionAnswer`.
+
+#### set_fan_percent
+
+`client.set_fan_percent(print_id, percent, reason, duration_s)` requests a fan
+percentage and returns `ActionAnswer`.
+
+#### acknowledge_failure
+
+`client.acknowledge_failure(print_id, disposition, event_id, reason)` records the
+failure acknowledgement and returns `ActionAnswer`.
+
+#### call
+
+`client.call(method, path, query, body)` is the generic transport entry used by
+generated methods. It deserializes a successful answer into the caller's chosen
+type and maps policy and printer refusals into `ClientError`. Applications use
+the generated methods above for their typed arguments and reason validation.
+
+#### of
+
+`Rejection::of(answer)` extracts a typed rejection from an `ActionAnswer`, or
+returns `None` when its decision is not a rejection.
+
+#### reason_given
+
+`reason_given(reason)` validates a reason locally, returning
+`ClientError::NoReason` for an empty or whitespace-only value.
+
+#### as_value
+
+`as_value(value)` serializes a request value to JSON, returning
+`ClientError::Unsendable` if serialization fails.
+
+#### send
+
+The private transport module's `send` function writes one HTTP request and
+reads its status and body, rejecting an incomplete response. It is an internal
+helper rather than a crate-root export; callers use `Client`.

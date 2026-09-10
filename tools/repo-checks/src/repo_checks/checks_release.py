@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from repo_checks import install_path as ip
 from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
 from repo_checks.parsing import jobs_of, load_workflow, programs_in, run_commands, steps_of
 
@@ -60,8 +61,13 @@ def _has_version(path: Path) -> bool:
     return False
 
 
+#: Every registry this repository publishes to. A target naming any other is
+#: one nothing knows how to publish.
+REGISTRIES = ("crate", "pypi", "npm", "release")
+
+
 def release_targets(repo: Repo) -> list[str]:
-    """The declaration covers every publishable crate, and nothing else, at this node."""
+    """The declaration covers every publishable crate and every end-user route."""
     declaration = repo.read_toml("release-targets.toml")
     targets = declaration.get("target", [])
     findings: list[str] = []
@@ -70,11 +76,19 @@ def release_targets(repo: Repo) -> list[str]:
     for target in targets:
         identifier = str(target.get("id", ""))
         registry, _, name = identifier.partition(":")
-        if registry != "crate":
+        if registry not in REGISTRIES:
             findings.append(
-                f"release-targets.toml declares `{identifier}`, a {registry or 'nameless'} "
-                f"target; at this node the repository publishes crates and nothing else"
+                f"release-targets.toml declares `{identifier}`, a "
+                f"{registry or 'nameless'} target; this repository publishes to "
+                f"{', '.join(REGISTRIES)} and nothing else"
             )
+            continue
+        if registry != "crate":
+            if not str(target.get("description", "")).strip():
+                findings.append(
+                    f"release-targets.toml declares `{identifier}` with no description, "
+                    f"so its own registry would show none"
+                )
             continue
         declared_crates.add(name)
         manifest = target.get("manifest", "")
@@ -106,8 +120,74 @@ def release_targets(repo: Repo) -> list[str]:
         if _has_version(path) and path not in owned
     )
 
+    findings.extend(_route_findings(repo, targets))
     findings.extend(_conventional_commit_findings(repo))
     return findings
+
+
+def _route_findings(repo: Repo, targets: list[dict[str, Any]]) -> list[str]:
+    """Every route the install path names has a target, under that route's own name.
+
+    `AGENTS.md`'s "The end-user install path" is the authoritative source of
+    the routes and of the distribution name each of the two registry routes
+    installs. A declaration and that section that disagree on a name are a
+    command a reader pastes and a package nobody published.
+    """
+    path = ip.parse(repo.agents_md)
+    findings: list[str] = []
+    backing: dict[str, list[str]] = {}
+    for target in targets:
+        route = str(target.get("route", "")).strip()
+        if route:
+            backing.setdefault(route, []).append(str(target.get("id", "")))
+
+    stated = {route.heading for route in path.routes}
+    findings.extend(
+        f"release-targets.toml declares `{backing[route][0]}` as backing route "
+        f"`{route}`, which AGENTS.md's `{ip.SECTION_HEADING}` does not state"
+        for route in sorted(backing)
+        if route not in stated
+    )
+    for route in path.routes:
+        behind = backing.get(route.heading, [])
+        if not behind:
+            findings.append(
+                f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for "
+                f"which release-targets.toml declares no target: it is a route to a "
+                f"program nothing publishes"
+            )
+            continue
+        if len(behind) > 1:
+            findings.append(
+                f"route `{route.heading}` is backed by {len(behind)} targets "
+                f"({', '.join(behind)}); a route is one artifact"
+            )
+            continue
+        findings.extend(_name_findings(route, behind[0]))
+    return findings
+
+
+def _name_findings(route: ip.Route, identifier: str) -> list[str]:
+    """The distribution a route's own command installs is the one declared.
+
+    Read out of the command a reader pastes: `pip install X` and `npm install
+    -g X` each name the distribution, and that name is the registry's rather
+    than one chosen in the declaration. A route whose command names none — the
+    script route fetches a path rather than a package — is held to its script
+    path by the `install-script` check instead.
+    """
+    named = route.command.split()
+    if not named or ip.RAW_URL.search(route.command):
+        return []
+    installed = named[-1]
+    declared = identifier.partition(":")[2]
+    if installed != declared:
+        return [
+            f"route `{route.heading}` installs `{installed}`, and release-targets.toml "
+            f"declares `{identifier}`: the command a reader pastes and the artifact "
+            f"this repository publishes are two different names"
+        ]
+    return []
 
 
 def _conventional_commit_findings(repo: Repo) -> list[str]:
@@ -206,19 +286,7 @@ def release_automation(repo: Repo) -> list[str]:
                 f"the base branch"
             )
 
-    covered = {
-        registry
-        for _, _, job in found
-        for command in run_commands(job)
-        for registry in (["crate"] if "release-plz release" in command else [])
-    }
-    for target in repo.read_toml("release-targets.toml").get("target", []):
-        registry = str(target.get("id", "")).partition(":")[0]
-        if registry not in covered:
-            findings.append(
-                f"release-targets.toml declares `{target.get('id')}`, which no committed "
-                f"publishing step covers"
-            )
+    findings.extend(_coverage_findings(repo))
 
     for file_name, job_name, job in found:
         if "environment" in job:
@@ -239,4 +307,167 @@ def release_automation(repo: Repo) -> list[str]:
             for marker in HALTING_COMMANDS
             if marker in command
         )
+    return findings
+
+
+#: The recipe release automation builds every artifact beside the crates with,
+#: and the one it publishes them with. Declared in `repo-policy.toml` so that a
+#: workflow and this check cannot disagree about which step is which.
+ARTIFACT_RECIPES = ("build_recipe", "publish_recipe")
+
+#: What a keyless trusted publisher looks like in a workflow: the permission it
+#: needs, and the action that uses it. Every publish here authenticates with an
+#: API token carried in a repository secret instead.
+TRUSTED_PUBLISHER = ("id-token", "gh-action-pypi-publish", "trusted-publish")
+
+
+def _release_policy(repo: Repo) -> dict[str, str]:
+    """The two recipes release automation is recognized by."""
+    from repo_checks.model import policy_strings, policy_table
+
+    return policy_strings(policy_table(repo, "release"), ARTIFACT_RECIPES, "release")
+
+
+def _coverage_findings(repo: Repo) -> list[str]:
+    """Every declared target is covered, on every platform, by a committed step.
+
+    Three things, and the third is what a matrix cannot be narrowed past:
+    every target the declaration names is published by some step; each of the
+    three end-user routes has a build; and that build runs once per platform
+    `AGENTS.md`'s own list names — that section being the authority rather than
+    the matrix beside it, since a check reading the matrix is satisfied by
+    narrowing the matrix.
+    """
+    from repo_checks.checks_ci import platforms_of
+    from repo_checks.model import PolicyValueError
+    from repo_checks.parsing import MarkerBlockMissingError
+
+    try:
+        recipes = _release_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+
+    building: list[dict[str, Any]] = []
+    publishing: list[str] = []
+    for path in repo.workflow_paths:
+        for job_name, job in jobs_of(load_workflow(path)).items():
+            commands = run_commands(job)
+            if f"just {recipes['build_recipe']}" in commands:
+                building.append(job)
+            if f"just {recipes['publish_recipe']}" in commands:
+                publishing.append(f"{path.name}: `{job_name}`")
+            if any("release-plz release" in command for command in commands):
+                publishing.append(f"{path.name}: `{job_name}`")
+
+    findings: list[str] = []
+    declared = repo.read_toml("release-targets.toml").get("target", [])
+    if not publishing:
+        findings.append(
+            f"no committed step publishes anything: release automation runs neither "
+            f"`just {recipes['publish_recipe']}` nor `release-plz release`"
+        )
+    if not building:
+        findings.append(
+            f"no committed job builds the artifacts beside the crates: none runs "
+            f"`just {recipes['build_recipe']}`"
+        )
+        return findings
+
+    try:
+        wanted = [platform.id for platform in platforms_of(repo)]
+    except MarkerBlockMissingError as error:
+        return [*findings, str(error)]
+
+    built_for: set[str] = set()
+    for job in building:
+        entries = ((job.get("strategy") or {}).get("matrix") or {}).get("platform")
+        for entry in entries if isinstance(entries, list) else []:
+            if isinstance(entry, dict) and "id" in entry:
+                built_for.add(str(entry["id"]))
+    findings.extend(
+        f"AGENTS.md's supported-platform list names `{platform}`, and no committed job "
+        f"builds this repository's artifacts for it: every one of the three end-user "
+        f"routes carries the program already built for the platform"
+        for platform in wanted
+        if platform not in built_for
+    )
+
+    path = ip.parse(repo.agents_md)
+    routed = {
+        str(target.get("route", "")).strip()
+        for target in declared
+        if str(target.get("route", "")).strip()
+    }
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for which "
+        f"release automation declares no build at all"
+        for route in path.routes
+        if route.heading not in routed
+    )
+    return findings
+
+
+def publish_credentials(repo: Repo) -> list[str]:
+    """Every publish authenticates with an API token carried in a repository secret.
+
+    Not a keyless trusted publisher: `gh-secrets.json` is the authoritative
+    list of what this repository holds, and a publish authenticated by
+    something outside it would be a credential nobody declared. The names of
+    the tokens are not written here — they are what the publishing tool reads
+    from its environment, and what that manifest declares.
+    """
+    import json
+    import re
+
+    from repo_checks.model import PolicyValueError
+
+    try:
+        recipes = _release_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+
+    manifest = json.loads(repo.read("gh-secrets.json"))
+    held = {entry["name"] for entry in manifest["secrets"]}
+    reference = re.compile(r"secrets\.([A-Z0-9_]+)")
+    findings: list[str] = []
+    found = False
+
+    for path in repo.workflow_paths:
+        workflow = load_workflow(path)
+        for job_name, job in jobs_of(workflow).items():
+            commands = run_commands(job)
+            publishes = f"just {recipes['publish_recipe']}" in commands or any(
+                "release-plz release" in command for command in commands
+            )
+            if not publishes:
+                continue
+            found = True
+            where = f"{path.name}: publishing job `{job_name}`"
+            named = set()
+            for step in steps_of(job):
+                named |= set(reference.findall(str(step.get("env", ""))))
+                uses = str(step.get("uses", ""))
+                findings.extend(
+                    f"{where} uses `{uses}`, which publishes by a keyless trusted "
+                    f"publisher; every publish here authenticates with an API token "
+                    f"carried in a repository secret"
+                    for marker in TRUSTED_PUBLISHER
+                    if marker in uses
+                )
+            declared_permissions = json.dumps(
+                {**(workflow.get("permissions") or {}), **(job.get("permissions") or {})}
+            )
+            if TRUSTED_PUBLISHER[0] in declared_permissions:
+                findings.append(
+                    f"{where} is granted `{TRUSTED_PUBLISHER[0]}`, which is what a "
+                    f"keyless trusted publisher needs and no publish here uses"
+                )
+            if not named:
+                findings.append(f"{where} names no secret as its credential")
+            findings.extend(
+                f"{where} authenticates with `{secret}`, which gh-secrets.json does not declare"
+                for secret in sorted(named - held)
+            )
+    if not found:
+        findings.append("no committed job publishes anything")
     return findings

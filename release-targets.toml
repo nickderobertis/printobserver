@@ -10,12 +10,24 @@
 # workspace rather than from this file and fails on a name that is in one and
 # not the other, in either direction.
 #
-# At this node the repository publishes crates and nothing else. The two client
-# distributions, the CLI-capable distribution on PyPI and on npm, and the
-# per-platform release artifacts `scripts/install.sh` downloads are the `sdks`
-# node's to declare here — see `AGENTS.md`, "The end-user install path".
+# NO manifest in this tree carries a version, and that is what makes every id
+# below automatic: release automation writes the number into the workspace, and
+# `tools/release-artifacts` builds each artifact carrying it. A distribution
+# manifest with a version field of its own would be one a person had to keep in
+# step, which is the thing Conventional-Commit-driven releasing exists to
+# remove — and `just check-repo` refuses one.
+#
+# A target that backs one of the three END-USER ROUTES names that route by the
+# heading `AGENTS.md`'s "The end-user install path" gives it. `just check-repo`
+# reads the two beside each other and refuses a tree in which they disagree, or
+# in which a route that section names has no target behind it.
+#
+# `built_by` says which tool assembles a target. `release-plz` publishes every
+# crate straight from the workspace; `release-artifacts` assembles the six this
+# repository ships beside them — the three clients a dependent takes as a
+# dependency, and the three routes an end user gets the program by.
 
-schema_version = 1
+schema_version = 2
 
 # The shared domain vocabulary. Every other crate depends on it.
 [[target]]
@@ -76,8 +88,52 @@ manifest = "crates/printobserver-server/Cargo.toml"
 [[target]]
 id = "crate:printobserver-sdk"
 manifest = "crates/printobserver-sdk/Cargo.toml"
+description = "Rust client for the printobserver server."
+built_by = "release-artifacts"
 
 # The `printobserver` command itself.
 [[target]]
 id = "crate:printobserver"
 manifest = "crates/printobserver/Cargo.toml"
+
+# The Python client of the server's HTTP surface. A dependency an application
+# takes, rather than a route to the program: its methods are generated from the
+# same description the server's own routes are folded out of.
+[[target]]
+id = "pypi:printobserver-sdk"
+built_by = "release-artifacts"
+description = "Typed Python client for the printobserver server's HTTP surface."
+
+# The Node client of the same surface, on the same terms.
+[[target]]
+id = "npm:@printobserver/sdk"
+built_by = "release-artifacts"
+description = "Typed Node client for the printobserver server's HTTP surface."
+
+# Route 1 of the end-user install path: a CLI-capable distribution published as
+# per-platform wheels, each carrying the `printobserver` program already built
+# for its platform. The name is the one that section states.
+[[target]]
+id = "pypi:printobserver-cli"
+built_by = "release-artifacts"
+route = "Route 1 — the Python package registry"
+description = "The printobserver command, already built for your platform."
+
+# Route 2: the CLI-capable distribution of the JavaScript registry, under the
+# same distribution name and installing the same command. A launcher declaring
+# one per-platform package per target as an optional dependency, and the
+# per-platform package the caller's own install resolves.
+[[target]]
+id = "npm:printobserver-cli"
+built_by = "release-artifacts"
+route = "Route 2 — the JavaScript package registry"
+description = "The printobserver command, already built for your platform."
+
+# Route 3: the per-platform release artifacts `scripts/install.sh` downloads,
+# with the checksum file it verifies them against before anything reaches a
+# path.
+[[target]]
+id = "release:printobserver"
+built_by = "release-artifacts"
+route = "Route 3 — the bundled install script"
+description = "The printobserver command, already built for your platform."

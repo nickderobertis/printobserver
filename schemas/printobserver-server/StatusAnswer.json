@@ -1,0 +1,654 @@
+{
+  "$defs": {
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "HeaterSnapshot": {
+      "additionalProperties": false,
+      "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
+      "properties": {
+        "actual_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is at."
+        },
+        "offset_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The offset applied to this heater's target."
+        },
+        "target_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is driving towards."
+        }
+      },
+      "type": "object"
+    },
+    "Intervention": {
+      "additionalProperties": false,
+      "description": "One adjustment made for a bounded time.\n\n`prior_value` is read from the printer snapshot taken before the change, and\nis absent when the printer reported none — in which case expiry restores\nnothing and the outcome says so rather than guessing a default.",
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/ActionId",
+          "description": "The action that asked for it."
+        },
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "What it changed."
+        },
+        "applied_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was applied."
+        },
+        "applied_value": {
+          "description": "What it was changed to.",
+          "format": "double",
+          "type": "number"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it stops standing."
+        },
+        "id": {
+          "$ref": "#/$defs/InterventionId",
+          "description": "This intervention's identifier, minted by the store."
+        },
+        "outcome": {
+          "$ref": "#/$defs/InterventionOutcome",
+          "description": "What became of it."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print it was made against."
+        },
+        "prior_value": {
+          "description": "What the printer reported before the change, if it reported anything.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "restored_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the prior value was put back, if it was."
+        }
+      },
+      "required": [
+        "id",
+        "print_id",
+        "action_id",
+        "adjustable",
+        "applied_value",
+        "applied_at",
+        "expires_at",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    },
+    "InterventionOutcome": {
+      "description": "What became of a bounded change.",
+      "oneOf": [
+        {
+          "const": "still_active",
+          "description": "It is still in force.",
+          "type": "string"
+        },
+        {
+          "const": "restored",
+          "description": "The prior value was put back.",
+          "type": "string"
+        },
+        {
+          "const": "restore_unavailable",
+          "description": "There was no prior value to put back.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Putting the prior value back failed.",
+          "properties": {
+            "restore_failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "restore_failed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another intervention replaced it before it expired.",
+          "properties": {
+            "superseded": {
+              "additionalProperties": false,
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that replaced it."
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "superseded"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "JobSnapshot": {
+      "additionalProperties": false,
+      "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
+      "properties": {
+        "completion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
+        },
+        "error": {
+          "description": "The error the source reports, when it reports one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "estimated_print_time_s": {
+          "description": "The whole print's estimated duration, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "file_name": {
+          "description": "The name of the file being printed, as the source reported it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_origin": {
+          "description": "Where the file lives, in the source's own vocabulary.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "print_time_left_s": {
+          "description": "How long the print has left, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "print_time_s": {
+          "description": "How long the print has been running, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the source reports the job to be in."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "ManifestNarrowing": {
+      "additionalProperties": false,
+      "description": "One adjustable whose manifest range was wider than the envelope's.",
+      "properties": {
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "The adjustable that was narrowed."
+        },
+        "applied": {
+          "$ref": "#/$defs/Range",
+          "description": "The range that stands."
+        },
+        "requested": {
+          "$ref": "#/$defs/Range",
+          "description": "The range the manifest asked for."
+        }
+      },
+      "required": [
+        "adjustable",
+        "requested",
+        "applied"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrintRecord": {
+      "additionalProperties": false,
+      "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+      "properties": {
+        "end_reason": {
+          "description": "Why it ended, if it has.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When it ended, if it has."
+        },
+        "file_name": {
+          "description": "The file being printed, as the source reported it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "This print's identifier, minted by the store."
+        },
+        "narrowings": {
+          "description": "Every manifest range this print narrowed to the envelope's.",
+          "items": {
+            "$ref": "#/$defs/ManifestNarrowing"
+          },
+          "type": "array"
+        },
+        "obico_print_id": {
+          "description": "Obico's own identifier for the print, when Obico has one.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the print is in."
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "opened_at",
+        "narrowings"
+      ],
+      "type": "object"
+    },
+    "PrinterSnapshot": {
+      "additionalProperties": false,
+      "description": "A printer, as a source reported it at one instant.",
+      "properties": {
+        "bed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bed heater, when the printer reports one."
+        },
+        "chamber": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The chamber heater, when the printer reports one."
+        },
+        "connection": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the printer is in."
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan, in percent."
+        },
+        "feedrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The feedrate multiplier, where one means one hundred percent."
+        },
+        "flowrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flowrate multiplier, where one means one hundred percent."
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The instant this observation was taken."
+        },
+        "tools": {
+          "description": "The tool heaters, indexed by tool number.",
+          "items": {
+            "$ref": "#/$defs/HeaterSnapshot"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connection",
+        "tools",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    },
+    "SupervisionSession": {
+      "additionalProperties": false,
+      "description": "The supervision session keyed to one print.",
+      "properties": {
+        "close_reason": {
+          "description": "Why it was closed, if it was.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "closed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the session was closed, if it was."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the session was opened."
+        },
+        "harness_identity": {
+          "description": "The identity the harness ran the session under.",
+          "type": "string"
+        },
+        "last_turn_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the last turn ran."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print this session watches."
+        },
+        "session_name": {
+          "description": "The session's own name in the harness.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "print_id",
+        "session_name",
+        "harness_identity",
+        "created_at",
+        "last_turn_at"
+      ],
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a status read answers.",
+  "properties": {
+    "interventions": {
+      "description": "The bounded interventions still in force.",
+      "items": {
+        "$ref": "#/$defs/Intervention"
+      },
+      "type": "array"
+    },
+    "job": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The job, when a snapshot could be taken."
+    },
+    "print": {
+      "$ref": "#/$defs/PrintRecord",
+      "description": "The print."
+    },
+    "printer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrinterSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The printer, when a snapshot could be taken."
+    },
+    "session": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SupervisionSession"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The supervision session watching it, when one is."
+    }
+  },
+  "required": [
+    "print",
+    "interventions"
+  ],
+  "title": "StatusAnswer",
+  "type": "object"
+}

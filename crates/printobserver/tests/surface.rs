@@ -153,10 +153,10 @@ fn outside_the_body(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
             required.insert(held.to_owned());
         }
     }
-    for (asked, needed, _) in operation.query {
-        all.insert((*asked).to_owned());
-        if *needed {
-            required.insert((*asked).to_owned());
+    for declared in operation.query {
+        all.insert(declared.name.to_owned());
+        if declared.required {
+            required.insert(declared.name.to_owned());
         }
     }
     (all, required)

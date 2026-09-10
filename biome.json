@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["npm/**/*.ts", "npm/**/*.json", "*.json"]
+    "includes": ["npm/**/*.ts", "npm/**/*.mjs", "npm/**/*.json", "*.json"]
   },
   "formatter": {
     "enabled": true,
@@ -13,8 +13,12 @@
     "enabled": true,
     "rules": {
       "recommended": true,
-      "suspicious": { "noExplicitAny": "error" },
-      "correctness": { "noUnusedVariables": "error" }
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "correctness": {
+        "noUnusedVariables": "error"
+      }
     }
   }
 }

@@ -1,0 +1,149 @@
+# Every artifact this repository ships, built and taken the way its consumers
+# take it.
+#
+# One job per artifact, because the six are separable and a reader chasing a
+# failure wants the one that failed rather than the one job all six were in.
+# Each builds from the committed tree, installs into a throwaway environment
+# holding no copy of these sources, and then proves what it installed: a client
+# by its own committed smoke check against a real supervisor, a route by the
+# program it put on a path reporting its own version.
+#
+# The three ROUTE jobs are matrixed over AGENTS.md's supported-platform list
+# and the three CLIENT jobs over the same, because both are built for a
+# platform and taken on one. `just check-repo` refuses this file if it and that
+# section disagree, so neither set can be narrowed independently of it.
+
+name: artifacts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artifacts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  artifact-client-rust:
+    name: artifact-client-rust (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-client-rust
+
+  artifact-client-python:
+    name: artifact-client-python (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-client-python
+
+  artifact-client-node:
+    name: artifact-client-node (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-client-node
+
+  artifact-route-pypi:
+    name: artifact-route-pypi (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-route-pypi
+
+  artifact-route-npm:
+    name: artifact-route-npm (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-route-npm
+
+  artifact-route-script:
+    name: artifact-route-script (${{ matrix.platform.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just bootstrap
+      - run: just prove-route-script

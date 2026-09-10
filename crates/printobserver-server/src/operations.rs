@@ -126,6 +126,28 @@ impl ValueKind {
     }
 }
 
+/// One value declared beside an operation, at one place in its request.
+///
+/// Only the operations whose body is not one action of the vocabulary declare
+/// their values this way; a mutating operation's are the fields the contracts'
+/// own `PrintAction` declares for the variant it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Declared {
+    /// What it is called, spelled as the wire spells it.
+    pub name: &'static str,
+    /// Whether a request without it is refused.
+    pub required: bool,
+    /// What kind of value it takes.
+    pub kind: ValueKind,
+    /// The contracts' own type it is a value of, when it is one of theirs.
+    ///
+    /// A consumer generating a typed client needs the type rather than the
+    /// kind: [`ValueKind::Structured`] says a manifest is a document, and not
+    /// that it is a `JobManifest`. A value this system mints no type for — a
+    /// count, a reason — declares none.
+    pub shape: Option<&'static str>,
+}
+
 /// One value a request to an operation carries.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Parameter {
@@ -192,14 +214,13 @@ pub struct Operation {
     pub accepts: Option<&'static str>,
     /// The media type it answers in.
     pub answers: &'static str,
-    /// The values it takes after the question mark, each with whether it is
-    /// required and whether it is structured.
-    pub query: &'static [(&'static str, bool, ValueKind)],
+    /// The values it takes after the question mark.
+    pub query: &'static [Declared],
     /// The values it takes in its body, for an operation whose body is not one
     /// action of the vocabulary. A mutating operation declares none here: its
     /// body is the `PrintAction` variant it names, read from the contracts
     /// themselves by [`Operation::request`].
-    pub body: &'static [(&'static str, bool, ValueKind)],
+    pub body: &'static [Declared],
     /// The field of its answer carrying an absolute path to a materialized
     /// image, when its answer carries one.
     ///
@@ -261,6 +282,59 @@ impl Operation {
         found
     }
 
+    /// Every value a request to this operation carries, with its own shape.
+    ///
+    /// [`Operation::request`] answers what a command line needs — a name, a
+    /// place and a kind. This answers what a **typed** consumer needs beside
+    /// that: the shape of each value, as a schema referring to the contracts'
+    /// own types by name where the value is one of theirs. `structured` says a
+    /// manifest is a document; `{"$ref": "#/$defs/JobManifest"}` says which
+    /// document, which is the difference between a generated client that types
+    /// it and one that takes anything.
+    ///
+    /// The order is [`Operation::request`]'s own, so the two can be read side
+    /// by side.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the contracts declare no variant this operation names, which
+    /// is a declared list and a closed type that have come apart.
+    #[must_use]
+    pub fn request_shapes(&self) -> Vec<(Parameter, Value)> {
+        let action = match self.effect {
+            Effect::Mutating(kind) => action_shapes(kind),
+            Effect::Read | Effect::Write => Vec::new(),
+        };
+        self.request()
+            .into_iter()
+            .map(|parameter| {
+                let shape = match parameter.located {
+                    // What makes a path segment an identifier is the type that
+                    // minted it, and a route mints nothing: it is a string.
+                    Located::Path => json!({ "type": "string" }),
+                    Located::Query => declared_shape(self.query, &parameter.name),
+                    Located::Body if action.is_empty() => {
+                        declared_shape(self.body, &parameter.name)
+                    }
+                    Located::Body => action
+                        .iter()
+                        .find(|(name, _)| *name == parameter.name)
+                        .map_or_else(
+                            || {
+                                panic!(
+                                    "`{}` takes `{}` in its body, and the action it names \
+                                     declares no such field",
+                                    self.name, parameter.name
+                                )
+                            },
+                            |(_, shape)| shape.clone(),
+                        ),
+                };
+                (parameter, shape)
+            })
+            .collect()
+    }
+
     /// Every answer this operation can produce.
     ///
     /// A read answers what it read. An operation asking for an action answers
@@ -307,18 +381,81 @@ impl Operation {
 }
 
 /// The values declared beside an operation, at one place in the request.
-fn declared(
-    entries: &'static [(&'static str, bool, ValueKind)],
-    located: Located,
-) -> impl Iterator<Item = Parameter> {
-    entries
+fn declared(entries: &'static [Declared], located: Located) -> impl Iterator<Item = Parameter> {
+    entries.iter().map(move |entry| Parameter {
+        name: entry.name.to_owned(),
+        required: entry.required,
+        located,
+        kind: entry.kind,
+    })
+}
+
+/// The shape one value declared beside an operation carries.
+///
+/// The contracts' own type where the declaration names one, and the kind's own
+/// scalar shape where it names none — a reason and a count are values this
+/// system mints no type for.
+fn declared_shape(entries: &'static [Declared], name: &str) -> Value {
+    let Some(entry) = entries.iter().find(|entry| entry.name == name) else {
+        return json!({ "type": "string" });
+    };
+    if let Some(shape) = entry.shape {
+        return json!({ "$ref": format!("#/$defs/{shape}") });
+    }
+    match entry.kind {
+        ValueKind::Text => json!({ "type": "string" }),
+        ValueKind::Number => json!({ "type": "number" }),
+        ValueKind::Integer => json!({ "type": "integer" }),
+        ValueKind::Boolean => json!({ "type": "boolean" }),
+        ValueKind::Structured => json!({ "type": "object" }),
+    }
+}
+
+/// The shape of each field one action of the vocabulary takes.
+///
+/// Read out of the contracts' own `PrintAction` beside
+/// [`action_parameters`], which walks the same variant for the same fields —
+/// so a field that gains a shape here gains a parameter there, and neither can
+/// carry one the other does not.
+///
+/// # Panics
+///
+/// Panics when the contracts declare no variant tagged with this action.
+fn action_shapes(kind: ActionKind) -> Vec<(String, Value)> {
+    let schema = printobserver_types::schemars::schema_for!(PrintAction).to_value();
+    let variant = action_variant(&schema, kind);
+    variant
+        .get("properties")
+        .and_then(Value::as_object)
+        .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"))
         .iter()
-        .map(move |&(name, required, kind)| Parameter {
-            name: name.to_owned(),
-            required,
-            located,
-            kind,
+        .filter(|(name, _)| name.as_str() != ACTION_TAG)
+        .map(|(name, field)| (name.clone(), field.clone()))
+        .collect()
+}
+
+/// The variant of the contracts' own action vocabulary one action tags.
+///
+/// # Panics
+///
+/// Panics when the contracts declare no variant tagged with this action, which
+/// is this server's declared list and that closed type having come apart.
+fn action_variant(schema: &Value, kind: ActionKind) -> Value {
+    let tag = printobserver_types::serde_json::to_value(kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| panic!("`{kind:?}` renders as the tag it is spelled by"));
+    schema
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .and_then(|variants| {
+            variants.iter().find(|variant| {
+                variant.pointer(&format!("/properties/{ACTION_TAG}/const"))
+                    == Some(&json!(tag.clone()))
+            })
         })
+        .cloned()
+        .unwrap_or_else(|| panic!("the contracts declare no action tagged `{tag}`"))
 }
 
 /// The values one path template takes, in the order it takes them.
@@ -346,20 +483,7 @@ fn path_parameters(path: &str) -> Vec<Parameter> {
 /// is this server's declared list and that closed type having come apart.
 fn action_parameters(kind: ActionKind) -> Vec<Parameter> {
     let schema = printobserver_types::schemars::schema_for!(PrintAction).to_value();
-    let tag = printobserver_types::serde_json::to_value(kind)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| panic!("`{kind:?}` renders as the tag it is spelled by"));
-    let variant = schema
-        .get("oneOf")
-        .and_then(Value::as_array)
-        .and_then(|variants| {
-            variants.iter().find(|variant| {
-                variant.pointer(&format!("/properties/{ACTION_TAG}/const"))
-                    == Some(&json!(tag.clone()))
-            })
-        })
-        .unwrap_or_else(|| panic!("the contracts declare no action tagged `{tag}`"));
+    let variant = action_variant(&schema, kind);
     let required: Vec<&str> = variant
         .get("required")
         .and_then(Value::as_array)
@@ -368,7 +492,7 @@ fn action_parameters(kind: ActionKind) -> Vec<Parameter> {
     let properties = variant
         .get("properties")
         .and_then(Value::as_object)
-        .unwrap_or_else(|| panic!("the action tagged `{tag}` declares no properties"));
+        .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"));
     properties
         .iter()
         .filter(|(name, _)| name.as_str() != ACTION_TAG)
@@ -485,7 +609,12 @@ pub const OPERATIONS: [Operation; 16] = [
         ..read("image", "/images/{image_id}")
     },
     Operation {
-        query: &[("limit", false, ValueKind::Integer)],
+        query: &[Declared {
+            name: "limit",
+            required: false,
+            kind: ValueKind::Integer,
+            shape: None,
+        }],
         ..read("history", "/prints/{print_id}/history")
     },
     read("manifest_get", "/prints/{print_id}/manifest"),
@@ -498,8 +627,18 @@ pub const OPERATIONS: [Operation; 16] = [
         answers: MEDIA_TYPE,
         query: &[],
         body: &[
-            ("reason", true, ValueKind::Text),
-            ("manifest", true, ValueKind::Structured),
+            Declared {
+                name: "reason",
+                required: true,
+                kind: ValueKind::Text,
+                shape: None,
+            },
+            Declared {
+                name: "manifest",
+                required: true,
+                kind: ValueKind::Structured,
+                shape: Some("JobManifest"),
+            },
         ],
         image_path_field: None,
     },

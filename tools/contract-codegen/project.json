@@ -1,0 +1,15 @@
+{
+  "name": "contract-codegen",
+  "root": "tools/contract-codegen",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/contract-codegen" },
+    "format-check": { "command": "uv run -q ruff format --check tools/contract-codegen" },
+    "lint": { "command": "uv run -q ruff check tools/contract-codegen" },
+    "typecheck": { "command": "uv run -q ty check tools/contract-codegen" },
+    "test": {
+      "command": "uv run -q coverage run -m pytest tools/contract-codegen/tests"
+    }
+  }
+}

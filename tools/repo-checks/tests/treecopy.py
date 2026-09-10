@@ -40,6 +40,11 @@ def copy_tree(destination: Path, *, omit: Iterable[str] = ()) -> Path:
         if any(name.startswith(prefix) for prefix in omitted):
             continue
         source = REPO_ROOT / name
+        if not source.exists() and not source.is_symlink():
+            # A file the index still lists and the working tree no longer has:
+            # a deletion nobody has staged yet. What a clone would carry is
+            # what this copies, and a clone would not carry it.
+            continue
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_symlink():

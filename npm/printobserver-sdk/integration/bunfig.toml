@@ -1,0 +1,9 @@
+# The printer-integration tier's own configuration.
+#
+# It is a tier of its own — one journey against a real OctoPrint — and this is
+# what keeps the fast tier's line-coverage floor off it: that floor is right
+# for a suite driving every method against a stub host and wrong for one
+# journey against a real machine, and `just coverage` is what enforces it over
+# the tier that measures it.
+[test]
+coverage = false

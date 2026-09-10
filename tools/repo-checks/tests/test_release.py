@@ -59,18 +59,20 @@ def test_a_declaration_naming_an_unbacked_target_is_refused(
     refused(findings, "no workspace member backs")
 
 
-def test_a_non_crate_target_is_refused_at_this_node(tree: Callable[[], Tree]) -> None:
-    """The distributions and the release artifacts belong to the `sdks` node."""
+def test_a_target_of_a_registry_nothing_publishes_to_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A target nothing knows how to publish is a name with no path to a consumer."""
     broken = tree()
     broken.write(
         TARGETS,
         broken.read(TARGETS)
-        + '\n[[target]]\nid = "pypi:printobserver-cli"\nmanifest = "pyproject.toml"\n',
+        + '\n[[target]]\nid = "conda:printobserver"\ndescription = "Somewhere else."\n',
     )
 
     findings = release_targets(broken.repo)
 
-    refused(findings, "publishes crates and nothing else")
+    refused(findings, "conda")
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(
@@ -153,18 +155,16 @@ def test_a_release_workflow_with_no_release_step_is_refused(
     refused(findings, "no committed workflow performs releases")
 
 
-def test_a_target_with_no_publishing_step_is_refused(tree: Callable[[], Tree]) -> None:
-    """Every declared target reaches its registry from a committed step."""
+def test_a_release_that_builds_nothing_beside_the_crates_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The three end-user routes are artifacts release automation has to build."""
     broken = tree()
-    broken.write(
-        TARGETS,
-        broken.read(TARGETS) + '\n[[target]]\nid = "npm:printobserver-cli"\n'
-        'manifest = "npm/printobserver-sdk/package.json"\n',
-    )
+    broken.edit(".github/workflows/release-plz.yml", "- run: just build-artifacts", "- run: true")
 
     findings = release_automation(broken.repo)
 
-    refused(findings, "no committed publishing step covers")
+    refused(findings, "no committed job builds the artifacts beside the crates")
 
 
 def test_a_step_that_halts_for_a_person_is_refused(tree: Callable[[], Tree]) -> None:

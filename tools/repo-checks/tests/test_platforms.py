@@ -111,7 +111,7 @@ def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'platform_dependent_kinds = ["gate", "integration", "install"]',
+        'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]',
         "platform_dependent_kinds = []",
     )
 
@@ -127,7 +127,7 @@ def test_a_policy_naming_something_that_is_not_a_job_kind_is_refused(
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'platform_dependent_kinds = ["gate", "integration", "install"]',
+        'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]',
         'platform_dependent_kinds = ["gate", "smoke"]',
     )
 
