@@ -282,6 +282,12 @@ site = "llmlint: ignore[tests_mirror_real_usage]"
 reason = "This one test reads the committed workflow on purpose, and it is the only way the thing it proves can be proven at all: that a release's own run is keyed on a point no release can reach before its artifacts are published, and that it takes the version from that release. A GitHub trigger cannot be fired from a journey, and waiting for a real release would mean this property was established by nobody until the next one. What it reads it then DRIVES: the selector it finds in that workflow's own `env` is what the journeys beside it pass to the real recipes against a stand-in forge. Every other journey in this file goes through `just`."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_report_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The interface that produces a step's outcome is GitHub Actions, and a workflow cannot be fired from a journey — so the choice here is between driving the committed step with the two values GitHub documents it hands, and establishing nothing at all about what a completed run shows. What is driven is the REAL thing: the step's own script, read out of the committed workflow rather than restated, run by a real shell against a real summary file, and asserted on by the bytes a reader of that run would see. A copy of the line composed here would prove a line nothing publishes, which is the failure this rule is about; reading the committed one is what avoids it."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.urlopen(request"

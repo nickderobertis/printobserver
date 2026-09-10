@@ -57,6 +57,7 @@ def _reports() -> dict[str, str]:
     return found
 
 
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def _said(command: str, into: Path, installed: str, started: str) -> str:
     """Run one report step the way its own job runs it, and answer what the run shows."""
     _, summary = _declared()
