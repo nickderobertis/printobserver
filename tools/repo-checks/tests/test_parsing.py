@@ -95,3 +95,19 @@ def test_a_multi_line_run_step_is_read_line_by_line() -> None:
         run_commands({"steps": [{"run": "just bootstrap\njust check\n"}]}),
         ["just bootstrap", "just check"],
     )
+
+
+def test_a_recipe_taking_a_parameter_is_still_a_recipe() -> None:
+    """A reader that passed over one would leave a recipe no check could see."""
+    parsed = recipes("run *flags:\n    uv run -q python thing.py {{flags}}\n")
+
+    contains(parsed, "run", describing="the parsed recipes")
+    equal(parsed["run"].body, ("uv run -q python thing.py {{flags}}",))
+    equal(parsed["run"].dependencies, ())
+
+
+def test_a_setting_is_not_read_as_a_recipe() -> None:
+    """`set` and `export` lines carry a colon and declare no recipe."""
+    parsed = recipes('set shell := ["bash", "-c"]\nexport PYTHONPATH := "src"\n')
+
+    equal(sorted(parsed), [], describing="the recipes a settings-only justfile declares")

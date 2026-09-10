@@ -101,8 +101,14 @@ class Recipe:
     body: tuple[str, ...]
 
 
-# `just` puts a recipe's dependencies after the colon: `check: lint test`.
-RECIPE_HEADER = re.compile(r"^(?P<name>[a-zA-Z0-9_-]+):(?P<deps>(?: +[a-zA-Z0-9_-]+)*)\s*$")
+# `just` puts a recipe's parameters before the colon and its dependencies after
+# it: `check: lint test`, and `test-printer-smoke *flags:`. A recipe taking a
+# parameter is still a recipe, and one this reader passed over would be one no
+# check could see — including the check that its command is on the allowlist.
+RECIPE_HEADER = re.compile(
+    r"^(?P<name>[a-zA-Z0-9_-]+)(?P<params>(?: +[*+$]?[a-zA-Z0-9_-]+)*)\s*:"
+    r"(?P<deps>(?: +[a-zA-Z0-9_-]+)*)\s*$"
+)
 
 
 def recipes(justfile: str) -> dict[str, Recipe]:

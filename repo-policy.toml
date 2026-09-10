@@ -150,6 +150,50 @@ may_not_invoke = ["systemctl", "service", "systemd-run"]
 # configuration granting something that no longer exists.
 granting_table = "[safety.actions]"
 
+[smoke]
+# The real-printer smoke test: the one thing here that drives a machine capable
+# of destroying itself, and so the one thing nothing may select automatically.
+# `AGENTS.md`'s "The real-printer smoke test" is the prose half; what is
+# declared here is what a check has to be deterministic about.
+#
+# Two inputs together select it and one alone does not: the variable below,
+# naming the serial device explicitly, and the flag below, given to the recipe.
+script = "tools/printer-smoke/printer_smoke.py"
+recipe = "test-printer-smoke"
+flag = "--run"
+device_env = "PRINTOBSERVER_SMOKE_DEVICE"
+suite = "tools/printer-smoke/tests"
+section = "The real-printer smoke test"
+
+# The payload it prints, and the closed set of commands that file may contain.
+# The set is declared HERE rather than in the check that enforces it: a check
+# choosing its own safe set could call a dangerous command safe. Everything
+# outside it is excluded by construction, which is how the firmware writes
+# (`M500`, `M502`), the calibration routines (`M303`, `G29`) and the emergency
+# stop (`M112`) stay out — none of them is on a list of its own.
+gcode = "tools/printer-smoke/gcode/smoke.gcode"
+safe_commands = [
+    "G21",
+    "G90",
+    "G91",
+    "G92",
+    "G28",
+    "G0",
+    "G1",
+    "M82",
+    "M83",
+    "M104",
+    "M109",
+    "M140",
+    "M190",
+    "M106",
+    "M107",
+    "M84",
+]
+# Short enough that a person reads the whole payload before it reaches a
+# machine, and long enough for an object with real perimeters.
+max_lines = 200
+
 [crates]
 # The roles the dependency rule is stated in terms of. `just check-repo`
 # enforces: core may depend on the type crate and the four ports and on no
