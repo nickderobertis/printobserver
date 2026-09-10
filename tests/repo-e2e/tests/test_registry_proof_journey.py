@@ -267,3 +267,56 @@ def test_the_tier_recipe_proves_every_route(standing_in: Callable[..., Standin])
     passing((code, said), describing=f"`just {TIER}`")
     for identifier in ROUTES.values():
         contains(plain(said), f"{identifier}: SERVED AND PROVEN", describing=said)
+
+
+def test_an_artifact_reporting_another_version_does_not_pass(
+    standing_in: Callable[..., Standin],
+) -> None:
+    """Installing is not enough: what the program says it is has to be what was proven.
+
+    The registry here serves the version under test and the package carries a
+    program that reports another, which is what a distribution built from the
+    wrong commit looks like from the outside.
+    """
+    registries = standing_in("--mislabelled", f"{SERVED}=0.1.0")
+
+    code, said = _recipe("prove-registry-pypi", registries.base)
+
+    failing((code, said), naming="not the version under test")
+    equal(code, 1, describing="the exit an artifact that is not what it says answers with")
+
+
+def test_a_registry_that_cannot_be_reached_is_neither_outcome() -> None:
+    """An unreachable registry is a network, not a missing publish or a bad build.
+
+    Reported as `NOT SERVED` it would send a reader to repair a release that is
+    fine, so the recipe stops naming the registry instead.
+    """
+    code, said = _recipe("prove-registry-npm", "http://127.0.0.1:1")
+
+    failing((code, said), naming="could not be reached")
+    truth("NOT SERVED" not in said, describing=f"neither outcome to be reported: {said}")
+
+
+def test_the_stand_in_refuses_a_version_it_cannot_serve(tmp_path: Path) -> None:
+    """Everything a caller names it reaches a manifest, a file name and a path."""
+    result = capture(
+        [
+            "uv",
+            "run",
+            "-q",
+            "python",
+            "-m",
+            "release_artifacts",
+            "standin",
+            "--serves",
+            "the newest one",
+            "--into",
+            str(tmp_path / "refused"),
+        ],
+        REPO_ROOT,
+        timeout=RECIPE_TIMEOUT_SECONDS,
+        env=clean_environment(PYTHONPATH=pythonpath()),
+    )
+
+    failing((result.returncode, output(result)), naming="is not a version to serve")

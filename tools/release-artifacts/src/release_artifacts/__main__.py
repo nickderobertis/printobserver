@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -14,7 +13,7 @@ from repo_checks.model import Repo
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
-from release_artifacts.registries import RegistryError
+from release_artifacts.registries import RegistryError, supported
 from release_artifacts.registries import prove as prove_registry
 from release_artifacts.standin import Registries, StandinError
 from release_artifacts.targets import TargetError, declared
@@ -160,13 +159,12 @@ def _build(repo: Repo, arguments: argparse.Namespace) -> int:
     return 0
 
 
-#: A version a caller may ask the stand-in registries to serve: three numbers,
-#: which is every version release automation writes into this workspace.
-SERVABLE = re.compile(r"^v?\d+\.\d+\.\d+$")
-
-
 def _version(given: str, *, option: str) -> str:
     """One version a caller named, as the registries serve it.
+
+    What a version is, is `registries.supported`'s answer rather than a second
+    pattern here: a stand-in that served a version the proof reading it could
+    not select would be a stand-in for nothing.
 
     Raises:
         StandinError: If it is not a version release automation would have
@@ -174,13 +172,14 @@ def _version(given: str, *, option: str) -> str:
             manifest, a wheel's own file name and a path on disk, so it is
             validated where it arrives rather than where it lands.
     """
-    if not SERVABLE.match(given.strip()):
+    version = supported(given)
+    if not version:
         msg = (
             f"`{option} {given}` is not a version to serve: it must be three numbers, "
             f"as `0.1.0` or `v0.1.0`"
         )
         raise StandinError(msg)
-    return given.strip().removeprefix("v")
+    return version
 
 
 def _mislabelled(given: str) -> tuple[str, str]:

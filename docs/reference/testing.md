@@ -158,8 +158,13 @@ built and published, so a proof keyed on it would measure the version before it.
 
 Nothing here publishes to a registry in order to prove a point:
 `PRINTOBSERVER_PROOF_REGISTRIES` points all three registries at one stand-in
-address, which `release-artifacts standin` stands up, and that is what this
-repository's own suites drive every outcome through.
+address, which `release-artifacts standin` stands up — a Python index serving
+real wheels, a JavaScript registry serving real packages, and a forge listing
+releases with their artifacts and digests. That is what this repository's own
+suites drive every outcome through, with the real `pip`, the real `npm` and the
+committed install script doing the installing:
+`tests/repo-e2e/tests/test_registry_proof_journey.py` drives the recipes and
+`tools/release-artifacts/tests/test_registries.py` the proof beneath them.
 
 ### test-obico
 

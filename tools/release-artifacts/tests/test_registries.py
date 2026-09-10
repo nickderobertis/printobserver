@@ -13,7 +13,7 @@ something that cannot be run does not pass and says so distinctly, one serving
 something mislabelled does not pass, and one serving a working artifact passes.
 """
 
-# llmlint: ignore[test_tiers_split_by_project_not_by_marker] This suite sits with its neighbours rather than in a tier of its own: `test_taking.py` in this same directory installs all three routes for real, and `test_clients.py` builds the `printobserver` program and starts a real supervisor. What edges this project's `test` target is what it proves — the artifacts and the routes — and moving one of the four out would split identical work across two projects while leaving `registries.py` and `standin.py` unmeasured by the tier that carries the coverage floor.
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
 
 from __future__ import annotations
 
@@ -648,3 +648,57 @@ def test_a_failing_proof_reports_where_a_reader_of_a_failure_looks(
     said = capsys.readouterr()
     contains(said.err, "NOT SERVED", describing="what a reader of a failure is shown")
     equal(said.out, "", describing="what a failing proof writes to standard output")
+
+
+def test_a_version_that_is_no_version_to_prove_is_refused(
+    repo: Repo, registries: Registries, tmp_path: Path
+) -> None:
+    """What a caller names reaches a package manager, so it is validated here."""
+    registries.serve("0.4.0")
+
+    with pytest.raises(RegistryError) as refused:
+        prove(
+            repo,
+            "pypi:printobserver-cli",
+            tmp_path / "nonsense",
+            {
+                PRINTOBSERVER_PROOF_REGISTRIES: registries.base,
+                PRINTOBSERVER_PROOF_VERSION: "the latest one, please",
+            },
+        )
+
+    contains(str(refused.value), "is no version to prove", describing="what it said")
+
+
+def test_a_pre_release_a_registry_serves_is_never_the_newest(
+    repo: Repo, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A registry serving a pre-release beside the real ones is ordinary.
+
+    And it is neither what "the newest" means here nor something to hand a
+    package manager, so it is not a version this proof will select.
+    """
+    registries.serve("0.4.0")
+    registries.answers(
+        f"{PYPI_PREFIX}/pypi/printobserver-cli/json",
+        b'{"releases": {"0.4.0": [], "0.5.0rc1": []}}',
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(
+        served(bases, named(repo.root, "pypi:printobserver-cli")),
+        ("0.4.0",),
+        describing="the versions this proof can select",
+    )
+    equal(proving("pypi:printobserver-cli").outcome, Outcome.PROVEN, describing="the proof")
+
+
+def test_a_tag_naming_no_version_is_not_a_release_a_run_is_keyed_on(
+    repo: Repo, registries: Registries
+) -> None:
+    """A forge lists whatever somebody tagged; a release is three numbers."""
+    registries.serve("0.4.0")
+    registries.answers(FORGE_PREFIX, b'[{"tag_name": "v0.4.0"}, {"tag_name": "nightly"}]')
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(released(bases), ("0.4.0",), describing="the releases a run can be keyed on")

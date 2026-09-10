@@ -66,6 +66,7 @@ env:
     ${{ inputs.version || (github.event_name == 'workflow_run' && 'release' || '') }}
 
 jobs:
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-pypi:
     name: prove-registry-pypi (${{ matrix.platform.id }})
     # A release run that did not finish successfully published nothing, and
@@ -90,6 +91,7 @@ jobs:
       # proof takes what it strips off the path anyway.
       - run: just prove-registry-pypi
 
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-npm:
     name: prove-registry-npm (${{ matrix.platform.id }})
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
@@ -109,6 +111,7 @@ jobs:
       - uses: actions/setup-node@v5
       - run: just prove-registry-npm
 
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-script:
     name: prove-registry-script (${{ matrix.platform.id }})
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'

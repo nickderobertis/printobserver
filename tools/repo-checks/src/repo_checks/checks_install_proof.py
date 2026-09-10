@@ -32,6 +32,7 @@ declaring it a tier or by invoking it from `check` — is refused.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from repo_checks import install_path as ip
@@ -49,37 +50,82 @@ from repo_checks.parsing import (
     section,
 )
 
-#: The keys `[install_proof]` must declare for anything here to be deterministic.
-DECLARED = (
-    "tier",
-    "recipe_prefix",
-    "workflow",
-    "release_workflow",
-    "release_conclusion",
-    "version_env",
-    "version_input",
-    "release_selector",
-    "schedule_block",
-    "section",
-)
+
+@dataclass(frozen=True, slots=True)
+class Declared:
+    """What `[install_proof]` says, narrowed once rather than read as it goes.
+
+    `repo-policy.toml` is whatever the TOML reader handed back, so every value
+    starts out as `Any`. This is where that stops for this check: `read` below
+    is the only place a key of that table is looked up, and a declaration
+    missing one of them is one finding naming the key rather than an attribute
+    error out of whichever rule happened to read it first.
+
+    The committed workflow stays the mapping the YAML reader answered with,
+    because that is the shape every check in this repository reads a workflow
+    through — `jobs_of`, `run_commands` and `triggers_of` are that boundary,
+    and a model of a GitHub workflow held here would be a second one.
+    """
+
+    #: The recipe a person runs to prove every route by hand.
+    tier: str
+    #: What the recipes proving one route each are named by.
+    recipe_prefix: str
+    #: The workflow that runs them, under `.github/workflows`.
+    workflow: str
+    #: The workflow whose FINISHING is the release-time trigger.
+    release_workflow: str
+    #: The condition every job of the proof must carry.
+    release_conclusion: str
+    #: How the version under test reaches the tier.
+    version_env: str
+    #: The manual invocation's input a caller names a version in.
+    version_input: str
+    #: The word meaning "the newest release the forge published".
+    release_selector: str
+    #: The `AGENTS.md` block recording the schedule it runs on.
+    schedule_block: str
+    #: The `AGENTS.md` section recording the tier.
+    section: str
+    #: The only events that workflow may fire on.
+    triggers: tuple[str, ...]
+
+    @classmethod
+    def read(cls, table: dict[str, Any]) -> Declared | str:
+        """The declaration, or the one finding saying what it is missing."""
+        named = [field for field in cls.__dataclass_fields__ if field != "triggers"]
+        found = {key: str(table.get(key, "")).strip() for key in named}
+        missing = sorted(key for key, value in found.items() if not value)
+        declared = table.get("triggers")
+        events: tuple[str, ...] = ()
+        if isinstance(declared, list) and all(
+            isinstance(event, str) and event.strip() for event in declared
+        ):
+            events = tuple(str(event).strip() for event in declared)
+        if not events:
+            missing.append("triggers")
+        if missing:
+            return (
+                f"`repo-policy.toml`'s `[install_proof]` declares no "
+                f"{', '.join(sorted(missing))}, so nothing can say what proves the three "
+                f"routes against their registries"
+            )
+        return cls(**found, triggers=events)
 
 
 def install_proof(repo: Repo) -> list[str]:
     """The tier proves every route, on a release and a schedule, and not in the gate."""
-    policy = repo.policy.get("install_proof")
-    if not policy:
+    table = repo.policy.get("install_proof")
+    if not isinstance(table, dict) or not table:
         return ["`repo-policy.toml` declares no `[install_proof]` section"]
-    missing = [key for key in DECLARED if not str(policy.get(key, "")).strip()]
-    if missing:
-        return [
-            f"`repo-policy.toml`'s `[install_proof]` declares no {', '.join(missing)}, "
-            f"so nothing can say what proves the three routes against their registries"
-        ]
+    declared = Declared.read(table)
+    if isinstance(declared, str):
+        return [declared]
 
-    findings = _recipe_findings(repo, policy)
-    findings.extend(_gate_findings(repo, policy))
+    findings = _recipe_findings(repo, declared)
+    findings.extend(_gate_findings(repo, declared))
 
-    relative = f".github/workflows/{policy['workflow']}"
+    relative = f".github/workflows/{declared.workflow}"
     if not repo.exists(relative):
         return [
             *findings,
@@ -89,22 +135,22 @@ def install_proof(repo: Repo) -> list[str]:
 
     workflow = load_workflow(repo.path(relative))
     triggers = triggers_of(workflow)
-    findings.extend(_trigger_findings(repo, policy, triggers, relative))
-    findings.extend(_version_findings(policy, workflow, relative))
-    findings.extend(_job_findings(repo, policy, workflow, relative))
-    findings.extend(_schedule_findings(repo, policy, triggers, relative))
-    findings.extend(_prose_findings(repo, policy))
+    findings.extend(_trigger_findings(repo, declared, triggers, relative))
+    findings.extend(_version_findings(declared, workflow, relative))
+    findings.extend(_job_findings(repo, declared, workflow, relative))
+    findings.extend(_schedule_findings(repo, declared, triggers, relative))
+    findings.extend(_prose_findings(repo, declared))
     return findings
 
 
-def _proof_recipes(repo: Repo, policy: dict[str, Any]) -> dict[str, str]:
+def _proof_recipes(repo: Repo, policy: Declared) -> dict[str, str]:
     """Which recipe proves each route's own target against its registry.
 
     Read out of each recipe's own body — the target it names — so a recipe
     pointed at another artifact is one this stops finding for the route it used
     to prove.
     """
-    prefix = str(policy["recipe_prefix"])
+    prefix = policy.recipe_prefix
     found: dict[str, str] = {}
     for identifier, names in proving(repo).items():
         for name in names:
@@ -122,10 +168,10 @@ def _routed(repo: Repo) -> dict[str, str]:
     }
 
 
-def _recipe_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
+def _recipe_findings(repo: Repo, policy: Declared) -> list[str]:
     """One recipe per route, and a tier that runs every one of them."""
     declared = recipes(repo.justfile)
-    tier = str(policy["tier"])
+    tier = policy.tier
     findings: list[str] = []
     if tier not in declared:
         findings.append(
@@ -147,7 +193,7 @@ def _recipe_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
         if identifier not in proofs:
             findings.append(
                 f"route `{route.heading}` is taken from the registry serving "
-                f"`{identifier}`, and no `{policy['recipe_prefix']}` recipe proves what "
+                f"`{identifier}`, and no `{policy.recipe_prefix}` recipe proves what "
                 f"that registry serves"
             )
 
@@ -166,9 +212,9 @@ def _recipe_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
     return findings
 
 
-def _gate_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
+def _gate_findings(repo: Repo, policy: Declared) -> list[str]:
     """The ordinary gate selects neither the tier nor the recipes under it."""
-    tier = str(policy["tier"])
+    tier = policy.tier
     belongs = {tier, *_proof_recipes(repo, policy).values()}
     findings: list[str] = []
     if tier in repo.policy["gate"]["tiers"]:
@@ -194,10 +240,10 @@ def _gate_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
 
 
 def _trigger_findings(
-    repo: Repo, policy: dict[str, Any], triggers: dict[str, Any], relative: str
+    repo: Repo, policy: Declared, triggers: dict[str, Any], relative: str
 ) -> list[str]:
     """A release's own proof, a schedule, a manual invocation, and nothing else."""
-    permitted = [str(name) for name in policy["triggers"]]
+    permitted = list(policy.triggers)
     findings = [
         f"{relative} fires on `{event}`, which is not one of the triggers the registry "
         f"install-path proof may carry ({', '.join(permitted)}): this tier reads the "
@@ -222,10 +268,10 @@ def _trigger_findings(
 
 
 def _release_trigger_findings(
-    repo: Repo, policy: dict[str, Any], triggers: dict[str, Any], relative: str
+    repo: Repo, policy: Declared, triggers: dict[str, Any], relative: str
 ) -> list[str]:
     """The release-time trigger is the release workflow having finished."""
-    wanted = str(policy["release_workflow"])
+    wanted = policy.release_workflow
     named = [
         str(name)
         for name in (triggers.get("workflow_run") or {}).get("workflows", [])
@@ -248,22 +294,20 @@ def _release_trigger_findings(
     return findings
 
 
-def _dispatch_findings(
-    policy: dict[str, Any], triggers: dict[str, Any], relative: str
-) -> list[str]:
+def _dispatch_findings(policy: Declared, triggers: dict[str, Any], relative: str) -> list[str]:
     """A caller can name the version a manual run proves."""
     inputs = (triggers.get("workflow_dispatch") or {}).get("inputs") or {}
-    if str(policy["version_input"]) in inputs:
+    if str(policy.version_input) in inputs:
         return []
     return [
-        f"{relative} declares no `{policy['version_input']}` input on its manual "
+        f"{relative} declares no `{policy.version_input}` input on its manual "
         f"invocation, so a caller cannot name the version a run proves"
     ]
 
 
-def _version_findings(policy: dict[str, Any], workflow: dict[str, Any], relative: str) -> list[str]:
+def _version_findings(policy: Declared, workflow: dict[str, Any], relative: str) -> list[str]:
     """The version under test comes from the caller or the release, and never the tree."""
-    variable = str(policy["version_env"])
+    variable = policy.version_env
     declared = workflow.get("env") or {}
     if variable not in declared:
         return [
@@ -272,15 +316,15 @@ def _version_findings(policy: dict[str, Any], workflow: dict[str, Any], relative
         ]
     stated = " ".join(str(declared[variable]).split())
     findings: list[str] = []
-    if f"inputs.{policy['version_input']}" not in stated:
+    if f"inputs.{policy.version_input}" not in stated:
         findings.append(
             f"{relative}'s `{variable}` is `{stated}`, which does not take the version a "
-            f"caller named (`inputs.{policy['version_input']}`)"
+            f"caller named (`inputs.{policy.version_input}`)"
         )
-    if f"'{policy['release_selector']}'" not in stated:
+    if f"'{policy.release_selector}'" not in stated:
         findings.append(
             f"{relative}'s `{variable}` is `{stated}`, which does not select "
-            f"`{policy['release_selector']}` on the release-time trigger: a release's own "
+            f"`{policy.release_selector}` on the release-time trigger: a release's own "
             f"proof would then prove whatever a registry happened to serve newest"
         )
     if "workflow_run" not in stated:
@@ -298,7 +342,7 @@ def _version_findings(policy: dict[str, Any], workflow: dict[str, Any], relative
 
 
 def _job_findings(
-    repo: Repo, policy: dict[str, Any], workflow: dict[str, Any], relative: str
+    repo: Repo, policy: Declared, workflow: dict[str, Any], relative: str
 ) -> list[str]:
     """Every proof recipe has a job, and every job is gated on the release succeeding."""
     declared = set(recipes(repo.justfile))
@@ -313,7 +357,7 @@ def _job_findings(
             )
         if recipe not in declared:
             findings.append(f"`just {recipe}` is not a recipe the recipe set declares")
-    condition = str(policy["release_conclusion"])
+    condition = policy.release_conclusion
     findings.extend(
         f"{relative}: job `{job_name}` is not gated on `{condition}`, so a release run "
         f"that failed and published nothing would be proven as though it had succeeded"
@@ -324,11 +368,11 @@ def _job_findings(
 
 
 def _schedule_findings(
-    repo: Repo, policy: dict[str, Any], triggers: dict[str, Any], relative: str
+    repo: Repo, policy: Declared, triggers: dict[str, Any], relative: str
 ) -> list[str]:
     """`AGENTS.md` records the schedule the committed workflow actually declares."""
     try:
-        lines = marker_block(repo.agents_md, str(policy["schedule_block"]))
+        lines = marker_block(repo.agents_md, str(policy.schedule_block))
     except MarkerBlockMissingError as error:
         return [str(error)]
 
@@ -348,7 +392,7 @@ def _schedule_findings(
     declared = crons_of(triggers)
     if not recorded:
         findings.append(
-            f"AGENTS.md's `{policy['schedule_block']}` block records no schedule, and "
+            f"AGENTS.md's `{policy.schedule_block}` block records no schedule, and "
             f"{relative} declares {', '.join(f'`{cron}`' for cron in declared) or 'none'}"
         )
     findings.extend(
@@ -358,33 +402,33 @@ def _schedule_findings(
     )
     findings.extend(
         f"{relative} declares the schedule `{cron}`, which AGENTS.md's "
-        f"`{policy['schedule_block']}` block does not record"
+        f"`{policy.schedule_block}` block does not record"
         for cron in declared
         if cron not in recorded
     )
     return findings
 
 
-def _prose_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
+def _prose_findings(repo: Repo, policy: Declared) -> list[str]:
     """`AGENTS.md` records the tier, and states the command a reader runs by hand.
 
     As a *pasteable command* rather than as a mention: a section explaining what
     the tier does has not told a developer how to run it.
     """
-    heading = str(policy["section"])
+    heading = policy.section
     body = section(repo.agents_md, heading)
     if not body.strip():
         return [f"AGENTS.md carries no `## {heading}` section recording this tier"]
     stated = " ".join(fenced_commands(body))
     findings: list[str] = []
-    if f"just {policy['tier']}" not in stated:
+    if f"just {policy.tier}" not in stated:
         findings.append(
-            f"AGENTS.md's `## {heading}` section states no `just {policy['tier']}` "
+            f"AGENTS.md's `## {heading}` section states no `just {policy.tier}` "
             f"command, which is how a reader runs this tier by hand"
         )
-    if str(policy["version_env"]) not in body:
+    if policy.version_env not in body:
         findings.append(
             f"AGENTS.md's `## {heading}` section does not say how the version under test "
-            f"is named (`{policy['version_env']}`)"
+            f"is named (`{policy.version_env}`)"
         )
     return findings

@@ -244,3 +244,27 @@ rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "The judged tier read this suite as expensive work that belongs in a tier of its own. It is where its neighbours are: `test_taking.py` in the same directory installs all three routes for real and `test_clients.py` builds the `printobserver` program and starts a real supervisor, so what edges this project's `test` target is what it proves rather than what it costs. Moving one of the four out would split identical work across two projects, and it would leave `registries.py` and `standin.py` measured by no tier that carries a coverage floor — the end-to-end tier is not measured. The end-to-end journeys over the same behaviour, which drive the real recipes, are in `tests/repo-e2e` where that tier's own work belongs."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.Request("
+reason = "The typed half is answered rather than suppressed: every answer a registry gives is narrowed at this boundary and a body that is not the document its own protocol serves is refused there. The async half does not apply to this program. It is a command-line tool a `just` recipe runs to completion, with no event loop anywhere in it: every subprocess, every install and every read it makes goes through `repo_checks.shell.run` synchronously and in order, because a proof of one route is a sequence — ask, install, run, read back. One awaited read inside it would need a loop this program has no reason to have, and would not make the proof any more concurrent, because there is nothing to overlap it with."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-pypi:"
+reason = "There is no credential to require, and that is the point of the tier rather than an omission in it: what it proves is the ANONYMOUS path an end user takes, and a registry read authenticated by a token would prove a path nobody in front of a printer has. The failure this rule guards against cannot happen here either — the tier does not skip when something is missing. An unreachable or refusing registry is a non-zero exit naming that registry, a registry serving nothing for the version under test is `NOT SERVED`, and only `SERVED AND PROVEN` exits zero."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-npm:"
+reason = "The same tier and the same reason as the job above it: the JavaScript registry is read anonymously because that is how the end user's own `npm install -g` reads it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-script:"
+reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."

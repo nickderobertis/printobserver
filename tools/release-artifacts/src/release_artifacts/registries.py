@@ -36,6 +36,7 @@ works — which `standin.py` stands up.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -71,6 +72,14 @@ PRINTOBSERVER_RELEASE_BASE = "PRINTOBSERVER_RELEASE_BASE"
 #: The version this proof takes from the newest release the forge published,
 #: rather than from a number a caller typed.
 RELEASE = "release"
+
+#: What a version of this repository looks like, and so what this proof can
+#: select and install: three numbers, which is every version release automation
+#: writes into the workspace under pre-1.0 Cargo rules. A registry may serve
+#: anything at all beside them — a pre-release, a yanked-and-renamed
+#: distribution, a tag somebody typed — and none of those is a version a run of
+#: this proof may pick as "the newest" or hand to a package manager.
+SUPPORTED = re.compile(r"^v?\d+\.\d+\.\d+$")
 
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
@@ -178,6 +187,18 @@ class Proof:
         return EXIT[self.outcome]
 
 
+def supported(version: str) -> str:
+    """One version this proof can select, or nothing where it is not one.
+
+    Every version reaching this comes from outside — a registry's metadata, a
+    forge's release list, or the variable a caller named — so this is where a
+    string stops being arbitrary and becomes a version something will be asked
+    to install.
+    """
+    named = version.strip()
+    return named.removeprefix("v") if SUPPORTED.match(named) else ""
+
+
 def ordered(version: str) -> tuple[int, ...]:
     """One version as it sorts against another.
 
@@ -205,6 +226,7 @@ def _asked(url: str) -> bytes:
     if urlsplit(url).scheme not in {"http", "https"}:
         msg = f"{url} is not an address this asks a registry over"
         raise RegistryError(msg)
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(  # noqa: S310
         url, headers={"Accept": "application/json", "User-Agent": AGENT}
     )
@@ -261,7 +283,12 @@ def _versions(url: str, field: str) -> list[str]:
     if not isinstance(listed, dict):
         msg = f"{url} answered a `{field}` that is not the mapping of versions its protocol serves"
         raise RegistryError(msg)
-    return [str(version) for version in listed]
+    # Only the versions this proof can select. A registry serving a
+    # pre-release beside the real ones is ordinary, and one of those is
+    # neither what "the newest" means here nor something to hand a package
+    # manager — so it is dropped where it arrives rather than carried to
+    # whichever line would have tripped over it.
+    return [supported(str(version)) for version in listed if supported(str(version))]
 
 
 def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
@@ -278,7 +305,7 @@ def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
         case "npm":
             versions = _versions(f"{bases.npm}/{target.name}", "versions")
         case "release":
-            versions = [tag.removeprefix("v") for tag in released(bases)]
+            versions = list(released(bases))
         case _:
             msg = f"nothing here knows how to ask what serves `{target.id}`"
             raise RegistryError(msg)
@@ -306,7 +333,10 @@ def released(bases: Bases) -> tuple[str, ...]:
         if not isinstance(entry, dict) or not isinstance(entry.get("tag_name"), str):
             msg = f"{bases.listing} lists {entry!r}, which is not a release with a tag"
             raise RegistryError(msg)
-        tags.add(entry["tag_name"])
+        # A tag naming no version this proof can select is not a release a run
+        # of it may be keyed on.
+        if tag := supported(entry["tag_name"]):
+            tags.add(tag)
     return tuple(sorted(tags, key=ordered))
 
 
@@ -318,12 +348,20 @@ def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
     """
     named = wanted.strip()
     if named and named != RELEASE:
-        return Selected(named.removeprefix("v"), f"named by the caller as `{named}`")
+        version = supported(named)
+        if not version:
+            msg = (
+                f"`{PRINTOBSERVER_PROOF_VERSION}={named}` is no version to prove: it must "
+                f"be three numbers, as `0.1.0` or `v0.1.0`, or `{RELEASE}` for the newest "
+                f"release the forge published"
+            )
+            raise RegistryError(msg)
+        return Selected(version, f"named by the caller as `{named}`")
     if named == RELEASE:
         tags = released(bases)
         if not tags:
             return Selected("", f"the newest release {bases.listing} lists, and it lists none")
-        return Selected(tags[-1].removeprefix("v"), "the newest release the forge published")
+        return Selected(tags[-1], "the newest release the forge published")
     available = served(bases, target)
     if not available:
         return Selected("", f"the newest {bases.of(target.registry)} serves, and it serves none")

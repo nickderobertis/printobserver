@@ -725,18 +725,12 @@ own are checked against each other.
 **How to run it by hand**, against the real registries:
 
 ```console
-PRINTOBSERVER_PROOF_VERSION=release just test-install-proof
-```
-
-```console
 just test-install-proof
 ```
 
 Nothing here publishes to a registry in order to prove a point, so
-`PRINTOBSERVER_PROOF_REGISTRIES` points all three of them at one address and
-`release-artifacts standin` stands that address up — which is what this
-repository's own suites drive every outcome through.
-`docs/reference/testing.md` records the tier beside the others.
+`PRINTOBSERVER_PROOF_REGISTRIES` points all three of them somewhere else.
+`docs/reference/testing.md` records this tier beside the others.
 
 ## Commits, releases, and merging
 

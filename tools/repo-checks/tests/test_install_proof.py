@@ -333,3 +333,17 @@ def test_a_tree_recording_no_schedule_block_is_refused(tree: Callable[[], Tree])
     broken.edit(AGENTS, "[//]: # (BEGIN install-proof-schedule)", "[//]: # (a block, removed)")
 
     refused(install_proof(broken.repo), "carries no `install-proof-schedule` marker block")
+
+
+def test_a_declaration_whose_triggers_are_not_a_list_of_events_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A malformed trigger list would leave the rule reaching no event at all."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        'triggers = ["workflow_run", "schedule", "workflow_dispatch"]',
+        'triggers = "everything"',
+    )
+
+    refused(install_proof(broken.repo), "declares no triggers")
