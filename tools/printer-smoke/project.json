@@ -1,0 +1,16 @@
+{
+  "name": "printer-smoke",
+  "root": "tools/printer-smoke",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/printer-smoke" },
+    "format-check": { "command": "uv run -q ruff format --check tools/printer-smoke" },
+    "lint": { "command": "uv run -q ruff check tools/printer-smoke" },
+    "typecheck": { "command": "uv run -q ty check tools/printer-smoke" },
+    "test": {
+      "command": "uv run -q pytest tools/printer-smoke/tests",
+      "dependsOn": [{ "projects": ["printobserver"], "target": "build" }]
+    }
+  }
+}

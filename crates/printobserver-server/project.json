@@ -16,9 +16,6 @@
     "lint": {
       "command": "cargo clippy -p printobserver-server --all-targets --features test-responder --locked -- -D warnings"
     },
-    "typecheck": {
-      "command": "cargo check -p printobserver-server --all-targets --features test-responder --locked"
-    },
     "test": {
       "command": "cargo llvm-cov nextest -p printobserver-server --features test-responder --no-report --no-tests=pass -E 'not binary(integration)'"
     },

@@ -56,12 +56,6 @@ file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
 reason = "Whole-file, and the rule is about the whole file: every external input it takes is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing and PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — and each package name is a constant in the file rather than anything a caller supplies, so no untrusted input is executed anywhere in it."
 
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "scripts/setup-llmlint.sh"
-site = "readonly LLMLINT_MIN"
-reason = "The dependency floor selects the validator release the existing real `just lint-llm-validate` gate runs; the installer's control flow and its user-visible contract are unchanged, so there is no new behavior for an end-to-end test to drive."
-
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]
@@ -198,3 +192,15 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-oneharness/src/lib.rs"
 site = "pub const DEFAULT_REFERENCES:"
 reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Keep the OctoPrint journey in the required gate"
+reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Keep the OctoPrint journey in the required gate"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."

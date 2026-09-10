@@ -141,6 +141,22 @@ docs-generate:
     uv run -q python -m repo_checks docs-schemas-write
     RUSTFLAGS=-Dwarnings PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --features test-fixtures --test journeys every_documented_example
 
+# The real-printer smoke test, which nothing runs by accident.
+#
+# Two things together select it and one alone does not: the `--run` flag here,
+# and PRINTOBSERVER_SMOKE_DEVICE naming the serial device the printer is on.
+# Absent either, it says so and which was missing rather than skipping silently.
+# Deliberately not a tier of `just check`, not a job of continuous integration
+# and not on any schedule: a print is hours of filament, and an unattended test
+# that starts one ruins a print nobody was watching.
+#
+#     PRINTOBSERVER_SMOKE_DEVICE=/dev/ttyACM0 just test-printer-smoke --run
+#
+# `AGENTS.md`'s "The real-printer smoke test" says what it requires, how to set
+# a host up for it, and what to watch while it runs. Stay next to the machine.
+test-printer-smoke *flags:
+    PYTHONPATH="tools/octoprint-env:$PYTHONPATH" uv run -q python tools/printer-smoke/printer_smoke.py {{flags}}
+
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:
     uv run -q python -m repo_checks pr-title
