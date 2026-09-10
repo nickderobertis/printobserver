@@ -40,12 +40,13 @@ from release_artifacts.registries import (
     ordered,
     prove,
     released,
+    routed,
     select,
     served,
     take,
 )
 from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Registries
-from release_artifacts.targets import named
+from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -379,6 +380,64 @@ def test_nothing_here_asks_a_registry_no_route_is_taken_from(repo: Repo) -> None
         served(bases, named(repo.root, "crate:printobserver-sdk"))
 
     contains(str(refused.value), "knows how to ask", describing="what it said")
+
+
+def _declaring(root: Path, tree: Path, extra: str = "") -> Repo:
+    """A tree whose `release-targets.toml` is this one's, plus whatever a case adds."""
+    tree.mkdir(parents=True, exist_ok=True)
+    declaration = (root / "release-targets.toml").read_text(encoding="utf-8")
+    (tree / "release-targets.toml").write_text(declaration + extra, encoding="utf-8")
+    return Repo(tree)
+
+
+def test_a_route_declared_that_nothing_here_takes_is_refused(repo: Repo, tmp_path: Path) -> None:
+    """A fourth route would be one this tier reports nothing at all about.
+
+    The dispatch table is a second copy of the set `release-targets.toml`
+    declares. Left to drift, a route somebody added is one every run of this
+    proof passes over in silence — which is the silence the whole tier exists
+    to remove.
+    """
+    declaring = _declaring(
+        repo.root,
+        tmp_path / "fourth",
+        '\n[[target]]\nid = "brew:printobserver"\nregistry = "brew"\n'
+        'name = "printobserver"\ndescription = "A fourth route."\n'
+        'built_by = "release-artifacts"\nroute = "Route 4 — a channel nobody takes"\n',
+    )
+
+    with pytest.raises(RegistryError) as refused:
+        routed(declaring)
+
+    contains(str(refused.value), "brew:printobserver", describing="the route nothing takes")
+    contains(str(refused.value), "nothing here takes it", describing="what it said")
+
+
+def test_a_route_taken_here_that_nothing_declares_is_refused(repo: Repo, tmp_path: Path) -> None:
+    """And the other direction: an entry beside a route nobody publishes is dead."""
+    declaring = _declaring(repo.root, tmp_path / "unrouted")
+    stripped = declaring.root / "release-targets.toml"
+    stripped.write_text(
+        stripped.read_text(encoding="utf-8").replace(
+            'route = "Route 2 — the JavaScript package registry"', ""
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistryError) as refused:
+        routed(declaring)
+
+    contains(str(refused.value), "npm:printobserver-cli", describing="the route nothing declares")
+    contains(str(refused.value), "declared with no route", describing="what it said")
+
+
+def test_the_routes_taken_are_exactly_the_routes_declared(repo: Repo) -> None:
+    """The committed tree's own two copies agree, which is what the two above guard."""
+    equal(
+        sorted(routed(repo)),
+        sorted(target.id for target in declared(repo.root) if target.route),
+        describing="the routes this proof takes",
+    )
 
 
 def test_nothing_here_takes_a_route_that_is_not_one_of_the_three(

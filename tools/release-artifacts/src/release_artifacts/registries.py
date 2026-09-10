@@ -54,6 +54,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlsplit
 
 from repo_checks import install_path
@@ -600,12 +601,54 @@ def _script_route(
     return directory / PROGRAM
 
 
-#: How each route is taken from its own registry, by the target it is.
-ROUTES = {
+class Route(Protocol):
+    """How one route is taken from its own registry."""
+
+    def __call__(
+        self, repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+    ) -> Path:
+        """Take it, and answer the program the install left on a path."""
+
+
+#: How each route is taken from its own registry, by the target it is. Which
+#: identifiers belong here is NOT this list's to say — `release-targets.toml`
+#: declares which targets carry a route, and `routed` below holds these keys to
+#: that declaration on every run rather than trusting them.
+ROUTES: dict[str, Route] = {
     "pypi:printobserver-cli": _pypi_route,
     "npm:printobserver-cli": _npm_route,
     "release:printobserver": _script_route,
 }
+
+
+def routed(repo: Repo) -> dict[str, Route]:
+    """How each declared route is taken, reconciled with the declaration itself.
+
+    A dispatch table keyed by target identifiers is a second copy of the set
+    `release-targets.toml` declares, and the two drift in both directions with
+    nothing to say so. A target that gains a route and nothing here takes is a
+    route this tier reports nothing at all about — the silence this whole tier
+    exists to remove — and a key here no declaration names is a route nothing
+    installs, so the entry beside it is dead.
+
+    Which FUNCTION takes each route cannot be derived from a declaration, so
+    what is reconciled is the key set; the bodies stay where they are written.
+
+    Raises:
+        RegistryError: If the two disagree, naming which side is missing what.
+    """
+    declared = {target.id for target in targets.declared(repo.root) if target.route}
+    untaken = sorted(declared - set(ROUTES))
+    undeclared = sorted(set(ROUTES) - declared)
+    if untaken or undeclared:
+        msg = (
+            f"the routes this proof takes and the routes `release-targets.toml` declares "
+            f"disagree: {', '.join(untaken) or 'nothing'} is declared with a route and "
+            f"nothing here takes it, and {', '.join(undeclared) or 'nothing'} is taken "
+            f"here and declared with no route"
+        )
+        raise RegistryError(msg)
+    return ROUTES
 
 
 def take(repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases) -> Path:
@@ -613,8 +656,9 @@ def take(repo: Repo, target: targets.Target, version: str, into: Path, bases: Ba
 
     Raises:
         InstallError: If nothing here takes that route, or the install failed.
+        RegistryError: If the routes taken here and the routes declared differ.
     """
-    route = ROUTES.get(target.id)
+    route = routed(repo).get(target.id)
     if route is None:
         msg = f"nothing here takes `{target.id}` the way an end user takes it"
         raise InstallError(msg)
@@ -674,6 +718,10 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
         InstallError: If the declaration names no such target.
     """
     target = targets.named(repo.root, identifier)
+    # Before any outcome is reached, because a run that answers `NOT SERVED`
+    # never takes a route and would never otherwise look at whether the set it
+    # can take is still the set that is declared.
+    routed(repo)
     bases = Bases.read(repo, environment)
     where = bases.of(target.registry)
     selected = select(bases, target, environment.get(PRINTOBSERVER_PROOF_VERSION, ""))
