@@ -93,6 +93,30 @@ def test_the_committed_journeys_take_the_same_nine_steps(copied: Tree) -> None:
     accepted(journey_completeness(copied.repo))
 
 
+#: Rearrangements no relationship the walk stands on says anything about, each
+#: as the step moved and the step it is moved to before. A journey holding the
+#: nine steps in one of these proves exactly what the committed one proves, and
+#: a check refusing it would be a check over layout rather than over the walk.
+PERMITTED = {
+    "the two reads either way round": (2, 1),
+    "the call no request is made for, before the adjustments": (7, 5),
+    "the manifest written before anything is read": (3, 1),
+    "the call no request is made for, before the print is started": (7, 4),
+}
+
+
+@pytest.mark.parametrize("moved", sorted(PERMITTED), ids=sorted(PERMITTED))
+def test_a_journey_that_rearranges_what_nothing_stands_on_is_accepted(
+    copied: Tree, moved: str
+) -> None:
+    """Only the relationships the walk stands on are asked for, and no others."""
+    number, before = PERMITTED[moved]
+    for path in PATHS.values():
+        copied.write(path, _taken_before(copied.read(path), number, before))
+
+    accepted(journey_completeness(copied.repo), describing=f"a journey taking {moved}")
+
+
 @pytest.mark.parametrize("language", sorted(PATHS))
 @pytest.mark.parametrize("number", [step.number for step in STEPS])
 def test_a_step_deleted_from_a_journey_is_refused(copied: Tree, language: str, number: int) -> None:
@@ -103,11 +127,13 @@ def test_a_step_deleted_from_a_journey_is_refused(copied: Tree, language: str, n
     refused_naming(journey_completeness(copied.repo), path, f"journey step {number}")
 
 
-@pytest.mark.parametrize(("earlier", "later", "why"), ORDERINGS)
+@pytest.mark.parametrize(
+    ("earlier", "later", "why"), ORDERINGS, ids=[f"{a}-before-{b}" for a, b, _ in ORDERINGS]
+)
 def test_a_journey_that_takes_two_steps_the_other_way_round_is_refused(
     copied: Tree, earlier: int, later: int, why: str
 ) -> None:
-    """Each ordering is load-bearing, and the finding says what it holds up."""
+    """Each relationship is load-bearing, and the finding says what it holds up."""
     for path in PATHS.values():
         copied.write(path, _taken_before(copied.read(path), later, earlier))
 

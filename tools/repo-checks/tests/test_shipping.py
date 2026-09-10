@@ -14,11 +14,12 @@ from pathlib import Path
 
 from repo_checks.checks_ci import (
     artifact_jobs,
+    cut_from,
     install_path_not_narrowed,
     install_script_path,
 )
 from repo_checks.checks_release import publish_credentials, release_automation, release_targets
-from repo_checks.expect import accepted, refused, refused_naming
+from repo_checks.expect import accepted, equal, refused, refused_naming
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree, copy_tree
@@ -53,6 +54,11 @@ apt install printobserver-cli
 BASE = "main"
 WORK = "a-change-of-its-own"
 
+#: The file a change writes to have a commit of its own. A branch carrying none
+#: *is* the base branch, and merging the base into it fast-forwards rather than
+#: merging — so a journey about what a merge does needs a change to merge into.
+WORKED_ON = "the-work-this-change-is.md"
+
 
 def _commit(tree: Tree, message: str) -> None:
     """Commit everything in the copy, under an identity of this suite's own."""
@@ -80,19 +86,59 @@ def _committed(tree: Tree) -> None:
     _commit(tree, "chore: the committed tree, copied")
 
 
-def _cut_a_change_and_advance_the_base(tree: Tree, moved: Callable[[str], str]) -> None:
-    """Cut a change from what was committed, then move the base branch on past it.
+def _head(tree: Tree) -> str:
+    """Whatever commit the copy is on."""
+    return run(["git", "rev-parse", "HEAD"], cwd=tree.root, check=True).stdout.strip()
 
-    What is left is the state every journey below is about: a working tree
-    carrying the change, and a base branch whose **tip** is a commit the change
-    was never cut from. A check reading that tip reads whatever landed there
-    since, which is not what this work was cut with.
+
+def _a_commit_of_its_own(tree: Tree) -> None:
+    """Commit some work on the change's own branch, which is what a change is."""
+    tree.write(WORKED_ON, "Whatever this change is for.\n")
+    _commit(tree, "chore: the change does some work of its own")
+
+
+def _merge_the_base_into_the_change(tree: Tree) -> None:
+    """Merge the base branch into the change, which is what publishing one does first.
+
+    It is also what moves a merge base: after this the newest commit the two
+    branches share is the base branch's own tip, so a check reading that reads
+    the tree the base branch narrowed rather than the one this work was cut
+    with.
     """
-    run(["git", "checkout", "-q", "-b", WORK], cwd=tree.root, check=True)
+    run(
+        [
+            "git",
+            "-c",
+            "user.email=checks@printobserver.test",
+            "-c",
+            "user.name=checks",
+            "merge",
+            "--no-edit",
+            "-q",
+            BASE,
+        ],
+        cwd=tree.root,
+        check=True,
+    )
+
+
+def _advance_the_base(tree: Tree, moved: Callable[[str], str]) -> None:
+    """Move the base branch on by one commit, and come back to the change.
+
+    What is left is the state every journey below is about: a base branch whose
+    **tip** is a commit this change was never cut from. A check reading that tip
+    reads whatever landed there since, which is not what this work was cut with.
+    """
     run(["git", "checkout", "-q", BASE], cwd=tree.root, check=True)
     tree.write(AGENTS, moved(tree.read(AGENTS)))
     _commit(tree, "chore: the base branch moves on")
     run(["git", "checkout", "-q", WORK], cwd=tree.root, check=True)
+
+
+def _cut_a_change_and_advance_the_base(tree: Tree, moved: Callable[[str], str]) -> None:
+    """Cut a change from what was committed, then move the base branch on past it."""
+    run(["git", "checkout", "-q", "-b", WORK], cwd=tree.root, check=True)
+    _advance_the_base(tree, moved)
 
 
 def test_the_committed_tree_ships_what_it_says_it_ships(committed: Repo) -> None:
@@ -305,6 +351,65 @@ def test_a_base_branch_that_deleted_a_platform_first_does_not_excuse_deleting_it
     narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
 
     refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
+
+
+def test_a_route_the_base_branch_deleted_and_merged_in_is_still_refused(tmp_path: Path) -> None:
+    """Publishing merges the base branch in first, and that must change nothing here.
+
+    After the merge the newest commit the two branches share is the base
+    branch's own tip — the one that deleted the route — so a check reading a
+    merge base reads a tree with no route in it and finds nothing missing. The
+    commit this work was cut from is not on that branch's line, and this asserts
+    it is the same commit before and after the merge.
+    """
+    narrowed = Tree(copy_tree(tmp_path / "merged-route"))
+    _committed(narrowed)
+    cut = _head(narrowed)
+    run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
+    _a_commit_of_its_own(narrowed)
+    _advance_the_base(narrowed, _without_the_route)
+    equal(cut_from(narrowed.repo, BASE)[0], cut, describing="the commit before the merge")
+
+    _merge_the_base_into_the_change(narrowed)
+
+    equal(cut_from(narrowed.repo, BASE)[0], cut, describing="the commit after the merge")
+    refused(install_path_not_narrowed(narrowed.repo), "Route 2")
+
+
+def test_a_platform_the_base_branch_deleted_and_merged_in_is_still_refused(
+    tmp_path: Path,
+) -> None:
+    """The same, over the one list every artifact, matrix and route is derived from."""
+    narrowed = Tree(copy_tree(tmp_path / "merged-platform"))
+    _committed(narrowed)
+    cut = _head(narrowed)
+    run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
+    _a_commit_of_its_own(narrowed)
+    _advance_the_base(narrowed, _without_the_platform)
+    _merge_the_base_into_the_change(narrowed)
+
+    equal(cut_from(narrowed.repo, BASE)[0], cut, describing="the commit after the merge")
+    refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
+
+
+def test_the_reference_survives_a_base_branch_merged_in_more_than_once(
+    tmp_path: Path,
+) -> None:
+    """A branch open long enough is published more than once, and merged in each time."""
+    narrowed = Tree(copy_tree(tmp_path / "merged-twice"))
+    _committed(narrowed)
+    cut = _head(narrowed)
+    run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
+    _a_commit_of_its_own(narrowed)
+    _advance_the_base(narrowed, _without_the_route)
+    _merge_the_base_into_the_change(narrowed)
+    _advance_the_base(narrowed, _without_the_platform)
+    _merge_the_base_into_the_change(narrowed)
+
+    equal(cut_from(narrowed.repo, BASE)[0], cut, describing="the commit after two merges")
+    findings = install_path_not_narrowed(narrowed.repo)
+    refused(findings, "Route 2")
+    refused(findings, "linux-aarch64")
 
 
 def test_a_route_the_base_branch_gained_after_this_work_is_not_demanded_of_it(

@@ -15,12 +15,16 @@ the next, either there or inside a helper defined in the same file that the
 region calls. A marker with no call under it is a comment, and a call with no
 marker over it is a step nothing declared.
 
-The order is the other half, and it is load-bearing rather than tidy. The
-manifest is written before the print is started, so the print runs under it; the
-adjustments happen after it has started and before history is read, so history
-has them to account for; and the cancel is last, because a cancelled print is
-not one anything else can be asked of. `ORDERINGS` states each of those in the
-words of the thing it would break.
+The order is the other half, and only the part of it that is load-bearing is
+asked for. The manifest is written before the print is started, so the print
+runs under it; both adjustments happen after it has started and before history
+is read, so history has them to account for; and the print is cancelled last,
+because a cancelled print is not one anything else can be asked of. `ORDERINGS`
+states each of those in the words of the thing it would break, and states
+nothing else — the two reads may come either way round and the call the client
+refuses to make may be written wherever it reads best, because a journey holding
+those in one arrangement proves exactly what a journey holding them in another
+does.
 """
 
 from __future__ import annotations
@@ -37,9 +41,11 @@ from repo_checks.model import Repo
 
 @dataclass(frozen=True, slots=True)
 class Step:
-    """One of the nine steps every client's journey takes, in order."""
+    """One of the nine steps every client's journey takes."""
 
-    #: Where it comes in the walk, which is what the marker says.
+    #: The number the marker declares it by. Not a position: what a step has to
+    #: come before or after is `ORDERINGS` alone, and a step named in none of
+    #: those may be taken wherever the journey reads best.
     number: int
     #: What the marker calls it, in every language.
     name: str
@@ -47,7 +53,7 @@ class Step:
     operations: tuple[str, ...]
 
 
-#: The nine steps, in the one order a real machine admits.
+#: The nine steps, numbered as the walk a real machine admits reads.
 STEPS: tuple[Step, ...] = (
     Step(1, "status", ("status",)),
     Step(2, "context", ("context", "image")),
@@ -60,8 +66,19 @@ STEPS: tuple[Step, ...] = (
     Step(9, "cancel", ("cancel",)),
 )
 
-#: The orderings the walk stands on, each with what taking them the other way
-#: round would stop proving.
+#: What being cancelled last holds up, said once for the eight relationships
+#: below that say it.
+CANCELLED_LAST = (
+    "the print is cancelled last, because a cancelled print is not one the steps "
+    "before it could be taken against"
+)
+
+#: Every ordering the walk stands on, and **only** those. The nine steps are not
+#: a sequence a journey has to recite: which comes first of the two reads, and
+#: where the call the client refuses to make is written, is the journey author's
+#: to choose, and a check demanding one arrangement would be a check over layout.
+#: What each of these holds up is stated beside it, in the words of the thing
+#: taking it the other way round would stop proving.
 ORDERINGS: tuple[tuple[int, int, str], ...] = (
     (
         3,
@@ -71,20 +88,26 @@ ORDERINGS: tuple[tuple[int, int, str], ...] = (
     (
         4,
         5,
-        "the adjustment is asked for after the print has started, so there is a print "
-        "for the policy to admit it against",
+        "the accepted adjustment is asked for after the print has started, so there is "
+        "a print for the policy to admit it against",
+    ),
+    (
+        4,
+        6,
+        "the refused adjustment is asked for after the print has started, so what "
+        "refuses it is the bound it asked outside of rather than the state it asked in",
+    ),
+    (
+        5,
+        8,
+        "the accepted adjustment comes before history is read, so history has it to account for",
     ),
     (
         6,
         8,
         "the refused adjustment comes before history is read, so history has it to account for",
     ),
-    (
-        8,
-        9,
-        "the print is cancelled last, because a cancelled print is not one the steps "
-        "before it could be taken against",
-    ),
+    *((step, 9, CANCELLED_LAST) for step in range(1, 9)),
 )
 
 
@@ -218,29 +241,21 @@ def _presence_findings(journey: Journey, marked: list[tuple[int, str, int]]) -> 
 
 
 def _order_findings(journey: Journey, marked: list[tuple[int, str, int]]) -> list[str]:
-    """The steps are taken in the order the walk stands on."""
+    """Every relationship the walk stands on holds, and nothing beyond them is asked.
+
+    A relationship over a step the journey does not declare is left alone: that
+    is already a finding of its own, and reporting the order of a step that is
+    not there would be the same defect said twice.
+    """
     at = {number: line for number, _, line in marked}
-    stated = {(earlier, later): why for earlier, later, why in ORDERINGS}
-    findings: list[str] = []
-    for earlier in STEPS:
-        for later in STEPS:
-            if earlier.number >= later.number:
-                continue
-            if earlier.number not in at or later.number not in at:
-                continue
-            if at[earlier.number] < at[later.number]:
-                continue
-            why = stated.get(
-                (earlier.number, later.number),
-                "the nine steps are one walk, and a step taken out of its place is not "
-                "the step the two other clients take",
-            )
-            findings.append(
-                f"{journey.path} takes journey step {later.number} (`{later.name}`) at "
-                f"line {at[later.number]}, before journey step {earlier.number} "
-                f"(`{earlier.name}`) at line {at[earlier.number]}: {why}"
-            )
-    return findings
+    named = {step.number: step.name for step in STEPS}
+    return [
+        f"{journey.path} takes journey step {later} (`{named[later]}`) at line "
+        f"{at[later]}, before journey step {earlier} (`{named[earlier]}`) at line "
+        f"{at[earlier]}: {why}"
+        for earlier, later, why in ORDERINGS
+        if earlier in at and later in at and at[later] < at[earlier]
+    ]
 
 
 def _carrier_findings(

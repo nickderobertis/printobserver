@@ -612,12 +612,18 @@ ran the suite that runs the gate could not terminate.
 The nine steps all three clients drive are declared once, in
 `repo_checks.checks_journeys`, and each journey marks its own in its own
 language's comments — `journey step 4: start`. `just check-repo`'s
-`journey-completeness` holds every marker to the code beside it and every step
-to its place, so a step deleted, renamed, or taken before the step it stands on
-is refused in whichever client lost it. The orderings are load-bearing rather
-than tidy: the manifest is written before the print is started so the print runs
-under it, the adjustments come before history is read so history has them to
-account for, and the print is cancelled last.
+`journey-completeness` holds every marker to the code beside it, so a step
+deleted, renamed, or left with nothing under its marker is refused in whichever
+client lost it.
+
+**Only the orderings that are load-bearing are asked for**, and `ORDERINGS` is
+the whole of them: the manifest is written before the print is started so the
+print runs under it, both adjustments come after it has started and before
+history is read so history has them to account for, and the print is cancelled
+last. Everything else is the journey author's to arrange — which of the two
+reads comes first, and where the call the client refuses to make is written,
+prove the same thing in any order, and a check demanding one arrangement would
+be a check over layout rather than over the walk.
 
 **A call the client refuses to make is proven by a recording proxy in front of
 the real supervisor**, and by nothing else. The seventh step is that a mutating

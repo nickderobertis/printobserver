@@ -929,18 +929,24 @@ def install_script_path(repo: Repo) -> list[str]:
     return findings
 
 
-def _cut_from(repo: Repo, base: str) -> tuple[str | None, str]:
+def cut_from(repo: Repo, base: str) -> tuple[str | None, str]:
     """The commit this work was cut from, and why there is none where there is not.
 
-    The **merge base** rather than the base branch's tip, because the tip moves
-    under a change and the commit it was cut from does not. A check reading the
-    tip would read whatever landed on that branch since — so a route deleted
-    there would be a route this tree could delete too, and the one thing this
-    check exists to refuse would pass the moment the deletion arrived from the
-    other side. Every reference that resolves is handed to `git merge-base` at
-    once, which answers the best common ancestor of all of them: a local base
-    branch that is behind its remote can only make that reference *older*, and
-    an older one carries the routes and the platforms this tree has to keep.
+    Neither branch tip is the answer and neither is the merge base. A tip moves
+    whenever anything lands on it, and the merge base moves with it the moment
+    that branch is merged into this one — which is the *first* thing publishing a
+    branch here does. So a route deleted on the base branch and then merged in
+    would move the merge base past the commit that still had it, and the one
+    thing this check exists to refuse would pass the moment the deletion arrived
+    from the other side.
+
+    What no branch moving can change is this branch's own line of descent. A
+    merge of the base into it arrives on the **second** parent, so the first-
+    parent walk from `HEAD` is exactly the commits this work is, and the newest
+    of those the base branch also carries is the commit it was cut from. Landing
+    more on the base branch puts no commit on that line, and merging it in puts
+    only the merge itself there — so the reference this answers with is the same
+    before the base moves, after it moves, and after it has been merged in.
     """
     references = [
         reference
@@ -956,14 +962,26 @@ def _cut_from(repo: Repo, base: str) -> tuple[str | None, str]:
             f"neither `origin/{base}` nor `{base}` is in this repository's history, so "
             f"nothing can say whether the install path has been narrowed"
         )
-    found = run(["git", "merge-base", "HEAD", *references], cwd=repo.root)
-    commit = found.stdout.strip()
-    if found.returncode != 0 or not commit:
+    descent = run(["git", "rev-list", "--first-parent", "HEAD"], cwd=repo.root)
+    if descent.returncode != 0:
         return None, (
-            f"this tree's history and `{base}`'s share no commit, so nothing can say "
-            f"which install path this work was cut from"
+            "this tree has no history of its own, so nothing can say which install "
+            "path this work was cut from"
         )
-    return commit, ""
+    carried = run(["git", "rev-list", *references], cwd=repo.root)
+    if carried.returncode != 0:
+        return None, (
+            f"`{base}` could not be read, so nothing can say which install path this "
+            f"work was cut from"
+        )
+    on_the_base = set(carried.stdout.split())
+    for commit in descent.stdout.split():
+        if commit in on_the_base:
+            return commit, ""
+    return None, (
+        f"this tree's history and `{base}`'s share no commit, so nothing can say "
+        f"which install path this work was cut from"
+    )
 
 
 def install_path_not_narrowed(repo: Repo) -> list[str]:
@@ -981,7 +999,7 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
     except PolicyValueError as error:
         return [str(error)]
 
-    commit, why = _cut_from(repo, base)
+    commit, why = cut_from(repo, base)
     if commit is None:
         return [why]
     found = run(["git", "show", f"{commit}:AGENTS.md"], cwd=repo.root)
@@ -991,7 +1009,7 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
             f"nothing can say whether the install path has been narrowed"
         ]
     was = found.stdout
-    cut_from = f"the commit this work was cut from ({commit[:12]})"
+    whence = f"the commit this work was cut from ({commit[:12]})"
 
     findings: list[str] = []
     try:
@@ -1004,7 +1022,7 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
     except MarkerBlockMissingError as error:
         return [str(error)]
     findings.extend(
-        f"AGENTS.md's supported-platform list named `{platform}` on {cut_from} and no "
+        f"AGENTS.md's supported-platform list named `{platform}` on {whence} and no "
         f"longer does: every artifact, matrix and route here is derived from that list, "
         f"so narrowing it narrows all of them at once"
         for platform in sorted(before - now)
@@ -1012,7 +1030,7 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
 
     stated = {route.heading for route in ip.parse(repo.agents_md).routes}
     findings.extend(
-        f"AGENTS.md's `{ip.SECTION_HEADING}` stated route `{heading}` on {cut_from} and no "
+        f"AGENTS.md's `{ip.SECTION_HEADING}` stated route `{heading}` on {whence} and no "
         f"longer does: a route deleted here is a way to the program nobody has any more"
         for heading in sorted({route.heading for route in ip.parse(was).routes} - stated)
     )
