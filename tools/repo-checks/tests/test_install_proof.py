@@ -20,10 +20,13 @@ POLICY = "repo-policy.toml"
 JUSTFILE = "justfile"
 AGENTS = "AGENTS.md"
 
-#: The success gate every job of the proof carries, as the workflow spells it.
-GATE = (
-    "    if: github.event_name != 'workflow_run' || "
-    "github.event.workflow_run.conclusion == 'success'\n"
+#: The gate every job of the proof carries, as the workflow spells it: the
+#: release the triggering run cut, and not that run's conclusion.
+GATE = "    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''\n"
+
+#: The version every job proving a route takes, as the workflow spells it.
+VERSION = (
+    "      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}\n"
 )
 
 
@@ -46,6 +49,16 @@ def test_a_declaration_missing_a_key_is_refused(tree: Callable[[], Tree]) -> Non
     broken.edit(POLICY, 'release_workflow = "release-plz"', 'release_workflow = ""')
 
     refused(install_proof(broken.repo), "declares no release_workflow")
+
+
+def test_a_declaration_missing_the_resolving_output_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Nothing composes the gate from a declaration that names half of it."""
+    broken = tree()
+    broken.edit(POLICY, 'release_output = "version"', 'release_output = ""')
+
+    refused(install_proof(broken.repo), "declares no release_output")
 
 
 def test_a_route_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> None:
@@ -130,14 +143,67 @@ def test_naming_a_release_workflow_no_committed_workflow_carries_is_refused(
     refused(install_proof(broken.repo), "no committed workflow carries that name")
 
 
-def test_a_job_not_gated_on_the_release_succeeding_is_refused(
+def test_a_job_not_gated_on_the_release_its_run_cut_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """A release run that failed published nothing, and proving it blames the artifact."""
+    """A run that cut no release would otherwise prove whatever was newest."""
     broken = tree()
     broken.edit(WORKFLOW, GATE, "")
 
     refused(install_proof(broken.repo), "is not gated on")
+
+
+def test_a_job_gated_on_the_triggering_run_s_conclusion_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The run that cut a release and failed to publish it is the one this tier is for.
+
+    Gated on the conclusion it is skipped, and the missing publish is reported
+    by nothing at all — which is why a conclusion gate is refused rather than
+    merely not asked for.
+    """
+    broken = tree()
+    broken.edit(
+        WORKFLOW,
+        GATE,
+        "    if: github.event.workflow_run.conclusion == 'success'\n",
+    )
+
+    refused(install_proof(broken.repo), "the one state this tier exists to find")
+
+
+def test_a_workflow_with_no_job_resolving_the_release_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Nothing else can say which release the triggering run cut."""
+    broken = tree()
+    broken.edit(POLICY, 'release_job = "resolve"', 'release_job = "which-release"')
+
+    refused(install_proof(broken.repo), "declares no `which-release` job")
+
+
+def test_a_resolving_job_that_does_not_read_the_tag_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The release a run cut is read off the tag it left, by this repository's own recipe."""
+    broken = tree()
+    broken.edit(
+        WORKFLOW,
+        '        run: just release-version "$COMMIT" . >> "$GITHUB_OUTPUT"',
+        "        run: just --list",
+    )
+
+    refused(install_proof(broken.repo), "does not run `just release-version`")
+
+
+def test_a_resolving_recipe_the_recipe_set_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A recipe named in policy and absent from the command surface reads nothing."""
+    broken = tree()
+    broken.edit(JUSTFILE, "release-version COMMIT ROOT:", "release-version-of COMMIT ROOT:")
+
+    refused(install_proof(broken.repo), "is not a recipe the recipe set declares")
 
 
 def test_a_manual_run_that_cannot_name_a_version_is_refused(
@@ -167,48 +233,58 @@ def test_a_version_that_ignores_what_the_caller_named_is_refused(
 def test_a_release_run_that_proves_whatever_is_newest_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """A release's own proof proves that release, not whatever a registry serves."""
+    """A release's own proof proves the release its run cut, not whatever is newest."""
     broken = tree()
-    broken.edit(WORKFLOW, "&& 'release' ||", "&& '' ||")
+    broken.edit(WORKFLOW, "|| needs.resolve.outputs.version }}", "|| '' }}")
 
-    refused(install_proof(broken.repo), "does not select `release`")
-
-
-def test_a_version_that_cannot_tell_the_release_trigger_apart_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
-    """Which trigger fired is what decides where the version comes from."""
-    broken = tree()
-    broken.edit(
-        WORKFLOW,
-        "${{ inputs.version || (github.event_name == 'workflow_run' && 'release' || '') }}",
-        "${{ inputs.version || (github.event_name == 'schedule' && '' || 'release') }}",
-    )
-
-    refused(install_proof(broken.repo), "does not tell the")
+    refused(install_proof(broken.repo), "not the release the triggering run cut")
 
 
-def test_a_job_declaring_a_version_of_its_own_is_refused(tree: Callable[[], Tree]) -> None:
+def test_routes_taking_different_versions_are_refused(tree: Callable[[], Tree]) -> None:
     """The version under test is one answer for the whole run, not one per route."""
     broken = tree()
+    broken.edit(WORKFLOW, VERSION, VERSION.replace("inputs.version ||", "inputs.version || '' ||"))
+
+    refused(install_proof(broken.repo), "is one answer for the whole run")
+
+
+def test_a_version_declared_for_the_whole_workflow_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The release it names is a job's answer, which nothing outside a job can read."""
+    broken = tree()
     broken.edit(
         WORKFLOW,
-        "      - run: just prove-registry-npm\n",
-        "      - run: just prove-registry-npm\n    env:\n"
-        "      PRINTOBSERVER_PROOF_VERSION: 0.0.1\n",
+        "permissions:\n  contents: read\n",
+        "permissions:\n  contents: read\n\nenv:\n  PRINTOBSERVER_PROOF_VERSION: 0.0.1\n",
     )
 
-    refused(install_proof(broken.repo), "declares `PRINTOBSERVER_PROOF_VERSION` of its own")
+    refused(install_proof(broken.repo), "declares `PRINTOBSERVER_PROOF_VERSION` for the whole")
 
 
-def test_the_workflow_declaring_no_version_at_all_is_refused(
+def test_a_job_that_proves_no_route_declaring_a_version_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A version reaching a job that proves nothing with it says nothing about a run."""
+    broken = tree()
+    broken.edit(
+        WORKFLOW,
+        "    name: install-route-pypi (${{ matrix.platform.id }})\n",
+        "    name: install-route-pypi (${{ matrix.platform.id }})\n"
+        "    env:\n      PRINTOBSERVER_PROOF_VERSION: 0.0.1\n",
+    )
+
+    refused(install_proof(broken.repo), "and proves no route with it")
+
+
+def test_a_proof_job_declaring_no_version_at_all_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
     """The version under test has to reach the tier somehow."""
     broken = tree()
-    broken.edit(WORKFLOW, "  PRINTOBSERVER_PROOF_VERSION: >-", "  UNREAD_BY_THE_TIER: >-")
+    broken.edit(WORKFLOW, VERSION, "      UNREAD_BY_THE_TIER: nothing\n")
 
-    refused(install_proof(broken.repo), "which is how the version under test reaches")
+    refused(install_proof(broken.repo), "declares no `PRINTOBSERVER_PROOF_VERSION`")
 
 
 def test_a_proof_recipe_with_no_job_is_refused(tree: Callable[[], Tree]) -> None:

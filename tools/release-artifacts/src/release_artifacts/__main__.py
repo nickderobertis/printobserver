@@ -13,7 +13,13 @@ from repo_checks.model import Repo
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
-from release_artifacts.registries import UNREADABLE, RegistryError, supported_version
+from release_artifacts.registries import (
+    UNREADABLE,
+    VERSION_FIELD,
+    RegistryError,
+    cut_at,
+    supported_version,
+)
 from release_artifacts.registries import prove as prove_registry
 from release_artifacts.standin import Registries, StandinError
 from release_artifacts.targets import TargetError, declared
@@ -33,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
             "publish",
             "world",
             "standin",
+            "released",
             "list",
         ],
     )
@@ -75,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="drive the OctoPrint `just octoprint-up` started, rather than a stand-in",
     )
+    parser.add_argument(
+        "--commit",
+        default="",
+        metavar="SHA",
+        help="the commit a release-time run ran at, whose release is the one to prove",
+    )
     parser.add_argument("--into", type=Path, default=Path("dist"))
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -104,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _world(repo, arguments)
             case "standin":
                 return _standin(repo, arguments)
+            case "released":
+                return _released(repo, arguments)
             case "publish":
                 for line in publish(repo, arguments.into, dict(os.environ)):
                     print(line)
@@ -151,6 +166,29 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
         print(proof.report, file=sys.stdout if proof.exit_status == 0 else sys.stderr)
         return proof.exit_status
     print(prove(repo, arguments.target, arguments.into, arguments.binary))
+    return 0
+
+
+def _released(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Say which release the release-time run at one commit cut.
+
+    Answered as `version=<version>`, which is the one line a job publishes an
+    output from: the release-time run resolves this once and hands that one
+    concrete version to every route proof, so the three cannot resolve three
+    different releases between them.
+
+    A run that cut no release answers an empty field rather than failing, which
+    is every push that found nothing unreleased — and what the jobs proving a
+    route are gated on, so an ordinary push proves nothing rather than proving
+    somebody else's release.
+    """
+    if not arguments.commit:
+        print(
+            "released takes --commit <sha>: the commit a release-time run ran at",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"{VERSION_FIELD}={cut_at(repo.root, arguments.commit)}")
     return 0
 
 

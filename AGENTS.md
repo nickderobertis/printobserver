@@ -698,7 +698,8 @@ half.
 release automation last wrote into the workspace, and what a user gets is
 whatever the registry is serving. `PRINTOBSERVER_PROOF_VERSION` names it — a
 version, or `release` for the newest release the forge published — and naming
-none proves the newest each registry serves.
+none proves the newest each registry serves. A release-time run names neither:
+it names the concrete version of the release it cut, resolved as below.
 
 **Why it is not in every run.** It reads the real registries, so over a change it
 could only report what was published before that change. `repo-policy.toml`'s
@@ -712,6 +713,27 @@ published: that workflow cuts the release in its `release` job and builds and
 publishes the artifacts in the two jobs *after* it, so a proof keyed on the
 release itself measures the version before it. The cron below and the workflow's
 own are checked against each other.
+
+**Which release a release-time run proves is the one that run cut**, and never
+the newest the forge lists. `release_always` means every push to `main` finishes
+a `release-plz` run and all but the release ones cut nothing, and two runs
+finishing minutes apart both list — so "the newest" is somebody else's release
+as often as not, and a run keyed on it reports green over an artifact it never
+looked at while its own goes unproven. The workflow's `resolve` job reads that
+version off the tag release automation left at the run's **own commit** —
+`just release-version <commit>`, over a checkout carrying that commit and its
+tags — and hands the one concrete version it answers to every route proof, so
+the three cannot resolve three different releases between them. A run that cut
+no release answers none, and every job below is gated on that: an ordinary push
+proves nothing rather than proving whatever was newest.
+
+**And a run that cut a release and failed to publish it is proven, not
+skipped.** That is the one state this whole tier exists to find, and gating on
+the triggering run's *conclusion* — which is what this used to do — skips
+exactly it: the release is listed, nothing serves it, and the failure is
+reported by nothing at all. Gated on the release instead, the run is proven and
+answers `NOT SERVED`, which is the publish that did not happen, named.
+`just check-repo` refuses a job of this proof that gates on a conclusion.
 
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`

@@ -158,9 +158,22 @@ triggers = ["workflow_run", "schedule", "workflow_dispatch"]
 # artifacts are built and published in the two jobs after it, so a proof keyed
 # on the release itself would measure the version before it.
 release_workflow = "release-plz"
-# The condition every job of the proof must carry, so a release run that failed
-# is not proven as though it had succeeded.
-release_conclusion = "github.event.workflow_run.conclusion == 'success'"
+# The job that resolves WHICH release a release-time run proves, the output it
+# publishes that version under, and the recipe it answers it with. `just
+# check-repo` composes the rest from these three rather than restating them: the
+# gate every other job must carry, and the version under test every job proving
+# a route must take — so the three routes cannot resolve three different
+# releases between them, and a run that cut nothing proves nothing rather than
+# proving whatever a registry served newest.
+#
+# Deliberately NOT the triggering run's conclusion, which is what this replaced.
+# A run that cut its release and then failed to publish the artifacts is exactly
+# the state this tier exists to find: gated on the conclusion that run is
+# skipped and the publish that did not happen is reported by nothing at all,
+# while gated on the release itself it is proven and answers `NOT SERVED`.
+release_job = "resolve"
+release_output = "version"
+release_recipe = "release-version"
 # How the version under test reaches the tier, the input a caller names it in,
 # and the word that means "the newest release the forge published". The
 # committed tree's own version is deliberately not among them.

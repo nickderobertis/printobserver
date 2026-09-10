@@ -160,6 +160,16 @@ prove-registry-npm:
 prove-registry-script:
     uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
 
+# Which release the release-time run at COMMIT cut, as `version=<version>`.
+#
+# The one line the release-time job publishes its output from, so that the one
+# concrete version reaches all three route proofs rather than each of them
+# resolving "the newest" for itself. A run that cut no release — every push
+# finding nothing unreleased — answers an empty field, and that is what those
+# jobs are gated on. Needs a checkout carrying the commit and its tags.
+release-version COMMIT ROOT:
+    uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
+
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
 # is, why it is not one of `just check`'s tiers, and when it runs.

@@ -21,10 +21,17 @@ Two things about that release-time trigger are the whole reason it is checked
 rather than left to a reader. It is the release *workflow having finished*: the
 GitHub Release is cut in that workflow's `release` job and the artifacts are
 built and published in the two jobs after it, so a proof keyed on the release
-being published measures the version before it. And it is gated on that run
-having *succeeded*, because a release run that failed published nothing, and
-proving it as though it had would report a registry's silence as a defect of an
-artifact.
+being published measures the version before it. And WHICH release it proves is
+the one that run itself cut, resolved once by the job `[install_proof]` names
+and handed to every job that proves a route — never the newest the forge lists,
+which on a repository that finishes a release run on every push is somebody
+else's release as often as not.
+
+That gate is deliberately not the triggering run's *conclusion*. A run that cut
+its release and then failed to publish the artifacts is exactly the state this
+tier exists to find: gated on the conclusion it is skipped and the publish that
+did not happen is reported by nothing at all, so this refuses a job that gates
+on one.
 
 And it refuses the other direction too: a gate that selected this tier — by
 declaring it a tier or by invoking it from `check` — is refused.
@@ -49,6 +56,11 @@ from repo_checks.parsing import (
     run_commands,
     section,
 )
+
+#: The triggering run's own conclusion, which no job of this proof may gate on.
+#: A release-time run is gated on the release it cut instead, so that a run
+#: whose release exists and whose publish failed is proven rather than skipped.
+CONCLUSION = "github.event.workflow_run.conclusion"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +87,12 @@ class Declared:
     workflow: str
     #: The workflow whose FINISHING is the release-time trigger.
     release_workflow: str
-    #: The condition every job of the proof must carry.
-    release_conclusion: str
+    #: The job that resolves which release a release-time run proves.
+    release_job: str
+    #: The output it publishes that version under.
+    release_output: str
+    #: The recipe it answers it with.
+    release_recipe: str
     #: How the version under test reaches the tier.
     version_env: str
     #: The manual invocation's input a caller names a version in.
@@ -140,7 +156,7 @@ def install_proof(repo: Repo) -> list[str]:
     workflow = load_workflow(repo.path(relative))
     triggers = triggers_of(workflow)
     findings.extend(_trigger_findings(repo, declared, triggers, relative))
-    findings.extend(_version_findings(declared, workflow, relative))
+    findings.extend(_version_findings(repo, declared, workflow, relative))
     findings.extend(_consumer_findings(repo, declared))
     findings.extend(_job_findings(repo, declared, workflow, relative))
     findings.extend(_schedule_findings(repo, declared, triggers, relative))
@@ -310,38 +326,70 @@ def _dispatch_findings(policy: Declared, triggers: dict[str, Any], relative: str
     ]
 
 
-def _version_findings(policy: Declared, workflow: dict[str, Any], relative: str) -> list[str]:
-    """The version under test comes from the caller or the release, and never the tree."""
+def _proving_jobs(repo: Repo, policy: Declared, jobs: dict[str, dict[str, Any]]) -> set[str]:
+    """Every job that runs one of the recipes proving a route against its registry."""
+    wanted = set(_proof_recipes(repo, policy).values())
+    return {
+        name
+        for name, job in jobs.items()
+        if any(f"just {recipe}" in run_commands(job) for recipe in wanted)
+    }
+
+
+def _version_findings(
+    repo: Repo, policy: Declared, workflow: dict[str, Any], relative: str
+) -> list[str]:
+    """The version under test is the release the run cut, and one answer for the run.
+
+    One answer, and it is a JOB's rather than the workflow's, because the
+    release it names is resolved by a job — nothing outside one can read that.
+    So this asks for what a workflow-level declaration used to give: every job
+    proving a route says which version it proves, they all say the same thing,
+    and no other job says anything.
+    """
     variable = policy.version_env
-    declared = workflow.get("env") or {}
-    if variable not in declared:
-        return [
-            f"{relative} declares no `{variable}`, which is how the version under test "
-            f"reaches the tier"
-        ]
-    stated = " ".join(str(declared[variable]).split())
+    jobs = jobs_of(workflow)
+    proving_jobs = _proving_jobs(repo, policy, jobs)
+    resolved = f"needs.{policy.release_job}.outputs.{policy.release_output}"
     findings: list[str] = []
-    if f"inputs.{policy.version_input}" not in stated:
+    if variable in (workflow.get("env") or {}):
         findings.append(
-            f"{relative}'s `{variable}` is `{stated}`, which does not take the version a "
-            f"caller named (`inputs.{policy.version_input}`)"
+            f"{relative} declares `{variable}` for the whole workflow, and the version "
+            f"under test is the release the `{policy.release_job}` job resolved — which "
+            f"nothing outside a job can read"
         )
-    if f"'{policy.release_selector}'" not in stated:
+    stated: set[str] = set()
+    for name in sorted(proving_jobs):
+        declared = jobs[name].get("env") or {}
+        if variable not in declared:
+            findings.append(
+                f"{relative}: job `{name}` proves a route and declares no `{variable}`, "
+                f"so nothing says which version it proves"
+            )
+            continue
+        expression = " ".join(str(declared[variable]).split())
+        stated.add(expression)
+        if f"inputs.{policy.version_input}" not in expression:
+            findings.append(
+                f"{relative}: job `{name}`'s `{variable}` is `{expression}`, which does "
+                f"not take the version a caller named (`inputs.{policy.version_input}`)"
+            )
+        if resolved not in expression:
+            findings.append(
+                f"{relative}: job `{name}`'s `{variable}` is `{expression}`, which is not "
+                f"the release the triggering run cut (`{resolved}`): a release's own "
+                f"proof would then prove whatever a registry happened to serve newest"
+            )
+    if len(stated) > 1:
         findings.append(
-            f"{relative}'s `{variable}` is `{stated}`, which does not select "
-            f"`{policy.release_selector}` on the release-time trigger: a release's own "
-            f"proof would then prove whatever a registry happened to serve newest"
-        )
-    if "workflow_run" not in stated:
-        findings.append(
-            f"{relative}'s `{variable}` is `{stated}`, which does not tell the "
-            f"release-time trigger apart from the others"
+            f"{relative}: the jobs proving a route take "
+            f"{', '.join(f'`{one}`' for one in sorted(stated))} as `{variable}`, and the "
+            f"version under test is one answer for the whole run"
         )
     findings.extend(
-        f"{relative}: job `{job_name}` declares `{variable}` of its own, and the version "
-        f"under test is one answer for the whole run"
-        for job_name, job in jobs_of(workflow).items()
-        if variable in (job.get("env") or {})
+        f"{relative}: job `{name}` declares `{variable}` and proves no route with it"
+        for name, job in sorted(jobs.items())
+        if name not in proving_jobs and variable in (job.get("env") or {})
     )
     return findings
 
@@ -374,7 +422,7 @@ def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
 def _job_findings(
     repo: Repo, policy: Declared, workflow: dict[str, Any], relative: str
 ) -> list[str]:
-    """Every proof recipe has a job, and every job is gated on the release succeeding."""
+    """Every proof recipe has a job, and every job proves the release its run cut."""
     declared = set(recipes(repo.justfile))
     jobs = jobs_of(workflow)
     findings: list[str] = []
@@ -387,13 +435,40 @@ def _job_findings(
             )
         if recipe not in declared:
             findings.append(f"`just {recipe}` is not a recipe the recipe set declares")
-    condition = policy.release_conclusion
-    findings.extend(
-        f"{relative}: job `{job_name}` is not gated on `{condition}`, so a release run "
-        f"that failed and published nothing would be proven as though it had succeeded"
-        for job_name, job in jobs.items()
-        if condition not in " ".join(str(job.get("if", "")).split())
-    )
+
+    resolving = jobs.get(policy.release_job)
+    if resolving is None:
+        findings.append(
+            f"{relative} declares no `{policy.release_job}` job, and nothing else can say "
+            f"which release the triggering run cut"
+        )
+    elif f"just {policy.release_recipe}" not in " ".join(run_commands(resolving)):
+        findings.append(
+            f"{relative}: job `{policy.release_job}` does not run `just "
+            f"{policy.release_recipe}`, which is what reads the release a run cut off the "
+            f"tag it left"
+        )
+    if policy.release_recipe not in declared:
+        findings.append(f"`just {policy.release_recipe}` is not a recipe the recipe set declares")
+
+    gate = f"needs.{policy.release_job}.outputs.{policy.release_output}"
+    for job_name, job in sorted(jobs.items()):
+        condition = " ".join(str(job.get("if", "")).split())
+        if job_name != policy.release_job and gate not in condition:
+            findings.append(
+                f"{relative}: job `{job_name}` is not gated on `{gate}`, so a run that "
+                f"cut no release at all would prove whatever a registry served newest"
+            )
+        # A conclusion gate is what this replaced, and it is refused rather
+        # than merely not asked for: a run that cut its release and then failed
+        # to publish it is the one state this tier exists to find, and gating
+        # on the conclusion skips exactly that run.
+        if CONCLUSION in condition:
+            findings.append(
+                f"{relative}: job `{job_name}` is gated on `{CONCLUSION}`, so the run "
+                f"that cut a release and failed to publish it — the one state this tier "
+                f"exists to find — is skipped and reported by nothing"
+            )
     return findings
 
 

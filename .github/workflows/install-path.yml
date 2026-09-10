@@ -7,10 +7,14 @@
 # check-repo` refuses a step of one of those jobs that section does not state,
 # so this workflow cannot grow an install nobody declared.
 #
-# The one thing a reader has to know that is not written down elsewhere: the
+# Two things a reader has to know that are not written down elsewhere. The
 # release-time trigger is `release-plz` HAVING FINISHED rather than the release
 # being published, because that workflow cuts the release before the two jobs
-# that build and publish its artifacts.
+# that build and publish its artifacts. And WHICH release a release-time run
+# proves is the one that run itself cut, read by `resolve` off the tag left at
+# the run's own commit and handed to every route proof as one concrete version
+# — never "the newest the forge lists", which on a repository releasing from
+# every push is somebody else's release as often as not.
 
 name: install-path
 
@@ -39,24 +43,54 @@ concurrency:
   group: install-path-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  # Which version this run proves, in one place. A caller names one; a
-  # release's own proof takes the release the finished run cut; a scheduled run
-  # names none and each registry's newest is proven. The number in the
-  # committed tree is deliberately not among them: it is whatever release
-  # automation last wrote into the workspace, and what a user gets is whatever
-  # the registry is serving.
-  PRINTOBSERVER_PROOF_VERSION: >-
-    ${{ inputs.version || (github.event_name == 'workflow_run' && 'release' || '') }}
-
 jobs:
+  # Which release the triggering run cut, resolved once for the whole run.
+  #
+  # Its output is the version every route proof below is given, so the three
+  # cannot resolve three different releases between them; and it is what those
+  # jobs are gated on, so an ordinary push — which finishes a `release-plz` run
+  # and cuts nothing — proves nothing rather than proving whatever was newest.
+  #
+  # Deliberately NOT gated on that run having succeeded. A run that cut the
+  # release and then failed to publish its artifacts is exactly the state this
+  # tier exists to find: the version is there to prove, nothing serves it, and
+  # the proof says `NOT SERVED`. Gated on the conclusion, that run is skipped
+  # and the missing publish is reported by nothing at all.
+  resolve:
+    name: resolve
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The release-time run's own commit, and the whole history with it:
+          # which release that run cut is read off the tag it left there, and a
+          # shallow clone carries neither the commit nor the tag.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - id: cut
+        if: github.event_name == 'workflow_run'
+        env:
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: just release-version "$COMMIT" . >> "$GITHUB_OUTPUT"
+
   # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-pypi:
     name: prove-registry-pypi (${{ matrix.platform.id }})
-    # A release run that did not finish successfully published nothing, and
-    # proving it as though it had would report a registry's silence as a defect
-    # of the artifact.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # A release-time run proves the release IT cut, and nothing when it cut
+    # none. Not gated on that run's conclusion: a run whose release exists and
+    # whose publish failed is the one this tier is for.
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      # The one concrete version this whole run proves: what a caller named, or
+      # the release the triggering run cut. Never the committed tree's own
+      # number, which is whatever release automation last wrote there, and
+      # never each route's own idea of "the newest".
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -78,7 +112,14 @@ jobs:
   # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-npm:
     name: prove-registry-npm (${{ matrix.platform.id }})
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      # The one concrete version this whole run proves: what a caller named, or
+      # the release the triggering run cut. Never the committed tree's own
+      # number, which is whatever release automation last wrote there, and
+      # never each route's own idea of "the newest".
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +139,14 @@ jobs:
   # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-script:
     name: prove-registry-script (${{ matrix.platform.id }})
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      # The one concrete version this whole run proves: what a caller named, or
+      # the release the triggering run cut. Never the committed tree's own
+      # number, which is whatever release automation last wrote there, and
+      # never each route's own idea of "the newest".
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,7 +164,8 @@ jobs:
 
   install-route-pypi:
     name: install-route-pypi (${{ matrix.platform.id }})
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     strategy:
       fail-fast: false
       matrix:
@@ -147,7 +196,8 @@ jobs:
 
   install-route-npm:
     name: install-route-npm (${{ matrix.platform.id }})
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     strategy:
       fail-fast: false
       matrix:
@@ -168,7 +218,8 @@ jobs:
 
   install-route-script:
     name: install-route-script (${{ matrix.platform.id }})
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     strategy:
       fail-fast: false
       matrix:

@@ -24,7 +24,16 @@ whatever the registry is serving, and the number in the workspace is whatever
 release automation last wrote there — so a proof keyed on it would pass over a
 registry serving nothing. It is the version the caller names, and the newest the
 registry serves when the caller names none. `release` names the newest release
-the forge has published, which is what a release's own proof is keyed on.
+the forge has published, which is what a run by hand keys on.
+
+**And a release's own proof is keyed on the release that run cut**, rather than
+on the newest of them. `cut_at` reads that version off the tag release
+automation left at the run's own commit, and the one concrete version it
+answers is what every route proof is then given — so the three cannot resolve
+three different releases between them, and a run cannot report green over a
+release somebody else's run published while its own went unproven. The forge's
+listing cannot make that binding: it says which releases exist and not which
+run cut which.
 
 **Every registry is reachable somewhere other than the real one**, through
 `PRINTOBSERVER_PROOF_REGISTRIES`. Nothing here may publish to a registry in
@@ -47,6 +56,7 @@ from urllib.parse import urlsplit
 
 from repo_checks import install_path
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 from release_artifacts import targets
 from release_artifacts.build import PROGRAM
@@ -81,8 +91,22 @@ RELEASE = "release"
 #: this proof may pick as "the newest" or hand to a package manager.
 SUPPORTED = re.compile(r"^v?\d+\.\d+\.\d+$")
 
+#: What a commit a release-time run ran at looks like, and so what this will
+#: ask a checkout about. It arrives from a workflow's own event payload and
+#: reaches `git` as an argument, so it stops being an arbitrary string here.
+COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
+
+#: The field a release-time run publishes the version it cut under. Written as
+#: `<field>=<version>`, which is the one line a job reads an output from — so
+#: the run that resolves it and the jobs that prove it name one version, and
+#: the three routes cannot each resolve a different one.
+VERSION_FIELD = "version"
+
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
+
+#: How long a checkout is given to say which release was cut at a commit.
+CHECKOUT_TIMEOUT_SECONDS = 60
 
 #: What this proof calls itself when it asks a registry. A forge answers an
 #: anonymous read and expects to be told who is asking.
@@ -203,6 +227,63 @@ def supported_version(version: str) -> str:
     """
     named = version.strip()
     return named.removeprefix("v") if SUPPORTED.match(named) else ""
+
+
+def cut_at(root: Path, commit: str) -> str:
+    """The version the release-time run at `commit` cut, or nothing where it cut none.
+
+    Read from the tag that names that commit in the checkout, because that tag
+    is what release automation left behind at the moment it cut the release —
+    and because the forge's own listing cannot answer this. A listing says
+    which releases exist and not which run cut which, so a run keyed on the
+    newest of them proves whichever release finished last: two runs minutes
+    apart, and the earlier one reports green over an artifact it never looked
+    at. `release_always` makes that ordinary rather than rare — every push to
+    the base branch finishes a run, and all but the release ones cut nothing at
+    all.
+
+    Raises:
+        RegistryError: If the commit is not one a checkout can be asked about;
+            if this checkout does not carry it, which a shallow clone does not
+            and which would otherwise answer "no release" for every commit
+            there is and pass over every publish; or if more than one version
+            tag names it, which leaves which release that run cut unanswerable.
+    """
+    named = commit.strip()
+    if not COMMIT.match(named):
+        msg = (
+            f"`{named}` is no commit to key a release's own proof on: it must be a "
+            f"hexadecimal object name, as the forge's own event payload states one"
+        )
+        raise RegistryError(msg)
+    carried = run(
+        ["git", "cat-file", "-e", f"{named}^{{commit}}"],
+        cwd=root,
+        timeout=CHECKOUT_TIMEOUT_SECONDS,
+    )
+    if carried.returncode != 0:
+        msg = (
+            f"{root} does not carry the commit {named}, so it cannot say which release "
+            f"the run at it cut. A clone without that commit and its tags answers `no "
+            f"release` for every commit there is, which passes over every publish "
+            f"rather than failing:\n{carried.stderr}"
+        )
+        raise RegistryError(msg)
+    listed = run(["git", "tag", "--points-at", named], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
+    if listed.returncode != 0:
+        msg = f"{root} could not be asked which tags name {named}:\n{listed.stderr}"
+        raise RegistryError(msg)
+    cut = sorted(
+        {supported_version(tag) for tag in listed.stdout.split() if supported_version(tag)},
+        key=ordered,
+    )
+    if len(cut) > 1:
+        msg = (
+            f"{named} is named by {', '.join(cut)}, and which release the run at that "
+            f"commit cut is then not something a tag can answer"
+        )
+        raise RegistryError(msg)
+    return cut[0] if cut else ""
 
 
 def ordered(version: str) -> tuple[int, ...]:

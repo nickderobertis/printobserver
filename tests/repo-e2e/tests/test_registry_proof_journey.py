@@ -28,11 +28,11 @@ from journey import REPO_ROOT, capture, clean_environment, output, plain, python
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
-    RELEASE,
     UNREADABLE,
 )
 from repo_checks.expect import contains, equal, failing, passing, truth
-from repo_checks.shell import start
+from repo_checks.model import Repo
+from repo_checks.shell import run, start
 
 #: The committed workflow this tier's triggers and version selection are read
 #: out of, rather than restated here.
@@ -54,6 +54,10 @@ SERVED = "0.3.0"
 
 #: A version nothing serves, and no tree of this repository declares.
 UNSERVED = "9.9.9"
+
+#: The release a LATER run cut, which is the one a proof keyed on "the newest"
+#: would reach for while the run it was keyed on went unproven.
+LATER = "0.4.0"
 
 #: How long one recipe is given: an install from a registry on loopback.
 RECIPE_TIMEOUT_SECONDS = 600
@@ -115,6 +119,41 @@ def standing_in(tmp_path: Path) -> Iterator[Callable[..., Standin]]:
             registries.stop()
 
 
+class Runs:
+    """Two release-time runs, in a real repository carrying the tag each left."""
+
+    def __init__(self, path: Path) -> None:
+        """Make one commit per run, and tag it as release automation would."""
+        self.path = path
+        self.path.mkdir(parents=True, exist_ok=True)
+        self._git("init", "--initial-branch", "main")
+        self._git("config", "user.email", "release@example.invalid")
+        self._git("config", "user.name", "release automation")
+        #: The commit each run ran at, by the version it cut.
+        self.at: dict[str, str] = {}
+        for version in (SERVED, LATER):
+            self._git("commit", "--allow-empty", "-m", f"chore: release v{version}")
+            self._git("tag", f"v{version}")
+            self.at[version] = self._git("rev-parse", "HEAD")
+
+    def _git(self, *argv: str) -> str:
+        """Run one git command here, or fail the journey saying what it said."""
+        done = run(["git", *argv], cwd=self.path, timeout=60)
+        truth(done.returncode == 0, describing=f"`git {' '.join(argv)}`:\n{done.stderr}")
+        return done.stdout.strip()
+
+
+@pytest.fixture
+def runs(tmp_path: Path) -> Runs:
+    """Two release-time runs, in a real git repository.
+
+    A real one rather than a stand-in: what binds a release to the run that cut
+    it is the tag release automation left at that run's own commit, and git is
+    the only thing that can be asked about that.
+    """
+    return Runs(tmp_path / "checkout")
+
+
 def _recipe(name: str, base: str, version: str = "") -> tuple[int, str]:
     """Run one recipe of this repository's own command surface against a stand-in."""
     result = capture(
@@ -131,25 +170,51 @@ def _recipe(name: str, base: str, version: str = "") -> tuple[int, str]:
     return result.returncode, output(result)
 
 
-def _selected_by_a_release_run() -> str:
-    """What the committed workflow selects as the version a release's own run proves.
+#: What `repo-policy.toml` declares about the release-time binding: which job
+#: resolves the release its run cut, the output it publishes that under, and
+#: the recipe it answers it with. Read rather than restated, because those three
+#: are what `just check-repo` holds the workflow to.
+BINDING = Repo(REPO_ROOT).policy["install_proof"]
 
-    Read out of the workflow rather than assumed: the whole point of that
-    expression is that a release-time run proves *that release*, and a journey
-    that hard-coded the answer would pass over a workflow that had stopped
-    saying it.
+
+def _release_time_version(checkout: Path, commit: str) -> str:
+    """The version a release-time run proves, answered by the recipe that workflow runs.
+
+    Read out of the committed workflow rather than assumed — which job resolves
+    it, and that every job proving a route takes THAT job's answer — and then
+    answered by driving the real recipe over a real repository. A journey that
+    hard-coded the version would pass over a workflow that had stopped binding
+    the proof to the run at all.
     """
     workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
-    stated = " ".join(str(workflow["env"][PRINTOBSERVER_PROOF_VERSION]).split())
-    truth(
-        "github.event_name == 'workflow_run'" in stated,
-        describing=f"{WORKFLOW} to select the version by which trigger fired: {stated}",
+    job = str(BINDING["release_job"])
+    recipe = str(BINDING["release_recipe"])
+    resolved = f"needs.{job}.outputs.{BINDING['release_output']}"
+    ran = " ".join(str(step.get("run", "")) for step in workflow["jobs"][job]["steps"])
+    contains(ran, f"just {recipe}", describing=f"what {WORKFLOW}'s `{job}` job resolves it with")
+    for name, declared in workflow["jobs"].items():
+        if any(
+            f"just {proof}" in str(step.get("run", ""))
+            for proof in ROUTES
+            for step in declared["steps"]
+        ):
+            contains(
+                " ".join(str((declared.get("env") or {})[PRINTOBSERVER_PROOF_VERSION]).split()),
+                resolved,
+                describing=f"the version job `{name}` proves",
+            )
+
+    result = capture(
+        ["just", recipe, commit, str(checkout)],
+        REPO_ROOT,
+        timeout=RECIPE_TIMEOUT_SECONDS,
+        env=clean_environment(PYTHONPATH=pythonpath()),
     )
-    for word in stated.replace("'", " ' ").split():
-        if word == RELEASE:
-            return RELEASE
-    message = f"{WORKFLOW}'s version selection names no release selector: {stated}"
-    raise AssertionError(message)
+    passing((result.returncode, output(result)), describing=f"`just {recipe}` over {checkout}")
+    field = str(BINDING["release_output"])
+    answered = [line for line in output(result).splitlines() if line.startswith(f"{field}=")]
+    equal(len(answered), 1, describing=f"the one `{field}=` line a job reads its output from")
+    return answered[0].partition("=")[2].strip()
 
 
 # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
@@ -176,11 +241,18 @@ def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published
     truth("release" not in triggers, describing=f"{WORKFLOW} not to fire on a release")
     equal(release["jobs"]["publish"]["needs"], "artifacts", describing="what the publish awaits")
     equal(release["jobs"]["artifacts"]["needs"], "release", describing="what the build awaits")
-    for job in install["jobs"].values():
-        contains(
-            " ".join(str(job.get("if", "")).split()),
-            "github.event.workflow_run.conclusion == 'success'",
-            describing="the condition every job of this proof carries",
+    gate = f"needs.{BINDING['release_job']}.outputs.{BINDING['release_output']}"
+    for name, job in install["jobs"].items():
+        if name == BINDING["release_job"]:
+            continue
+        condition = " ".join(str(job.get("if", "")).split())
+        contains(condition, gate, describing=f"what job `{name}` is gated on")
+        # And not on the triggering run's conclusion, which would skip the one
+        # run this tier exists for: the one whose release was cut and whose
+        # publish then failed.
+        truth(
+            "workflow_run.conclusion" not in condition,
+            describing=f"job `{name}` not to be gated on the run's conclusion: {condition}",
         )
 
 
@@ -233,36 +305,47 @@ def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serve
     truth("NOT SERVED\n" not in said, describing=f"the two outcomes to be told apart: {said}")
 
 
-def test_a_release_run_proves_the_release_rather_than_whatever_is_newest(
-    standing_in: Callable[..., Standin],
+def test_a_release_run_proves_the_release_it_cut_and_not_whatever_is_newest(
+    runs: Runs, standing_in: Callable[..., Standin]
 ) -> None:
-    """Driven with what the committed workflow selects on its release-time trigger.
+    """Two release-time runs, and the newer release is the other one's.
 
-    The stand-in forge lists a release no registry serves, which is what a
-    release whose publish did not happen looks like from the outside — and the
-    proof reports it rather than falling back on something that does install.
+    Every push to the base branch finishes a `release-plz` run and all but the
+    release ones cut nothing, so two runs in flight is ordinary. Keyed on the
+    newest the forge lists, the earlier run reports green over an artifact it
+    never looked at; keyed on the tag it left at its own commit, it proves its
+    own release.
     """
-    selector = _selected_by_a_release_run()
-    registries = standing_in("--serves", SERVED, "--release", f"v{UNSERVED}")
+    version = _release_time_version(runs.path, runs.at[SERVED])
+    registries = standing_in("--serves", SERVED, "--serves", LATER)
 
-    code, said = _recipe("prove-registry-pypi", registries.base, selector)
+    equal(version, SERVED, describing="the release the run this proof is keyed on cut")
+    code, said = _recipe("prove-registry-npm", registries.base, version)
+
+    passing((code, said), describing="the proof of that run's own release")
+    contains(said, f"printobserver {SERVED}", describing=said)
+    truth(LATER not in said, describing=f"another run's release to go unproven here: {said}")
+
+
+def test_a_release_run_whose_publish_failed_is_an_observable_failure(
+    runs: Runs, standing_in: Callable[..., Standin]
+) -> None:
+    """The release is cut and the publish after it fails: the state this tier is for.
+
+    Gated on the triggering run's conclusion, that run is skipped and the
+    missing publish is reported by nothing at all. Keyed on the release it cut,
+    the registries' silence is named — as a publish that did not happen rather
+    than as an artifact that does not work.
+    """
+    version = _release_time_version(runs.path, runs.at[LATER])
+    registries = standing_in("--serves", SERVED, "--release", f"v{LATER}")
+
+    equal(version, LATER, describing="the release the failed run had already cut")
+    code, said = _recipe("prove-registry-pypi", registries.base, version)
 
     failing((code, said), naming="NOT SERVED")
-    contains(said, UNSERVED, describing="the release the proof was keyed on")
-    contains(said, "the newest release the forge published", describing=said)
-
-
-def test_a_release_run_passes_over_the_release_the_forge_published(
-    standing_in: Callable[..., Standin],
-) -> None:
-    """And the same selector passes where that release is the one served."""
-    selector = _selected_by_a_release_run()
-    registries = standing_in("--serves", SERVED)
-
-    code, said = _recipe("prove-registry-npm", registries.base, selector)
-
-    passing((code, said), describing="the proof of the release the forge published")
-    contains(said, f"printobserver {SERVED}", describing=said)
+    contains(said, LATER, describing="the release the proof was keyed on")
+    contains(said, "publish that did not happen", describing=said)
 
 
 def test_the_tier_recipe_proves_every_route(standing_in: Callable[..., Standin]) -> None:

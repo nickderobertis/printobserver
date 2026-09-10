@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -28,10 +29,12 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
     UNREADABLE,
+    VERSION_FIELD,
     Bases,
     Outcome,
     Proof,
     RegistryError,
+    cut_at,
     ordered,
     prove,
     released,
@@ -43,6 +46,7 @@ from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Reg
 from release_artifacts.targets import named
 from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 #: The three routes an end user gets the program by, each taken from its own
 #: registry. Every one of them is driven against every outcome below.
@@ -782,3 +786,184 @@ def test_a_release_flag_that_is_not_a_boolean_is_refused(
         released(bases)
 
     contains(str(refused.value), "not the boolean its protocol serves", describing="what it said")
+
+
+#: Two release-time runs, in the order they finished. Each cut the release its
+#: own tag names, and the second one's release is another run's as far as the
+#: first is concerned — which is the whole of what binding a proof to a run is
+#: about.
+CUT = ("0.5.0", "0.6.0")
+
+
+@dataclass(frozen=True, slots=True)
+class Checkout:
+    """A real repository carrying the tag each release-time run left behind."""
+
+    path: Path
+    #: The commit each run ran at, by the version it cut.
+    at: dict[str, str]
+
+
+@pytest.fixture
+def checkout(tmp_path: Path) -> Checkout:
+    """Two release-time runs, in a real git repository.
+
+    A real one rather than a stand-in: what binds a release to the run that cut
+    it is the tag release automation left at that run's own commit, and git is
+    the only thing that can be asked about that.
+    """
+    root = tmp_path / "checkout"
+    root.mkdir(parents=True, exist_ok=True)
+
+    def git(*argv: str) -> str:
+        done = run(["git", *argv], cwd=root, timeout=60)
+        truth(done.returncode == 0, describing=f"`git {' '.join(argv)}`:\n{done.stderr}")
+        return done.stdout.strip()
+
+    git("init", "--initial-branch", "main")
+    git("config", "user.email", "release@example.invalid")
+    git("config", "user.name", "release automation")
+    at: dict[str, str] = {}
+    for version in CUT:
+        git("commit", "--allow-empty", "-m", f"chore: release v{version}")
+        git("tag", f"v{version}")
+        at[version] = git("rev-parse", "HEAD")
+    return Checkout(root, at)
+
+
+def resolved(checkout: Checkout, version: str, capsys: pytest.CaptureFixture[str]) -> str:
+    """The version the release-time run that cut `version` answers, through its own command.
+
+    Driven as the workflow drives it — the committed command line, whose one
+    line a job publishes an output from — rather than by calling in past it.
+    """
+    equal(
+        main(["released", "--commit", checkout.at[version], "--root", str(checkout.path)]),
+        0,
+        describing="the exit resolving a release-time run's own release answers with",
+    )
+    field, separator, said = capsys.readouterr().out.strip().partition("=")
+    equal(field, VERSION_FIELD, describing="the field a job reads its output from")
+    truth(bool(separator), describing="the output to be a field and a value")
+    return said
+
+
+def test_a_release_time_run_proves_the_release_it_cut_and_not_the_newest(
+    repo: Repo,
+    checkout: Checkout,
+    registries: Registries,
+    proving: Callable[..., Proof],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two runs finish, and the newer release is the other one's.
+
+    Keyed on the newest the forge lists, the earlier run reports green over an
+    artifact it never looked at while its own release goes unproven — and
+    `release_always` makes two runs in flight ordinary rather than rare. So the
+    release is bound to the run by the tag that run left at its own commit.
+    """
+    for version in CUT:
+        registries.serve(version)
+
+    version = resolved(checkout, "0.5.0", capsys)
+
+    equal(version, "0.5.0", describing="the release the run this proof is keyed on cut")
+    proof = proving("pypi:printobserver-cli", version)
+    equal(proof.outcome, Outcome.PROVEN, describing="the proof of that run's own release")
+    contains(proof.report, "printobserver 0.5.0", describing=proof.report)
+    truth("0.6.0" not in proof.report, describing="another run's release to go unproven here")
+
+
+def test_a_run_whose_release_was_never_published_is_an_observable_failure(
+    repo: Repo,
+    checkout: Checkout,
+    registries: Registries,
+    proving: Callable[..., Proof],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The release is cut and the publish after it fails: the state this tier exists for.
+
+    Gated on the triggering run's conclusion, that run is skipped and nothing
+    reports the missing publish at all. Gated on the release it cut, the run is
+    proven and the registries' silence is named — as a publish that did not
+    happen rather than as an artifact that does not work.
+    """
+    registries.serve("0.5.0")
+    registries.release("v0.6.0")
+
+    version = resolved(checkout, "0.6.0", capsys)
+
+    equal(version, "0.6.0", describing="the release the failed run had already cut")
+    proof = proving("npm:printobserver-cli", version)
+    equal(proof.outcome, Outcome.NOT_SERVED, describing="the proof of an unpublished release")
+    equal(proof.exit_status, 3, describing="the exit it answers with")
+    contains(proof.report, "publish that did not happen", describing=proof.report)
+    contains(proof.report, "0.6.0", describing=proof.report)
+
+
+def test_a_run_that_cut_no_release_answers_none(
+    checkout: Checkout, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every push finishes a release run and all but the release ones cut nothing.
+
+    The empty field is what the jobs proving a route are gated on, so an
+    ordinary push proves nothing rather than proving whatever was newest.
+    """
+    ordinary = run(
+        ["git", "commit", "--allow-empty", "-m", "fix: a change that released nothing"],
+        cwd=checkout.path,
+        timeout=60,
+    )
+    truth(ordinary.returncode == 0, describing=ordinary.stderr)
+    head = run(["git", "rev-parse", "HEAD"], cwd=checkout.path, timeout=60).stdout.strip()
+
+    equal(
+        main(["released", "--commit", head, "--root", str(checkout.path)]),
+        0,
+        describing="the exit a run that cut no release answers with",
+    )
+    equal(
+        capsys.readouterr().out.strip(),
+        f"{VERSION_FIELD}=",
+        describing="the empty field a run that cut nothing publishes",
+    )
+
+
+def test_a_checkout_that_does_not_carry_the_commit_is_refused(checkout: Checkout) -> None:
+    """A shallow clone answers `no release` for every commit, which passes over every publish."""
+    with pytest.raises(RegistryError) as refused:
+        cut_at(checkout.path, "0" * 40)
+
+    contains(str(refused.value), "does not carry the commit", describing="what it said")
+
+
+def test_a_commit_that_is_no_object_name_is_refused(checkout: Checkout) -> None:
+    """What arrives from an event payload reaches `git` as an argument."""
+    with pytest.raises(RegistryError) as refused:
+        cut_at(checkout.path, "the one that broke")
+
+    contains(str(refused.value), "no commit to key", describing="what it said")
+
+
+def test_two_releases_at_one_commit_are_refused(checkout: Checkout) -> None:
+    """Which release that run cut is then not something a tag can answer."""
+    tagged = run(["git", "tag", "v0.7.0", checkout.at["0.6.0"]], cwd=checkout.path, timeout=60)
+    truth(tagged.returncode == 0, describing=tagged.stderr)
+
+    with pytest.raises(RegistryError) as refused:
+        cut_at(checkout.path, checkout.at["0.6.0"])
+
+    contains(str(refused.value), "not something a tag can answer", describing="what it said")
+
+
+def test_resolving_a_release_without_naming_a_commit_is_refused(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The commit is the whole binding, so the command asking for one has to have it."""
+    equal(
+        main(["released", "--root", str(repo.root)]),
+        2,
+        describing="the exit naming no commit answers with",
+    )
+
+    contains(capsys.readouterr().err, "takes --commit", describing="what it said")
