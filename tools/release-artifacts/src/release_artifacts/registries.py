@@ -619,15 +619,28 @@ def _reported(program: Path, cwd: Path) -> str:
     ).strip()
 
 
-def _reported_as(version: str, said: str) -> bool:
-    """Whether what the installed program said is the version under test.
+def _answers(version: str) -> str:
+    """The whole answer an installed `printobserver` gives `--version`.
 
-    A substring is not the answer: `printobserver 10.3.0` contains `0.3.0`, so
-    a proof of one release would pass over the artifact of another — which is
-    the whole failure this tier exists to catch, arriving through the check for
-    it.
+    Its own name and the version it is, which is the one response that command
+    line contracts to give — and so the one thing a route's proof can read as
+    the artifact working rather than as the version appearing somewhere.
     """
-    return version in said.replace(",", " ").split()
+    return f"{PROGRAM} {version}"
+
+
+def _reported_as(version: str, said: str) -> bool:
+    """Whether the installed program ANSWERED `--version` with the version under test.
+
+    The whole answer, and not the version found somewhere in what the program
+    printed. Two ways a looser comparison passes over an artifact that does not
+    work, and both are the failure this tier exists to catch reporting itself
+    green: a substring lets `printobserver 10.3.0` prove `0.3.0`, and a version
+    among the words printed lets a program that ran and failed — one answering
+    `unexpected error 0.3.0` and exiting zero — prove the release it was
+    complaining about.
+    """
+    return said.strip() == _answers(version)
 
 
 def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) -> Proof:
@@ -682,7 +695,9 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
                 [
                     *preamble,
                     f"installed: {installed}",
-                    f"reported: {version}, which is not the version under test",
+                    f"reported: {version}",
+                    f"which is not the version under test: an installed "
+                    f"{PROGRAM} answers `--version` with `{_answers(selected.version)}`",
                 ],
             ),
         )

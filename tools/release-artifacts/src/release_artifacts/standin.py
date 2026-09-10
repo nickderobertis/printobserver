@@ -45,11 +45,15 @@ from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 # serve a newest the proof selecting from it disagreed about.
 from release_artifacts.registries import ordered
 
-#: The program a served package carries: it runs, and it says which version it
-#: is, which is the whole of what a route's own proof reads back from it.
+#: The program a served package carries: it runs, and it answers `--version`
+#: with whatever the caller asked it to, which is the whole of what a route's
+#: own proof reads back from it. The answer is a caller's rather than composed
+#: here, because a route is proven by the program giving the ONE answer its
+#: command line contracts to give — and a stand-in that could only ever give
+#: that answer could not falsify the comparison that reads it.
 STAND_IN = """#!/bin/sh
 if [ "${{1:-}}" = "--version" ]; then
-    echo "{PROGRAM} {reported}"
+    echo "{answer}"
     exit 0
 fi
 echo "{PROGRAM}: a stand-in program, which does nothing else" >&2
@@ -134,6 +138,7 @@ class Registries:
         version: str,
         *,
         reported: str = "",
+        says: str = "",
         broken: bool = False,
         listed: bool = True,
         carries_program: bool = True,
@@ -145,6 +150,13 @@ class Registries:
             version: The version each registry serves it as.
             reported: What the program it carries says its own version is,
                 which is `version` unless a caller asks for a mislabelled one.
+            says: The whole line that program answers `--version` with, where
+                a caller wants one that is not this program's own response at
+                all. An installed program that exits zero and prints something
+                else — a diagnostic naming the version it could not run as —
+                is an artifact that does not work, and a proof reading a
+                version out of it rather than reading its answer would call
+                that a pass.
             broken: Serve a program that installs and does not run.
             listed: List a release for it on the forge. A package registry
                 serving a version the forge never released is a publish that
@@ -161,7 +173,8 @@ class Registries:
                 `npm` skips: the install reports success, and what it left on
                 the path cannot run.
         """
-        body = BROKEN if broken else STAND_IN.format(PROGRAM=PROGRAM, reported=reported or version)
+        answer = says or f"{PROGRAM} {reported or version}"
+        body = BROKEN if broken else STAND_IN.format(PROGRAM=PROGRAM, answer=answer)
         program = self.into / f"program-{version}" / PROGRAM
         program.parent.mkdir(parents=True, exist_ok=True)
         program.write_text(body, encoding="utf-8")

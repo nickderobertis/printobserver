@@ -10,7 +10,9 @@ runs.
 Every direction is falsified rather than argued: a registry serving nothing for
 the version under test does not pass and says it was not served, one serving
 something that cannot be run does not pass and says so distinctly, one serving
-something mislabelled does not pass, and one serving a working artifact passes.
+something mislabelled does not pass, one whose program exits zero and prints
+the version inside something that is not its own answer does not pass, and one
+serving a working artifact passes.
 """
 
 from __future__ import annotations
@@ -171,6 +173,28 @@ def test_an_artifact_reporting_another_version_does_not_pass(
     equal(proof.outcome, Outcome.NOT_PROVEN, describing="the proof of a mislabelled artifact")
     equal(proof.exit_status, 1, describing="the exit it answers with")
     contains(proof.report, "not the version under test", describing=proof.report)
+
+
+def test_an_artifact_that_prints_the_version_without_answering_with_it_does_not_pass(
+    registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A program that exits zero and prints the version inside something else.
+
+    `printobserver --version` answers its own name and its own version, and
+    that whole answer is what proves a route. A comparison that looked for the
+    version among the words the program printed would call a diagnostic naming
+    the release it could not run as a pass — an installed program complaining
+    about `0.4.5` would prove `0.4.5`, which is the artifact this tier exists
+    to catch reporting itself green.
+    """
+    registries.serve("0.4.5", says="unexpected error 0.4.5")
+
+    proof = proving("pypi:printobserver-cli")
+
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing="the proof of that artifact")
+    equal(proof.exit_status, 1, describing="the exit it answers with")
+    contains(proof.report, "not the version under test", describing=proof.report)
+    contains(proof.report, "printobserver 0.4.5", describing="the answer that would have proven it")
 
 
 def test_the_version_a_caller_names_is_the_one_proven(
