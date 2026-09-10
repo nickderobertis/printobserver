@@ -95,11 +95,22 @@ class DocsPolicy:
 
 
 def _entries(table: dict[str, object], key: str) -> list[dict[str, object]]:
-    """The array-of-tables one key holds, or nothing where it holds none."""
-    value = table.get(key)
+    """Read every table, refusing malformed entries instead of dropping them.
+
+    Raises:
+        PolicyValueError: If a declared value is not an array of tables.
+    """
+    value = table.get(key, [])
     if not isinstance(value, list):
-        return []
-    return [entry for entry in value if isinstance(entry, dict)]
+        msg = f"`repo-policy.toml`'s `docs.{key}` must be an array of tables"
+        raise PolicyValueError(msg)
+    entries: list[dict[str, object]] = []
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            msg = f"`repo-policy.toml`'s `docs.{key}[{index}]` must be a table"
+            raise PolicyValueError(msg)
+        entries.append(entry)
+    return entries
 
 
 def docs_policy(repo: Repo) -> DocsPolicy:

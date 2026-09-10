@@ -256,3 +256,25 @@ def test_rejection_vocabulary_reads_unit_and_payload_variants(tmp_path: Path) ->
         {"idle", "limit", "requested", "message"},
         describing="the rejection tags and fields",
     )
+
+
+@pytest.mark.parametrize("key", ["skill_element", "document"])
+@pytest.mark.parametrize("value", ['"not an array"', '["not a table"]', '[{}, "not a table"]'])
+def test_malformed_documentation_entries_are_not_discarded(
+    tmp_path: Path, key: str, value: str
+) -> None:
+    """Every declared entry is validated, including one beside a valid table."""
+    valid = (
+        '{ name = "the role", marker = "## The role" }'
+        if key == "skill_element"
+        else '{ path = "guide.md", headings = ["What it covers"] }'
+    )
+    declaration = DECLARED[: DECLARED.index("[[docs.skill_element]]")]
+    declaration += 'skill_element = [{ name = "the role", marker = "## The role" }]\n'
+    declaration += 'document = [{ path = "guide.md", headings = ["What it covers"] }]\n'
+    declaration = declaration.replace(f"{key} = [{valid}]", f"{key} = {value.replace('{}', valid)}")
+    repo = _declaring(tmp_path, declaration)
+
+    for findings in (skill(repo), reference(repo), schema_document(repo)):
+        refused(findings, f"docs.{key}")
+        refused(findings, "must be")
