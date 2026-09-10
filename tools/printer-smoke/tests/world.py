@@ -26,6 +26,7 @@ from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
+RELAY = Path(__file__).resolve().parent / "relay.py"
 PROGRAM = REPO_ROOT / "target" / "debug" / "printobserver"
 
 #: What the smoke asks a machine for, and how long this harness lets it wait.
@@ -132,6 +133,38 @@ class World:
             timeout=timeout,
         )
 
+    def relaying(
+        self, *, hang_on: str, after: int = 0, armed_by: str = "", timeout_s: str = "2"
+    ) -> dict[str, str]:
+        """Put a relay in front of the program, which stops answering on one command.
+
+        A command that never answers is the failure a controlled machine cannot
+        be scripted into — it answers or it does not — so it is made here, by a
+        stand-in that passes every invocation through except the ones named.
+
+        Args:
+            hang_on: The client command it stops answering on.
+            after: How many of that command to answer normally first.
+            armed_by: A command that arms the hang, for a run that must reach
+                its cleanup before it meets a machine it cannot read.
+            timeout_s: The bound the smoke gives one command, in seconds.
+
+        Returns:
+            What this changes about the environment the smoke runs under.
+        """
+        relay = self.root / "printobserver-relay"
+        relay.write_text(RELAY.read_text(encoding="utf-8"), encoding="utf-8")
+        relay.chmod(0o755)
+        return {
+            "PRINTOBSERVER_SMOKE_PROGRAM": str(relay),
+            "PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S": timeout_s,
+            "SMOKE_RELAY_PROGRAM": str(self.program),
+            "SMOKE_RELAY_HANG_ON": hang_on,
+            "SMOKE_RELAY_AFTER": str(after),
+            "SMOKE_RELAY_ARMED_BY": armed_by,
+            "SMOKE_RELAY_STATE": str(self.root / "relay-state.json"),
+        }
+
     def interrupt_the_smoke(
         self, *, after: float = 8.0, duration_s: str = "30"
     ) -> subprocess.CompletedProcess[str]:
@@ -150,7 +183,21 @@ class World:
             The completed run, including everything it said while cleaning up.
         """
         return run(
-            ["timeout", "--signal=INT", str(after), sys.executable, str(SMOKE), "--run"],
+            [
+                "timeout",
+                # Only the smoke itself, rather than a process group. Without
+                # this, `timeout` signals the group — and the group is where the
+                # `printobserver` commands the smoke is spawning at that instant
+                # live, so a run could be interrupted between spawning one and
+                # reading it. What a person's own interrupt reaches is the
+                # program they started, and this is that.
+                "--foreground",
+                "--signal=INT",
+                str(after),
+                sys.executable,
+                str(SMOKE),
+                "--run",
+            ],
             cwd=REPO_ROOT,
             env=self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s}),
             timeout=300,

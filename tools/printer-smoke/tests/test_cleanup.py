@@ -28,24 +28,27 @@ STAGES: tuple[tuple[str, str, int], ...] = (
 )
 
 
-def left_as_found(world: World, found: dict[str, float], *, after: str) -> None:
+def left_as_found(world: World, found: dict[str, float], *, after: str, said: str = "") -> None:
     """Fail unless the machine carries what this run found, and nothing of the run.
 
     Args:
         world: The machine the run drove.
         found: What it was holding before the run.
         after: What the run did, for the failure message.
+        said: Everything the run said, so that a failure here is diagnosable
+            from its own output rather than from a second run.
 
     Raises:
         AssertionError: If the print is not cancelled, if a value was not put
             back, or if the printer is not operational.
     """
+    where = f"{after}, which said:\n{said}" if said else after
     for name, value in found.items():
-        equal(world.substitute.held(name), value, describing=f"`{name}` after {after}")
-    equal(world.substitute.state(), "operational", describing=f"the printer after {after}")
+        equal(world.substitute.held(name), value, describing=f"`{name}` after {where}")
+    equal(world.substitute.state(), "operational", describing=f"the printer after {where}")
     truth(
         world.substitute.printer.job_state not in {"printing", "paused"},
-        describing=f"no job to be running after {after}; it is "
+        describing=f"no job to be running after {where}; it is "
         f"{world.substitute.printer.job_state!r}",
     )
 
@@ -57,7 +60,7 @@ def test_a_run_that_completes_leaves_the_machine_as_it_found_it(world: World) ->
     run = world.smoke("--run")
 
     equal(run.returncode, 0, describing="the exit of a run that completed")
-    left_as_found(world, found, after="a run that completed")
+    left_as_found(world, found, after="a run that completed", said=run.stdout)
 
 
 def test_an_interrupted_run_leaves_the_machine_as_it_found_it(world: World) -> None:
@@ -71,7 +74,7 @@ def test_an_interrupted_run_leaves_the_machine_as_it_found_it(world: World) -> N
         "start_print" in world.substitute.commands,
         describing="the interrupted run to have started the print before it was stopped",
     )
-    left_as_found(world, found, after="a run somebody interrupted")
+    left_as_found(world, found, after="a run somebody interrupted", said=run.stdout)
 
 
 @pytest.mark.parametrize(
@@ -88,7 +91,7 @@ def test_a_run_failed_at_a_stage_leaves_the_machine_as_it_found_it(
 
     equal(run.returncode, 1, describing=f"the exit of a run failed at `{stage}`")
     contains(run.stdout, f"FAILED at `{stage}`", describing="what the failed run said")
-    left_as_found(world, found, after=f"a run failed at `{stage}`")
+    left_as_found(world, found, after=f"a run failed at `{stage}`", said=run.stdout)
 
 
 def test_a_run_whose_cleanup_cannot_put_a_value_back_exits_non_zero(world: World) -> None:
@@ -141,4 +144,78 @@ def test_a_restore_that_cannot_be_made_is_still_attempted_for_the_rest(world: Wo
         < next(i for i, line in enumerate(said) if "LEFT CHANGED" in line),
         describing="the verification point that failed to be reported before the cleanup, "
         f"so that the cleanup never replaces it as the cause; it said:\n{run.stdout}",
+    )
+
+
+def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
+    world: World,
+) -> None:
+    """A command that hangs is one adjustable's failure and not the cleanup's end.
+
+    The fourth request of the feedrate — the one the cancel step makes to put it
+    back — never answers. The four adjustables after it are still put back, the
+    print is still cancelled, and what the run reports first is the verification
+    point that failed rather than the cleanup beneath it.
+    """
+    found = dict(world.substitute.printer.values)
+
+    run = world.smoke(
+        "--run",
+        environment=world.relaying(hang_on="set-feedrate-factor", after=3),
+        timeout=600,
+    )
+
+    equal(run.returncode, 1, describing="the exit of a run whose restoration never answered")
+    contains(run.stdout, "never ran to completion", describing="what it said about the command")
+    for name in ("flowrate", "tool_target:0", "bed_target", "fan"):
+        equal(
+            world.substitute.held(name),
+            found[name],
+            describing=f"`{name}`, which the hung restore of `feedrate` must not have cost",
+        )
+    equal(
+        world.substitute.state(),
+        "operational",
+        describing="the printer, which the hung restore must not have cost the cancel",
+    )
+    truth(
+        world.substitute.printer.job_state not in {"printing", "paused"},
+        describing="the print to have been cancelled after the restoration never answered",
+    )
+    contains(run.stdout, "LEFT CHANGED: `feedrate`", describing="what it said")
+    said = run.stdout.splitlines()
+    truth(
+        next(i for i, line in enumerate(said) if "FAILED at" in line)
+        < next(i for i, line in enumerate(said) if "LEFT CHANGED" in line),
+        describing="the verification point that failed to be reported before the cleanup, "
+        f"so that the cleanup never replaces it as the cause; it said:\n{run.stdout}",
+    )
+
+
+def test_a_final_read_that_never_answers_is_reported_rather_than_passed_over(
+    world: World,
+) -> None:
+    """A machine this run cannot see afterwards is not one it may report green on.
+
+    Every verification point passes, and from the history read onwards the
+    machine stops answering. The cancellation is still attempted over a state
+    nothing could read — the safe half of that ignorance — and the run exits
+    non-zero saying what it could not tell rather than `passed`.
+    """
+    run = world.smoke(
+        "--run",
+        environment=world.relaying(hang_on="status", armed_by="history", timeout_s="1"),
+        timeout=600,
+    )
+
+    equal(run.returncode, 1, describing="the exit of a run that could not read the machine")
+    absent(run.stdout, "passed:", describing="what a run that could not see the machine said")
+    absent(run.stdout, "FAILED at", describing="what it said: no verification point failed")
+    contains(run.stdout, "UNVERIFIED:", describing="what it said")
+    contains(run.stdout, "could not be read", describing="what it said")
+    equal(
+        world.substitute.commands.count("cancel"),
+        2,
+        describing="the cancels the machine received: the sequence's own, and the cleanup's "
+        "over a state it could not read",
     )

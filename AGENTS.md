@@ -407,6 +407,20 @@ than the failure it would be hiding. Where a verification point *did* fail, that
 failure is what is reported first and the cleanup is reported beneath it: a
 cleanup that could not finish never replaces the cause a reader needs.
 
+**A command that never answers is that command's failure and nothing more.** A
+run that hung, or one whose program could not be started at all, comes back as
+an exit no answer carries rather than as an exception out of the middle of the
+cleanup — because letting one out there would abandon the restorations after it
+and the cancellation with them, on a machine this run has already moved. So the
+bound one command is given (`PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S`, two minutes
+by default) is enforced where the command is run, a restoration that never
+answers costs that adjustable and no other, and a cancellation is still asked
+for over a machine whose state could not be read — a print that is not running
+refuses it and nothing moves, while one that is running is this run's own and
+must not be left behind. And where the last look at the machine is the thing
+that did not answer, that is `UNVERIFIED` and it fails the run too: a machine
+nothing could see is not one this test may report green on.
+
 **What to watch while it runs.** Stay next to the machine — this is not a test
 to start and walk away from. Watch the first layer go down after the print
 starts; watch the nozzle and bed temperatures as the two heater adjustments are

@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 import tomllib
@@ -82,8 +83,11 @@ DEFAULT_SETTLE_S = 60.0
 DURATION_ENV = "PRINTOBSERVER_SMOKE_DURATION_S"
 DEFAULT_DURATION_S = 20
 
-#: How long any one command is given to answer.
-COMMAND_TIMEOUT_S = 120.0
+#: How long any one command is given to answer. A command that never answers is
+#: a failure of that command rather than one this run may walk away from, so the
+#: bound is here and the timeout is caught where the command is run.
+COMMAND_TIMEOUT_ENV = "PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S"
+DEFAULT_COMMAND_TIMEOUT_S = 120.0
 
 #: How often the machine is asked what it is reporting.
 POLL_PAUSE_S = 1.0
@@ -158,6 +162,12 @@ KNOBS: tuple[Knob, ...] = (
 
 CLIENT_SUCCESS = 0
 CLIENT_REJECTED = 5
+
+#: What this smoke records for a command that earned no exit at all: one that
+#: never answered inside its bound, or that could not be started. It is not one
+#: of the program's own exits and is deliberately none of them, so that nothing
+#: reading an exit can mistake it for an answer.
+CLIENT_UNRUN = -1
 
 # ~~ the sequence this smoke verifies, named so a failure says where it was
 
@@ -279,6 +289,12 @@ class Answer:
     document: object
     said: str
 
+    def what_became_of_it(self) -> str:
+        """What happened to the command, for a message a person acts on."""
+        if self.exit == CLIENT_UNRUN:
+            return f"never ran to completion: {self.said.strip()}"
+        return f"exited {self.exit}: {self.said.strip()}"
+
 
 @dataclass
 class Smoke:
@@ -291,12 +307,14 @@ class Smoke:
     state_dir: Path
     settle_s: float
     duration_s: int
+    command_timeout_s: float = DEFAULT_COMMAND_TIMEOUT_S
     manifest: object = None
     record: dict[str, object] = field(default_factory=dict)
     bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
     found: dict[str, float] = field(default_factory=dict)
     actions: list[str] = field(default_factory=list)
     left_changed: list[str] = field(default_factory=list)
+    unverified: list[str] = field(default_factory=list)
     started: bool = False
     cleaned: bool = False
 
@@ -307,22 +325,36 @@ class Smoke:
             command: The client command, as this program's own surface spells it.
             *arguments: Its own options.
 
+        A command that never answers inside its bound, and one that could not be
+        started at all, come back as `CLIENT_UNRUN` rather than as an exception.
+        Both are failures of that one command, and the caller that has to know
+        about them is the one making it — a cleanup that let either escape would
+        abandon the restorations after it and the cancellation with them, which
+        is the one thing this program must not do on a machine it has moved.
+
         Returns:
             The exit it earned, the document it printed and everything it said.
         """
-        completed = run(
-            [
-                self.program,
-                command,
-                "--print-id",
-                self.print_id,
-                "--json",
-                "--config",
-                str(self.config),
-                *arguments,
-            ],
-            timeout=COMMAND_TIMEOUT_S,
-        )
+        argv = [
+            self.program,
+            command,
+            "--print-id",
+            self.print_id,
+            "--json",
+            "--config",
+            str(self.config),
+            *arguments,
+        ]
+        try:
+            completed = run(argv, timeout=self.command_timeout_s)
+        except subprocess.TimeoutExpired:
+            return Answer(
+                CLIENT_UNRUN,
+                None,
+                f"it did not answer within {self.command_timeout_s:g}s and was stopped",
+            )
+        except OSError as error:
+            return Answer(CLIENT_UNRUN, None, f"it could not be run: {error}")
         try:
             document = json.loads(completed.stdout)
         except json.JSONDecodeError:
@@ -346,7 +378,7 @@ class Smoke:
         answer = self.ask(command, "--actor", ACTOR, "--reason", REASON, *arguments)
         if answer.exit != CLIENT_SUCCESS:
             raise VerificationError(
-                step, f"`{command}` exited {answer.exit} rather than doing it: {answer.said}"
+                step, f"`{command}` {answer.what_became_of_it()} rather than doing it"
             )
         recorded = at(answer.document, "/record/id")
         if isinstance(recorded, str):
@@ -354,8 +386,35 @@ class Smoke:
         return answer
 
     def status(self) -> object:
-        """One status read of this print, as the document it answers."""
+        """One status read of this print, as the document it answers.
+
+        Tolerant on purpose: this is what the polling reads, where a read that
+        did not answer is one more round of not having settled yet. Where a
+        single read has to be believed — a value about to be put back, the last
+        look at the machine — `observed` is the one to use.
+        """
         return self.ask("status").document
+
+    def observed(self, step: str) -> object:
+        """One status read that has to have answered, as the document it answers.
+
+        Args:
+            step: The verification point to blame a failed read on.
+
+        Returns:
+            The document the read answered.
+
+        Raises:
+            VerificationError: If the read did not answer, so that a caller
+                cannot mistake a machine it could not see for one holding
+                nothing.
+        """
+        answer = self.ask("status")
+        if answer.exit != CLIENT_SUCCESS:
+            raise VerificationError(
+                step, f"the printer could not be read: `status` {answer.what_became_of_it()}"
+            )
+        return answer.document
 
     def settles(self, pointer: str, expected: object, *, numeric: bool = False) -> object:
         """Poll the machine until it reports `expected`, and answer what it reports.
@@ -615,7 +674,11 @@ class Smoke:
 
         Every adjustable is attempted, and one that could not be put back does
         not cost the rest: a run that gave up on the first failure would leave
-        the machine holding every value after it.
+        the machine holding every value after it. The read that decides whether
+        a value needs putting back at all is inside that attempt for the same
+        reason — a read that never answers is one adjustable's problem, and
+        letting it out of here would abandon the four after it and the
+        cancellation with them.
 
         Args:
             step: The verification point to blame a failure on.
@@ -629,9 +692,9 @@ class Smoke:
             value = self.found.get(knob.adjustable)
             if value is None:
                 continue
-            if number_at(self.status(), knob.reported_at) == value:
-                continue
             try:
+                if number_at(self.observed(step), knob.reported_at) == value:
+                    continue
                 self.act(step, knob.command, *knob.asking(value))
                 self.requires(step, knob.reported_at, value, numeric=True)
             except VerificationError as failure:
@@ -666,17 +729,25 @@ class Smoke:
                 doing()
             except VerificationError as failure:
                 say(f"cleanup could not {what}: {failure.detail}")
-        self.left_changed = self.still_changed()
+        try:
+            self.left_changed = self.changed_in(self.observed(STEP_CLEANUP))
+        except VerificationError as failure:
+            # A machine that cannot be read is not a machine that was left as
+            # it was found. Saying nothing here would be the same green report
+            # over an unknown machine that reporting it changed would be over a
+            # known one, so this is a failure of its own rather than a silence.
+            self.unverified.append(
+                f"whether this run left anything on the machine could not be read: {failure.detail}"
+            )
 
-    def still_changed(self) -> list[str]:
-        """Everything the machine is holding that this run did not find there.
+    def changed_in(self, document: object) -> list[str]:
+        """Everything one reading shows the machine holding that this run left.
 
         Read off the machine rather than inferred from what the cleanup managed
         to do: a restore that was accepted and did not take leaves the machine
         altered exactly as one that was refused, and what a person needs is
         which values are still this run's own.
         """
-        document = self.status()
         changed = [
             f"`{knob.adjustable}` is {number_at(document, knob.reported_at)!r} rather than "
             f"the {value:g} this run found there"
@@ -690,12 +761,22 @@ class Smoke:
         return changed
 
     def _cancel_quietly(self) -> None:
-        """Cancel the print, when the machine still reports one to cancel.
+        """Cancel the print, unless the machine is known to have none to cancel.
+
+        A read that did not answer leaves what the machine is doing unknown, and
+        the safe half of that ignorance is to ask for the cancel anyway: a print
+        that is not running refuses it and nothing moves, while one that is
+        running is a print this run started and must not leave behind.
 
         Raises:
             VerificationError: If the cancel was refused.
         """
-        if at(self.status(), "/printer/connection") not in RUNNING_STATES:
+        try:
+            reported = at(self.observed(STEP_CLEANUP), "/printer/connection")
+        except VerificationError as failure:
+            say(f"cleanup could not read what the machine is doing: {failure.detail}")
+            reported = None
+        if reported is not None and reported not in RUNNING_STATES:
             return
         self.act(STEP_CLEANUP, "cancel")
 
@@ -954,6 +1035,7 @@ def smoke_of(environ: dict[str, str], device: str) -> Smoke:
         state_dir=Path(environ.get("OCTOPRINT_ENV_STATE_DIR", OCTOPRINT_STATE_DIR)),
         settle_s=float(environ.get(SETTLE_ENV, DEFAULT_SETTLE_S)),
         duration_s=int(environ.get(DURATION_ENV, DEFAULT_DURATION_S)),
+        command_timeout_s=float(environ.get(COMMAND_TIMEOUT_ENV, DEFAULT_COMMAND_TIMEOUT_S)),
     )
 
 
@@ -966,11 +1048,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         Zero when this test was not selected, when a precondition refused it and
         when it passed and left the machine as it found it; one when a
-        verification point was not satisfied, when the run was interrupted, and
-        when the cleanup could not put back something this run changed — the
-        last of those whether or not anything else went wrong, because a green
-        report over a machine still holding this run's own values is the worst
-        answer this program could give.
+        verification point was not satisfied, when the run was interrupted, when
+        the cleanup could not put back something this run changed, and when it
+        could not read the machine afterwards to tell — the last two whether or
+        not anything else went wrong, because a green report over a machine
+        still holding this run's own values, or over one nothing could see, is
+        the worst answer this program could give.
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
     environ = dict(os.environ)
@@ -1022,8 +1105,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for still in smoke.left_changed:
         say(f"LEFT CHANGED: {still}")
-    if smoke.left_changed:
-        say("this run did not leave the machine as it found it. Put it right before printing.")
+    for unknown in smoke.unverified:
+        say(f"UNVERIFIED: {unknown}")
+    if smoke.left_changed or smoke.unverified:
+        say("look at the machine before printing on it again.")
         return 1
     if outcome != 0:
         return outcome
