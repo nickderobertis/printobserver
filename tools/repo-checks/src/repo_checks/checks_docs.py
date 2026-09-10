@@ -158,9 +158,24 @@ def skill(repo: Repo) -> list[str]:
     if not repo.exists(policy.skill):
         return [f"the committed skill `{policy.skill}` is absent"]
 
-    text = repo.read(policy.skill)
-    findings: list[str] = []
+    if not repo.exists(policy.bundle_source):
+        return [
+            f"the source that bundles the reference documents, `{policy.bundle_source}`, is absent"
+        ]
 
+    text = repo.read(policy.skill)
+    return [
+        *_bounds(policy, text),
+        *_reference_material(repo, policy, text),
+        *_skill_links(repo, policy, text),
+        *_bundled_references(repo, policy, repo.read(policy.bundle_source)),
+        *_missing_elements(policy, text),
+    ]
+
+
+def _bounds(policy: DocsPolicy, text: str) -> list[str]:
+    """The two bounds, which are two because either alone is satisfiable by shape."""
+    findings: list[str] = []
     characters = len(text)
     lines = text.splitlines()
     if characters > policy.skill_max_characters:
@@ -174,23 +189,23 @@ def skill(repo: Repo) -> list[str]:
         findings.append(
             f"`{policy.skill}` is {len(lines)} lines, and the bound is {policy.skill_max_lines}"
         )
+    return findings
 
-    findings.extend(_reference_material(repo, policy, text))
-    findings.extend(_skill_links(repo, policy, text))
-    findings.extend(_bundled_references(repo, policy))
+
+def _missing_elements(policy: DocsPolicy, text: str) -> list[str]:
+    """Everything the skill owes in its own text and does not say."""
     # Markers are matched over whitespace-normalized text, so a passage that
     # wraps at a different column is the same passage. What removing the passage
     # removes is the marker, which is what this is about.
     flowed = " ".join(text.split())
-    findings.extend(
+    return [
         f"`{policy.skill}` carries nothing saying {element.name}. That is the whole of "
         f"what the agent is given before it starts reading, so it cannot be left to a "
         f"document the skill links to. The passage carrying it is the one whose text "
         f"reads `{element.marker}`."
         for element in policy.elements
         if " ".join(element.marker.split()) not in flowed
-    )
-    return findings
+    ]
 
 
 def _reference_material(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
@@ -283,21 +298,17 @@ def _skill_links(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
     return findings
 
 
-def _bundled_references(repo: Repo, policy: DocsPolicy) -> list[str]:
+def _bundled_references(repo: Repo, policy: DocsPolicy, source: str) -> list[str]:
     """The built artifact carries every document the skill is allowed to link to.
 
     Read off the `include_str!` calls of the source that ships the skill and
     compared with the declared documents **on the filesystem**, so a document is
     bundled by being that document rather than by being spelled the same way.
     """
-    if not repo.exists(policy.bundle_source):
-        return [
-            f"the source that bundles the reference documents, `{policy.bundle_source}`, is absent"
-        ]
     beside = repo.path(policy.bundle_assets)
     carried = {
         (beside / captured).resolve()
-        for captured in BUNDLED.findall(repo.read(policy.bundle_source))
+        for captured in BUNDLED.findall(source)
         if captured.startswith(f"{policy.bundle_directory}/")
     }
     declared = {repo.path(document.path).resolve(): document.path for document in policy.documents}
@@ -697,12 +708,28 @@ def schema_document(repo: Repo) -> list[str]:
             f"`{policy.schema_directory}` declares no schema at all, so the schema "
             f"document inventories nothing"
         ]
-    text = repo.read(policy.schema_document)
-    named = entries_of(text)
-    findings = _inventory(
-        named, [name for _, name, _ in members], policy.schema_document, "schema-emitting type"
+    return _schema_findings(
+        policy,
+        repo.read(policy.schema_document),
+        schema_document_text(repo, policy),
+        [name for _, name, _ in members],
     )
-    if text != schema_document_text(repo, policy):
+
+
+def _schema_findings(
+    policy: DocsPolicy, text: str, generated: str, declared: list[str]
+) -> list[str]:
+    """The document is what the types generate, over the whole declared set.
+
+    Two rules rather than one, because comparing the document with a generator's
+    output catches only what the generator was handed: a generator whose input
+    omitted a declared type writes a document that matches its own output exactly
+    and is missing that type. The declared set is read beside it for that reason.
+    """
+    findings = _inventory(
+        entries_of(text), declared, policy.schema_document, "schema-emitting type"
+    )
+    if text != generated:
         findings.append(
             f"`{policy.schema_document}` is not what the types generate. It is generated "
             f"rather than written: run `just docs-generate`."

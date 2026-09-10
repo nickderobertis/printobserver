@@ -1,24 +1,37 @@
 """The skill is short, carries what it owes, and restates nothing.
 
-Every test here drives the committed check against a real copy of the committed
-tree with one defect in it. The defects are the ones the skill's own rules are
-about: it is over either bound, it carries reference material in one of the
-forms reference material takes, it links to a document that is not there, it
-omits a link to one that is, or one of the nine things it owes is gone.
+The positive half drives the committed check over the committed tree. The
+negative half hands each of the check's own rules a bad value and reads the
+finding back — no copy of this repository is assembled to do it, because the
+rules are functions over the skill's text and a string is the cheapest thing
+that is genuinely one of their inputs.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
-from repo_checks.checks_docs import skill
-from repo_checks.docs import docs_policy
+from repo_checks.checks_docs import (
+    _bounds,
+    _bundled_references,
+    _missing_elements,
+    _reference_material,
+    _skill_links,
+    skill,
+)
+from repo_checks.docs import DocsPolicy, docs_policy
 from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
-from treecopy import Tree
 
-SKILL = "crates/printobserver-oneharness/assets/printobserver-skill.md"
+
+def _policy(committed: Repo) -> DocsPolicy:
+    """The `[docs]` declarations the skill's rules are read out of."""
+    return docs_policy(committed)
+
+
+def _skill_text(committed: Repo) -> str:
+    """The committed skill, which every negative below starts from."""
+    return committed.read(_policy(committed).skill)
 
 
 def test_the_committed_skill_is_accepted(committed: Repo) -> None:
@@ -33,158 +46,130 @@ def test_the_check_enforces_the_bounds_this_repository_declares(committed: Repo)
     could exceed, and would pass every test in this file while buying none of
     the discipline the bounds are for.
     """
-    policy = docs_policy(committed)
+    policy = _policy(committed)
 
     equal(policy.skill_max_characters, 6000, describing="the character bound")
     equal(policy.skill_max_lines, 150, describing="the line bound")
 
 
-def test_a_skill_over_the_character_bound_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_over_the_character_bound_is_refused(committed: Repo) -> None:
     """One very long line satisfies a line count and is refused all the same."""
-    copy = tree()
-    copy.append(SKILL, "\nA sentence about nothing. " * 400 + "\n")
+    policy = _policy(committed)
 
-    refused(skill(copy.repo), "characters, and the bound is 6000")
+    refused(
+        _bounds(policy, "A sentence about nothing. " * 400),
+        "characters, and the bound is 6000",
+    )
 
 
-def test_a_skill_over_the_line_bound_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_over_the_line_bound_is_refused(committed: Repo) -> None:
     """A wall of short lines satisfies a character count and is refused too."""
-    copy = tree()
-    copy.append(SKILL, "\n" + "x\n" * 200)
+    policy = _policy(committed)
 
-    refused(skill(copy.repo), "lines, and the bound is 150")
+    refused(_bounds(policy, "x\n" * 200), "lines, and the bound is 150")
 
 
-def test_a_skill_carrying_a_fenced_example_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_carrying_a_fenced_example_is_refused(committed: Repo) -> None:
     """A worked example belongs in a reference document."""
-    copy = tree()
-    copy.append(SKILL, "\n```console\nprintobserver context\n```\n")
+    policy = _policy(committed)
+    text = "```console\nprintobserver context\n```\n"
 
-    refused(skill(copy.repo), "opens a fenced block")
+    refused(_reference_material(committed, policy, text), "opens a fenced block")
 
 
-def test_a_skill_carrying_an_indented_example_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_carrying_an_indented_example_is_refused(committed: Repo) -> None:
     """The same example without a fence is the same example."""
-    copy = tree()
-    copy.append(SKILL, "\nRun it like this:\n\n    printobserver context\n")
+    policy = _policy(committed)
+    text = "Run it like this:\n\n    printobserver context\n"
 
-    refused(skill(copy.repo), "is an indented block")
+    refused(_reference_material(committed, policy, text), "is an indented block")
 
 
-def test_a_skill_carrying_an_argument_table_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_carrying_an_argument_table_is_refused(committed: Repo) -> None:
     """An argument table belongs in a reference document."""
-    copy = tree()
-    copy.append(SKILL, "\n| Option | Meaning |\n| ------ | ------- |\n")
+    policy = _policy(committed)
+    text = "| Option | Meaning |\n| ------ | ------- |\n"
 
-    refused(skill(copy.repo), "is a table row")
+    refused(_reference_material(committed, policy, text), "is a table row")
 
 
-def test_a_skill_carrying_an_argument_list_as_prose_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_a_skill_carrying_an_argument_list_as_prose_is_refused(committed: Repo) -> None:
     """A list of arguments written as a sentence is still a list of arguments."""
-    copy = tree()
-    copy.append(
-        SKILL,
-        "\nThe adjustment takes print_id, factor and reason, and duration_s when the "
-        "change is meant to be temporary.\n",
+    policy = _policy(committed)
+    text = (
+        "The adjustment takes print_id, factor and reason, and duration_s when the "
+        "change is meant to be temporary.\n"
     )
 
-    refused(skill(copy.repo), "names `print_id`")
+    refused(_reference_material(committed, policy, text), "names `print_id`")
 
 
-def test_a_skill_carrying_an_argument_list_as_bullets_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_a_skill_carrying_an_argument_list_as_bullets_is_refused(committed: Repo) -> None:
     """And so is one written as bullets rather than as a table."""
-    copy = tree()
-    copy.append(
-        SKILL,
-        "\n- --print-id — the print it is about\n- --factor — the multiplier asked for\n",
-    )
+    policy = _policy(committed)
+    text = "- --print-id — the print it is about\n- --factor — the multiplier asked for\n"
 
-    refused(skill(copy.repo), "names the option `--print-id`")
+    refused(_reference_material(committed, policy, text), "names the option `--print-id`")
 
 
-def test_a_skill_describing_an_output_shape_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_describing_an_output_shape_is_refused(committed: Repo) -> None:
     """What a command answers is a reference document's to describe."""
-    copy = tree()
-    copy.append(
-        SKILL,
-        "\nThe read answers `recent_events` and `interventions` beside the rest.\n",
-    )
+    policy = _policy(committed)
+    text = "The read answers `recent_events` and `interventions` beside the rest.\n"
 
-    refused(skill(copy.repo), "which is part of the command surface")
+    refused(_reference_material(committed, policy, text), "which is part of the command surface")
 
 
-def test_a_skill_carrying_a_schema_fragment_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_carrying_a_schema_fragment_is_refused(committed: Repo) -> None:
     """The schemas are generated into a reference document of their own."""
-    copy = tree()
-    copy.append(SKILL, '\nThe answer looks like {"type": "object"} at the top.\n')
+    policy = _policy(committed)
+    text = 'The answer looks like {"type": "object"} at the top.\n'
 
-    refused(skill(copy.repo), "carries a schema or document fragment")
+    refused(_reference_material(committed, policy, text), "carries a schema or document fragment")
 
 
-def test_a_skill_linking_to_a_document_that_is_not_there_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_a_skill_linking_to_a_document_that_is_not_there_is_refused(committed: Repo) -> None:
     """A link the reader cannot follow is worse than no link."""
-    copy = tree()
-    copy.append(SKILL, "\n- [Something else](docs/reference/nothing-here.md)\n")
+    policy = _policy(committed)
+    text = f"{_skill_text(committed)}\n- [Something else](reference/nothing-here.md)\n"
 
-    refused(skill(copy.repo), "links to `docs/reference/nothing-here.md`")
+    refused(_skill_links(committed, policy, text), "links to `reference/nothing-here.md`")
 
 
-def test_a_skill_omitting_a_declared_document_is_refused(tree: Callable[[], Tree]) -> None:
+def test_a_skill_omitting_a_declared_document_is_refused(committed: Repo) -> None:
     """Everything the skill does not say has to be reachable from it."""
-    copy = tree()
-    dropped = docs_policy(copy.repo).documents[-1].path
+    policy = _policy(committed)
+    dropped = policy.documents[-1].path
     # The skill links to it by the path it sits at beside the skill, which is
     # the path an installed program reproduces.
     linked = f"reference/{Path(dropped).name}"
-    copy.write(
-        SKILL,
-        "\n".join(line for line in copy.read(SKILL).splitlines() if f"({linked})" not in line)
-        + "\n",
+    text = "\n".join(
+        line for line in _skill_text(committed).splitlines() if f"({linked})" not in line
     )
 
-    refused(skill(copy.repo), f"links to no declared reference document `{dropped}`")
+    refused(
+        _skill_links(committed, policy, text),
+        f"links to no declared reference document `{dropped}`",
+    )
 
 
-def _passage_start(lines: list[str], marker: str) -> int:
-    """The line one passage of the skill opens on, whatever column it wraps at."""
-    wanted = " ".join(marker.split())
-    for index in range(len(lines)):
-        if wanted in " ".join(" ".join(lines[index:]).split()):
-            continue
-        return index - 1
-    msg = f"the skill carries no passage marked {marker!r}"
-    raise AssertionError(msg)
+def test_a_skill_link_that_climbs_out_of_its_own_directory_is_refused(committed: Repo) -> None:
+    """An installed program can only carry what sits beside the skill it wrote."""
+    policy = _policy(committed)
+    text = f"{_skill_text(committed)}\n- [Somewhere else](../../../docs/reference/testing.md)\n"
+
+    refused(_skill_links(committed, policy, text), "which climbs out of the skill's own directory")
 
 
-def _opens_a_passage(line: str) -> bool:
-    """Whether one line of the skill opens a passage of its own."""
-    stripped = line.lstrip()
-    if line.startswith("## ") or stripped.startswith("- **"):
-        return True
-    head, _, rest = stripped.partition(". **")
-    return bool(rest) and head.isdigit()
+def test_a_skill_link_to_an_address_rather_than_a_path_is_refused(committed: Repo) -> None:
+    """A link off the host is one an agent with no network cannot follow."""
+    policy = _policy(committed)
+    text = f"{_skill_text(committed)}\n- [Somewhere else](https://example.invalid/testing.md)\n"
+
+    refused(_skill_links(committed, policy, text), "which is not a path beside the skill")
 
 
-def _without(text: str, marker: str) -> str:
-    """The skill with the passage carrying one marker taken out, and nothing else."""
-    lines = text.splitlines()
-    start = _passage_start(lines, marker)
-    end = start + 1
-    while end < len(lines) and not _opens_a_passage(lines[end]):
-        end += 1
-    return "\n".join(lines[:start] + lines[end:]) + "\n"
-
-
-def test_a_skill_omitting_any_of_the_nine_things_it_owes_is_refused(
-    tree: Callable[[], Tree],
-    committed: Repo,
-) -> None:
+def test_a_skill_omitting_any_of_the_nine_things_it_owes_is_refused(committed: Repo) -> None:
     """Being short, restating nothing and linking correctly is not enough.
 
     Every other rule about the skill is about what it may not carry. These are
@@ -192,39 +177,23 @@ def test_a_skill_omitting_any_of_the_nine_things_it_owes_is_refused(
     whole of what the agent is given before it starts reading, so a workflow step
     it does not state is one the agent meets after it has already decided.
     """
-    elements = docs_policy(committed).elements
+    policy = _policy(committed)
+    elements = policy.elements
     equal(len(elements), 9, describing="the things the skill owes")
 
+    # The rule matches its markers over whitespace-flowed text, because a
+    # passage that wraps at a different column is the same passage. So the
+    # passage is taken out of the flowed form, which is the value the rule reads.
+    flowed = " ".join(_skill_text(committed).split())
     for element in elements:
-        copy = tree()
-        copy.write(SKILL, _without(copy.read(SKILL), element.marker))
+        marker = " ".join(element.marker.split())
+        without = flowed.replace(marker, "")
+        equal(without == flowed, False, describing=f"the skill carrying {element.name}")
 
-        refused(skill(copy.repo), f"carries nothing saying {element.name}")
-
-
-def test_a_skill_link_that_climbs_out_of_its_own_directory_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
-    """An installed program can only carry what sits beside the skill it wrote."""
-    copy = tree()
-    copy.append(SKILL, "\n- [Somewhere else](../../../docs/reference/testing.md)\n")
-
-    refused(skill(copy.repo), "which climbs out of the skill's own directory")
+        refused(_missing_elements(policy, without), f"carries nothing saying {element.name}")
 
 
-def test_a_skill_link_to_an_address_rather_than_a_path_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
-    """A link off the host is one an agent with no network cannot follow."""
-    copy = tree()
-    copy.append(SKILL, "\n- [Somewhere else](https://example.invalid/testing.md)\n")
-
-    refused(skill(copy.repo), "which is not a path beside the skill")
-
-
-def test_a_declared_document_the_artifact_does_not_bundle_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_a_declared_document_the_artifact_does_not_bundle_is_refused(committed: Repo) -> None:
     """An install carrying the skill and not what it points at is dead links.
 
     The skill's links resolve in a checkout whether or not the built artifact
@@ -232,38 +201,29 @@ def test_a_declared_document_the_artifact_does_not_bundle_is_refused(
     shows up in front of an agent on a host with no repository. This is what
     catches it here instead.
     """
-    copy = tree()
-    policy = docs_policy(copy.repo)
-    dropped = Path(policy.documents[-1].path).name
-    source = copy.read(policy.bundle_source)
-    copy.write(
-        policy.bundle_source,
-        "\n".join(
-            line
-            for line in source.splitlines()
-            if f"{policy.bundle_directory}/{dropped}" not in line
-        )
-        + "\n",
+    policy = _policy(committed)
+    dropped = policy.documents[-1].path
+    source = "\n".join(
+        line
+        for line in committed.read(policy.bundle_source).splitlines()
+        if f"{policy.bundle_directory}/{Path(dropped).name}" not in line
     )
 
-    refused(skill(copy.repo), f"bundles no reference document for `{policy.documents[-1].path}`")
+    refused(
+        _bundled_references(committed, policy, source),
+        f"bundles no reference document for `{dropped}`",
+    )
 
 
-def test_a_bundled_document_this_repository_does_not_declare_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_a_bundled_document_this_repository_does_not_declare_is_refused(committed: Repo) -> None:
     """And a document travelling in the artifact that nothing declares is refused too."""
-    copy = tree()
-    policy = docs_policy(copy.repo)
-    copy.write(f"{policy.bundle_assets}/{policy.bundle_directory}/loose.md", "# Loose\n")
-    added = (
-        '    (\n        "reference/loose.md",\n'
-        '        include_str!("../assets/reference/loose.md"),\n    ),'
-    )
-    copy.edit(
-        policy.bundle_source,
-        "pub const DEFAULT_REFERENCES: [(&str, &str); 7] = [",
-        f"pub const DEFAULT_REFERENCES: [(&str, &str); 8] = [\n{added}",
+    policy = _policy(committed)
+    source = (
+        f"{committed.read(policy.bundle_source)}\n"
+        f'include_str!("../assets/{policy.bundle_directory}/loose.md")\n'
     )
 
-    refused(skill(copy.repo), "which this repository declares no reference document for")
+    refused(
+        _bundled_references(committed, policy, source),
+        "which this repository declares no reference document for",
+    )
