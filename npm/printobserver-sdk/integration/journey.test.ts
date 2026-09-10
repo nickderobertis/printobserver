@@ -16,17 +16,16 @@
  * history has them to account for. The print is cancelled last.
  */
 
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { isAbsolute } from "node:path";
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { isAbsolute, join } from "node:path";
 import { Client } from "../src/client.ts";
 import type { JobManifest, PrinterState } from "../src/contract.ts";
 import { NoReason, Rejected } from "../src/surface.ts";
 import { Recording, same } from "./live.ts";
-import { Standing, type Supervisor } from "./world.ts";
+import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
 /** The reason every mutating step of this walk carries. */
 const REASON = "a printer-integration journey is asking";
@@ -47,7 +46,7 @@ let world: Supervisor;
 beforeAll(async () => {
   standing = await Standing.standing(mkdtempSync(join(tmpdir(), "printobserver-node-world-")));
   world = standing.at;
-});
+}, SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await standing.stop();

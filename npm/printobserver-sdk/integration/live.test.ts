@@ -18,15 +18,15 @@
  * ends with the machine printing, where the bring-up left it.
  */
 
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, expect, test } from "bun:test";
 import { Client } from "../src/client.ts";
 import type { JobManifest } from "../src/contract.ts";
 import { Rejected } from "../src/surface.ts";
 import { Recording, ready, same } from "./live.ts";
-import { Standing, type Supervisor } from "./world.ts";
+import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
 /** The reason every mutating call of this walk carries. */
 const REASON = "a generated walk is asking";
@@ -37,7 +37,7 @@ let world: Supervisor;
 beforeAll(async () => {
   standing = await Standing.standing(mkdtempSync(join(tmpdir(), "printobserver-live-")));
   world = standing.at;
-});
+}, SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await standing.stop();

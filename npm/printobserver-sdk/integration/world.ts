@@ -22,6 +22,14 @@ export interface Supervisor {
 /** The repository this package is in. */
 const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
 
+/**
+ * Only the real-server setup hook's budget. Three warmed runs measured 2660,
+ * 3016 and 2737 ms; the shared integration host exceeded Bun's 5000 ms default.
+ * Ten seconds gives roughly three times the measured maximum for contention.
+ * The test bodies and cleanup retain their own existing timeouts.
+ */
+export const SETUP_TIMEOUT_MS = 10_000;
+
 /** The packages this repository's own tools live in, read from the justfile. */
 function pythonPath(): string {
   for (const line of readFileSync(`${REPO_ROOT}/justfile`, "utf8").split("\n")) {

@@ -20,14 +20,14 @@
  * assertion rather than a copy of it.
  */
 
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, expect, test } from "bun:test";
 import { Client } from "../src/client.ts";
 import type { ImageAnswer } from "../src/contract.ts";
-import { Recording, matches, same } from "./live.ts";
-import { Standing, type Supervisor } from "./world.ts";
+import { matches, Recording, same } from "./live.ts";
+import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
 let standing: Standing;
 let world: Supervisor;
@@ -35,7 +35,7 @@ let world: Supervisor;
 beforeAll(async () => {
   standing = await Standing.standing(mkdtempSync(join(tmpdir(), "printobserver-falsifying-")));
   world = standing.at;
-});
+}, SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await standing.stop();
