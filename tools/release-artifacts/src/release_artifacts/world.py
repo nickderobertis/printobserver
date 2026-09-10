@@ -73,6 +73,8 @@ class Running:
     print_id: str
     #: The image the materialization read is about.
     image_id: str
+    #: The failure event an acknowledgement is about.
+    event_id: str
     #: Where its record and its images live.
     state: Path
     #: The file a journey against this world starts a print of.
@@ -212,7 +214,13 @@ def _configuration(state: Path, printer: Printer) -> str:
                         "set_fan_percent",
                         "acknowledge_failure",
                     ],
-                    "agent": ["pause", "set_feedrate_factor"],
+                    # Nothing at all, and deliberately: the all-operation walk
+                    # needs one refusal per action method, and the grant is the
+                    # one rejection the policy takes before it looks at the
+                    # state, the interval or the bounds — so a client acting as
+                    # an agent is refused every action from wherever the
+                    # machine happens to be.
+                    "agent": [],
                     "system": ["pause"],
                 },
             },
@@ -318,11 +326,12 @@ class World:
             cwd=self.root,
         )
         server = self._await_address()
-        print_id, image_id = self._open_a_print(server)
+        print_id, image_id, event_id = self._open_a_print(server)
         return Running(
             server=server,
             print_id=print_id,
             image_id=image_id,
+            event_id=event_id,
             state=self.state,
             file_name=HOLD_FILE,
         )
@@ -361,8 +370,8 @@ class World:
         msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)
 
-    def _open_a_print(self, server: str) -> tuple[str, str]:
-        """Open a print and an image by posting one alert to the ingress.
+    def _open_a_print(self, server: str) -> tuple[str, str, str]:
+        """Open a print, an image and an event by posting one alert to the ingress.
 
         Raises:
             WorldError: If the ingress opened none.
@@ -409,8 +418,8 @@ class World:
         msg = "the ingress accepted the alert and no print and image were recorded"
         raise WorldError(msg)
 
-    def _recorded(self) -> tuple[str, str] | None:
-        """The print and image the ingress opened, read out of the store."""
+    def _recorded(self) -> tuple[str, str, str] | None:
+        """The print, image and event the ingress opened, read out of the store."""
         store = self.state / STORE
         if not store.is_file():
             return None
@@ -418,13 +427,16 @@ class World:
         try:
             prints = connection.execute("SELECT id FROM prints").fetchall()
             images = connection.execute("SELECT id FROM images").fetchall()
+            events = connection.execute(
+                "SELECT id FROM events WHERE kind = 'obico_failure_alert'"
+            ).fetchall()
         except sqlite3.DatabaseError:
             return None
         finally:
             connection.close()
-        if not prints or not images:
+        if not prints or not images or not events:
             return None
-        return str(prints[0][0]), str(images[0][0])
+        return str(prints[0][0]), str(images[0][0]), str(events[0][0])
 
 
 def _as_toml(document: dict[str, object]) -> str:

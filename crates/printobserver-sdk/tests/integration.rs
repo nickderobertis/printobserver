@@ -282,6 +282,15 @@ fn accounting(client: &Client, world: &supervisor::Supervisor) {
         )),
         "the history accounts for no refused action"
     );
+    // And the alert this print was opened by: a history that had lost the
+    // event the print exists because of would be one nobody could read back.
+    assert!(
+        history
+            .events
+            .iter()
+            .any(|event| event.id == world.event_id),
+        "the history does not account for the event this print was opened by"
+    );
 }
 
 /// Step nine: cancel the print, last — and then put the hold print back, which

@@ -23,6 +23,8 @@ pub struct Supervisor {
     pub print_id: String,
     /// The image the materialization step is about.
     pub image_id: String,
+    /// The failure event an acknowledgement is about.
+    pub event_id: String,
     /// The file the start step asks the machine to print.
     pub file_name: String,
 }
@@ -125,6 +127,7 @@ pub fn standing(into: &Path) -> Standing {
             server: named("server"),
             print_id: named("print_id"),
             image_id: named("image_id"),
+            event_id: named("event_id"),
             file_name: named("file_name"),
         },
         holding,

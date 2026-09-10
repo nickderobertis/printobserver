@@ -36,6 +36,7 @@ from contract_codegen.naming import (
     typescript_member,
     typescript_property,
 )
+from contract_codegen.walk import LiveStep
 
 #: What each scalar of the contracts is in TypeScript.
 SCALARS = {"string": "string", "number": "number", "integer": "number", "boolean": "boolean"}
@@ -407,4 +408,213 @@ def emit_walk(contract: Contract) -> str:
                     "  }",
                 ]
             lines += ["});", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+#: How each token the real-supervisor walk supplies a value with is written in
+#: TypeScript. Anything not here is written out as it stands.
+LIVE_TOKENS = {
+    "world.print_id": "world.print_id",
+    "world.image_id": "world.image_id",
+    "world.event_id": "world.event_id",
+    "world.file_name": "world.file_name",
+    "manifest": "manifest(world)",
+    "reason": "REASON",
+    "disposition:continue": '"continue"',
+}
+
+
+def _live_argument(token: str) -> str:
+    """One value the real walk calls a Node method with."""
+    return LIVE_TOKENS.get(token, token)
+
+
+def _live_target(step: LiveStep) -> str:
+    """The request target one real call must reach, as TypeScript builds it."""
+    path = step.operation.path
+    for parameter in step.operation.parameters:
+        if parameter.located == "path":
+            path = path.replace(f"{{{parameter.name}}}", f"${{world.{parameter.name}}}")
+    asked = [
+        f"{parameter.name}=${{{_live_argument(token)}}}"
+        for parameter, token in step.arguments
+        if parameter.located == "query"
+    ]
+    whole = f"{path}?{'&'.join(asked)}" if asked else path
+    return f"`{whole}`"
+
+
+def _live_body(step: LiveStep) -> list[str]:
+    """What the supervisor must have received in the body of one real call."""
+    body = [parameter for parameter in step.operation.parameters if parameter.located == "body"]
+    if not body:
+        return ['  expect(seen.body).toBe("");']
+    supplied = {parameter.name: given for parameter, given in step.arguments}
+    lines = ["  const sent = JSON.parse(seen.body);"]
+    for parameter in body:
+        if parameter.name == "actor":
+            lines.append('  expect(sent.actor).toBe("operator");')
+            continue
+        token = supplied.get(parameter.name)
+        if token is None:
+            continue
+        lines.append(
+            f"  expect(sent{typescript_member(parameter.name)}).toEqual({_live_argument(token)});"
+        )
+    return lines
+
+
+def emit_live(contract: Contract) -> str:
+    """The whole generated walk of the Node client, against a real supervisor."""
+    from contract_codegen.walk import REASON, plan_live, rejected_live
+
+    steps = plan_live(contract)
+    lines = [
+        "/**",
+        *(
+            f" *{f' {line}' if line else ''}"
+            for line in banner(
+                "", "the Node client's walk over every operation, against a real supervisor"
+            ).split("\n")
+        ),
+        " *",
+        *(
+            f" *{f' {line}' if line else ''}"
+            for line in wrapped(
+                "Every method this client exposes is driven against the **real** "
+                "printobserver supervisor — the program this repository builds, over the "
+                "OctoPrint `just octoprint-up` started, holding a print and a stored "
+                "image the supervisor's own ingress opened. A recording proxy sits in "
+                "front of it, so what each assertion is against is the request that "
+                "supervisor received and the answer it actually sent."
+            )
+        ),
+        " *",
+        *(
+            f" *{f' {line}' if line else ''}"
+            for line in wrapped(
+                "The order is the one a real machine admits: a printer is a state "
+                "machine and the policy refuses an action that is not valid from where "
+                "it is. It ends with the machine printing, where the bring-up left it."
+            )
+        ),
+        " */",
+        "",
+        'import { mkdtempSync } from "node:fs";',
+        'import { tmpdir } from "node:os";',
+        'import { join } from "node:path";',
+        'import { afterAll, beforeAll, expect, test } from "bun:test";',
+        'import { Client } from "../src/client.ts";',
+        'import type { JobManifest } from "../src/contract.ts";',
+        'import { Rejected } from "../src/surface.ts";',
+        'import { Recording, ready, same } from "./live.ts";',
+        'import { Standing, type Supervisor } from "./world.ts";',
+        "",
+        "/** The reason every mutating call of this walk carries. */",
+        f'const REASON = "{REASON}";',
+        "",
+        "let standing: Standing;",
+        "let world: Supervisor;",
+        "",
+        "beforeAll(async () => {",
+        "  standing = await Standing.standing(",
+        '    mkdtempSync(join(tmpdir(), "printobserver-live-")),',
+        "  );",
+        "  world = standing.at;",
+        "});",
+        "",
+        "afterAll(async () => {",
+        "  await standing.stop();",
+        "});",
+        "",
+        "/**",
+        " * The manifest this walk writes and starts a print under.",
+        " *",
+        " * It narrows nothing: what the walk needs is every adjustment the envelope",
+        " * allows to be answered, and a narrowing here would refuse one for a reason",
+        " * that is not what this walk is about.",
+        " */",
+        "function manifest(at: Supervisor): JobManifest {",
+        "  return {",
+        "    file_name: at.file_name,",
+        '    material: "PLA",',
+        "    nozzle_diameter_mm: 0.4,",
+        '    slicer_profile: "the walk over every operation",',
+        "    allowed: {},",
+        "    metadata: {},",
+        "  };",
+        "}",
+        "",
+    ]
+
+    for step in steps:
+        call = ", ".join(_live_argument(token) for _, token in step.arguments)
+        spelled = method_name(step.name, "typescript")
+        lines += [
+            f"/** `{step.name}`, answered by a real supervisor. */",
+            f"async function step{pascal(step.name)}(client: Client, proxy: Recording) {{",
+            f'  await ready(client, world.print_id, "{step.state}");',
+            "",
+            f"  const answered = await client.{spelled}({call});",
+            "",
+            "  const seen = proxy.last();",
+            f'  expect(seen.method).toBe("{step.method}");',
+            f"  expect(seen.target).toBe({_live_target(step)});",
+            "  expect(seen.status).toBe(200);",
+            *_live_body(step),
+            f'  same("{step.name}", answered, seen.answer);',
+            "}",
+            "",
+        ]
+
+    lines += [
+        'test("every method is answered by a real supervisor", async () => {',
+        "  await using proxy = new Recording(world.server);",
+        '  const client = new Client({ server: proxy.url, actor: "operator" });',
+        "",
+        *(f"  await step{pascal(step.name)}(client, proxy);" for step in steps),
+        "",
+        f"  expect(proxy.calls()).toBeGreaterThanOrEqual({len(steps)});",
+        "}, 900_000);",
+        "",
+    ]
+
+    for step in rejected_live(contract):
+        call = ", ".join(_live_argument(token) for _, token in step.arguments)
+        spelled = method_name(step.name, "typescript")
+        lines += [
+            f"/** `{step.name}`, refused by a real supervisor's own policy. */",
+            f"async function refused{pascal(step.name)}(client: Client, proxy: Recording) {{",
+            f"  const refused = await client.{spelled}({call}).catch((raised: unknown) => raised);",
+            "",
+            "  expect(refused).toBeInstanceOf(Rejected);",
+            '  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");',
+            "  const seen = proxy.last();",
+            "  expect(seen.status).toBe(409);",
+            f'  same("{step.name}", (refused as Rejected).answer, seen.answer);',
+            "}",
+            "",
+        ]
+
+    lines += [
+        "/**",
+        " * Every action, refused by a real supervisor's own policy, as a typed rejection.",
+        " *",
+        " * One client acting as an actor class the envelope grants nothing. The policy",
+        " * takes that decision before it looks at the state, the interval or the bounds,",
+        " * so every action is refused from wherever the machine happens to be.",
+        " */",
+        'test("every action is refused as a typed rejection by a real supervisor", async () => {',
+        "  await using proxy = new Recording(world.server);",
+        "  const client = new Client({",
+        "    server: proxy.url,",
+        '    actor: { agent: { session_name: "an actor this envelope grants nothing" } },',
+        "  });",
+        "",
+        *(
+            f"  await refused{pascal(step.name)}(client, proxy);"
+            for step in rejected_live(contract)
+        ),
+        "}, 900_000);",
+    ]
     return "\n".join(lines).rstrip("\n") + "\n"

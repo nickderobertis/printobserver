@@ -13,6 +13,10 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+# The encoding one falsifying client variant writes the image's bytes in, so
+# that the variant the walk's equality has to refuse is the encoding a real
+# defect would reach for rather than one invented here.
+base64 = "0.22"
 # The digest an image record declares, so the journey can open the file at the
 # path a materialization answered and check it is that image.
 sha2 = "0.10"

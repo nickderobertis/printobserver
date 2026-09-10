@@ -351,3 +351,22 @@ def test_a_response_shape_the_contracts_do_not_declare_is_refused(
     )
 
     refused(response_shapes(broken.repo), "NoSuchAnswer")
+
+
+def test_an_operation_with_no_place_in_the_real_walk_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A new operation cannot arrive with nothing driving it against a machine.
+
+    The walk each client runs against a **real** supervisor has an order,
+    because a printer is a state machine. An operation with no place in that
+    order is one the generator writes no walk for, and this is where the tree
+    is refused for it — so the completeness gate reaches the real walk and not
+    only the one against a stub host.
+    """
+    broken = client_tree()
+    described = json.loads(broken.read("schemas/printobserver-server/operations.json"))
+    described["operations"].append({**described["operations"][0], "name": "reboot"})
+    broken.write("schemas/printobserver-server/operations.json", json.dumps(described, indent=2))
+
+    refused_naming(generated_clients(broken.repo), "reboot", "could not run over this tree")

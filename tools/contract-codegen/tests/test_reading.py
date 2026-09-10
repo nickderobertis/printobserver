@@ -239,3 +239,70 @@ def test_every_answer_the_server_declares_has_a_canonical_value(
             answer_of(operation, contract) is not None,
             describing=f"a canonical value of what `{operation.name}` answers",
         )
+
+
+def test_an_operation_with_no_place_in_the_real_walk_stops_the_generator(
+    scratch: Callable[[], Path],
+) -> None:
+    """A new operation cannot arrive with nothing driving it against a machine.
+
+    The walk against a real supervisor has an order, because a printer is a
+    state machine — so an operation with no place in it is one the generator
+    refuses to write a walk for at all, which is what the drift gate then
+    reports.
+    """
+    from contract_codegen.walk import plan_live
+
+    copy = scratch()
+    described = json.loads((copy / SERVER_DIR / OPERATIONS_FILE).read_text(encoding="utf-8"))
+    invented = {**described["operations"][0], "name": "reboot"}
+    described["operations"].append(invented)
+    (copy / SERVER_DIR / OPERATIONS_FILE).write_text(json.dumps(described), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="reboot"):
+        plan_live(load(copy))
+
+
+def test_a_value_the_real_walk_cannot_supply_stops_the_generator(
+    scratch: Callable[[], Path],
+) -> None:
+    """A value a real machine has to be given cannot be guessed at."""
+    from contract_codegen.walk import plan_live
+
+    copy = scratch()
+    described = json.loads((copy / SERVER_DIR / OPERATIONS_FILE).read_text(encoding="utf-8"))
+    for operation in described["operations"]:
+        if operation["name"] == "status":
+            operation["parameters"].append(
+                {
+                    "name": "invented",
+                    "required": True,
+                    "located": "query",
+                    "kind": "text",
+                    "shape": {"type": "string"},
+                }
+            )
+    (copy / SERVER_DIR / OPERATIONS_FILE).write_text(json.dumps(described), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invented"):
+        plan_live(load(copy))
+
+
+def test_every_action_the_server_serves_is_driven_as_a_refusal(
+    scratch: Callable[[], Path],
+) -> None:
+    """One refused call per method carrying an action of the vocabulary."""
+    from contract_codegen.walk import plan_live, rejected_live
+
+    contract = load(scratch())
+
+    equal(
+        {step.name for step in rejected_live(contract)},
+        {operation.name for operation in contract.operations if operation.rejectable},
+        describing="the actions the real walk drives as refusals",
+    )
+    equal(
+        len(plan_live(contract)),
+        len(contract.operations),
+        describing="the operations the real walk drives",
+    )

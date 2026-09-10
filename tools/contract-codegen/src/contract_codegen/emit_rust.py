@@ -25,6 +25,7 @@ from contract_codegen.model import (
     Variant,
 )
 from contract_codegen.naming import method_name, pascal, rust_identifier
+from contract_codegen.walk import LiveStep
 
 #: What each scalar of the contracts is in Rust.
 SCALARS = {
@@ -472,3 +473,309 @@ def emit_walk(contract: Contract) -> str:
                 "",
             ]
     return "\n".join(lines) + "\n"
+
+
+#: How each token the real-supervisor walk supplies a value with is written in
+#: Rust. Anything not here is written out as it stands, which is what a literal
+#: number or a quoted string is.
+LIVE_TOKENS = {
+    "world.print_id": "&world.print_id",
+    "world.image_id": "&world.image_id",
+    "world.event_id": "&world.event_id",
+    "world.file_name": "&world.file_name",
+    # Already a reference where a step takes one, so nothing adds another.
+    "manifest": "manifest",
+    "reason": "REASON",
+    "disposition:continue": "&printobserver_sdk::AcknowledgementDisposition::Continue",
+}
+
+#: The same tokens as the value a body field must have carried, where that is
+#: written differently from the argument — a `to_value` takes the value rather
+#: than a reference to it.
+LIVE_SENT = {
+    "disposition:continue": "printobserver_sdk::AcknowledgementDisposition::Continue",
+}
+
+
+def _live_argument(parameter: Parameter, token: str) -> str:
+    """One value the real walk calls a Rust method with.
+
+    Every token below is written out as the expression Rust wants, references
+    and all: a reference added here would be one the compiler immediately
+    takes off again, which is a lint of its own.
+    """
+    written = LIVE_TOKENS.get(token, token)
+    if parameter.optional:
+        return f"Some({written})"
+    if token not in LIVE_TOKENS and isinstance(parameter.carried, Ref):
+        return f"&{written}"
+    return written
+
+
+def emit_live(contract: Contract) -> str:
+    """The whole generated walk of the Rust client, against a real supervisor."""
+    from contract_codegen.walk import REASON, plan_live, rejected_live
+
+    lines = [
+        line.rstrip()
+        for line in banner(
+            "//!", "the Rust client's walk over every operation, against a real supervisor"
+        ).split("\n")
+    ]
+    lines += ["//!"]
+    lines += [
+        f"//!{f' {line}' if line else ''}"
+        for line in wrapped(
+            "Every method this client exposes is driven against the **real** "
+            "printobserver supervisor — the program this repository builds, over the "
+            "`OctoPrint` `just octoprint-up` started, holding a print and a stored image "
+            "the supervisor's own ingress opened. A recording proxy sits in front of it, "
+            "so what each assertion is against is the request that supervisor received "
+            "and the answer it actually sent."
+        )
+    ]
+    lines += ["//!"]
+    lines += [
+        f"//!{f' {line}' if line else ''}"
+        for line in wrapped(
+            "The order is the one a real machine admits: a printer is a state machine "
+            "and the policy refuses an action that is not valid from where it is. It "
+            "ends with the machine printing, where the bring-up left it."
+        )
+    ]
+    lines += [
+        "",
+        '#[path = "support/live.rs"]',
+        "mod live;",
+        '#[path = "support/supervisor.rs"]',
+        "mod supervisor;",
+        "",
+        "use std::collections::BTreeMap;",
+        "",
+        "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};",
+        "",
+        "/// The reason every mutating call of this walk carries.",
+        f'const REASON: &str = "{REASON}";',
+        "",
+        "/// How long the machine is given to reach a state a step needs.",
+        "const PATIENCE: std::time::Duration = std::time::Duration::from_secs(180);",
+        "",
+        "/// The manifest this walk writes and starts a print under.",
+        "///",
+        "/// It narrows nothing: what the walk needs is every adjustment the envelope",
+        "/// allows to be answered, and a narrowing here would refuse one for a reason",
+        "/// that is not what this walk is about.",
+        "fn manifest(file_name: &str) -> JobManifest {",
+        "    JobManifest {",
+        "        file_name: file_name.to_owned(),",
+        '        material: "PLA".to_owned(),',
+        "        nozzle_diameter_mm: 0.4,",
+        '        slicer_profile: "the all-operation walk\'s own profile".to_owned(),',
+        "        allowed: BTreeMap::new(),",
+        "        metadata: BTreeMap::new(),",
+        "    }",
+        "}",
+        "",
+        "/// Wait until the machine reports the state one step needs.",
+        "///",
+        "/// A real printer is a state machine and the policy refuses an action that is",
+        "/// not valid from where it is, so a walk that went on regardless would assert",
+        "/// against a machine that was somewhere else.",
+        "///",
+        "/// # Panics",
+        "///",
+        "/// Panics saying what it reported instead.",
+        "fn ready(client: &Client, print_id: &str, wanted: &str) {",
+        "    if wanted.is_empty() {",
+        "        return;",
+        "    }",
+        "    let deadline = std::time::Instant::now() + PATIENCE;",
+        '    let mut last = String::from("nothing was reported");',
+        "    while std::time::Instant::now() < deadline {",
+        '        let status = client.status(print_id).expect("a status read is answered");',
+        "        if let Some(printer) = status.printer {",
+        "            last = serde_json::to_string(&printer.connection).unwrap_or_default();",
+        "            if last.trim_matches('\"') == wanted {",
+        "                return;",
+        "            }",
+        "        }",
+        "        std::thread::sleep(std::time::Duration::from_millis(500));",
+        "    }",
+        '    panic!("the machine reported {last} and the next step needs `{wanted}`");',
+        "}",
+        "",
+    ]
+
+    steps = plan_live(contract)
+    for step in steps:
+        call = ", ".join(_live_argument(parameter, token) for parameter, token in step.arguments)
+        spelled = method_name(step.name, "rust")
+        carried = _carries_manifest(step)
+        lines += [
+            f"/// `{step.name}`, answered by a real supervisor.",
+            f"fn step_{step.name}(",
+            "    client: &Client,",
+            "    world: &supervisor::Supervisor,",
+            "    proxy: &live::Proxy,",
+            *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
+            ") {",
+            f'    ready(client, &world.print_id, "{step.state}");',
+            "",
+            f"    let answered = client.{spelled}({call})",
+            f'        .expect("`{step.name}` is answered by a real supervisor");',
+            "",
+            "    let seen = proxy.last();",
+            f'    assert_eq!(seen.method, "{step.method}", "`{step.name}`");',
+            f'    assert_eq!(seen.target, {_live_target(step)}, "`{step.name}`");',
+            f'    assert_eq!(seen.status, 200, "`{step.name}`");',
+        ]
+        lines.extend(_live_body_assertions(step))
+        lines += [
+            f'    live::same("{step.name}", &answered, &seen.answer);',
+            "}",
+            "",
+        ]
+
+    for step in rejected_live(contract):
+        call = ", ".join(_live_argument(parameter, token) for parameter, token in step.arguments)
+        spelled = method_name(step.name, "rust")
+        carried = _carries_manifest(step)
+        lines += [
+            f"/// `{step.name}`, refused by a real supervisor's own policy.",
+            f"fn refused_{step.name}(",
+            "    client: &Client,",
+            "    world: &supervisor::Supervisor,",
+            "    proxy: &live::Proxy,",
+            *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
+            ") {",
+            f"    let refused = client.{spelled}({call})",
+            f'        .expect_err("`{step.name}` is refused for an actor granted nothing");',
+            "",
+            "    let ClientError::Rejected(rejection) = refused else {",
+            f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+            "    };",
+            "    assert!(",
+            "        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),",
+            f'        "`{step.name}` was refused for something other than the grant: {{:?}}",',
+            "        rejection.reason",
+            "    );",
+            "    let seen = proxy.last();",
+            f'    assert_eq!(seen.status, 409, "`{step.name}`");',
+            f'    live::same("{step.name}", rejection.answer.as_ref(), &seen.answer);',
+            "}",
+            "",
+        ]
+
+    lines += [
+        "/// Every method, answered by a real supervisor, in the one order it admits.",
+        "#[test]",
+        "fn every_method_is_answered_by_a_real_supervisor() {",
+        '    let root = tempfile::tempdir().expect("this walk\'s own root");',
+        "    let mut standing = supervisor::standing(root.path());",
+        "    let world = standing.at.clone();",
+        "    let proxy = live::Proxy::in_front_of(&world.server);",
+        "    let client = Client::new(proxy.url(), Actor::Operator);",
+        "    let manifest = manifest(&world.file_name);",
+        "",
+        *(f"    step_{step.name}(&client, &world, &proxy{_live_handed(step)});" for step in steps),
+        "",
+        f'    assert!(proxy.calls() >= {len(steps)}, "every call went through the proxy");',
+        "    standing.stop();",
+        "}",
+        "",
+        "/// Every action, refused by a real supervisor's own policy, as a typed rejection.",
+        "///",
+        "/// One client acting as an actor class the envelope grants nothing. The policy",
+        "/// takes that decision before it looks at the state, the interval or the",
+        "/// bounds, so every action is refused from wherever the machine happens to be.",
+        "#[test]",
+        "fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {",
+        '    let root = tempfile::tempdir().expect("this walk\'s own root");',
+        "    let mut standing = supervisor::standing(root.path());",
+        "    let world = standing.at.clone();",
+        "    let proxy = live::Proxy::in_front_of(&world.server);",
+        "    let client = Client::new(",
+        "        proxy.url(),",
+        "        Actor::Agent {",
+        '            session_name: "an actor this envelope grants nothing".to_owned(),',
+        "        },",
+        "    );",
+        "    let manifest = manifest(&world.file_name);",
+        "",
+        *(
+            f"    refused_{step.name}(&client, &world, &proxy{_live_handed(step)});"
+            for step in rejected_live(contract)
+        ),
+        "",
+        "    standing.stop();",
+        "}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _carries_manifest(step: LiveStep) -> bool:
+    """Whether one step's own call takes the manifest the walk wrote."""
+    return any(given == "manifest" for _, given in step.arguments)
+
+
+def _live_handed(step: LiveStep) -> str:
+    """What one step is handed beside the client, the world and the proxy."""
+    return ", &manifest" if _carries_manifest(step) else ""
+
+
+def _live_target(step: LiveStep) -> str:
+    """The request target one real call must reach, as Rust builds it."""
+    operation = step.operation
+    path = operation.path
+    for parameter in operation.parameters:
+        if parameter.located == "path":
+            path = path.replace(f"{{{parameter.name}}}", f"{{{parameter.name}}}")
+    asked = [
+        f"{parameter.name}={token}"
+        for parameter, token in step.arguments
+        if parameter.located == "query"
+    ]
+    whole = f"{path}?{'&'.join(asked)}" if asked else path
+    bindings = ", ".join(
+        f"{parameter.name} = world.{parameter.name}"
+        for parameter in operation.parameters
+        if parameter.located == "path"
+    )
+    return f'format!("{whole}", {bindings})' if bindings else f'"{whole}"'
+
+
+def _live_body_assertions(step: LiveStep) -> list[str]:
+    """What the supervisor must have received in the body of one real call."""
+    operation = step.operation
+    body = [parameter for parameter in operation.parameters if parameter.located == "body"]
+    if not body:
+        return [f'    assert_eq!(seen.body, "", "`{operation.name}` sends no body");']
+    supplied = {parameter.name: token for parameter, token in step.arguments}
+    lines = [
+        "    let sent: serde_json::Value = serde_json::from_str(&seen.body)",
+        '        .expect("the supervisor received a document");',
+        f'    assert_eq!(sent["actor"], serde_json::json!("operator"), "`{operation.name}`");'
+        if any(parameter.name == "actor" for parameter in body)
+        else "",
+    ]
+    for parameter in body:
+        if parameter.name == "actor":
+            continue
+        token = supplied.get(parameter.name)
+        if token is None:
+            continue
+        lines.append(
+            f"    assert_eq!(\n"
+            f'        sent["{parameter.name}"],\n'
+            f"        serde_json::to_value({_live_sent(parameter, token)})"
+            f'.expect("a value renders"),\n'
+            f'        "`{operation.name}` sent another `{parameter.name}`"\n'
+            f"    );"
+        )
+    return [line for line in lines if line]
+
+
+def _live_sent(parameter: Parameter, token: str) -> str:
+    """The value one body field must have carried, as Rust names it."""
+    _ = parameter
+    return LIVE_SENT.get(token) or LIVE_TOKENS.get(token, token)

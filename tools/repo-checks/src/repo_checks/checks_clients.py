@@ -74,7 +74,12 @@ def generated_clients(repo: Repo) -> list[str]:
     findings = _banner_findings(repo)
     try:
         findings.extend(drifted(repo.root))
-    except (ContractError, FormatterError) as refused:
+    except (ValueError, FormatterError) as refused:
+        # `ValueError` rather than the reader's own refusal alone: the generator
+        # also refuses a tree whose operations it cannot place — the walk each
+        # client runs against a real supervisor has an order a printer's own
+        # state machine dictates, and an operation with no place in it is one
+        # nothing would drive.
         findings.append(f"the client generator could not run over this tree: {refused}")
     return findings
 

@@ -20,10 +20,10 @@
       "command": "cargo check -p printobserver-sdk --all-targets --locked"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass -E 'not binary(integration)'"
+      "command": "cargo llvm-cov nextest -p printobserver-sdk --no-report --no-tests=pass -E 'not binary(integration) and not binary(live) and not binary(falsifying)'"
     },
     "test-integration": {
-      "command": "cargo nextest run -p printobserver-sdk --no-fail-fast -E 'binary(integration)'"
+      "command": "cargo nextest run -p printobserver-sdk --no-fail-fast --test-threads=1 -E 'binary(integration) or binary(live) or binary(falsifying)'"
     },
     "build": {
       "command": "cargo build -p printobserver-sdk --locked"

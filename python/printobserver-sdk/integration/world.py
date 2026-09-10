@@ -30,6 +30,7 @@ class Supervisor:
     server: str
     print_id: str
     image_id: str
+    event_id: str
     file_name: str
 
 
@@ -98,6 +99,7 @@ class Standing:
             server=described["server"],
             print_id=described["print_id"],
             image_id=described["image_id"],
+            event_id=described["event_id"],
             file_name=described["file_name"],
         )
 

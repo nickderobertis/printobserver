@@ -55,6 +55,11 @@ OUTPUTS: tuple[Output, ...] = (
         emit=emit_rust.emit_walk,
     ),
     Output(
+        path="crates/printobserver-sdk/tests/live.rs",
+        client="rust",
+        emit=emit_rust.emit_live,
+    ),
+    Output(
         path="python/printobserver-sdk/src/printobserver_sdk/contract.py",
         client="python",
         emit=emit_python.emit,
@@ -65,9 +70,19 @@ OUTPUTS: tuple[Output, ...] = (
         emit=emit_python.emit_walk,
     ),
     Output(
+        path="python/printobserver-sdk/integration/test_live.py",
+        client="python",
+        emit=emit_python.emit_live,
+    ),
+    Output(
         path="npm/printobserver-sdk/src/contract.ts",
         client="typescript",
         emit=emit_typescript.emit,
+    ),
+    Output(
+        path="npm/printobserver-sdk/integration/live.test.ts",
+        client="typescript",
+        emit=emit_typescript.emit_live,
     ),
     Output(
         path="npm/printobserver-sdk/test/operations.test.ts",

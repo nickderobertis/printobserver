@@ -15,6 +15,7 @@ export interface Supervisor {
   server: string;
   print_id: string;
   image_id: string;
+  event_id: string;
   file_name: string;
 }
 

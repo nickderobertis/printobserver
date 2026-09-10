@@ -31,6 +31,7 @@ from contract_codegen.model import (
     Variant,
 )
 from contract_codegen.naming import method_name, pascal, python_identifier
+from contract_codegen.walk import LiveStep
 
 #: What each scalar of the contracts is in Python.
 SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool"}
@@ -468,4 +469,237 @@ def emit_walk(contract: Contract) -> str:
                     f'        equal(host.requests(), 0, describing="what {said} sent")',
                 ]
             lines += ["", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+#: How each token the real-supervisor walk supplies a value with is written in
+#: Python. Anything not here is written out as it stands.
+LIVE_TOKENS = {
+    "world.print_id": "world.print_id",
+    "world.image_id": "world.image_id",
+    "world.event_id": "world.event_id",
+    "world.file_name": "world.file_name",
+    "manifest": "manifest(world)",
+    "reason": "REASON",
+    "disposition:continue": '"continue"',
+}
+
+
+def _live_argument(token: str) -> str:
+    """One value the real walk calls a Python method with."""
+    return LIVE_TOKENS.get(token, token)
+
+
+def _live_target(step: LiveStep) -> str:
+    """The request target one real call must reach, as Python builds it."""
+    path = step.operation.path
+    for parameter in step.operation.parameters:
+        if parameter.located == "path":
+            path = path.replace(f"{{{parameter.name}}}", f"{{world.{parameter.name}}}")
+    asked = [
+        f"{parameter.name}={_live_argument(token)}"
+        for parameter, token in step.arguments
+        if parameter.located == "query"
+    ]
+    return f'f"{path}?{"&".join(asked)}"' if asked else f'f"{path}"'
+
+
+def _live_body(step: LiveStep) -> list[str]:
+    """What the supervisor must have received in the body of one real call."""
+    body = [parameter for parameter in step.operation.parameters if parameter.located == "body"]
+    if not body:
+        return [f'    equal(seen.body, "", describing="what `{step.name}` sent")']
+    supplied = {parameter.name: given for parameter, given in step.arguments}
+    lines = ["    sent = json.loads(seen.body)"]
+    for parameter in body:
+        if parameter.name == "actor":
+            lines.append(
+                f'    equal(sent["actor"], "operator", describing="who `{step.name}` acted as")'
+            )
+            continue
+        token = supplied.get(parameter.name)
+        if token is None:
+            continue
+        lines.append(
+            f"    equal(\n"
+            f'        sent["{parameter.name}"],\n'
+            f"        {_live_argument(token)},\n"
+            f'        describing="the `{parameter.name}` `{step.name}` sent",\n'
+            f"    )"
+        )
+    return lines
+
+
+def emit_live(contract: Contract) -> str:
+    """The whole generated walk of the Python client, against a real supervisor."""
+    from contract_codegen.walk import REASON, plan_live, rejected_live
+
+    steps = plan_live(contract)
+    lines = [
+        '"""'
+        + banner(
+            "", "the Python client's walk over every operation, against a real supervisor"
+        ).lstrip(),
+        "",
+        *wrapped(
+            "Every method this client exposes is driven against the **real** "
+            "printobserver supervisor — the program this repository builds, over the "
+            "OctoPrint `just octoprint-up` started, holding a print and a stored image "
+            "the supervisor's own ingress opened. A recording proxy sits in front of it, "
+            "so what each assertion is against is the request that supervisor received "
+            "and the answer it actually sent."
+        ),
+        "",
+        *wrapped(
+            "The order is the one a real machine admits: a printer is a state machine "
+            "and the policy refuses an action that is not valid from where it is. It "
+            "ends with the machine printing, where the bring-up left it."
+        ),
+        '"""',
+        "",
+        "from __future__ import annotations",
+        "",
+        "import json",
+        "import time",
+        "from collections.abc import Iterator",
+        "from typing import cast",
+        "",
+        "import pytest",
+        "from live import PATIENCE_SECONDS, Proxy, same",
+        "from printobserver_sdk import Client, RejectedError",
+        "from printobserver_sdk.contract import JobManifest",
+        "from repo_checks.expect import equal, truth",
+        "from world import Standing, Supervisor",
+        "",
+        "#: The reason every mutating call of this walk carries.",
+        f'REASON = "{REASON}"',
+        "",
+        "",
+        "def manifest(world: Supervisor) -> JobManifest:",
+        '    """The manifest this walk writes and starts a print under.',
+        "",
+        "    It narrows nothing: what the walk needs is every adjustment the envelope",
+        "    allows to be answered, and a narrowing here would refuse one for a reason",
+        "    that is not what this walk is about.",
+        '    """',
+        "    return cast(",
+        "        JobManifest,",
+        "        {",
+        '            "file_name": world.file_name,',
+        '            "material": "PLA",',
+        '            "nozzle_diameter_mm": 0.4,',
+        '            "slicer_profile": "the walk over every operation",',
+        '            "allowed": {},',
+        '            "metadata": {},',
+        "        },",
+        "    )",
+        "",
+        "",
+        "def ready(client: Client, print_id: str, wanted: str) -> None:",
+        '    """Wait until the machine reports the state one step needs.',
+        "",
+        "    A real printer is a state machine and the policy refuses an action that is",
+        "    not valid from where it is, so a walk that went on regardless would assert",
+        "    against a machine that was somewhere else.",
+        "",
+        "    Raises:",
+        "        AssertionError: If it does not, saying what it reported instead.",
+        '    """',
+        "    if not wanted:",
+        "        return",
+        "    deadline = time.monotonic() + PATIENCE_SECONDS",
+        '    last: object = "nothing was reported"',
+        "    while time.monotonic() < deadline:",
+        '        printer = client.status(print_id).get("printer")',
+        "        if printer is not None:",
+        '            last = printer["connection"]',
+        "            if last == wanted:",
+        "                return",
+        "        time.sleep(0.5)",
+        '    message = f"the machine reported {last!r} and the next step needs `{wanted}`"',
+        "    raise AssertionError(message)",
+        "",
+        "",
+        "@pytest.fixture(scope='module')",
+        "def world(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Supervisor]:",
+        '    """A real supervisor over the scripted `OctoPrint`, held up for this module."""',
+        '    with Standing(tmp_path_factory.mktemp("live")) as supervisor:',
+        "        yield supervisor",
+        "",
+        "",
+    ]
+
+    for step in steps:
+        call = ", ".join(_live_argument(token) for _, token in step.arguments)
+        spelled = method_name(step.name, "python")
+        lines += [
+            f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+            f'    """`{step.name}`, answered by a real supervisor."""',
+            f'    ready(client, world.print_id, "{step.state}")',
+            "",
+            f"    answered = client.{spelled}({call})",
+            "",
+            "    seen = proxy.last()",
+            f'    equal(seen.method, "{step.method}", describing="`{step.name}`")',
+            f'    equal(seen.target, {_live_target(step)}, describing="`{step.name}`")',
+            f'    equal(seen.status, 200, describing="`{step.name}`")',
+            *_live_body(step),
+            f'    same("{step.name}", answered, seen.answer)',
+            "",
+            "",
+        ]
+
+    lines += [
+        "def test_every_method_is_answered_by_a_real_supervisor(world: Supervisor) -> None:",
+        '    """Every method, answered by a real supervisor, in the one order it admits."""',
+        "    with Proxy(world.server) as proxy:",
+        '        client = Client(proxy.url, "operator")',
+        *(f"        step_{step.name}(client, world, proxy)" for step in steps),
+        "",
+        "        truth(",
+        f"            proxy.calls() >= {len(steps)},",
+        '            describing="every call to have gone through the proxy",',
+        "        )",
+        "",
+        "",
+    ]
+
+    for step in rejected_live(contract):
+        call = ", ".join(_live_argument(token) for _, token in step.arguments)
+        spelled = method_name(step.name, "python")
+        lines += [
+            f"def refused_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+            f'    """`{step.name}`, refused by a real supervisor\'s own policy."""',
+            "    try:",
+            f"        client.{spelled}({call})",
+            "    except RejectedError as refused:",
+            "        truth(",
+            "            isinstance(refused.reason, dict)",
+            '            and "actor_may_not_request" in refused.reason,',
+            f'            describing="`{step.name}` to be refused for the grant",',
+            "        )",
+            "        seen = proxy.last()",
+            f'        equal(seen.status, 409, describing="`{step.name}`")',
+            f'        same("{step.name}", refused.answer, seen.answer)',
+            "    else:",
+            f'        truth(False, describing="`{step.name}` to be refused")',
+            "",
+            "",
+        ]
+
+    lines += [
+        "def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None:",
+        '    """Every action, refused by a real supervisor\'s own policy, typed.',
+        "",
+        "    One client acting as an actor class the envelope grants nothing. The policy",
+        "    takes that decision before it looks at the state, the interval or the",
+        "    bounds, so every action is refused from wherever the machine happens to be.",
+        '    """',
+        "    with Proxy(world.server) as proxy:",
+        "        client = Client(",
+        "            proxy.url,",
+        '            {"agent": {"session_name": "an actor this envelope grants nothing"}},',
+        "        )",
+        *(f"        refused_{step.name}(client, world, proxy)" for step in rejected_live(contract)),
+    ]
     return "\n".join(lines).rstrip("\n") + "\n"
