@@ -113,6 +113,24 @@ def _entries(table: dict[str, object], key: str) -> list[dict[str, object]]:
     return entries
 
 
+def _repository_path(repo: Repo, value: str, key: str) -> None:
+    """Keep declared documentation inputs and outputs inside the repository.
+
+    Raises:
+        PolicyValueError: If a path is absolute, traverses parents, or resolves outside.
+    """
+    path = Path(value)
+    msg = f"`repo-policy.toml`'s `{key}` must be a relative path inside the repository"
+    if path.is_absolute() or ".." in path.parts:
+        raise PolicyValueError(msg)
+    try:
+        contained = (repo.root / path).resolve().is_relative_to(repo.root.resolve())
+    except (OSError, RuntimeError) as error:
+        raise PolicyValueError(f"{msg}: {error}") from error
+    if not contained:
+        raise PolicyValueError(msg)
+
+
 def docs_policy(repo: Repo) -> DocsPolicy:
     """Read the `[docs]` section, narrowing every value the checks act on.
 
@@ -125,6 +143,9 @@ def docs_policy(repo: Repo) -> DocsPolicy:
         msg = "`repo-policy.toml` declares no `[docs]` section"
         raise PolicyValueError(msg)
     named = policy_strings(table, POLICY_NAMES, "docs")
+    for key, value in named.items():
+        if key != "example_fence":
+            _repository_path(repo, value, f"docs.{key}")
     numbers: dict[str, int] = {}
     for key in POLICY_NUMBERS:
         value = table.get(key)
@@ -144,6 +165,7 @@ def docs_policy(repo: Repo) -> DocsPolicy:
     documents = []
     for entry in _entries(table, "document"):
         path = policy_strings(entry, ("path",), "docs.document")["path"]
+        _repository_path(repo, path, "docs.document.path")
         documents.append(
             Document(path=path, headings=policy_string_list(entry, "headings", "docs.document"))
         )

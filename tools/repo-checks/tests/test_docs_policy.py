@@ -278,3 +278,34 @@ def test_malformed_documentation_entries_are_not_discarded(
     for findings in (skill(repo), reference(repo), schema_document(repo)):
         refused(findings, f"docs.{key}")
         refused(findings, "must be")
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "skill",
+        "surface_manifest",
+        "schema_document",
+        "schema_directory",
+        "bundle_source",
+        "bundle_assets",
+        "bundle_directory",
+        "path",
+    ],
+)
+@pytest.mark.parametrize("escape", ["/outside", "../outside", "linked/outside"])
+def test_documentation_paths_cannot_escape_the_repository(
+    tmp_path: Path, key: str, escape: str
+) -> None:
+    """Inputs and the generated output reject traversal, including through a symlink."""
+    if escape.startswith("linked/"):
+        (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
+    declaration = "\n".join(
+        f'{key} = "{escape}"' if line.startswith(f"{key} = ") else line
+        for line in DECLARED.splitlines()
+    )
+    repo = _declaring(tmp_path, declaration)
+
+    for findings in (skill(repo), reference(repo), schema_document(repo)):
+        refused(findings, "must be a relative path inside the repository")
+        refused(findings, "docs.document.path" if key == "path" else f"docs.{key}")
