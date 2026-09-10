@@ -48,12 +48,18 @@ apt install printobserver-cli
 """
 
 
-def _committed(tree: Tree) -> None:
-    """Make the copy a repository whose base branch carries what was copied."""
-    for argv in (
-        ["init", "-q", "-b", "main"],
-        ["add", "-A"],
+#: The base branch every copy below is laid down on, and the branch a change
+#: is cut onto — the two the check reads a merge base out of.
+BASE = "main"
+WORK = "a-change-of-its-own"
+
+
+def _commit(tree: Tree, message: str) -> None:
+    """Commit everything in the copy, under an identity of this suite's own."""
+    run(["git", "add", "-A"], cwd=tree.root, check=True)
+    run(
         [
+            "git",
             "-c",
             "user.email=checks@printobserver.test",
             "-c",
@@ -61,10 +67,32 @@ def _committed(tree: Tree) -> None:
             "commit",
             "-q",
             "-m",
-            "chore: the committed tree, copied",
+            message,
         ],
-    ):
-        run(["git", *argv], cwd=tree.root, check=True)
+        cwd=tree.root,
+        check=True,
+    )
+
+
+def _committed(tree: Tree) -> None:
+    """Make the copy a repository whose base branch carries what was copied."""
+    run(["git", "init", "-q", "-b", BASE], cwd=tree.root, check=True)
+    _commit(tree, "chore: the committed tree, copied")
+
+
+def _cut_a_change_and_advance_the_base(tree: Tree, moved: Callable[[str], str]) -> None:
+    """Cut a change from what was committed, then move the base branch on past it.
+
+    What is left is the state every journey below is about: a working tree
+    carrying the change, and a base branch whose **tip** is a commit the change
+    was never cut from. A check reading that tip reads whatever landed there
+    since, which is not what this work was cut with.
+    """
+    run(["git", "checkout", "-q", "-b", WORK], cwd=tree.root, check=True)
+    run(["git", "checkout", "-q", BASE], cwd=tree.root, check=True)
+    tree.write(AGENTS, moved(tree.read(AGENTS)))
+    _commit(tree, "chore: the base branch moves on")
+    run(["git", "checkout", "-q", WORK], cwd=tree.root, check=True)
 
 
 def test_the_committed_tree_ships_what_it_says_it_ships(committed: Repo) -> None:
@@ -213,16 +241,28 @@ def test_the_committed_tree_has_narrowed_nothing(tmp_path: Path) -> None:
     accepted(install_path_not_narrowed(unchanged.repo))
 
 
+#: The platform line one of the two narrowings deletes.
+DELETED_PLATFORM = (
+    "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
+    "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+)
+
+
+def _without_the_platform(text: str) -> str:
+    """The install path with one of its two platforms deleted."""
+    return text.replace(DELETED_PLATFORM, "")
+
+
+def _without_the_route(text: str) -> str:
+    """The install path with the second of its three routes deleted."""
+    return text[: text.index("#### Route 2")] + text[text.index("#### Route 3") :]
+
+
 def test_a_platform_deleted_from_the_install_path_is_refused(tmp_path: Path) -> None:
     """Every artifact, matrix and route here is derived from that one list."""
     narrowed = Tree(copy_tree(tmp_path / "narrowed-platform"))
     _committed(narrowed)
-    narrowed.edit(
-        AGENTS,
-        "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
-        "",
-    )
+    narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
 
     refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
 
@@ -231,9 +271,55 @@ def test_a_route_deleted_from_the_install_path_is_refused(tmp_path: Path) -> Non
     """A route deleted here is a way to the program nobody has any more."""
     narrowed = Tree(copy_tree(tmp_path / "narrowed-route"))
     _committed(narrowed)
-    text = narrowed.read(AGENTS)
-    start = text.index("#### Route 2")
-    end = text.index("#### Route 3")
-    narrowed.write(AGENTS, text[:start] + text[end:])
+    narrowed.write(AGENTS, _without_the_route(narrowed.read(AGENTS)))
 
     refused(install_path_not_narrowed(narrowed.repo), "Route 2")
+
+
+def test_a_base_branch_that_deleted_a_route_first_does_not_excuse_deleting_it(
+    tmp_path: Path,
+) -> None:
+    """What this work was cut from is a commit, and the base branch's tip is not it.
+
+    The base branch deletes the route in a commit of its own, and then this
+    change deletes it too. Read against that tip the route was already gone and
+    nothing here deleted anything; read against the commit this work was cut
+    from — which is what the check reads — the route is one this tree no longer
+    has a way to the program by.
+    """
+    narrowed = Tree(copy_tree(tmp_path / "advanced-route"))
+    _committed(narrowed)
+    _cut_a_change_and_advance_the_base(narrowed, _without_the_route)
+    narrowed.write(AGENTS, _without_the_route(narrowed.read(AGENTS)))
+
+    refused(install_path_not_narrowed(narrowed.repo), "Route 2")
+
+
+def test_a_base_branch_that_deleted_a_platform_first_does_not_excuse_deleting_it(
+    tmp_path: Path,
+) -> None:
+    """The same, over the one list every artifact, matrix and route is derived from."""
+    narrowed = Tree(copy_tree(tmp_path / "advanced-platform"))
+    _committed(narrowed)
+    _cut_a_change_and_advance_the_base(narrowed, _without_the_platform)
+    narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
+
+    refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
+
+
+def test_a_route_the_base_branch_gained_after_this_work_is_not_demanded_of_it(
+    tmp_path: Path,
+) -> None:
+    """Advancing the base branch cannot move the reference the other way either.
+
+    A route added to the base branch after this work was cut is not one this
+    tree deleted, and a check reading the tip would report every such addition
+    as a narrowing — which is a check nobody could keep green by working.
+    """
+    unchanged = Tree(copy_tree(tmp_path / "advanced-widened"))
+    _committed(unchanged)
+    _cut_a_change_and_advance_the_base(
+        unchanged, lambda text: text.replace("#### Route 3", GAINED_ROUTE + "\n#### Route 3")
+    )
+
+    accepted(install_path_not_narrowed(unchanged.repo))
