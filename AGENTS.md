@@ -645,6 +645,18 @@ pinned release and an install directory:
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
+### Then, check what you installed
+
+Whichever route you took, run the program. It prints the version it is, and
+that is the one thing the three commands above cannot tell you: a package
+manager that unpacked a program nobody can run exits zero, and so does an
+install script that put a file on your path. This is where an install that
+worked stops looking like one that did not.
+
+```console
+printobserver --version
+```
+
 ### Then, in order — two commands
 
 Both run as root. The first is the installer the `server` node ships, committed
@@ -674,6 +686,78 @@ written above, or in which that installer enables or starts anything.
 
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
+
+## The registry install-path proof
+
+The three routes above are the whole delivery story, and until this tier existed
+nothing here proved any of them. What was proven was an artifact **built from the
+committed tree** — `just prove-route-pypi`, `prove-route-npm` and
+`prove-route-script`, which the `artifact-route-*` jobs run on every change, and
+which contact no registry at all. Those answer a question worth answering, and
+they are the only ones that can be answered before a release; they are also
+green over a repository nothing can install, which is the state this one was in
+for two days.
+
+**What it proves.** Per route, and per platform the supported-platform list
+names: that the registry that route is taken from serves the version under test,
+that what it serves installs into an environment holding no copy of these
+sources and with no Rust toolchain on the path, and that the program the install
+put there runs and reports that version. Three outcomes, told apart by their
+words and by their exit statuses, because they are three different next
+actions — and only the first is a pass:
+
+- `SERVED AND PROVEN` — the registry served it, it installed, and the program
+  reported the version under test.
+- `SERVED AND NOT PROVEN` — the registry served it and something after that
+  failed. An artifact that does not work.
+- `NOT SERVED` — the registry serves nothing for the version under test. A
+  publish that did not happen.
+
+**Which version is proven.** The one the caller names; the newest release the
+forge published, where the caller says `release`; and otherwise the newest the
+registry itself serves. Never the number in the committed tree — that is
+whatever release automation last wrote into the workspace, and what a user gets
+is whatever the registry is serving. A registry not serving the selected version
+is `NOT SERVED` rather than something the selection quietly steps around.
+
+**Why it is not in every run.** It reads the real package registries, so over a
+change it could only ever report what was published *before* that change — and
+it can say nothing at all about the artifact under review. `repo-policy.toml`'s
+`gate.tiers` does not name it, `just check` does not invoke it, and
+`just check-repo` refuses a tree in which either changes.
+
+**When it runs.** After a release, on a schedule, and on a manual invocation.
+The release-time trigger is the `release-plz` **workflow having finished** rather
+than the GitHub Release being published: that workflow cuts the release in its
+`release` job and builds and publishes the artifacts in the two jobs *after* it,
+so a proof keyed on the release itself would measure the version before it. The
+cron below and the workflow's own are checked against each other, so this
+paragraph cannot drift from what actually fires.
+
+[//]: # (BEGIN install-proof-schedule)
+- cron: `0 6 * * 1`
+[//]: # (END install-proof-schedule)
+
+**How to run it by hand.** `PRINTOBSERVER_PROOF_VERSION` names the version to
+prove — a number, or `release` — and naming none proves the newest each registry
+serves. It installs into `dist/proof/`, and it needs no Rust toolchain.
+
+```console
+just test-install-proof
+```
+
+```console
+PRINTOBSERVER_PROOF_VERSION=release just test-install-proof
+```
+
+Nothing here publishes to a registry in order to prove a point, so every
+registry is reachable somewhere else: `PRINTOBSERVER_PROOF_REGISTRIES` points all
+three at one address, and `release-artifacts standin` stands that address up —
+a Python index serving real wheels, a JavaScript registry serving real packages,
+and a forge listing releases with their artifacts and digests. That is what the
+suites drive, so a registry serving nothing, one serving something that cannot be
+run, and one serving something that works are each proven to come back as the
+outcome they are.
 
 ## Commits, releases, and merging
 

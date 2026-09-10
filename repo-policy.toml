@@ -129,6 +129,50 @@ schedule_block = "obico-tier-schedule"
 # in every run, and how to run it by hand.
 section = "The scheduled Obico tier"
 
+[install_proof]
+# The registry install-path proof: the tier that takes each of the three
+# end-user routes from its own registry and runs what it installed.
+# `AGENTS.md`'s "The registry install-path proof" is the prose half; what is
+# declared here is what a check has to be deterministic about.
+#
+# Like the two tiers above it declares a `tier` recipe, which is what the
+# documentation check reads every tier outside the gate off — so this tier is
+# inventoried by being declared here rather than by a check knowing its name.
+#
+# It is deliberately NOT one of `gate.tiers` and `just check-repo` refuses a
+# tree in which it is: it reads the real package registries, so over a change
+# it could only ever report what was published before that change and could
+# say nothing at all about the artifact under review.
+tier = "test-install-proof"
+# The recipes that prove one route each. Declared as a prefix rather than as
+# three names, because which route each one proves is read out of the recipe's
+# own body — the target it names — and held against the routes `AGENTS.md`
+# states.
+recipe_prefix = "prove-registry-"
+workflow = "install-path.yml"
+# The ONLY triggers that workflow may carry. A release's own proof, a schedule
+# and a manual invocation, and nothing that fires on a change.
+triggers = ["workflow_run", "schedule", "workflow_dispatch"]
+# The workflow whose FINISHING is the release-time trigger. Not the GitHub
+# Release being published: that release is cut in the `release` job and the
+# artifacts are built and published in the two jobs after it, so a proof keyed
+# on the release itself would measure the version before it.
+release_workflow = "release-plz"
+# The condition every job of the proof must carry, so a release run that failed
+# is not proven as though it had succeeded.
+release_conclusion = "github.event.workflow_run.conclusion == 'success'"
+# How the version under test reaches the tier, the input a caller names it in,
+# and the word that means "the newest release the forge published". The
+# committed tree's own version is deliberately not among them.
+version_env = "PRINTOBSERVER_PROOF_VERSION"
+version_input = "version"
+release_selector = "release"
+# The block in `AGENTS.md` recording the schedule the tier runs on.
+schedule_block = "install-proof-schedule"
+# The section of `AGENTS.md` that records the tier: what it proves, why it is
+# not in every run, and how to run it by hand.
+section = "The registry install-path proof"
+
 [ingress]
 # The Obico ingress answer bound, and the producer's own timeout it must stay
 # below. `just check-repo` reads the shipped default and the server's own copy of

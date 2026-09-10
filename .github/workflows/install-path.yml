@@ -1,29 +1,77 @@
-# The end-user install path, proven on the supported platform matrix.
+# The end-user install path, proven against what the registries actually serve.
 #
-# One job per ROUTE, because the three routes are alternatives to one another:
-# a single job exercising all three would prove none of them is enough on its
-# own. Every step below is derived from AGENTS.md's "The end-user install path"
-# section, and `just check-repo` refuses this file if the two disagree.
+# Two jobs per ROUTE, because the three routes are alternatives to one another
+# and each answers for itself:
 #
-# None of these routes and neither of the two commands is executable yet: the
-# distributions, the install script and the service installer land at the `sdks`
-# and `server` nodes. That is why this workflow does not run on pull requests.
+# `prove-registry-*` is the tier. It asks that route's own registry what it
+# serves, installs the version under test into a throwaway environment with no
+# Rust toolchain on the path, and runs the program the install left there —
+# reporting `SERVED AND PROVEN`, `SERVED AND NOT PROVEN` or `NOT SERVED`, of
+# which only the first exits zero. `AGENTS.md`'s "The registry install-path
+# proof" is what it is; `repo-policy.toml`'s `[install_proof]` is the
+# machine-readable half, and `just check-repo` refuses a tree in which they
+# disagree.
+#
+# `install-route-*` runs the install path's own stated commands, in the order
+# `AGENTS.md`'s "The end-user install path" states them. Every step below is
+# one of that section's commands and `just check-repo` refuses one that is not,
+# so this workflow cannot grow an install nobody declared.
+#
+# Both are matrixed over the supported-platform list, which is derived from
+# that same section rather than narrowable here.
+#
+# ON EVERY TRIGGER but a change. The tier reads the real registries, so over a
+# change it could only ever report what was published before it. The
+# release-time trigger is the `release-plz` workflow HAVING FINISHED rather
+# than the GitHub Release being published: that workflow cuts the release in
+# its `release` job and builds and publishes the artifacts in the two jobs
+# after it, so a proof keyed on the release itself would measure the version
+# before it.
 
 name: install-path
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      version:
+        description: >-
+          The version to prove. `release` takes the newest release the forge
+          published; naming none takes the newest each registry serves.
+        required: false
+        default: ""
+        type: string
+  workflow_run:
+    workflows: [release-plz]
+    types: [completed]
   schedule:
     - cron: "0 6 * * 1"
 
 permissions:
   contents: read
 
+concurrency:
+  # Not cancel-in-progress: a run stopped part way through is a route nobody
+  # proved, and this workflow is the only thing that would have said so.
+  group: install-path-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Which version this run proves, in one place. A caller names one; a
+  # release's own proof takes the release the finished run cut; a scheduled run
+  # names none and each registry's newest is proven. The number in the
+  # committed tree is deliberately not among them: it is whatever release
+  # automation last wrote into the workspace, and what a user gets is whatever
+  # the registry is serving.
+  PRINTOBSERVER_PROOF_VERSION: >-
+    ${{ inputs.version || (github.event_name == 'workflow_run' && 'release' || '') }}
+
 jobs:
-  install-route-pypi:
-    name: install-route-pypi
+  prove-registry-pypi:
+    name: prove-registry-pypi (${{ matrix.platform.id }})
+    # A release run that did not finish successfully published nothing, and
+    # proving it as though it had would report a registry's silence as a defect
+    # of the artifact.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -34,12 +82,85 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform.runner }}
     steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      # No Rust toolchain is set up here, and that is the point of these three
+      # routes: each carries a program already built for the platform, and the
+      # proof takes what it strips off the path anyway.
+      - run: just prove-registry-pypi
+
+  prove-registry-npm:
+    name: prove-registry-npm (${{ matrix.platform.id }})
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
+      - run: just prove-registry-npm
+
+  prove-registry-script:
+    name: prove-registry-script (${{ matrix.platform.id }})
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just prove-registry-script
+
+  install-route-pypi:
+    name: install-route-pypi (${{ matrix.platform.id }})
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/setup-python@v5
       - run: pip install printobserver-cli
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      # The two commands after the routes need a person, and neither can be
+      # gated on here. The installer takes the program from the PATH of the
+      # root shell that runs it, which is not where any of the three routes
+      # puts one; and the unit it writes will not start until somebody has
+      # filled in the OctoPrint key and the ingress secret its configuration
+      # template deliberately leaves empty. Both are recorded as findings
+      # against the documented path rather than worked around here. What proves
+      # the installer is `crates/printobserver/tests/service.rs`, which drives
+      # the committed installer against a throwaway root and starts the program
+      # by the installed unit's own start command.
+      - continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service
 
   install-route-npm:
-    name: install-route-npm
+    name: install-route-npm (${{ matrix.platform.id }})
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -50,12 +171,17 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform.runner }}
     steps:
+      - uses: actions/setup-node@v5
       - run: npm install -g printobserver-cli
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      - continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service
 
   install-route-script:
-    name: install-route-script
+    name: install-route-script (${{ matrix.platform.id }})
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -67,5 +193,8 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      - continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service

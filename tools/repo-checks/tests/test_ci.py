@@ -14,6 +14,13 @@ from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
 INSTALL = ".github/workflows/install-path.yml"
+#: The install-service step of the first install job, as the workflow spells it.
+SERVICE_STEP = (
+    "      - continue-on-error: true\n"
+    "        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/"
+    "printobserver/main/scripts/install-service.sh | sudo sh\n"
+)
+
 FOURTH_ROUTE = """
 #### Route 4 — a distribution channel nobody built
 
@@ -137,17 +144,62 @@ def test_an_install_job_omitting_one_of_the_two_commands_is_refused(
 ) -> None:
     """A route proven without the commands after it proves half the path."""
     broken = tree()
-    broken.edit(
-        INSTALL,
-        "      - run: pip install printobserver-cli\n"
-        "      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/"
-        "printobserver/main/scripts/install-service.sh | sudo sh\n",
-        "      - run: pip install printobserver-cli\n",
-    )
+    broken.edit(INSTALL, SERVICE_STEP, "")
 
     findings = continuous_integration(broken.repo)
 
     refused(findings, "omits `curl -fsSL")
+
+
+def test_an_install_job_omitting_the_check_on_what_it_installed_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A job that only installs cannot tell a working install from a broken one.
+
+    Which is the defect this whole workflow had: it took every route from every
+    registry and never ran what any of them put on the path.
+    """
+    broken = tree()
+    broken.edit(INSTALL, "      - run: printobserver --version\n", "")
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "omits `printobserver --version`")
+
+
+def test_an_install_job_checking_before_the_route_it_installed_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Run first, the check reads whatever was already on the host."""
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        "      - run: pip install printobserver-cli\n      - run: printobserver --version\n",
+        "      - run: printobserver --version\n      - run: pip install printobserver-cli\n",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "before the route it is checking")
+
+
+def test_an_install_job_checking_after_the_service_commands_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A program that does not run must not reach a service before anything looked."""
+    broken = tree()
+    broken.edit(INSTALL, "      - run: printobserver --version\n", "")
+    broken.edit(
+        INSTALL,
+        "      - continue-on-error: true\n        run: sudo systemctl enable --now "
+        "printobserver.service\n",
+        "      - continue-on-error: true\n        run: sudo systemctl enable --now "
+        "printobserver.service\n      - run: printobserver --version\n",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "after the commands that put the service in place")
 
 
 def test_an_install_step_the_section_does_not_state_is_refused(
@@ -158,7 +210,7 @@ def test_an_install_step_the_section_does_not_state_is_refused(
     broken.edit(
         INSTALL,
         "      - run: pip install printobserver-cli\n",
-        "      - run: pip install printobserver-cli\n      - run: printobserver --version\n",
+        "      - run: pip install printobserver-cli\n      - run: printobserver server\n",
     )
 
     findings = continuous_integration(broken.repo)
@@ -171,8 +223,8 @@ def test_a_spelling_disagreement_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.edit(
         INSTALL,
-        "      - run: sudo systemctl enable --now printobserver.service\n\n  install-route-npm:",
-        "      - run: systemctl enable --now printobserver.service\n\n  install-route-npm:",
+        "        run: sudo systemctl enable --now printobserver.service\n\n  install-route-npm:",
+        "        run: systemctl enable --now printobserver.service\n\n  install-route-npm:",
     )
 
     findings = continuous_integration(broken.repo)

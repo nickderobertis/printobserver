@@ -218,3 +218,23 @@ rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+
+# --- the registry install-path proof: one URL-opening site, and npm's own digest ---
+
+[[suppression]]
+rule = "S310"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.Request("
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it. Every read this proof makes of a registry goes through this one helper, so the rule has one reviewable pair of lines rather than one per registry — and the scheme IS audited, on the line above the directive: a URL that is not `http` or `https` is refused before anything is asked over it. The addresses are the three registry bases this repository declares, or the one stand-in address a caller pointed them at."
+
+[[suppression]]
+rule = "S310"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every read of a registry goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "S324"
+file = "tools/release-artifacts/src/release_artifacts/standin.py"
+site = "hashlib.sha1(raw)"
+reason = "S324 is right that SHA-1 is not a hash to choose, and this one is not chosen: `dist.shasum` in a packument of the JavaScript registry is SHA-1 by that registry's own protocol, and a stand-in serving anything else is one `npm` refuses to install from. It is a digest an installer checks a tarball against rather than a security decision of this repository, and the `integrity` field beside it — which is what a modern `npm` prefers — carries SHA-512."

@@ -125,6 +125,42 @@ every gate run would otherwise pay for.
 on every platform the supported-platform list names. `just octoprint-up` and
 `just octoprint-down` bracket it.
 
+### test-install-proof
+
+**What it proves.** That each of the three end-user routes can be taken from
+its own registry, on every platform the supported-platform list names: that the
+registry serves the version under test, that what it serves installs into an
+environment holding no copy of these sources and with no Rust toolchain on the
+path, and that the program the install put there runs and reports that version.
+It answers one of three outcomes and only the first is a pass — `SERVED AND
+PROVEN`, `SERVED AND NOT PROVEN` (an artifact that does not work) and `NOT
+SERVED` (a publish that did not happen) — because those are two different
+repairs. The version under test is the one the caller names in
+`PRINTOBSERVER_PROOF_VERSION`, the newest release the forge published where that
+says `release`, and otherwise the newest the registry itself serves; never the
+number in the committed tree, which is whatever release automation last wrote
+there. `just prove-registry-pypi`, `prove-registry-npm` and
+`prove-registry-script` are the three routes on their own, and
+`just test-install-proof` is all three.
+
+**Why it is outside the gate.** It reads the real package registries, so over a
+change it could only ever report what was published *before* that change, and it
+can say nothing at all about the artifact under review. What proves an artifact
+built from the committed tree is `just prove-route-*`, in the `artifact-route-*`
+jobs, which run on every change and contact no registry.
+
+**When it runs.** After a release, on a schedule and on a manual invocation, and
+on no trigger that fires on a change. The schedule is the cron `0 6 * * 1`, and
+`.github/workflows/install-path.yml` is where all three triggers are declared.
+The release-time one is the `release-plz` workflow *having finished* rather than
+the GitHub Release being published: that release is cut before its artifacts are
+built and published, so a proof keyed on it would measure the version before it.
+
+Nothing here publishes to a registry in order to prove a point:
+`PRINTOBSERVER_PROOF_REGISTRIES` points all three registries at one stand-in
+address, which `release-artifacts standin` stands up, and that is what this
+repository's own suites drive every outcome through.
+
 ### test-obico
 
 **What it proves.** That the recorded Obico failure-alert sample still matches

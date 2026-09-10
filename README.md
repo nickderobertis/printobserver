@@ -37,6 +37,13 @@ pinned release and an install directory:
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
+Whichever route you took, check what you installed. The program prints the
+version it is, which is the one thing the commands above cannot tell you:
+
+```console
+printobserver --version
+```
+
 Then, in order, two commands. The first puts the binary, the state directory,
 the configuration and the systemd unit in place:
 
