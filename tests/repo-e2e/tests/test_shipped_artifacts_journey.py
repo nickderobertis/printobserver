@@ -113,11 +113,22 @@ def test_each_client_is_installed_and_proved_against_a_real_server(
 
 @pytest.mark.parametrize(("identifier", "recipe"), ROUTES, ids=[name for _, name in ROUTES])
 def test_each_route_leaves_a_runnable_program_on_the_path(identifier: str, recipe: str) -> None:
-    """A route installs a program that runs and reports its own version."""
+    """A route installs a program that runs and reports its own version.
+
+    And the recipe says what the path that program was installed under carried:
+    a route that reached a Rust toolchain on this host would name it here
+    instead, which is the property that makes these three routes rather than a
+    source install what the end user gets.
+    """
     code, said = _recipe(recipe)
 
     passing((code, said), describing=f"`just {recipe}` over `{identifier}`")
     contains(said, f"printobserver {_version()}", describing=f"what `just {recipe}` said")
+    contains(
+        said,
+        "Rust toolchain on the install path: none",
+        describing=f"what `just {recipe}` said",
+    )
 
 
 @pytest.mark.parametrize(
@@ -130,32 +141,6 @@ def test_python_proofs_can_be_repeated(recipe: str, expected: str) -> None:
         code, said = _recipe(recipe)
         passing((code, said), describing=f"`just {recipe}`, attempt {attempt + 1}")
         contains(said, f"{expected} {_version()}", describing=f"what `just {recipe}` said")
-
-
-def test_no_route_is_installed_with_a_rust_toolchain_on_the_path() -> None:
-    """A route that needed one on the installing host would fail here."""
-    from repo_checks.shell import run as shell_run
-
-    result = shell_run(
-        [
-            "uv",
-            "run",
-            "-q",
-            "python",
-            "-c",
-            "import os, pathlib\n"
-            "from release_artifacts.installing import _without_rust\n"
-            "path = _without_rust()['PATH'].split(os.pathsep)\n"
-            "found = [d for d in path if (pathlib.Path(d) / 'cargo').exists()]\n"
-            "print('cargo on the install path:', found)\n"
-            "raise SystemExit(1 if found else 0)",
-        ],
-        cwd=REPO_ROOT,
-        env=clean_environment(PYTHONPATH=_pythonpath()),
-        timeout=300,
-    )
-
-    passing(result, describing="the environment the three routes are installed under")
 
 
 def test_the_tool_refuses_an_artifact_nothing_here_builds() -> None:

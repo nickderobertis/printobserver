@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.installing import prove
+from release_artifacts.installing import NO_TOOLCHAIN, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.world import (
     CLIENT_CONFIG,
@@ -40,10 +40,17 @@ ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobser
 def test_each_route_installs_a_program_that_runs(
     identifier: str, repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
-    """A route is taken the way its own command takes it, and what it left runs."""
+    """A route is taken the way its own command takes it, and what it left runs.
+
+    Its proof says what the path it was installed under carried, and a route
+    that reached a Rust toolchain on the installing host would say so here —
+    which is the whole reason each of them ships a program already built for
+    the platform.
+    """
     said = prove(repo, identifier, into(identifier.replace(":", "-")), program)
 
     contains(said, "printobserver 0.1.0", describing=f"what `{identifier}` installed")
+    contains(said, NO_TOOLCHAIN, describing=f"what `{identifier}` was taken with")
 
 
 def test_a_stand_in_machine_answers_what_the_adapter_reads(repo: Repo) -> None:

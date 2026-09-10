@@ -28,7 +28,7 @@ from release_artifacts.build import (
     manifest_of,
     staged_release,
 )
-from release_artifacts.installing import InstallError, _without_rust, install
+from release_artifacts.installing import InstallError, install
 from release_artifacts.packages import checksums, digest_of
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.targets import TargetError
@@ -154,20 +154,6 @@ def test_a_generated_module_recording_no_contract_is_refused(repo: Repo) -> None
     """A package that recorded none would leave a consumer unable to tell."""
     with pytest.raises(BuildError, match="records no"):
         contract_version(repo, "justfile")
-
-
-def test_nothing_on_the_install_path_of_a_route_is_a_rust_toolchain() -> None:
-    """A route that needed one on the installing host would fail where it is taken."""
-    import os
-
-    path = _without_rust()["PATH"].split(os.pathsep)
-
-    for directory in path:
-        for named in ("cargo", "rustc", "rustup"):
-            truth(
-                not (Path(directory) / named).exists(),
-                describing=f"{directory} not to carry {named}",
-            )
 
 
 def test_an_artifact_nothing_here_takes_is_refused(repo: Repo, into: Callable[[str], Path]) -> None:

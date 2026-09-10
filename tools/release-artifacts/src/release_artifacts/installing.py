@@ -39,6 +39,17 @@ INSTALL_SCRIPT = "scripts/install.sh"
 #: How long any one install is given.
 INSTALL_TIMEOUT_SECONDS = 900
 
+#: Every program a Rust toolchain puts on a path.
+TOOLCHAIN = ("cargo", "rustc", "rustup")
+
+#: How a route's own proof reports what the path it was installed under carried,
+#: and what that report says where it carried nothing. Every route ships a
+#: program already built for the platform, so `none` is the answer on every
+#: host — and a proof saying anything else names a route that reached a
+#: toolchain the machine beside the printer would have had to carry.
+TOOLCHAIN_REPORT = "Rust toolchain on the install path: {}"
+NO_TOOLCHAIN = TOOLCHAIN_REPORT.format("none")
+
 
 class InstallError(RuntimeError):
     """An artifact could not be taken the way its own consumer takes it."""
@@ -68,8 +79,7 @@ def _without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
     kept = [
         directory
         for directory in environment.get("PATH", "").split(os.pathsep)
-        if directory
-        and not any(Path(directory, program).exists() for program in ("cargo", "rustc", "rustup"))
+        if directory and not any(Path(directory, program).exists() for program in TOOLCHAIN)
     ]
     environment["PATH"] = os.pathsep.join(kept)
     environment.pop("CARGO_HOME", None)
@@ -333,22 +343,36 @@ def prove(repo: Repo, identifier: str, into: Path, binary: Path | None = None) -
 
 
 def _prove_route(repo: Repo, taken: Installed) -> str:
-    """The program a route installed runs, and says which version it is."""
+    """The program a route installed runs, says its version, and says what it was taken with.
+
+    The second line is read off the environment the install and this run were
+    actually given rather than claimed about it, so a route taken where a
+    toolchain was still reachable says which programs those were, in the answer
+    its own recipe prints. That is what makes "no route needs a Rust toolchain"
+    something a reader of a proof observes rather than something this module
+    says about itself.
+
+    Raises:
+        InstallError: If the route put no program on the path it was given, or
+            what it put there is not this tree's version.
+    """
     installed = taken.program
     if installed is None or not installed.exists():
         msg = f"{taken.target} put no {PROGRAM} on the path it was given"
         raise InstallError(msg)
+    environment = _without_rust()
     version = _ran(
         [str(installed), "--version"],
         cwd=taken.environment,
-        env=_without_rust(),
+        env=environment,
         describing=str(installed),
     ).strip()
     expected = targets.workspace(repo.root)["version"]
     if expected not in version:
         msg = f"{installed} reports `{version}`, and this tree's version is {expected}"
         raise InstallError(msg)
-    return version
+    reached = [name for name in TOOLCHAIN if shutil.which(name, path=environment["PATH"])]
+    return f"{version}\n{taken.target}: {TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}"
 
 
 def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
