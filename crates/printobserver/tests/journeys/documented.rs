@@ -115,9 +115,10 @@ impl Documentation {
             .unwrap_or_else(|error| panic!("{} is readable: {error}", skill_path.display()));
         let mut linked = BTreeMap::new();
         for target in links_in(&skill) {
-            if let Ok(body) = std::fs::read_to_string(beside.join(&target)) {
-                linked.insert(target, body);
-            }
+            let body = std::fs::read_to_string(beside.join(&target)).unwrap_or_else(|error| {
+                panic!("linked document `{target}` must be readable: {error}")
+            });
+            linked.insert(target, body);
         }
         Self { skill, linked }
     }
@@ -400,6 +401,16 @@ fn words(line: &str) -> Result<Vec<String>, String> {
         found.push(current);
     }
     Ok(found)
+}
+
+/// An inline skill cannot silently lose a reference its reader cannot open.
+#[test]
+#[should_panic(expected = "linked document `missing.md` must be readable")]
+fn unreadable_documentation_link_names_its_target() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let skill = directory.path().join("skill.md");
+    std::fs::write(&skill, "Read the [reference](missing.md).\n").expect("write an inline skill");
+    Documentation::beside(&skill);
 }
 
 /// Quoting must close before a documented command can be executed.

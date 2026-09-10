@@ -138,7 +138,7 @@ docs-generate:
     just node-modules
     bunx nx run printobserver:docs-surface --output-style=stream
     uv run -q python -m repo_checks docs-schemas-write
-    PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --features test-fixtures --test journeys every_documented_example
+    RUSTFLAGS=-Dwarnings PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --features test-fixtures --test journeys every_documented_example
 
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:
