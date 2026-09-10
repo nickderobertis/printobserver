@@ -14,9 +14,6 @@ a reader of the run would see is what is asserted. A journey that composed the
 line itself would prove a line nothing publishes.
 """
 
-# `assert` is how pytest states an assertion and how it produces the failure
-# message a reader acts on; suppressions.toml carries the reason.
-
 from __future__ import annotations
 
 import tomllib
