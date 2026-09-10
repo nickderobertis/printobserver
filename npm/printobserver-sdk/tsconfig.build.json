@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../../dist/npm-sdk",
+    "rootDir": "src",
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true,
+    "lib": [
+      "ES2023",
+      "DOM"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

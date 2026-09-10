@@ -8,7 +8,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # `repo_checks` is a plain package rather than a distribution, so that no
 # hand-maintained version string enters the tree. This is how the recipes and
 # the graph targets reach it.
-export PYTHONPATH := "tools/repo-checks/src:tools/contract-codegen/src"
+export PYTHONPATH := "tools/repo-checks/src:tools/contract-codegen/src:tools/release-artifacts/src"
 
 # Show the command surface.
 default:
@@ -99,6 +99,43 @@ build:
 generate-clients:
     just node-modules
     uv run -q python -m contract_codegen write
+
+# Build every artifact this repository publishes, into `dist/`.
+#
+# The three clients a dependent takes as a dependency, and the three
+# alternative routes an end user gets the `printobserver` program by. Every one
+# carries the version release automation wrote into the workspace, because no
+# manifest in this tree carries one.
+build-artifacts:
+    uv run -q python -m release_artifacts build-all
+
+# Take each shipped artifact the way its own consumer takes it, and prove it.
+#
+# One recipe per artifact, because the six are separable and a reader chasing a
+# failure wants the one that failed. Each builds from the committed tree,
+# installs into a throwaway environment holding no copy of these sources, and
+# then proves what it installed: a client by its own committed smoke check
+# against a real supervisor, a route by the program it put on a path reporting
+# its own version. The three routes are installed with a PATH holding no Rust
+# toolchain at all, which is the whole reason they carry a program already
+# built for the platform.
+prove-client-rust:
+    uv run -q python -m release_artifacts prove --target crate:printobserver-sdk --into dist/proof/client-rust
+
+prove-client-python:
+    uv run -q python -m release_artifacts prove --target pypi:printobserver-sdk --into dist/proof/client-python
+
+prove-client-node:
+    uv run -q python -m release_artifacts prove --target npm:@printobserver/sdk --into dist/proof/client-node
+
+prove-route-pypi:
+    uv run -q python -m release_artifacts prove --target pypi:printobserver-cli --into dist/proof/route-pypi
+
+prove-route-npm:
+    uv run -q python -m release_artifacts prove --target npm:printobserver-cli --into dist/proof/route-npm
+
+prove-route-script:
+    uv run -q python -m release_artifacts prove --target release:printobserver --into dist/proof/route-script
 
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:

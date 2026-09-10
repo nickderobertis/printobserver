@@ -108,3 +108,44 @@ def run(
         text=True,
         check=check,
     )
+
+
+def start(
+    argv: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.Popen[str]:
+    """Start a long-running program by absolute path, and answer it.
+
+    `run` waits; this does not, because some of what this repository drives is
+    a server a journey then makes requests of. Everything `run`'s own comment
+    says applies here for the same reasons: the executable is resolved against
+    PATH so `S607` is fixed rather than suppressed, `S603` has one more
+    reviewable site rather than one at every caller, and the variables naming a
+    git repository are dropped so the program works on `cwd`.
+
+    Args:
+        argv: The program and its arguments. Never a shell string.
+        cwd: The directory to run in.
+        env: The environment to run under, or the caller's when omitted.
+
+    Returns:
+        The running process, with both of its streams captured.
+
+    Raises:
+        FileNotFoundError: If the program is not on PATH. A caller waiting on a
+            process that was never started would wait for its whole timeout.
+    """
+    program = shutil.which(argv[0])
+    if program is None:
+        message = f"{argv[0]}: not found on PATH"
+        raise FileNotFoundError(message)
+    return subprocess.Popen(  # noqa: S603
+        [program, *argv[1:]],
+        cwd=cwd,
+        env=without_ambient_git(os.environ if env is None else env),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
