@@ -18,6 +18,8 @@ Three outcomes, and only the first is a pass:
 
 Those are two different repairs, which is why they are two answers rather than
 one failure: the first is somebody's build, the second is somebody's release.
+A pass is one line saying so; a failure is every fact this run knew, one to a
+line, because that is what a reader chasing one of the two repairs needs.
 
 **The version under test is never this tree's own.** What a user gets is
 whatever the registry is serving, and the number in the workspace is whatever
@@ -685,22 +687,17 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
             ),
         )
     reached = [name for name in TOOLCHAIN if shutil.which(name, path=without_rust()["PATH"])]
-    # A pass is two lines. Everything a reader of a pass needs is which version
-    # was proven, where that version came from, what installed it and what the
-    # program said — and everything else this run knows is what a reader of a
-    # FAILURE needs, which is why the two are not the same report.
+    # A pass is ONE line: a tool that worked says so and stops. Everything a
+    # reader of a pass needs is on it — which version was proven, where that
+    # version came from, what installed it and what the program said — and
+    # everything else this run knows is what a reader of a FAILURE needs, which
+    # is why the two are not the same report.
     return Proof(
         target.id,
         Outcome.PROVEN,
-        _rendered(
-            target,
-            Outcome.PROVEN,
-            [
-                f"`{stated or target.id}` installed {version} — "
-                f"{TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}"
-            ],
-            summary=f"{selected.version} ({selected.whence})",
-        ),
+        f"{target.id}: {Outcome.PROVEN} {selected.version} ({selected.whence}): "
+        f"`{stated or target.id}` installed {version} — "
+        f"{TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}",
     )
 
 
@@ -729,10 +726,14 @@ def _refused(
     )
 
 
-def _rendered(target: targets.Target, outcome: Outcome, lines: list[str], summary: str = "") -> str:
-    """One proof's whole answer, as a reader of a run reads it."""
-    headline = f"{target.id}: {outcome}"
-    return "\n".join([f"{headline} {summary}".rstrip(), *(f"  {line}" for line in lines)])
+def _rendered(target: targets.Target, outcome: Outcome, lines: list[str]) -> str:
+    """One FAILING proof's whole answer, as a reader chasing it reads it.
+
+    Every fact this run knew, one to a line, because what a reader of a failure
+    is doing is finding out which of the two repairs it is. A pass is one line
+    and is written where it is decided.
+    """
+    return "\n".join([f"{target.id}: {outcome}", *(f"  {line}" for line in lines)])
 
 
 def _stated_command(repo: Repo, target: targets.Target) -> str:

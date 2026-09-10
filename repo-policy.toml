@@ -166,11 +166,11 @@ release_workflow = "release-plz"
 # releases between them, and a run that cut nothing proves nothing rather than
 # proving whatever a registry served newest.
 #
-# Deliberately NOT the triggering run's conclusion, which is what this replaced.
-# A run that cut its release and then failed to publish the artifacts is exactly
-# the state this tier exists to find: gated on the conclusion that run is
-# skipped and the publish that did not happen is reported by nothing at all,
-# while gated on the release itself it is proven and answers `NOT SERVED`.
+# Deliberately NOT the triggering run's conclusion. A run that cut its release
+# and then failed to publish the artifacts concludes as a failure, so a
+# conclusion gate skips exactly the state this tier exists to find and the
+# publish that did not happen is reported by nothing at all; gated on the
+# release itself that run is proven and answers `NOT SERVED`.
 release_job = "resolve"
 release_output = "version"
 release_recipe = "release-version"

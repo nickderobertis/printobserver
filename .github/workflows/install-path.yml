@@ -52,10 +52,11 @@ jobs:
   # and cuts nothing — proves nothing rather than proving whatever was newest.
   #
   # Deliberately NOT gated on that run having succeeded. A run that cut the
-  # release and then failed to publish its artifacts is exactly the state this
-  # tier exists to find: the version is there to prove, nothing serves it, and
-  # the proof says `NOT SERVED`. Gated on the conclusion, that run is skipped
-  # and the missing publish is reported by nothing at all.
+  # release and then failed to publish its artifacts concludes as a failure,
+  # and it is the state this tier exists to find: the version is there to
+  # prove, nothing serves it, and the proof says `NOT SERVED`. A conclusion
+  # gate skips exactly that run, and the missing publish is reported by
+  # nothing at all.
   resolve:
     name: resolve
     runs-on: ubuntu-24.04

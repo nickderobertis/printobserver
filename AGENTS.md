@@ -728,12 +728,14 @@ no release answers none, and every job below is gated on that: an ordinary push
 proves nothing rather than proving whatever was newest.
 
 **And a run that cut a release and failed to publish it is proven, not
-skipped.** That is the one state this whole tier exists to find, and gating on
-the triggering run's *conclusion* — which is what this used to do — skips
-exactly it: the release is listed, nothing serves it, and the failure is
-reported by nothing at all. Gated on the release instead, the run is proven and
-answers `NOT SERVED`, which is the publish that did not happen, named.
-`just check-repo` refuses a job of this proof that gates on a conclusion.
+skipped.** That is the one state this whole tier exists to find, and it is why
+the triggering run's *conclusion* may not be what gates the proof: such a run
+concludes as a failure, so a conclusion gate skips exactly the run whose
+release is listed and whose artifacts nothing serves — and the missing publish
+is then reported by nothing at all. Gated on the release it cut, that run is
+proven and answers `NOT SERVED`, which is the publish that did not happen,
+named. `just check-repo` refuses a job of this proof that gates on a
+conclusion.
 
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
