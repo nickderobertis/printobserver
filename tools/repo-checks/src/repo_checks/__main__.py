@@ -16,7 +16,14 @@ from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
 from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
-COMMANDS = ("install-tools", "install-hooks", "commit-msg", "pr-title", "coverage")
+COMMANDS = (
+    "install-tools",
+    "install-hooks",
+    "commit-msg",
+    "pr-title",
+    "coverage",
+    "docs-schemas-write",
+)
 
 # The checks that read a base revision as well as the tree: what a change adds,
 # and what it takes away.
@@ -37,27 +44,29 @@ def main(argv: list[str] | None = None) -> int:
 
     repo = Repo(Path(parsed.root))
 
-    if parsed.name == "install-tools":
-        return commands.install_tools(repo)
-    if parsed.name == "install-hooks":
-        return commands.install_hooks(repo)
-    if parsed.name == "coverage":
-        return commands.coverage(repo)
-    if parsed.name == "pr-title":
-        return commands.pr_title(repo)
-    if parsed.name == "commit-msg":
-        if parsed.argument is None:
-            parser.error("commit-msg needs the path to the commit message file")
-        return commands.commit_msg(repo, Path(parsed.argument))
-
-    if parsed.name == "all":
-        selected = CHECKS
-    elif parsed.name == "workflows":
-        selected = WORKFLOW_CHECKS
-    elif parsed.name in ALL:
-        selected = {parsed.name: ALL[parsed.name]}
-    else:
-        parser.error(f"unknown check {parsed.name!r}")
+    match parsed.name:
+        case "install-tools":
+            return commands.install_tools(repo)
+        case "install-hooks":
+            return commands.install_hooks(repo)
+        case "docs-schemas-write":
+            return commands.docs_schemas_write(repo)
+        case "coverage":
+            return commands.coverage(repo)
+        case "pr-title":
+            return commands.pr_title(repo)
+        case "commit-msg":
+            if parsed.argument is None:
+                parser.error("commit-msg needs the path to the commit message file")
+            return commands.commit_msg(repo, Path(parsed.argument))
+        case "all":
+            selected = CHECKS
+        case "workflows":
+            selected = WORKFLOW_CHECKS
+        case name if name in ALL:
+            selected = {name: ALL[name]}
+        case _:
+            parser.error(f"unknown check {parsed.name!r}")
 
     findings: list[str] = []
     for name, check in selected.items():

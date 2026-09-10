@@ -1,4 +1,1 @@
-# Ownership routing for review. Every path in this repository is owned by the
-# same person, so one rule states it; GitHub turns this into required review
-# only under branch protection, which is configured separately.
 * @nickderobertis

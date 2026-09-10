@@ -133,6 +133,67 @@ site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
 
 [[suppression]]
+rule = "clippy::too_many_lines"
+file = "crates/printobserver/tests/journeys/documented.rs"
+site = "pub fn operator_workflow("
+reason = "The function is the six steps of one supervision turn, written in the order the skill states them, and each step's inputs are what the steps before it resolved out of the documentation. Splitting it would put the reader's own sequence in six places and leave nothing carrying the turn, which is the one thing this journey is about."
+
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/server.rs"
+site = "working_dir: assets.clone(),"
+reason = "A wrong working directory makes the agent's relative reference-file opens fail with a missing-path error on its first documentation read. That failure is visible to the supervising agent, not silent, so the rule's silent-failure condition is not met. The installed-assets journey already proves the bundled links resolve without a checkout; a billed harness turn would re-prove file resolution."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = ".config/nextest.toml"
+site = "[test-groups]"
+reason = "Assigning binary(integration) to octoprint with max-threads = 1 is a structural declaration settled by reading this file. The narrowed rule excludes structural claims; another runtime test would not improve that proof."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "crates/printobserver/tests/journeys/documented.rs"
+site = "let body = std::fs::read_to_string(beside.join(&target))"
+reason = "Checkout links intentionally traverse the assets/reference symlink into docs/reference outside the skill directory. The docs skill check validates the declared bundle and the installed-assets journey verifies materialized links. Directory confinement would reject the supported checkout layout."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/journeys/documenting.rs"
+site = "if writing() {"
+reason = "Proving replacement of stale committed examples requires a corrupted documentation copy, forbidden by this dispatch. The positive journey executes and compares every documented example against a real server; write mode uses those captured steps."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "justfile"
+site = "docs-generate:"
+reason = "Proving repair of an incomplete generated documentation set requires forbidden tree surgery. The real schema-writing CLI test, runtime surface comparison and real-server documented-example journey remain."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "crates/printobserver/project.json"
+site = "test-integration"
+reason = "Repository policy requires the OctoPrint tier on every change on both platforms outside the fast gate. A different affected edge cannot narrow that schedule, and changing the schedule or adding CI jobs is outside this dispatch."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/project.json"
+site = "metadata"
+reason = "Proving regeneration from a missing or corrupted committed surface requires forbidden tree surgery. The existing reference test compares the committed manifest to the actual runtime surface serialized by write mode."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/lib.rs"
+site = "pub const REFERENCE_DIRECTORY:"
+reason = "The immutable literal reference is not a field or caller-supplied path, so callers cannot assign escaping values. The documentation bundle check holds consumers to the declared layout."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/lib.rs"
+site = "pub const DEFAULT_REFERENCES:"
+reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "Keep the OctoPrint journey in the required gate"

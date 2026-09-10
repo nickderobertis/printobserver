@@ -206,6 +206,14 @@ file reaches no printer and cannot be composed into an action.
 `crates/printobserver/tests/integration.rs` runs the same cross-product against
 the scripted `OctoPrint`.
 
+## The agent-facing documentation
+
+The skill is the supervising agent's whole initial context. Keep it short and
+put reference material in the documents it links to. `[docs]` in
+`repo-policy.toml` declares that surface and its enforced bounds.
+References must remain reachable beside the materialized skill after install,
+on a host with no checkout.
+
 ## Supported platforms
 
 This is the one source every one of this repository's continuous-integration

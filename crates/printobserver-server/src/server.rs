@@ -361,12 +361,38 @@ fn materialize(
     Ok(path)
 }
 
+/// Write the reference documents the skill links to into the assets directory.
+///
+/// The skill is deliberately short and links out for everything else, so an
+/// install that carried the skill and none of what it points at would hand the
+/// agent a set of dead links — which is worse than no links, because it reads as
+/// documentation right up to the moment it is opened. Each document goes to the
+/// path the skill links to it by, relative to the assets directory, and the
+/// harness runs with that directory as its working directory: so the one
+/// relative link in the skill resolves both from the skill's own location and
+/// from where the agent is standing, and it resolves to the same file.
+fn materialize_references(assets: &Path) -> Result<(), StartError> {
+    for (relative, contents) in printobserver_oneharness::DEFAULT_REFERENCES {
+        let path = assets.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| StartError::State {
+                detail: format!("{} could not be created: {error}", parent.display()),
+            })?;
+        }
+        std::fs::write(&path, contents).map_err(|error| StartError::State {
+            detail: format!("{} could not be written: {error}", path.display()),
+        })?;
+    }
+    Ok(())
+}
+
 /// The supervising agent's harness, over the assets this program carries.
 fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> {
     let assets = config.assets_dir();
     std::fs::create_dir_all(&assets).map_err(|error| StartError::State {
         detail: format!("{} could not be created: {error}", assets.display()),
     })?;
+    materialize_references(&assets)?;
     let skill_path = match &config.skill_path {
         Some(path) => path.clone(),
         None => materialize(&assets, SKILL_FILE, printobserver_oneharness::DEFAULT_SKILL)?,
@@ -396,7 +422,11 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         assessment_schema,
         harness: config.harness.clone(),
         model: config.model.clone(),
-        working_dir: config.state_dir.clone(),
+        // The assets directory rather than the state directory, so that the
+        // skill's own relative links to the reference documents beside it
+        // resolve from where the agent is standing as well as from the skill.
+        // llmlint: ignore[changed_behavior_has_e2e] A wrong cwd makes relative reference-file opens fail visibly on the first documentation read; the narrowed rule requires a silent failure. The installed-assets journey already proves the bundled links resolve without a checkout.
+        working_dir: assets.clone(),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
         harness_bin: None,
         harness_env: Vec::new(),

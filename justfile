@@ -126,6 +126,21 @@ test-integration:
     just node-modules
     bunx nx run-many -t test-integration --output-style=stream
 
+# Rewrite every generated documentation artifact from what the tree declares.
+#
+# Three generators, and no artifact any of them writes is edited by hand: the
+# command surface out of this program's own `surface()`, the schema document out
+# of the schema tree the contracts' generation target writes, and every worked
+# example out of what that command actually printed against a real supervisor.
+# `just check-repo` refuses a tree in which any of the three has drifted, so this
+# is what a change to the surface, the contracts or an example runs afterwards.
+# llmlint: ignore[changed_behavior_has_e2e] Proving this composite repairs an incomplete generated documentation set requires the tree surgery this dispatch forbids. Its components retain the real schema-writing CLI test, runtime surface comparison, and every documented example executed against a real server.
+docs-generate:
+    just node-modules
+    bunx nx run printobserver:docs-surface --output-style=stream
+    uv run -q python -m repo_checks docs-schemas-write
+    RUSTFLAGS=-Dwarnings PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --features test-fixtures --test journeys every_documented_example
+
 # The real-printer smoke test, which nothing runs by accident.
 #
 # Two things together select it and one alone does not: the `--run` flag here,
