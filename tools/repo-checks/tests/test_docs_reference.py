@@ -271,3 +271,12 @@ def test_an_architecture_document_that_points_at_no_command_surface_is_refused(
     )
 
     refused(reference(copy.repo), "does not point at `docs/reference/command-surface.md`")
+
+
+def test_an_entry_that_says_nothing_is_refused(tree: Callable[[], Tree]) -> None:
+    """A complete inventory with empty prose beside it is a list, not a document."""
+    copy = tree()
+    body = entry_body(copy.read(COMMANDS), "resume")
+    copy.write(COMMANDS, copy.read(COMMANDS).replace(body, "\n", 1))
+
+    refused(reference(copy.repo), "`resume` entry says nothing")

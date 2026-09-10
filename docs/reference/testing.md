@@ -64,8 +64,9 @@ allowlist.
 This repository's own deterministic checks over the committed tree — the
 dependency rule, the vendor-vocabulary boundary, the platform matrices, the
 install path, the merge model, the suppression allowlist, and the documentation
-checks behind this document and its siblings. `uv run -q python -m repo_checks
---help` lists them individually.
+checks behind this document and its siblings.
+`tools/repo-checks/src/repo_checks/registry.py` names every one of them, and
+each can be run on its own by name.
 
 ### test-e2e
 

@@ -316,6 +316,13 @@ def _document_frame(document: Document, text: str, declared_headings: set[str]) 
         if heading not in carried
     )
 
+    findings.extend(
+        f"`{document.path}`'s `{entry}` entry says nothing. A complete inventory with "
+        f"empty prose beside it is a list rather than a document."
+        for entry in entries_of(text)
+        if not entry_body(text, entry).strip()
+    )
+
     said = opening_statement(text)
     if not said:
         return [
