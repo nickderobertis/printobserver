@@ -35,6 +35,7 @@ from repo_checks.shell import run
 SCANNED_SUFFIXES = frozenset(
     {".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".sh", ".toml", ".yml", ".yaml", ".json", ".md"}
 )
+SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 # Build products and provisioned environments: nothing under them is committed,
 # so a directive inside one is somebody else's source rather than a suppression
 # this repository made.
@@ -93,7 +94,9 @@ def scan(root: Path) -> list[Directive]:
     """Every suppression directive in a tree."""
     found: list[Directive] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+        if not path.is_file() or (
+            path.suffix not in SCANNED_SUFFIXES and path.name not in SCANNED_NAMES
+        ):
             continue
         relative = path.relative_to(root)
         if SKIPPED_DIRECTORIES & set(relative.parts):
@@ -250,7 +253,9 @@ FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 def _scannable(root: Path) -> Iterator[tuple[Path, Path, list[str]]]:
     """Every file the directive scanners read, with its lines."""
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+        if not path.is_file() or (
+            path.suffix not in SCANNED_SUFFIXES and path.name not in SCANNED_NAMES
+        ):
             continue
         relative = path.relative_to(root)
         if SKIPPED_DIRECTORIES & set(relative.parts):

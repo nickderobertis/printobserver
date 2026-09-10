@@ -44,6 +44,10 @@ mod answers;
 mod carrying;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/documented.rs"]
+mod documented;
+#[path = "journeys/documenting.rs"]
+mod documenting;
 #[path = "journeys/durations.rs"]
 mod durations;
 #[path = "journeys/failures.rs"]
@@ -61,6 +65,8 @@ mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
 
+use printobserver_server as server_assets;
+
 use world::World;
 
 /// The whole tier, over one supervisor.
@@ -73,4 +79,46 @@ fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
     tier::run(&world, tier::WHOLE);
+}
+
+/// Every command example the reference documents show, run against a real
+/// supervisor and compared with what the document shows beside it.
+///
+/// Every example of every declared document is run: an example the walk has no
+/// way to run is a finding of its own rather than one it steps over, so a
+/// document cannot pass by showing something nothing here executes.
+#[test]
+fn every_documented_example_prints_what_the_document_shows() {
+    let world = World::open(world::STOOD_IN);
+
+    documenting::accepts_the_committed_documentation(&world);
+}
+
+/// The documented operator workflow, carried out from the documentation alone,
+/// against a real supervisor over a stood-in machine.
+///
+/// The printer tier runs the same walk against the `OctoPrint` `just
+/// octoprint-up` provisioned; this is the same walk in every gate, so a change
+/// that made the documentation unfollowable is refused before the printer tier
+/// runs.
+#[test]
+fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone() {
+    let world = World::open(world::STOOD_IN);
+
+    documented::walk(&world);
+}
+
+/// The documented operator workflow from the running server's assets, and nothing
+/// else.
+///
+/// The skill an installed program writes links out for everything it does not
+/// say itself, and the agent that reads it stands in a state directory rather
+/// than in a checkout. This copies what the server wrote into a directory
+/// carrying nothing else, opens every link the skill carries there, and carries
+/// the whole turn out of that copy.
+#[test]
+fn the_installed_assets_carry_the_documented_operator_workflow() {
+    let world = World::open(world::STOOD_IN);
+
+    documenting::the_installed_assets_carry_the_turn(&world);
 }

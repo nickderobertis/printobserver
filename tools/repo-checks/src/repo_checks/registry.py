@@ -7,6 +7,7 @@ from collections.abc import Callable
 from repo_checks import (
     checks_ci,
     checks_clients,
+    checks_docs,
     checks_integration,
     checks_journeys,
     checks_obico,
@@ -76,6 +77,9 @@ CHECKS: dict[str, Check] = {
     "publish-credentials": checks_release.publish_credentials,
     "base-files": base_files,
     "suppressions": checks_suppressions.suppressions,
+    "docs-skill": checks_docs.skill,
+    "docs-reference": checks_docs.reference,
+    "docs-schemas": checks_docs.schema_document,
 }
 
 # `workflows` is run by `just lint-workflows` rather than by `just check-repo`,

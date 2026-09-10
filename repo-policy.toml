@@ -40,6 +40,28 @@ rust = 95
 python = 95
 typescript = 95
 
+[llmlint]
+# The judged-lint tier. Like the two tiers below it declares a `tier` recipe,
+# which is what the documentation check reads every tier outside the gate off —
+# so this tier is inventoried by being declared here rather than by a check
+# knowing its name.
+#
+# It is deliberately NOT one of `gate.tiers`: it is non-deterministic and needs
+# a harness credential, and a gate that could not run without one would stop
+# being the deterministic gate. So it is a continuous-integration job of its
+# own, in the workflow named below, and `just check-repo` refuses a gate job
+# that runs it.
+#
+# `validate` is its deterministic half, which the job runs first so that a
+# config, plugin or suppression slip fails without spending a harness call;
+# `whole_tree` is the same judge over the tree rather than over a diff, which
+# nothing in continuous integration runs.
+tier = "lint-llm-diff"
+validate = "lint-llm-validate"
+whole_tree = "lint-llm"
+setup = "setup-llmlint"
+workflow = "ci.yml"
+
 [suppressions]
 # The ONE way to suppress a diagnostic in this repository. Every suppression
 # directive in the tree needs an entry here naming the rule, the file, the site
@@ -385,3 +407,146 @@ install = "cargo install cargo-llvm-cov --locked"
 [[toolchain.tool]]
 command = "release-plz"
 install = "cargo install release-plz --locked"
+
+[docs]
+# The agent-facing documentation: one skill and the reference documents it
+# links to.
+#
+# The skill is what OneHarness sends as every supervision turn's SYSTEM PROMPT,
+# so its length is paid on every turn of every print. The two bounds below are
+# the whole of what it is allowed to be, and they are two rather than one
+# because a single very long line satisfies a line count and a wall of short
+# lines satisfies a character count. `just check-repo` holds the committed skill
+# to both, refuses reference material in it whatever form that material takes,
+# refuses a link to a document that is not there, and refuses a skill that omits
+# a link to one of the documents declared below.
+skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
+skill_max_characters = 6000
+skill_max_lines = 150
+
+# The generated artifacts the documentation checks read the things they
+# inventory off, rather than reading a list somebody maintains.
+#
+# `surface_manifest` is written by the `printobserver:docs-surface` target from
+# this program's own `surface()`; `schema_document` is written by
+# `repo-check docs-schemas-write` from the schema tree the contracts' own
+# generation target writes and gates. Neither is edited by hand.
+surface_manifest = "docs/reference/surface.json"
+schema_document = "docs/reference/schemas.md"
+schema_directory = "schemas"
+
+# What carries the reference documents into the built artifact, and the
+# directory the skill links to them under.
+#
+# The skill links out for everything it does not say itself, and an install that
+# carried the skill and none of what it points at would hand the agent dead
+# links. So the documents are `include_str!`-ed into the adapter that ships the
+# skill and written beside it on an installed host. `just check-repo` holds that
+# array to the documents declared below, in both directions, resolving both
+# sides on the filesystem — `crates/printobserver-oneharness/assets/reference`
+# is this repository's own `docs/reference`, so a document is bundled by being
+# the document rather than by being spelled the same way.
+bundle_source = "crates/printobserver-oneharness/src/lib.rs"
+bundle_assets = "crates/printobserver-oneharness/assets"
+bundle_directory = "reference"
+
+# Where a documented example is run from, so a reader copying one runs what this
+# repository ran. `console` is the fence, `$ ` opens a command line, and the
+# lines after it are what that command printed.
+example_fence = "console"
+
+# The nine things the skill must carry IN ITS OWN TEXT. Every other rule about
+# the skill is about what it may not carry; these are what it owes. A skill that
+# is short enough, holds no reference material and links correctly is refused
+# unless every marker below is in it, because the skill is the whole of what the
+# agent is given before it starts reading — a workflow step left to a linked
+# document is one the agent meets after it has already decided what to do.
+[[docs.skill_element]]
+name = "the supervisory role"
+marker = "## The role you are in"
+
+[[docs.skill_element]]
+name = "the safety boundaries"
+marker = "## The boundaries you work inside"
+
+[[docs.skill_element]]
+name = "the statement that nothing sends a command to the printer"
+marker = "no path in this system sends a command to the printer"
+
+[[docs.skill_element]]
+name = "the escalation path"
+marker = "## When to escalate instead"
+
+[[docs.skill_element]]
+name = "the workflow step that reads the context"
+marker = "1. **Read the context.**"
+
+[[docs.skill_element]]
+name = "the workflow step that inspects the image"
+marker = "2. **Look at the image.**"
+
+[[docs.skill_element]]
+name = "the workflow step that decides"
+marker = "3. **Decide.**"
+
+[[docs.skill_element]]
+name = "the workflow step that acts with a reason"
+marker = "4. **Act, and say why.**"
+
+[[docs.skill_element]]
+name = "the workflow step that records what was seen"
+marker = "5. **Record what you saw.**"
+
+# Every reference document this repository declares, with the headings each one
+# owes. A heading declared here and absent from the document is a failing check
+# rather than something a reader notices, and the document's own opening
+# coverage statement is held to the headings it actually carries.
+[[docs.document]]
+path = "docs/reference/command-surface.md"
+headings = [
+    "What a command is made of",
+    "The four global options",
+    "The exit statuses",
+    "The commands",
+]
+
+[[docs.document]]
+path = "docs/reference/api-and-clients.md"
+headings = [
+    "The one versioned prefix",
+    "How a request is authenticated",
+    "The operations",
+    "The clients",
+]
+
+[[docs.document]]
+path = "docs/reference/architecture.md"
+headings = [
+    "The crates",
+    "Why core names no implementation crate",
+    "Why the agent reaches this system the way an operator does",
+]
+
+[[docs.document]]
+path = "docs/reference/schemas.md"
+headings = ["The schema set", "The schemas"]
+
+[[docs.document]]
+path = "docs/reference/common-operations.md"
+headings = ["Before you start", "The worked examples"]
+
+[[docs.document]]
+path = "docs/reference/testing.md"
+headings = [
+    "The tiers the gate runs",
+    "The tiers outside the gate",
+]
+
+[[docs.document]]
+path = "docs/reference/intervention-policy.md"
+headings = [
+    "Where the bounds come from",
+    "What a rejection carries",
+    "How a bounded intervention is restored",
+    "What expiry does when no prior value was available",
+]

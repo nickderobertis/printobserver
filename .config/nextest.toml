@@ -1,0 +1,15 @@
+# There is one machine, and the printer tier drives it.
+#
+# `nx.json` declares `test-integration` unparallelisable, which stops two
+# projects' tiers running at once. This is the same rule one level down: nextest
+# runs the tests of one binary in parallel processes, so two tests of the
+# integration binary would drive the one `OctoPrint` `just octoprint-up`
+# provisioned at the same time — one cancelling the print the other is asserting
+# is running.
+# llmlint: ignore[changed_behavior_has_e2e] Assigning the integration binary to a group with max-threads = 1 is a structural declaration settled by reading this file, which the narrowed rule excludes; no runtime proof is owed.
+[test-groups]
+octoprint = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(integration)'
+test-group = 'octoprint'
