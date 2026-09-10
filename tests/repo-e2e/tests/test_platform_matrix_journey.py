@@ -19,7 +19,7 @@ from repo_checks.expect import failing, passing
 CI = ".github/workflows/ci.yml"
 INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
-DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install"]'
+DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 # The integration job's own copy of that entry: the one that is followed by a
 # checkout taking no `with:` block, which is what tells it apart from the gate's.
