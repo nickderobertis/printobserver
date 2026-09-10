@@ -28,7 +28,7 @@ from live import Proxy, same
 from printobserver_sdk import Client, NoReasonError, RejectedError
 from printobserver_sdk.contract import JobManifest, PrinterState
 from repo_checks.expect import contains, equal, truth
-from world import Standing, Supervisor
+from supervisor_world import Standing, Supervisor
 
 #: The reason every mutating step of this walk carries.
 REASON = "a printer-integration journey is asking"

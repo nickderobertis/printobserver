@@ -32,7 +32,7 @@ from live import Proxy, matches, same
 from printobserver_sdk import Client
 from printobserver_sdk.contract import ImageAnswer
 from repo_checks.expect import equal, truth
-from world import Standing, Supervisor
+from supervisor_world import Standing, Supervisor
 
 
 @pytest.fixture(scope="module")

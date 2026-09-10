@@ -29,7 +29,7 @@ from live import PATIENCE_SECONDS, Proxy, same
 from printobserver_sdk import Client, RejectedError
 from printobserver_sdk.contract import JobManifest
 from repo_checks.expect import equal, truth
-from world import Standing, Supervisor
+from supervisor_world import Standing, Supervisor
 
 #: The reason every mutating call of this walk carries.
 REASON = "a generated walk is asking"
