@@ -139,9 +139,17 @@ def _node(repo: Repo, target: targets.Target, name: str = "") -> packages.NodePa
 
 
 def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:
-    """The Python client, as the wheel an ordinary install takes."""
-    wheel = wheels.Wheel(_distribution(repo, target), wheels.PURE_TAG)
+    """The Python client, as the wheel an ordinary install takes.
+
+    Its metadata records the server contract it was generated from, so a
+    consumer can read that off the installed distribution rather than off this
+    tree.
+    """
+    distribution = _distribution(repo, target)
+    wheel = wheels.Wheel(distribution, wheels.PURE_TAG)
     wheel.add_tree(repo.path("python/printobserver-sdk/src/printobserver_sdk"), "printobserver_sdk")
+    recorded = contract_version(repo, "python/printobserver-sdk/src/printobserver_sdk/contract.py")
+    wheel.add(f"{distribution.dist_info}/{CONTRACT_FILE}", f"{recorded}\n".encode())
     return Built(target.id, (wheel.write(into),))
 
 
@@ -366,7 +374,11 @@ def manifest_of(path: Path) -> dict[str, object]:
     import tarfile
 
     with tarfile.open(path, "r:gz") as archive:
-        handle = archive.extractfile(f"{packages.PACKAGE_ROOT}/package.json")
+        try:
+            handle = archive.extractfile(f"{packages.PACKAGE_ROOT}/package.json")
+        except KeyError as absent:
+            msg = f"{path} carries no package manifest"
+            raise BuildError(msg) from absent
         if handle is None:
             msg = f"{path} carries no package manifest"
             raise BuildError(msg)

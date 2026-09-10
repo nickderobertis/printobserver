@@ -14,8 +14,10 @@ import { expect, test } from "bun:test";
 test("a mutating call that leaves the reason out does not compile", async () => {
   const checked = Bun.spawn(
     [
-      "bunx",
-      "tsc",
+      // The type checker the locked install put in the tree, by its own path:
+      // `bunx` would resolve it again, and this suite runs beside every other
+      // project's.
+      `${import.meta.dir}/../../../node_modules/.bin/tsc`,
       "--noEmit",
       "--strict",
       "--target",

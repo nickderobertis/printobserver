@@ -217,3 +217,20 @@ def test_a_schema_the_generator_was_never_taught_is_refused(
 
     with pytest.raises(ContractError, match="anyOf"):
         load(copy)
+
+
+def test_the_generators_own_command_surface_writes_and_checks(
+    scratch: Callable[[], Path],
+) -> None:
+    """`write` and `check` are what the recipe and the gate run."""
+    from contract_codegen.__main__ import main
+
+    copy = scratch()
+
+    equal(main(["check", "--root", str(copy)]), 0, describing="the committed tree")
+    equal(main(["write", "--root", str(copy)]), 0, describing="regenerating it")
+
+    (copy / TYPE_MODULES[0]).write_text("a line somebody wrote by hand\n", encoding="utf-8")
+    equal(main(["check", "--root", str(copy)]), 1, describing="a hand-edited client")
+    equal(main(["write", "--root", str(copy)]), 0, describing="writing it back")
+    equal(main(["check", "--root", str(copy)]), 0, describing="the client written back")

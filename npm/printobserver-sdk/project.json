@@ -17,13 +17,13 @@
       "command": "bunx tsc --noEmit -p npm/printobserver-sdk/tsconfig.json"
     },
     "test": {
-      "command": "bun test test",
+      "command": "bun test",
       "options": {
         "cwd": "npm/printobserver-sdk"
       }
     },
     "test-integration": {
-      "command": "bun test .",
+      "command": "bun test",
       "options": {
         "cwd": "npm/printobserver-sdk/integration"
       }

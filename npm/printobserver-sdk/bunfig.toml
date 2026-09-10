@@ -1,4 +1,10 @@
+# The fast tier's own configuration.
+#
+# `root` is `test` and deliberately: the printer-integration journey lives in
+# `integration/`, drives a real OctoPrint, and is a tier of its own — a fast
+# tier that swept it up would install OctoPrint on every gate run.
 [test]
+root = "test"
 coverage = true
 coverageThreshold = 0.95
 coverageReporter = ["text"]
