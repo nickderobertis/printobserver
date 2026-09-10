@@ -61,6 +61,47 @@ def test_a_declaration_missing_the_resolving_output_is_refused(
     refused(install_proof(broken.repo), "declares no release_output")
 
 
+def test_a_declaration_whose_field_is_not_a_string_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A malformed value coerced to a string passes as a declaration and names nothing."""
+    broken = tree()
+    broken.edit(POLICY, 'release_job = "resolve"', 'release_job = ["resolve"]')
+
+    refused(install_proof(broken.repo), "declares no release_job")
+
+
+def test_a_trigger_declared_as_something_other_than_its_settings_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A finding rather than a traceback: this check answers about the file it reads.
+
+    `workflow_run` takes a mapping of settings. Reached into without being
+    narrowed first, anything else raises out of the middle of the check — and a
+    check whose whole job is to answer with findings, answering with an
+    exception, is one nobody can act on.
+    """
+    broken = tree()
+    broken.edit(
+        WORKFLOW,
+        "  workflow_run:\n    workflows: [release-plz]\n    types: [completed]\n",
+        "  workflow_run: [completed]\n",
+    )
+
+    refused(install_proof(broken.repo), "which is not the mapping of settings")
+
+
+def test_a_manual_invocation_declared_as_something_other_than_its_settings_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """And the same for the trigger a caller names a version on."""
+    broken = tree()
+    dispatch = broken.read(WORKFLOW).partition("on:\n")[2].partition("  workflow_run:")[0]
+    broken.edit(WORKFLOW, dispatch, "  workflow_dispatch: [version]\n")
+
+    refused(install_proof(broken.repo), "which is not the mapping of settings")
+
+
 def test_a_route_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> None:
     """A route nothing proves against its own registry is a route nothing proves."""
     broken = tree()

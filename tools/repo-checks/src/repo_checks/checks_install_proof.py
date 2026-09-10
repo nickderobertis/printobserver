@@ -114,7 +114,14 @@ class Declared:
     def read(cls, table: dict[str, Any]) -> Declared | str:
         """The declaration, or the one finding saying what it is missing."""
         named = [field for field in cls.__dataclass_fields__ if field != "triggers"]
-        found = {key: str(table.get(key, "")).strip() for key in named}
+        # A value that is not a string is not a declaration of one. Coerced,
+        # a list arrives as `"['resolve']"` — non-empty, so it passes as
+        # declared and every rule below composes a name nothing carries; read
+        # as absent, it is the one finding naming the key, which is what the
+        # rest of this class is for.
+        found = {
+            key: table[key].strip() if isinstance(table.get(key), str) else "" for key in named
+        }
         missing = sorted(key for key, value in found.items() if not value)
         declared = table.get("triggers")
         events: tuple[str, ...] = ()
@@ -288,17 +295,37 @@ def _trigger_findings(
     return findings
 
 
+def _settings_of(
+    triggers: dict[str, Any], event: str, relative: str
+) -> tuple[dict[str, Any], list[str]]:
+    """One trigger's own settings, and the finding where what it carries is not settings.
+
+    A trigger may carry none at all — `on: [workflow_run]` names the event and
+    nothing under it — and that is settings of nothing rather than a
+    malformation. Anything else is refused HERE rather than reached into,
+    because a check that raises on the file it was pointed at answers with a
+    traceback where its whole job is to answer with a finding somebody can act
+    on.
+    """
+    declared = triggers.get(event)
+    if declared is None:
+        return {}, []
+    if not isinstance(declared, dict):
+        return {}, [
+            f"{relative} declares `{event}` as {declared!r}, which is not the mapping of "
+            f"settings that trigger takes"
+        ]
+    return declared, []
+
+
 def _release_trigger_findings(
     repo: Repo, policy: Declared, triggers: dict[str, Any], relative: str
 ) -> list[str]:
     """The release-time trigger is the release workflow having finished."""
     wanted = policy.release_workflow
-    named = [
-        str(name)
-        for name in (triggers.get("workflow_run") or {}).get("workflows", [])
-        if isinstance(name, str)
-    ]
-    findings: list[str] = []
+    settings, findings = _settings_of(triggers, "workflow_run", relative)
+    listed = settings.get("workflows")
+    named = [name for name in listed if isinstance(name, str)] if isinstance(listed, list) else []
     if wanted not in named:
         findings.append(
             f"{relative} keys a release's own proof on {named or 'no workflow'} rather "
@@ -317,12 +344,14 @@ def _release_trigger_findings(
 
 def _dispatch_findings(policy: Declared, triggers: dict[str, Any], relative: str) -> list[str]:
     """A caller can name the version a manual run proves."""
-    inputs = (triggers.get("workflow_dispatch") or {}).get("inputs") or {}
-    if str(policy.version_input) in inputs:
-        return []
+    settings, findings = _settings_of(triggers, "workflow_dispatch", relative)
+    inputs = settings.get("inputs")
+    if isinstance(inputs, dict) and policy.version_input in inputs:
+        return findings
     return [
+        *findings,
         f"{relative} declares no `{policy.version_input}` input on its manual "
-        f"invocation, so a caller cannot name the version a run proves"
+        f"invocation, so a caller cannot name the version a run proves",
     ]
 
 
