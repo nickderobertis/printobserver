@@ -36,7 +36,7 @@ from repo_checks.model import (
     policy_strings,
     policy_table,
 )
-from repo_checks.parsing import jobs_of, load_workflow, recipes, run_commands
+from repo_checks.parsing import jobs_of, load_workflow, recipes, run_commands, section
 
 # The first word of a command line: a `G` or an `M` and its number.
 COMMAND = re.compile(r"^[GM][0-9]+$")
@@ -255,7 +255,7 @@ def smoke_selection(repo: Repo) -> list[str]:
     policy: dict[str, Any] = policy_table(repo, "smoke")
     if not policy:
         return ["`repo-policy.toml` declares no `[smoke]` section"]
-    named = policy_strings(policy, ("script", "recipe", "flag", "device_env"), "smoke")
+    named = policy_strings(policy, ("script", "recipe", "flag", "device_env", "section"), "smoke")
     script, recipe, flag = named["script"], named["recipe"], named["flag"]
 
     findings: list[str] = []
@@ -267,6 +267,7 @@ def smoke_selection(repo: Repo) -> list[str]:
     findings.extend(_gate_findings(repo, recipe))
     findings.extend(_graph_findings(repo, recipe, script))
     findings.extend(_workflow_findings(repo, recipe, script))
+    findings.extend(_prose_findings(repo, named))
     if repo.exists(script) and named["device_env"] not in repo.read(script):
         findings.append(
             f"{script} does not read `{named['device_env']}`, which is one of the two "
@@ -352,3 +353,25 @@ def _workflow_findings(repo: Repo, recipe: str, script: str) -> list[str]:
                 if script in command or f"just {recipe}" in command
             )
     return findings
+
+
+def _prose_findings(repo: Repo, named: dict[str, str]) -> list[str]:
+    """The section that says what it does, what it requires and how to run it.
+
+    A test that drives a real machine is one a person stays next to, and what
+    tells them so is prose rather than a check. So the check is that the prose
+    is there and names both of the two inputs a reader needs to run it at all.
+    """
+    heading = named["section"]
+    body = section(repo.agents_md, heading)
+    if not body.strip():
+        return [
+            f"AGENTS.md carries no `{heading}` section: a test that drives a real machine "
+            f"is one a person stays next to, and nothing here would tell them how"
+        ]
+    return [
+        f"AGENTS.md's `{heading}` section does not name `{what}`, which a reader needs to "
+        f"run it at all"
+        for what in (f"just {named['recipe']}", named["flag"], named["device_env"])
+        if what not in body
+    ]

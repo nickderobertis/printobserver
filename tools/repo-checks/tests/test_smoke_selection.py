@@ -111,3 +111,27 @@ def test_a_tree_declaring_no_smoke_section_is_refused(tree: Callable[[], Tree]) 
     copy.write("repo-policy.toml", copy.read("repo-policy.toml").replace("[smoke]", "[unsmoke]"))
 
     refused(smoke_selection(copy.repo), "declares no `[smoke]` section")
+
+
+def test_a_tree_whose_prose_says_nothing_about_it_is_refused(tree: Callable[[], Tree]) -> None:
+    """A test that drives a real machine is one a person stays next to."""
+    copy = tree()
+    copy.edit("AGENTS.md", "## The real-printer smoke test", "## Something else entirely")
+
+    refused(smoke_selection(copy.repo), "carries no `The real-printer smoke test` section")
+
+
+def test_prose_that_does_not_name_the_two_inputs_is_refused(tree: Callable[[], Tree]) -> None:
+    """A reader who cannot see both inputs cannot run it at all."""
+    copy = tree()
+    copy.edit(
+        "AGENTS.md",
+        "PRINTOBSERVER_SMOKE_DEVICE=/dev/ttyACM0 just test-printer-smoke --run",
+        "run it",
+    )
+    copy.write(
+        "AGENTS.md",
+        copy.read("AGENTS.md").replace("PRINTOBSERVER_SMOKE_DEVICE", "the device variable"),
+    )
+
+    refused_naming(smoke_selection(copy.repo), "does not name `PRINTOBSERVER_SMOKE_DEVICE`")
