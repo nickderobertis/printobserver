@@ -206,6 +206,60 @@ file reaches no printer and cannot be composed into an action.
 `crates/printobserver/tests/integration.rs` runs the same cross-product against
 the scripted `OctoPrint`.
 
+## The agent-facing documentation
+
+The supervising agent is a capable reader with no context, and this is the whole
+of what it is given. One **skill** — the system prompt of every supervision turn
+— and the **reference documents** it links to.
+`repo-policy.toml`'s `[docs]` declares all of it, and `just check-repo` holds the
+tree to that declaration.
+
+**The skill is short, and the bounds are the point.** It is paid on every turn of
+every print, so a skill that restates the reference documentation crowds out the
+picture of the print it is supposed to be looking at. `docs.skill_max_characters`
+and `docs.skill_max_lines` — 6,000 and 150 — are enforced, and there are two of
+them because one very long line satisfies a line count and a wall of short lines
+satisfies a character count. Reference material of any form is refused in it: a
+fenced block, an indented block, a table, an argument list written as prose or as
+bullets, a description of what a command answers, or a fragment of a schema. What
+it *owes* is enforced the same way, because every one of those rules is about
+what it may not carry: `docs.skill_element` names the nine passages it must have
+in its own text — the role, the boundaries, the statement that no path sends a
+command to the printer, the escalation path, and each of the five workflow steps.
+
+**Three artifacts are generated, and none is edited by hand.** `just
+docs-generate` writes all three and `just check-repo` refuses a tree in which any
+has drifted:
+
+- `docs/reference/surface.json` — the command surface, out of the program's own
+  `surface()`. It exists because the checks over these documents are Python and
+  the surface is Rust; parsing the sources from Python would be a second,
+  drifting reading of a declaration the program already folds over.
+- `docs/reference/schemas.md` — one entry per member of the declared schema set,
+  each what that type generates.
+- the worked examples in `docs/reference/common-operations.md` — each written out
+  of what the command actually printed against a real supervisor.
+
+**Every documented example is one a reader can run.** An example is a fenced
+`console` block: `$ ` opens a command line and the lines under it are what it
+printed, standard output first. `$ echo $?` is a command like any other, so a
+documented failure shows its exit without carrying an annotation nobody could
+run. Identifiers and instants are written as placeholders, because an example
+printed with the ones one run minted would be an example that never matched
+again; the check binds each placeholder before running the command and undoes the
+substitution over what it printed, so the comparison is byte-for-byte over
+everything that is not an identifier or an instant.
+
+**What proves the documentation is followable is a journey, not a claim.**
+`crates/printobserver/tests/journeys/documented.rs` starts at the committed skill,
+resolves every command and every field through the skill and the documents it
+links to, and drives one supervision turn end to end — in the fast tier over a
+stood-in machine and in the printer tier over the `OctoPrint` `just octoprint-up`
+provisions. Its falsifying half is what makes that self-limitation load-bearing:
+the same walk runs over six copies of the documentation, each with one element of
+the turn removed from the skill *and* from every document it links to, and each
+has to fail at that step naming what it could not reach.
+
 ## Supported platforms
 
 This is the one source every one of this repository's continuous-integration

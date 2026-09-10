@@ -126,6 +126,20 @@ test-integration:
     just node-modules
     bunx nx run-many -t test-integration --output-style=stream
 
+# Rewrite every generated documentation artifact from what the tree declares.
+#
+# Three generators, and no artifact any of them writes is edited by hand: the
+# command surface out of this program's own `surface()`, the schema document out
+# of the schema tree the contracts' generation target writes, and every worked
+# example out of what that command actually printed against a real supervisor.
+# `just check-repo` refuses a tree in which any of the three has drifted, so this
+# is what a change to the surface, the contracts or an example runs afterwards.
+docs-generate:
+    just node-modules
+    bunx nx run printobserver:docs-surface --output-style=stream
+    uv run -q python -m repo_checks docs-schemas-write
+    PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --features test-fixtures --test journeys every_documented_example
+
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:
     uv run -q python -m repo_checks pr-title

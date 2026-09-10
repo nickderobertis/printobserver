@@ -90,6 +90,27 @@ absolute path on the server's own host: this program transports no image bytes,
 and a path that names no file where it is running is a failure of its own rather
 than a file name that names nothing.
 
+## Reference documentation
+
+The supervising agent's own skill is
+[`crates/printobserver-oneharness/assets/printobserver-skill.md`](./crates/printobserver-oneharness/assets/printobserver-skill.md)
+— deliberately short, because it is the system prompt of every supervision turn.
+Everything it does not say is in these, and an operator reads the same ones:
+
+- [The command surface](./docs/reference/command-surface.md) — every command,
+  its arguments, its output and how it fails.
+- [Common operations](./docs/reference/common-operations.md) — a worked example
+  of each, every one of them run against a real server by a committed check.
+- [The intervention policy](./docs/reference/intervention-policy.md) — where the
+  bounds come from, what a rejection carries, and what expiry does.
+- [The API and the clients](./docs/reference/api-and-clients.md) — the same
+  surface over HTTP.
+- [The schemas](./docs/reference/schemas.md) — generated from the types.
+- [The architecture](./docs/reference/architecture.md) — what each crate owns,
+  and the two structural rules the design rests on.
+- [Testing](./docs/reference/testing.md) — each tier, what it proves, and which
+  ones do not run on every change.
+
 ## Development
 
 ```console
