@@ -1,0 +1,727 @@
+{
+  "commands": [
+    {
+      "command": "server",
+      "operation": null,
+      "options": []
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "status",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "status",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/status"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "context",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "mutating": false,
+      "operation": "context",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/context"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "image",
+      "image_path_field": "path",
+      "method": "GET",
+      "mutating": false,
+      "operation": "image",
+      "options": [
+        {
+          "field": "image_id",
+          "located": "path",
+          "option": "--image-id",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/images/{image_id}"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "history",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "history",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "limit",
+          "located": "query",
+          "option": "--limit",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/history"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "manifest-get",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "manifest_get",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/manifest"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "manifest-set",
+      "image_path_field": null,
+      "method": "PUT",
+      "mutating": true,
+      "operation": "manifest_set",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "manifest",
+          "located": "body",
+          "option": "--manifest",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "manifest",
+          "located": "body",
+          "option": "--manifest-file",
+          "required": false,
+          "supply": "file"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/manifest"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "pause",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "pause",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/pause"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "resume",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "resume",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/resume"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "cancel",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "cancel",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/cancel"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "start-print",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "start_print",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "file_name",
+          "located": "body",
+          "option": "--file-name",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "manifest",
+          "located": "body",
+          "option": "--manifest",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "manifest",
+          "located": "body",
+          "option": "--manifest-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/start_print"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "set-feedrate-factor",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "set_feedrate_factor",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "duration_s",
+          "located": "body",
+          "option": "--duration-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "factor",
+          "located": "body",
+          "option": "--factor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_feedrate_factor"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "set-flowrate-factor",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "set_flowrate_factor",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "duration_s",
+          "located": "body",
+          "option": "--duration-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "factor",
+          "located": "body",
+          "option": "--factor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_flowrate_factor"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "set-tool-target-c",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "set_tool_target_c",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "duration_s",
+          "located": "body",
+          "option": "--duration-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "target_c",
+          "located": "body",
+          "option": "--target-c",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "tool",
+          "located": "body",
+          "option": "--tool",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_tool_target_c"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "set-bed-target-c",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "set_bed_target_c",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "duration_s",
+          "located": "body",
+          "option": "--duration-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "target_c",
+          "located": "body",
+          "option": "--target-c",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_bed_target_c"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "set-fan-percent",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "set_fan_percent",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "duration_s",
+          "located": "body",
+          "option": "--duration-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "percent",
+          "located": "body",
+          "option": "--percent",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/set_fan_percent"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "acknowledge-failure",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "acknowledge_failure",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "disposition",
+          "located": "body",
+          "option": "--disposition",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "event_id",
+          "located": "body",
+          "option": "--event-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/acknowledge_failure"
+    }
+  ],
+  "exits": [
+    {
+      "name": "success",
+      "status": 0
+    },
+    {
+      "name": "usage",
+      "status": 2
+    },
+    {
+      "name": "unreachable",
+      "status": 3
+    },
+    {
+      "name": "unconfigured",
+      "status": 4
+    },
+    {
+      "name": "rejected",
+      "status": 5
+    },
+    {
+      "name": "image-elsewhere",
+      "status": 6
+    },
+    {
+      "name": "refused",
+      "status": 7
+    }
+  ],
+  "generated_by": "just docs-generate",
+  "global_options": [
+    "--json",
+    "--config",
+    "--help",
+    "--version"
+  ],
+  "serve_command": "server"
+}

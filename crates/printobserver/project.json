@@ -27,6 +27,9 @@
     },
     "test-integration": {
       "command": "cargo nextest run -p printobserver --no-fail-fast -E 'binary(integration)'"
+    },
+    "docs-surface": {
+      "command": "PRINTOBSERVER_DOCS=write cargo test --locked -p printobserver --test reference"
     }
   }
 }
