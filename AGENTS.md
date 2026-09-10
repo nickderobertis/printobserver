@@ -710,13 +710,8 @@ and on a manual invocation:
 just test-install-proof
 ```
 
-**Everything else about it is with the project that carries it**, at
-`tools/release-artifacts/AGENTS.md`: which release a release-time run proves and
-why it is keyed on the release workflow having finished, why a run that failed to
-publish is proven rather than skipped, and what stands in for the three
-registries so that nothing here publishes in order to prove a point. What the
-tier proves and when it runs is `docs/reference/testing.md`, with every other
-tier of this repository.
+The constraints the proof itself is keyed to are with the project that carries
+it, at `tools/release-artifacts/AGENTS.md`.
 
 ## Commits, releases, and merging
 
