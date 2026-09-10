@@ -199,6 +199,28 @@ def _routed(repo: Repo) -> dict[str, str]:
     }
 
 
+def _invocations(body: tuple[str, ...]) -> set[str]:
+    """Which recipes one recipe's body invokes with `just`.
+
+    `@` is `just`'s own quiet prefix: it decides whether the line is echoed and
+    not what the line does, so `@just prove-registry-pypi` invokes exactly what
+    `just prove-registry-pypi` invokes. Read without stripping it, the tier
+    below appears to prove no route at all and the gate above appears to invoke
+    none of them — the second of which is a hole rather than a false finding.
+
+    `-`, the other prefix `just` takes, is deliberately NOT stripped. That one
+    ignores the line's failure, and a tier whose route proof cannot fail it is
+    a tier that proves nothing: it is not the same invocation, so it does not
+    count as one.
+    """
+    found: set[str] = set()
+    for line in body:
+        words = line.removeprefix("@").split()
+        if words[:1] == ["just"] and len(words) > 1:
+            found.add(words[1])
+    return found
+
+
 def _recipe_findings(repo: Repo, policy: Declared) -> list[str]:
     """One recipe per route, and a tier that runs every one of them."""
     declared = recipes(repo.justfile)
@@ -229,11 +251,7 @@ def _recipe_findings(repo: Repo, policy: Declared) -> list[str]:
             )
 
     if tier in declared:
-        invoked = {
-            line.split()[1]
-            for line in declared[tier].body
-            if line.split()[:1] == ["just"] and len(line.split()) > 1
-        }
+        invoked = _invocations(declared[tier].body)
         findings.extend(
             f"the `{tier}` recipe does not invoke `just {recipe}`, so a run of this tier "
             f"by hand leaves one of the three routes unproven"
@@ -257,11 +275,7 @@ def _gate_findings(repo: Repo, policy: Declared) -> list[str]:
     check = recipes(repo.justfile).get("check")
     if check is None:
         return findings
-    invoked = {
-        line.split()[1]
-        for line in check.body
-        if line.split()[:1] == ["just"] and len(line.split()) > 1
-    } | set(check.dependencies)
+    invoked = _invocations(check.body) | set(check.dependencies)
     findings.extend(
         f"the `check` recipe invokes `just {name}`, which belongs to the registry "
         f"install-path proof and not to the gate"

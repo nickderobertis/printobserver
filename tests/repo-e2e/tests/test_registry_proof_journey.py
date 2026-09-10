@@ -269,6 +269,10 @@ def test_each_route_is_proven_against_what_its_registry_serves(
     contains(said, "SERVED AND PROVEN", describing=said)
     contains(said, f"printobserver {SERVED}", describing="what the installed program reported")
     contains(said, "Rust toolchain on the install path: none", describing=said)
+    # A tool that worked says so and stops: one line on either stream, and no
+    # echoed command line beside it. The whole report is what a FAILING proof
+    # prints, which the journeys below read.
+    equal(len(said.strip().splitlines()), 1, describing=f"what a passing `just {recipe}` said")
 
 
 @pytest.mark.parametrize("recipe", list(ROUTES))
@@ -357,6 +361,9 @@ def test_the_tier_recipe_proves_every_route(standing_in: Callable[..., Standin])
     passing((code, said), describing=f"`just {TIER}`")
     for identifier in ROUTES.values():
         contains(plain(said), f"{identifier}: SERVED AND PROVEN", describing=said)
+    # Three routes, three lines, and nothing else: a tier of proofs that all
+    # passed is as quiet as the three recipes it is made of.
+    equal(len(said.strip().splitlines()), len(ROUTES), describing=f"what `just {TIER}` said")
 
 
 def test_an_artifact_reporting_another_version_does_not_pass(

@@ -151,14 +151,20 @@ prove-route-script:
 # a failure wants the one that failed. PRINTOBSERVER_PROOF_VERSION names the
 # version to prove and PRINTOBSERVER_PROOF_REGISTRIES points every registry
 # somewhere other than the real ones; each exits zero only on a pass.
+#
+# `@` because a proof that passed is ONE line — which version was proven, where
+# it came from, what installed it and what the program said — and the echoed
+# command line beside it is the only other thing such a run would print. A
+# failing proof still prints its whole report, and `just` still names the recipe
+# that failed, so nothing a reader chasing a failure needs is behind the echo.
 prove-registry-pypi:
-    uv run -q python -m release_artifacts prove --registry --target pypi:printobserver-cli --into dist/proof/registry-pypi
+    @uv run -q python -m release_artifacts prove --registry --target pypi:printobserver-cli --into dist/proof/registry-pypi
 
 prove-registry-npm:
-    uv run -q python -m release_artifacts prove --registry --target npm:printobserver-cli --into dist/proof/registry-npm
+    @uv run -q python -m release_artifacts prove --registry --target npm:printobserver-cli --into dist/proof/registry-npm
 
 prove-registry-script:
-    uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
+    @uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
 
 # Which release the release-time run at COMMIT cut, as `version=<version>`.
 #
@@ -174,9 +180,9 @@ release-version COMMIT ROOT:
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
 # is, why it is not one of `just check`'s tiers, and when it runs.
 test-install-proof:
-    just prove-registry-pypi
-    just prove-registry-npm
-    just prove-registry-script
+    @just prove-registry-pypi
+    @just prove-registry-npm
+    @just prove-registry-script
 
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:

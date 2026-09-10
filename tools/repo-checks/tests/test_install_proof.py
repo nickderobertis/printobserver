@@ -107,7 +107,7 @@ def test_a_route_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> 
     broken = tree()
     broken.edit(
         JUSTFILE,
-        "prove-registry-npm:\n    uv run -q python -m release_artifacts prove --registry "
+        "prove-registry-npm:\n    @uv run -q python -m release_artifacts prove --registry "
         "--target npm:printobserver-cli --into dist/proof/registry-npm",
         "prove-registry-npm:\n    echo nothing",
     )
@@ -118,9 +118,51 @@ def test_a_route_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> 
 def test_a_tier_that_leaves_one_route_out_is_refused(tree: Callable[[], Tree]) -> None:
     """A run of the tier by hand takes all three routes, not two of them."""
     broken = tree()
-    broken.edit(JUSTFILE, "    just prove-registry-script\n", "")
+    broken.edit(JUSTFILE, "    @just prove-registry-script\n", "")
 
     refused(install_proof(broken.repo), "leaves one of the three routes unproven")
+
+
+def test_a_tier_that_proves_a_route_quietly_still_proves_it(tree: Callable[[], Tree]) -> None:
+    """`@` decides whether `just` echoes the line, not what the line does.
+
+    The three route proofs are invoked quietly because a proof that passed is
+    one line and the echoed command beside it is the only other thing such a
+    run prints. Read without stripping that prefix, this check would report a
+    tier that proves every route as proving none.
+    """
+    quiet = tree()
+    quiet.edit(JUSTFILE, "    @just prove-registry-npm\n", "    just prove-registry-npm\n")
+
+    accepted(install_proof(quiet.repo), describing="a tier invoking one route noisily")
+
+
+def test_a_tier_whose_route_proof_cannot_fail_it_is_refused(tree: Callable[[], Tree]) -> None:
+    """`-`, the other prefix `just` takes, is a different invocation and not one of these.
+
+    That one ignores the line's failure, so a tier carrying it runs the route
+    proof and passes whatever the proof answered — which is a route this
+    repository reports nothing about while appearing to prove it.
+    """
+    broken = tree()
+    broken.edit(JUSTFILE, "    @just prove-registry-npm\n", "    -just prove-registry-npm\n")
+
+    refused(install_proof(broken.repo), "leaves one of the three routes unproven")
+
+
+def test_a_gate_invoking_this_tier_quietly_is_refused(tree: Callable[[], Tree]) -> None:
+    """And the same prefix on the other side is a hole rather than a false finding.
+
+    A `check` recipe that reached this tier quietly would put the registries in
+    front of every change, and read without stripping the prefix nothing would
+    say so.
+    """
+    broken = tree()
+    broken.edit(
+        JUSTFILE, "    just test-e2e\n", "    just test-e2e\n    @just test-install-proof\n"
+    )
+
+    refused(install_proof(broken.repo), "belongs to the registry install-path proof")
 
 
 def test_the_gate_declaring_this_tier_is_refused(tree: Callable[[], Tree]) -> None:
