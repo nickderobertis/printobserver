@@ -8,7 +8,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # `repo_checks` is a plain package rather than a distribution, so that no
 # hand-maintained version string enters the tree. This is how the recipes and
 # the graph targets reach it.
-export PYTHONPATH := "tools/repo-checks/src"
+export PYTHONPATH := "tools/repo-checks/src:tools/contract-codegen/src"
 
 # Show the command surface.
 default:
@@ -89,6 +89,16 @@ coverage:
 build:
     just node-modules
     bunx nx run-many -t build --output-style=stream
+
+# Regenerate the three clients from the checked-in contract schemas.
+#
+# The generator writes in place, so running this over a tree already carrying
+# what the schemas write changes nothing. `just check-repo` refuses a tree in
+# which a generated client differs from what it writes, which is what makes
+# three copies of one contract safe to have.
+generate-clients:
+    just node-modules
+    uv run -q python -m contract_codegen write
 
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:

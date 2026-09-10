@@ -42,6 +42,7 @@ convention = "google"
 addopts = "-q --strict-markers --strict-config"
 pythonpath = [
     "tools/repo-checks/src",
+    "tools/contract-codegen/src",
     "python/printobserver-sdk/src",
     "tools/octoprint-env",
     "tools/obico-env",
@@ -51,7 +52,11 @@ pythonpath = [
 branch = true
 parallel = true
 relative_files = true
-source = ["tools/repo-checks/src", "python/printobserver-sdk/src"]
+source = [
+    "tools/repo-checks/src",
+    "tools/contract-codegen/src",
+    "python/printobserver-sdk/src",
+]
 
 [tool.coverage.report]
 show_missing = true
@@ -61,7 +66,10 @@ python-version = "3.14"
 root = [
     "tools/repo-checks/src",
     "tools/repo-checks/tests",
+    "tools/contract-codegen/src",
+    "tools/contract-codegen/tests",
     "python/printobserver-sdk/src",
+    "python/printobserver-sdk/tests",
     "tests/repo-e2e/tests",
     "tools/octoprint-env",
     "tools/octoprint-env/tests",

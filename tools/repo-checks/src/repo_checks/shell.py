@@ -64,6 +64,7 @@ def run(
     timeout: float | None = None,
     check: bool = False,
     capture: bool = True,
+    stdin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a program by absolute path.
 
@@ -79,6 +80,9 @@ def run(
         check: Raise on a non-zero exit rather than returning it.
         capture: Collect the output, or let it reach the caller's terminal when
             the program's own progress is what a reader needs.
+        stdin: Text to hand the program on its standard input. A formatter that
+            reads what it is to lay out this way never touches the tree, which
+            is what lets a drift check run one over a file it must not write.
 
     Returns:
         The completed process. A program that is not on PATH comes back with
@@ -96,6 +100,7 @@ def run(
         return subprocess.CompletedProcess(argv, PROGRAM_NOT_FOUND, "", f"{argv[0]}: not found\n")
     return subprocess.run(  # noqa: S603
         [program, *argv[1:]],
+        input=stdin,
         cwd=cwd,
         env=without_ambient_git(os.environ if env is None else env),
         timeout=timeout,

@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from repo_checks import (
     checks_ci,
+    checks_clients,
     checks_integration,
     checks_obico,
     checks_release,
@@ -59,6 +60,8 @@ CHECKS: dict[str, Check] = {
     "service-install": checks_service.service_install,
     "merge-model": checks_ci.merge_model,
     "secrets": checks_ci.secrets,
+    "generated-clients": checks_clients.generated_clients,
+    "client-surface": checks_clients.client_surface,
     "release-targets": checks_release.release_targets,
     "release-automation": checks_release.release_automation,
     "base-files": base_files,
