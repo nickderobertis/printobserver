@@ -16,9 +16,6 @@
     "lint": {
       "command": "cargo clippy -p printobserver-obico --all-targets --locked -- -D warnings"
     },
-    "typecheck": {
-      "command": "cargo check -p printobserver-obico --all-targets --locked"
-    },
     "test": {
       "command": "cargo llvm-cov nextest -p printobserver-obico --no-report --no-tests=pass"
     },

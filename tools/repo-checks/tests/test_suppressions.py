@@ -50,7 +50,7 @@ def test_the_scanner_finds_the_directives_this_repository_carries(
     found = {(d.file, d.rule) for d in scan(REPO_ROOT)}
 
     contains(found, ("scripts/session-setup.sh", "tool_output_is_signal"))
-    contains(found, ("scripts/setup-llmlint.sh", "changed_behavior_has_e2e"))
+    contains(found, ("AGENTS.md", "instruction_layer_localized"))
 
 
 def test_a_directive_with_no_entry_is_refused(tree: Callable[[], Tree]) -> None:
