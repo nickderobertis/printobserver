@@ -69,12 +69,7 @@ impl Proxy {
         let recording = Arc::clone(&seen);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                if let Some(exchange) = forward(stream, &onward) {
-                    recording
-                        .lock()
-                        .expect("the recording is takeable")
-                        .push(exchange);
-                }
+                forward(stream, &onward, &recording);
             }
         });
         Self { address, seen }
@@ -106,7 +101,14 @@ impl Proxy {
 }
 
 /// Forward one request to the supervisor and record both halves.
-fn forward(client: TcpStream, onward: &str) -> Option<Exchange> {
+///
+/// The exchange is recorded **before** the answer goes back to the client, and
+/// the order is the whole of why this is reliable: a caller reads `last()` the
+/// moment its own call returns, so an exchange recorded after that answer is
+/// one the caller can be looking for before it is there — and what it would
+/// find instead is the call before it, which is a walk asserting the wrong
+/// step and blaming the client.
+fn forward(client: TcpStream, onward: &str, recording: &Arc<Mutex<Vec<Exchange>>>) -> Option<()> {
     let mut reading = BufReader::new(client);
     let mut request = String::new();
     reading.read_line(&mut request).ok()?;
@@ -139,10 +141,6 @@ fn forward(client: TcpStream, onward: &str) -> Option<Exchange> {
     let mut answered = Vec::new();
     upstream.read_to_end(&mut answered).ok()?;
 
-    let mut client = reading.into_inner();
-    client.write_all(&answered).ok()?;
-    client.flush().ok()?;
-
     let separator = answered
         .windows(4)
         .position(|window| window == b"\r\n\r\n")?;
@@ -151,13 +149,21 @@ fn forward(client: TcpStream, onward: &str) -> Option<Exchange> {
         .split_whitespace()
         .nth(1)
         .and_then(|code| code.parse::<u16>().ok())?;
-    Some(Exchange {
-        method,
-        target,
-        body,
-        status,
-        answer: String::from_utf8_lossy(&answered[separator + 4..]).into_owned(),
-    })
+    recording
+        .lock()
+        .expect("the recording is takeable")
+        .push(Exchange {
+            method,
+            target,
+            body,
+            status,
+            answer: String::from_utf8_lossy(&answered[separator + 4..]).into_owned(),
+        });
+
+    let mut client = reading.into_inner();
+    client.write_all(&answered).ok()?;
+    client.flush().ok()?;
+    Some(())
 }
 
 /// Whether what a method answered carries, field for field, what the

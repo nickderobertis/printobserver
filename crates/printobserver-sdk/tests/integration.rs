@@ -22,6 +22,8 @@
 //! suite, which asserts a print is there to be acted on. This walk cancels one
 //! and starts one, so it leaves the machine where the bring-up left it.
 
+#[path = "support/live.rs"]
+mod live;
 #[path = "support/supervisor.rs"]
 mod supervisor;
 
@@ -93,23 +95,38 @@ fn the_same_nine_steps_are_answered_against_a_real_octoprint() {
     let world = standing.at.clone();
     let client = Client::new(&world.server, Actor::Operator);
 
-    reads(&client, &world);
+    // journey step 1: status
+    reads_status(&client, &world);
+    // journey step 2: context
+    reads_context_and_image(&client, &world);
+    // journey step 3: manifest
     let wanted = the_manifest_the_print_runs_under(&client, &world);
+    // journey step 4: start
     starts(&client, &world, &wanted);
-    adjustments(&client, &world);
+    // journey step 5: adjustment
+    the_accepted_adjustment(&client, &world);
+    // journey step 6: refusal
+    the_refused_adjustment(&client, &world);
+    // journey step 7: unreasoned
+    unreasoned(&world);
+    // journey step 8: history
     accounting(&client, &world);
+    // journey step 9: cancel
     cancels(&client, &world, &wanted);
 
     standing.stop();
 }
 
-/// Steps one and two: read status, and read context and materialize its image.
-fn reads(client: &Client, world: &supervisor::Supervisor) {
+/// Step one: read the status of the print this world opened.
+fn reads_status(client: &Client, world: &supervisor::Supervisor) {
     let status = client
         .status(&world.print_id)
         .expect("a status read is answered");
     assert_eq!(status.print.id, world.print_id);
+}
 
+/// Step two: read context, and materialize its latest image.
+fn reads_context_and_image(client: &Client, world: &supervisor::Supervisor) {
     let context = client
         .context(&world.print_id)
         .expect("a context read is answered");
@@ -162,9 +179,9 @@ fn starts(client: &Client, world: &supervisor::Supervisor, wanted: &JobManifest)
     until(client, &world.print_id, &[PrinterState::Printing]);
 }
 
-/// Steps five, six and seven: one accepted adjustment, one refused, and one
-/// this client will not send at all.
-fn adjustments(client: &Client, world: &supervisor::Supervisor) {
+/// Step five: one adjustment inside the effective bounds, carrying a reason
+/// and a duration.
+fn the_accepted_adjustment(client: &Client, world: &supervisor::Supervisor) {
     let adjusted = client
         .set_feedrate_factor(&world.print_id, INSIDE, REASON, Some(DURATION))
         .expect("an adjustment inside the bounds is answered");
@@ -178,7 +195,11 @@ fn adjustments(client: &Client, world: &supervisor::Supervisor) {
         "the intervention applied {} rather than {INSIDE}",
         intervention.applied_value
     );
+}
 
+/// Step six: one adjustment outside them, and the typed rejection it is
+/// refused by.
+fn the_refused_adjustment(client: &Client, world: &supervisor::Supervisor) {
     let refused = client
         .set_feedrate_factor(&world.print_id, OUTSIDE, REASON, None)
         .expect_err("an adjustment outside the bounds is refused");
@@ -198,26 +219,44 @@ fn adjustments(client: &Client, world: &supervisor::Supervisor) {
         allowed.max < OUTSIDE,
         "what is allowed does not admit what was asked for: {allowed:?}"
     );
-
-    unreasoned(client, world);
 }
 
-/// Step seven on its own: a mutating call whose reason is empty reaches no
-/// server at all.
-fn unreasoned(client: &Client, world: &supervisor::Supervisor) {
-    let before = client
+/// Step seven: a mutating call whose reason is empty reaches no server at all.
+///
+/// Unchanged history proves nothing on its own — a request the server took and
+/// recorded nowhere would leave it unchanged too — and neither does a client
+/// pointed at an address nothing listens on, which reaches no server whatever
+/// it is asked. So the calls are made through a **recording proxy in front of
+/// the real supervisor**, and what is asserted is that not one of them went
+/// through it.
+fn unreasoned(world: &supervisor::Supervisor) {
+    let proxy = live::Proxy::in_front_of(&world.server);
+    let watched = Client::new(proxy.url(), Actor::Operator);
+
+    // A read first: "nothing went through" is a claim about the calls below,
+    // and against a proxy nothing could reach it would be true of everything.
+    let before = watched
         .history(&world.print_id, None)
-        .expect("a history read is answered")
-        .events
-        .len();
-    let refused = client
-        .pause(&world.print_id, "   ")
-        .expect_err("a call with no reason is refused");
-    assert!(matches!(refused, ClientError::NoReason));
+        .expect("a history read is answered");
+    live::same("history", &before, &proxy.last().answer);
+    let reads = proxy.calls();
+    assert_eq!(reads, 1, "the read this step stands on went somewhere else");
+
+    for empty in ["", "   "] {
+        let refused = watched
+            .pause(&world.print_id, empty)
+            .expect_err("a call with no reason is refused");
+        assert!(matches!(refused, ClientError::NoReason));
+    }
+    assert_eq!(
+        proxy.calls(),
+        reads,
+        "a call with no reason reached the supervisor"
+    );
 
     // Pointed at an address nothing is listening on, the same call still
     // refuses for want of a reason rather than for want of a server — which is
-    // what "no request reached the server" means.
+    // the client's own half of the same claim.
     let nowhere = Client::new("127.0.0.1:1", Actor::Operator);
     assert!(matches!(
         nowhere
@@ -225,14 +264,19 @@ fn unreasoned(client: &Client, world: &supervisor::Supervisor) {
             .expect_err("a call with no reason is refused"),
         ClientError::NoReason
     ));
+
+    let after = watched
+        .history(&world.print_id, None)
+        .expect("a history read is answered");
     assert_eq!(
-        client
-            .history(&world.print_id, None)
-            .expect("a history read is answered")
-            .events
-            .len(),
-        before,
+        after.events.len(),
+        before.events.len(),
         "a call with no reason left something in the history"
+    );
+    assert_eq!(
+        proxy.calls(),
+        reads + 1,
+        "the read that closes this step went somewhere else"
     );
 }
 

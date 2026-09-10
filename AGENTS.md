@@ -607,6 +607,27 @@ it assembles copies of the tree carrying one defect each and asserts the gate
 refuses each one. Those copies omit `tests/repo-e2e` itself, because a gate that
 ran the suite that runs the gate could not terminate.
 
+### The one journey, in three clients
+
+The nine steps all three clients drive are declared once, in
+`repo_checks.checks_journeys`, and each journey marks its own in its own
+language's comments — `journey step 4: start`. `just check-repo`'s
+`journey-completeness` holds every marker to the code beside it and every step
+to its place, so a step deleted, renamed, or taken before the step it stands on
+is refused in whichever client lost it. The orderings are load-bearing rather
+than tidy: the manifest is written before the print is started so the print runs
+under it, the adjustments come before history is read so history has them to
+account for, and the print is cancelled last.
+
+**A call the client refuses to make is proven by a recording proxy in front of
+the real supervisor**, and by nothing else. The seventh step is that a mutating
+call with an empty reason reaches no server at all, and neither unchanged
+history nor a client pointed at an address nothing listens on says that: a
+request the server took and recorded nowhere leaves history unchanged, and a
+client that can reach nothing reaches nothing whatever it is asked. What the
+step asserts is that the proxy — which the same call *did* go through, one read
+earlier — saw nothing.
+
 A defect that has to *outweigh* the tree is computed from what the copy measures
 rather than written down. The coverage journey sizes its block of uncovered Rust
 from the Rust its copy will carry, and it proves that sizing by running over a

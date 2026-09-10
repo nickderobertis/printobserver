@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from live import Proxy, same
 from printobserver_sdk import Client, NoReasonError, RejectedError
 from printobserver_sdk.contract import JobManifest, PrinterState
 from repo_checks.expect import contains, equal, truth
@@ -90,10 +91,10 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
     """The nine steps, in the one order a real machine admits."""
     client = Client(world.server, "operator")
 
-    # 1. Read status.
+    # journey step 1: status
     equal(client.status(world.print_id)["print"]["id"], world.print_id)
 
-    # 2. Read context, and materialize its latest image.
+    # journey step 2: context
     equal(client.context(world.print_id)["context"]["print"]["id"], world.print_id)
     image = client.image(world.image_id)
     path = image.get("path")
@@ -105,7 +106,8 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
         describing="the file at the answered path",
     )
 
-    # 3. Write a job manifest and read it back, before the print is started.
+    # journey step 3: manifest — written before the print is started, so the
+    #                            print runs under it.
     wanted = _manifest(world.file_name)
     written = client.manifest_set(world.print_id, REASON, wanted)
     equal(written["manifest"], wanted)
@@ -117,19 +119,20 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
         client.cancel(world.print_id, "making room for the step that starts one")
     _until(client, world.print_id, {"operational"})
 
-    # 4. Start a print.
+    # journey step 4: start
     started = client.start_print(world.print_id, world.file_name, wanted, REASON)
     equal(started["record"]["decision"], "accepted")
     _until(client, world.print_id, {"printing"})
 
-    # 5. One accepted adjustment, carrying a reason and a duration.
+    # journey step 5: adjustment — accepted, carrying a reason and a duration.
     adjusted = client.set_feedrate_factor(world.print_id, INSIDE, REASON, DURATION)
     equal(adjusted["record"]["decision"], "accepted")
     intervention = adjusted.get("intervention")
     truth(intervention is not None, describing="a bounded adjustment to open an intervention")
     equal(cast("dict[str, object]", intervention)["applied_value"], INSIDE)
 
-    # 6. One adjustment outside the effective bounds, and the typed rejection.
+    # journey step 6: refusal — outside the effective bounds, and the typed
+    #                           rejection it is refused by.
     try:
         client.set_feedrate_factor(world.print_id, OUTSIDE, REASON)
     except RejectedError as refused:
@@ -147,14 +150,16 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
     else:
         truth(False, describing="an adjustment outside the bounds to be refused")
 
-    # 7. One mutating call whose reason is empty, and one whose reason is
-    #    omitted — both refused here, with no request reaching the server.
-    _unreasoned(client, world)
+    # journey step 7: unreasoned — one call whose reason is empty and one whose
+    #                              reason is omitted, both refused here, with no
+    #                              request reaching the server.
+    _unreasoned(world)
 
-    # 8. Read history, and find the accepted action, its decision and outcome.
+    # journey step 8: history — read after the adjustments, so it has them to
+    #                           account for.
     _accounting(client, world)
 
-    # 9. Cancel the print, last.
+    # journey step 9: cancel
     cancelled = client.cancel(world.print_id, REASON)
     equal(cancelled["record"]["decision"], "accepted")
 
@@ -169,43 +174,67 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
     )
 
 
-def _unreasoned(client: Client, world: Supervisor) -> None:
-    """A mutating call with no reason reaches no server at all."""
-    before = len(client.history(world.print_id)["events"])
+def _unreasoned(world: Supervisor) -> None:
+    """A mutating call with no reason reaches no server at all.
 
-    for empty in ("", "   "):
+    Unchanged history proves nothing on its own — a request the server took and
+    recorded nowhere would leave it unchanged too — and neither does a client
+    pointed at an address nothing listens on, which reaches no server whatever
+    it is asked. So the calls are made through a recording proxy in front of the
+    real supervisor, and what is asserted is that not one of them went through
+    it.
+    """
+    with Proxy(world.server) as proxy:
+        client = Client(proxy.url, "operator")
+
+        # A read first: "nothing went through" is a claim about the calls below,
+        # and against a proxy nothing could reach it would be true of anything.
+        before = client.history(world.print_id)
+        same("history", before, proxy.last().answer)
+        reads = proxy.calls()
+        equal(reads, 1, describing="the read this step stands on")
+
+        for empty in ("", "   "):
+            try:
+                client.pause(world.print_id, empty)
+            except NoReasonError:
+                continue
+            truth(False, describing=f"{empty!r} to be refused for want of a reason")
+
+        # Omitted rather than empty: in this client the reason is a required
+        # argument that can still be left out at run time, and leaving it out is
+        # refused where the two typed clients refuse it at compile time.
         try:
-            client.pause(world.print_id, empty)
+            client.pause(world.print_id)  # ty: ignore[missing-argument]
+        except TypeError:
+            pass
+        else:
+            truth(False, describing="an omitted reason to be refused")
+
+        equal(
+            proxy.calls(),
+            reads,
+            describing="the calls a reason-less call made on the supervisor",
+        )
+
+        # Pointed at an address nothing is listening on, the same call still
+        # refuses for want of a reason rather than for want of a server — which
+        # is the client's own half of the same claim.
+        nowhere = Client("127.0.0.1:1", "operator")
+        try:
+            nowhere.pause(world.print_id, "")
         except NoReasonError:
-            continue
-        truth(False, describing=f"{empty!r} to be refused for want of a reason")
+            pass
+        else:
+            truth(False, describing="a call with no reason to reach no server")
 
-    # Omitted rather than empty: in this client the reason is a required
-    # argument that can still be left out at run time, and leaving it out is
-    # refused where the two typed clients refuse it at compile time.
-    try:
-        client.pause(world.print_id)  # ty: ignore[missing-argument]
-    except TypeError:
-        pass
-    else:
-        truth(False, describing="an omitted reason to be refused")
-
-    # Pointed at an address nothing is listening on, the same call still
-    # refuses for want of a reason rather than for want of a server — which is
-    # what "no request reached the server" means.
-    nowhere = Client("127.0.0.1:1", "operator")
-    try:
-        nowhere.pause(world.print_id, "")
-    except NoReasonError:
-        pass
-    else:
-        truth(False, describing="a call with no reason to reach no server")
-
-    equal(
-        len(client.history(world.print_id)["events"]),
-        before,
-        describing="what a call with no reason left in the history",
-    )
+        after = client.history(world.print_id)
+        equal(
+            len(after["events"]),
+            len(before["events"]),
+            describing="what a call with no reason left in the history",
+        )
+        equal(proxy.calls(), reads + 1, describing="the read that closes this step")
 
 
 def _accounting(client: Client, world: Supervisor) -> None:

@@ -25,6 +25,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { Client } from "../src/client.ts";
 import type { JobManifest, PrinterState } from "../src/contract.ts";
 import { NoReason, Rejected } from "../src/surface.ts";
+import { Recording, same } from "./live.ts";
 import { Standing, type Supervisor } from "./world.ts";
 
 /** The reason every mutating step of this walk carries. */
@@ -64,6 +65,43 @@ function manifest(fileName: string): JobManifest {
   };
 }
 
+/**
+ * Step seven: a mutating call whose reason is empty reaches no server at all.
+ *
+ * Unchanged history proves nothing on its own — a request the server took and
+ * recorded nowhere would leave it unchanged too — and neither does a client
+ * pointed at an address nothing listens on, which reaches no server whatever it
+ * is asked. So the calls are made through a recording proxy in front of the real
+ * supervisor, and what is asserted is that not one of them went through it.
+ */
+async function unreasoned(world: Supervisor): Promise<void> {
+  await using proxy = new Recording(world.server);
+  const client = new Client({ server: proxy.url, actor: "operator" });
+
+  // A read first: "nothing went through" is a claim about the calls below, and
+  // against a proxy nothing could reach it would be true of anything at all.
+  const before = await client.history(world.print_id);
+  same("history", before, proxy.last().answer);
+  const reads = proxy.calls();
+  expect(reads).toBe(1);
+
+  for (const empty of ["", "   "]) {
+    const refused = await client.pause(world.print_id, empty).catch((r: unknown) => r);
+    expect(refused).toBeInstanceOf(NoReason);
+  }
+  expect(proxy.calls()).toBe(reads);
+
+  // Pointed at an address nothing is listening on, the same call still refuses
+  // for want of a reason rather than for want of a server — which is the
+  // client's own half of the same claim.
+  const nowhere = new Client({ server: "http://127.0.0.1:1", actor: "operator" });
+  expect(await nowhere.pause(world.print_id, "").catch((r: unknown) => r)).toBeInstanceOf(NoReason);
+
+  const after = await client.history(world.print_id);
+  expect(after.events.length).toBe(before.events.length);
+  expect(proxy.calls()).toBe(reads + 1);
+}
+
 /** Wait until the machine reports one of these states. */
 async function until(client: Client, printId: string, wanted: PrinterState[]): Promise<void> {
   const deadline = Date.now() + PATIENCE_MS;
@@ -86,10 +124,10 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
 test("the same nine steps are answered against a real OctoPrint", async () => {
   const client = new Client({ server: world.server, actor: "operator" });
 
-  // 1. Read status.
+  // journey step 1: status
   expect((await client.status(world.print_id)).print.id).toBe(world.print_id);
 
-  // 2. Read context, and materialize its latest image.
+  // journey step 2: context
   expect((await client.context(world.print_id)).context.print.id).toBe(world.print_id);
   const image = await client.image(world.image_id);
   expect(typeof image.path).toBe("string");
@@ -100,7 +138,8 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
       .digest("hex"),
   ).toBe(image.record.sha256);
 
-  // 3. Write a job manifest and read it back, before the print is started.
+  // journey step 3: manifest — written before the print is started, so the print
+  //                            runs under it.
   const wanted = manifest(world.file_name);
   const written = await client.manifestSet(world.print_id, REASON, wanted);
   expect(written.manifest).toEqual(wanted);
@@ -113,17 +152,18 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
     .catch(() => undefined);
   await until(client, world.print_id, ["operational"]);
 
-  // 4. Start a print.
+  // journey step 4: start
   const started = await client.startPrint(world.print_id, world.file_name, wanted, REASON);
   expect(started.record.decision).toBe("accepted");
   await until(client, world.print_id, ["printing"]);
 
-  // 5. One accepted adjustment, carrying a reason and a duration.
+  // journey step 5: adjustment — accepted, carrying a reason and a duration.
   const adjusted = await client.setFeedrateFactor(world.print_id, INSIDE, REASON, DURATION);
   expect(adjusted.record.decision).toBe("accepted");
   expect(adjusted.intervention?.applied_value).toBe(INSIDE);
 
-  // 6. One adjustment outside the effective bounds, and the typed rejection.
+  // journey step 6: refusal — outside the effective bounds, and the typed
+  //                           rejection it is refused by.
   const refused = await client
     .setFeedrateFactor(world.print_id, OUTSIDE, REASON)
     .catch((raised: unknown) => raised);
@@ -133,21 +173,12 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
   expect(rejection.requested).toBe(OUTSIDE);
   expect(rejection.allowed?.max).toBeLessThan(OUTSIDE);
 
-  // 7. One mutating call whose reason is empty, refused here with no request
-  //    reaching the server.
-  const before = (await client.history(world.print_id)).events.length;
-  for (const empty of ["", "   "]) {
-    const unreasoned = await client.pause(world.print_id, empty).catch((r: unknown) => r);
-    expect(unreasoned).toBeInstanceOf(NoReason);
-  }
-  // Pointed at an address nothing is listening on, the same call still refuses
-  // for want of a reason rather than for want of a server — which is what "no
-  // request reached the server" means.
-  const nowhere = new Client({ server: "http://127.0.0.1:1", actor: "operator" });
-  expect(await nowhere.pause(world.print_id, "").catch((r: unknown) => r)).toBeInstanceOf(NoReason);
-  expect((await client.history(world.print_id)).events.length).toBe(before);
+  // journey step 7: unreasoned — one call whose reason is empty, refused here
+  //                              with no request reaching the server.
+  await unreasoned(world);
 
-  // 8. Read history, and find the accepted action, its decision and outcome.
+  // journey step 8: history — read after the adjustments, so it has them to
+  //                           account for.
   const events = (await client.history(world.print_id, 200)).events;
   const asked = events.find(
     (event) =>
@@ -168,7 +199,7 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
   expect(executed).toContain(actionId);
   expect(rejected.length).toBeGreaterThan(0);
 
-  // 9. Cancel the print, last.
+  // journey step 9: cancel
   expect((await client.cancel(world.print_id, REASON)).record.decision).toBe("accepted");
 
   // Teardown rather than a tenth step.
