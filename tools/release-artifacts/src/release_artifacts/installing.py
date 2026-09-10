@@ -68,7 +68,7 @@ class Installed:
     said: str
 
 
-def _without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
+def without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
     """The caller's environment, minus every place a Rust toolchain lives.
 
     Not a claim in a comment: the directories carrying `cargo` and `rustc` are
@@ -89,7 +89,7 @@ def _without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
     return environment
 
 
-def _ran(
+def ran(
     argv: list[str],
     *,
     cwd: Path,
@@ -124,13 +124,13 @@ def _only(paths: tuple[Path, ...], suffix: str, describing: str) -> Path:
 def python_client(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python client, installed the way an application takes it."""
     environment = into / "env"
-    _ran(
+    ran(
         ["uv", "venv", "--clear", str(environment)],
         cwd=into,
         describing="making a Python environment",
     )
     wheel = _only(built.paths, ".whl", built.target)
-    _ran(
+    ran(
         ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
         cwd=into,
         describing=f"installing {wheel.name}",
@@ -146,7 +146,7 @@ def node_client(repo: Repo, built: Built, into: Path) -> Installed:
         '{ "name": "a-consumer", "private": true, "type": "module" }\n', encoding="utf-8"
     )
     tarball = _only(built.paths, ".tgz", built.target)
-    _ran(
+    ran(
         ["npm", "install", "--no-audit", "--no-fund", str(tarball)],
         cwd=environment,
         describing=f"installing {tarball.name}",
@@ -192,7 +192,7 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
         ),
         encoding="utf-8",
     )
-    _ran(
+    ran(
         ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
         cwd=consumer,
         describing="building a consumer of the packaged crate",
@@ -205,16 +205,16 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python-registry route, taken with no Rust toolchain on the path."""
     environment = into / "env"
-    _ran(
+    ran(
         ["uv", "venv", "--clear", str(environment)],
         cwd=into,
         describing="making a Python environment",
     )
     wheel = _only(built.paths, ".whl", built.target)
-    _ran(
+    ran(
         ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
         cwd=into,
-        env=_without_rust(),
+        env=without_rust(),
         describing=f"installing {wheel.name}",
     )
     return Installed(built.target, environment, environment / "bin" / PROGRAM, "")
@@ -235,7 +235,7 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
     if len(tarballs) != 2:
         msg = f"{built.target}: expected a launcher and a per-platform package"
         raise InstallError(msg)
-    _ran(
+    ran(
         [
             "npm",
             "install",
@@ -247,7 +247,7 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
             *tarballs,
         ],
         cwd=into,
-        env=_without_rust(),
+        env=without_rust(),
         describing="installing the launcher and the program beside it",
     )
     return Installed(built.target, environment, environment / "bin" / PROGRAM, "")
@@ -265,10 +265,10 @@ def script_route(repo: Repo, built: Built, into: Path) -> Installed:
     environment = into / "env"
     directory = environment / SCRIPT_DIRECTORY
     staged = staged_release(repo, into / "release", _built_program(built))
-    _ran(
+    ran(
         ["sh", str(repo.path(INSTALL_SCRIPT)), "--to", str(directory)],
         cwd=into,
-        env=_without_rust({"PRINTOBSERVER_RELEASE_BASE": str(staged)}),
+        env=without_rust({"PRINTOBSERVER_RELEASE_BASE": str(staged)}),
         describing="running the committed install script",
     )
     return Installed(built.target, environment, directory / PROGRAM, "")
@@ -360,8 +360,8 @@ def _prove_route(repo: Repo, taken: Installed) -> str:
     if installed is None or not installed.exists():
         msg = f"{taken.target} put no {PROGRAM} on the path it was given"
         raise InstallError(msg)
-    environment = _without_rust()
-    version = _ran(
+    environment = without_rust()
+    version = ran(
         [str(installed), "--version"],
         cwd=taken.environment,
         env=environment,
@@ -396,7 +396,7 @@ def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
     world = World(program(repo, binary), taken.environment / "world")
     try:
         running = world.start()
-        return _ran(
+        return ran(
             [
                 *argv,
                 "--server",

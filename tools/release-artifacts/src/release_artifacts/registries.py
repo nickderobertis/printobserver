@@ -1,0 +1,561 @@
+"""Proving each end-user route against what its own registry actually serves.
+
+`installing.py` proves an artifact **built from the committed tree**, which is
+the proof a change can run before anything is published. This module proves the
+other half, and it is the half a user meets: that the registry the install-path
+section points them at is serving the version under test, that what it serves
+installs on a host with no Rust toolchain, and that the program the install put
+on a path runs and reports that version.
+
+Three outcomes, and only the first is a pass:
+
+* `SERVED AND PROVEN` — the registry served the version under test, it
+  installed, and the program it left reported that version.
+* `SERVED AND NOT PROVEN` — the registry served it and something after that
+  failed. An artifact that does not work.
+* `NOT SERVED` — the registry serves nothing for the version under test. A
+  publish that did not happen.
+
+Those are two different repairs, which is why they are two answers rather than
+one failure: the first is somebody's build, the second is somebody's release.
+
+**The version under test is never this tree's own.** What a user gets is
+whatever the registry is serving, and the number in the workspace is whatever
+release automation last wrote there — so a proof keyed on it would pass over a
+registry serving nothing. It is the version the caller names, and the newest the
+registry serves when the caller names none. `release` names the newest release
+the forge has published, which is what a release's own proof is keyed on.
+
+**Every registry is reachable somewhere other than the real one**, through
+`PRINTOBSERVER_PROOF_REGISTRIES`. Nothing here may publish to a registry in
+order to prove a point, so the proof has to be drivable against a registry
+serving nothing, one serving something broken, and one serving something that
+works — which `standin.py` stands up.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from repo_checks import install_path
+from repo_checks.model import Repo
+
+from release_artifacts import targets
+from release_artifacts.build import PROGRAM
+from release_artifacts.installing import (
+    INSTALL_SCRIPT,
+    SCRIPT_DIRECTORY,
+    TOOLCHAIN,
+    TOOLCHAIN_REPORT,
+    InstallError,
+    ran,
+    without_rust,
+)
+
+#: Where every registry is read from when nothing points them elsewhere.
+PRINTOBSERVER_PROOF_REGISTRIES = "PRINTOBSERVER_PROOF_REGISTRIES"
+
+#: Which version this run proves: a version, `release`, or nothing at all.
+PRINTOBSERVER_PROOF_VERSION = "PRINTOBSERVER_PROOF_VERSION"
+
+#: What the install script reads the release location off, which is its own.
+PRINTOBSERVER_RELEASE_BASE = "PRINTOBSERVER_RELEASE_BASE"
+
+#: The version this proof takes from the newest release the forge published,
+#: rather than from a number a caller typed.
+RELEASE = "release"
+
+#: How long a registry is given to say what it serves.
+ASK_TIMEOUT_SECONDS = 60
+
+#: What this proof calls itself when it asks a registry. A forge answers an
+#: anonymous read and expects to be told who is asking.
+AGENT = "printobserver-install-proof"
+
+
+class Outcome(StrEnum):
+    """What a route's own proof found, in the words its report names it by."""
+
+    PROVEN = "SERVED AND PROVEN"
+    NOT_PROVEN = "SERVED AND NOT PROVEN"
+    NOT_SERVED = "NOT SERVED"
+
+
+#: The process exit each outcome answers with. Only a pass is zero, and the two
+#: failures are told apart by the status as well as by the words, so a caller
+#: driving this needs no output parsing to know which repair it is looking at.
+EXIT = {Outcome.PROVEN: 0, Outcome.NOT_PROVEN: 1, Outcome.NOT_SERVED: 3}
+
+
+class RegistryError(RuntimeError):
+    """A registry could not be asked what it serves."""
+
+
+@dataclass(frozen=True, slots=True)
+class Bases:
+    """Where each of the three registries is read from.
+
+    One stand-in address covers all three, because a proof that read one
+    registry from a stand-in and another from the real internet would be a
+    proof of neither.
+    """
+
+    #: The Python package registry, whose own paths are `/pypi/<name>/json`
+    #: and `/simple`.
+    pypi: str
+    #: The JavaScript package registry, which serves a packument per name.
+    npm: str
+    #: Where the forge lists this repository's releases.
+    listing: str
+    #: Where the install script downloads a release's artifacts from.
+    releases: str
+
+    @classmethod
+    def read(cls, repo: Repo, environment: dict[str, str]) -> Bases:
+        """The real registries, or the stand-in one address names.
+
+        Raises:
+            RegistryError: If `repo-policy.toml` names no repository for the
+                forge's own paths to be composed from.
+        """
+        declared = repo.policy.get("repository", {})
+        owner = str(declared.get("owner", "")).strip()
+        name = str(declared.get("name", "")).strip()
+        if not owner or not name:
+            msg = (
+                "`repo-policy.toml` declares no `repository.owner` and "
+                "`repository.name`, so nothing can say where this repository's "
+                "own releases are listed"
+            )
+            raise RegistryError(msg)
+        standing_in = environment.get(PRINTOBSERVER_PROOF_REGISTRIES, "").strip().rstrip("/")
+        if standing_in:
+            return cls(
+                pypi=f"{standing_in}/pypi",
+                npm=f"{standing_in}/npm",
+                listing=f"{standing_in}/forge/releases",
+                releases=f"{standing_in}/forge/releases",
+            )
+        return cls(
+            pypi="https://pypi.org",
+            npm="https://registry.npmjs.org",
+            listing=f"https://api.github.com/repos/{owner}/{name}/releases",
+            releases=f"https://github.com/{owner}/{name}/releases",
+        )
+
+    def of(self, registry: str) -> str:
+        """The address the registry serving one target answers on."""
+        return {"pypi": self.pypi, "npm": self.npm, "release": self.listing}.get(registry, "")
+
+
+@dataclass(frozen=True, slots=True)
+class Selected:
+    """The version under test, and where it was taken from."""
+
+    version: str
+    whence: str
+
+
+@dataclass(frozen=True, slots=True)
+class Proof:
+    """What one route's proof against its own registry found."""
+
+    target: str
+    outcome: Outcome
+    #: Everything a reader needs to act on it, one fact to a line.
+    report: str
+
+    @property
+    def exit_status(self) -> int:
+        """The process exit this proof answers with."""
+        return EXIT[self.outcome]
+
+
+def ordered(version: str) -> tuple[int, ...]:
+    """One version as it sorts against another.
+
+    Every version this repository publishes is three numbers — pre-1.0 Cargo
+    rules, written by release automation — so anything else sorts before all of
+    them rather than being guessed at: a proof must not pick a pre-release
+    nobody meant to install as "the newest".
+    """
+    parts = version.removeprefix("v").split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return (-1,)
+    return tuple(int(part) for part in parts)
+
+
+def _asked(url: str) -> bytes:
+    """What one registry answered, or nothing where it serves no such name.
+
+    Raises:
+        RegistryError: If the address is not one this asks over, or the
+            registry could not be reached or refused the read. An unreachable
+            registry is not a registry serving nothing: one is a network and
+            the other is a missing publish, and reporting the first as the
+            second would send a reader to repair a release that is fine.
+    """
+    if urlsplit(url).scheme not in {"http", "https"}:
+        msg = f"{url} is not an address this asks a registry over"
+        raise RegistryError(msg)
+    request = urllib.request.Request(  # noqa: S310
+        url, headers={"Accept": "application/json", "User-Agent": AGENT}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=ASK_TIMEOUT_SECONDS) as answer:  # noqa: S310
+            read: bytes = answer.read()
+    except urllib.error.HTTPError as refused:
+        if refused.code == 404:
+            return b""
+        msg = f"{url} refused the read that asks what it serves ({refused})"
+        raise RegistryError(msg) from refused
+    except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
+        msg = f"{url} could not be reached to ask what it serves ({unreachable})"
+        raise RegistryError(msg) from unreachable
+    return read
+
+
+def _answered(url: str) -> object:
+    """One registry's answer, parsed.
+
+    Raises:
+        RegistryError: If what it answered is not the JSON its own protocol
+            says it answers.
+    """
+    raw = _asked(url)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as unreadable:
+        msg = f"{url} answered something other than the JSON its protocol serves"
+        raise RegistryError(msg) from unreadable
+
+
+def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
+    """Every version the registry serving one target serves, newest last.
+
+    Raises:
+        RegistryError: If the registry could not be asked, or nothing here
+            knows how to ask the one that serves this target.
+    """
+    match target.registry:
+        case "pypi":
+            answer = _answered(f"{bases.pypi}/pypi/{target.name}/json")
+            found = answer.get("releases", {}) if isinstance(answer, dict) else {}
+            versions = list(found) if isinstance(found, dict) else []
+        case "npm":
+            answer = _answered(f"{bases.npm}/{target.name}")
+            found = answer.get("versions", {}) if isinstance(answer, dict) else {}
+            versions = list(found) if isinstance(found, dict) else []
+        case "release":
+            versions = [tag.removeprefix("v") for tag in released(bases)]
+        case _:
+            msg = f"nothing here knows how to ask what serves `{target.id}`"
+            raise RegistryError(msg)
+    return tuple(sorted({str(version) for version in versions}, key=ordered))
+
+
+def released(bases: Bases) -> tuple[str, ...]:
+    """Every release the forge lists, newest last.
+
+    Raises:
+        RegistryError: If the forge could not be asked, or answered a listing
+            of something other than releases.
+    """
+    answer = _answered(bases.listing)
+    if answer is None:
+        return ()
+    if not isinstance(answer, list):
+        msg = f"{bases.listing} answered something other than a list of releases"
+        raise RegistryError(msg)
+    tags: set[str] = set()
+    for entry in answer:
+        if isinstance(entry, dict) and isinstance(entry.get("tag_name"), str):
+            tags.add(entry["tag_name"])
+    return tuple(sorted(tags, key=ordered))
+
+
+def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
+    """The version under test, and where it came from.
+
+    Raises:
+        RegistryError: If a registry or the forge could not be asked.
+    """
+    named = wanted.strip()
+    if named and named != RELEASE:
+        return Selected(named.removeprefix("v"), f"named by the caller as `{named}`")
+    if named == RELEASE:
+        tags = released(bases)
+        if not tags:
+            return Selected("", f"the newest release {bases.listing} lists, and it lists none")
+        return Selected(tags[-1].removeprefix("v"), "the newest release the forge published")
+    available = served(bases, target)
+    if not available:
+        return Selected("", f"the newest {bases.of(target.registry)} serves, and it serves none")
+    return Selected(available[-1], f"the newest {bases.of(target.registry)} serves")
+
+
+def _pypi_route(repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases) -> Path:
+    """Route 1, taken from the Python package registry with `pip` itself.
+
+    A virtual environment of this proof's own, seeded with `pip`, and then the
+    route's own install pinned to the version under test — with no Rust
+    toolchain anywhere on the path it runs under.
+
+    Raises:
+        InstallError: If the environment could not be made or the install
+            failed.
+    """
+    environment = into / "env"
+    ran(
+        ["uv", "venv", "--seed", "--clear", str(environment)],
+        cwd=into,
+        describing="making a Python environment holding no copy of these sources",
+    )
+    pinned = f"{target.name}=={version}"
+    ran(
+        [str(environment / "bin/pip"), "install", pinned],
+        cwd=into,
+        env=without_rust(
+            {
+                "PIP_INDEX_URL": f"{bases.pypi}/simple",
+                "PIP_TRUSTED_HOST": urlsplit(bases.pypi).netloc,
+                "PIP_NO_CACHE_DIR": "1",
+                "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            }
+        ),
+        describing=f"`pip install {pinned}` from {bases.pypi}",
+    )
+    return environment / "bin" / PROGRAM
+
+
+def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases) -> Path:
+    """Route 2, taken from the JavaScript package registry with `npm` itself.
+
+    A global install into a prefix of this proof's own, pinned to the version
+    under test, resolving from the registry the caller named.
+
+    Raises:
+        InstallError: If the install failed.
+    """
+    environment = into / "env"
+    environment.mkdir(parents=True, exist_ok=True)
+    pinned = f"{target.name}@{version}"
+    ran(
+        [
+            "npm",
+            "install",
+            "--global",
+            "--prefix",
+            str(environment),
+            "--no-audit",
+            "--no-fund",
+            pinned,
+        ],
+        cwd=into,
+        env=without_rust(
+            {
+                "npm_config_registry": bases.npm,
+                "npm_config_cache": str(into / "npm-cache"),
+                "npm_config_update_notifier": "false",
+            }
+        ),
+        describing=f"`npm install -g {pinned}` from {bases.npm}",
+    )
+    return environment / "bin" / PROGRAM
+
+
+def _script_route(
+    repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+) -> Path:
+    """Route 3, taken by the committed install script against the real releases.
+
+    The script is driven with `sh`, exactly as that route's own one-line
+    command drives it, pinned to the version under test and pointed at where
+    the releases are. What is being proven here is the download, the
+    verification and the install — the fetch of the script itself is what the
+    install job's own run of that one-line command proves.
+
+    Raises:
+        InstallError: If the script refused, which it does before anything
+            reaches a path.
+    """
+    directory = into / "env" / SCRIPT_DIRECTORY
+    ran(
+        [
+            "sh",
+            str(repo.path(INSTALL_SCRIPT)),
+            "--version",
+            f"v{version}",
+            "--to",
+            str(directory),
+        ],
+        cwd=into,
+        env=without_rust({PRINTOBSERVER_RELEASE_BASE: bases.releases}),
+        describing=f"the committed install script against {bases.releases}",
+    )
+    return directory / PROGRAM
+
+
+#: How each route is taken from its own registry, by the target it is.
+ROUTES = {
+    "pypi:printobserver-cli": _pypi_route,
+    "npm:printobserver-cli": _npm_route,
+    "release:printobserver": _script_route,
+}
+
+
+def take(repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases) -> Path:
+    """Take one route from its own registry, and answer the program it left.
+
+    Raises:
+        InstallError: If nothing here takes that route, or the install failed.
+    """
+    route = ROUTES.get(target.id)
+    if route is None:
+        msg = f"nothing here takes `{target.id}` the way an end user takes it"
+        raise InstallError(msg)
+    into.mkdir(parents=True, exist_ok=True)
+    return route(repo, target, version, into, bases)
+
+
+def _reported(program: Path, cwd: Path) -> str:
+    """What the program a route installed says its own version is.
+
+    Raises:
+        InstallError: If the route put no program on the path it was given, or
+            what it put there does not run.
+    """
+    if not program.exists():
+        msg = f"the route put no {PROGRAM} at {program}"
+        raise InstallError(msg)
+    return ran(
+        [str(program), "--version"],
+        cwd=cwd,
+        env=without_rust(),
+        describing=f"{program} reporting its own version",
+    ).strip()
+
+
+def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) -> Proof:
+    """Take one route from its own registry and prove what it served.
+
+    Raises:
+        RegistryError: If the registry could not be asked what it serves. That
+            is neither of the two failures this reports: one is a network and
+            the others are a release and a build.
+        InstallError: If the declaration names no such target.
+    """
+    target = targets.named(repo.root, identifier)
+    bases = Bases.read(repo, environment)
+    where = bases.of(target.registry)
+    selected = select(bases, target, environment.get(PRINTOBSERVER_PROOF_VERSION, ""))
+    stated = _stated_command(repo, target)
+    preamble = [
+        f"version under test: {selected.version or '(none)'} ({selected.whence})",
+        f"route: {target.route or target.id} — `{stated}`" if stated else f"route: {target.id}",
+        f"registry: {where}",
+    ]
+
+    available = served(bases, target)
+    if not selected.version or selected.version not in available:
+        return _refused(target, selected, where, available, preamble)
+
+    into.mkdir(parents=True, exist_ok=True)
+    try:
+        installed = take(repo, target, selected.version, into, bases)
+        version = _reported(installed, into)
+    except InstallError as refused:
+        return Proof(
+            target.id,
+            Outcome.NOT_PROVEN,
+            _rendered(
+                target,
+                Outcome.NOT_PROVEN,
+                [
+                    *preamble,
+                    f"{where} serves {selected.version}, and what it serves did not work here:",
+                    str(refused),
+                ],
+            ),
+        )
+    if selected.version not in version:
+        return Proof(
+            target.id,
+            Outcome.NOT_PROVEN,
+            _rendered(
+                target,
+                Outcome.NOT_PROVEN,
+                [
+                    *preamble,
+                    f"installed: {installed}",
+                    f"reported: {version}, which is not the version under test",
+                ],
+            ),
+        )
+    reached = [name for name in TOOLCHAIN if shutil.which(name, path=without_rust()["PATH"])]
+    return Proof(
+        target.id,
+        Outcome.PROVEN,
+        _rendered(
+            target,
+            Outcome.PROVEN,
+            [
+                *preamble,
+                f"installed: {installed}",
+                f"reported: {version}",
+                TOOLCHAIN_REPORT.format(", ".join(reached) or "none"),
+            ],
+        ),
+    )
+
+
+def _refused(
+    target: targets.Target,
+    selected: Selected,
+    where: str,
+    available: tuple[str, ...],
+    preamble: list[str],
+) -> Proof:
+    """The answer where the registry serves nothing for the version under test."""
+    serves = ", ".join(available) if available else "no version at all"
+    return Proof(
+        target.id,
+        Outcome.NOT_SERVED,
+        _rendered(
+            target,
+            Outcome.NOT_SERVED,
+            [
+                *preamble,
+                f"{where} serves {serves} for `{target.name}`",
+                "Nothing was installed: this is a publish that did not happen rather "
+                "than an artifact that does not work.",
+            ],
+        ),
+    )
+
+
+def _rendered(target: targets.Target, outcome: Outcome, lines: list[str]) -> str:
+    """One proof's whole answer, as a reader of a run reads it."""
+    return "\n".join([f"{target.id}: {outcome}", *(f"  {line}" for line in lines)])
+
+
+def _stated_command(repo: Repo, target: targets.Target) -> str:
+    """The command `AGENTS.md`'s install-path section states for this route.
+
+    Read rather than restated: the section is the authoritative source of the
+    three routes, and a proof naming a command of its own would be a second
+    statement of one of them.
+    """
+    for route in install_path.parse(repo.agents_md).routes:
+        if route.heading == target.route:
+            return route.command
+    return ""

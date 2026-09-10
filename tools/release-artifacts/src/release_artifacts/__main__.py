@@ -13,6 +13,9 @@ from repo_checks.model import Repo
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
+from release_artifacts.registries import RegistryError
+from release_artifacts.registries import prove as prove_registry
+from release_artifacts.standin import Registries
 from release_artifacts.targets import TargetError, declared
 from release_artifacts.world import World, WorldError, scripted_printer
 
@@ -29,10 +32,44 @@ def main(argv: list[str] | None = None) -> int:
             "prove",
             "publish",
             "world",
+            "standin",
             "list",
         ],
     )
     parser.add_argument("--target", default="", help="which declared target to build")
+    parser.add_argument(
+        "--registry",
+        action="store_true",
+        help="prove what the target's own registry serves, rather than a local build",
+    )
+    parser.add_argument(
+        "--serves",
+        action="append",
+        default=[],
+        metavar="VERSION",
+        help="a version the stand-in registries serve, whose program runs and reports it",
+    )
+    parser.add_argument(
+        "--broken",
+        action="append",
+        default=[],
+        metavar="VERSION",
+        help="a version they serve whose program installs and does not run",
+    )
+    parser.add_argument(
+        "--mislabelled",
+        action="append",
+        default=[],
+        metavar="SERVED=REPORTED",
+        help="a version they serve whose program reports a different one",
+    )
+    parser.add_argument(
+        "--release",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help="a release the stand-in forge lists, whether or not anything serves it",
+    )
     parser.add_argument(
         "--octoprint",
         action="store_true",
@@ -66,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if arguments.command == "world":
             return _world(repo, arguments)
+        if arguments.command == "standin":
+            return _standin(repo, arguments)
         if arguments.command == "publish":
             for line in publish(repo, arguments.into, dict(os.environ)):
                 print(line)
@@ -74,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
             if not arguments.target:
                 print("prove takes --target <id>; `list` names them", file=sys.stderr)
                 return 2
+            if arguments.registry:
+                proof = prove_registry(repo, arguments.target, arguments.into, dict(os.environ))
+                print(proof.report)
+                return proof.exit_status
             print(prove(repo, arguments.target, arguments.into, arguments.binary))
             return 0
         if arguments.command == "build-all":
@@ -87,9 +130,43 @@ def main(argv: list[str] | None = None) -> int:
         built = build(repo, arguments.target, arguments.into, arguments.binary)
         for path in built.paths:
             print(f"{built.target}\t{path}")
-    except (BuildError, InstallError, PublishError, TargetError, WorldError) as refused:
+    except (
+        BuildError,
+        InstallError,
+        PublishError,
+        RegistryError,
+        TargetError,
+        WorldError,
+    ) as refused:
         print(f"release-artifacts: {refused}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _standin(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Stand every registry up, say where they answer, and hold them up.
+
+    One implementation, two consumers: this repository's own suites drive the
+    registry proof against these, and a developer runs the same proof against
+    them by hand. Held up until whoever started it closes this program's input,
+    which is what a journey does when it is done — and what the operating system
+    does for it if that journey is killed.
+    """
+    registries = Registries(repo, arguments.into)
+    try:
+        for version in arguments.serves:
+            registries.serve(str(version))
+        for version in arguments.broken:
+            registries.serve(str(version), broken=True)
+        for pair in arguments.mislabelled:
+            served, _, reported = str(pair).partition("=")
+            registries.serve(served, reported=reported)
+        for tag in arguments.release:
+            registries.release(str(tag))
+        print(json.dumps({"base": registries.base}), flush=True)
+        sys.stdin.read()
+    finally:
+        registries.stop()
     return 0
 
 

@@ -15,6 +15,7 @@ import base64
 import csv
 import hashlib
 import io
+import stat
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -138,7 +139,16 @@ class Wheel:
                 # Executable where it is a script an installer puts on the
                 # path, and read-only otherwise. A wheel whose program is not
                 # executable installs a file nobody can run.
-                info.external_attr = (0o755 if inside in self.scripts else 0o644) << 16
+                #
+                # The file-type bits are load-bearing rather than decoration:
+                # `pip` decides whether to carry a permission over by asking
+                # `S_ISREG(mode) and mode & 0o111`, so a mode carrying the
+                # execute bit and no type at all is one it reads as not a
+                # regular file and installs without it. That is a program on
+                # the user's path they cannot run, and it is invisible to an
+                # installer that is more forgiving about the same wheel.
+                permissions = 0o755 if inside in self.scripts else 0o644
+                info.external_attr = (stat.S_IFREG | permissions) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
                 archive.writestr(info, content)
                 writer.writerow([inside, _digest(content), len(content)])
