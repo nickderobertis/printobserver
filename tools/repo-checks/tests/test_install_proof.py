@@ -299,3 +299,37 @@ def test_a_workflow_that_is_not_there_is_refused(tree: Callable[[], Tree]) -> No
     broken.remove(WORKFLOW)
 
     refused(install_proof(broken.repo), "which is not there")
+
+
+def test_a_tier_recipe_the_recipe_set_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A tier declared in policy and absent from the command surface runs nothing."""
+    broken = tree()
+    broken.edit(JUSTFILE, "test-install-proof:", "test-registry-install-proof:")
+
+    refused(install_proof(broken.repo), "which the recipe set does not declare")
+
+
+def test_a_route_with_no_target_behind_it_is_refused(tree: Callable[[], Tree]) -> None:
+    """A route with no declared target names no registry to prove it against."""
+    broken = tree()
+    broken.edit("release-targets.toml", 'route = "Route 2 — the JavaScript package registry"\n', "")
+
+    refused(install_proof(broken.repo), "declares no target behind it")
+
+
+def test_a_schedule_naming_no_cron_expression_is_refused(tree: Callable[[], Tree]) -> None:
+    """A tier out of the gate and on no schedule is a tier nobody runs."""
+    broken = tree()
+    broken.edit(WORKFLOW, '  schedule:\n    - cron: "0 6 * * 1"\n', "  schedule:\n")
+
+    refused(install_proof(broken.repo), "names no cron expression")
+
+
+def test_a_tree_recording_no_schedule_block_is_refused(tree: Callable[[], Tree]) -> None:
+    """The recorded schedule and the one that fires are checked against each other."""
+    broken = tree()
+    broken.edit(AGENTS, "[//]: # (BEGIN install-proof-schedule)", "[//]: # (a block, removed)")
+
+    refused(install_proof(broken.repo), "carries no `install-proof-schedule` marker block")
