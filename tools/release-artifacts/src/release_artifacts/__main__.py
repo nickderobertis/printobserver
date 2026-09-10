@@ -29,6 +29,12 @@ def main(argv: list[str] | None = None) -> int:
         help="the printobserver program to carry, rather than building one",
     )
     arguments = parser.parse_args(argv)
+    # Resolved here and nowhere else: everything below runs programs in
+    # directories of its own, and a relative path handed to one of those would
+    # name a different place in each.
+    arguments.into = arguments.into.resolve()
+    if arguments.binary is not None:
+        arguments.binary = arguments.binary.resolve()
     repo = Repo(arguments.root)
 
     try:
