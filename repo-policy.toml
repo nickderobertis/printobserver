@@ -132,8 +132,10 @@ section = "The scheduled Obico tier"
 [install_proof]
 # The registry install-path proof: the tier that takes each of the three
 # end-user routes from its own registry and runs what it installed.
-# `AGENTS.md`'s "The registry install-path proof" is the prose half; what is
-# declared here is what a check has to be deterministic about.
+# `AGENTS.md`'s "The registry install-path proof" is the prose half, and the
+# judgment behind how this tier is keyed is with the project that carries it, at
+# `tools/release-artifacts/AGENTS.md`; what is declared here is what a check has
+# to be deterministic about.
 #
 # Like the two tiers above it declares a `tier` recipe, which is what the
 # documentation check reads every tier outside the gate off — so this tier is

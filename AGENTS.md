@@ -689,41 +689,16 @@ commands executable is the `server` node — each held to this section.
 
 ## The registry install-path proof
 
-`just prove-route-*` proves an artifact **built from the committed tree**, which
-is the only proof a change can run before anything is published — and is green
-over a repository nothing can install. `just test-install-proof` is the other
-half.
+`just test-install-proof` takes each of the three routes above from its own
+registry and runs what it installed, which is the only thing that says this
+repository is installable. `PRINTOBSERVER_PROOF_VERSION` names the version under
+test — never the number in this tree, because what a user gets is whatever the
+registry is serving.
 
-What follows is the judgment behind it. The workflow, `repo-policy.toml` and
-`just check-repo` carry the mechanism between them, and a copy of that here
-would be a third statement of it to keep right.
-
-**Which version is proven is never the number in this tree.** That is whatever
-release automation last wrote into the workspace, and what a user gets is
-whatever the registry is serving. `PRINTOBSERVER_PROOF_VERSION` names it.
-
-**It is not in every run** because it reads the real registries: over a change
-it could only report what was published before that change.
-
-**The sequencing trap.** A release's own proof is keyed on the `release-plz`
-workflow **having finished**, not on the GitHub Release being published — that
-workflow cuts the release before the two jobs that build and publish its
-artifacts, so a proof keyed on the release itself measures the version before
-it.
-
-**A release-time run proves the release IT cut**, never the newest the forge
-lists, and the tag left at that run's own commit is what binds the two.
-`release_always` finishes a run on every push to `main` and all but the release
-ones cut nothing, so two runs are in flight often — and "the newest" is then
-somebody else's release, which a run keyed on it goes green over while its own
-goes unproven.
-
-**A run that cut a release and failed to publish it is proven, not skipped.**
-That is the one state this tier exists to find, and such a run concludes as a
-failure — so gating the proof on the triggering run's *conclusion* skips exactly
-it, and the missing publish is reported by nothing at all.
-
-It runs after a release, on the schedule below, and on a manual invocation:
+**It is not one of `just check`'s tiers** and `just check` does not invoke it: it
+reads the real registries, so over a change it could only report what was
+published before that change. It runs after a release, on the schedule below,
+and on a manual invocation:
 
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
@@ -735,8 +710,13 @@ It runs after a release, on the schedule below, and on a manual invocation:
 just test-install-proof
 ```
 
-Nothing here publishes to a registry in order to prove a point, so
-`PRINTOBSERVER_PROOF_REGISTRIES` points all three of them somewhere else.
+**Everything else about it is with the project that carries it**, at
+`tools/release-artifacts/AGENTS.md`: which release a release-time run proves and
+why it is keyed on the release workflow having finished, why a run that failed to
+publish is proven rather than skipped, and what stands in for the three
+registries so that nothing here publishes in order to prove a point. What the
+tier proves and when it runs is `docs/reference/testing.md`, with every other
+tier of this repository.
 
 ## Commits, releases, and merging
 
