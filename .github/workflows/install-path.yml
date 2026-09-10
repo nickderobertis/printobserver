@@ -116,10 +116,6 @@ jobs:
     needs: resolve
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
-      # The one concrete version this whole run proves: what a caller named, or
-      # the release the triggering run cut. Never the committed tree's own
-      # number, which is whatever release automation last wrote there, and
-      # never each route's own idea of "the newest".
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
@@ -143,10 +139,6 @@ jobs:
     needs: resolve
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
-      # The one concrete version this whole run proves: what a caller named, or
-      # the release the triggering run cut. Never the committed tree's own
-      # number, which is whatever release automation last wrote there, and
-      # never each route's own idea of "the newest".
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
@@ -180,22 +172,10 @@ jobs:
       - uses: actions/setup-python@v5
       - run: pip install printobserver-cli
       - run: printobserver --version
-      # The two commands after the routes need a person, and neither can be
-      # gated on here. The installer takes the program from the PATH of the
-      # root shell that runs it, which is not where any of the three routes
-      # puts one; and the unit it writes will not start until somebody has
-      # filled in the OctoPrint key and the ingress secret its configuration
-      # template deliberately leaves empty. Both are recorded as findings
-      # against the documented path rather than worked around here. What proves
-      # the installer is `crates/printobserver/tests/service.rs`, which drives
-      # the committed installer against a throwaway root and starts the program
-      # by the installed unit's own start command.
-      #
-      # So each is non-fatal AND each is reported: the step after them writes
-      # what both reached into this run's own summary, so a reader of a green
-      # job can tell a route whose service came up from one whose did not
-      # without opening this file. A failure that is reported has not
-      # disappeared, which is the whole of what the waiver costs.
+      # Neither of these two can succeed unattended, so each is non-fatal and
+      # each is reported: `repo-policy.toml`'s `waived_steps` is why, and
+      # `crates/printobserver/tests/service.rs` is what proves the installer
+      # instead.
       - id: install-service
         continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
