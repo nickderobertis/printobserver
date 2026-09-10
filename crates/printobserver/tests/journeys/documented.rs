@@ -590,7 +590,6 @@ fn unreachable(element: &str, why: &str) -> String {
 pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result<(), String> {
     let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]);
 
-    // 1. Read the context.
     let step = documentation
         .step(1)
         .ok_or_else(|| unreachable("the context command", "the skill states no first step"))?;
@@ -639,7 +638,6 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         }
     }
 
-    // 2. Look at the image.
     documentation
         .step(2)
         .ok_or_else(|| unreachable("the image inspection", "the skill states no second step"))?;
@@ -712,7 +710,6 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         "the file the documentation said to open is not the image the record declares"
     );
 
-    // 3. Decide, and act with a reason, inside the bounds the context reported.
     let refused = documentation.refused_example().ok_or_else(|| {
         unreachable(
             "the rejection's own fields",
@@ -812,8 +809,6 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         accepted.printed
     );
 
-    // 4. Ask for a value outside them, and compose a second request out of what
-    //    the rejection itself carried.
     let outside = high + (high - low).max(1.0);
     let overreaching = with_option(
         &with_option(
@@ -887,7 +882,6 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         after.printed
     );
 
-    // 5. Record what you saw.
     let step = documentation
         .step(5)
         .ok_or_else(|| unreachable("the observation record", "the skill states no fifth step"))?;
@@ -952,7 +946,6 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         "the observation record",
     )?;
 
-    // 6. Escalate.
     let escalation = documentation
         .section("When to escalate instead")
         .ok_or_else(|| unreachable("the escalation path", "the skill states no escalation path"))?;
