@@ -639,7 +639,7 @@ def continuous_integration(repo: Repo) -> list[str]:
 
 def _waived(repo: Repo) -> tuple[tuple[str, ...], str]:
     """The steps of an install job whose failure does not fail it, and what it costs."""
-    declared = repo.policy.get("workflows", {})
+    declared = policy_table(repo, "workflows")
     steps = declared.get("waived_steps")
     named = (
         tuple(str(step) for step in steps)
