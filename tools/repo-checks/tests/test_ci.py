@@ -204,6 +204,23 @@ def test_an_install_job_checking_after_the_service_commands_is_refused(
     refused(findings, "after the commands that put the service in place")
 
 
+def test_an_install_job_running_the_two_commands_out_of_order_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Starting the service before the installer has written it starts nothing.
+
+    AGENTS.md states the two in one order and says why they are two commands
+    rather than one; a job running them the other way round proves a path
+    nobody documented.
+    """
+    broken = tree()
+    broken.edit(INSTALL, SERVICE_STEP + START_STEP, START_STEP + SERVICE_STEP)
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "out of the order AGENTS.md states")
+
+
 def test_an_install_job_that_swallows_the_service_commands_silently_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
