@@ -189,6 +189,12 @@ in place; the methods land with the `sdks` node, and this section grows one entr
 per method the moment they do, because the check behind this document reads the
 client's own exports rather than a list written here.
 
-The Python and JavaScript distributions are the same client's registry-side
-packaging rather than clients of their own; they are declared where the install
-path is, in `AGENTS.md`.
+This repository also carries Python and Node client packages, at
+`python/printobserver-sdk` and `npm/printobserver-sdk`. Neither exports anything
+yet and neither is in `repo-policy.toml`'s declared client list, so neither owes
+an entry here; both join that list when the `sdks` node writes them, and this
+section grows an entry for each of them when they do.
+
+The `printobserver-cli` distributions on those two registries are a different
+thing again: they carry the command-line program rather than a client of this
+API. `AGENTS.md`'s "The end-user install path" is where they are declared.
