@@ -493,12 +493,9 @@ fn unreachable(element: &str, why: &str) -> String {
 ///
 /// Returns the element of the turn that could not be reached from the skill and
 /// the documents it links to, and why.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the six steps of one supervision turn, in the order the skill \
-              states them. Splitting them would put the reader's own sequence \
-              in six places and leave nothing carrying the turn."
-)]
+// Why: `suppressions.toml`, which is where this repository keeps the reason
+// for every suppression standing in the tree.
+#[expect(clippy::too_many_lines)]
 pub fn turn(world: &World, root: &Path) -> Result<(), String> {
     let documentation = Documentation::read(root);
     let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]);

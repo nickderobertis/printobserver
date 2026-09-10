@@ -137,3 +137,12 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/environment.py"
 site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
+
+# --- crates/printobserver/tests/journeys/documented.rs ------------------------
+
+[[suppression]]
+rule = "clippy::too_many_lines"
+file = "crates/printobserver/tests/journeys/documented.rs"
+site = "pub fn turn("
+reason = "The function is the six steps of one supervision turn, written in the order the skill states them, and each step's inputs are what the steps before it resolved out of the documentation. Splitting it would put the reader's own sequence in six places and leave nothing carrying the turn, which is the one thing this journey is about."
+
