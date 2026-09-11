@@ -54,7 +54,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol
+from typing import NewType, Protocol
 from urllib.parse import urlsplit
 
 from repo_checks import install_path
@@ -135,12 +135,53 @@ RELEASE_FIELDS = ("package_name", "prs", "tag", "version")
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
 
+#: A credential one registry is written under, as the environment carried it.
+#: Its own type so that a token cannot be handed to a parameter taking a name,
+#: an address or a version — every one of which is also a string, and every
+#: one of which would put a secret somewhere a secret must not go.
+Token = NewType("Token", str)
+
+#: The number the forge gave one release, and the number it gave one asset.
+#: Each is the forge's own and means nothing beside the other: an asset is
+#: deleted by its number and an asset uploaded to a release by its release's,
+#: so the two are two types rather than two integers.
+ReleaseId = NewType("ReleaseId", int)
+AssetId = NewType("AssetId", int)
+
 #: How long a checkout is given to say which release was cut at a commit.
 CHECKOUT_TIMEOUT_SECONDS = 60
 
 #: What this proof calls itself when it asks a registry. A forge answers an
 #: anonymous read and expects to be told who is asking.
 AGENT = "printobserver-install-proof"
+
+#: What a read asks a registry to answer with, and what the forge's own API
+#: asks a write to name — its versioned media type, which it answers a plain
+#: `application/json` read with as well.
+ACCEPT = "application/json"
+FORGE_ACCEPT = "application/vnd.github+json"
+
+#: What the bytes of a release asset are sent as. The forge takes the asset's
+#: own type from this header and stores it as the asset's content type.
+OCTET_STREAM = "application/octet-stream"
+
+#: The state the forge lists an asset in once its upload finished. An upload
+#: that was interrupted leaves one listed under its name in another state, and
+#: that is an asset a download of the release would not find.
+UPLOADED = "uploaded"
+
+#: The paths a stand-in answers each registry on, which `Bases` composes a
+#: stand-in's addresses from and `standin.py` serves. They are written here
+#: rather than there because an address of a registry comes from this module
+#: and from nowhere else: a stand-in whose paths were declared beside its own
+#: handlers would be one half of a pair nothing holds together.
+STANDIN_PYPI = "/pypi"
+STANDIN_NPM = "/npm"
+STANDIN_FORGE = "/forge/releases"
+
+#: Where a stand-in takes a wheel: the legacy multipart form, on the path the
+#: real registry serves it at under its own upload host.
+STANDIN_PYPI_UPLOAD = f"{STANDIN_PYPI}/legacy/"
 
 
 class Outcome(StrEnum):
@@ -198,22 +239,48 @@ class RegistryError(RuntimeError):
     """A registry could not be asked what it serves."""
 
 
+class RefusedError(RegistryError):
+    """A registry answered a request with a refusal of its own.
+
+    The status and the body are the registry's own words about why, kept
+    apart from the sentence around them so that a caller can act on the one —
+    a `404` on a read is a name it does not serve — and report the other.
+    """
+
+    def __init__(self, url: str, status: int, reason: str, body: str) -> None:
+        """Record what was refused and what the registry said about it."""
+        super().__init__(f"{url} answered {status} {reason}: {body}".rstrip(": "))
+        self.status = status
+        self.body = body
+
+
 @dataclass(frozen=True, slots=True)
 class Bases:
-    """Where each of the three registries is read from.
+    """Where each of the three registries is read from, and written at.
 
-    One stand-in address covers all three, because a proof that read one
+    One stand-in address covers all of them, because a proof that read one
     registry from a stand-in and another from the real internet would be a
-    proof of neither.
+    proof of neither — and a publish that read a registry from a stand-in and
+    wrote to the real one would be a publish nobody asked for.
     """
 
     #: The Python package registry, whose own paths are `/pypi/<name>/json`
     #: and `/simple`.
     pypi: str
-    #: The JavaScript package registry, which serves a packument per name.
+    #: Where that registry takes an upload: its legacy upload endpoint, which
+    #: is on a host of its own rather than a path under the one it is read at.
+    pypi_upload: str
+    #: The JavaScript package registry, which serves a packument per name and
+    #: takes a publish at the same name.
     npm: str
     #: Where the forge lists this repository's releases.
     listing: str
+    #: Where that forge takes an asset's bytes. The real one takes them on a
+    #: host of its own beside the one it is read on, so it is written here
+    #: rather than inferred from a release document: what that document names
+    #: is checked against this, because an upload address is sent the release
+    #: token and a document naming somewhere else would send it there.
+    uploads: str
     #: Where the install script downloads a release's artifacts from.
     releases: str
 
@@ -239,15 +306,19 @@ class Bases:
         standing_in = environment.get(PRINTOBSERVER_PROOF_REGISTRIES, "").strip().rstrip("/")
         if standing_in:
             return cls(
-                pypi=f"{standing_in}/pypi",
-                npm=f"{standing_in}/npm",
-                listing=f"{standing_in}/forge/releases",
-                releases=f"{standing_in}/forge/releases",
+                pypi=f"{standing_in}{STANDIN_PYPI}",
+                pypi_upload=f"{standing_in}{STANDIN_PYPI_UPLOAD}",
+                npm=f"{standing_in}{STANDIN_NPM}",
+                listing=f"{standing_in}{STANDIN_FORGE}",
+                uploads=f"{standing_in}{STANDIN_FORGE}",
+                releases=f"{standing_in}{STANDIN_FORGE}",
             )
         return cls(
             pypi="https://pypi.org",
+            pypi_upload="https://upload.pypi.org/legacy/",
             npm="https://registry.npmjs.org",
             listing=f"https://api.github.com/repos/{owner}/{name}/releases",
+            uploads=f"https://uploads.github.com/repos/{owner}/{name}/releases",
             releases=f"https://github.com/{owner}/{name}/releases",
         )
 
@@ -423,6 +494,16 @@ def _tag_of(release: object) -> str:
     return tag
 
 
+def pypi_name(name: str) -> str:
+    """A distribution name as the Python registry's own documents spell it.
+
+    The registry normalizes a name on the way in and serves every document
+    under the normalized one, so a reader asking by a wheel's own spelling —
+    which escapes the same runs to `_` — asks for the same document.
+    """
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def ordered(version: str) -> tuple[int, ...]:
     """One version as it sorts against another.
 
@@ -437,15 +518,30 @@ def ordered(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in parts)
 
 
-def _asked(url: str) -> bytes:
-    """What one registry answered, or nothing where it serves no such name.
+def exchange(
+    url: str,
+    *,
+    method: str = "GET",
+    body: bytes | None = None,
+    content_type: str = "",
+    accept: str = ACCEPT,
+    token: Token | None = None,
+) -> bytes:
+    """One request to a registry, and what it answered.
+
+    Every read this proof makes and every write the publisher makes over HTTP
+    goes through here, so there is one place a scheme is audited and one place
+    a credential is attached: a bearer token, which is what the forge's own API
+    takes, sent to no address but the one the caller composed from `Bases`.
 
     Raises:
-        RegistryError: If the address is not one this asks over, or the
-            registry could not be reached or refused the read. An unreachable
-            registry is not a registry serving nothing: one is a network and
-            the other is a missing publish, and reporting the first as the
-            second would send a reader to repair a release that is fine.
+        RefusedError: If the registry answered with a refusal of its own, carrying
+            its status and its own words.
+        RegistryError: If the address is not one this asks a registry over, or
+            the registry could not be reached at all. An unreachable registry
+            is not a registry serving nothing: one is a network and the other
+            is a missing publish, and reporting the first as the second would
+            send a reader to repair a release that is fine.
     """
     if urlsplit(url).scheme not in {"http", "https"}:
         msg = (
@@ -454,29 +550,48 @@ def _asked(url: str) -> bytes:
             f"somewhere other than the real ones, and it names one `http` or `https` base."
         )
         raise RegistryError(msg)
+    headers = {"Accept": accept, "User-Agent": AGENT}
+    if content_type:
+        headers["Content-Type"] = content_type
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(  # noqa: S310
-        url, headers={"Accept": "application/json", "User-Agent": AGENT}
+        url, data=body, headers=headers, method=method
     )
     try:
         # llmlint: ignore[async_typed_clients_at_boundaries] The same one site as above.
         with urllib.request.urlopen(request, timeout=ASK_TIMEOUT_SECONDS) as answer:  # noqa: S310
             read: bytes = answer.read()
     except urllib.error.HTTPError as refused:
-        if refused.code == 404:
+        said = refused.read().decode("utf-8", errors="replace").strip()
+        raise RefusedError(url, refused.code, refused.reason, said) from refused
+    except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
+        msg = (
+            f"{url} could not be reached ({unreachable}). Nothing was proven or "
+            f"disproven here: re-run this once that registry answers."
+        )
+        raise RegistryError(msg) from unreachable
+    return read
+
+
+def _asked(url: str) -> bytes:
+    """What one registry answered a read, or nothing where it serves no such name.
+
+    Raises:
+        RegistryError: If the address is not one this asks over, or the
+            registry could not be reached or refused the read.
+    """
+    try:
+        return exchange(url)
+    except RefusedError as refused:
+        if refused.status == 404:
             return b""
         msg = (
             f"{url} refused the read that asks what it serves ({refused}). Nothing was "
             f"proven or disproven here: re-run this once that registry answers."
         )
         raise RegistryError(msg) from refused
-    except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
-        msg = (
-            f"{url} could not be reached to ask what it serves ({unreachable}). Nothing "
-            f"was proven or disproven here: re-run this once that registry answers."
-        )
-        raise RegistryError(msg) from unreachable
-    return read
 
 
 def _answered(url: str) -> object:
@@ -612,6 +727,150 @@ def released(bases: Bases) -> tuple[str, ...]:
         if tag := supported_version(entry["tag_name"]):
             tags.add(tag)
     return tuple(sorted(tags, key=ordered))
+
+
+@dataclass(frozen=True, slots=True)
+class Asset:
+    """One asset the forge lists on a release, as its release document states it."""
+
+    id: AssetId
+    name: str
+    size: int
+    state: str
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    """One release the forge lists, read for what it already carries."""
+
+    id: ReleaseId
+    #: Where an asset is uploaded to, with the template's own `{?name,label}`
+    #: cut off: the name goes on as a query of the caller's.
+    upload_url: str
+    assets: tuple[Asset, ...]
+
+    def named(self, name: str) -> Asset | None:
+        """The asset listed under one name, if any is."""
+        return next((asset for asset in self.assets if asset.name == name), None)
+
+
+def pypi_files(bases: Bases, name: str, version: str) -> tuple[str, ...]:
+    """Every file the Python package registry serves for one version of a name.
+
+    Read per FILE rather than per version, because a distribution published
+    as one wheel per platform is served the moment the first lands, and a
+    publish that died between the two left the second unpublished under a
+    version the registry already lists.
+
+    Raises:
+        RegistryError: If the registry could not be asked, or answered
+            something other than the document its protocol serves.
+    """
+    url = f"{bases.pypi}/pypi/{name}/json"
+    answer = _answered(url)
+    if answer is None:
+        return ()
+    releases = answer.get("releases") if isinstance(answer, dict) else None
+    if not isinstance(releases, dict):
+        msg = (
+            f"{url} answered something other than the metadata document its protocol "
+            f"serves. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
+        raise RegistryError(msg)
+    files = releases.get(version, [])
+    if not isinstance(files, list) or any(
+        not isinstance(file, dict) or not isinstance(file.get("filename"), str) for file in files
+    ):
+        msg = (
+            f"{url} lists {version} as something other than the list of files its "
+            f"protocol serves. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
+        raise RegistryError(msg)
+    return tuple(str(file["filename"]) for file in files)
+
+
+def npm_versions(bases: Bases, name: str) -> tuple[str, ...]:
+    """Every version the JavaScript registry serves one package name at.
+
+    Per package and version: the launcher, the per-platform packages and the
+    client are four names with one tarball each, so a name's packument listing
+    the version is that name's tarball published.
+
+    Raises:
+        RegistryError: If the registry could not be asked, or answered
+            something other than a packument.
+    """
+    return tuple(_versions(f"{bases.npm}/{name}", "versions"))
+
+
+def release_of(bases: Bases, version: str) -> Release:
+    """The release the forge lists for one version, and the assets it carries.
+
+    Raises:
+        RegistryError: If the forge could not be asked, lists no release for
+            that version, or answered something other than a release document
+            with its upload address and its assets in it.
+    """
+    url = f"{bases.listing}/tags/v{version}"
+    answer = _answered(url)
+    if answer is None:
+        msg = (
+            f"{url} lists no release v{version}, so nothing says where its artifacts are "
+            f"uploaded to. Next: the `release` job of the run that cut v{version} is what "
+            f"creates it, and it runs before anything is published here."
+        )
+        raise RegistryError(msg)
+    malformed = (
+        f"{url} answered something other than the release document its protocol serves. "
+        f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+    )
+    if (
+        not isinstance(answer, dict)
+        or (numbered := _forge_number(answer.get("id"))) is None
+        or not isinstance(answer.get("upload_url"), str)
+        or not isinstance(answer.get("assets"), list)
+    ):
+        raise RegistryError(malformed)
+    assets: list[Asset] = []
+    for listed in answer["assets"]:
+        if (
+            not isinstance(listed, dict)
+            or (asset_id := _forge_number(listed.get("id"))) is None
+            or not isinstance(listed.get("name"), str)
+            or (size := _forge_number(listed.get("size"))) is None
+            or not isinstance(listed.get("state"), str)
+        ):
+            raise RegistryError(malformed)
+        assets.append(Asset(AssetId(asset_id), listed["name"], size, listed["state"]))
+    # The one address an upload of this release may go to is composed from
+    # `Bases` and the release's own number, and what the document names has to
+    # be exactly it: an upload address is sent the release token, so one that
+    # merely began with the forge's — a sibling path, a `..` the forge would
+    # resolve somewhere else — is not one this sends anything to.
+    upload_url = str(answer["upload_url"]).partition("{")[0]
+    its_own = f"{bases.uploads}/{numbered}/assets"
+    if upload_url != its_own:
+        msg = (
+            f"{url} names {upload_url} as where its assets are uploaded, and the forge this "
+            f"was pointed at takes release {numbered}'s at {its_own}. Nothing is sent there: "
+            f"an upload address is sent the release token, and it goes to that forge or "
+            f"nowhere. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
+        raise RegistryError(msg)
+    return Release(ReleaseId(numbered), upload_url, tuple(assets))
+
+
+def _forge_number(reading: object) -> int | None:
+    """A count or a number the forge answered, or nothing where that is not one.
+
+    Read by type rather than by truthiness, and with `bool` refused by name:
+    in Python a boolean is an integer, so a document answering `true` for an
+    id would otherwise read as asset number one. Nothing the forge numbers or
+    measures is negative, so a negative is refused with the rest.
+    """
+    if isinstance(reading, bool) or not isinstance(reading, int) or reading < 0:
+        return None
+    return reading
 
 
 def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:

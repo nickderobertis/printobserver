@@ -8,11 +8,14 @@ around it rather than the program inside it.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from release_artifacts import targets
+from release_artifacts.__main__ import main
+from repo_checks.expect import equal
 from repo_checks.model import Repo
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -63,3 +66,35 @@ def into(tmp_path: Path) -> Callable[[str], Path]:
         return made
 
     return make
+
+
+@pytest.fixture(scope="module")
+def built(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Every artifact the tool assembles from the committed tree, built once per module.
+
+    What `just build-artifacts` leaves in `dist`, carrying the stand-in
+    program: the two wheels, the four packages, the release tarball and its
+    checksum file. Built once because the build compiles the Node client and
+    packages the Rust one, and a journey that publishes it takes a copy.
+    """
+    root = tmp_path_factory.mktemp("built")
+    program = root / "printobserver"
+    program.write_text(
+        STAND_IN.format(version=targets.workspace(REPO_ROOT)["version"]), encoding="utf-8"
+    )
+    program.chmod(0o755)
+    dist = root / "dist"
+    equal(
+        main(
+            ["build-all", "--root", str(REPO_ROOT), "--into", str(dist), "--binary", str(program)]
+        ),
+        0,
+        describing="building every artifact from the committed tree",
+    )
+    return dist
+
+
+@pytest.fixture
+def dist(built: Path, tmp_path: Path) -> Path:
+    """A copy of what the build left, for a journey that writes beside it."""
+    return Path(shutil.copytree(built, tmp_path / "dist"))

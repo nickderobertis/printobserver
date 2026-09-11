@@ -776,6 +776,20 @@ that step *answered* it released, never on its exit status. `just check-repo`'s
 `tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
+**A `publish` job that failed is run again, never repaired by hand.** A
+hand-run with an operator's tokens is the manual step this design forbids, so
+the recovery from a publish that stopped partway is GitHub's own re-run — of
+the failed job or the whole run — with nothing cleaned up and nothing moved
+first. That is safe because `just publish-artifacts` decides per artifact
+rather than per run: one its registry already serves at the workspace version
+is skipped and reported, every artifact is attempted whatever an earlier one
+answered, and the job fails at the end naming each refusal in the registry's
+own words. **The forge upload is exercised only against the stand-in** in
+`tools/release-artifacts/src/release_artifacts/standin.py`, because nothing in
+this repository may write to the real forge; the install-path workflow that
+runs after a release publishes is where it is first proven against GitHub.
+`tools/release-artifacts/AGENTS.md` holds the rest.
+
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
