@@ -38,7 +38,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import NamedTuple, Protocol, Self
+from typing import NamedTuple, NewType, Protocol, Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
@@ -84,6 +84,17 @@ CRATES_IO_DOWNLOAD = "https://static.crates.io/crates/{name}/{version}/download"
 #: path: lowercased, and nothing outside letters, digits, `-` and `_`. A path
 #: whose last segment is not one of these names nothing in any registry.
 CRATE_NAME = re.compile(r"[a-z0-9_-]{1,64}")
+
+#: What a stand-in authenticates its writer by: minted per stand-in, never
+#: written in a source file, and a type of its own so a path or a body cannot
+#: be handed where one is expected.
+Credential = NewType("Credential", str)
+
+
+def minted() -> Credential:
+    """A fresh credential for one stand-in's lifetime."""
+    return Credential(secrets.token_hex(16))
+
 
 #: The kinds a dependency can be, as cargo spells them in a publish.
 DEPENDENCY_KINDS = ("normal", "build", "dev")
@@ -481,9 +492,8 @@ class StandInRegistry(_StandIn):
         never seen it would, rather than reaching crates.io for it.
         """
         self.owned = set(owned)
-        #: The one credential this registry takes an upload under: minted per
-        #: stand-in, so it is nothing a source file carries.
-        self.credential = secrets.token_hex(16)
+        #: The one credential this registry takes an upload under.
+        self.credential = minted()
         self.uploads: list[tuple[str, str]] = []
         self.forwarded: list[str] = []
         self._crates: dict[tuple[str, str], bytes] = {}
@@ -660,9 +670,9 @@ class StandInForge(_StandIn):
         self.refs: list[str] = []
         self.releases: list[dict[str, object]] = []
         self.tags: list[dict[str, object]] = []
-        #: What the program authenticates to this forge with: minted per
-        #: stand-in, and required on every write, as GitHub requires it.
-        self.credential = secrets.token_hex(16)
+        #: What the program authenticates to this forge with, required on
+        #: every write as GitHub requires it.
+        self.credential = minted()
         super().__init__(record, "forge")
 
     @property
