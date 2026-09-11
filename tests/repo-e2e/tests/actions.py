@@ -5,9 +5,16 @@ one job reads off another's outputs — is decided by the forge, and a journey
 cannot fire the forge. What it can do is take the committed workflow's own text
 and drive it under the same rules the forge documents, substituting only the
 boundaries that reach outside this host: every `uses:` step (a checkout, a
-toolchain setup, an artifact upload) is a boundary and runs nothing, and the
-programs a caller names as stand-ins — the release program that would reach a
-registry and a forge — are found on the PATH first.
+toolchain setup) is a boundary that runs nothing and is recorded with the
+inputs it was given, and the programs a caller names as stand-ins — the release
+program that would reach a registry and a forge — are found on the PATH first.
+
+Two actions are stood in for rather than recorded, because what they move is
+inside this host: `actions/upload-artifact` and `actions/download-artifact`
+read and write an artifact store the caller hands the runner, keyed by run id,
+so that a journey can drive the seam between two workflows — a record one run
+uploads and a run of another workflow downloads — through the forge's own
+store rather than through a boundary that runs nothing.
 
 The rules kept are exactly the ones this repository's workflows lean on, and
 nothing outside them is guessed at: a construct or an expression this runner
@@ -19,18 +26,35 @@ where a rule modelled here wrongly would show up.
   * A job runs after every job it `needs`, and only if each of them succeeded —
     the implicit `success()` the forge applies to every job condition — and its
     `if:` expression, where it has one, is truthy. Otherwise it is skipped, and
-    what it needs from a skipped job it never reads.
+    what it needs from a skipped job it never reads. A caller may name the set
+    of jobs to run; every job outside it is skipped by name, so a journey can
+    drive a workflow's resolving jobs without the ones whose steps reach a real
+    registry. The refusal of a construct outside the modelled set still reaches
+    every job that runs, and nothing that is skipped by name is approximated.
+  * A step runs only if its `if:` expression, where it has one, is truthy; a
+    skipped step answers no outputs under its `id`, exactly as the forge's.
   * `if:` and `${{ }}` expressions are the forge's grammar over the contexts
     this repository's workflows read: `needs.<job>.outputs.<name>`,
-    `steps.<id>.outputs.<name>`, `secrets.<NAME>`, `matrix.<...>`, string
-    literals, `==`, `!=`, `&&`, `||`, `!` and parentheses. String comparison is
-    case-insensitive, as the forge's is.
+    `steps.<id>.outputs.<name>`, `secrets.<NAME>`, `matrix.<...>`,
+    `github.event_name`, `github.event.workflow_run.<field>`, `github.run_id`,
+    `github.token`, `inputs.<name>`, `runner.temp`, string literals, `==`,
+    `!=`, `&&`, `||`, `!` and parentheses. String comparison is
+    case-insensitive, as the forge's is. The event a run is under is the
+    caller's to say — `push` by default, `workflow_dispatch` with its inputs,
+    or `workflow_run` with the triggering run's `event`, `id` and `head_sha`.
   * A `run:` step is `bash -e` over the step's text, in the checkout, with the
     job's `env` and then the step's on top of the caller's, `GITHUB_OUTPUT` a
     file of its own and `RUNNER_TEMP` the job's one directory; `name=value`
     lines it appends to `GITHUB_OUTPUT` become `steps.<id>.outputs.<name>`. An
     expression inside the step's text is refused: that is the injection the
     forge documents, and no workflow here writes one.
+  * `actions/upload-artifact` copies what its `path` holds into the store
+    under its `name`, and uploads nothing where the path holds nothing, as
+    the action warns and does. `actions/download-artifact` by `name` copies
+    that artifact — this run's, or the run `run-id` names — to its `path`
+    and fails the step where no such artifact exists, as the action does; by
+    `pattern` with `merge-multiple` it merges every match into `path`, and
+    matches nothing without failing.
   * A job's `outputs:` are its expressions evaluated once its steps are done.
   * A job with a `strategy.matrix` runs once per cell, and succeeds when every
     cell does.
@@ -38,8 +62,10 @@ where a rule modelled here wrongly would show up.
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -91,11 +117,26 @@ class Result(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class StepRun:
-    """One `run:` step that ran: its command and what it did."""
+    """One `run:` step that ran: its command and what it did.
+
+    A stood-in artifact action that failed is recorded here too, as the
+    action it was and what it said, so that a journey reads a failed download
+    where it reads every other failure: the last step of the job.
+    """
 
     command: str
     returncode: int
     output: str
+
+
+@dataclass(frozen=True, slots=True)
+class Boundary:
+    """One `uses:` step that was reached: the action, and the inputs it was given."""
+
+    uses: str
+    #: The step's `with:`, each value interpolated as the forge would hand it
+    #: to the action — so a journey can read which `ref` a checkout was given.
+    given: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -105,7 +146,84 @@ class JobRun:
     result: Result
     outputs: dict[str, str] = field(default_factory=dict)
     steps: list[StepRun] = field(default_factory=list)
-    boundaries: list[str] = field(default_factory=list)
+    boundaries: list[Boundary] = field(default_factory=list)
+
+    def boundary(self, action: str) -> Boundary:
+        """The first boundary using `action`, whatever it is pinned at.
+
+        Raises:
+            LookupError: If the job reached no such boundary.
+        """
+        for boundary in self.boundaries:
+            if boundary.uses.startswith(action):
+                return boundary
+        msg = f"no `{action}` boundary was reached; those reached were {self.boundaries}"
+        raise LookupError(msg)
+
+
+#: The two actions the store below stands in for, matched by name up to the pin.
+UPLOAD = "actions/upload-artifact@"
+DOWNLOAD = "actions/download-artifact@"
+
+
+class ArtifactStore:
+    """What the forge keeps between jobs and between runs, keyed by run id.
+
+    One directory per run, one directory per artifact name under it, holding
+    what the uploading step's `path` held: a directory's contents at the
+    artifact's root, as the real action stores them, and a file under its own
+    name.
+    """
+
+    def __init__(self, root: Path) -> None:
+        """Keep artifacts under `root`."""
+        self.root = root
+
+    def names(self, run_id: str) -> list[str]:
+        """Every artifact one run uploaded, by name."""
+        kept = self.root / run_id
+        return sorted(path.name for path in kept.iterdir()) if kept.is_dir() else []
+
+    def read(self, run_id: str, name: str, relative: str) -> str:
+        """One file of one artifact, as text."""
+        return (self.root / run_id / name / relative).read_text(encoding="utf-8")
+
+    def upload(self, run_id: str, name: str, path: Path) -> bool:
+        """Keep what `path` holds under `name`, answering whether there was anything.
+
+        Nothing is kept for a path that is not there: the action warns that
+        no files were found and creates no artifact, and a download by that
+        name afterwards fails.
+        """
+        if not path.exists():
+            return False
+        kept = self.root / run_id / name
+        if kept.exists():
+            shutil.rmtree(kept)
+        if path.is_dir():
+            shutil.copytree(path, kept)
+        else:
+            kept.mkdir(parents=True)
+            shutil.copy2(path, kept / path.name)
+        return True
+
+    def download(self, run_id: str, name: str, into: Path) -> None:
+        """Copy one artifact's contents into `into`.
+
+        Raises:
+            LookupError: If that run uploaded no such artifact, in the words
+                the action fails with.
+        """
+        kept = self.root / run_id / name
+        if not kept.is_dir():
+            msg = f"Unable to download artifact(s): Artifact not found for name: {name}"
+            raise LookupError(msg)
+        shutil.copytree(kept, into, dirs_exist_ok=True)
+
+    def download_matching(self, run_id: str, pattern: str, into: Path, *, merge: bool) -> None:
+        """Copy every artifact matching `pattern`: merged into `into`, or each under its name."""
+        for name in fnmatch.filter(self.names(run_id), pattern):
+            self.download(run_id, name, into if merge else into / name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +250,35 @@ class Needed:
 
 
 @dataclass(frozen=True, slots=True)
+class Event:
+    """What fired the run, as the `github` and `inputs` contexts show it.
+
+    `workflow_run` is the triggering run's `event`, `id` and `head_sha`, for a
+    run under that event; `inputs` is what a dispatch was given.
+    """
+
+    name: str = "push"
+    inputs: dict[str, str] = field(default_factory=dict)
+    workflow_run: dict[str, str] = field(default_factory=dict)
+
+    def github(self, run_id: str) -> Declared:
+        """The `github` context: the event's name and payload, this run's id and token."""
+        payload: Declared = {}
+        if self.workflow_run:
+            payload["workflow_run"] = dict(self.workflow_run)
+        if self.inputs:
+            payload["inputs"] = dict(self.inputs)
+        return {
+            "event_name": self.name,
+            "event": payload,
+            "run_id": run_id,
+            # The forge's own token, which nothing here can reach a forge with;
+            # a boundary given it records this placeholder.
+            "token": "<github.token>",
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Contexts:
     """The forge's contexts an expression may read, as one job sees them."""
 
@@ -139,6 +286,9 @@ class Contexts:
     steps: dict[str, dict[str, str]] = field(default_factory=dict)
     secrets: dict[str, str] = field(default_factory=dict)
     matrix: Declared = field(default_factory=dict)
+    github: Declared = field(default_factory=dict)
+    inputs: dict[str, str] = field(default_factory=dict)
+    runner: dict[str, str] = field(default_factory=dict)
 
     def resolve(self, dotted: str) -> object:
         """The value at one dotted path, or `None` where the forge would give `null`.
@@ -160,6 +310,12 @@ class Contexts:
                 value = self.secrets
             case "matrix":
                 value = self.matrix
+            case "github":
+                value = self.github
+            case "inputs":
+                value = self.inputs
+            case "runner":
+                value = self.runner
             case _:
                 msg = f"the `{head}` context is not one this runner carries"
                 raise UnsupportedError(msg)
@@ -307,10 +463,18 @@ def interpolate(text: str, contexts: Contexts) -> str:
     """Replace every `${{ ... }}` in `text` with what it evaluates to."""
 
     def replace(match: re.Match[str]) -> str:
-        value = evaluate(match.group(1).strip(), contexts)
-        return "" if value is None else str(value)
+        return rendered(evaluate(match.group(1).strip(), contexts))
 
     return INTERPOLATION.sub(replace, text)
+
+
+def rendered(value: object) -> str:
+    """A value as the forge writes it into a string: `null` empty, booleans lower-case."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _needs(job: Declared) -> list[str]:
@@ -393,7 +557,12 @@ def _shaped(mapping: Declared, shapes: dict[str, type | tuple[type, ...]], what:
 
 
 def _jobs(workflow: Path) -> dict[str, Declared]:
-    """The workflow's jobs, once the file is a workflow at all and each job is shaped as one."""
+    """The workflow's jobs, once the file is a workflow at all and each job is shaped as one.
+
+    Each job's steps are held to the modelled set by `_steps` below, once it
+    is known which jobs run: a job skipped by name runs no step, so a step of
+    it outside the set is nothing this runner approximates.
+    """
     data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, dict) or not all(isinstance(job, dict) for job in jobs.values()):
@@ -402,16 +571,22 @@ def _jobs(workflow: Path) -> dict[str, Declared]:
     for name, job in jobs.items():
         _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
         _shaped(job, JOB_SHAPES, f"job `{name}`")
-        for step in job.get("steps") or []:
-            if not isinstance(step, dict):
-                msg = f"job `{name}` carries a step that is not a mapping: {step!r}"
-                raise UnsupportedError(msg)
-            _refuse_unknown(step, STEP_KEYS, f"a step of job `{name}`")
-            _shaped(step, STEP_SHAPES, f"a step of job `{name}`")
-            if ("run" in step) == ("uses" in step):
-                msg = f"a step of job `{name}` must carry exactly one of `run` and `uses`"
-                raise UnsupportedError(msg)
     return {str(name): job for name, job in jobs.items()}
+
+
+def _steps(name: str, job: Declared) -> list[Declared]:
+    """One job's steps, each shaped as a step this runner models."""
+    steps = job.get("steps") or []
+    for step in steps:
+        if not isinstance(step, dict):
+            msg = f"job `{name}` carries a step that is not a mapping: {step!r}"
+            raise UnsupportedError(msg)
+        _refuse_unknown(step, STEP_KEYS, f"a step of job `{name}`")
+        _shaped(step, STEP_SHAPES, f"a step of job `{name}`")
+        if ("run" in step) == ("uses" in step):
+            msg = f"a step of job `{name}` must carry exactly one of `run` and `uses`"
+            raise UnsupportedError(msg)
+    return steps
 
 
 def _environment(*layers: Declared | None, contexts: Contexts) -> dict[str, str]:
@@ -435,6 +610,9 @@ class Runner:
         path_first: Path,
         env: dict[str, str],
         secrets: dict[str, str] | None = None,
+        event: Event | None = None,
+        artifacts: ArtifactStore | None = None,
+        run_id: str = "1",
     ) -> None:
         """Read the workflow and remember where and how its steps run.
 
@@ -446,6 +624,11 @@ class Runner:
             secrets: What `secrets.<NAME>` answers; a placeholder per name the
                 workflow references if omitted, since nothing a stand-in does
                 should need the value.
+            event: What fired the run; a push if omitted.
+            artifacts: The store the two artifact actions read and write; a
+                store of this run's own if omitted.
+            run_id: This run's number, which is what its artifacts are kept
+                under and what another run's download names.
         """
         self.jobs = _jobs(workflow)
         self.checkout = checkout
@@ -453,12 +636,33 @@ class Runner:
         self.env = env
         named = set(SECRET_REFERENCE.findall(workflow.read_text(encoding="utf-8")))
         self.secrets: dict[str, str] = secrets or {name: f"<secret {name}>" for name in named}
+        self.event = event or Event()
+        self.artifacts = artifacts or ArtifactStore(checkout / ".runner-artifacts")
+        self.run_id = run_id
 
-    def run(self) -> WorkflowRun:
-        """Run every job in dependency order, as the forge would schedule them."""
+    def run(self, only: set[str] | None = None) -> WorkflowRun:
+        """Run every job in dependency order, as the forge would schedule them.
+
+        `only` names the jobs to run; every other job is skipped by name, and
+        a job needing one of those is skipped as the forge skips it. The steps
+        of every job that may run are held to the modelled set before any of
+        them does.
+        """
+        running = set(self.jobs) if only is None else only
+        unknown = running - set(self.jobs)
+        if unknown:
+            msg = f"jobs {sorted(unknown)} are not jobs of this workflow"
+            raise UnsupportedError(msg)
+        for name in _ordered(self.jobs):
+            if name in running:
+                _steps(name, self.jobs[name])
         done: dict[str, JobRun] = {}
         for name in _ordered(self.jobs):
-            done[name] = self._job(name, self.jobs[name], done)
+            done[name] = (
+                self._job(name, self.jobs[name], done)
+                if name in running
+                else JobRun(Result.SKIPPED)
+            )
         return WorkflowRun(done)
 
     def _job(self, name: str, job: Declared, done: dict[str, JobRun]) -> JobRun:
@@ -468,6 +672,8 @@ class Runner:
         contexts = Contexts(
             needs={n: Needed(str(done[n].result), dict(done[n].outputs)) for n in needs},
             secrets=self.secrets,
+            github=self.event.github(self.run_id),
+            inputs=dict(self.event.inputs),
         )
         condition = job.get("if")
         if condition is not None and not _truthy(evaluate(str(condition), contexts)):
@@ -479,25 +685,81 @@ class Runner:
             # One `RUNNER_TEMP` per job, as the forge gives it: a file one step
             # writes there is what the step after it reads.
             with tempfile.TemporaryDirectory(prefix="runner-temp-") as runner_temp:
-                for step in job.get("steps") or []:
-                    if "if" in step:
-                        msg = f"a step condition on job `{name}` is not modelled"
-                        raise UnsupportedError(msg)
-                    seen = Contexts(contexts.needs, steps, self.secrets, cell)
-                    if "uses" in step:
-                        run.boundaries.append(interpolate(str(step["uses"]), seen))
+
+                def seen_by(
+                    step_outputs: dict[str, dict[str, str]],
+                    cell: Declared = cell,
+                    runner_temp: str = runner_temp,
+                ) -> Contexts:
+                    return Contexts(
+                        needs=contexts.needs,
+                        steps=step_outputs,
+                        secrets=self.secrets,
+                        matrix=cell,
+                        github=contexts.github,
+                        inputs=contexts.inputs,
+                        runner={"temp": runner_temp},
+                    )
+
+                for step in _steps(name, job):
+                    seen = seen_by(steps)
+                    if "if" in step and not _truthy(evaluate(str(step["if"]), seen)):
                         continue
-                    step_run, outputs = self._step(job, step, seen, Path(runner_temp))
-                    run.steps.append(step_run)
-                    if step.get("id"):
-                        steps[str(step["id"])] = outputs
-                    if step_run.returncode != 0:
-                        run.result = Result.FAILURE
-                        return run
-            seen = Contexts(contexts.needs, steps, self.secrets, cell)
+                    if "uses" in step:
+                        step_run = self._boundary(run, step, seen, Path(runner_temp))
+                    else:
+                        step_run, outputs = self._step(job, step, seen, Path(runner_temp))
+                        if step.get("id"):
+                            steps[str(step["id"])] = outputs
+                    if step_run is not None:
+                        run.steps.append(step_run)
+                        if step_run.returncode != 0:
+                            run.result = Result.FAILURE
+                            return run
+            seen = seen_by(steps)
             for key, expression in (job.get("outputs") or {}).items():
                 run.outputs[str(key)] = interpolate(str(expression), seen)
         return run
+
+    def _boundary(
+        self, run: JobRun, step: Declared, contexts: Contexts, runner_temp: Path
+    ) -> StepRun | None:
+        """Record a `uses:` step, standing in for the two artifact actions.
+
+        Answers the step's run where the action was stood in for and failed,
+        so that the job fails where the forge's would, and nothing otherwise.
+        """
+        uses = interpolate(str(step["uses"]), contexts)
+        given = {
+            str(key): interpolate(rendered(value), contexts)
+            for key, value in (step.get("with") or {}).items()
+        }
+        run.boundaries.append(Boundary(uses, given))
+        if uses.startswith(UPLOAD):
+            self.artifacts.upload(
+                self.run_id, given.get("name", ""), self._resolved(given.get("path", ""))
+            )
+            return None
+        if uses.startswith(DOWNLOAD):
+            run_id = given.get("run-id") or self.run_id
+            into = self._resolved(given.get("path", ""))
+            try:
+                if given.get("name"):
+                    self.artifacts.download(run_id, given["name"], into)
+                else:
+                    self.artifacts.download_matching(
+                        run_id,
+                        given.get("pattern", "*"),
+                        into,
+                        merge=given.get("merge-multiple", "false") == "true",
+                    )
+            except LookupError as absent:
+                return StepRun(f"uses: {uses}", 1, str(absent))
+        return None
+
+    def _resolved(self, path: str) -> Path:
+        """A path an action was given, as the forge resolves it: against the checkout."""
+        return self.checkout / path if path else self.checkout
 
     def _step(
         self, job: Declared, step: Declared, contexts: Contexts, runner_temp: Path

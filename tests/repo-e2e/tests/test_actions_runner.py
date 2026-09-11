@@ -3,9 +3,14 @@
 The release-workflow journey rests on this runner, so what it claims about the
 forge is pinned here over a workflow small enough to read: a job waits on what
 it `needs` and is skipped when that failed or was skipped; a job's `if:` reads
-another job's outputs and skips it when false; a step's `GITHUB_OUTPUT` lines
-become the job's outputs; and a construct outside the modelled set is refused
-by name rather than run as something else.
+another job's outputs and skips it when false; a step's `if:` skips the step
+and its `id` then answers nothing; a step's `GITHUB_OUTPUT` lines become the
+job's outputs; the event a run is under is what `github` and `inputs` answer;
+a `uses:` boundary is recorded with the inputs it was given; the two artifact
+actions move files through a store keyed by run id, and a download of what
+nothing uploaded fails the step; a caller's set of jobs to run skips the rest
+by name; and a construct outside the modelled set is refused by name rather
+than run as something else.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -16,9 +21,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from actions import Contexts, Needed, Result, Runner, UnsupportedError, evaluate
+from actions import (
+    ArtifactStore,
+    Boundary,
+    Contexts,
+    Event,
+    Needed,
+    Result,
+    Runner,
+    UnsupportedError,
+    evaluate,
+)
 from journey import clean_environment
-from repo_checks.expect import contains, equal
+from repo_checks.expect import contains, equal, truth
 
 SMALL = """
 name: small
@@ -123,7 +138,11 @@ def test_a_job_follows_what_it_needs_and_what_its_condition_reads(tmp_path: Path
         {"word": "spoken", "loud": "loudly"},
         describing="the outputs a step wrote, under the job's env and then its own",
     )
-    equal(run.jobs["answers"].boundaries, ["actions/checkout@v5"], describing="the boundaries")
+    equal(
+        run.jobs["answers"].boundaries,
+        [Boundary("actions/checkout@v5")],
+        describing="the boundaries",
+    )
     equal(len(run.jobs["falls"].steps), 1, describing="the steps run before a failure stops a job")
     equal(
         [step.command for step in run.jobs["cells"].steps],
@@ -165,7 +184,7 @@ def test_the_expression_grammar_is_the_forges(expression: str, value: bool) -> N
 
 @pytest.mark.parametrize(
     "expression",
-    ["success()", "needs.a.result == 'success' && always()", "github.event_name", "1 + 1"],
+    ["success()", "needs.a.result == 'success' && always()", "env.HOME", "1 + 1"],
 )
 def test_an_expression_outside_the_modelled_grammar_is_refused_by_name(expression: str) -> None:
     """Status functions, unknown contexts and arithmetic are not guessed at."""
@@ -221,8 +240,8 @@ def test_a_step_construct_outside_the_modelled_set_is_refused_by_name(tmp_path: 
 @pytest.mark.parametrize(
     ("step", "named"),
     [
-        # A conditional step would change which steps run, so it is refused.
-        ("      - uses: actions/checkout@v5\n        if: always()\n", "step condition"),
+        # A step condition calling a status function is not guessed at.
+        ("      - uses: actions/checkout@v5\n        if: always()\n", "always"),
         # An expression inside a step's text is the injection the forge documents.
         ('      - run: echo "${{ secrets.WORD }}"\n', "expression in its text"),
     ],
@@ -254,11 +273,262 @@ def test_a_step_shape_outside_the_modelled_set_is_refused_before_anything_runs(
 def test_a_document_outside_the_workflow_shape_is_refused_before_anything_runs(
     document: str, named: str, tmp_path: Path
 ) -> None:
-    """The boundary is the file: what is not shaped as the forge reads it is refused there."""
+    """The boundary is the file: what is not shaped as the forge reads it is refused there.
+
+    A job's own shape is refused as the workflow is read; a step's is refused
+    once it is known which jobs run and before any of them does, so that a
+    job skipped by name may carry what this runner does not model.
+    """
     workflow = tmp_path / "odd.yml"
     workflow.write_text(document, encoding="utf-8")
 
     with pytest.raises(UnsupportedError) as refused:
-        Runner(workflow, tmp_path, path_first=tmp_path, env=clean_environment())
+        Runner(workflow, tmp_path, path_first=tmp_path, env=clean_environment()).run()
 
     contains(str(refused.value), named, describing="what it named")
+
+
+#: A workflow of two shapes: one job that runs under a dispatch and records a
+#: file into the store, and one that reads it back — under this run, or under
+#: the run a caller names — beside a job whose steps this runner does not model.
+SEAM = """
+name: seam
+on: [push, workflow_dispatch, workflow_run]
+jobs:
+  records:
+    runs-on: ubuntu-24.04
+    outputs:
+      word: ${{ steps.said.outputs.word || steps.dispatched.outputs.word }}
+      event: ${{ steps.which.outputs.event }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          deep: ${{ inputs.tag != '' }}
+      - id: which
+        run: echo "event=$EVENT" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+      - id: said
+        if: github.event_name == 'push'
+        run: echo "word=pushed" >> "$GITHUB_OUTPUT"
+      - id: dispatched
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p "$RUNNER_TEMP/record"
+          echo "$TAG" > "$RUNNER_TEMP/record/tag"
+          echo "word=dispatched-$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ inputs.tag }}
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: record
+          path: ${{ runner.temp }}/record
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nothing-there
+          path: ${{ runner.temp }}/never-written
+  reads:
+    needs: records
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.read.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: record
+          run-id: ${{ github.event.workflow_run.id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/record
+      - id: read
+        run: echo "tag=$(cat "$RUNNER_TEMP/record/tag")" >> "$GITHUB_OUTPUT"
+  merges:
+    needs: records
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rec*
+          merge-multiple: true
+          path: merged
+      - run: ls merged 2>/dev/null || echo none
+  outside:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: exit 1
+        continue-on-error: true
+  after-outside:
+    needs: outside
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo never
+"""
+
+
+def run_seam(tmp_path: Path, store: ArtifactStore, event: Event, run_id: str) -> Runner:
+    """A runner over the seam workflow, under `event`, sharing `store`."""
+    workflow = tmp_path / "seam.yml"
+    workflow.write_text(SEAM, encoding="utf-8")
+    checkout = tmp_path / f"checkout-{run_id}"
+    checkout.mkdir(exist_ok=True)
+    (tmp_path / "stand-ins").mkdir(exist_ok=True)
+    return Runner(
+        workflow,
+        checkout,
+        path_first=tmp_path / "stand-ins",
+        env=clean_environment(),
+        event=event,
+        artifacts=store,
+        run_id=run_id,
+    )
+
+
+#: The jobs of the seam workflow this runner models, which is every one but
+#: the pair whose step carries `continue-on-error`.
+MODELLED = {"records", "reads", "merges"}
+
+
+def test_a_dispatch_runs_its_own_steps_and_records_into_the_store(tmp_path: Path) -> None:
+    """The dispatched step runs, the push step does not and answers nothing, the record is kept."""
+    store = ArtifactStore(tmp_path / "store")
+    event = Event("workflow_dispatch", inputs={"tag": "v0.2.0"})
+
+    run = run_seam(tmp_path, store, event, "7").run(MODELLED)
+
+    equal(
+        {name: str(job.result) for name, job in run.jobs.items()},
+        {
+            "records": "success",
+            "reads": "success",
+            "merges": "success",
+            "outside": "skipped",
+            "after-outside": "skipped",
+        },
+        describing="what the forge would report each job as",
+    )
+    equal(
+        run.jobs["records"].outputs,
+        {"word": "dispatched-v0.2.0", "event": "workflow_dispatch"},
+        describing="the outputs: the dispatched step's, and nothing under the skipped step's id",
+    )
+    equal(
+        run.jobs["records"].boundary("actions/checkout@"),
+        Boundary("actions/checkout@v5", {"ref": "v0.2.0", "fetch-depth": "0", "deep": "true"}),
+        describing="the checkout boundary, with its inputs as the forge would hand them",
+    )
+    equal(store.names("7"), ["record"], describing="what the run uploaded: not a missing path")
+    equal(store.read("7", "record", "tag"), "v0.2.0\n", describing="what the record holds")
+    equal(run.jobs["reads"].outputs, {"tag": "v0.2.0"}, describing="what this run read back")
+    contains(run.jobs["merges"].steps[-1].output, "tag", describing="the merged download")
+
+
+def test_a_push_skips_the_dispatched_steps_and_a_download_of_nothing_fails(
+    tmp_path: Path,
+) -> None:
+    """Under the default event the push step answers, nothing is uploaded, and the read fails."""
+    store = ArtifactStore(tmp_path / "store")
+
+    run = run_seam(tmp_path, store, Event(), "8").run(MODELLED)
+
+    equal(run.jobs["records"].outputs["word"], "pushed", describing="the push step's output")
+    equal(run.jobs["records"].outputs["event"], "push", describing="the default event")
+    equal(
+        run.jobs["records"].boundary("actions/checkout@").given["ref"],
+        "",
+        describing="an input nothing dispatched, interpolated to nothing",
+    )
+    equal(store.names("8"), [], describing="what a push uploaded")
+    equal(run.result("reads"), Result.FAILURE, describing="a download of what nothing uploaded")
+    failed = run.jobs["reads"].steps[-1]
+    equal(failed.command, "uses: actions/download-artifact@v4", describing="the step that failed")
+    contains(failed.output, "Artifact not found for name: record", describing="what it said")
+    equal(len(run.jobs["reads"].steps), 1, describing="the steps run before the failure")
+    equal(run.result("merges"), Result.SUCCESS, describing="a pattern matching nothing")
+
+
+def test_a_workflow_run_reads_another_runs_artifacts_by_the_triggering_runs_id(
+    tmp_path: Path,
+) -> None:
+    """Two runs over one store: the second reads what the first uploaded, by `run-id`."""
+    store = ArtifactStore(tmp_path / "store")
+    first = run_seam(tmp_path, store, Event("workflow_dispatch", inputs={"tag": "v0.3.0"}), "9")
+    first.run({"records"})
+    triggered = Event("workflow_run", workflow_run={"event": "workflow_dispatch", "id": "9"})
+
+    run = run_seam(tmp_path, store, triggered, "10").run({"records", "reads"})
+
+    equal(run.jobs["records"].outputs["event"], "workflow_run", describing="the event")
+    equal(run.jobs["records"].outputs["word"], "", describing="neither trigger's step ran")
+    equal(
+        run.jobs["reads"].boundary("actions/download-artifact@").given["run-id"],
+        "9",
+        describing="the run the download named",
+    )
+    equal(run.jobs["reads"].outputs, {"tag": "v0.3.0"}, describing="what the first run recorded")
+    equal(store.names("10"), [], describing="what the second run uploaded")
+
+
+def test_a_job_outside_the_set_to_run_is_skipped_by_name_with_what_needs_it(
+    tmp_path: Path,
+) -> None:
+    """The job carrying an unmodelled step never runs, and nothing of it is approximated."""
+    store = ArtifactStore(tmp_path / "store")
+    runner = run_seam(tmp_path, store, Event(), "11")
+
+    run = runner.run({"records"})
+
+    equal(run.result("records"), Result.SUCCESS, describing="the one job named")
+    equal(
+        {name for name, job in run.jobs.items() if job.result is Result.SKIPPED},
+        {"reads", "merges", "outside", "after-outside"},
+        describing="every job outside the set, and the jobs needing one",
+    )
+    with pytest.raises(UnsupportedError) as refused:
+        runner.run({"records", "outside"})
+    contains(str(refused.value), "continue-on-error", describing="a named job is still held")
+    with pytest.raises(UnsupportedError) as unknown:
+        runner.run({"records", "elsewhere"})
+    contains(str(unknown.value), "elsewhere", describing="a job the workflow does not declare")
+
+
+def test_the_contexts_an_event_answers_are_the_forges(tmp_path: Path) -> None:
+    """`github`, `inputs` and `runner` resolve as the forge documents them."""
+    event = Event("workflow_run", workflow_run={"event": "push", "id": "12", "head_sha": "abc"})
+    contexts = Contexts(github=event.github("13"), inputs={}, runner={"temp": "the-temp"})
+
+    equal(evaluate("github.event_name", contexts), "workflow_run", describing="the event")
+    equal(evaluate("github.event.workflow_run.head_sha", contexts), "abc", describing="the sha")
+    equal(evaluate("github.event.workflow_run.id", contexts), "12", describing="the run id")
+    equal(evaluate("github.run_id", contexts), "13", describing="this run's id")
+    equal(evaluate("inputs.tag", contexts), None, describing="an input nothing gave")
+    equal(evaluate("runner.temp", contexts), "the-temp", describing="the job's temp")
+    truth(
+        evaluate(
+            "github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'",
+            contexts,
+        )
+        is True,
+        describing="the condition the install-path workflow gates on",
+    )
+
+
+def test_an_upload_of_a_file_keeps_it_under_its_own_name(tmp_path: Path) -> None:
+    """A path naming one file, rather than a directory, is kept as that file."""
+    store = ArtifactStore(tmp_path / "store")
+    one = tmp_path / "one.txt"
+    one.write_text("one\n", encoding="utf-8")
+
+    truth(store.upload("14", "files", one), describing="the upload of a file")
+    truth(store.upload("14", "files", one), describing="an upload over an earlier one")
+    into = tmp_path / "into"
+    store.download("14", "files", into)
+
+    equal((into / "one.txt").read_text(encoding="utf-8"), "one\n", describing="what came down")
+    store.download_matching("14", "fil*", tmp_path / "each", merge=False)
+    equal(
+        (tmp_path / "each" / "files" / "one.txt").read_text(encoding="utf-8"),
+        "one\n",
+        describing="a pattern download that is not merged, each under its name",
+    )
