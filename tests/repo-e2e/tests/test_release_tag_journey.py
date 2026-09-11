@@ -57,6 +57,19 @@ PUBLISHED_FIRST = ("printobserver-types", "printobserver-sdk")
 #: route from these, so the forge stand-in answers under this path and no other.
 OWNER, NAME = "nickderobertis", "printobserver"
 
+#: What GitHub answered the second `POST …/git/refs` for `refs/tags/v0.2.0`,
+#: recorded verbatim from the `release` job's log of workflow run 34578287017
+#: on 2026-09-11 — the line release-plz prints as `Response body: …` when a
+#: forge refuses it (`gh run view 34578287017 --log`). The forge stand-in
+#: answers this recording rather than a restatement of it, and the journey
+#: over the former configuration holds the program to reporting it exactly as
+#: that run did. It has no drift gate against a live GitHub, because
+#: reconciling it means creating one ref twice on the real repository.
+REFERENCE_EXISTS = (
+    '{"message":"Reference already exists","documentation_url":'
+    '"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}'
+)
+
 #: What the program says of a package the registry already carries.
 ALREADY_PUBLISHED = "{crate} {version}: already published"
 
@@ -663,13 +676,9 @@ class StandInForge(_StandIn):
     What `release-plz release` touches: the pull requests at a commit, a tag
     object, a ref, and a release. Each write is recorded in the shared record,
     and a second `POST …/git/refs` for a ref this forge already holds is
-    answered `422 Reference already exists`, which is GitHub's own answer and
-    the one the release of `0.2.0` died on.
+    answered `422` with `REFERENCE_EXISTS`, the body GitHub answered the
+    release of `0.2.0` with.
     """
-
-    #: What GitHub answers a `POST …/git/refs` naming a ref it already holds —
-    #: part of this stand-in's restatement of GitHub, held with the rest of it.
-    REFERENCE_EXISTS = "Reference already exists"
 
     def __init__(self, record: Record) -> None:
         """Start as the forge was before the release: no tag, no ref, no release.
@@ -738,7 +747,9 @@ class StandInForge(_StandIn):
                     case "git/refs":
                         ref = str(document["ref"])
                         if ref in forge.refs:
-                            self.answer_json(422, {"message": forge.REFERENCE_EXISTS})
+                            self.answer(
+                                422, REFERENCE_EXISTS.encode(), Content_Type="application/json"
+                            )
                             return
                         forge.refs.append(ref)
                         self.answer_json(201, {"ref": ref, "object": {"sha": document["sha"]}})
@@ -963,9 +974,10 @@ def test_creation_enabled_for_every_package_dies_on_the_second_ref(
 
     The same seeded registry and clean forge, over a copy whose release
     configuration lets every package create the tag. The program dies naming
-    the ref it could not create, leaves at least one publishable crate
-    unuploaded, and writes no answer — which the recipe refuses rather than
-    reading as "released nothing".
+    the ref it could not create and reporting the forge's body as the real
+    run's log did, leaves at least one publishable crate unuploaded, and
+    writes no answer — which the recipe refuses rather than reading as
+    "released nothing".
     """
     version = workspace_version()
     with Stage(gate_copy) as stage:
@@ -977,6 +989,8 @@ def test_creation_enabled_for_every_package_dies_on_the_second_ref(
         code, answer, said = stage.released()
 
         failing((code, said), naming=f"{FAILED_REF}{version}")
+        # The program reports the forge's body the way the real run's log did.
+        contains(said, f"Response body: {REFERENCE_EXISTS}", describing="what the program said")
         uploaded = {name for name, _ in stage.registry.uploads[seeded:]}
         truth(
             any(
@@ -1018,7 +1032,7 @@ def test_the_forge_refuses_a_ref_it_already_holds() -> None:
         equal(posted()[0], 201, describing="the first ref")
         status, refusal = posted()
         equal(status, 422, describing="the second ref")
-        contains(refusal.decode(), StandInForge.REFERENCE_EXISTS, describing="the refusal's body")
+        equal(refusal.decode(), REFERENCE_EXISTS, describing="the refusal's body")
         equal(forge.refs, ["refs/tags/v9.9.9"], describing="the refs the forge holds")
     equal(
         record.of("forge", "POST"),
