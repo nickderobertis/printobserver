@@ -1,4 +1,3 @@
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 """The registry install-path proof, driven through its own recipes.
 
 Nothing is mocked and nothing publishes. The real `just prove-registry-*`
