@@ -41,10 +41,11 @@ import urllib.request
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Self
+from typing import NamedTuple, Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
+from release_artifacts.registries import released_by
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
 from test_release_path_journey import STANDIN, tagged, workspace_version
@@ -82,6 +83,11 @@ CREATION_EVERYWHERE = (
 CRATES_IO_INDEX = "https://index.crates.io"
 CRATES_IO_DOWNLOAD = "https://static.crates.io/crates/{name}/{version}/download"
 
+#: The most a stand-in reads of one request body. A `.crate` of this workspace
+#: is kilobytes and a forge write is one small JSON document; anything larger
+#: is not a request either protocol makes.
+BODY_LIMIT = 64 * 1024 * 1024
+
 #: A crate publish over this workspace resolves the whole lockfile through the
 #: stand-in the first time; a release of eleven crates was measured at under a
 #: minute. Bounds on a hang, not budgets.
@@ -103,8 +109,10 @@ def opened(
     read to crates.io, and the journey that drives the stand-in forge directly.
     """
     headers = {"User-Agent": "printobserver-repo-e2e (stand-in registry)"}
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(url, data=data, method=method, headers=headers)  # noqa: S310
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] The same one site as above.
         with urllib.request.urlopen(request, timeout=timeout) as answer:  # noqa: S310
             return answer.status, answer.read()
     except urllib.error.HTTPError as refused:
@@ -124,10 +132,20 @@ def publishable_crates() -> tuple[str, ...]:
         cwd=REPO_ROOT,
         check=True,
     )
+    metadata = json.loads(result.stdout)
+    listed = metadata.get("packages") if isinstance(metadata, dict) else None
+    truth(
+        isinstance(listed, list)
+        and all(
+            isinstance(package, dict)
+            and isinstance(package.get("name"), str)
+            and isinstance(package.get("dependencies"), list)
+            for package in listed
+        ),
+        describing="`cargo metadata` to answer named packages, each with dependencies",
+    )
     packages = {
-        package["name"]: package
-        for package in json.loads(result.stdout)["packages"]
-        if package.get("publish") != []
+        str(package["name"]): package for package in listed or [] if package.get("publish") != []
     }
     ordered: list[str] = []
     while len(ordered) < len(packages):
@@ -146,25 +164,40 @@ def publishable_crates() -> tuple[str, ...]:
     return tuple(ordered)
 
 
+class Request(NamedTuple):
+    """One request a stand-in took."""
+
+    who: str
+    method: str
+    path: str
+
+
+class Taken(NamedTuple):
+    """One recorded request and its position in the shared record."""
+
+    position: int
+    path: str
+
+
 class Record:
     """One ordered record of every request either stand-in took."""
 
     def __init__(self) -> None:
         """Start empty."""
-        self.entries: list[tuple[str, str, str]] = []
+        self.entries: list[Request] = []
         self._lock = threading.Lock()
 
     def note(self, who: str, method: str, path: str) -> None:
-        """Append one request as `(stand-in, method, path)`."""
+        """Append one request."""
         with self._lock:
-            self.entries.append((who, method, path))
+            self.entries.append(Request(who, method, path))
 
-    def of(self, who: str, method: str) -> list[tuple[int, str]]:
-        """Each request `who` took by `method`, as `(position, path)`."""
+    def of(self, who: str, method: str) -> list[Taken]:
+        """Each request `who` took by `method`, with its position in the record."""
         return [
-            (position, path)
-            for position, (taker, taken, path) in enumerate(self.entries)
-            if taker == who and taken == method
+            Taken(position, request.path)
+            for position, request in enumerate(self.entries)
+            if request.who == who and request.method == method
         ]
 
 
@@ -220,15 +253,25 @@ class _Handler(BaseHTTPRequestHandler):
         """Send one JSON answer."""
         self.answer(status, json.dumps(document).encode(), Content_Type="application/json")
 
-    def body(self) -> bytes:
-        """The request's body, as long as its `Content-Length` says."""
-        return self.rfile.read(int(self.headers.get("Content-Length", "0")))
+    def body(self) -> bytes | None:
+        """The request's body, as long as its `Content-Length` says — or none, refused.
+
+        A length that is not a number, is negative or exceeds `BODY_LIMIT` is
+        answered `400` here, and the caller sends nothing more.
+        """
+        declared = self.headers.get("Content-Length", "0")
+        length = int(declared) if declared.isdigit() else -1
+        if not 0 <= length <= BODY_LIMIT:
+            self.answer_json(400, {"errors": [{"detail": f"Content-Length {declared!r} refused"}]})
+            return None
+        return self.rfile.read(length)
 
     def log_message(self, format: str, *args: object) -> None:
         """Say nothing: a stand-in whose log is the output is not signal."""
 
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class StandInRegistry(_StandIn):
     """A sparse cargo registry that owns this workspace's crates and proxies the rest.
 
@@ -270,20 +313,53 @@ class StandInRegistry(_StandIn):
             f'[registries.{STANDIN}]\nindex = "{self.index}"\n'
         )
 
+    #: The one credential this registry takes an upload under.
+    credential = "stand-in-credential"
+
     def environment(self) -> dict[str, str]:
         """The token cargo publishes to this registry under."""
-        return {f"CARGO_REGISTRIES_{STANDIN.upper()}_TOKEN": "stand-in-token"}
+        return {f"CARGO_REGISTRIES_{STANDIN.upper()}_TOKEN": self.credential}
 
     def carries(self, name: str, version: str) -> bool:
         """Whether an upload of `name` at `version` was taken."""
         return (name, version) in self._crates
 
     def take(self, payload: bytes) -> tuple[str, str]:
-        """Take one publish body, and index what it carried."""
+        """Take one publish body, and index what it carried.
+
+        Raises:
+            ValueError: If the body is not the frame cargo sends — two
+                length-prefixed parts that together fill it, the first a JSON
+                object naming the crate, its version and its dependencies.
+        """
+        if len(payload) < 4:
+            msg = "no metadata length"
+            raise ValueError(msg)
         (metadata_length,) = struct.unpack("<I", payload[:4])
+        crate_at = 8 + metadata_length
+        if len(payload) < crate_at:
+            msg = "metadata length exceeds the body"
+            raise ValueError(msg)
         metadata = json.loads(payload[4 : 4 + metadata_length])
-        (crate_length,) = struct.unpack("<I", payload[4 + metadata_length : 8 + metadata_length])
-        crate = payload[8 + metadata_length : 8 + metadata_length + crate_length]
+        (crate_length,) = struct.unpack("<I", payload[4 + metadata_length : crate_at])
+        crate = payload[crate_at : crate_at + crate_length]
+        if len(crate) != crate_length or crate_at + crate_length != len(payload):
+            msg = "crate length does not fill the body"
+            raise ValueError(msg)
+        if (
+            not isinstance(metadata, dict)
+            or not isinstance(metadata.get("name"), str)
+            or not isinstance(metadata.get("vers"), str)
+            or not isinstance(metadata.get("deps"), list)
+            or any(
+                not isinstance(dependency, dict)
+                or not isinstance(dependency.get("name"), str)
+                or not isinstance(dependency.get("version_req"), str)
+                for dependency in metadata["deps"]
+            )
+        ):
+            msg = "metadata is not a crate with a name, a version and dependencies"
+            raise ValueError(msg)
         name, version = str(metadata["name"]), str(metadata["vers"])
         self._crates[(name, version)] = crate
         self._index.setdefault(name, []).append(
@@ -304,7 +380,7 @@ class StandInRegistry(_StandIn):
                             dependency["name"] if dependency.get("explicit_name_in_toml") else None
                         ),
                     }
-                    for dependency in metadata.get("deps", [])
+                    for dependency in metadata["deps"]
                 ],
                 "cksum": hashlib.sha256(crate).hexdigest(),
                 "features": metadata.get("features", {}),
@@ -332,7 +408,11 @@ class StandInRegistry(_StandIn):
                     )
                     return
                 if self.path.startswith("/dl/"):
-                    name, version = self.path.removeprefix("/dl/").split("/", 1)
+                    parts = self.path.removeprefix("/dl/").split("/")
+                    if len(parts) != 2 or not all(parts):
+                        self.answer(404)
+                        return
+                    name, version = parts
                     if name in registry.owned:
                         crate = registry._crates.get((name, version))
                         if crate is None:
@@ -358,13 +438,19 @@ class StandInRegistry(_StandIn):
                 """Take one publish, refusing one that carries no token as crates.io does."""
                 registry.record.note(registry.who, "PUT", self.path)
                 payload = self.body()
+                if payload is None:
+                    return
                 if self.path != "/api/v1/crates/new":
                     self.answer(404)
                     return
-                if not self.headers.get("Authorization"):
+                if self.headers.get("Authorization") != registry.credential:
                     self.answer_json(403, {"errors": [{"detail": "must be logged in"}]})
                     return
-                registry.take(payload)
+                try:
+                    registry.take(payload)
+                except (ValueError, json.JSONDecodeError, struct.error) as malformed:
+                    self.answer_json(400, {"errors": [{"detail": f"not a publish: {malformed}"}]})
+                    return
                 self.answer_json(
                     200, {"warnings": {"invalid_categories": [], "invalid_badges": [], "other": []}}
                 )
@@ -376,6 +462,7 @@ class StandInRegistry(_StandIn):
 
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class StandInForge(_StandIn):
     """GitHub's git-data and release endpoints, refusing a ref it already holds.
 
@@ -401,6 +488,12 @@ class StandInForge(_StandIn):
     def _handler(self) -> type[BaseHTTPRequestHandler]:
         forge = self
         prefix = f"/api/v3/repos/{OWNER}/{NAME}/"
+        #: What GitHub requires of each write, as non-empty strings.
+        required_of = {
+            "git/tags": ("tag", "message", "object", "type"),
+            "git/refs": ("ref", "sha"),
+            "releases": ("tag_name",),
+        }
 
         class Handler(_Handler):
             """The endpoints above, and `404` for anything else."""
@@ -416,7 +509,20 @@ class StandInForge(_StandIn):
             def do_POST(self) -> None:
                 """A tag object, a ref, or a release."""
                 forge.record.note(forge.who, "POST", self.path)
-                document = json.loads(self.body() or b"{}")
+                payload = self.body()
+                if payload is None:
+                    return
+                try:
+                    document = json.loads(payload or b"{}")
+                except json.JSONDecodeError:
+                    document = None
+                required = required_of.get(self.path.removeprefix(prefix), ())
+                if not isinstance(document, dict) or any(
+                    not isinstance(document.get(field), str) or not document[field]
+                    for field in required
+                ):
+                    self.answer_json(422, {"message": f"Validation Failed: {required} required"})
+                    return
                 if self.path == f"{prefix}git/tags":
                     forge.tags.append(document)
                     self.answer_json(201, {**document, "sha": secrets.token_hex(20)})
@@ -444,6 +550,18 @@ class StandInForge(_StandIn):
                 self.answer_json(404, {"message": "Not Found"})
 
         return Handler
+
+
+class Released(NamedTuple):
+    """What one run of the release step came back with."""
+
+    #: Its exit status.
+    code: int
+    #: What it wrote to its standard output: the answer the workflow redirects
+    #: into the file `just release-answer` reads.
+    answer: str
+    #: Everything it said, on either stream.
+    said: str
 
 
 class Stage:
@@ -499,20 +617,15 @@ class Stage:
 
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
-    def released(self) -> tuple[int, str, str]:
-        """Drive the committed release step over the copy, routed to the two stand-ins.
-
-        Returns the exit status, what the program wrote to its standard output
-        — the answer the workflow redirects into a file — and everything it
-        said on either stream.
-        """
+    def released(self) -> Released:
+        """Drive the committed release step over the copy, routed to the two stand-ins."""
         result = capture(
             [
                 *release_step_arguments(),
                 "--registry",
                 STANDIN,
                 "--token",
-                self.registry.environment()[f"CARGO_REGISTRIES_{STANDIN.upper()}_TOKEN"],
+                self.registry.credential,
                 "--repo-url",
                 self.forge.repo_url,
                 "--git-token",
@@ -523,7 +636,7 @@ class Stage:
             timeout=RELEASE_TIMEOUT_SECONDS,
             env=self.environment(),
         )
-        return result.returncode, result.stdout, output(result)
+        return Released(result.returncode, result.stdout, output(result))
 
     def answered(self, stdout: str, into: Path) -> tuple[int, str]:
         """What `just release-answer` says over the answer the program wrote.
@@ -591,13 +704,15 @@ def test_a_partially_published_version_completes_under_one_tag_after_the_last_pu
             describing=f"every forge write to come after the last upload: {stage.record.entries}",
         )
 
-        released = json.loads(answer)["releases"]
+        # `released_by` is the reader behind `just release-answer`: it refuses
+        # an answer that is not the shape the program writes, and folds the
+        # tags into the distinct ones.
+        equal(released_by(answer), (f"v{version}",), describing="the tags the answer names")
         equal(
-            sorted(entry["package_name"] for entry in released),
+            sorted(str(entry["package_name"]) for entry in json.loads(answer)["releases"]),
             sorted(crate for crate in crates if crate not in PUBLISHED_FIRST),
             describing="the packages the program answered it released",
         )
-        equal({entry["tag"] for entry in released}, {f"v{version}"}, describing="the tag named")
         code, read = stage.answered(answer, tmp_path / "released.json")
         passing((code, read), describing="`just release-answer` over the program's answer")
         contains(read.splitlines(), f"released=v{version}", describing="what the recipe answered")
@@ -622,6 +737,7 @@ def test_a_fully_published_version_releases_nothing_and_writes_nothing(
         passing((code, said), describing="releasing an already released version")
         equal(stage.registry.uploads[seeded:], [], describing="what was uploaded")
         equal(stage.record.of("forge", "POST"), [], describing="what the forge was sent")
+        equal(released_by(answer), (), describing="the tags the answer names")
         equal(json.loads(answer), {"releases": []}, describing="the program's answer")
         code, read = stage.answered(answer, tmp_path / "released.json")
         passing((code, read), describing="`just release-answer` over the program's answer")

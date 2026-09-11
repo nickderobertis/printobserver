@@ -40,28 +40,23 @@ semver_check = true
 # One tag and one GitHub Release per workspace version, both named `v<version>`
 # and both created by the `printobserver` package alone.
 #
-# The two templates stay HERE, workspace-wide, because every package's `--output
-# json` entry carries its rendered `git_tag_name` whether or not that package
-# creates the tag, and `just release-answer` admits only `v<version>` and folds
-# thirteen identical tags into one `released=v<version>`. Creation is turned off
-# here and back on for one package below: release-plz tags and releases PER
+# The two templates stay HERE, workspace-wide: every package's `--output json`
+# entry carries its rendered `git_tag_name` whether or not that package creates
+# the tag, and `just release-answer` admits only `v<version>`. Creation is off
+# here and on for one package below because release-plz tags and releases PER
 # PACKAGE, in release order, and under a shared name the second package to
-# publish dies creating a ref the first already created — `failed to create ref
-# refs/tags/v0.2.0` stopped the `0.2.0` release on 2026-09-11 after
-# `printobserver-sdk` and `printobserver-types`, with eleven crates unpublished.
-# `tests/repo-e2e/tests/test_release_tag_journey.py` drives the real program
-# over that state against a stand-in registry and a stand-in forge, and refuses
-# a configuration that puts creation back on for every package.
+# publish dies creating a ref the first already created — with every crate
+# after it unpublished. `tests/repo-e2e/tests/test_release_tag_journey.py`
+# holds this.
 git_tag_name = "v{{ version }}"
 git_release_name = "v{{ version }}"
 git_tag_enable = false
 git_release_enable = false
 
-# `printobserver` is the CLI crate, and it depends — directly or through
-# `printobserver-server` — on every other publishable crate, so release-plz's
-# dependency ordering publishes it last: the tag and the release it creates land
-# after the last `cargo publish`, and never over a crate the registry has not
-# yet taken.
+# `printobserver` depends — directly or through `printobserver-server` — on
+# every other publishable crate, so release-plz's dependency ordering publishes
+# it last, and the tag and release it creates land after the last `cargo
+# publish`.
 [[package]]
 name = "printobserver"
 git_tag_enable = true

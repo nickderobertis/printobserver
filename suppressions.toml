@@ -316,6 +316,30 @@ site = "class StandInForge"
 reason = "What stands in is GitHub, and for the same reason: a journey may not create a tag or a release on the real repository to prove that the second one is refused. The stand-in answers the four endpoints `release-plz release` touches with GitHub's own status codes, refuses a second `POST …/git/refs` for one ref with `422 Reference already exists` exactly as GitHub does — which is the answer the `0.2.0` release died on — and records every write in the same ordered record the registry writes to, so the ordering the change promises (the tag after the last upload) is read off one sequence rather than argued from timestamps. Its refusal is held by a journey of its own, driven over HTTP."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInRegistry"
+reason = "What this stand-in restates is cargo's registry web API and sparse-index format, and the drift gate is cargo itself: the real `cargo publish` uploads to it and the real `cargo info` reads its index and downloads from it on every run of this journey, so a frame, a route or an index field cargo stopped speaking fails the journey at the boundary rather than being approximated. There is no machine-readable source of that protocol to generate from — cargo documents it in prose — and the one consumer that matters is the one driven here."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInForge"
+reason = "What this stand-in restates is the four GitHub endpoints `release-plz release` touches and GitHub's answers to them, and the consumer under test is the real release-plz, so a route or a status it stopped accepting fails the journey naming it. What it cannot have is a drift gate against GitHub, for the same reason `tools/release-artifacts` cannot: the behaviour it models — a second ref refused with `422 Reference already exists` — can only be reconciled by creating a tag on the real repository twice, and no tier here may write to the real forge. The reconciliation is the real release path: the same program creates the same ref on GitHub on every push to `main` that cuts a release."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.Request(url"
+reason = "The one place this journey opens a URL, and neither half of the rule applies to it. It is called from inside a synchronous `http.server` handler — the stand-in registry forwarding an index read to crates.io while cargo waits on that very request — and from a journey whose assertions are strictly sequential over a loopback forge it stood up itself; an awaited client under either would need an event loop with nothing to overlap. The typed half is answered where the answer is consumed: the forwarded body is handed back to cargo byte for byte, which is the one consumer that validates a sparse-index entry, and the forge's answer is narrowed to a status and a body the journey asserts on."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every exchange in this journey goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_tag_journey.py"
 site = "def released"

@@ -795,25 +795,19 @@ version, which is the state to fix instead.
 workspace version, both named `v<version>`, and both created by the
 `printobserver` package after its own `cargo publish` — which release ordering
 places after every other publishable crate's, because that crate depends on all
-of them, directly or through `printobserver-server`. One package rather than
-thirteen because release-plz tags and releases *per package*, in release order,
-and under the one name every package of this workspace renders, the second
-package to publish dies creating a ref the first already created: that is what
-stopped the `0.2.0` release on 2026-09-11 after `printobserver-sdk` and
-`printobserver-types`, with eleven crates unpublished. So `release-plz.toml`
-turns creation off under `[workspace]` and on for `printobserver` alone, and
-keeps the two name templates workspace-wide, because every entry of the
-program's answer carries its rendered tag whether or not that package created
-it and `just release-answer` folds those into one `released=v<version>`. A
-`v<version>` tag left standing on the forge over unpublished crates is a
-quieter failure than that one: release-plz skips every package whose tag exists
-*before* it asks the registry, so the next push releases nothing, exits 0,
-answers `released=`, and skips the artifacts — with the unpublished crates
-still unpublished and nothing saying so. The repair for that state is to delete
-the tag and the GitHub Release, never to move the version.
+of them. One package rather than thirteen because release-plz tags and releases
+*per package*, in release order, and under the one name every package renders
+the second to publish dies creating a ref the first already created, leaving the
+rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
+and on for `printobserver` alone, keeping the name templates workspace-wide so
+that every entry of the program's answer still carries `v<version>` for `just
+release-answer` to fold into one. A `v<version>` tag left standing on the forge
+over unpublished crates is the quieter failure: release-plz skips every package
+whose tag exists *before* it asks the registry, so the next push releases
+nothing, exits 0, answers `released=`, and skips the artifacts. The repair is
+to delete the tag and the GitHub Release, never to move the version.
 `tests/repo-e2e/tests/test_release_tag_journey.py` holds the configuration to
-this, driving the real program over the partially published state against a
-stand-in registry and a stand-in forge.
+this.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
