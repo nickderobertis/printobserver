@@ -318,6 +318,12 @@ reason = "What stands in is GitHub, and for the same reason: a journey may not c
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "REFERENCE_EXISTS = ("
+reason = "The constant IS the one source, and it is a recording rather than a restatement: the response body GitHub answered the real release of 0.2.0 with, read verbatim from the `release` job's log of workflow run 34578287017 on 2026-09-11 (`gh run view 34578287017 --log`, the `Response body:` line release-plz prints when a forge refuses it), with that provenance written beside it. What it reconciles is reconciled: the forge stand-in serves the recording and the former-configuration journey holds the real release-plz to reporting it exactly as that run's log did. What the rule still asks for — a drift gate against the live endpoint — has one possible implementation, creating one ref twice on github.com/nickderobertis/printobserver, and no tier here may write to the real forge; the day GitHub changes this body, the real release path is where it shows, exactly as `tools/release-artifacts/src/release_artifacts/registries.py`'s entry for this rule records for release-plz's answer shape. The directive sits on the constant itself so the site is named rather than covered by the stand-in's class-level entry."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
 site = "class StandInRegistry"
 reason = "What this stand-in restates is cargo's registry web API and sparse-index format, and the drift gate is cargo itself: the real `cargo publish` uploads to it and the real `cargo info` reads its index and downloads from it on every run of this journey, so a frame, a route or an index field cargo stopped speaking fails the journey at the boundary rather than being approximated. There is no machine-readable source of that protocol to generate from — cargo documents it in prose — and the one consumer that matters is the one driven here."
 

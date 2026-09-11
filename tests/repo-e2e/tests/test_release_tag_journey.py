@@ -65,6 +65,7 @@ OWNER, NAME = "nickderobertis", "printobserver"
 #: over the former configuration holds the program to reporting it exactly as
 #: that run did. It has no drift gate against a live GitHub, because
 #: reconciling it means creating one ref twice on the real repository.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 REFERENCE_EXISTS = (
     '{"message":"Reference already exists","documentation_url":'
     '"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}'
@@ -989,7 +990,6 @@ def test_creation_enabled_for_every_package_dies_on_the_second_ref(
         code, answer, said = stage.released()
 
         failing((code, said), naming=f"{FAILED_REF}{version}")
-        # The program reports the forge's body the way the real run's log did.
         contains(said, f"Response body: {REFERENCE_EXISTS}", describing="what the program said")
         uploaded = {name for name, _ in stage.registry.uploads[seeded:]}
         truth(
