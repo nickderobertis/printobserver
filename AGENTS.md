@@ -765,15 +765,16 @@ the workflows that gate it — and `release-plz release` tags, cuts the GitHub
 Release and publishes every crate under `CARGO_REGISTRY_TOKEN`. Nobody
 hand-edits a version, hand-tags, or hand-dispatches a publish.
 
-**Publishing does not wait on drafting, and the artifacts wait on a cut
-release.** The `release` job does not `need` `release-pr`: drafting computes
-each package's difference against the registry and can die doing it, and that
-must not stop a publication that is ready. And `release-plz release` exits zero
-having released nothing, while the Python and JavaScript registries refuse a
-version they already serve — so `artifacts` and `publish` are gated on what it
-**answered** (`--output json`, read by `just release-answer` into the job output
-`repo-policy.toml`'s `release.answer_output` names), never on its exit status.
-`just check-repo`'s `release-gating` enforces both.
+**Publishing never waits on drafting, and the artifacts follow only a cut
+release.** Drafting the next release's pull request compares each package
+against the registry and can die doing it; that must not stop a publication
+that is ready. And the publishing step exits zero having released nothing —
+every ordinary push — while the Python and JavaScript registries refuse a
+version they already serve, so the artifact build and publish are gated on what
+that step *answered* it released, never on its exit status. `just check-repo`'s
+`release-gating` reads the workflow for both, and
+`tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
+workflow under the forge's scheduling rules to prove them.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests

@@ -32,6 +32,7 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
     RELEASE_ANSWER_SAMPLE,
+    RELEASE_FIELDS,
     RELEASED_FIELD,
     UNREADABLE,
     VERSION_FIELD,
@@ -1206,6 +1207,15 @@ def read(answered: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> t
     code = main(["answered", "--answer", str(written)])
     captured = capsys.readouterr()
     return code, captured.out, captured.err
+
+
+def test_the_recorded_answer_carries_exactly_the_fields_the_reader_requires(repo: Repo) -> None:
+    """The sample and the field set are two copies of one shape, held to each other here."""
+    recorded = json.loads((repo.root / RELEASE_ANSWER_SAMPLE).read_text(encoding="utf-8"))
+
+    truth(bool(recorded["releases"]), describing="the sample to record at least one release")
+    for entry in recorded["releases"]:
+        equal(sorted(entry), sorted(RELEASE_FIELDS), describing="the fields one entry carries")
 
 
 def test_the_recorded_answer_is_read_as_the_release_it_records(

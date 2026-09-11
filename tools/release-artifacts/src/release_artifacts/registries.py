@@ -127,6 +127,11 @@ TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 RELEASE_ANSWER_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release.json")
 
+#: The fields every entry of that answer carries, and so the fields the reader
+#: requires of one. `test_registries.py` holds the sample's entries to exactly
+#: this set, so the two cannot drift apart inside this repository.
+RELEASE_FIELDS = ("package_name", "prs", "tag", "version")
+
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
 
@@ -391,13 +396,13 @@ def _tag_of(release: object) -> str:
             `name=value`, so one carrying a newline would write a second output
             nothing named.
     """
-    fields = ("package_name", "tag", "version")
+    named = [field for field in RELEASE_FIELDS if field != "prs"]
     if not isinstance(release, dict) or any(
-        not isinstance(release.get(field), str) or not release[field].strip() for field in fields
+        not isinstance(release.get(field), str) or not release[field].strip() for field in named
     ):
         msg = (
             f"a release in the release program's answer carries no "
-            f"{', '.join(f'`{field}`' for field in fields)}, which is what "
+            f"{', '.join(f'`{field}`' for field in named)}, which is what "
             f"`release-plz release --output json` writes for each package:\n{release!r}"
         )
         raise RegistryError(msg)
