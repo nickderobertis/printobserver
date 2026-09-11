@@ -26,6 +26,20 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)")
 
 
+def pythonpath() -> str:
+    """The packages this repository's own tools live in.
+
+    Read out of the justfile's own export rather than repeated here, so a
+    package this repository grows is one a journey's subprocesses find without
+    being told.
+    """
+    for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
+        if line.startswith("export PYTHONPATH :="):
+            return line.partition(":=")[2].strip().strip('"')
+    message = "the justfile exports no PYTHONPATH, and these tools live on it"
+    raise AssertionError(message)
+
+
 def tracked_files(root: Path) -> list[str]:
     """Every file a clone would carry once this change lands.
 

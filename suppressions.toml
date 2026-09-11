@@ -218,3 +218,93 @@ rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "justfile"
+site = "test-install-proof:"
+reason = "A passing `just test-install-proof` prints three lines, and they are three independent proofs rather than one proof said three times: each of the three route recipes it runs proves a different route against a different registry, and its one line carries which version that registry served, where that version was selected from, what installed it and what the installed program answered — the evidence this tier exists to produce, and one a summary line cannot carry for three routes at once. `tests/repo-e2e/tests/test_registry_proof_journey.py::test_the_tier_recipe_proves_every_route` asserts exactly those three lines and nothing beside them. A route that fails still prints its whole report on the other stream and stops the tier there, so a failed run is not three lines either."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "tools/release-artifacts/AGENTS.md"
+site = "# release-artifacts"
+reason = "The rule asks that project rules live in a nested `AGENTS.md` and that `CODEOWNERS` routes reviews, and both hold: this file is that nested one, and `.github/CODEOWNERS` assigns every path with `* @nickderobertis`. The judged tier runs over a diff and is handed only the files that changed, so that unchanged file is outside what it reads — run `20260910T235643Z-7ce94` listed `.github/CODEOWNERS` among its `diff_excluded_files` and then failed this file for having no routing. The same diff passed this rule on the two runs before it; this directive makes the answer not depend on which files a diff happens to carry."
+
+[[suppression]]
+rule = "S310"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.Request("
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it. Every read this proof makes of a registry goes through this one helper, so the rule has one reviewable pair of lines rather than one per registry — and the scheme IS audited, on the line above the directive: a URL that is not `http` or `https` is refused before anything is asked over it. The addresses are the three registry bases this repository declares, or the one stand-in address a caller pointed them at."
+
+[[suppression]]
+rule = "S310"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every read of a registry goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "S324"
+file = "tools/release-artifacts/src/release_artifacts/standin.py"
+site = "hashlib.sha1(raw)"
+reason = "S324 is right that SHA-1 is not a hash to choose, and this one is not chosen: `dist.shasum` in a packument of the JavaScript registry is SHA-1 by that registry's own protocol, and a stand-in serving anything else is one `npm` refuses to install from. It is a digest an installer checks a tarball against rather than a security decision of this repository, and the `integrity` field beside it — which is what a modern `npm` prefers — carries SHA-512."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/release-artifacts/tests/test_registries.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "The judged tier read this suite as expensive work that belongs in a tier of its own. It is where its neighbours are: `test_taking.py` in the same directory installs all three routes for real and `test_clients.py` builds the `printobserver` program and starts a real supervisor, so what edges this project's `test` target is what it proves rather than what it costs. Moving one of the four out would split identical work across two projects, and it would leave `registries.py` and `standin.py` measured by no tier that carries a coverage floor — the end-to-end tier is not measured. The end-to-end journeys over the same behaviour, which drive the real recipes, are in `tests/repo-e2e` where that tier's own work belongs."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.Request("
+reason = "The typed half is answered rather than suppressed: every answer a registry gives is narrowed at this boundary and a body that is not the document its own protocol serves is refused there. The async half does not apply to this program. It is a command-line tool a `just` recipe runs to completion, with no event loop anywhere in it: every subprocess, every install and every read it makes goes through `repo_checks.shell.run` synchronously and in order, because a proof of one route is a sequence — ask, install, run, read back. One awaited read inside it would need a loop this program has no reason to have, and would not make the proof any more concurrent, because there is nothing to overlap it with."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-pypi:"
+reason = "There is no credential to require, and that is the point of the tier rather than an omission in it: what it proves is the ANONYMOUS path an end user takes, and a registry read authenticated by a token would prove a path nobody in front of a printer has. The failure this rule guards against cannot happen here either — the tier does not skip when something is missing. An unreachable or refusing registry is a non-zero exit naming that registry, a registry serving nothing for the version under test is `NOT SERVED`, and only `SERVED AND PROVEN` exits zero."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-npm:"
+reason = "The same tier and the same reason as the job above it: the JavaScript registry is read anonymously because that is how the end user's own `npm install -g` reads it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-script:"
+reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/release-artifacts/tests/test_registries.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/project.json"
+site = "test-e2e"
+reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. So there is no edge to put this behind that would spare an unrelated change anything: a project of its own would carry the same target name and be run by the same `nx run-many` the tier already is. If that ceases to be true — if this repository grows per-project end-to-end targets — this suppression stops being right, and a reader can see that from this sentence."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "This one test reads the committed workflow on purpose, and it is the only way the thing it proves can be proven at all: that a release's own run is keyed on a point no release can reach before its artifacts are published, and that it takes the version from that release. A GitHub trigger cannot be fired from a journey, and waiting for a real release would mean this property was established by nobody until the next one. What it reads it then DRIVES: the selector it finds in that workflow's own `env` is what the journeys beside it pass to the real recipes against a stand-in forge. Every other journey in this file goes through `just`."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_report_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The interface that produces a step's outcome is GitHub Actions, and a workflow cannot be fired from a journey — so the choice here is between driving the committed step with the two values GitHub documents it hands, and establishing nothing at all about what a completed run shows. What is driven is the REAL thing: the step's own script, read out of the committed workflow rather than restated, run by a real shell against a real summary file, and asserted on by the bytes a reader of that run would see. A copy of the line composed here would prove a line nothing publishes, which is the failure this rule is about; reading the committed one is what avoids it."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every read of a registry goes through, immediately below the `Request` it was handed."

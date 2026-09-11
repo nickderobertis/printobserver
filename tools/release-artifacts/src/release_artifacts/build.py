@@ -162,6 +162,11 @@ NODE_BUILD = "npm/printobserver-sdk/tsconfig.build.json"
 #: Where that compilation leaves what it wrote.
 NODE_OUTPUT = "dist/npm-sdk"
 
+#: The committed program the launcher package puts on the path. Named here
+#: because what stands the JavaScript registry up serves the same one: a
+#: stand-in carrying a launcher of its own would prove a launcher nobody ships.
+LAUNCHER = "npm/printobserver-cli/bin/printobserver.mjs"
+
 
 def node_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     """The Node client, as the package an ordinary install takes.
@@ -281,7 +286,7 @@ def node_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> 
 
 def _launcher(repo: Repo) -> str:
     """The program the launcher package puts on the path."""
-    return repo.read("npm/printobserver-cli/bin/printobserver.mjs")
+    return repo.read(LAUNCHER)
 
 
 def release_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> Built:

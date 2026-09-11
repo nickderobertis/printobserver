@@ -145,6 +145,46 @@ prove-route-npm:
 prove-route-script:
     uv run -q python -m release_artifacts prove --target release:printobserver --into dist/proof/route-script
 
+# Prove one end-user route against what its own registry actually serves.
+#
+# One recipe per route, because the three are alternatives and a reader chasing
+# a failure wants the one that failed. PRINTOBSERVER_PROOF_VERSION names the
+# version to prove and PRINTOBSERVER_PROOF_REGISTRIES points every registry
+# somewhere other than the real ones; each exits zero only on a pass.
+#
+# `@` because a proof that passed is ONE line — which version was proven, where
+# it came from, what installed it and what the program said — and the echoed
+# command line beside it is the only other thing such a run would print. A
+# failing proof still prints its whole report, and `just` still names the recipe
+# that failed, so nothing a reader chasing a failure needs is behind the echo.
+prove-registry-pypi:
+    @uv run -q python -m release_artifacts prove --registry --target pypi:printobserver-cli --into dist/proof/registry-pypi
+
+prove-registry-npm:
+    @uv run -q python -m release_artifacts prove --registry --target npm:printobserver-cli --into dist/proof/registry-npm
+
+prove-registry-script:
+    @uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
+
+# Which release the release-time run at COMMIT cut, as `version=<version>`.
+#
+# The one line the release-time job publishes its output from, so that the one
+# concrete version reaches all three route proofs rather than each of them
+# resolving "the newest" for itself. A run that cut no release — every push
+# finding nothing unreleased — answers an empty field, and that is what those
+# jobs are gated on. Needs a checkout carrying the commit and its tags.
+release-version COMMIT ROOT:
+    @uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
+
+# The registry install-path proof: all three routes, which is how a person runs
+# this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
+# is, why it is not one of `just check`'s tiers, and when it runs.
+# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+test-install-proof:
+    @just prove-registry-pypi
+    @just prove-registry-npm
+    @just prove-registry-script
+
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:
     uv run -q actionlint

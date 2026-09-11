@@ -1,29 +1,97 @@
-# The end-user install path, proven on the supported platform matrix.
+# The end-user install path, proven against what the registries actually serve.
 #
-# One job per ROUTE, because the three routes are alternatives to one another:
-# a single job exercising all three would prove none of them is enough on its
-# own. Every step below is derived from AGENTS.md's "The end-user install path"
-# section, and `just check-repo` refuses this file if the two disagree.
+# Two jobs per ROUTE, because the three routes are alternatives to one another.
+# `prove-registry-*` runs the tier `AGENTS.md`'s "The registry install-path
+# proof" records; `install-route-*` runs that path's own stated commands, in the
+# order `AGENTS.md`'s "The end-user install path" states them — and `just
+# check-repo` refuses a step of one of those jobs that section does not state,
+# so this workflow cannot grow an install nobody declared.
 #
-# None of these routes and neither of the two commands is executable yet: the
-# distributions, the install script and the service installer land at the `sdks`
-# and `server` nodes. That is why this workflow does not run on pull requests.
+# Two things a reader has to know that are not written down elsewhere. The
+# release-time trigger is `release-plz` HAVING FINISHED rather than the release
+# being published, because that workflow cuts the release before the two jobs
+# that build and publish its artifacts. And WHICH release a release-time run
+# proves is the one that run itself cut, read by `resolve` off the tag left at
+# the run's own commit and handed to every route proof as one concrete version
+# — never "the newest the forge lists", which on a repository releasing from
+# every push is somebody else's release as often as not.
 
 name: install-path
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      version:
+        description: >-
+          The version to prove. `release` takes the newest release the forge
+          published; naming none takes the newest each registry serves.
+        required: false
+        default: ""
+        type: string
+  workflow_run:
+    workflows: [release-plz]
+    types: [completed]
   schedule:
     - cron: "0 6 * * 1"
 
 permissions:
   contents: read
 
+concurrency:
+  # Not cancel-in-progress: a run stopped part way through is a route nobody
+  # proved, and this workflow is the only thing that would have said so.
+  group: install-path-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  install-route-pypi:
-    name: install-route-pypi
+  # Which release the triggering run cut, resolved once for the whole run.
+  #
+  # Its output is the version every route proof below is given, so the three
+  # cannot resolve three different releases between them; and it is what those
+  # jobs are gated on, so an ordinary push — which finishes a `release-plz` run
+  # and cuts nothing — proves nothing rather than proving whatever was newest.
+  #
+  # Deliberately NOT gated on that run having succeeded. A run that cut the
+  # release and then failed to publish its artifacts concludes as a failure,
+  # and it is the state this tier exists to find: the version is there to
+  # prove, nothing serves it, and the proof says `NOT SERVED`. A conclusion
+  # gate skips exactly that run, and the missing publish is reported by
+  # nothing at all.
+  resolve:
+    name: resolve
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The release-time run's own commit, and the whole history with it:
+          # which release that run cut is read off the tag it left there, and a
+          # shallow clone carries neither the commit nor the tag.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - id: cut
+        if: github.event_name == 'workflow_run'
+        env:
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: just release-version "$COMMIT" . >> "$GITHUB_OUTPUT"
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-pypi:
+    name: prove-registry-pypi (${{ matrix.platform.id }})
+    # A release-time run proves the release IT cut, and nothing when it cut
+    # none. Not gated on that run's conclusion: a run whose release exists and
+    # whose publish failed is the one this tier is for.
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      # The one concrete version this whole run proves: what a caller named, or
+      # the release the triggering run cut. Never the committed tree's own
+      # number, which is whatever release automation last wrote there, and
+      # never each route's own idea of "the newest".
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,12 +102,99 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform.runner }}
     steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      # No Rust toolchain is set up here, and that is the point of these three
+      # routes: each carries a program already built for the platform, and the
+      # proof takes what it strips off the path anyway.
+      - run: just prove-registry-pypi
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-npm:
+    name: prove-registry-npm (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
+      - run: just prove-registry-npm
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-script:
+    name: prove-registry-script (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just prove-registry-script
+
+  install-route-pypi:
+    name: install-route-pypi (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/setup-python@v5
       - run: pip install printobserver-cli
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      # Neither of these two can succeed unattended, so each is non-fatal and
+      # each is reported: `repo-policy.toml`'s `waived_steps` is why, and
+      # `crates/printobserver/tests/service.rs` is what proves the installer
+      # instead.
+      - id: install-service
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - id: start-service
+        continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-pypi: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-npm:
-    name: install-route-npm
+    name: install-route-npm (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     strategy:
       fail-fast: false
       matrix:
@@ -50,12 +205,28 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform.runner }}
     steps:
+      - uses: actions/setup-node@v5
       - run: npm install -g printobserver-cli
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      - id: install-service
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - id: start-service
+        continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-npm: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-script:
-    name: install-route-script
+    name: install-route-script (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     strategy:
       fail-fast: false
       matrix:
@@ -67,5 +238,18 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
-      - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      - run: sudo systemctl enable --now printobserver.service
+      - run: printobserver --version
+      - id: install-service
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+      - id: start-service
+        continue-on-error: true
+        run: sudo systemctl enable --now printobserver.service
+      # `outcome` and not `conclusion`: `continue-on-error` is what makes
+      # `conclusion` say `success` for a step that failed, so a report reading
+      # it would say every route's service came up every time.
+      - if: always()
+        env:
+          INSTALLED: ${{ steps.install-service.outcome }}
+          STARTED: ${{ steps.start-service.outcome }}
+        run: 'echo "install-route-script: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'

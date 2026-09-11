@@ -28,6 +28,7 @@ AGENTS = "AGENTS.md"
 TARGETS = "release-targets.toml"
 ARTIFACTS = ".github/workflows/artifacts.yml"
 RELEASE = ".github/workflows/release-plz.yml"
+INSTALL = ".github/workflows/install-path.yml"
 
 #: The platform line one journey adds to the supported-platform list, and the
 #: route heading another adds. Both are what a *widened* section looks like:
@@ -247,6 +248,28 @@ def test_a_job_that_does_not_prove_what_it_installed_is_refused(
     )
 
     refused_naming(artifact_jobs(broken.repo), "npm:@printobserver/sdk", "recipe builds it")
+
+
+def test_both_proofs_of_one_route_are_read_rather_than_one_displacing_the_other(
+    tree: Callable[[], Tree],
+) -> None:
+    """A route is proven twice, and dropping either job is refused.
+
+    One proof is over an artifact built from the committed tree, which a change
+    can run before anything is published; the other is over what that route's
+    own registry serves, which is what a user meets. They answer different
+    questions, so a mapping that kept only one of them would leave this check
+    answering for a proof that had gone.
+    """
+    without_local = tree()
+    without_local.edit(ARTIFACTS, "      - run: just prove-route-pypi\n", "      - run: true\n")
+
+    refused_naming(artifact_jobs(without_local.repo), "prove-route-pypi", "declares no job")
+
+    without_registry = tree()
+    without_registry.edit(INSTALL, "      - run: just prove-registry-pypi\n", "      - run: true\n")
+
+    refused_naming(artifact_jobs(without_registry.repo), "prove-registry-pypi", "declares no job")
 
 
 def test_a_platform_a_route_job_omits_is_refused(tree: Callable[[], Tree]) -> None:

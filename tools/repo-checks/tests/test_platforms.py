@@ -278,10 +278,15 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
 ) -> None:
     """`install` is platform-dependent as well: a route proves nothing it never ran on."""
     broken = tree()
+    # Anchored on the step that follows it, because that workflow's proof jobs
+    # carry the same matrix: what this narrows is the install job's own.
     broken.edit(
         ".github/workflows/install-path.yml",
-        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
-        "",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
+        "      - uses: actions/setup-python@v5\n",
+        "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
+        "      - uses: actions/setup-python@v5\n",
     )
 
     findings = platforms(broken.repo)

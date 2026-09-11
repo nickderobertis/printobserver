@@ -60,7 +60,7 @@ def obico_tier(repo: Repo) -> list[str]:
         ]
 
     workflow = load_workflow(repo.path(relative))
-    triggers = _triggers(workflow)
+    triggers = triggers_of(workflow)
     findings.extend(_trigger_findings(policy, triggers, relative))
     findings.extend(_job_findings(repo, policy, workflow, relative))
     findings.extend(_schedule_findings(repo, policy, triggers, relative))
@@ -106,7 +106,7 @@ def _gate_findings(repo: Repo, policy: dict[str, Any]) -> list[str]:
     return findings
 
 
-def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+def triggers_of(workflow: dict[str, Any]) -> dict[str, Any]:
     """The events a workflow fires on, whatever shape they are written in."""
     match workflow.get("on"):
         case str() as event:

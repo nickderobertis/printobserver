@@ -645,6 +645,18 @@ pinned release and an install directory:
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
+### Then, check what you installed
+
+Whichever route you took, run the program. It prints the version it is, and
+that is the one thing the three commands above cannot tell you: a package
+manager that unpacked a program nobody can run exits zero, and so does an
+install script that put a file on your path. This is where an install that
+worked stops looking like one that did not.
+
+```console
+printobserver --version
+```
+
 ### Then, in order — two commands
 
 Both run as root. The first is the installer the `server` node ships, committed
@@ -674,6 +686,27 @@ written above, or in which that installer enables or starts anything.
 
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
+
+## The registry install-path proof
+
+The one thing that says this repository is installable: each of the three
+routes above taken from its own registry, and what it installed run.
+
+```console
+just test-install-proof
+```
+
+`PRINTOBSERVER_PROOF_VERSION` names the version under test — never the number in
+this tree, because what a user gets is whatever the registry is serving.
+
+**It is not one of `just check`'s tiers** and `just check` does not invoke it: it
+reads the real registries, so over a change it could only report what was
+published before that change. It runs after a release, on a manual invocation,
+and on this schedule:
+
+[//]: # (BEGIN install-proof-schedule)
+- cron: `0 6 * * 1`
+[//]: # (END install-proof-schedule)
 
 ## Commits, releases, and merging
 

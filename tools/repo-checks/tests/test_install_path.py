@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
-from repo_checks.expect import accepted, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -223,3 +223,64 @@ def test_a_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None
     findings = install_path_section(broken.repo)
 
     refused(findings, "README.md states")
+
+
+def test_the_section_states_the_check_on_what_a_route_installed(committed: Repo) -> None:
+    """One command, which runs the program and asks which version it is."""
+    path = ip.parse(committed.agents_md)
+
+    equal(len(path.verification), 1)
+    equal(path.checked, "printobserver --version")
+    contains(path.canonical, path.checked, describing="every command the section states")
+
+
+def test_a_section_stating_no_check_on_what_was_installed_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A path that ends at an install cannot tell a working one from a broken one."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        "```console\nprintobserver --version\n```",
+        "You will know it worked because it worked.",
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "it must state exactly one")
+
+
+def test_a_check_that_does_not_run_the_program_is_refused(tree: Callable[[], Tree]) -> None:
+    """The check has to run the program the route installed, not something beside it."""
+    broken = tree()
+    broken.edit("AGENTS.md", "printobserver --version\n```", "systemctl --version\n```")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "which is the program every route installs")
+
+
+def test_a_check_that_does_not_ask_which_version_it_is_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Running the program is not enough: which version ran is what a proof reads."""
+    broken = tree()
+    broken.edit("AGENTS.md", "printobserver --version\n```", "printobserver --help\n```")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "does not ask the program which version it is")
+
+
+def test_a_check_carrying_a_placeholder_is_refused(tree: Callable[[], Tree]) -> None:
+    """Every command this section states is one a reader pastes."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        "printobserver --version\n```",
+        "printobserver --version | grep ${EXPECTED}\n```",
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "where a literal value belongs")

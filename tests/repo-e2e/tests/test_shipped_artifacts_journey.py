@@ -23,7 +23,7 @@ from __future__ import annotations
 import tomllib
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import REPO_ROOT, clean_environment, pythonpath, run
 from repo_checks.expect import contains, failing, passing
 
 #: How long one recipe is given: the first pays for a release build of the
@@ -52,19 +52,6 @@ def _version() -> str:
         return str(tomllib.load(handle)["workspace"]["package"]["version"])
 
 
-def _pythonpath() -> str:
-    """The packages this repository's own tools live in.
-
-    Read out of the justfile's own export rather than repeated here, so a
-    package this repository grows is one this tier finds without being told.
-    """
-    for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
-        if line.startswith("export PYTHONPATH :="):
-            return line.partition(":=")[2].strip().strip('"')
-    message = "the justfile exports no PYTHONPATH, and these tools live on it"
-    raise AssertionError(message)
-
-
 def _tool(*arguments: str) -> tuple[int, str]:
     """Run the artifact tool the way its own recipes run it."""
     from repo_checks.shell import run as shell_run
@@ -72,7 +59,7 @@ def _tool(*arguments: str) -> tuple[int, str]:
     result = shell_run(
         ["uv", "run", "-q", "python", "-m", "release_artifacts", *arguments],
         cwd=REPO_ROOT,
-        env=clean_environment(PYTHONPATH=_pythonpath()),
+        env=clean_environment(PYTHONPATH=pythonpath()),
         timeout=RECIPE_TIMEOUT_SECONDS,
     )
     return result.returncode, (result.stdout or "") + (result.stderr or "")

@@ -443,6 +443,7 @@ def install_path_section(repo: Repo) -> list[str]:
 
     findings.extend(_fetch_url_findings(repo, path))
     findings.extend(_pinned_form_findings(path))
+    findings.extend(_verification_findings(path))
 
     if path.commands and ip.STARTS_SERVICE.search(path.commands[0]):
         findings.append(
@@ -521,6 +522,43 @@ def _pinned_form_findings(path: ip.InstallPath) -> list[str]:
     return []
 
 
+def _verification_findings(path: ip.InstallPath) -> list[str]:
+    """The section states one command that reads back what a route installed.
+
+    Every route ends the same way — a program on a path — and whether that
+    program runs is not something the install commands can report: a package
+    manager that unpacked an unrunnable program exits zero. So the check on
+    what was installed is stated here, in the one authoritative source of this
+    path, which is what lets the jobs that prove these routes run it without
+    growing a command nobody declared.
+    """
+    if len(path.verification) != 1:
+        return [
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states {len(path.verification)} commands "
+            f"under a `{ip.VERIFICATION_HEADING}...` subsection; it must state exactly one, "
+            f"which runs the program whichever route was taken installed"
+        ]
+    checked = path.checked
+    findings = [
+        f"the check on what was installed (`{checked}`) carries {marker!r} where a "
+        f"literal value belongs"
+        for marker in ip.PLACEHOLDER_MARKERS
+        if marker in checked
+    ]
+    if checked.split()[:1] != [ip.VERIFICATION_PROGRAM]:
+        findings.append(
+            f"the check on what was installed (`{checked}`) does not run "
+            f"`{ip.VERIFICATION_PROGRAM}`, which is the program every route installs"
+        )
+    if ip.VERIFICATION_OPTION not in checked.split():
+        findings.append(
+            f"the check on what was installed (`{checked}`) does not ask the program "
+            f"which version it is (`{ip.VERIFICATION_OPTION}`), so it cannot tell an "
+            f"install that worked from one that installed something else"
+        )
+    return findings
+
+
 def _restatements(repo: Repo) -> dict[str, list[str]]:
     """Every other place in the tree that states one of the install path's commands."""
     candidates: dict[str, list[str]] = {}
@@ -595,12 +633,78 @@ def continuous_integration(repo: Repo) -> list[str]:
             f"rather than a job of its own"
         )
 
-    findings.extend(_install_job_findings(path, install))
+    findings.extend(_install_job_findings(repo, path, install))
+    return findings
+
+
+def _waived(repo: Repo) -> tuple[tuple[str, ...], str]:
+    """The steps of an install job whose failure does not fail it, and what it costs."""
+    declared = policy_table(repo, "workflows")
+    steps = declared.get("waived_steps")
+    named = (
+        tuple(str(step) for step in steps)
+        if isinstance(steps, list) and all(isinstance(step, str) and step.strip() for step in steps)
+        else ()
+    )
+    return named, str(declared.get("waived_report", "")).strip()
+
+
+def _reporting_findings(
+    repo: Repo, file_name: str, job_name: str, job: dict[str, Any]
+) -> list[str]:
+    """The two waived commands carry their ids, and the run says what they reached.
+
+    Their failure not failing the job is the waiver, and this is its price: a
+    completed run has to tell a route whose service came up from one whose did
+    not. Unreported, a green job says nothing about whether the service was
+    ever established — which is a credential-dependent failure disappearing,
+    and is exactly what making them non-fatal must not buy.
+    """
+    waived, summary = _waived(repo)
+    if not waived or not summary:
+        return [
+            "`repo-policy.toml`'s `[workflows]` declares no `waived_steps` and "
+            "`waived_report`, so nothing can say which steps of an install job may fail "
+            "without failing it, or what a run must then report"
+        ]
+    where = f"{file_name}: install job `{job_name}`"
+    findings: list[str] = []
+    carried = {str(step.get("id", "")): step for step in steps_of(job)}
+    for wanted in waived:
+        step = carried.get(wanted)
+        if step is None:
+            findings.append(
+                f"{where} declares no `{wanted}` step, so nothing of this run can report "
+                f"what that command reached"
+            )
+        elif step.get("continue-on-error") is not True:
+            findings.append(
+                f"{where}: step `{wanted}` is fatal, and the two commands after the routes "
+                f"cannot succeed unattended — made fatal this job fails on every run "
+                f"whatever the world looks like, which is how it went unread"
+            )
+    if findings:
+        return findings
+
+    # `outcome` and not `conclusion`: `continue-on-error` is what makes
+    # `conclusion` read `success` for a step that failed, so a report reading
+    # it would say every route's service came up every time.
+    reporting = [
+        command
+        for command in run_commands(job)
+        if summary in command and all(f"{wanted}.outcome" in str(job) for wanted in waived)
+    ]
+    if not reporting:
+        findings.append(
+            f"{where} lets {', '.join(f'`{step}`' for step in waived)} fail without failing "
+            f"it, and writes neither outcome into `${summary}`: a reader of a green run "
+            f"cannot then tell a route whose service was established from one whose was not"
+        )
     return findings
 
 
 def _install_job_findings(
-    path: ip.InstallPath, install: list[tuple[str, str, dict[str, Any]]]
+    repo: Repo, path: ip.InstallPath, install: list[tuple[str, str, dict[str, Any]]]
 ) -> list[str]:
     """One job per route, each running that route and then the two commands, in order."""
     findings: list[str] = []
@@ -610,14 +714,20 @@ def _install_job_findings(
                 f"AGENTS.md names route `{route.heading}` (`{route.command}`), for which "
                 f"the committed configuration declares no install job"
             )
+    _, summary = _waived(repo)
     for file_name, job_name, job in install:
         commands = run_commands(job)
         findings.extend(
             f"{file_name}: install job `{job_name}` runs `{command}`, which AGENTS.md's "
             f"`{ip.SECTION_HEADING}` does not state"
             for command in commands
-            if command not in path.canonical
+            # The one command such a job may run beside the stated ones: the
+            # report the waiver above costs. It installs nothing and reaches no
+            # registry — it writes what the two waived steps reached into the
+            # run's own summary.
+            if command not in path.canonical and not (summary and summary in command)
         )
+        findings.extend(_reporting_findings(repo, file_name, job_name, job))
         positions = [commands.index(c) if c in commands else -1 for c in path.commands]
         for stated, position in zip(path.commands, positions, strict=True):
             if position < 0:
@@ -630,6 +740,51 @@ def _install_job_findings(
                 f"{file_name}: install job `{job_name}` runs the two commands after the "
                 f"routes out of the order AGENTS.md states"
             )
+        findings.extend(_checked_findings(path, file_name, job_name, commands, positions))
+    return findings
+
+
+def _checked_findings(
+    path: ip.InstallPath,
+    file_name: str,
+    job_name: str,
+    commands: list[str],
+    positions: list[int],
+) -> list[str]:
+    """The job runs the check on what it installed, after the route and before the rest.
+
+    A job that only installs cannot tell an install that worked from one that
+    put something on the path that does not run, which is the whole of what
+    these jobs are for. The ordering is load-bearing in both directions: run
+    before the route it is checking, it reads whatever was already on the host,
+    and run after the service commands, it has let a broken program reach a
+    service before anything looked at it.
+    """
+    checked = path.checked
+    where = f"{file_name}: install job `{job_name}`"
+    if not checked:
+        return []
+    if checked not in commands:
+        return [
+            f"{where} omits `{checked}`, which AGENTS.md states as the check on what a "
+            f"route installed: a job that only installs cannot tell an install that "
+            f"worked from one that put an unrunnable program on the path"
+        ]
+    at = commands.index(checked)
+    taken = [commands.index(route.command) for route in path.routes if route.command in commands]
+    findings: list[str] = []
+    if taken and at < min(taken):
+        findings.append(
+            f"{where} runs `{checked}` before the route it is checking, so it reads "
+            f"whatever was already on the host rather than what this run installed"
+        )
+    afterwards = [position for position in positions if position >= 0]
+    if afterwards and at > min(afterwards):
+        findings.append(
+            f"{where} runs `{checked}` after the commands that put the service in "
+            f"place, so a program that does not run reaches a service before anything "
+            f"has looked at it"
+        )
     return findings
 
 
@@ -811,16 +966,22 @@ def _shipped(repo: Repo) -> list[dict[str, Any]]:
     ]
 
 
-def _proving(repo: Repo) -> dict[str, str]:
-    """Which recipe takes each shipped artifact the way its own consumer does.
+def proving(repo: Repo) -> dict[str, tuple[str, ...]]:
+    """Which recipes take each shipped artifact and prove what they took.
 
-    Read out of the recipe's own body — the target it names — rather than out
+    Read out of each recipe's own body — the target it names — rather than out
     of a list beside it, so a recipe pointed at another artifact is one this
     stops finding for the artifact it used to prove.
+
+    Every one of them, rather than the last one read: a route is proven twice
+    and the two answer different questions — one over an artifact built from
+    the committed tree, which a change can run before anything is published,
+    and one over what its own registry serves, which is what a user meets. A
+    mapping that kept one would leave this answering for a proof that had gone.
     """
     from repo_checks.parsing import recipes as parse_recipes
 
-    found: dict[str, str] = {}
+    found: dict[str, list[str]] = {}
     for name, recipe in parse_recipes(repo.justfile).items():
         if not name.startswith(PROVE_PREFIX):
             continue
@@ -828,8 +989,10 @@ def _proving(repo: Repo) -> dict[str, str]:
             words = line.split()
             if "prove" not in words or "--target" not in words:
                 continue
-            found[words[words.index("--target") + 1]] = name
-    return found
+            proven = found.setdefault(words[words.index("--target") + 1], [])
+            if name not in proven:
+                proven.append(name)
+    return {identifier: tuple(names) for identifier, names in found.items()}
 
 
 def artifact_jobs(repo: Repo) -> list[str]:
@@ -848,7 +1011,7 @@ def artifact_jobs(repo: Repo) -> list[str]:
         return [str(error)]
 
     path = ip.parse(repo.agents_md)
-    proving = _proving(repo)
+    proven_by = proving(repo)
     findings: list[str] = []
     jobs: dict[str, tuple[str, str, dict[str, Any]]] = {}
     for file_name, workflow in _workflows(repo).items():
@@ -865,28 +1028,30 @@ def artifact_jobs(repo: Repo) -> list[str]:
     }
     for target in _shipped(repo):
         identifier = str(target.get("id", ""))
-        recipe = proving.get(identifier)
-        if recipe is None:
-            findings.append(
-                f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
-                f"recipe builds it, installs it and proves what it installed"
+        for recipe in proven_by.get(identifier, ()) or [""]:
+            if not recipe:
+                findings.append(
+                    f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
+                    f"recipe builds it, installs it and proves what it installed"
+                )
+                continue
+            if recipe not in jobs:
+                findings.append(
+                    f"the committed configuration declares no job running `just {recipe}`, "
+                    f"so nothing proves `{identifier}` that way"
+                )
+                continue
+            file_name, job_name, job = jobs[recipe]
+            entries = _matrix_platforms(job) or []
+            named = {
+                str(entry["id"]) for entry in entries if isinstance(entry, dict) and "id" in entry
+            }
+            findings.extend(
+                f"{file_name}: job `{job_name}` proves `{identifier}` on "
+                f"{sorted(named) or 'no'} platform(s), and AGENTS.md names `{platform}`"
+                for platform in wanted
+                if platform not in named
             )
-            continue
-        if recipe not in jobs:
-            findings.append(
-                f"the committed configuration declares no job running `just {recipe}`, "
-                f"so nothing builds `{identifier}`, installs it and proves it"
-            )
-            continue
-        file_name, job_name, job = jobs[recipe]
-        entries = _matrix_platforms(job) or []
-        named = {str(entry["id"]) for entry in entries if isinstance(entry, dict) and "id" in entry}
-        findings.extend(
-            f"{file_name}: job `{job_name}` builds `{identifier}` on {sorted(named) or 'no'} "
-            f"platform(s), and AGENTS.md names `{platform}`"
-            for platform in wanted
-            if platform not in named
-        )
 
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for which "
