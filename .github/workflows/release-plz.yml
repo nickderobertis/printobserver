@@ -77,8 +77,6 @@ jobs:
       # Tags, cuts the GitHub Release, and publishes every crate target
       # `release-targets.toml` declares. Idempotent: a version already on the
       # registry is skipped, so a partial failure is recovered by the next push.
-      # `--output json` makes it say what it released, which is what the step
-      # after it reads.
       - run: release-plz release --backend github --output json > "$RUNNER_TEMP/released.json"
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
@@ -92,8 +90,6 @@ jobs:
     # the `printobserver` program already built for the platform, and a
     # platform nothing built for is a route that host cannot take.
     needs: release
-    # Only after a release was cut: read off what `release-plz release`
-    # answered, never off its exit status, which is zero either way.
     if: needs.release.outputs.released != ''
     strategy:
       fail-fast: false

@@ -367,6 +367,15 @@ def released_by(answer: str) -> tuple[str, ...]:
         if not isinstance(tag, str) or not tag.strip():
             msg = f"a release in the release program's answer names no tag:\n{release!r}"
             raise RegistryError(msg)
+        # Narrowed to a tag release automation writes before it reaches a job
+        # output file: that file is read a line at a time as `name=value`, so
+        # a tag carrying a newline would write a second output nothing named.
+        if not SUPPORTED.match(tag):
+            msg = (
+                f"a release in the release program's answer names the tag {tag!r}, which is "
+                f"not one release automation writes (`v<major>.<minor>.<patch>`)"
+            )
+            raise RegistryError(msg)
         if tag not in tags:
             tags.append(tag)
     return tuple(tags)

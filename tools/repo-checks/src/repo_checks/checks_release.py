@@ -485,27 +485,29 @@ GATING = ("cut_recipe", "cut_output", "cut_source")
 DRAFTING = "release-plz release-pr"
 PUBLISHING = "release-plz release"
 
-#: How the publishing command is made to say what it released.
 ANSWER_OPTIONS = ("--output json", "-o json")
-
-#: Where a step publishes a job output from.
 JOB_OUTPUT = "GITHUB_OUTPUT"
-
-#: What gating on a job's exit status rather than on its answer looks like.
 STATUS_GATES = (".result", "success()", "failure()")
 
+#: One job as the YAML reader hands it back. Its keys are the workflow author's
+#: own — `needs`, `if`, `outputs`, `steps` and whatever else GitHub accepts — so
+#: there is no narrower shape to read it as; each reader below narrows the one
+#: value it needs.
+Job = dict[str, Any]
 
-def _needs(job: dict[str, Any]) -> list[str]:
+
+def _needs(job: Job) -> list[str]:
     """The jobs a job waits on, however the workflow spells them."""
-    needs = job.get("needs")
-    if isinstance(needs, str):
-        return [needs]
-    if isinstance(needs, list):
-        return [str(name) for name in needs]
-    return []
+    match job.get("needs"):
+        case str() as one:
+            return [one]
+        case list() as several:
+            return [str(name) for name in several]
+        case _:
+            return []
 
 
-def _jobs_running(jobs: dict[str, dict[str, Any]], command: str) -> list[str]:
+def _jobs_running(jobs: dict[str, Job], command: str) -> list[str]:
     """The jobs with a step running `command`, as the whole command or its first words."""
     return [
         name
@@ -569,7 +571,7 @@ def release_gating(repo: Repo) -> list[str]:
     return findings
 
 
-def _independence_findings(jobs: dict[str, dict[str, Any]], name: str, file: str) -> list[str]:
+def _independence_findings(jobs: dict[str, Job], name: str, file: str) -> list[str]:
     """The publishing job waits on no job that drafts the next release."""
     drafting = set(_jobs_running(jobs, DRAFTING))
     return [
@@ -581,9 +583,7 @@ def _independence_findings(jobs: dict[str, dict[str, Any]], name: str, file: str
     ]
 
 
-def _answer_findings(
-    job: dict[str, Any], name: str, gating: dict[str, str], file: str
-) -> list[str]:
+def _answer_findings(job: Job, name: str, gating: dict[str, str], file: str) -> list[str]:
     """The publishing job asks the program what it released and publishes that as an output."""
     where = f"{file}: job `{name}`"
     findings: list[str] = []
@@ -630,7 +630,7 @@ def _answer_findings(
 
 
 def _gated_findings(
-    jobs: dict[str, dict[str, Any]],
+    jobs: dict[str, Job],
     publishing: str,
     recipes: dict[str, str],
     gating: dict[str, str],

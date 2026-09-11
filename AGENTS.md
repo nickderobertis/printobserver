@@ -765,42 +765,31 @@ the workflows that gate it — and `release-plz release` tags, cuts the GitHub
 Release and publishes every crate under `CARGO_REGISTRY_TOKEN`. Nobody
 hand-edits a version, hand-tags, or hand-dispatches a publish.
 
-**Drafting and publishing are two jobs, and the first cannot stop the second.**
-`release-pr` computes each package's difference against what the registry
-serves, and `release` publishes what is already due; the `release` job does not
-`need` the `release-pr` job, so a drafting job that cannot draft leaves a
-publication that is ready free to go out. And `release-plz release` exits zero
-having released nothing — which is every ordinary push, under `release_always` —
-while the Python and JavaScript registries refuse a version they already serve,
-so the two jobs after it are gated on **what it answered** rather than on its
-exit status: it is run with `--output json`, `just release-cut` reads the
-version and tag of every package that answer says it released, and the artifact
-build and the artifact publish run only when that is not empty. The recipe and
-the output it publishes are `repo-policy.toml`'s `release.cut_recipe` and
-`release.cut_output`, and `just check-repo`'s `release-gating` holds the workflow
-to both and refuses a `release` job that waits on `release-pr`.
+**Publishing does not wait on drafting, and the artifacts wait on a cut
+release.** The `release` job does not `need` `release-pr`: drafting computes
+each package's difference against the registry and can die doing it, and that
+must not stop a publication that is ready. And `release-plz release` exits zero
+having released nothing, while the Python and JavaScript registries refuse a
+version they already serve — so `artifacts` and `publish` are gated on what it
+**answered** (`--output json`, read by `just release-cut` into the job output
+`repo-policy.toml`'s `release.cut_output` names), never on its exit status.
+`just check-repo`'s `release-gating` enforces both.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
 
-**The one time a version was moved by hand.** On 2026-09-10 the workspace was
-taken from `0.1.0` to `0.2.0` in a commit rather than by release automation,
-and this paragraph is the record of it. The first run of the release workflow
-published two of the thirteen crates — `printobserver` and `printobserver-core`,
-each a content-free scaffold — at `0.1.0` and tagged `v0.1.0`, and then nothing
-else ever ran: `release-plz release-pr` refuses to compute a next version for a
-package the registry does not carry while a tag naming its version exists, so
-the eleven absent crates wedged every run after it, and `0.1.0` could never
-have been the installable version in any case. Moving to a version no crate had
-served and no tag named made all thirteen publishable coherently in one release,
-with nothing left on a public registry as a lever. It is a single, deliberate
-exception that hands control straight back to release automation — the next
-version is whatever `release-plz` writes — and it does not change the rule
-above. `tests/repo-e2e/tests/test_release_path_journey.py` drives the drafting
-tool over a copy of this tree against a stand-in registry serving none of its
-crates, so a tree that returned to a tagged version would be refused there.
+**The rule above has one recorded exception.** The workspace was moved from
+`0.1.0` to `0.2.0` by hand on 2026-09-10, because release automation could not
+move it: its first run had published two content-free scaffold crates at `0.1.0`
+and tagged `v0.1.0`, and `release-plz release-pr` refuses to draft for a package
+the registry does not carry while a tag naming its version exists — which wedged
+every run after it. A version no crate had served and no tag named let all
+thirteen release coherently at once, leaving nothing on a public registry as a
+lever. Control returned to release automation with that commit, and
+`tests/repo-e2e/tests/test_release_path_journey.py` refuses a tree that returns
+to a tagged version.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as

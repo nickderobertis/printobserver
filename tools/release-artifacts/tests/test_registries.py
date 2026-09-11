@@ -1239,6 +1239,8 @@ def test_a_run_that_released_nothing_answers_an_empty_field(
             json.dumps({"releases": [{"package_name": "printobserver", "version": "0.4.0"}]}),
             "no tag",
         ),
+        # A tag carrying a newline would write a second job output nothing named.
+        (json.dumps({"releases": [_release("printobserver", "0.4.0\nextra=injected")]}), "not one"),
     ],
 )
 def test_an_answer_the_release_program_does_not_write_is_refused_rather_than_read_as_none(

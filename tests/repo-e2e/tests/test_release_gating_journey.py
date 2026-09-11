@@ -24,6 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, pythonpath
 from repo_checks.checks_release import DRAFTING, PUBLISHING
@@ -45,7 +46,12 @@ def _release(package: str, version: str) -> dict[str, object]:
     return {"package_name": package, "prs": [], "tag": f"v{version}", "version": version}
 
 
-def jobs() -> dict[str, dict[str, Any]]:
+#: One job as the YAML reader hands it back: its keys are the workflow
+#: author's own, so there is no narrower shape to read it as.
+Job = dict[str, Any]
+
+
+def jobs() -> dict[str, Job]:
     """The committed release workflow's jobs."""
     workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
     return dict(workflow["jobs"])
@@ -64,10 +70,15 @@ def job_running(command: str) -> str:
     return running[0]
 
 
-def needs(job: dict[str, Any]) -> list[str]:
+def needs(job: Job) -> list[str]:
     """The jobs a job waits on, however the workflow spells them."""
-    declared = job.get("needs", [])
-    return [declared] if isinstance(declared, str) else list(declared)
+    match job.get("needs"):
+        case str() as one:
+            return [one]
+        case list() as several:
+            return [str(name) for name in several]
+        case _:
+            return []
 
 
 def cut(answer: str, into: Path) -> tuple[int, str]:
@@ -110,18 +121,29 @@ def test_publishing_waits_on_no_drafting_and_the_artifacts_wait_on_its_answer() 
         absent(condition, ".result", describing=f"`{name}` not to be gated on a result")
 
 
+@pytest.mark.parametrize(
+    ("versions", "answered"),
+    [
+        # Thirteen crates under one version name one tag, answered once.
+        (("0.4.0", "0.4.0"), "v0.4.0"),
+        # Two packages released at two versions name two, in the order released.
+        (("0.4.0", "0.5.0"), "v0.4.0 v0.5.0"),
+    ],
+)
 def test_a_run_that_cut_a_release_answers_a_field_the_artifact_jobs_run_on(
-    tmp_path: Path,
+    versions: tuple[str, ...], answered: str, tmp_path: Path
 ) -> None:
-    """Thirteen crates under one version name one tag, answered once and non-empty."""
+    """A run that released something answers a non-empty field, one line, nothing beside it."""
     answer = json.dumps(
-        {"releases": [_release("printobserver-types", "0.4.0"), _release("printobserver", "0.4.0")]}
+        {"releases": [_release(f"printobserver-{index}", v) for index, v in enumerate(versions)]}
     )
 
     code, said = cut(answer, tmp_path)
 
     passing((code, said), describing=f"`just {DECLARED['cut_recipe']}` over a cut release")
-    equal(said.strip(), f"{DECLARED['cut_output']}=v0.4.0", describing="the one line a job reads")
+    equal(
+        said.strip(), f"{DECLARED['cut_output']}={answered}", describing="the one line a job reads"
+    )
 
 
 def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_on(
@@ -138,17 +160,43 @@ def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_o
     )
 
 
+@pytest.mark.parametrize(
+    ("answer", "named"),
+    [
+        ("release-plz wrote something else here", "not JSON"),
+        (json.dumps({"something": "else"}), "no `releases` list"),
+        (
+            json.dumps({"releases": [{"package_name": "printobserver", "version": "0.4.0"}]}),
+            "no tag",
+        ),
+        # A tag with a newline in it would write a second output nothing named.
+        (json.dumps({"releases": [_release("printobserver", "0.4.0\nextra=1")]}), "not one"),
+    ],
+)
 def test_an_answer_the_release_program_does_not_write_fails_the_job_rather_than_skipping(
-    tmp_path: Path,
+    answer: str, named: str, tmp_path: Path
 ) -> None:
     """Read as "released nothing", an unreadable answer would skip the publish of a cut release."""
-    code, said = cut("release-plz wrote something else here", tmp_path)
+    code, said = cut(answer, tmp_path)
 
-    failing((code, said), naming="not JSON")
+    failing((code, said), naming=named)
     truth(
         not any(line.startswith(f"{DECLARED['cut_output']}=") for line in said.splitlines()),
         describing=f"no field for a job to read off a refused answer: {said!r}",
     )
+
+
+def test_an_answer_the_release_program_never_wrote_fails_the_job(tmp_path: Path) -> None:
+    """A release step that wrote no answer file is a step whose answer nothing can read."""
+    never_written = tmp_path / "never-written.json"
+    result = capture(
+        ["just", str(DECLARED["cut_recipe"]), str(never_written)],
+        REPO_ROOT,
+        timeout=RECIPE_TIMEOUT_SECONDS,
+        env=clean_environment(PYTHONPATH=pythonpath()),
+    )
+
+    failing(result, naming=str(never_written))
 
 
 def test_a_publishing_job_that_waits_on_the_drafting_job_is_refused_by_the_gate(

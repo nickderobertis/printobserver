@@ -52,7 +52,9 @@ WEDGED = "not found in the registry, but the git tag"
 #: What it says as it reaches the computation that state stops, once per crate.
 DETERMINING = "determining next version for"
 
-DRAFT_TIMEOUT_SECONDS = 600
+#: The drafting computation takes a few seconds over this workspace; this is a
+#: bound on a hang rather than a budget.
+DRAFT_TIMEOUT_SECONDS = 120
 
 pytestmark = pytest.mark.skipif(
     shutil.which("release-plz") is None,

@@ -20,10 +20,8 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-# Written by release automation, and by hand exactly once: `0.1.0` was moved to
-# `0.2.0` on 2026-09-10 to unwedge a release path that had published two
-# scaffold crates at `0.1.0` and could then draft nothing. AGENTS.md's "Commits,
-# releases, and merging" is the record; the next number is release-plz's.
+# Release automation's to write. Moved by hand exactly once; AGENTS.md's
+# "Commits, releases, and merging" records when and why.
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
