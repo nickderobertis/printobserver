@@ -25,9 +25,6 @@ network is the public crates.io index and the third-party crates it serves,
 which the workspace needs in order to resolve.
 """
 
-# `assert` is how pytest states an assertion and how it produces the failure
-# message a reader acts on; suppressions.toml carries the reason.
-
 from __future__ import annotations
 
 import hashlib
@@ -140,9 +137,15 @@ def publishable_crates() -> tuple[str, ...]:
             isinstance(package, dict)
             and isinstance(package.get("name"), str)
             and isinstance(package.get("dependencies"), list)
+            and all(
+                isinstance(dependency, dict)
+                and isinstance(dependency.get("name"), str)
+                and (dependency.get("kind") is None or isinstance(dependency["kind"], str))
+                for dependency in package["dependencies"]
+            )
             for package in listed
         ),
-        describing="`cargo metadata` to answer named packages, each with dependencies",
+        describing="`cargo metadata` to answer named packages with named, kinded dependencies",
     )
     packages = {
         str(package["name"]): package for package in listed or [] if package.get("publish") != []
@@ -523,44 +526,43 @@ class StandInForge(_StandIn):
                 ):
                     self.answer_json(422, {"message": f"Validation Failed: {required} required"})
                     return
-                if self.path == f"{prefix}git/tags":
-                    forge.tags.append(document)
-                    self.answer_json(201, {**document, "sha": secrets.token_hex(20)})
-                    return
-                if self.path == f"{prefix}git/refs":
-                    ref = str(document.get("ref", ""))
-                    if ref in forge.refs:
-                        self.answer_json(422, {"message": REFERENCE_EXISTS})
-                        return
-                    forge.refs.append(ref)
-                    self.answer_json(201, {"ref": ref, "object": {"sha": document.get("sha")}})
-                    return
-                if self.path == f"{prefix}releases":
-                    forge.releases.append(document)
-                    self.answer_json(
-                        201,
-                        {
-                            **document,
-                            "id": len(forge.releases),
-                            "html_url": f"{forge.base}/{OWNER}/{NAME}/releases/tag/"
-                            f"{document.get('tag_name', '')}",
-                        },
-                    )
-                    return
-                self.answer_json(404, {"message": "Not Found"})
+                match self.path.removeprefix(prefix):
+                    case "git/tags":
+                        forge.tags.append(document)
+                        self.answer_json(201, {**document, "sha": secrets.token_hex(20)})
+                    case "git/refs":
+                        ref = str(document["ref"])
+                        if ref in forge.refs:
+                            self.answer_json(422, {"message": REFERENCE_EXISTS})
+                            return
+                        forge.refs.append(ref)
+                        self.answer_json(201, {"ref": ref, "object": {"sha": document["sha"]}})
+                    case "releases":
+                        forge.releases.append(document)
+                        self.answer_json(
+                            201,
+                            {
+                                **document,
+                                "id": len(forge.releases),
+                                "html_url": f"{forge.base}/{OWNER}/{NAME}/releases/tag/"
+                                f"{document['tag_name']}",
+                            },
+                        )
+                    case _:
+                        self.answer_json(404, {"message": "Not Found"})
 
         return Handler
 
 
 class Released(NamedTuple):
-    """What one run of the release step came back with."""
+    """What one run of the release step came back with.
 
-    #: Its exit status.
+    `answer` is its standard output alone — the answer the workflow redirects
+    into the file `just release-answer` reads — where `said` is both streams.
+    """
+
     code: int
-    #: What it wrote to its standard output: the answer the workflow redirects
-    #: into the file `just release-answer` reads.
     answer: str
-    #: Everything it said, on either stream.
     said: str
 
 
