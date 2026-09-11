@@ -165,41 +165,83 @@ class JobRun:
 UPLOAD = "actions/upload-artifact@"
 DOWNLOAD = "actions/download-artifact@"
 
+#: What an artifact's name may not carry, as the real action refuses it: a path
+#: separator or anything the forge's own storage will not take. A name and a
+#: run id are path components of the store below, so each is held to this
+#: before it is joined to anything.
+INVALID_IN_NAME = frozenset('"<>|*?\r\n\\/:')
 
+
+class ArtifactError(ValueError):
+    """An artifact action would have failed its step, in the action's own words."""
+
+
+def component(value: str, what: str) -> str:
+    """One artifact name or run id, once it is a single path component the action takes.
+
+    Raises:
+        ArtifactError: If it is empty, names a parent or the current directory,
+            or carries a character the real action refuses.
+    """
+    if not value or value in {".", ".."} or any(char in INVALID_IN_NAME for char in value):
+        msg = (
+            f"{what} {value!r} is not valid: it must be a non-empty name carrying none of "
+            f"{''.join(sorted(INVALID_IN_NAME))!r}"
+        )
+        raise ArtifactError(msg)
+    return value
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class ArtifactStore:
     """What the forge keeps between jobs and between runs, keyed by run id.
 
     One directory per run, one directory per artifact name under it, holding
     what the uploading step's `path` held: a directory's contents at the
     artifact's root, as the real action stores them, and a file under its own
-    name.
+    name. A name and a run id are single path components, held to what the
+    real action accepts before either is joined to the store's root.
     """
 
     def __init__(self, root: Path) -> None:
         """Keep artifacts under `root`."""
         self.root = root
 
+    def _kept(self, run_id: str, name: str) -> Path:
+        """Where one artifact of one run is kept, once both names are ones the action takes."""
+        return self.root / component(run_id, "the run id") / component(name, "the artifact name")
+
     def names(self, run_id: str) -> list[str]:
         """Every artifact one run uploaded, by name."""
-        kept = self.root / run_id
+        kept = self.root / component(run_id, "the run id")
         return sorted(path.name for path in kept.iterdir()) if kept.is_dir() else []
 
     def read(self, run_id: str, name: str, relative: str) -> str:
         """One file of one artifact, as text."""
-        return (self.root / run_id / name / relative).read_text(encoding="utf-8")
+        return (self._kept(run_id, name) / relative).read_text(encoding="utf-8")
 
     def upload(self, run_id: str, name: str, path: Path) -> bool:
         """Keep what `path` holds under `name`, answering whether there was anything.
 
-        Nothing is kept for a path that is not there: the action warns that
-        no files were found and creates no artifact, and a download by that
-        name afterwards fails.
+        Nothing is kept for a path that is not there or a directory holding
+        nothing: the action warns that no files were found and creates no
+        artifact, and a download by that name afterwards fails.
+
+        Raises:
+            ArtifactError: If the name is not one the action takes, or the run
+                already holds an artifact under it — the action refuses a
+                second upload under a taken name rather than replacing the
+                first.
         """
-        if not path.exists():
+        kept = self._kept(run_id, name)
+        if not path.exists() or (path.is_dir() and not any(path.iterdir())):
             return False
-        kept = self.root / run_id / name
         if kept.exists():
-            shutil.rmtree(kept)
+            msg = (
+                f"Failed to CreateArtifact: an artifact with this name already exists on "
+                f"the workflow run: {name}"
+            )
+            raise ArtifactError(msg)
         if path.is_dir():
             shutil.copytree(path, kept)
         else:
@@ -211,13 +253,13 @@ class ArtifactStore:
         """Copy one artifact's contents into `into`.
 
         Raises:
-            LookupError: If that run uploaded no such artifact, in the words
+            ArtifactError: If that run uploaded no such artifact, in the words
                 the action fails with.
         """
-        kept = self.root / run_id / name
+        kept = self._kept(run_id, name)
         if not kept.is_dir():
             msg = f"Unable to download artifact(s): Artifact not found for name: {name}"
-            raise LookupError(msg)
+            raise ArtifactError(msg)
         shutil.copytree(kept, into, dirs_exist_ok=True)
 
     def download_matching(self, run_id: str, pattern: str, into: Path, *, merge: bool) -> None:
@@ -249,6 +291,7 @@ class Needed:
     outputs: dict[str, str]
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(frozen=True, slots=True)
 class Event:
     """What fired the run, as the `github` and `inputs` contexts show it.
@@ -735,31 +778,47 @@ class Runner:
             for key, value in (step.get("with") or {}).items()
         }
         run.boundaries.append(Boundary(uses, given))
-        if uses.startswith(UPLOAD):
-            self.artifacts.upload(
-                self.run_id, given.get("name", ""), self._resolved(given.get("path", ""))
-            )
+        if not uses.startswith((UPLOAD, DOWNLOAD)):
             return None
-        if uses.startswith(DOWNLOAD):
+        try:
+            if uses.startswith(UPLOAD):
+                where = self._resolved(given.get("path", ""), runner_temp)
+                self.artifacts.upload(self.run_id, given.get("name", ""), where)
+                return None
             run_id = given.get("run-id") or self.run_id
-            into = self._resolved(given.get("path", ""))
-            try:
-                if given.get("name"):
-                    self.artifacts.download(run_id, given["name"], into)
-                else:
-                    self.artifacts.download_matching(
-                        run_id,
-                        given.get("pattern", "*"),
-                        into,
-                        merge=given.get("merge-multiple", "false") == "true",
-                    )
-            except LookupError as absent:
-                return StepRun(f"uses: {uses}", 1, str(absent))
+            into = self._resolved(given.get("path", ""), runner_temp)
+            if given.get("name"):
+                self.artifacts.download(run_id, given["name"], into)
+            else:
+                self.artifacts.download_matching(
+                    run_id,
+                    given.get("pattern", "*"),
+                    into,
+                    merge=given.get("merge-multiple", "false") == "true",
+                )
+        except ArtifactError as failed:
+            return StepRun(f"uses: {uses}", 1, str(failed))
         return None
 
-    def _resolved(self, path: str) -> Path:
-        """A path an action was given, as the forge resolves it: against the checkout."""
-        return self.checkout / path if path else self.checkout
+    def _resolved(self, path: str, runner_temp: Path) -> Path:
+        """A path an action was given, as the forge resolves it: against the checkout.
+
+        Confined to the checkout and the job's own temporary directory, which
+        is everything a step of this repository's workflows writes: a path
+        an action was given anywhere else is refused rather than read or
+        written there.
+
+        Raises:
+            UnsupportedError: If the path resolves outside both.
+        """
+        resolved = (self.checkout / path).resolve() if path else self.checkout.resolve()
+        inside = (self.checkout.resolve(), runner_temp.resolve())
+        if not any(resolved == root or root in resolved.parents for root in inside):
+            msg = (
+                f"an artifact path `{path}` outside the checkout and the job's temp is not modelled"
+            )
+            raise UnsupportedError(msg)
+        return resolved
 
     def _step(
         self, job: Declared, step: Declared, contexts: Contexts, runner_temp: Path

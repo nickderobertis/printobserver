@@ -104,6 +104,7 @@ PUBLISH_UNGATED = (
     "    needs: [release, artifacts]\n",
 )
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 RELEASE_PLZ_STANDIN = """#!/bin/sh
 # A stand-in for the release program: what it would say, and none of what it
 # would reach. `release-pr` fails the way the wedged one did; `release` prints
@@ -135,6 +136,7 @@ case "$1" in
 esac
 """
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 JUST_STANDIN = """#!/bin/sh
 # The real `just`, except for the recipes RELEASE_STANDIN_RECORDED names, which
 # are written to RELEASE_STANDIN_RECORD instead of run — each with the version

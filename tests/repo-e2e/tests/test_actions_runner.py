@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from actions import (
+    ArtifactError,
     ArtifactStore,
     Boundary,
     Contexts,
@@ -514,14 +515,18 @@ def test_the_contexts_an_event_answers_are_the_forges(tmp_path: Path) -> None:
     )
 
 
-def test_an_upload_of_a_file_keeps_it_under_its_own_name(tmp_path: Path) -> None:
-    """A path naming one file, rather than a directory, is kept as that file."""
+def test_an_upload_of_a_file_keeps_it_under_its_own_name_and_a_second_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A path naming one file is kept as that file, and a taken name is not uploaded over."""
     store = ArtifactStore(tmp_path / "store")
     one = tmp_path / "one.txt"
     one.write_text("one\n", encoding="utf-8")
 
     truth(store.upload("14", "files", one), describing="the upload of a file")
-    truth(store.upload("14", "files", one), describing="an upload over an earlier one")
+    with pytest.raises(ArtifactError) as taken:
+        store.upload("14", "files", one)
+    contains(str(taken.value), "already exists", describing="the action's own refusal")
     into = tmp_path / "into"
     store.download("14", "files", into)
 
@@ -532,3 +537,51 @@ def test_an_upload_of_a_file_keeps_it_under_its_own_name(tmp_path: Path) -> None
         "one\n",
         describing="a pattern download that is not merged, each under its name",
     )
+
+
+def test_an_upload_of_a_path_holding_nothing_creates_no_artifact(tmp_path: Path) -> None:
+    """A missing path and an empty directory alike: the action finds no files and uploads none."""
+    store = ArtifactStore(tmp_path / "store")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    truth(not store.upload("15", "nothing", tmp_path / "missing"), describing="a missing path")
+    truth(not store.upload("15", "nothing", empty), describing="an empty directory")
+
+    equal(store.names("15"), [], describing="what the run holds")
+    with pytest.raises(ArtifactError, match="Artifact not found for name: nothing"):
+        store.download("15", "nothing", tmp_path / "into")
+
+
+@pytest.mark.parametrize("name", ["", ".", "..", "../escape", "a/b", "a\\b", "a:b", "a\nb"])
+def test_a_name_that_is_not_a_single_component_is_refused_before_it_touches_the_store(
+    name: str, tmp_path: Path
+) -> None:
+    """An artifact name and a run id are path components, held to what the action takes."""
+    store = ArtifactStore(tmp_path / "store")
+    one = tmp_path / "one.txt"
+    one.write_text("one\n", encoding="utf-8")
+
+    with pytest.raises(ArtifactError, match="not valid"):
+        store.upload("16", name, one)
+    with pytest.raises(ArtifactError, match="not valid"):
+        store.download(name, "files", tmp_path / "into")
+
+    equal(sorted(path.name for path in tmp_path.iterdir()), ["one.txt"], describing="the tree")
+
+
+def test_an_artifact_path_outside_the_checkout_and_the_temp_is_refused(tmp_path: Path) -> None:
+    """A step's artifact path is the checkout's or the job's temp, and nowhere else."""
+    workflow = tmp_path / "odd.yml"
+    workflow.write_text(
+        "jobs:\n  odd:\n    runs-on: x\n    steps:\n"
+        "      - uses: actions/upload-artifact@v4\n        with:\n"
+        "          name: escaped\n          path: ../../elsewhere\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "checkout").mkdir()
+
+    with pytest.raises(UnsupportedError) as refused:
+        Runner(workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
+
+    contains(str(refused.value), "elsewhere", describing="what it named")

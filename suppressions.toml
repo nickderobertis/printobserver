@@ -458,3 +458,27 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/release-artifacts/src/release_artifacts/publishing.py"
 site = "def publish_asset"
 reason = "The same ground as the entry for `StandInForge` in `tests/repo-e2e`: what is restated here is the forge's own asset API — a `DELETE` of an asset by id, a `POST` of its bytes to the release's own upload address — and the only thing that could reconcile it is uploading an asset to a real GitHub release, which no tier of this repository may do. GitHub publishes no machine-readable document these two routes could be generated from. What stands in the place of a gate is that the release path itself runs this code on every publication: the assets a release carries are put there by this function and by nothing else, and the install-path proof reads them back from the forge afterwards, so a route or a media type GitHub stopped accepting shows as a release with no assets and a proof that says so. `tools/release-artifacts/AGENTS.md` states that plainly rather than leaving a reader to infer the gate is elsewhere."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "class ArtifactStore:"
+reason = "The same ground as the entry for `Runner` above: what is restated is how `actions/upload-artifact` and `actions/download-artifact` keep and hand back files — a directory's contents at the artifact's root, a name the run already holds refused, a name nothing uploaded failing the download, a pattern matching nothing passing — and those two actions publish no machine-readable statement of that to generate from or reconcile against. The drift gate is the forge itself, and for this store it is a specific run: the dispatched release workflow uploads the record and the install-path workflow it triggers downloads it, so a semantic modelled here wrongly shows on the first dispatch as a `resolve` job that fails naming the artifact, beside the runner's own tests pinning each modelled rule over a workflow small enough to read against the actions' documentation."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "class Event:"
+reason = "The same ground as the two entries above it: the `github` and `inputs` contexts are documented prose with no machine-readable source, and the three shapes modelled here — `github.event_name`, `github.event.workflow_run.<field>` and `inputs.<name>` — are the ones the two committed workflows read and `actionlint` validates every `${{ }}` in them against the forge's own payload schema in `just lint-workflows`, so a field named wrongly in a workflow is refused there, and a field modelled wrongly here shows on the forge the first time the workflow runs under that event, which is every push and every dispatch."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RELEASE_PLZ_STANDIN = "
+reason = "The stand-in itself, beside the entry for the function that installs it: what the real `release-plz` does at this step is publish thirteen crates to crates.io and cut a tag and a release on github.com, which no journey may do. The layer under test is the committed workflow's own scheduling over the program's ANSWER, and the stand-in behaves as the real one does at the point that matters — its `release` prints the answer only when asked with `--output json`, its `release-pr` fails the way the wedged one did, and every invocation is recorded so that the dispatched shape can prove the program was never reached."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "JUST_STANDIN = "
+reason = "The other stand-in, and it is the real `just` for every recipe but the ones that reach outside this host or cost a release build: `publish-artifacts` publishes to PyPI, npm and the forge, the three `prove-registry-*` recipes read the real registries, and `build-artifacts` and `bootstrap` are a cold release build of the workspace per matrix cell. Each is recorded with the version it was handed rather than run, because what the journey asks is whether the workflow REACHED it and with which version — and `release-answer`, `release-dispatched`, `release-version` and `release-version-dispatched`, which are what the wiring under test turns on, are the real recipes over the real copy."

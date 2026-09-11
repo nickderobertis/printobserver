@@ -810,7 +810,7 @@ exercised only against the stand-in** in
 this repository may write to the real forge; the install-path workflow that
 runs after a release publishes is where it is first proven against GitHub.
 `just check-repo`'s `release-dispatch` holds both workflows to the dispatched
-shape, and `tools/release-artifacts/AGENTS.md` holds the rest.
+shape.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
