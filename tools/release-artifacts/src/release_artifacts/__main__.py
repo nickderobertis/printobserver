@@ -227,7 +227,12 @@ def _answered(arguments: argparse.Namespace) -> int:
             f"released: it is what `release-plz release --output json` was told to write"
         )
         raise RegistryError(msg)
-    tags = released_by(arguments.answer.read_text(encoding="utf-8"))
+    try:
+        answer = arguments.answer.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as unreadable:
+        msg = f"{arguments.answer} could not be read as the release program's answer: {unreadable}"
+        raise RegistryError(msg) from unreadable
+    tags = released_by(answer)
     print(f"{RELEASED_FIELD}={' '.join(tags)}")
     return 0
 

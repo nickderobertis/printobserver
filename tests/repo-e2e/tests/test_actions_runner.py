@@ -175,6 +175,33 @@ def test_an_expression_outside_the_modelled_grammar_is_refused_by_name(expressio
     contains(str(refused.value), expression.split()[0].rstrip("()"), describing="what it named")
 
 
+@pytest.mark.parametrize(
+    "written",
+    [
+        # A line with no `=` is not `name=value`.
+        "just-a-word",
+        # A line whose name is empty would keep a value under no name at all.
+        "=unnamed",
+    ],
+)
+def test_an_output_line_that_names_nothing_is_refused_by_its_text(
+    written: str, tmp_path: Path
+) -> None:
+    """An output the forge could not address is refused rather than kept under an empty name."""
+    workflow = tmp_path / "odd.yml"
+    workflow.write_text(
+        "jobs:\n  odd:\n    runs-on: x\n    steps:\n"
+        f"      - run: echo '{written}' >> \"$GITHUB_OUTPUT\"\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "checkout").mkdir()
+
+    with pytest.raises(UnsupportedError) as refused:
+        Runner(workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
+
+    contains(str(refused.value), written, describing="what it named")
+
+
 def test_a_step_construct_outside_the_modelled_set_is_refused_by_name(tmp_path: Path) -> None:
     """`continue-on-error` changes what a failure means, so it is refused rather than dropped."""
     workflow = tmp_path / "odd.yml"

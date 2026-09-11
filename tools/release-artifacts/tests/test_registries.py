@@ -1317,3 +1317,15 @@ def test_reading_what_was_released_without_the_answer_is_refused(
         describing="the exit an answer nothing wrote gets",
     )
     contains(capsys.readouterr().err, str(absent_file), describing="what it named")
+
+    # Bytes that are not text: the file is there, and reading it is what fails.
+    undecodable = tmp_path / "not-text.json"
+    undecodable.write_bytes(b"\xff\xfe{")
+    equal(
+        main(["answered", "--answer", str(undecodable)]),
+        1,
+        describing="the exit an answer that cannot be read as text gets",
+    )
+    captured = capsys.readouterr()
+    equal(captured.out, "", describing="the output a job would have read a field from")
+    contains(captured.err, str(undecodable), describing="what it named")

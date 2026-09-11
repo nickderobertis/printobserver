@@ -537,7 +537,7 @@ def _outputs(text: str) -> dict[str, str]:
             msg = "a multi-line `GITHUB_OUTPUT` value is not modelled"
             raise UnsupportedError(msg)
         name, separator, value = line.partition("=")
-        if not separator:
+        if not separator or not name.strip():
             msg = f"`GITHUB_OUTPUT` carries `{line}`, which is not `name=value`"
             raise UnsupportedError(msg)
         outputs[name.strip()] = value
