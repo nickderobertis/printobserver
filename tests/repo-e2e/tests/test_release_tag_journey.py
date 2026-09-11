@@ -53,11 +53,9 @@ from test_release_program import release_step_arguments
 #: the other, so they seed in either order.
 PUBLISHED_FIRST = ("printobserver-types", "printobserver-sdk")
 
-#: Where the forge stand-in is this repository.
+#: The repository the program is told it is releasing. It derives every API
+#: route from these, so the forge stand-in answers under this path and no other.
 OWNER, NAME = "nickderobertis", "printobserver"
-
-#: What GitHub answers a `POST …/git/refs` naming a ref it already holds.
-REFERENCE_EXISTS = "Reference already exists"
 
 #: What the program says of a package the registry already carries.
 ALREADY_PUBLISHED = "{crate} {version}: already published"
@@ -96,7 +94,6 @@ def minted() -> Credential:
     return Credential(secrets.token_hex(16))
 
 
-#: The kinds a dependency can be, as cargo spells them in a publish.
 DEPENDENCY_KINDS = ("normal", "build", "dev")
 
 #: The most a stand-in reads of one request body. A `.crate` of this workspace
@@ -217,9 +214,18 @@ def publishable_crates() -> tuple[str, ...]:
                 and (dependency.get("kind") is None or isinstance(dependency["kind"], str))
                 for dependency in package["dependencies"]
             )
+            # `publish` is null for a crate that may go anywhere, and a list
+            # of the registries it may go to — empty for `publish = false`.
+            and (
+                package.get("publish") is None
+                or (
+                    isinstance(package["publish"], list)
+                    and all(isinstance(registry, str) for registry in package["publish"])
+                )
+            )
             for package in listed
         ),
-        describing="`cargo metadata` to answer named packages with named, kinded dependencies",
+        describing="`cargo metadata` to answer named packages, each publishable, with kinded deps",
     )
     packages = {
         str(package["name"]): package for package in listed or [] if package.get("publish") != []
@@ -661,6 +667,10 @@ class StandInForge(_StandIn):
     the one the release of `0.2.0` died on.
     """
 
+    #: What GitHub answers a `POST …/git/refs` naming a ref it already holds —
+    #: part of this stand-in's restatement of GitHub, held with the rest of it.
+    REFERENCE_EXISTS = "Reference already exists"
+
     def __init__(self, record: Record) -> None:
         """Start as the forge was before the release: no tag, no ref, no release.
 
@@ -728,7 +738,7 @@ class StandInForge(_StandIn):
                     case "git/refs":
                         ref = str(document["ref"])
                         if ref in forge.refs:
-                            self.answer_json(422, {"message": REFERENCE_EXISTS})
+                            self.answer_json(422, {"message": forge.REFERENCE_EXISTS})
                             return
                         forge.refs.append(ref)
                         self.answer_json(201, {"ref": ref, "object": {"sha": document["sha"]}})
@@ -1008,7 +1018,7 @@ def test_the_forge_refuses_a_ref_it_already_holds() -> None:
         equal(posted()[0], 201, describing="the first ref")
         status, refusal = posted()
         equal(status, 422, describing="the second ref")
-        contains(refusal.decode(), REFERENCE_EXISTS, describing="the refusal's body")
+        contains(refusal.decode(), StandInForge.REFERENCE_EXISTS, describing="the refusal's body")
         equal(forge.refs, ["refs/tags/v9.9.9"], describing="the refs the forge holds")
     equal(
         record.of("forge", "POST"),
@@ -1051,7 +1061,6 @@ def test_the_registry_takes_only_a_publish_and_forwards_only_an_index_path() -> 
             status, said = opened(publish, data=body, method="PUT", authorization=authorization)
             return status, said.decode()
 
-        # Refused, each naming its own reason, and none of them taken.
         for authorization in ("", f"Bearer {registry.credential}"):
             status, said = put(framed(metadata, crate), authorization=authorization)
             equal(status, 403, describing=f"a publish under {authorization!r}")
@@ -1080,7 +1089,6 @@ def test_the_registry_takes_only_a_publish_and_forwards_only_an_index_path() -> 
             describing="the refused crate to be served by nothing",
         )
 
-        # Taken, and then served back exactly as cargo reads a registry.
         equal(put(framed(metadata, crate))[0], 200, describing="the well-formed publish")
         equal(registry.uploads, [("printobserver-types", "0.0.0-standin")], describing="uploads")
         status, line = opened(f"{registry.base}{sparse_path('printobserver-types')}")
