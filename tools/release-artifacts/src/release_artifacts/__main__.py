@@ -19,6 +19,8 @@ from release_artifacts.registries import (
     VERSION_FIELD,
     RegistryError,
     cut_at,
+    dispatched,
+    recorded,
     released_by,
     supported_version,
 )
@@ -43,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
             "standin",
             "released",
             "answered",
+            "dispatched",
+            "recorded",
             "list",
         ],
     )
@@ -98,6 +102,19 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="what `release-plz release --output json` answered, as the file it was written to",
     )
+    parser.add_argument(
+        "--tag",
+        default="",
+        metavar="TAG",
+        help="the existing release tag a hand-dispatched run builds and publishes",
+    )
+    parser.add_argument(
+        "--record",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="the record of which version a dispatched run published, written or read",
+    )
     parser.add_argument("--into", type=Path, default=Path("dist"))
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -131,6 +148,10 @@ def main(argv: list[str] | None = None) -> int:
                 return _released(repo, arguments)
             case "answered":
                 return _answered(arguments)
+            case "dispatched":
+                return _dispatched(repo, arguments)
+            case "recorded":
+                return _recorded(arguments)
             case "publish":
                 return _publish(repo, arguments)
             case "prove":
@@ -253,6 +274,51 @@ def _answered(arguments: argparse.Namespace) -> int:
         raise RegistryError(msg) from unreadable
     tags = released_by(answer)
     print(f"{RELEASED_FIELD}={' '.join(tags)}")
+    return 0
+
+
+def _dispatched(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Say which release a hand-dispatched run publishes, and record the version it names.
+
+    Answered as `released=<tag>`, the same line `answered` prints for a cut
+    release, so the jobs gated on that field read a dispatch and a push alike.
+    The record holds the one `version=<version>` line `released` prints, and is
+    what crosses to the install-path proof. Nothing is printed and nothing is
+    written for a tag that is refused: the job fails, and the jobs after it
+    are skipped rather than handed a tag nothing verified.
+    """
+    if not arguments.tag:
+        print("dispatched takes --tag <tag>: the existing release tag to publish", file=sys.stderr)
+        return 2
+    if arguments.record is None:
+        print(
+            "dispatched takes --record <path>: where to write the version it names",
+            file=sys.stderr,
+        )
+        return 2
+    version = dispatched(repo.root, arguments.tag)
+    arguments.record.parent.mkdir(parents=True, exist_ok=True)
+    arguments.record.write_text(f"{VERSION_FIELD}={version}\n", encoding="utf-8")
+    print(f"{RELEASED_FIELD}={arguments.tag.strip()}")
+    return 0
+
+
+def _recorded(arguments: argparse.Namespace) -> int:
+    """Say which version a dispatched run recorded, as `version=<version>`.
+
+    The one line the install-path proof's resolving job publishes its output
+    from after a dispatched run, exactly as `released` answers it after a push.
+    A record it cannot read is refused rather than answered as an empty field:
+    the route proofs skip on that field, and a proof skipped over an unreadable
+    record is a publish nobody checked.
+    """
+    if arguments.record is None:
+        print(
+            "recorded takes --record <path>: the record a dispatched run wrote",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"{VERSION_FIELD}={recorded(arguments.record)}")
     return 0
 
 

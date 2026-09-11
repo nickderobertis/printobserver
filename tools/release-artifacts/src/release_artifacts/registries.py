@@ -233,6 +233,16 @@ NEXT_CHECKOUT = (
     "Next: this needs a checkout carrying that commit and its tags — `fetch-depth: 0` on "
     "the job's own checkout step, or `git fetch --tags` on a clone made by hand."
 )
+#: And for a dispatch naming a tag the checkout cannot see. A dispatch names an
+#: EXISTING release tag, and a checkout without the tags — a shallow one —
+#: answers "no such tag" for one that exists, so the job's checkout must fetch
+#: them: that is the shape `fetch-depth: 0` gives, and nothing narrower does.
+NEXT_DISPATCH = (
+    "Next: a dispatch names an existing release tag, `v<major>.<minor>.<patch>`, that "
+    "release automation cut. If it does exist, this checkout carries no tags — a shallow "
+    "clone does not — and the job's checkout must fetch them: `fetch-depth: 0` on its own "
+    "checkout step, or `git fetch --tags` on a clone made by hand."
+)
 
 
 class RegistryError(RuntimeError):
@@ -492,6 +502,101 @@ def _tag_of(release: object) -> str:
         )
         raise RegistryError(msg)
     return tag
+
+
+def dispatched(root: Path, tag: str) -> str:
+    """The version an existing release tag names, once the tree at that tag agrees.
+
+    A hand-dispatched run of the release workflow builds and publishes the
+    artifacts of a release that was already cut, and the tag is the whole of
+    what the dispatcher names. Three things have to hold before anything is
+    built from it: the tag is one release automation writes, the checkout can
+    see it, and the workspace at that tag declares the version the tag names
+    — so that one tag's artifacts cannot land on another's release.
+
+    Raises:
+        RegistryError: If the tag is not `v<major>.<minor>.<patch>`; if no tag
+            of the checkout names it, which a shallow, tagless checkout answers
+            for every tag there is; or if the workspace manifest at that tag
+            declares a different version, or none a reader can find.
+    """
+    named = tag.strip()
+    version = supported_version(named)
+    if not TAG.match(named) or not version:
+        msg = (
+            f"`{named}` is not a release tag to dispatch a publish for: release automation "
+            f"writes `v<major>.<minor>.<patch>`, and a dispatch names one of those"
+        )
+        raise RegistryError(msg)
+    listed = run(["git", "tag", "--list"], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
+    if listed.returncode != 0:
+        msg = f"{root} could not be asked which tags it carries:\n{listed.stderr}\n{NEXT_DISPATCH}"
+        raise RegistryError(msg)
+    carried = listed.stdout.split()
+    if named not in carried:
+        seen = (
+            "carries no tags at all"
+            if not carried
+            else f"carries no tag `{named}` (it carries {', '.join(carried)})"
+        )
+        msg = f"{root} {seen}, so `{named}` names no release it can build.\n{NEXT_DISPATCH}"
+        raise RegistryError(msg)
+    shown = run(["git", "show", f"{named}:Cargo.toml"], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
+    if shown.returncode != 0:
+        msg = f"{root} could not read the workspace manifest at `{named}`:\n{shown.stderr}"
+        raise RegistryError(msg)
+    try:
+        declared = targets.workspace_of(shown.stdout.encode("utf-8"))["version"]
+    except (targets.TargetError, UnicodeDecodeError, ValueError) as undeclared:
+        msg = f"the workspace manifest at `{named}` declares no version to publish: {undeclared}"
+        raise RegistryError(msg) from undeclared
+    if declared != version:
+        msg = (
+            f"`{named}` names version {version}, and the workspace at that tag declares "
+            f"{declared}: a release's artifacts are built from the tree its tag names, and "
+            f"this tag's tree would build another release's"
+        )
+        raise RegistryError(msg)
+    return version
+
+
+def recorded(record: Path) -> str:
+    """The version a dispatched release's record holds: one `version=<version>` line.
+
+    The record is what crosses from the release workflow's dispatched run to
+    the install-path proof, so this is the proof's only source of which version
+    that run published. It is refused rather than read as "no version" where
+    it is anything but that one line, for the reason the release answer is: a
+    proof skipped over an unreadable record is a publish nobody checked.
+
+    Raises:
+        RegistryError: If the record is not there, cannot be read, holds more
+            than one line, or holds a line that is not the field and a
+            supported version.
+    """
+    if not record.is_file():
+        msg = (
+            f"{record} is not there, so nothing says which version the dispatched run "
+            f"published: it is the record `release-dispatched` writes"
+        )
+        raise RegistryError(msg)
+    try:
+        text = record.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as unreadable:
+        msg = f"{record} could not be read as a dispatched release's record: {unreadable}"
+        raise RegistryError(msg) from unreadable
+    lines = [line for line in text.splitlines() if line.strip()]
+    field, separator, value = lines[0].partition("=") if len(lines) == 1 else ("", "", "")
+    # Exactly what `release-dispatched` wrote: the field, and the version
+    # without a `v` before it, since that is what the proof is handed.
+    version = supported_version(value) if separator and field == VERSION_FIELD else ""
+    if not version or value != version:
+        msg = (
+            f"{record} does not hold the one `{VERSION_FIELD}=<version>` line a dispatched "
+            f"release's record carries:\n{text!r}"
+        )
+        raise RegistryError(msg)
+    return version
 
 
 def pypi_name(name: str) -> str:

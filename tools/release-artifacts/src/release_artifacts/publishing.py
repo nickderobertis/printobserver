@@ -24,6 +24,17 @@ not leave the artifacts after it unpublished. And the run fails at the end
 naming every refusal in the registry's own words, so that a `Scope not found`
 reads as that.
 
+**The version published is the workspace's, unless a dispatch names one.** A
+push-triggered run publishes at the version release automation wrote into the
+workspace, which is the tree the run checked out. A hand-dispatched run of the
+release workflow builds an existing tag's tree and publishes with the publisher
+at `main`, so the version it publishes arrives in `PRINTOBSERVER_PUBLISH_VERSION`
+rather than off the tree the publisher runs from. Whichever it is, `dist` is
+held to it before anything is written: a wheel whose file name or a package
+whose manifest carries another version is refused naming both, because the
+release tarballs carry none in their names and nothing else stops one tag's
+artifacts landing on another's release.
+
 **Every address a registry is read at or written to comes from `Bases`.** So
 with `PRINTOBSERVER_PROOF_REGISTRIES` set the whole publish lands on the
 stand-in `standin.py` stands up, and a journey can drive this real publisher
@@ -57,8 +68,17 @@ from release_artifacts.registries import (
     pypi_files,
     pypi_name,
     release_of,
+    supported_version,
 )
 from release_artifacts.targets import Target, declared, workspace
+from release_artifacts.wheels import version_of
+
+#: The version a dispatched run publishes, as the release workflow hands it in.
+#: `v0.2.0` and `0.2.0` are both taken; anything else is refused before any
+#: write. Empty or absent on a push, where the workspace's own version is it.
+#: `repo-policy.toml`'s `[release]` declares the name beside this one, and
+#: `just check-repo` holds the two to each other.
+PRINTOBSERVER_PUBLISH_VERSION = "PRINTOBSERVER_PUBLISH_VERSION"
 
 #: The environment each registry's own credential arrives in, which is also the
 #: repository secret it is carried by. One place spells them; `gh-secrets.json`
@@ -219,7 +239,8 @@ def publish(repo: Repo, dist: Path, environment: dict[str, str]) -> list[str]:
         if registry in registries
     }
     bases = Bases.read(repo, environment)
-    version = _version(repo)
+    version = _version(repo, environment)
+    _consistent(dist, version)
     publishing = _Run()
     if "pypi" in registries:
         for wheel in _built(dist, (".whl",)):
@@ -405,9 +426,55 @@ def publish_asset(bases: Bases, token: Token, release: Release, path: Path) -> b
     return True
 
 
-def _version(repo: Repo) -> str:
-    """The version release automation wrote into the workspace."""
-    return workspace(repo.root)["version"]
+def _version(repo: Repo, environment: dict[str, str]) -> str:
+    """The version to publish: the one a dispatch named, or the workspace's own.
+
+    Raises:
+        PublishError: If a dispatch named something that is not a version.
+    """
+    named = environment.get(PRINTOBSERVER_PUBLISH_VERSION, "").strip()
+    if not named:
+        return workspace(repo.root)["version"]
+    version = supported_version(named)
+    if not version:
+        msg = (
+            f"`{PRINTOBSERVER_PUBLISH_VERSION}={named}` names no version to publish: it is "
+            f"the tag or the version of an existing release, as `v0.1.0` or `0.1.0`"
+        )
+        raise PublishError(msg)
+    return version
+
+
+def _consistent(dist: Path, version: str) -> None:
+    """Every artifact in `dist` that says which version it is says this one.
+
+    A wheel says it in its file name and a package in its manifest; the
+    release tarballs say nothing, which is why the version is handed in rather
+    than read off `dist`. Checked before anything is written, because an
+    artifact of another version sent to this one's release is the state
+    nothing downstream can tell from a correct publish.
+
+    Raises:
+        PublishError: If any wheel or package carries another version.
+    """
+    carried: list[str] = []
+    for wheel in _built(dist, (".whl",)):
+        stated = version_of(wheel.name)
+        if stated != version:
+            carried.append(f"{wheel.name} is a wheel of {stated or 'no version at all'}")
+    for tarball in _built(dist, (".tgz",)):
+        package = Package.of(tarball)
+        if package.version != version:
+            carried.append(f"{tarball.name} is {package.id}")
+    if carried:
+        listed = "\n".join(f"- {line}" for line in carried)
+        msg = (
+            f"the version to publish is {version}, and {dist} holds artifacts of another "
+            f"one; nothing was sent, because one release's artifacts on another's "
+            f"release is the state nothing downstream can tell from a correct publish:\n"
+            f"{listed}"
+        )
+        raise PublishError(msg)
 
 
 def registries_of(repo: Repo) -> list[Target]:

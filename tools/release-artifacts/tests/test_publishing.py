@@ -26,12 +26,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from release_artifacts import targets
 from release_artifacts.__main__ import main
 from release_artifacts.build import CHECKSUMS, PROGRAM, manifest_of
 from release_artifacts.packages import digest_of
 from release_artifacts.platforms import host, supported
 from release_artifacts.publishing import (
     CREDENTIALS,
+    PRINTOBSERVER_PUBLISH_VERSION,
     Outcome,
     Package,
     PublishError,
@@ -839,3 +841,155 @@ def test_the_stand_in_refuses_what_it_cannot_be_told(version: str, registries: R
         registries.refuse("crate", "x", status=404, body=b"")
     with pytest.raises(StandinError, match="carries no asset"):
         registries.interrupted(f"v{version}", "x")
+
+
+#: A version no tree of this repository declares, for a tree whose workspace
+#: says it and a `dist` that does not.
+ELSEWHERE = "9.9.9"
+
+
+def _at(repo: Repo, tree: Path, version: str) -> Repo:
+    """A tree the publisher can run from, whose workspace declares `version`.
+
+    Everything `publish` reads off a tree — the target declaration, the policy
+    the registry addresses are composed from, and the workspace manifest — and
+    nothing else, so a run from here is a run from a tree at another version.
+    """
+    tree.mkdir(parents=True, exist_ok=True)
+    for name in ("release-targets.toml", "repo-policy.toml"):
+        (tree / name).write_bytes((repo.root / name).read_bytes())
+    manifest = (repo.root / "Cargo.toml").read_text(encoding="utf-8")
+    current = f'version = "{targets.workspace(repo.root)["version"]}"'
+    truth(current in manifest, describing="the workspace manifest to declare its version once")
+    (tree / "Cargo.toml").write_text(
+        manifest.replace(current, f'version = "{version}"', 1), encoding="utf-8"
+    )
+    equal(targets.workspace(tree)["version"], version, describing="the copy's own version")
+    return Repo(tree)
+
+
+@pytest.mark.parametrize("spelled", ["v{version}", "{version}"])
+def test_a_dispatched_version_is_published_rather_than_the_workspaces(
+    spelled: str,
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+    bases: Bases,
+    tmp_path: Path,
+) -> None:
+    """The publisher at `main` publishes an existing tag's artifacts at that tag's version.
+
+    Run from a tree whose workspace has moved on, `PRINTOBSERVER_PUBLISH_VERSION`
+    naming the tag or the version is what every artifact is published as —
+    proven against the same `dist` the tree's own version would refuse.
+    """
+    registries.release(f"v{version}")
+    moved_on = _at(repo, tmp_path / "moved-on", ELSEWHERE)
+    environment[PRINTOBSERVER_PUBLISH_VERSION] = spelled.format(version=version)
+
+    said = publish(moved_on, dist, environment)
+
+    artifacts = _artifacts(repo, dist, version)
+    equal(_outcomes(said), dict.fromkeys(artifacts, Outcome.PUBLISHED), describing="what was said")
+    for artifact, path in artifacts.items():
+        truth(_served(bases, artifact, path, version), describing=f"{artifact} to be served")
+    truth(
+        ELSEWHERE not in "".join(write.name for write in registries.written),
+        describing="nothing published under the workspace's own version",
+    )
+
+
+def test_a_dist_of_another_version_is_refused_before_anything_is_written(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+    tmp_path: Path,
+) -> None:
+    """One tag's artifacts on another's release is what nothing downstream can tell apart.
+
+    Nothing names the version to publish, so it is the workspace's, and this
+    `dist` was built at another: every wheel and package is named beside both
+    versions, and no registry is written.
+    """
+    registries.release(f"v{ELSEWHERE}")
+    moved_on = _at(repo, tmp_path / "moved-on", ELSEWHERE)
+
+    with pytest.raises(PublishError) as refused:
+        publish(moved_on, dist, environment)
+
+    said = str(refused.value)
+    contains(said, ELSEWHERE, describing="the version to publish")
+    contains(said, version, describing="the version dist carries")
+    for artifact in _artifacts(repo, dist, version):
+        registry, _, name = artifact.partition(" ")
+        if registry != "release":
+            contains(said, name.rpartition("@")[0] if registry == "npm" else name, describing=said)
+    equal(refused.value.said, (), describing="what was attempted before the refusal")
+    equal(registries.written, [], describing="what reached a registry")
+    absent([path.name for path in dist.iterdir()], ".npmrc", describing="the credential file")
+
+
+def test_one_wheel_of_another_version_is_refused_naming_it(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+) -> None:
+    """A single artifact out of step is enough, and it is the one named."""
+    registries.release(f"v{version}")
+    wheel = next(path for path in dist.iterdir() if path.name.startswith("printobserver_sdk"))
+    renamed = wheel.with_name(wheel.name.replace(version, ELSEWHERE, 1))
+    wheel.rename(renamed)
+
+    with pytest.raises(PublishError) as refused:
+        publish(repo, dist, environment)
+
+    contains(str(refused.value), renamed.name, describing="the wheel named")
+    contains(str(refused.value), f"is a wheel of {ELSEWHERE}", describing="its version")
+    equal(registries.written, [], describing="what reached a registry")
+
+
+@pytest.mark.parametrize("named", ["latest", "0.2", "v0.2.0-rc1", "v0.2.0 v0.3.0"])
+def test_a_dispatched_version_that_is_no_version_is_refused_before_anything_is_written(
+    named: str,
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+) -> None:
+    """What a dispatch hands in is a tag or a version, and anything else stops the run."""
+    registries.release(f"v{version}")
+    environment[PRINTOBSERVER_PUBLISH_VERSION] = named
+
+    with pytest.raises(PublishError) as refused:
+        publish(repo, dist, environment)
+
+    contains(str(refused.value), PRINTOBSERVER_PUBLISH_VERSION, describing="the variable named")
+    contains(str(refused.value), named, describing="what it was given")
+    equal(registries.written, [], describing="what reached a registry")
+
+
+def test_a_blank_dispatched_version_publishes_the_workspaces(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+) -> None:
+    """A push hands the publisher an empty variable, and that is the workspace's version."""
+    registries.release(f"v{version}")
+    environment[PRINTOBSERVER_PUBLISH_VERSION] = "  "
+
+    said = publish(repo, dist, environment)
+
+    equal(
+        _outcomes(said),
+        dict.fromkeys(_artifacts(repo, dist, version), Outcome.PUBLISHED),
+        describing="what was said",
+    )
