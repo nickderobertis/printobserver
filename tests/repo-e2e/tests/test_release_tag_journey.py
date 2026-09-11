@@ -253,7 +253,7 @@ def publishable_crates() -> tuple[str, ...]:
             and all(
                 dependency["name"] not in packages or dependency["name"] in ordered
                 for dependency in package["dependencies"]
-                if dependency["kind"] != "dev"
+                if dependency.get("kind") != "dev"
             )
         )
         truth(ready, describing=f"a crate whose dependencies are all ordered: {ordered}")
