@@ -168,7 +168,7 @@ def publishable_crates() -> tuple[str, ...]:
 
 
 class Request(NamedTuple):
-    """One request a stand-in took."""
+    """One request a stand-in took, and which stand-in it was."""
 
     who: str
     method: str
@@ -183,15 +183,19 @@ class Taken(NamedTuple):
 
 
 class Record:
-    """One ordered record of every request either stand-in took."""
+    """One ordered record shared by both stand-ins.
+
+    Ordering across the registry and the forge is asserted from positions in
+    this one sequence, rather than from two records and their timestamps.
+    """
 
     def __init__(self) -> None:
-        """Start empty."""
+        """Start with no request taken."""
         self.entries: list[Request] = []
         self._lock = threading.Lock()
 
     def note(self, who: str, method: str, path: str) -> None:
-        """Append one request."""
+        """Take one request, under the lock both stand-ins' threads share."""
         with self._lock:
             self.entries.append(Request(who, method, path))
 
@@ -290,7 +294,7 @@ class StandInRegistry(_StandIn):
     """
 
     def __init__(self, record: Record, owned: tuple[str, ...]) -> None:
-        """Own `owned`, carrying nothing yet."""
+        """Own `owned` — every crate the workspace publishes — and carry none of them yet."""
         self.owned = set(owned)
         self.uploads: list[tuple[str, str]] = []
         self._crates: dict[tuple[str, str], bytes] = {}
@@ -324,7 +328,7 @@ class StandInRegistry(_StandIn):
         return {f"CARGO_REGISTRIES_{STANDIN.upper()}_TOKEN": self.credential}
 
     def carries(self, name: str, version: str) -> bool:
-        """Whether an upload of `name` at `version` was taken."""
+        """Whether `name` at `version` would be served: an upload of it was taken."""
         return (name, version) in self._crates
 
     def take(self, payload: bytes) -> tuple[str, str]:
@@ -477,7 +481,7 @@ class StandInForge(_StandIn):
     """
 
     def __init__(self, record: Record) -> None:
-        """Start holding no ref and no release."""
+        """Start as the forge was before the release: no tag, no ref, no release."""
         self.refs: list[str] = []
         self.releases: list[dict[str, object]] = []
         self.tags: list[dict[str, object]] = []
