@@ -7,11 +7,11 @@ ANSWERED rather than on its exit status: the workflow runs it with `--output
 json`, `just release-cut` reads that answer into a job output, and the artifact
 build and the artifact publish run on that output being non-empty.
 
-These journeys read the committed workflow for which job publishes, which
-recipe reads its answer and what the artifact jobs are gated on, and then drive
-that recipe for both answers — a release having been cut and none having been
-cut — and for an answer it must refuse. The check that holds the workflow to
-all of it is driven over a copy carrying the defect each rule refuses.
+These journeys drive that recipe for both answers — a release having been cut
+and none having been cut — and for every answer it must refuse, and drive `just
+check-repo` over the committed tree and over copies carrying each defect the
+`release-gating` rule refuses: a publishing job that waits on the drafting job,
+and an artifact build that no longer reads the answer.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -22,13 +22,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
-import yaml
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, pythonpath
-from repo_checks.checks_release import DRAFTING, PUBLISHING
-from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from release_artifacts.registries import RELEASE_ANSWER_SAMPLE
+from repo_checks.expect import equal, failing, passing, truth
 from repo_checks.model import Repo
 
 WORKFLOW = ".github/workflows/release-plz.yml"
@@ -41,50 +39,33 @@ RECIPE_TIMEOUT_SECONDS = 300
 DECLARED = Repo(REPO_ROOT).policy["release"]
 
 
-def _release(package: str, version: str) -> dict[str, object]:
-    """One package as `release-plz release --output json` reports having released it."""
-    return {"package_name": package, "prs": [], "tag": f"v{version}", "version": version}
+def answer(*versions: str) -> str:
+    """What `release-plz release --output json` answers having released `versions`.
+
+    Built from the one recorded sample rather than written here, so a fixture
+    cannot drift from the reader on its own.
+    """
+    recorded = json.loads((REPO_ROOT / RELEASE_ANSWER_SAMPLE).read_text(encoding="utf-8"))
+    entry = recorded["releases"][0]
+    return json.dumps(
+        {
+            "releases": [
+                {**entry, "package_name": f"printobserver-{index}", "tag": f"v{v}", "version": v}
+                for index, v in enumerate(versions)
+            ]
+        }
+    )
 
 
-#: One job as the YAML reader hands it back: its keys are the workflow
-#: author's own, so there is no narrower shape to read it as.
-Job = dict[str, Any]
-
-
-def jobs() -> dict[str, Job]:
-    """The committed release workflow's jobs."""
-    workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
-    return dict(workflow["jobs"])
-
-
-def job_running(command: str) -> str:
-    """The one committed job with a step running `command`, whole or as its first words."""
-    running = [
-        name
-        for name, job in jobs().items()
-        for step in job["steps"]
-        if str(step.get("run", "")).strip() == command
-        or str(step.get("run", "")).strip().startswith(f"{command} ")
-    ]
-    equal(len(running), 1, describing=f"the jobs running `{command}`: {running}")
-    return running[0]
-
-
-def needs(job: Job) -> list[str]:
-    """The jobs a job waits on, however the workflow spells them."""
-    match job.get("needs"):
-        case str() as one:
-            return [one]
-        case list() as several:
-            return [str(name) for name in several]
-        case _:
-            return []
-
-
-def cut(answer: str, into: Path) -> tuple[int, str]:
-    """Drive the recipe the publishing job reads its answer with, over `answer`."""
+def cut(answered: str, into: Path) -> tuple[int, str]:
+    """Drive the recipe the publishing job reads its answer with, over `answered`."""
     written = into / "released.json"
-    written.write_text(answer, encoding="utf-8")
+    written.write_text(answered, encoding="utf-8")
+    return cut_file(written)
+
+
+def cut_file(written: Path) -> tuple[int, str]:
+    """Drive the recipe over the file the release step would have written."""
     result = capture(
         ["just", str(DECLARED["cut_recipe"]), str(written)],
         REPO_ROOT,
@@ -92,33 +73,6 @@ def cut(answer: str, into: Path) -> tuple[int, str]:
         env=clean_environment(PYTHONPATH=pythonpath()),
     )
     return result.returncode, output(result)
-
-
-def test_publishing_waits_on_no_drafting_and_the_artifacts_wait_on_its_answer() -> None:
-    """The committed workflow's shape, read off the commands its jobs run.
-
-    The drafting job computes each package's difference against the registry
-    and can die doing it, so the publishing job does not wait on it. And both
-    artifact jobs wait on the publishing job and are gated on the output it
-    publishes its answer under — not on its result, which is success whether
-    or not it released anything.
-    """
-    publishing = job_running(PUBLISHING)
-    drafting = job_running(DRAFTING)
-    field = str(DECLARED["cut_output"])
-    declared = jobs()
-
-    absent(needs(declared[publishing]), drafting, describing=f"what `{publishing}` waits on")
-    published = " ".join(str(declared[publishing]["outputs"][field]).split())
-    contains(published, f".outputs.{field}", describing=f"where `{publishing}` reads `{field}`")
-
-    gate = f"needs.{publishing}.outputs.{field} != ''"
-    for recipe in (DECLARED["build_recipe"], DECLARED["publish_recipe"]):
-        name = job_running(f"just {recipe}")
-        contains(needs(declared[name]), publishing, describing=f"what `{name}` waits on")
-        condition = " ".join(str(declared[name].get("if", "")).split())
-        contains(condition, gate, describing=f"what `{name}` is gated on")
-        absent(condition, ".result", describing=f"`{name}` not to be gated on a result")
 
 
 @pytest.mark.parametrize(
@@ -134,11 +88,7 @@ def test_a_run_that_cut_a_release_answers_a_field_the_artifact_jobs_run_on(
     versions: tuple[str, ...], answered: str, tmp_path: Path
 ) -> None:
     """A run that released something answers a non-empty field, one line, nothing beside it."""
-    answer = json.dumps(
-        {"releases": [_release(f"printobserver-{index}", v) for index, v in enumerate(versions)]}
-    )
-
-    code, said = cut(answer, tmp_path)
+    code, said = cut(answer(*versions), tmp_path)
 
     passing((code, said), describing=f"`just {DECLARED['cut_recipe']}` over a cut release")
     equal(
@@ -150,7 +100,7 @@ def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_o
     tmp_path: Path,
 ) -> None:
     """Every ordinary push finishes a release run that released nothing, exiting zero."""
-    code, said = cut(json.dumps({"releases": []}), tmp_path)
+    code, said = cut(answer(), tmp_path)
 
     passing((code, said), describing=f"`just {DECLARED['cut_recipe']}` over no release")
     equal(
@@ -161,23 +111,22 @@ def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_o
 
 
 @pytest.mark.parametrize(
-    ("answer", "named"),
+    ("answered", "named"),
     [
         ("release-plz wrote something else here", "not JSON"),
         (json.dumps({"something": "else"}), "no `releases` list"),
-        (
-            json.dumps({"releases": [{"package_name": "printobserver", "version": "0.4.0"}]}),
-            "no tag",
-        ),
+        (answer("0.4.0").replace('"tag": "v0.4.0", ', ""), "no tag"),
         # A tag with a newline in it would write a second output nothing named.
-        (json.dumps({"releases": [_release("printobserver", "0.4.0\nextra=1")]}), "not one"),
+        (answer("0.4.0\nextra=1"), "not one"),
+        # A version is not a tag: release automation writes `v` before it.
+        (answer("0.4.0").replace("v0.4.0", "0.4.0"), "not one"),
     ],
 )
 def test_an_answer_the_release_program_does_not_write_fails_the_job_rather_than_skipping(
-    answer: str, named: str, tmp_path: Path
+    answered: str, named: str, tmp_path: Path
 ) -> None:
     """Read as "released nothing", an unreadable answer would skip the publish of a cut release."""
-    code, said = cut(answer, tmp_path)
+    code, said = cut(answered, tmp_path)
 
     failing((code, said), naming=named)
     truth(
@@ -189,44 +138,47 @@ def test_an_answer_the_release_program_does_not_write_fails_the_job_rather_than_
 def test_an_answer_the_release_program_never_wrote_fails_the_job(tmp_path: Path) -> None:
     """A release step that wrote no answer file is a step whose answer nothing can read."""
     never_written = tmp_path / "never-written.json"
-    result = capture(
-        ["just", str(DECLARED["cut_recipe"]), str(never_written)],
-        REPO_ROOT,
-        timeout=RECIPE_TIMEOUT_SECONDS,
-        env=clean_environment(PYTHONPATH=pythonpath()),
-    )
+
+    result = cut_file(never_written)
 
     failing(result, naming=str(never_written))
+
+
+def test_the_committed_release_path_is_accepted_by_the_gate(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """Publishing waits on no drafting and the artifacts follow the answer, as committed."""
+    clean = gate_copy()
+
+    result = clean.just("check-repo")
+
+    passing(result)
 
 
 def test_a_publishing_job_that_waits_on_the_drafting_job_is_refused_by_the_gate(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
     """The state this repair undid — publishing chained behind drafting — cannot come back."""
-    publishing = job_running(PUBLISHING)
-    drafting = job_running(DRAFTING)
     broken = gate_copy()
     broken.edit(
         WORKFLOW,
-        f"  {publishing}:\n    name: {publishing}\n",
-        f"  {publishing}:\n    name: {publishing}\n    needs: {drafting}\n",
+        "  release:\n    name: release\n",
+        "  release:\n    name: release\n    needs: release-pr\n",
     )
 
     result = broken.just("check-repo")
 
-    failing(result, naming=f"waits on `{drafting}`, which drafts the next one")
+    failing(result, naming="waits on `release-pr`, which drafts the next one")
 
 
 def test_an_artifact_build_that_no_longer_reads_the_answer_is_refused_by_the_gate(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
     """A build chained behind the release unconditionally runs on every push."""
-    publishing = job_running(PUBLISHING)
-    field = str(DECLARED["cut_output"])
     broken = gate_copy()
     broken.edit(
         WORKFLOW,
-        f"    if: needs.{publishing}.outputs.{field} != ''\n    strategy:\n",
+        f"    if: needs.release.outputs.{DECLARED['cut_output']} != ''\n    strategy:\n",
         "    strategy:\n",
     )
 

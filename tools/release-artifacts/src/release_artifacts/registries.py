@@ -113,6 +113,19 @@ VERSION_FIELD = "version"
 #: version they already serve.
 RELEASED_FIELD = "released"
 
+#: The tag release automation writes — `release-plz.toml`'s `git_tag_name` is
+#: `v{{ version }}` — and so the only tag the release program's answer may
+#: carry. Narrower than `SUPPORTED` on purpose: a version is not a tag.
+TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+
+#: What `release-plz release --output json` answers, as this repository has it
+#: on record: one `releases` list with an entry per package released, each
+#: carrying `package_name`, `prs`, `tag` and `version` — the `Release` and
+#: `PackageRelease` structs of `crates/release_plz_core/src/command/release.rs`
+#: at release-plz 0.3.160. The reader below and every fixture the suites build
+#: read this one file, so the shape is written down once.
+RELEASE_ANSWER_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release.json")
+
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
 
@@ -336,11 +349,10 @@ def cut_at(root: Path, commit: str) -> str:
 def released_by(answer: str) -> tuple[str, ...]:
     """The tags `release-plz release --output json` says it released, in order.
 
-    That answer is one JSON object, `{"releases": [...]}`, with one entry per
-    package released carrying its `package_name`, `tag` and `version` — and an
-    empty list where the run released nothing. A workspace releasing thirteen
-    crates under one version names one tag thirteen times, so what is answered
-    is the distinct tags, each once.
+    That answer is the shape `RELEASE_ANSWER_SAMPLE` records, with an empty
+    `releases` list where the run released nothing. A workspace releasing
+    thirteen crates under one version names one tag thirteen times, so what is
+    answered is the distinct tags, each once.
 
     Raises:
         RegistryError: If the answer is not one that program writes. An answer
@@ -370,7 +382,7 @@ def released_by(answer: str) -> tuple[str, ...]:
         # Narrowed to a tag release automation writes before it reaches a job
         # output file: that file is read a line at a time as `name=value`, so
         # a tag carrying a newline would write a second output nothing named.
-        if not SUPPORTED.match(tag):
+        if not TAG.match(tag):
             msg = (
                 f"a release in the release program's answer names the tag {tag!r}, which is "
                 f"not one release automation writes (`v<major>.<minor>.<patch>`)"

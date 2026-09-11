@@ -780,16 +780,14 @@ version they already serve — so `artifacts` and `publish` are gated on what it
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
 
-**The rule above has one recorded exception.** The workspace was moved from
-`0.1.0` to `0.2.0` by hand on 2026-09-10, because release automation could not
-move it: its first run had published two content-free scaffold crates at `0.1.0`
-and tagged `v0.1.0`, and `release-plz release-pr` refuses to draft for a package
-the registry does not carry while a tag naming its version exists — which wedged
-every run after it. A version no crate had served and no tag named let all
-thirteen release coherently at once, leaving nothing on a public registry as a
-lever. Control returned to release automation with that commit, and
-`tests/repo-e2e/tests/test_release_path_journey.py` refuses a tree that returns
-to a tagged version.
+**The rule above has one recorded exception, and it is closed.** `0.1.0` →
+`0.2.0` was written by hand on 2026-09-10, because `release-plz release-pr`
+cannot draft while a tag names a version some publishable crate never published
+— the state the first run left, with two scaffold crates at `0.1.0` and eleven
+absent. Every version after it is release automation's. Do not repeat this to
+unstick a run: `tests/repo-e2e/tests/test_release_path_journey.py` drives the
+drafting tool against a stand-in registry and refuses a tree at a tagged
+version, which is the state to fix instead.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
