@@ -65,8 +65,8 @@ ALREADY_PUBLISHED = "{crate} {version}: already published"
 #: What the program says when the forge refuses the ref, naming it.
 FAILED_REF = "failed to create ref refs/tags/v"
 
-#: The edits that put today's configuration back: creation on for every
-#: package, exactly as `main` carries it.
+#: The edits that put the former configuration back — creation on for every
+#: package — which is the one the `0.2.0` release died under.
 CREATION_EVERYWHERE = (
     ("git_tag_enable = false\ngit_release_enable = false\n", ""),
     (
@@ -98,14 +98,22 @@ pytestmark = pytest.mark.skipif(
 
 
 def opened(
-    url: str, *, data: bytes | None = None, method: str = "GET", timeout: int = 60
+    url: str,
+    *,
+    data: bytes | None = None,
+    method: str = "GET",
+    credential: str = "",
+    timeout: int = 60,
 ) -> tuple[int, bytes]:
     """One HTTP exchange, as a status and a body, whatever the status was.
 
     The one place this module opens a URL: the stand-in registry forwarding a
-    read to crates.io, and the journey that drives the stand-in forge directly.
+    read to crates.io, and the journey that drives the stand-in forge directly
+    — which sends `credential` as GitHub's bearer token where it gives one.
     """
     headers = {"User-Agent": "printobserver-repo-e2e (stand-in registry)"}
+    if credential:
+        headers["Authorization"] = f"Bearer {credential}"
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(url, data=data, method=method, headers=headers)  # noqa: S310
     try:
@@ -321,6 +329,9 @@ class StandInRegistry(_StandIn):
         never seen it would, rather than reaching crates.io for it.
         """
         self.owned = set(owned)
+        #: The one credential this registry takes an upload under: minted per
+        #: stand-in, so it is nothing a source file carries.
+        self.credential = secrets.token_hex(16)
         self.uploads: list[tuple[str, str]] = []
         self._crates: dict[tuple[str, str], bytes] = {}
         self._index: dict[str, list[dict[str, object]]] = {}
@@ -344,9 +355,6 @@ class StandInRegistry(_StandIn):
             f'[source.{STANDIN}]\nregistry = "{self.index}"\n\n'
             f'[registries.{STANDIN}]\nindex = "{self.index}"\n'
         )
-
-    #: The one credential this registry takes an upload under.
-    credential = "stand-in-credential"
 
     def environment(self) -> dict[str, str]:
         """The credential, in the one variable `cargo publish --registry` reads it from.
@@ -518,6 +526,9 @@ class StandInForge(_StandIn):
         self.refs: list[str] = []
         self.releases: list[dict[str, object]] = []
         self.tags: list[dict[str, object]] = []
+        #: What the program authenticates to this forge with: minted per
+        #: stand-in, and required on every write, as GitHub requires it.
+        self.credential = secrets.token_hex(16)
         super().__init__(record, "forge")
 
     @property
@@ -547,10 +558,13 @@ class StandInForge(_StandIn):
                 self.answer_json(404, {"message": "Not Found"})
 
             def do_POST(self) -> None:
-                """A tag object, a ref, or a release."""
+                """A tag object, a ref, or a release — each only under the forge's credential."""
                 forge.record.note(forge.who, "POST", self.path)
                 payload = self.body()
                 if payload is None:
+                    return
+                if self.headers.get("Authorization", "").split()[-1:] != [forge.credential]:
+                    self.answer_json(401, {"message": "Bad credentials"})
                     return
                 try:
                     document = json.loads(payload or b"{}")
@@ -673,7 +687,7 @@ class Stage:
                 "--repo-url",
                 self.forge.repo_url,
                 "--git-token",
-                "stand-in-forge-token",
+                self.forge.credential,
                 "--no-verify",
             ],
             self.copy.root,
@@ -791,7 +805,7 @@ def test_a_fully_published_version_releases_nothing_and_writes_nothing(
 def test_creation_enabled_for_every_package_dies_on_the_second_ref(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
-    """Today's configuration, put back: the release stops on the second package's tag.
+    """The former configuration, put back: the release stops on the second package's tag.
 
     The same seeded registry and clean forge, over a copy whose release
     configuration lets every package create the tag. The program dies naming
@@ -831,22 +845,29 @@ def test_the_forge_refuses_a_ref_it_already_holds() -> None:
     """A second `POST …/git/refs` for one ref answers `422 Reference already exists`.
 
     This is the stand-in's own behaviour, held here because the case above
-    means nothing without it.
+    means nothing without it — and a write carrying no credential takes
+    nothing, so the case above cannot have tagged under one the program did
+    not send.
     """
     record = Record()
     with StandInForge(record) as forge:
         url = f"{forge.base}/api/v3/repos/{OWNER}/{NAME}/git/refs"
         body = json.dumps({"ref": "refs/tags/v9.9.9", "sha": "0" * 40}).encode()
-        equal(opened(url, data=body, method="POST")[0], 201, describing="the first ref")
-        status, refusal = opened(url, data=body, method="POST")
+        equal(
+            opened(url, data=body, method="POST")[0], 401, describing="a write with no credential"
+        )
+        equal(forge.refs, [], describing="the refs the forge holds after a refused write")
+
+        def posted() -> tuple[int, bytes]:
+            return opened(url, data=body, method="POST", credential=forge.credential)
+
+        equal(posted()[0], 201, describing="the first ref")
+        status, refusal = posted()
         equal(status, 422, describing="the second ref")
         contains(refusal.decode(), REFERENCE_EXISTS, describing="the refusal's body")
         equal(forge.refs, ["refs/tags/v9.9.9"], describing="the refs the forge holds")
     equal(
         record.of("forge", "POST"),
-        [
-            (0, f"/api/v3/repos/{OWNER}/{NAME}/git/refs"),
-            (1, f"/api/v3/repos/{OWNER}/{NAME}/git/refs"),
-        ],
+        [(position, f"/api/v3/repos/{OWNER}/{NAME}/git/refs") for position in range(3)],
         describing="what the record holds",
     )
