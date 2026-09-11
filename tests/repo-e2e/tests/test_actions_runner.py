@@ -214,12 +214,24 @@ def test_a_step_shape_outside_the_modelled_set_is_refused_before_anything_runs(
     contains(str(refused.value), named, describing="what it named")
 
 
-def test_a_file_that_is_not_a_workflow_is_refused(tmp_path: Path) -> None:
-    """Nothing is read off a document that carries no mapping of jobs."""
+@pytest.mark.parametrize(
+    ("document", "named"),
+    [
+        ("- not a workflow\n", "no mapping of jobs"),
+        ("jobs:\n  odd:\n    needs: {a: b}\n    steps: []\n", "not the shape the forge reads"),
+        ("jobs:\n  odd:\n    steps:\n      - just a string\n", "not a mapping"),
+        ("jobs:\n  odd:\n    steps:\n      - name: neither\n", "exactly one of"),
+        ("jobs:\n  odd:\n    timeout-minutes: 5\n    steps: []\n", "timeout-minutes"),
+    ],
+)
+def test_a_document_outside_the_workflow_shape_is_refused_before_anything_runs(
+    document: str, named: str, tmp_path: Path
+) -> None:
+    """The boundary is the file: what is not shaped as the forge reads it is refused there."""
     workflow = tmp_path / "odd.yml"
-    workflow.write_text("- not a workflow\n", encoding="utf-8")
+    workflow.write_text(document, encoding="utf-8")
 
     with pytest.raises(UnsupportedError) as refused:
         Runner(workflow, tmp_path, path_first=tmp_path, env=clean_environment())
 
-    contains(str(refused.value), "no mapping of jobs", describing="what it named")
+    contains(str(refused.value), named, describing="what it named")

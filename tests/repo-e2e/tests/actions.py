@@ -362,13 +362,55 @@ def _refuse_unknown(mapping: Declared, allowed: frozenset[str], what: str) -> No
         raise UnsupportedError(msg)
 
 
+#: The shape each job key this runner reads must have, checked once at the
+#: boundary so that nothing below meets a value it did not expect.
+JOB_SHAPES: dict[str, type | tuple[type, ...]] = {
+    "needs": (str, list),
+    "if": str,
+    "outputs": dict,
+    "steps": list,
+    "strategy": dict,
+    "env": dict,
+}
+STEP_SHAPES: dict[str, type | tuple[type, ...]] = {
+    "id": str,
+    "run": str,
+    "uses": str,
+    "with": dict,
+    "env": dict,
+    "if": str,
+}
+
+
+def _shaped(mapping: Declared, shapes: dict[str, type | tuple[type, ...]], what: str) -> None:
+    """Every key `shapes` names carries a value of that shape, or the workflow is refused."""
+    for key, shape in shapes.items():
+        if key in mapping and not isinstance(mapping[key], shape):
+            msg = (
+                f"{what} carries `{key}: {mapping[key]!r}`, which is not the shape the forge reads"
+            )
+            raise UnsupportedError(msg)
+
+
 def _jobs(workflow: Path) -> dict[str, Declared]:
-    """The workflow's jobs, once the file is a workflow at all."""
+    """The workflow's jobs, once the file is a workflow at all and each job is shaped as one."""
     data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, dict) or not all(isinstance(job, dict) for job in jobs.values()):
         msg = f"{workflow} is not a workflow: it carries no mapping of jobs"
         raise UnsupportedError(msg)
+    for name, job in jobs.items():
+        _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
+        _shaped(job, JOB_SHAPES, f"job `{name}`")
+        for step in job.get("steps") or []:
+            if not isinstance(step, dict):
+                msg = f"job `{name}` carries a step that is not a mapping: {step!r}"
+                raise UnsupportedError(msg)
+            _refuse_unknown(step, STEP_KEYS, f"a step of job `{name}`")
+            _shaped(step, STEP_SHAPES, f"a step of job `{name}`")
+            if ("run" in step) == ("uses" in step):
+                msg = f"a step of job `{name}` must carry exactly one of `run` and `uses`"
+                raise UnsupportedError(msg)
     return {str(name): job for name, job in jobs.items()}
 
 
@@ -420,7 +462,6 @@ class Runner:
         return WorkflowRun(done)
 
     def _job(self, name: str, job: Declared, done: dict[str, JobRun]) -> JobRun:
-        _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
         needs = _needs(job)
         if any(done[needed].result is not Result.SUCCESS for needed in needs):
             return JobRun(Result.SKIPPED)
@@ -439,7 +480,6 @@ class Runner:
             # writes there is what the step after it reads.
             with tempfile.TemporaryDirectory(prefix="runner-temp-") as runner_temp:
                 for step in job.get("steps") or []:
-                    _refuse_unknown(step, STEP_KEYS, f"a step of job `{name}`")
                     if "if" in step:
                         msg = f"a step condition on job `{name}` is not modelled"
                         raise UnsupportedError(msg)
