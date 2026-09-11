@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -70,10 +71,13 @@ CREDENTIALS = {
 #: How long any one publish is given.
 PUBLISH_TIMEOUT_SECONDS = 900
 
-#: What one line of the answer says happened to one artifact.
-PUBLISHED = "published"
-ALREADY_PUBLISHED = "already published"
-REFUSED = "refused"
+
+class Outcome(StrEnum):
+    """What one line of the answer says happened to one artifact."""
+
+    PUBLISHED = "published"
+    ALREADY_PUBLISHED = "already published"
+    REFUSED = "refused"
 
 
 class PublishError(RuntimeError):
@@ -99,6 +103,34 @@ class Refusal:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class Package:
+    """One packed package of the JavaScript registry, as its own manifest names it."""
+
+    name: str
+    version: str
+
+    @property
+    def id(self) -> str:
+        """`<name>@<version>`, which is how the registry and a publish name one."""
+        return f"{self.name}@{self.version}"
+
+    @classmethod
+    def of(cls, tarball: Path) -> Package:
+        """What one tarball says it is, read from the `package.json` inside it.
+
+        Raises:
+            PublishError: If that manifest names no package, which is a
+                tarball nothing here can ask a registry about.
+        """
+        manifest = manifest_of(tarball)
+        name, version = manifest.get("name"), manifest.get("version")
+        if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
+            msg = f"{tarball} carries a manifest naming no package and version to publish"
+            raise PublishError(msg)
+        return cls(name, version)
+
+
 @dataclass(slots=True)
 class _Run:
     """What one run of the publisher has said and been refused so far."""
@@ -114,10 +146,10 @@ class _Run:
         the read that asks it, refused.
         """
         try:
-            outcome = PUBLISHED if publishing() else ALREADY_PUBLISHED
+            outcome = Outcome.PUBLISHED if publishing() else Outcome.ALREADY_PUBLISHED
         except (PublishError, RegistryError) as refused:
             self.refused.append(Refusal(registry, artifact, str(refused)))
-            outcome = REFUSED
+            outcome = Outcome.REFUSED
         self.said.append(f"{registry}\t{artifact}\t{outcome}")
 
 
@@ -198,12 +230,12 @@ def publish(repo: Repo, dist: Path, environment: dict[str, str]) -> list[str]:
         npmrc.write_text(npmrc_line(bases, tokens["npm"]), encoding="utf-8")
         try:
             for tarball in _built(dist, (".tgz",)):
-                manifest = manifest_of(tarball)
+                package = Package.of(tarball)
                 publishing.attempt(
                     "npm",
-                    f"{manifest['name']}@{manifest['version']}",
-                    lambda tarball=tarball, manifest=manifest: publish_package(
-                        repo, bases, tarball, manifest, npmrc, environment
+                    package.id,
+                    lambda tarball=tarball, package=package: publish_package(
+                        repo, bases, tarball, package, npmrc, environment
                     ),
                 )
         finally:
@@ -236,6 +268,7 @@ def publish_wheel(
     name = pypi_name(wheel.name.partition("-")[0])
     if wheel.name in pypi_files(bases, name, version):
         return False
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     _ran(
         ["uv", "publish", "--publish-url", bases.pypi_upload, "--token", token, str(wheel)],
         cwd=repo.root,
@@ -260,7 +293,7 @@ def publish_package(
     repo: Repo,
     bases: Bases,
     tarball: Path,
-    manifest: dict[str, object],
+    package: Package,
     npmrc: Path,
     environment: dict[str, str],
 ) -> bool:
@@ -270,9 +303,9 @@ def publish_package(
         PublishError: If the registry refused it.
         RegistryError: If the registry could not be asked what it serves.
     """
-    name, version = str(manifest["name"]), str(manifest["version"])
-    if version in npm_versions(bases, name):
+    if package.version in npm_versions(bases, package.name):
         return False
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     _ran(
         [
             "npm",
@@ -289,7 +322,7 @@ def publish_package(
         ],
         cwd=repo.root,
         env=environment,
-        describing=f"publishing {name}@{version} to {bases.npm}",
+        describing=f"publishing {package.id} to {bases.npm}",
     )
     return True
 

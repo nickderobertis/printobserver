@@ -808,7 +808,33 @@ def release_of(bases: Bases, version: str) -> Release:
         ):
             raise RegistryError(malformed)
         assets.append(Asset(listed["id"], listed["name"], listed["size"], listed["state"]))
-    return Release(answer["id"], answer["upload_url"].partition("{")[0], tuple(assets))
+    upload_url = str(answer["upload_url"]).partition("{")[0]
+    if not _same_forge(bases.listing, upload_url):
+        msg = (
+            f"{url} names {upload_url} as where its assets are uploaded, which is not the "
+            f"forge {bases.listing} is read from. Nothing is sent there: an upload address "
+            f"is sent the release token, and it goes to the forge this was pointed at or "
+            f"nowhere. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
+        raise RegistryError(msg)
+    return Release(answer["id"], upload_url, tuple(assets))
+
+
+def _same_forge(listing: str, upload_url: str) -> bool:
+    """Whether an upload address a release document names belongs to the forge read.
+
+    The real forge takes uploads on a host of its own beside the one it is
+    read on — `uploads.github.com` beside `api.github.com` — so what is
+    required is the listing's scheme and either its host or a host under the
+    same parent domain. A stand-in names one host for both.
+    """
+    read, write = urlsplit(listing), urlsplit(upload_url)
+    if write.scheme != read.scheme or not write.hostname:
+        return False
+    if write.netloc == read.netloc:
+        return True
+    parent = read.hostname.partition(".")[2] if read.hostname else ""
+    return bool(parent) and "." in parent and write.hostname.endswith(f".{parent}")
 
 
 def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
