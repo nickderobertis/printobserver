@@ -179,6 +179,7 @@ release-version COMMIT ROOT:
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
 # is, why it is not one of `just check`'s tiers, and when it runs.
+# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
 test-install-proof:
     @just prove-registry-pypi
     @just prove-registry-npm

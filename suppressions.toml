@@ -220,6 +220,12 @@ site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
 
 [[suppression]]
+rule = "tool_output_is_signal"
+file = "justfile"
+site = "test-install-proof:"
+reason = "A passing `just test-install-proof` prints three lines, and they are three independent proofs rather than one proof said three times: each of the three route recipes it runs proves a different route against a different registry, and its one line carries which version that registry served, where that version was selected from, what installed it and what the installed program answered — the evidence this tier exists to produce, and one a summary line cannot carry for three routes at once. `tests/repo-e2e/tests/test_registry_proof_journey.py::test_the_tier_recipe_proves_every_route` asserts exactly those three lines and nothing beside them. A route that fails still prints its whole report on the other stream and stops the tier there, so a failed run is not three lines either."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "tools/release-artifacts/AGENTS.md"
 site = "# release-artifacts"
