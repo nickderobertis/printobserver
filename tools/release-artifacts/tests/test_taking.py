@@ -38,7 +38,7 @@ ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobser
 
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_each_route_installs_a_program_that_runs(
-    identifier: str, repo: Repo, program: Path, into: Callable[[str], Path]
+    identifier: str, repo: Repo, program: Path, into: Callable[[str], Path], version: str
 ) -> None:
     """A route is taken the way its own command takes it, and what it left runs.
 
@@ -49,7 +49,7 @@ def test_each_route_installs_a_program_that_runs(
     """
     said = prove(repo, identifier, into(identifier.replace(":", "-")), program)
 
-    contains(said, "printobserver 0.1.0", describing=f"what `{identifier}` installed")
+    contains(said, f"printobserver {version}", describing=f"what `{identifier}` installed")
     contains(said, NO_TOOLCHAIN, describing=f"what `{identifier}` was taken with")
 
 

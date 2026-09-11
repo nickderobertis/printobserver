@@ -13,7 +13,7 @@ import { GeneratedSurface, reasonGiven } from "./surface.ts";
  * The version of the server contract these types were generated from, which
  * is the version the type crate declares in the tree they came from.
  */
-export const CONTRACT_VERSION = "0.1.0";
+export const CONTRACT_VERSION = "0.2.0";
 
 /**
  * Every operation this client exposes a method for, which is every operation

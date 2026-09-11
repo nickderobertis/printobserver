@@ -20,7 +20,9 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+# Release automation's to write. Moved by hand exactly once; AGENTS.md's
+# "Commits, releases, and merging" records when and why.
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
@@ -38,8 +40,8 @@ authors = ["Nick DeRobertis"]
 jsonschema = { version = "0.34", default-features = false }
 oneharness-core = "0.12.3"
 oneharness = "0.11.4"
-printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.1.0" }
-printobserver-types = { path = "crates/printobserver-types", version = "0.1.0" }
+printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.2.0" }
+printobserver-types = { path = "crates/printobserver-types", version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

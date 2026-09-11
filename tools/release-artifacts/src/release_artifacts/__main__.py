@@ -14,10 +14,12 @@ from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import (
+    RELEASED_FIELD,
     UNREADABLE,
     VERSION_FIELD,
     RegistryError,
     cut_at,
+    released_by,
     supported_version,
 )
 from release_artifacts.registries import prove as prove_registry
@@ -40,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
             "world",
             "standin",
             "released",
+            "answered",
             "list",
         ],
     )
@@ -88,6 +91,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="SHA",
         help="the commit a release-time run ran at, whose release is the one to prove",
     )
+    parser.add_argument(
+        "--answer",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="what `release-plz release --output json` answered, as the file it was written to",
+    )
     parser.add_argument("--into", type=Path, default=Path("dist"))
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -119,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _standin(repo, arguments)
             case "released":
                 return _released(repo, arguments)
+            case "answered":
+                return _answered(arguments)
             case "publish":
                 for line in publish(repo, arguments.into, dict(os.environ)):
                     print(line)
@@ -189,6 +201,39 @@ def _released(repo: Repo, arguments: argparse.Namespace) -> int:
         )
         return 2
     print(f"{VERSION_FIELD}={cut_at(repo.root, arguments.commit)}")
+    return 0
+
+
+def _answered(arguments: argparse.Namespace) -> int:
+    """Say what the publishing job released, read off the release program's own answer.
+
+    Answered as `released=<tag> <tag>...`, the one line a job publishes an
+    output from, and `released=` where the program released nothing. The
+    artifact build and the artifact publish are gated on that field rather
+    than on the program's exit status, because it exits zero having released
+    nothing — every ordinary push, under `release_always` — and the registries
+    refuse a version they already serve.
+    """
+    if arguments.answer is None:
+        print(
+            "answered takes --answer <path>: the file `release-plz release --output json` "
+            "wrote its answer to",
+            file=sys.stderr,
+        )
+        return 2
+    if not arguments.answer.is_file():
+        msg = (
+            f"{arguments.answer} is not there, so nothing says what the release program "
+            f"released: it is what `release-plz release --output json` was told to write"
+        )
+        raise RegistryError(msg)
+    try:
+        answer = arguments.answer.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as unreadable:
+        msg = f"{arguments.answer} could not be read as the release program's answer: {unreadable}"
+        raise RegistryError(msg) from unreadable
+    tags = released_by(answer)
+    print(f"{RELEASED_FIELD}={' '.join(tags)}")
     return 0
 
 

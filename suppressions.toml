@@ -214,10 +214,22 @@ site = "Keep the OctoPrint journey in the required gate"
 reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
 
 [[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The rule above has one recorded exception, and it is closed"
+reason = "Required content rather than session history. The release-path repair that wrote this passage was required to record, where a reader meets the rule it departs from, three things: why the workspace version was moved by hand, that it is a single closed exception, and that control returns to release automation — and the passage is those three statements and the journey that holds the tree to them, nothing more. Each is confirmable from the tree: commit 3952add moved the workspace from 0.1.0 to 0.2.0 by hand on 2026-09-10, `manifests.automation_owned` in repo-policy.toml is the rule it departs from, and `tests/repo-e2e/tests/test_release_path_journey.py` refuses a tree at a tagged version. The durable instruction the rule would keep — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat, so the date and the cause are what make the prohibition followable rather than narrative around it."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The rule above has one recorded exception, and it is closed"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
 rule = "tool_output_is_signal"
@@ -254,6 +266,54 @@ rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "The judged tier read this suite as expensive work that belongs in a tier of its own. It is where its neighbours are: `test_taking.py` in the same directory installs all three routes for real and `test_clients.py` builds the `printobserver` program and starts a real supervisor, so what edges this project's `test` target is what it proves rather than what it costs. Moving one of the four out would split identical work across two projects, and it would leave `registries.py` and `standin.py` measured by no tier that carries a coverage floor — the end-to-end tier is not measured. The end-to-end journeys over the same behaviour, which drive the real recipes, are in `tests/repo-e2e` where that tier's own work belongs."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The committed step is `release-plz release-pr`, and that command is `release-plz update` followed by opening a pull request on a forge: the computation this journey exists to prove — each package's next version, compared against what the registry serves — is the whole of `update`, and the pull request is the one part a journey cannot drive, because it needs a forge and a token and leaves a pull request on a real repository. So the journey runs the real program's real computation against a real (stand-in) registry over a real copy, and stops before the one step that is somebody else's server. Driving `release-pr` instead would prove the same computation and then fail on the forge whatever the tree looked like."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
+reason = "The sample is the one source in this repository of what `release-plz release --output json` answers, and every fixture and the reader are built from it; what it cannot have is a drift gate against a live release-plz, because that program writes this answer only having released something — which needs a forge, a registry and a publish, none of which a tier here may do. The reconciliation is the real release path itself: a shape that moved fails `just release-answer` in the `release` job naming the field, rather than reading as `released nothing`, and the same journey (`tests/repo-e2e/tests/test_release_program.py`) proves the committed argument list, `--output json` included, is one the installed program accepts. Recorded with the release-plz revision the shape was read from, so the day it moves a reader knows what to re-read."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "llmlint: ignore[e2e_not_mocked]"
+reason = "What stands in is crates.io, and for the one reason the install proof's `standin.py` stands the package registries in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — a registry carrying no entry for a crate this tree publishes — is one the real registry stops being in the moment the release goes out. Everything else is real: the real `release-plz` program, its real computation, the real copy of the tree, the real tag, and the sparse-index protocol cargo itself speaks to the stand-in over HTTP. The layer under test is the drafting tool over this tree's versions, and it is not what is substituted."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and be run by the same `nx run-many` the tier already is, so there is no placement that would spare an unrelated change this journey. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and the `test-e2e` recipe in the justfile runs the tier through `nx run-many`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "llmlint: ignore[e2e_not_mocked]"
+reason = "The layer under test is the committed workflow's own scheduling — needs, gates, outputs — and that is what runs unsubstituted, over the workflow's own text with the real `just release-answer` recipe over a real copy. What is stood in reaches outside this host: `release-plz` publishes to crates.io and a forge, `just publish-artifacts` publishes to PyPI and npm, and `just build-artifacts` and `just bootstrap` are a cold release build of the workspace per matrix cell and a toolchain install, which the question — are these two recipes REACHED — does not need run to be answered. The stand-in `release-plz` behaves as the real one does at the point that matters: it prints its answer only when asked with `--output json`, so the journey that drops that option fails the job the way the real program would."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The interface that schedules a workflow is GitHub Actions, and it cannot be fired from a journey — the same reason the registry-proof and service-report journeys read the committed workflow. This one goes further than reading: it runs the committed workflow's own text under the forge's documented scheduling rules (`actions.py`), so what is asserted is what those jobs did — ran, were skipped, failed, and what each published — rather than what the YAML says. Nothing in the assertions names the runner's internals; the run object reports results by the workflow's own job keys."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_actions_runner.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "`actions.py` is a test helper whose whole interface is `Runner.run()` and `evaluate()`, and this module is where its claims about the forge are pinned over a workflow small enough to read. There is no other interface to reach it through: the forge itself is the thing it stands in for and cannot be fired from a test. The release-workflow journey is what uses it over the committed workflow."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
+reason = "The forge's scheduling rules are documented prose with no machine-readable source to generate from, and the drift gate is the forge itself: the same workflow text runs on GitHub on every push to the base branch, which is where a rule modelled here wrongly shows. What keeps the model honest in the meantime is that it refuses by name every construct and expression outside the subset it models — a workflow that grows past the subset fails the journey rather than being approximated — and `test_actions_runner.py` pins each modelled rule over a workflow small enough to read against the forge's documentation."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"

@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "jsonschema 0.34.0",
  "printobserver-sdk",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "printobserver-printer-api",
  "printobserver-store-api",
@@ -1417,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-obico"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "printobserver-store-api",
@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-octoprint"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "printobserver-printer-api",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-oneharness"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "jsonschema 0.34.0",
  "oneharness",
@@ -1457,14 +1457,14 @@ dependencies = [
 
 [[package]]
 name = "printobserver-printer-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "printobserver-types",
 ]
 
 [[package]]
 name = "printobserver-sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "serde",
@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "oneharness",
@@ -1501,14 +1501,14 @@ dependencies = [
 
 [[package]]
 name = "printobserver-store-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "printobserver-types",
 ]
 
 [[package]]
 name = "printobserver-store-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "printobserver-store-api",
@@ -1523,14 +1523,14 @@ dependencies = [
 
 [[package]]
 name = "printobserver-supervisor-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "printobserver-types",
 ]
 
 [[package]]
 name = "printobserver-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "chrono",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-vision-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "printobserver-types",
 ]

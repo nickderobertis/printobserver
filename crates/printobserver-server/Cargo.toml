@@ -17,16 +17,16 @@ test-responder = ["dep:oneharness"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
-printobserver-core = { path = "../printobserver-core", version = "0.1.0" }
-printobserver-obico = { path = "../printobserver-obico", version = "0.1.0" }
-printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.1.0" }
-printobserver-oneharness = { path = "../printobserver-oneharness", version = "0.1.0" }
-printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.1.0" }
-printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
-printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.1.0" }
+printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
+printobserver-obico = { path = "../printobserver-obico", version = "0.2.0" }
+printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.2.0" }
+printobserver-oneharness = { path = "../printobserver-oneharness", version = "0.2.0" }
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.2.0" }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.2.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.2.0" }
 printobserver-supervisor-api.workspace = true
 printobserver-types.workspace = true
-printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }

@@ -105,6 +105,33 @@ COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
 #: the three routes cannot each resolve a different one.
 VERSION_FIELD = "version"
 
+#: The field the publishing job publishes what it released under. Written as
+#: `<field>=<tag> <tag>...`, and `<field>=` where it released nothing, because
+#: that empty field is what the artifact build and the artifact publish are
+#: gated on: `release-plz release` exits zero having released nothing, which is
+#: every ordinary push under `release_always`, and the registries refuse a
+#: version they already serve.
+RELEASED_FIELD = "released"
+
+#: The tag release automation writes — `release-plz.toml`'s `git_tag_name` is
+#: `v{{ version }}` — and so the only tag the release program's answer may
+#: carry. Narrower than `SUPPORTED` on purpose: a version is not a tag.
+TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+
+#: What `release-plz release --output json` answers, as this repository has it
+#: on record: one `releases` list with an entry per package released, each
+#: carrying `package_name`, `prs`, `tag` and `version` — the `Release` and
+#: `PackageRelease` structs of `crates/release_plz_core/src/command/release.rs`
+#: at release-plz 0.3.160. The reader below and every fixture the suites build
+#: read this one file, so the shape is written down once.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+RELEASE_ANSWER_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release.json")
+
+#: The fields every entry of that answer carries, and so the fields the reader
+#: requires of one. `test_registries.py` holds the sample's entries to exactly
+#: this set, so the two cannot drift apart inside this repository.
+RELEASE_FIELDS = ("package_name", "prs", "tag", "version")
+
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
 
@@ -323,6 +350,77 @@ def cut_at(root: Path, commit: str) -> str:
         )
         raise RegistryError(msg)
     return cut[0] if cut else ""
+
+
+def released_by(answer: str) -> tuple[str, ...]:
+    """The tags `release-plz release --output json` says it released, in order.
+
+    That answer is the shape `RELEASE_ANSWER_SAMPLE` records, with an empty
+    `releases` list where the run released nothing. A workspace releasing
+    thirteen crates under one version names one tag thirteen times, so what is
+    answered is the distinct tags, each once.
+
+    Raises:
+        RegistryError: If the answer is not one that program writes. An answer
+            nothing can read is refused rather than read as "released nothing",
+            because the jobs gated on this skip on an empty field — and a
+            release skipped over an unreadable answer is one nobody can install
+            and nothing reported.
+    """
+    try:
+        parsed = json.loads(answer)
+    except json.JSONDecodeError as malformed:
+        msg = f"the release program's answer is not JSON: {malformed}\n{answer!r}"
+        raise RegistryError(msg) from malformed
+    releases = parsed.get("releases") if isinstance(parsed, dict) else None
+    if not isinstance(releases, list):
+        msg = (
+            f"the release program's answer carries no `releases` list, which is what "
+            f"`release-plz release --output json` writes:\n{answer!r}"
+        )
+        raise RegistryError(msg)
+    tags: list[str] = []
+    for release in releases:
+        tags.append(_tag_of(release))
+    return tuple(dict.fromkeys(tags))
+
+
+def _tag_of(release: object) -> str:
+    """The tag one entry of the release program's answer names, once it is one it writes.
+
+    Raises:
+        RegistryError: If the entry is not the shape `RELEASE_ANSWER_SAMPLE`
+            records — the fields it carries, and a tag that is the version
+            release automation writes, `v` included. Narrowed HERE because the
+            tag reaches a job output file that is read a line at a time as
+            `name=value`, so one carrying a newline would write a second output
+            nothing named.
+    """
+    named = [field for field in RELEASE_FIELDS if field != "prs"]
+    if not isinstance(release, dict) or any(
+        not isinstance(release.get(field), str) or not release[field].strip() for field in named
+    ):
+        msg = (
+            f"a release in the release program's answer carries no "
+            f"{', '.join(f'`{field}`' for field in named)}, which is what "
+            f"`release-plz release --output json` writes for each package:\n{release!r}"
+        )
+        raise RegistryError(msg)
+    if not isinstance(release.get("prs"), list):
+        msg = (
+            f"a release in the release program's answer carries no `prs` list, which is what "
+            f"`release-plz release --output json` writes for each package:\n{release!r}"
+        )
+        raise RegistryError(msg)
+    tag = str(release["tag"])
+    if not TAG.match(tag) or tag != f"v{release['version']}":
+        msg = (
+            f"a release in the release program's answer names the tag {tag!r} for version "
+            f"{release['version']!r}; release automation writes `v<major>.<minor>.<patch>`, "
+            f"and this is not that"
+        )
+        raise RegistryError(msg)
+    return tag
 
 
 def ordered(version: str) -> tuple[int, ...]:

@@ -176,6 +176,20 @@ prove-registry-script:
 release-version COMMIT ROOT:
     @uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
 
+# What the publishing job released, as `released=<tag>...`, read off ANSWER.
+#
+# ANSWER is the file `release-plz release --output json` wrote: the version and
+# tag of every package it released, and `{"releases":[]}` where it released
+# none — which is every ordinary push under `release_always`, and the program
+# exits zero either way. The artifact build and the artifact publish are gated
+# on this field being non-empty rather than on that exit status, because the
+# Python and JavaScript registries refuse a version they already serve, and a
+# publish on a push that cut nothing turns `main` red. An answer that is not
+# that program's is refused rather than read as "none": a publish skipped over
+# an unreadable answer is a release nobody can install and nothing reported.
+release-answer ANSWER:
+    @uv run -q python -m release_artifacts answered --answer {{ANSWER}}
+
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
 # is, why it is not one of `just check`'s tiers, and when it runs.

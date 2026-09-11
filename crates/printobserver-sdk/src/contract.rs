@@ -13,7 +13,7 @@ use crate::{Client, ClientError};
 
 /// The version of the server contract these types were generated from, which
 /// is the version the type crate declares in the tree they came from.
-pub const CONTRACT_VERSION: &str = "0.1.0";
+pub const CONTRACT_VERSION: &str = "0.2.0";
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.

@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.2.0" }
 
 [lints]
 workspace = true

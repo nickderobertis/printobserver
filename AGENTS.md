@@ -765,10 +765,31 @@ the workflows that gate it — and `release-plz release` tags, cuts the GitHub
 Release and publishes every crate under `CARGO_REGISTRY_TOKEN`. Nobody
 hand-edits a version, hand-tags, or hand-dispatches a publish.
 
+**Publishing never waits on drafting, and the artifacts follow only a cut
+release.** Drafting the next release's pull request compares each package
+against the registry and can die doing it; that must not stop a publication
+that is ready. And the publishing step exits zero having released nothing —
+every ordinary push — while the Python and JavaScript registries refuse a
+version they already serve, so the artifact build and publish are gated on what
+that step *answered* it released, never on its exit status. `just check-repo`'s
+`release-gating` reads the workflow for both, and
+`tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
+workflow under the forge's scheduling rules to prove them.
+
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
+
+<!-- llmlint: ignore[agents_md_durable_and_terse] Required content rather than history: the release-path repair had to record, beside the rule it departs from, why the workspace version was moved by hand, that it is one closed exception, and that every version after it is release automation's; the durable instruction — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat. suppressions.toml has the full reason. -->
+**The rule above has one recorded exception, and it is closed.** `0.1.0` →
+`0.2.0` was written by hand on 2026-09-10, because `release-plz release-pr`
+cannot draft while a tag names a version some publishable crate never published
+— the state the first run left, with two scaffold crates at `0.1.0` and eleven
+absent. Every version after it is release automation's. Do not repeat this to
+unstick a run: `tests/repo-e2e/tests/test_release_path_journey.py` drives the
+drafting tool against a stand-in registry and refuses a tree at a tagged
+version, which is the state to fix instead.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as

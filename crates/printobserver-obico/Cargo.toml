@@ -10,9 +10,9 @@ authors.workspace = true
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
-printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
-printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
-printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.2.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.2.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "rustls", "webpki-roots"] }
 
 [dev-dependencies]

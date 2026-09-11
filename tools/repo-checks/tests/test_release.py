@@ -7,7 +7,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from repo_checks.checks_release import _publishable_crates, release_automation, release_targets
+from repo_checks.checks_release import (
+    _publishable_crates,
+    release_automation,
+    release_gating,
+    release_targets,
+)
 from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
@@ -195,3 +200,192 @@ def test_a_release_program_the_toolchain_does_not_install_is_refused(
     findings = release_automation(broken.repo)
 
     refused(findings, "toolchain does not install")
+
+
+def test_the_committed_gating_is_accepted(committed: Repo) -> None:
+    """Publishing waits on no drafting, and the artifacts follow the answer."""
+    accepted(release_gating(committed))
+
+
+def test_a_publishing_job_that_waits_on_the_drafting_job_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A drafting job that cannot draft must not be able to stop a publication that is ready."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "  release:\n    name: release\n    runs-on: ubuntu-24.04\n",
+        "  release:\n    name: release\n    needs: release-pr\n    runs-on: ubuntu-24.04\n",
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "waits on `release-pr`, which drafts the next one")
+
+
+def test_a_release_step_that_does_not_say_what_it_released_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Without the answer there is nothing to gate the artifacts on but an exit status."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "release-plz release --backend github --output json >",
+        "release-plz release --backend github >",
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "without `--output json`")
+
+
+def test_a_publishing_job_that_reads_its_answer_into_no_output_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The answer has to reach the jobs gated on it, and a job output is how."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "      - id: answer\n        run: just release-answer",
+        "      - run: true\n      - run: just release-answer",
+    )
+    broken.edit(RELEASE, "released: ${{ steps.answer.outputs.released }}", "released: ''")
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "carries no `id`")
+    refused(findings, "publishes no output `released`")
+
+
+def test_an_artifact_build_that_runs_whether_or_not_a_release_was_cut_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The registries refuse a version they already serve, so the next push goes red."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "    if: needs.release.outputs.released != ''\n    strategy:\n",
+        "    strategy:\n",
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "runs `just build-artifacts` and is not gated on")
+
+
+def test_an_artifact_publish_gated_on_the_exit_status_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The exit status is zero whether or not a release was cut, so it gates nothing."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "    needs: [release, artifacts]\n    if: needs.release.outputs.released != ''\n",
+        "    needs: [release, artifacts]\n    if: needs.release.result == 'success'\n",
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "runs `just publish-artifacts` and is not gated on")
+    refused(findings, "reads a job's exit status rather than what it answered")
+
+
+def test_an_artifact_publish_that_does_not_wait_on_the_publishing_job_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A job reads the outputs of the jobs it names and no others."""
+    broken = tree()
+    broken.edit(RELEASE, "    needs: [release, artifacts]\n", "    needs: artifacts\n")
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "does not wait on `release`")
+
+
+def test_a_reader_that_no_longer_declares_the_gated_field_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The workflow, the policy and the module that answers the field name one field."""
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/registries.py",
+        'RELEASED_FIELD = "released"',
+        'RELEASED_FIELD = "cut"',
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "declares no `released`")
+
+
+def test_a_gating_recipe_the_justfile_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow step running a recipe nothing declares fails after a merge."""
+    broken = tree()
+    broken.edit("justfile", "release-answer ANSWER:", "release-read ANSWER:")
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "declares no `release-answer` recipe")
+
+
+def test_a_gating_check_with_no_publishing_step_at_all_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow that publishes nothing has nothing to gate the artifacts on."""
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace("      - run: release-plz ", "      # was: release-plz "),
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "no committed job runs `release-plz release`")
+
+
+def test_a_publishing_job_with_no_reading_step_is_refused(tree: Callable[[], Tree]) -> None:
+    """An answer nothing reads gates nothing."""
+    broken = tree()
+    broken.edit(RELEASE, "        run: just release-answer", "        run: just release-dry-run")
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "runs no `just release-answer` step")
+
+
+def test_a_reading_step_that_reaches_no_job_output_is_refused(tree: Callable[[], Tree]) -> None:
+    """The one line the recipe answers has to land in the job's output file."""
+    broken = tree()
+    broken.edit(
+        RELEASE, '"$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"', '"$RUNNER_TEMP/released.json"'
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "does not append to `$GITHUB_OUTPUT`")
+
+
+def test_a_gating_policy_naming_no_reader_is_refused(tree: Callable[[], Tree]) -> None:
+    """The policy names the module that reads the answer, and it has to be there."""
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'answer_source = "tools/release-artifacts/src/release_artifacts/registries.py"',
+        'answer_source = "tools/release-artifacts/src/release_artifacts/answers.py"',
+    )
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "commits no such file")
+
+
+def test_a_gating_policy_missing_a_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check cannot hold the workflow to a name the policy does not declare."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'answer_output = "released"\n', "")
+
+    findings = release_gating(broken.repo)
+
+    refused(findings, "declares no `release.answer_output` string")

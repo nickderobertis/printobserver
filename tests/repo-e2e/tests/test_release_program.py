@@ -27,13 +27,19 @@ CONFIG_ERRORS = ("invalid config file", "unknown field", "TOML parse error")
 
 
 def release_step_arguments() -> list[str]:
-    """The argument list the committed release step carries."""
+    """The argument list the committed release step carries.
+
+    Up to the shell's redirection of the program's answer into the file the
+    step after it reads: that is the shell's rather than the program's, and a
+    program handed `>` as an argument refuses it.
+    """
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     for job in workflow["jobs"].values():
         for step in job.get("steps", []):
             command = str(step.get("run", "")).strip()
             if command.startswith("release-plz release "):
-                return command.split()
+                words = command.split()
+                return words[: words.index(">")] if ">" in words else words
     message = "no committed step runs `release-plz release`"
     raise AssertionError(message)
 
