@@ -471,3 +471,195 @@ def publish_credentials(repo: Repo) -> list[str]:
     if not found:
         findings.append("no committed job publishes anything")
     return findings
+
+
+#: The recipe the publishing job reads the release program's answer with, the
+#: output it publishes that answer under, and the module that reads it — all
+#: declared in `repo-policy.toml`, so the workflow, the recipe and the reader
+#: cannot drift on a name.
+GATING = ("cut_recipe", "cut_output", "cut_source")
+
+#: The two halves of the release program: what drafts the next release's pull
+#: request, and what publishes what is already due. Told apart by the command a
+#: job runs rather than by what the job is called.
+DRAFTING = "release-plz release-pr"
+PUBLISHING = "release-plz release"
+
+#: How the publishing command is made to say what it released.
+ANSWER_OPTIONS = ("--output json", "-o json")
+
+#: Where a step publishes a job output from.
+JOB_OUTPUT = "GITHUB_OUTPUT"
+
+#: What gating on a job's exit status rather than on its answer looks like.
+STATUS_GATES = (".result", "success()", "failure()")
+
+
+def _needs(job: dict[str, Any]) -> list[str]:
+    """The jobs a job waits on, however the workflow spells them."""
+    needs = job.get("needs")
+    if isinstance(needs, str):
+        return [needs]
+    if isinstance(needs, list):
+        return [str(name) for name in needs]
+    return []
+
+
+def _jobs_running(jobs: dict[str, dict[str, Any]], command: str) -> list[str]:
+    """The jobs with a step running `command`, as the whole command or its first words."""
+    return [
+        name
+        for name, job in jobs.items()
+        if any(run == command or run.startswith(f"{command} ") for run in run_commands(job))
+    ]
+
+
+def release_gating(repo: Repo) -> list[str]:
+    """Publishing does not wait on drafting, and the artifacts follow only a cut release.
+
+    `release-plz release-pr` computes each package's difference against what
+    the registry serves and can die doing it; `release-plz release` publishes
+    what is already due and exits zero having published nothing. So the job
+    running the second must not `need` the job running the first, and the
+    jobs that build and publish the artifacts must be gated on what the second
+    ANSWERED — read into a job output by the declared recipe — rather than on
+    its exit status, which says nothing.
+    """
+    from repo_checks.model import PolicyValueError, policy_strings, policy_table
+    from repo_checks.parsing import recipes as parse_recipes
+
+    try:
+        recipes = _release_policy(repo)
+        gating = policy_strings(policy_table(repo, "release"), GATING, "release")
+    except PolicyValueError as error:
+        return [str(error)]
+
+    findings: list[str] = []
+    found = False
+    for path in repo.workflow_paths:
+        jobs = jobs_of(load_workflow(path))
+        publishing = _jobs_running(jobs, PUBLISHING)
+        if not publishing:
+            continue
+        found = True
+        for name in publishing:
+            findings.extend(_independence_findings(jobs, name, path.name))
+            findings.extend(_answer_findings(jobs[name], name, gating, path.name))
+            findings.extend(_gated_findings(jobs, name, recipes, gating, path.name))
+    if not found:
+        findings.append(f"no committed job runs `{PUBLISHING}`, so nothing publishes a release")
+
+    declared = parse_recipes(repo.justfile)
+    recipe = declared.get(gating["cut_recipe"])
+    if recipe is None:
+        findings.append(
+            f"the justfile declares no `{gating['cut_recipe']}` recipe, which "
+            f"`repo-policy.toml` names as what reads the release program's answer"
+        )
+    if not repo.exists(gating["cut_source"]):
+        findings.append(
+            f"`repo-policy.toml` names {gating['cut_source']} as what reads the release "
+            f"program's answer, and this repository commits no such file"
+        )
+    elif f'"{gating["cut_output"]}"' not in repo.read(gating["cut_source"]):
+        findings.append(
+            f"{gating['cut_source']} declares no `{gating['cut_output']}`, which is the "
+            f"field `repo-policy.toml` and the committed workflow gate the artifacts on"
+        )
+    return findings
+
+
+def _independence_findings(jobs: dict[str, dict[str, Any]], name: str, file: str) -> list[str]:
+    """The publishing job waits on no job that drafts the next release."""
+    drafting = set(_jobs_running(jobs, DRAFTING))
+    return [
+        f"{file}: job `{name}` publishes a release and waits on `{waited}`, which drafts "
+        f"the next one: a drafting job that cannot draft must not be able to stop a "
+        f"publication that is ready"
+        for waited in _needs(jobs[name])
+        if waited in drafting
+    ]
+
+
+def _answer_findings(
+    job: dict[str, Any], name: str, gating: dict[str, str], file: str
+) -> list[str]:
+    """The publishing job asks the program what it released and publishes that as an output."""
+    where = f"{file}: job `{name}`"
+    findings: list[str] = []
+    for command in run_commands(job):
+        if command.startswith(f"{PUBLISHING} ") and not any(
+            option in command for option in ANSWER_OPTIONS
+        ):
+            findings.append(
+                f"{where} runs `{command}` without `{ANSWER_OPTIONS[0]}`, so nothing says "
+                f"what it released and the artifact jobs cannot be gated on it"
+            )
+
+    recipe = f"just {gating['cut_recipe']}"
+    reading = [
+        step
+        for step in steps_of(job)
+        if any(line.startswith(f"{recipe} ") for line in str(step.get("run", "")).splitlines())
+    ]
+    if not reading:
+        return [
+            *findings,
+            f"{where} runs no `{recipe}` step, so what the release program answered is "
+            f"read into no output",
+        ]
+    step = reading[0]
+    identifier = str(step.get("id", "")).strip()
+    if not identifier:
+        findings.append(f"{where}'s `{recipe}` step carries no `id`, so no output can name it")
+    if JOB_OUTPUT not in str(step.get("run", "")):
+        findings.append(
+            f"{where}'s `{recipe}` step does not append to `${JOB_OUTPUT}`, so what it "
+            f"answered reaches no job output"
+        )
+    outputs = job.get("outputs")
+    declared = outputs.get(gating["cut_output"], "") if isinstance(outputs, dict) else ""
+    published = " ".join(str(declared).split())
+    expected = f"steps.{identifier}.outputs.{gating['cut_output']}"
+    if expected not in published:
+        findings.append(
+            f"{where} publishes no output `{gating['cut_output']}` from `{expected}`, which "
+            f"is what the artifact jobs are gated on"
+        )
+    return findings
+
+
+def _gated_findings(
+    jobs: dict[str, dict[str, Any]],
+    publishing: str,
+    recipes: dict[str, str],
+    gating: dict[str, str],
+    file: str,
+) -> list[str]:
+    """Every job building or publishing the artifacts follows the answer, not the status."""
+    gate = f"needs.{publishing}.outputs.{gating['cut_output']} != ''"
+    findings: list[str] = []
+    for recipe in ARTIFACT_RECIPES:
+        for name in _jobs_running(jobs, f"just {recipes[recipe]}"):
+            job = jobs[name]
+            where = f"{file}: job `{name}`"
+            if publishing not in _needs(job):
+                findings.append(
+                    f"{where} runs `just {recipes[recipe]}` and does not wait on `{publishing}`, "
+                    f"whose answer is what says whether a release was cut"
+                )
+            condition = " ".join(str(job.get("if", "")).split())
+            if gate not in condition:
+                findings.append(
+                    f"{where} runs `just {recipes[recipe]}` and is not gated on `{gate}`: "
+                    f"the release program exits zero having released nothing, and the "
+                    f"registries refuse a version they already serve"
+                )
+            findings.extend(
+                f"{where} is gated on `{condition}`, which reads a job's exit status rather "
+                f"than what it answered — and that status is zero whether or not a release "
+                f"was cut"
+                for marker in STATUS_GATES
+                if marker in condition
+            )
+    return findings

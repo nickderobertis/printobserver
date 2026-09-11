@@ -242,7 +242,7 @@ def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published
         describing="the workflows this proof waits on",
     )
     truth("release" not in triggers, describing=f"{WORKFLOW} not to fire on a release")
-    equal(release["jobs"]["publish"]["needs"], "artifacts", describing="what the publish awaits")
+    contains(release["jobs"]["publish"]["needs"], "artifacts", describing="what the publish awaits")
     equal(release["jobs"]["artifacts"]["needs"], "release", describing="what the build awaits")
     gate = f"needs.{BINDING['release_job']}.outputs.{BINDING['release_output']}"
     for name, job in install["jobs"].items():

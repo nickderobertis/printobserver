@@ -44,15 +44,32 @@ jobs:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+  # Deliberately NOT `needs: release-pr`. Drafting the next release's pull
+  # request and publishing what is already due are two jobs, and the first
+  # must not be able to stop the second: `release-pr` computes each package's
+  # difference against what the registry serves and dies on a package the
+  # registry does not carry while a tag naming its version exists, and for the
+  # first two days of this repository's life that failure kept this job — and
+  # the two after it — from ever running once.
   release:
     name: release
-    needs: release-pr
     runs-on: ubuntu-24.04
+    outputs:
+      # What `release-plz release` answered it released, as `just release-cut`
+      # reads it: the tag of every package, and empty where it released none.
+      # The two jobs below are gated on this rather than on this job's exit
+      # status, because the program exits zero having released nothing — every
+      # ordinary push, under `release_always` — and the Python and JavaScript
+      # registries refuse a version they already serve, so an artifact publish
+      # on such a push turns `main` red.
+      released: ${{ steps.cut.outputs.released }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@v2
         with:
@@ -60,10 +77,14 @@ jobs:
       # Tags, cuts the GitHub Release, and publishes every crate target
       # `release-targets.toml` declares. Idempotent: a version already on the
       # registry is skipped, so a partial failure is recovered by the next push.
-      - run: release-plz release --backend github
+      # `--output json` makes it say what it released, which is what the step
+      # after it reads.
+      - run: release-plz release --backend github --output json > "$RUNNER_TEMP/released.json"
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - id: cut
+        run: just release-cut "$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"
 
   artifacts:
     name: artifacts (${{ matrix.platform.id }})
@@ -71,6 +92,9 @@ jobs:
     # the `printobserver` program already built for the platform, and a
     # platform nothing built for is a route that host cannot take.
     needs: release
+    # Only after a release was cut: read off what `release-plz release`
+    # answered, never off its exit status, which is zero either way.
+    if: needs.release.outputs.released != ''
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +119,10 @@ jobs:
 
   publish:
     name: publish
-    needs: artifacts
+    # `release` beside `artifacts` because the gate reads `release`'s answer,
+    # and a job reads the outputs of the jobs it names and no others.
+    needs: [release, artifacts]
+    if: needs.release.outputs.released != ''
     # No platform matrix: publishing is one upload of what every platform's
     # build produced, and a second cell would be a second upload of the same
     # bytes.

@@ -765,6 +765,21 @@ the workflows that gate it — and `release-plz release` tags, cuts the GitHub
 Release and publishes every crate under `CARGO_REGISTRY_TOKEN`. Nobody
 hand-edits a version, hand-tags, or hand-dispatches a publish.
 
+**Drafting and publishing are two jobs, and the first cannot stop the second.**
+`release-pr` computes each package's difference against what the registry
+serves, and `release` publishes what is already due; the `release` job does not
+`need` the `release-pr` job, so a drafting job that cannot draft leaves a
+publication that is ready free to go out. And `release-plz release` exits zero
+having released nothing — which is every ordinary push, under `release_always` —
+while the Python and JavaScript registries refuse a version they already serve,
+so the two jobs after it are gated on **what it answered** rather than on its
+exit status: it is run with `--output json`, `just release-cut` reads the
+version and tag of every package that answer says it released, and the artifact
+build and the artifact publish run only when that is not empty. The recipe and
+the output it publishes are `repo-policy.toml`'s `release.cut_recipe` and
+`release.cut_output`, and `just check-repo`'s `release-gating` holds the workflow
+to both and refuses a `release` job that waits on `release-pr`.
+
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version

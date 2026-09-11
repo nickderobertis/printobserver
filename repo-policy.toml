@@ -425,6 +425,20 @@ request_markers = [
 # would be a second answer to a question that manifest already answers.
 build_recipe = "build-artifacts"
 publish_recipe = "publish-artifacts"
+# How the two recipes above are gated. `release-plz release` exits zero having
+# released nothing — every ordinary push, under `release_always` — while the
+# Python and JavaScript registries refuse a version they already serve, so a
+# build and a publish chained behind it unconditionally turn `main` red on the
+# push after a release. The publishing job runs it with `--output json`, the
+# recipe below reads that answer into the output below, and the jobs running
+# the two recipes above are gated on that output being non-empty. `just
+# check-repo`'s `release-gating` holds the workflow to these two names and the
+# module that reads the answer to the output's, and refuses a publishing job
+# that waits on the job drafting the next release's pull request: a drafting
+# job that cannot draft must not be able to stop a publication that is ready.
+cut_recipe = "release-cut"
+cut_output = "released"
+cut_source = "tools/release-artifacts/src/release_artifacts/registries.py"
 
 [manifests]
 # The only manifests permitted to carry a version field, because release

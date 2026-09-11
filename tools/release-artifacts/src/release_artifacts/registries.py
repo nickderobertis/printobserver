@@ -105,6 +105,14 @@ COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
 #: the three routes cannot each resolve a different one.
 VERSION_FIELD = "version"
 
+#: The field the publishing job publishes what it released under. Written as
+#: `<field>=<tag> <tag>...`, and `<field>=` where it released nothing, because
+#: that empty field is what the artifact build and the artifact publish are
+#: gated on: `release-plz release` exits zero having released nothing, which is
+#: every ordinary push under `release_always`, and the registries refuse a
+#: version they already serve.
+RELEASED_FIELD = "released"
+
 #: How long a registry is given to say what it serves.
 ASK_TIMEOUT_SECONDS = 60
 
@@ -323,6 +331,45 @@ def cut_at(root: Path, commit: str) -> str:
         )
         raise RegistryError(msg)
     return cut[0] if cut else ""
+
+
+def released_by(answer: str) -> tuple[str, ...]:
+    """The tags `release-plz release --output json` says it released, in order.
+
+    That answer is one JSON object, `{"releases": [...]}`, with one entry per
+    package released carrying its `package_name`, `tag` and `version` — and an
+    empty list where the run released nothing. A workspace releasing thirteen
+    crates under one version names one tag thirteen times, so what is answered
+    is the distinct tags, each once.
+
+    Raises:
+        RegistryError: If the answer is not one that program writes. An answer
+            nothing can read is refused rather than read as "released nothing",
+            because the jobs gated on this skip on an empty field — and a
+            release skipped over an unreadable answer is one nobody can install
+            and nothing reported.
+    """
+    try:
+        parsed = json.loads(answer)
+    except json.JSONDecodeError as malformed:
+        msg = f"the release program's answer is not JSON: {malformed}\n{answer!r}"
+        raise RegistryError(msg) from malformed
+    releases = parsed.get("releases") if isinstance(parsed, dict) else None
+    if not isinstance(releases, list):
+        msg = (
+            f"the release program's answer carries no `releases` list, which is what "
+            f"`release-plz release --output json` writes:\n{answer!r}"
+        )
+        raise RegistryError(msg)
+    tags: list[str] = []
+    for release in releases:
+        tag = release.get("tag") if isinstance(release, dict) else None
+        if not isinstance(tag, str) or not tag.strip():
+            msg = f"a release in the release program's answer names no tag:\n{release!r}"
+            raise RegistryError(msg)
+        if tag not in tags:
+            tags.append(tag)
+    return tuple(tags)
 
 
 def ordered(version: str) -> tuple[int, ...]:

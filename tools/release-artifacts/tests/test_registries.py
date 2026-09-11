@@ -18,6 +18,7 @@ serving a working artifact passes.
 from __future__ import annotations
 
 import io
+import json
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
+    RELEASED_FIELD,
     UNREADABLE,
     VERSION_FIELD,
     Bases,
@@ -1171,3 +1173,100 @@ def test_resolving_a_release_without_naming_a_commit_is_refused(
     )
 
     contains(capsys.readouterr().err, "takes --commit", describing="what it said")
+
+
+#: What `release-plz release --output json` writes for one package it released:
+#: the shape of its `PackageRelease`, one entry per package.
+def _release(package: str, version: str) -> dict[str, object]:
+    return {"package_name": package, "prs": [], "tag": f"v{version}", "version": version}
+
+
+def cut(answer: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str, str]:
+    """What the publishing job publishes as its output, driven as the workflow drives it.
+
+    The answer is written to a file and read back through the committed command
+    line, whose one line a job appends to its own output file.
+    """
+    written = tmp_path / "released.json"
+    written.write_text(answer, encoding="utf-8")
+    code = main(["cut", "--answer", str(written)])
+    captured = capsys.readouterr()
+    return code, captured.out, captured.err
+
+
+def test_a_run_that_released_the_workspace_answers_its_one_tag_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Thirteen crates released under one version name one tag, and it is answered once.
+
+    The non-empty field is what the artifact build and the artifact publish are
+    gated on, so a run that cut a release is followed by the artifacts of it.
+    """
+    answer = json.dumps(
+        {"releases": [_release("printobserver-types", "0.4.0"), _release("printobserver", "0.4.0")]}
+    )
+
+    code, out, err = cut(answer, tmp_path, capsys)
+
+    equal(code, 0, describing=f"the exit a run that released answers with:\n{err}")
+    equal(
+        out.strip(), f"{RELEASED_FIELD}=v0.4.0", describing="the field a job reads its output from"
+    )
+    equal(err, "", describing="what a passing read said beside its one line")
+
+
+def test_a_run_that_released_nothing_answers_an_empty_field(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every ordinary push finishes a release run that released nothing, and exits zero.
+
+    The empty field is what the artifact build and the artifact publish are
+    gated on: the registries refuse a version they already serve, so a build
+    and a publish on such a push would turn the base branch red.
+    """
+    code, out, _ = cut(json.dumps({"releases": []}), tmp_path, capsys)
+
+    equal(code, 0, describing="the exit a run that released nothing answers with")
+    equal(out.strip(), f"{RELEASED_FIELD}=", describing="the empty field such a run publishes")
+
+
+@pytest.mark.parametrize(
+    ("answer", "named"),
+    [
+        ("not json at all", "not JSON"),
+        (json.dumps({"something": "else"}), "no `releases` list"),
+        (
+            json.dumps({"releases": [{"package_name": "printobserver", "version": "0.4.0"}]}),
+            "no tag",
+        ),
+    ],
+)
+def test_an_answer_the_release_program_does_not_write_is_refused_rather_than_read_as_none(
+    answer: str, named: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unreadable answer fails the job rather than skipping the publish.
+
+    Read as "released nothing", the jobs gated on it would skip over a release
+    that was cut — one nobody can install and nothing reported.
+    """
+    code, out, err = cut(answer, tmp_path, capsys)
+
+    equal(code, 1, describing=f"the exit an unreadable answer gets:\n{out}{err}")
+    equal(out, "", describing="the output a job would have read a field from")
+    contains(err, named, describing="what it said")
+
+
+def test_reading_what_was_released_without_the_answer_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The answer is the whole of what the gate reads, so a read needs one and needs it there."""
+    equal(main(["cut"]), 2, describing="the exit naming no answer gets")
+    contains(capsys.readouterr().err, "takes --answer", describing="what it said")
+
+    absent_file = tmp_path / "never-written.json"
+    equal(
+        main(["cut", "--answer", str(absent_file)]),
+        1,
+        describing="the exit an answer nothing wrote gets",
+    )
+    contains(capsys.readouterr().err, str(absent_file), describing="what it named")
