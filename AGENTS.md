@@ -779,7 +779,7 @@ workflow under the forge's scheduling rules to prove them.
 **A `publish` job that failed is run again, never repaired by hand.** A
 hand-run with an operator's tokens is the manual step this design forbids, so
 the recovery from a publish that stopped partway is GitHub's own re-run, with
-nothing cleaned up first. `python -m release_artifacts publish` decides per
+nothing cleaned up first. `just publish-artifacts` decides per
 artifact — skipping each one its registry already serves, attempting every
 artifact whatever an earlier one answered, uploading the release assets whether
 or not a package registry refused, and failing at the end naming every refusal

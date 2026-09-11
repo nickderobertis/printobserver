@@ -363,6 +363,7 @@ def _raise(refused: RegistryError) -> bool:
     raise refused
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def publish_asset(bases: Bases, token: str, release: Release, path: Path) -> bool:
     """Put one file on the release, unless the forge already lists exactly it.
 

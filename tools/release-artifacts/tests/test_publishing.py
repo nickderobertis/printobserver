@@ -669,7 +669,10 @@ def test_the_stand_in_refuses_a_write_declaring_a_length_it_cannot_read(
             b"Content-Length: as-many-as-it-likes\r\n"
             b"Connection: close\r\n\r\n"
         )
-        answered = connection.recv(4096).decode("utf-8", "replace")
+        whole = b""
+        while chunk := connection.recv(4096):
+            whole += chunk
+    answered = whole.decode("utf-8", "replace")
 
     contains(answered, "400", describing="the status a malformed length is answered with")
     contains(answered, "no length this can read", describing="what the stand-in said")
