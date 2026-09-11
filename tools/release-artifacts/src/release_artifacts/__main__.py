@@ -132,8 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             case "answered":
                 return _answered(arguments)
             case "publish":
-                for line in publish(repo, arguments.into, dict(os.environ)):
-                    print(line)
+                return _publish(repo, arguments)
             case "prove":
                 return _prove(repo, arguments)
             case "build-all":
@@ -153,6 +152,26 @@ def main(argv: list[str] | None = None) -> int:
     ) as refused:
         print(f"release-artifacts: {refused}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _publish(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Publish what was built, saying what happened to each artifact.
+
+    Every line the run said goes to standard output whether or not it failed —
+    a reader of a failed publish needs to know what DID land as much as what
+    did not — and the refusals go to standard error beside every other
+    diagnostic, with the exit saying which it was.
+    """
+    try:
+        said = publish(repo, arguments.into, dict(os.environ))
+    except PublishError as refused:
+        for line in refused.said:
+            print(line)
+        print(f"release-artifacts: {refused}", file=sys.stderr)
+        return 1
+    for line in said:
+        print(line)
     return 0
 
 

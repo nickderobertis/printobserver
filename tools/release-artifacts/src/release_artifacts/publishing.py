@@ -7,17 +7,56 @@ that authenticated by something outside it would be a credential nobody
 declared. The names below are the environment those tokens arrive in, and
 `just check-repo` refuses a workflow that names a secret that manifest does not
 declare.
+
+**A publish that failed partway is finished by running it again**, with nothing
+cleaned up and nothing moved by hand. Three things make that safe, and each is
+per artifact rather than per registry. Before an artifact is sent, its own
+registry is asked — through the same documents the install-path proof reads —
+whether it already serves exactly that artifact at the workspace version, and
+one it serves is reported as already published rather than sent again: a
+wheel by its file name, because a distribution published as one wheel per
+platform is served the moment the first lands; a package by its name and
+version; a release asset by its name and size, and one present under the name
+that differs — another size, or an upload the forge lists as never finished —
+is replaced. A refusal is recorded and every remaining artifact, of the same
+registry and of the others, is still attempted, so one registry's `404` does
+not leave the artifacts after it unpublished. And the run fails at the end
+naming every refusal in the registry's own words, so that a `Scope not found`
+reads as that.
+
+**Every address a registry is read at or written to comes from `Bases`.** So
+with `PRINTOBSERVER_PROOF_REGISTRIES` set the whole publish lands on the
+stand-in `standin.py` stands up, and a journey can drive this real publisher
+over real artifacts against it — which is the only proof of the forge upload
+there is until a release runs it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
-from release_artifacts.build import ASSEMBLED_HERE, CHECKSUMS
-from release_artifacts.targets import Target, declared
+from release_artifacts import packages
+from release_artifacts.build import ASSEMBLED_HERE, CHECKSUMS, PROGRAM, manifest_of
+from release_artifacts.registries import (
+    FORGE_ACCEPT,
+    OCTET_STREAM,
+    UPLOADED,
+    Bases,
+    RegistryError,
+    Release,
+    exchange,
+    npm_versions,
+    pypi_files,
+    pypi_name,
+    release_of,
+)
+from release_artifacts.targets import Target, declared, workspace
 
 #: The environment each registry's own credential arrives in, which is also the
 #: repository secret it is carried by. One place spells them; `gh-secrets.json`
@@ -31,9 +70,55 @@ CREDENTIALS = {
 #: How long any one publish is given.
 PUBLISH_TIMEOUT_SECONDS = 900
 
+#: What one line of the answer says happened to one artifact.
+PUBLISHED = "published"
+ALREADY_PUBLISHED = "already published"
+REFUSED = "refused"
+
 
 class PublishError(RuntimeError):
-    """An artifact could not be published."""
+    """An artifact could not be published.
+
+    Raised at the END of a run that met a refusal, carrying what the run said
+    of every artifact before it, so that a caller can still report what was
+    published beside what was not.
+    """
+
+    def __init__(self, message: str, said: tuple[str, ...] = ()) -> None:
+        """Record the refusal, and everything the run said before it."""
+        super().__init__(message)
+        self.said = said
+
+
+@dataclass(frozen=True, slots=True)
+class Refusal:
+    """One artifact a registry refused, with the registry's own words about it."""
+
+    registry: str
+    artifact: str
+    reason: str
+
+
+@dataclass(slots=True)
+class _Run:
+    """What one run of the publisher has said and been refused so far."""
+
+    said: list[str] = field(default_factory=list)
+    refused: list[Refusal] = field(default_factory=list)
+
+    def attempt(self, registry: str, artifact: str, publishing: Callable[[], bool]) -> None:
+        """Try one artifact, recording the outcome and never stopping on a refusal.
+
+        `publishing` answers whether it published the artifact — `False` where
+        the registry already served it — and raises where the registry, or
+        the read that asks it, refused.
+        """
+        try:
+            outcome = PUBLISHED if publishing() else ALREADY_PUBLISHED
+        except (PublishError, RegistryError) as refused:
+            self.refused.append(Refusal(registry, artifact, str(refused)))
+            outcome = REFUSED
+        self.said.append(f"{registry}\t{artifact}\t{outcome}")
 
 
 def _credential(environment: dict[str, str], registry: str) -> str:
@@ -73,73 +158,209 @@ def _built(dist: Path, suffixes: tuple[str, ...]) -> list[Path]:
 
 
 def publish(repo: Repo, dist: Path, environment: dict[str, str]) -> list[str]:
-    """Publish every artifact this tool assembles, and say what went where.
+    """Publish every artifact this tool assembles its registry does not already serve.
+
+    Answers one line per artifact — published, already published, or refused
+    — in the order they were attempted.
 
     Raises:
-        PublishError: If a registry refused one, or a credential is absent.
+        PublishError: If a credential is absent, which stops the run before
+            anything is sent; or, at the end, if any registry refused any
+            artifact, naming each one with the registry's own reason.
     """
-    said: list[str] = []
     registries = {
         target.registry
         for target in declared(repo.root)
         if target.built_by == ASSEMBLED_HERE and target.registry != "crate"
     }
-    if "pypi" in registries:
-        token = _credential(environment, "pypi")
-        for wheel in _built(dist, (".whl",)):
-            _ran(
-                ["uv", "publish", "--token", token, str(wheel)],
-                cwd=repo.root,
-                env=environment,
-                describing=f"publishing {wheel.name}",
-            )
-            said.append(f"pypi\t{wheel.name}")
-    if "npm" in registries:
-        token = _credential(environment, "npm")
-        npmrc = dist / ".npmrc"
-        npmrc.write_text(f"//registry.npmjs.org/:_authToken={token}\n", encoding="utf-8")
-        for tarball in _built(dist, (".tgz",)):
-            _ran(
-                [
-                    "npm",
-                    "publish",
-                    "--access",
-                    "public",
-                    f"--userconfig={npmrc}",
-                    str(tarball),
-                ],
-                cwd=repo.root,
-                env=environment,
-                describing=f"publishing {tarball.name}",
-            )
-            said.append(f"npm\t{tarball.name}")
-        npmrc.unlink()
-    if "release" in registries:
-        said.extend(_publish_release(repo, dist, environment))
-    return said
-
-
-def _publish_release(repo: Repo, dist: Path, environment: dict[str, str]) -> list[str]:
-    """Put the per-platform artifacts the install script downloads on the release."""
-    token = _credential(environment, "release")
+    # Every credential before any write: a token found missing after the
+    # first registry was written is a publish stopped partway, which is the
+    # state this whole module exists to make recoverable rather than to cause.
+    tokens = {
+        registry: _credential(environment, registry)
+        for registry in CREDENTIALS
+        if registry in registries
+    }
+    bases = Bases.read(repo, environment)
     version = _version(repo)
-    assets = [path for path in _built(dist, (".tar.gz",)) if path.name.startswith("printobserver-")]
-    digests = dist / CHECKSUMS
-    if digests.is_file():
-        assets.append(digests)
+    publishing = _Run()
+    if "pypi" in registries:
+        for wheel in _built(dist, (".whl",)):
+            publishing.attempt(
+                "pypi",
+                wheel.name,
+                lambda wheel=wheel: publish_wheel(
+                    repo, bases, tokens["pypi"], wheel, version, environment
+                ),
+            )
+    if "npm" in registries:
+        npmrc = dist / ".npmrc"
+        npmrc.write_text(npmrc_line(bases, tokens["npm"]), encoding="utf-8")
+        try:
+            for tarball in _built(dist, (".tgz",)):
+                manifest = manifest_of(tarball)
+                publishing.attempt(
+                    "npm",
+                    f"{manifest['name']}@{manifest['version']}",
+                    lambda tarball=tarball, manifest=manifest: publish_package(
+                        repo, bases, tarball, manifest, npmrc, environment
+                    ),
+                )
+        finally:
+            npmrc.unlink()
+    if "release" in registries:
+        _publish_release(bases, tokens["release"], dist, version, publishing)
+    if publishing.refused:
+        raise PublishError(_refusals(publishing.refused), tuple(publishing.said))
+    return publishing.said
+
+
+def _refusals(refused: list[Refusal]) -> str:
+    """Every refusal a run met, each with the registry's own words, one after another."""
+    lines = [f"{len(refused)} artifact(s) were refused; run the publish again once each is fixed:"]
+    for refusal in refused:
+        lines.append(f"- {refusal.registry}: {refusal.artifact}")
+        lines.extend(f"    {line}" for line in refusal.reason.strip().splitlines())
+    return "\n".join(lines)
+
+
+def publish_wheel(
+    repo: Repo, bases: Bases, token: str, wheel: Path, version: str, environment: dict[str, str]
+) -> bool:
+    """Send one wheel to the Python registry, unless it already serves that file.
+
+    Raises:
+        PublishError: If the registry refused it.
+        RegistryError: If the registry could not be asked what it serves.
+    """
+    name = pypi_name(wheel.name.partition("-")[0])
+    if wheel.name in pypi_files(bases, name, version):
+        return False
     _ran(
-        ["gh", "release", "upload", f"v{version}", *[str(path) for path in assets], "--clobber"],
+        ["uv", "publish", "--publish-url", bases.pypi_upload, "--token", token, str(wheel)],
         cwd=repo.root,
-        env={**environment, "GH_TOKEN": token},
-        describing=f"uploading the release artifacts of v{version}",
+        env=environment,
+        describing=f"publishing {wheel.name} to {bases.pypi_upload}",
     )
-    return [f"release\t{path.name}" for path in assets]
+    return True
+
+
+def npmrc_line(bases: Bases, token: str) -> str:
+    """The one line `npm publish` reads its credential from, for the registry it is sent to.
+
+    `npm` keys a credential by the registry's host and path, so the line is
+    composed from the address `Bases` gives that registry — which for the real
+    one is `//registry.npmjs.org/`, byte for byte the line this always wrote.
+    """
+    where = urlsplit(bases.npm)
+    return f"//{where.netloc}{where.path.rstrip('/')}/:_authToken={token}\n"
+
+
+def publish_package(
+    repo: Repo,
+    bases: Bases,
+    tarball: Path,
+    manifest: dict[str, object],
+    npmrc: Path,
+    environment: dict[str, str],
+) -> bool:
+    """Send one package to the JavaScript registry, unless it already serves that version.
+
+    Raises:
+        PublishError: If the registry refused it.
+        RegistryError: If the registry could not be asked what it serves.
+    """
+    name, version = str(manifest["name"]), str(manifest["version"])
+    if version in npm_versions(bases, name):
+        return False
+    _ran(
+        [
+            "npm",
+            "publish",
+            "--access",
+            "public",
+            # With its trailing slash, because that is what `npm` keys the
+            # credential in `.npmrc` by: the registry's path up to the last
+            # `/`, so an address without one would be keyed a path short.
+            "--registry",
+            f"{bases.npm}/",
+            f"--userconfig={npmrc}",
+            str(tarball),
+        ],
+        cwd=repo.root,
+        env=environment,
+        describing=f"publishing {name}@{version} to {bases.npm}",
+    )
+    return True
+
+
+def _publish_release(bases: Bases, token: str, dist: Path, version: str, publishing: _Run) -> None:
+    """Put the per-platform artifacts the install script downloads on the release.
+
+    Every `printobserver-*.tar.gz` in `dist`, and then ONE checksum file listing
+    all of them — composed here from what `dist` holds rather than taken from
+    the build, because each platform's build writes a checksum file of its own
+    tarball alone, and the file the release carries has to name every one.
+    """
+    tarballs = [path for path in _built(dist, (".tar.gz",)) if path.name.startswith(f"{PROGRAM}-")]
+    digests = dist / CHECKSUMS
+    digests.write_bytes(packages.checksums(tarballs))
+    assets = [*tarballs, digests]
+    try:
+        release = release_of(bases, version)
+    except RegistryError as unread:
+        for path in assets:
+            publishing.attempt("release", path.name, lambda unread=unread: _raise(unread))
+        return
+    for path in assets:
+        publishing.attempt(
+            "release",
+            path.name,
+            lambda path=path: publish_asset(bases, token, release, path),
+        )
+
+
+def _raise(refused: RegistryError) -> bool:
+    """Refuse, with what the forge said when asked for the release."""
+    raise refused
+
+
+def publish_asset(bases: Bases, token: str, release: Release, path: Path) -> bool:
+    """Put one file on the release, unless the forge already lists exactly it.
+
+    Exactly it: an asset of the same name and size, in the state a finished
+    upload leaves. One present under the name that differs is what an
+    interrupted upload or an earlier run's one-platform checksum file leaves,
+    and it is replaced — deleted first, because the forge refuses a second
+    upload under a taken name, then uploaded to the release's own upload
+    address as the forge's API takes it.
+
+    Raises:
+        RegistryError: If the forge refused either request, in its own words.
+    """
+    present = release.named(path.name)
+    if present is not None:
+        if present.size == path.stat().st_size and present.state == UPLOADED:
+            return False
+        exchange(
+            f"{bases.listing}/assets/{present.id}",
+            method="DELETE",
+            accept=FORGE_ACCEPT,
+            token=token,
+        )
+    exchange(
+        f"{release.upload_url}?name={quote(path.name, safe='')}",
+        method="POST",
+        body=path.read_bytes(),
+        content_type=OCTET_STREAM,
+        accept=FORGE_ACCEPT,
+        token=token,
+    )
+    return True
 
 
 def _version(repo: Repo) -> str:
     """The version release automation wrote into the workspace."""
-    from release_artifacts.targets import workspace
-
     return workspace(repo.root)["version"]
 
 

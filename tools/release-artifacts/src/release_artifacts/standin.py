@@ -22,6 +22,16 @@ proving a local build ever resolves anything, so nothing there can see it.
 One base address covers all three, because a proof that read one registry from a
 stand-in and another from the real internet would be a proof of neither: the
 paths below it are each registry's own.
+
+**And each registry takes a write as the real one takes it**: the Python
+registry's legacy multipart upload, the JavaScript registry's publish document
+and the forge's asset upload and deletion, each on that registry's own path
+under the same base. What a write lands is then served by the same documents a
+read asks for — the JSON document, the packument, the release document — so a
+publish driven against this is proven by the reads that decide what to publish
+next time. A caller can make any one artifact refused, with a status and a body
+of its own choosing, and every write is recorded with the credential it
+carried, so that a journey can say which token reached which registry.
 """
 
 from __future__ import annotations
@@ -32,9 +42,10 @@ import json
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from repo_checks.model import Repo
 
@@ -43,7 +54,7 @@ from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 
 # The one version ordering. A stand-in that sorted versions its own way could
 # serve a newest the proof selecting from it disagreed about.
-from release_artifacts.registries import ordered
+from release_artifacts.registries import ordered, pypi_name
 
 #: The program a served package carries: it runs, and it answers `--version`
 #: with whatever the caller asked it to, which is the whole of what a route's
@@ -75,6 +86,19 @@ PYPI_PREFIX = "/pypi"
 NPM_PREFIX = "/npm"
 FORGE_PREFIX = "/forge/releases"
 
+#: Where the Python registry takes an upload: the legacy multipart form, on
+#: the path the real one serves it at under its own upload host.
+PYPI_UPLOAD = f"{PYPI_PREFIX}/legacy/"
+
+#: The state the forge lists an asset in once its upload finished, and the
+#: state an interrupted upload leaves one in.
+UPLOADED = "uploaded"
+INTERRUPTED = "starter"
+
+#: The registries a write is recorded under, as `release-targets.toml` names
+#: them.
+REGISTRIES = ("pypi", "npm", "release")
+
 
 class StandinError(ValueError):
     """A caller asked the stand-in registries to serve something they cannot."""
@@ -82,11 +106,35 @@ class StandinError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Answer:
-    """What this stand-in answers one read with."""
+    """What this stand-in answers one request with."""
 
     content_type: str
     body: bytes
     status: int = 200
+
+
+@dataclass(frozen=True, slots=True)
+class Write:
+    """One write a registry here took, or refused, and the credential it carried."""
+
+    registry: str
+    method: str
+    #: The wheel's file name, the package's name, or the asset's name.
+    name: str
+    #: The `Authorization` header as it arrived, which is how the real
+    #: registries take a credential: `Basic` from `uv`, `Bearer` from `npm`
+    #: and from a forge upload.
+    credential: str
+    accepted: bool
+
+
+@dataclass(slots=True)
+class _Asset:
+    """One asset a release here carries."""
+
+    id: int
+    content: bytes
+    state: str = UPLOADED
 
 
 class Registries:
@@ -102,14 +150,28 @@ class Registries:
         self.repo = repo
         self.into = into
         self.asked: list[str] = []
+        #: Every write a registry here was sent, accepted or refused, in the
+        #: order it arrived.
+        self.written: list[Write] = []
         self._answers: dict[str, Answer] = {}
-        self._wheels: dict[str, str] = {}
+        #: Every file the Python registry serves, by the distribution's
+        #: normalized name, then by version, then by the file's own name: the
+        #: JSON document lists a version's files, and a publish that died
+        #: between two per-platform wheels is told apart by the file.
+        self._files: dict[str, dict[str, dict[str, bytes]]] = {}
         #: Every package of the JavaScript registry this serves, by its own
         #: name and then by version: the launcher and the per-platform
         #: packages beside it are separate names with separate packuments,
         #: exactly as the published ones are.
         self._manifests: dict[str, dict[str, dict[str, object]]] = {}
         self._tags: list[str] = []
+        #: Every asset each release carries, by tag and then by name, with
+        #: the forge's own numbering of releases and of assets.
+        self._assets: dict[str, dict[str, _Asset]] = {}
+        self._release_ids: dict[str, int] = {}
+        self._next_id = 1
+        #: What a write of one artifact is refused with, by registry and name.
+        self._refusals: dict[tuple[str, str], Answer] = {}
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
@@ -196,6 +258,7 @@ class Registries:
         """
         if tag not in self._tags:
             self._tags.append(tag)
+            self._release_ids[tag] = self._numbered()
         self.answers(
             FORGE_PREFIX,
             json.dumps(
@@ -205,6 +268,64 @@ class Registries:
                 ]
             ).encode(),
         )
+        self._serve_release_document(tag)
+
+    def refuse(
+        self,
+        registry: str,
+        name: str,
+        *,
+        status: int,
+        body: bytes,
+        content_type: str = "application/json",
+    ) -> None:
+        """Refuse every write of one artifact with exactly this answer.
+
+        By the registry and the artifact's name as a write states it: a
+        wheel's file name, a package's name, or an asset's name. The status and
+        the body are the caller's, because what a publish reports of a refusal
+        is the registry's own words, and the words this repository's release of
+        2026-09-11 met were `404` and `Scope not found`.
+
+        Raises:
+            StandinError: If the registry is not one a write is recorded under.
+        """
+        if registry not in REGISTRIES:
+            msg = f"`{registry}` is not a registry here: they are {', '.join(REGISTRIES)}"
+            raise StandinError(msg)
+        self._refusals[registry, name] = Answer(content_type, body, status)
+
+    def accept(self, registry: str, name: str) -> None:
+        """Stop refusing one artifact, which is the organization coming to exist."""
+        self._refusals.pop((registry, name), None)
+
+    def interrupted(self, tag: str, name: str) -> None:
+        """List one asset of a release as an upload that never finished.
+
+        The forge lists an asset whose upload was interrupted under its name in
+        a state other than `uploaded`, and a download of the release does not
+        find it — so a publish that read the name alone would skip an asset
+        nobody can download.
+
+        Raises:
+            StandinError: If the release carries no such asset.
+        """
+        asset = self._assets.get(tag, {}).get(name)
+        if asset is None:
+            msg = f"{tag} carries no asset {name} to have interrupted"
+            raise StandinError(msg)
+        asset.state = INTERRUPTED
+        self._serve_release_document(tag)
+
+    def assets_of(self, tag: str) -> dict[str, bytes]:
+        """Every asset one release carries, by name, as a download would read it."""
+        return {name: asset.content for name, asset in self._assets.get(tag, {}).items()}
+
+    def _numbered(self) -> int:
+        """The next number the forge here gives a release or an asset."""
+        numbered = self._next_id
+        self._next_id += 1
+        return numbered
 
     def answers(
         self,
@@ -234,13 +355,112 @@ class Registries:
 
         Decoded before it is looked up, because `npm` asks for a scoped
         package under its name percent-encoded — `@printobserver%2fcli-...` —
-        and what is served is the name itself.
+        and what is served is the name itself; and read without its query,
+        which is a reader's own and names nothing served here.
         """
         self.asked.append(path)
-        found = self._answers.get(unquote(path).rstrip("/") or "/")
+        found = self._answers.get(_served_path(path))
         if found is None:
             return Answer("text/plain", f"{path} is not served here\n".encode(), 404)
         return found
+
+    def take(self, method: str, path: str, headers: Mapping[str, str], body: bytes) -> Answer:
+        """Take one write as the registry it is addressed to takes it.
+
+        Three writes and one deletion, each on its own registry's path: the
+        Python registry's legacy upload, the JavaScript registry's publish
+        document, and the forge's asset upload and asset deletion. Anything
+        else is answered as a path nothing here serves. The headers arrive
+        with their names in lower case, as one client spells them and another
+        does not.
+        """
+        where = _served_path(path)
+        credential = headers.get("authorization", "")
+        if method == "POST" and where == PYPI_UPLOAD.rstrip("/"):
+            return self._take_wheel(headers.get("content-type", ""), body, credential)
+        if method == "PUT" and where.startswith(f"{NPM_PREFIX}/"):
+            return self._take_package(where.removeprefix(f"{NPM_PREFIX}/"), body, credential)
+        if method == "POST" and where.startswith(f"{FORGE_PREFIX}/") and where.endswith("/assets"):
+            numbered = where.removeprefix(f"{FORGE_PREFIX}/").removesuffix("/assets")
+            named = parse_qs(urlsplit(path).query).get("name", [""])[0]
+            return self._take_asset(numbered, named, body, credential)
+        if method == "DELETE" and where.startswith(f"{FORGE_PREFIX}/assets/"):
+            return self._delete_asset(where.removeprefix(f"{FORGE_PREFIX}/assets/"), credential)
+        return Answer("text/plain", f"{method} {path} is not served here\n".encode(), 404)
+
+    def _refused(self, registry: str, name: str, method: str, credential: str) -> Answer | None:
+        """The refusal one write meets, recording it either way."""
+        refusal = self._refusals.get((registry, name))
+        self.written.append(Write(registry, method, name, credential, refusal is None))
+        return refusal
+
+    def _take_wheel(self, content_type: str, body: bytes, credential: str) -> Answer:
+        """Take the legacy upload form `uv publish` posts, and serve the file it carries."""
+        fields = _form(content_type, body)
+        name = fields.get("name", (b"", ""))[0].decode()
+        version = fields.get("version", (b"", ""))[0].decode()
+        content, file_name = fields.get("content", (b"", ""))
+        if not name or not version or not file_name:
+            return Answer("text/plain", b"the upload names no file\n", 400)
+        refusal = self._refused("pypi", file_name, "POST", credential)
+        if refusal is not None:
+            return refusal
+        digest = fields.get("sha256_digest", (b"", ""))[0].decode()
+        if digest and digest != hashlib.sha256(content).hexdigest():
+            return Answer("text/plain", b"the digest does not match the file\n", 400)
+        self._serve_file(pypi_name(name), version, file_name, content)
+        return Answer("text/plain", b"")
+
+    def _take_package(self, name: str, body: bytes, credential: str) -> Answer:
+        """Take the publish document `npm publish` puts, and serve the version in it."""
+        refusal = self._refused("npm", name, "PUT", credential)
+        if refusal is not None:
+            return refusal
+        try:
+            document = json.loads(body)
+        except UnicodeError, json.JSONDecodeError:
+            return Answer("application/json", b'{"error": "not a publish document"}', 400)
+        versions = document.get("versions") if isinstance(document, dict) else None
+        attachments = document.get("_attachments") if isinstance(document, dict) else None
+        if not isinstance(versions, dict) or not isinstance(attachments, dict) or not versions:
+            return Answer("application/json", b'{"error": "not a publish document"}', 400)
+        for version, manifest in versions.items():
+            if not isinstance(manifest, dict):
+                return Answer("application/json", b'{"error": "not a manifest"}', 400)
+            file_name, attached = next(iter(attachments.items()), ("", {}))
+            data = attached.get("data", "") if isinstance(attached, dict) else ""
+            self._serve_version(name, str(version), manifest, file_name, base64.b64decode(data))
+        return Answer("application/json", b'{"ok": true}')
+
+    def _take_asset(self, numbered: str, name: str, body: bytes, credential: str) -> Answer:
+        """Take one asset's bytes on a release's own upload address."""
+        tag = next((tag for tag, id in self._release_ids.items() if str(id) == numbered), "")
+        if not tag or not name:
+            return Answer("application/json", b'{"message": "Not Found"}', 404)
+        refusal = self._refused("release", name, "POST", credential)
+        if refusal is not None:
+            return refusal
+        assets = self._assets.setdefault(tag, {})
+        if name in assets:
+            return Answer("application/json", b'{"message": "already_exists"}', 422)
+        asset = _Asset(self._numbered(), body)
+        assets[name] = asset
+        self._serve_asset(tag, name)
+        return Answer("application/json", json.dumps(self._listed(name, asset)).encode(), 201)
+
+    def _delete_asset(self, numbered: str, credential: str) -> Answer:
+        """Remove one asset by the number the forge here gave it."""
+        for tag, assets in self._assets.items():
+            for name, asset in assets.items():
+                if str(asset.id) == numbered:
+                    refusal = self._refused("release", name, "DELETE", credential)
+                    if refusal is not None:
+                        return refusal
+                    del assets[name]
+                    self._answers.pop(f"{FORGE_PREFIX}/download/{tag}/{name}", None)
+                    self._serve_release_document(tag)
+                    return Answer("application/json", b"", 204)
+        return Answer("application/json", b'{"message": "Not Found"}', 404)
 
     def _serve_wheel(self, version: str, program: Path | None) -> None:
         """Assemble a wheel and serve it, with the index an installer reads."""
@@ -259,24 +479,42 @@ class Registries:
         if program is not None:
             wheel.add_script(PROGRAM, program)
         written = wheel.write(self.into / "pypi")
-        self._wheels[version] = written.name
+        self._serve_file(pypi_name(name), version, written.name, written.read_bytes())
+
+    def _serve_file(self, name: str, version: str, file_name: str, content: bytes) -> None:
+        """Serve one file of the Python registry, and the two documents listing it.
+
+        The JSON document lists each version's FILES, as the real one does: a
+        document whose `releases` listed none would be one no reader could
+        tell a half-published version from a whole one by.
+        """
+        self._files.setdefault(name, {}).setdefault(version, {})[file_name] = content
         self.answers(
-            f"{PYPI_PREFIX}/files/{written.name}",
-            written.read_bytes(),
-            content_type="application/octet-stream",
+            f"{PYPI_PREFIX}/files/{file_name}", content, content_type="application/octet-stream"
         )
+        versions = self._files[name]
         self.answers(
             f"{PYPI_PREFIX}/pypi/{name}/json",
             json.dumps(
                 {
-                    "info": {"name": name, "version": _newest(self._wheels)},
-                    "releases": {served: [] for served in self._wheels},
+                    "info": {"name": name, "version": _newest(versions)},
+                    "releases": {
+                        served: [
+                            {
+                                "filename": file_name,
+                                "url": f"{self.base}{PYPI_PREFIX}/files/{file_name}",
+                                "size": len(files[file_name]),
+                            }
+                            for file_name in sorted(files)
+                        ]
+                        for served, files in versions.items()
+                    },
                 }
             ).encode(),
         )
         links = "\n".join(
             f'<a href="{self.base}{PYPI_PREFIX}/files/{file_name}">{file_name}</a><br>'
-            for file_name in sorted(self._wheels.values())
+            for file_name in sorted(file_name for files in versions.values() for file_name in files)
         )
         self.answers(
             f"{PYPI_PREFIX}/simple/{name}",
@@ -348,28 +586,35 @@ class Registries:
         """Serve one package's tarball, and the packument every version of it is in."""
         manifest = package.manifest(**declared)
         written = packages.packed(package, manifest, archive, self.into / "npm")
-        raw = written.read_bytes()
+        self._serve_version(
+            package.name, package.version, manifest, written.name, written.read_bytes()
+        )
+
+    def _serve_version(
+        self, name: str, version: str, manifest: dict[str, object], file_name: str, raw: bytes
+    ) -> None:
+        """Serve one version of one package: its tarball, and the packument listing it."""
         self.answers(
-            f"{NPM_PREFIX}/{package.name}/-/{written.name}",
+            f"{NPM_PREFIX}/{name}/-/{file_name}",
             raw,
             content_type="application/octet-stream",
         )
-        versions = self._manifests.setdefault(package.name, {})
-        versions[package.version] = {
+        versions = self._manifests.setdefault(name, {})
+        versions[version] = {
             **manifest,
             "dist": {
-                "tarball": f"{self.base}{NPM_PREFIX}/{package.name}/-/{written.name}",
+                "tarball": f"{self.base}{NPM_PREFIX}/{name}/-/{file_name}",
                 "shasum": hashlib.sha1(raw).hexdigest(),  # noqa: S324
                 "integrity": "sha512-"
                 + base64.b64encode(hashlib.sha512(raw).digest()).decode("ascii"),
             },
         }
         self.answers(
-            f"{NPM_PREFIX}/{package.name}",
+            f"{NPM_PREFIX}/{name}",
             json.dumps(
                 {
-                    "_id": package.name,
-                    "name": package.name,
+                    "_id": name,
+                    "name": name,
                     "dist-tags": {"latest": _newest(versions)},
                     "versions": versions,
                 }
@@ -385,14 +630,77 @@ class Registries:
         else:
             archive.add(PROGRAM, program.read_bytes(), executable=True)
         written = archive.write(self.into / "releases" / version / asset)
-        digests = packages.checksums([written])
-        for under in (f"{FORGE_PREFIX}/download/v{version}", f"{FORGE_PREFIX}/latest/download"):
+        tag = f"v{version}"
+        assets = self._assets.setdefault(tag, {})
+        assets[asset] = _Asset(self._numbered(), written.read_bytes())
+        assets[CHECKSUMS] = _Asset(self._numbered(), packages.checksums([written]))
+        for name in (asset, CHECKSUMS):
+            self._serve_asset(tag, name)
             self.answers(
-                f"{under}/{asset}",
-                written.read_bytes(),
-                content_type="application/octet-stream",
+                f"{FORGE_PREFIX}/latest/download/{name}",
+                assets[name].content,
+                content_type=_asset_type(name),
             )
-            self.answers(f"{under}/{CHECKSUMS}", digests, content_type="text/plain")
+
+    def _serve_asset(self, tag: str, name: str) -> None:
+        """Serve one asset where the install script downloads it, and list it."""
+        self.answers(
+            f"{FORGE_PREFIX}/download/{tag}/{name}",
+            self._assets[tag][name].content,
+            content_type=_asset_type(name),
+        )
+        self._serve_release_document(tag)
+
+    def _listed(self, name: str, asset: _Asset) -> dict[str, object]:
+        """One asset as the release document lists it."""
+        return {"id": asset.id, "name": name, "size": len(asset.content), "state": asset.state}
+
+    def _serve_release_document(self, tag: str) -> None:
+        """Serve the release document the forge answers for one tag, if it is listed."""
+        numbered = self._release_ids.get(tag)
+        if numbered is None:
+            return
+        self.answers(
+            f"{FORGE_PREFIX}/tags/{tag}",
+            json.dumps(
+                {
+                    "id": numbered,
+                    "tag_name": tag,
+                    "upload_url": f"{self.base}{FORGE_PREFIX}/{numbered}/assets{{?name,label}}",
+                    "assets": [
+                        self._listed(name, asset)
+                        for name, asset in self._assets.get(tag, {}).items()
+                    ],
+                }
+            ).encode(),
+        )
+
+
+def _served_path(path: str) -> str:
+    """The path one request names, as it is served here."""
+    return unquote(urlsplit(path).path).rstrip("/") or "/"
+
+
+def _asset_type(name: str) -> str:
+    """What one release asset is served as."""
+    return "text/plain" if name == CHECKSUMS else "application/octet-stream"
+
+
+def _form(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
+    """The fields of one multipart form, each with the file name it carried, if any."""
+    message = BytesParser().parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
+    )
+    fields: dict[str, tuple[bytes, str]] = {}
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not isinstance(name, str):
+            continue
+        payload = part.get_payload(decode=True)
+        fields[name] = (payload if isinstance(payload, bytes) else b"", part.get_filename() or "")
+    return fields
 
 
 def _newest(served: Mapping[str, object]) -> str:
@@ -404,13 +712,34 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
     """The request handler every registry answers through."""
 
     class Handler(BaseHTTPRequestHandler):
-        """Answer a read of a package, an index, a packument or a release."""
+        """Answer a read of a package, an index, a packument or a release, or take a write."""
 
         protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:
             """Answer whatever an installer asked for."""
-            answer = registries.answer(self.path)
+            self._answer(registries.answer(self.path))
+
+        def do_POST(self) -> None:
+            """Take an upload."""
+            self._take("POST")
+
+        def do_PUT(self) -> None:
+            """Take a publish."""
+            self._take("PUT")
+
+        def do_DELETE(self) -> None:
+            """Take a deletion."""
+            self._take("DELETE")
+
+        def _take(self, method: str) -> None:
+            """Read the whole body a write carries and answer as its registry would."""
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            headers = {name.lower(): value for name, value in self.headers.items()}
+            self._answer(registries.take(method, self.path, headers, body))
+
+        def _answer(self, answer: Answer) -> None:
+            """Write one answer."""
             self.send_response(answer.status)
             self.send_header("Content-Type", answer.content_type)
             self.send_header("Content-Length", str(len(answer.body)))
