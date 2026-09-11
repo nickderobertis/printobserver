@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
             "world",
             "standin",
             "released",
-            "cut",
+            "answered",
             "list",
         ],
     )
@@ -129,8 +129,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _standin(repo, arguments)
             case "released":
                 return _released(repo, arguments)
-            case "cut":
-                return _cut(arguments)
+            case "answered":
+                return _answered(arguments)
             case "publish":
                 for line in publish(repo, arguments.into, dict(os.environ)):
                     print(line)
@@ -204,7 +204,7 @@ def _released(repo: Repo, arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _cut(arguments: argparse.Namespace) -> int:
+def _answered(arguments: argparse.Namespace) -> int:
     """Say what the publishing job released, read off the release program's own answer.
 
     Answered as `released=<tag> <tag>...`, the one line a job publishes an
@@ -216,7 +216,7 @@ def _cut(arguments: argparse.Namespace) -> int:
     """
     if arguments.answer is None:
         print(
-            "cut takes --answer <path>: the file `release-plz release --output json` "
+            "answered takes --answer <path>: the file `release-plz release --output json` "
             "wrote its answer to",
             file=sys.stderr,
         )

@@ -4,7 +4,7 @@
 under `release_always` — and the Python and JavaScript registries refuse a
 version they already serve. So the two jobs after it are gated on what it
 ANSWERED rather than on its exit status: the workflow runs it with `--output
-json`, `just release-cut` reads that answer into a job output, and the artifact
+json`, `just release-answer` reads that answer into a job output, and the artifact
 build and the artifact publish run on that output being non-empty.
 
 These journeys drive that recipe for both answers — a release having been cut
@@ -57,17 +57,17 @@ def answer(*versions: str) -> str:
     )
 
 
-def cut(answered: str, into: Path) -> tuple[int, str]:
+def read(answered: str, into: Path) -> tuple[int, str]:
     """Drive the recipe the publishing job reads its answer with, over `answered`."""
     written = into / "released.json"
     written.write_text(answered, encoding="utf-8")
-    return cut_file(written)
+    return read_file(written)
 
 
-def cut_file(written: Path) -> tuple[int, str]:
+def read_file(written: Path) -> tuple[int, str]:
     """Drive the recipe over the file the release step would have written."""
     result = capture(
-        ["just", str(DECLARED["cut_recipe"]), str(written)],
+        ["just", str(DECLARED["answer_recipe"]), str(written)],
         REPO_ROOT,
         timeout=RECIPE_TIMEOUT_SECONDS,
         env=clean_environment(PYTHONPATH=pythonpath()),
@@ -88,11 +88,13 @@ def test_a_run_that_cut_a_release_answers_a_field_the_artifact_jobs_run_on(
     versions: tuple[str, ...], answered: str, tmp_path: Path
 ) -> None:
     """A run that released something answers a non-empty field, one line, nothing beside it."""
-    code, said = cut(answer(*versions), tmp_path)
+    code, said = read(answer(*versions), tmp_path)
 
-    passing((code, said), describing=f"`just {DECLARED['cut_recipe']}` over a cut release")
+    passing((code, said), describing=f"`just {DECLARED['answer_recipe']}` over a cut release")
     equal(
-        said.strip(), f"{DECLARED['cut_output']}={answered}", describing="the one line a job reads"
+        said.strip(),
+        f"{DECLARED['answer_output']}={answered}",
+        describing="the one line a job reads",
     )
 
 
@@ -100,12 +102,12 @@ def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_o
     tmp_path: Path,
 ) -> None:
     """Every ordinary push finishes a release run that released nothing, exiting zero."""
-    code, said = cut(answer(), tmp_path)
+    code, said = read(answer(), tmp_path)
 
-    passing((code, said), describing=f"`just {DECLARED['cut_recipe']}` over no release")
+    passing((code, said), describing=f"`just {DECLARED['answer_recipe']}` over no release")
     equal(
         said.strip(),
-        f"{DECLARED['cut_output']}=",
+        f"{DECLARED['answer_output']}=",
         describing="the empty field such a run publishes",
     )
 
@@ -115,22 +117,22 @@ def test_a_run_that_cut_nothing_answers_the_empty_field_the_artifact_jobs_skip_o
     [
         ("release-plz wrote something else here", "not JSON"),
         (json.dumps({"something": "else"}), "no `releases` list"),
-        (answer("0.4.0").replace('"tag": "v0.4.0", ', ""), "no tag"),
+        (answer("0.4.0").replace('"tag": "v0.4.0", ', ""), "carries no"),
         # A tag with a newline in it would write a second output nothing named.
-        (answer("0.4.0\nextra=1"), "not one"),
+        (answer("0.4.0\nextra=1"), "is not that"),
         # A version is not a tag: release automation writes `v` before it.
-        (answer("0.4.0").replace("v0.4.0", "0.4.0"), "not one"),
+        (answer("0.4.0").replace("v0.4.0", "0.4.0"), "is not that"),
     ],
 )
 def test_an_answer_the_release_program_does_not_write_fails_the_job_rather_than_skipping(
     answered: str, named: str, tmp_path: Path
 ) -> None:
     """Read as "released nothing", an unreadable answer would skip the publish of a cut release."""
-    code, said = cut(answered, tmp_path)
+    code, said = read(answered, tmp_path)
 
     failing((code, said), naming=named)
     truth(
-        not any(line.startswith(f"{DECLARED['cut_output']}=") for line in said.splitlines()),
+        not any(line.startswith(f"{DECLARED['answer_output']}=") for line in said.splitlines()),
         describing=f"no field for a job to read off a refused answer: {said!r}",
     )
 
@@ -139,7 +141,7 @@ def test_an_answer_the_release_program_never_wrote_fails_the_job(tmp_path: Path)
     """A release step that wrote no answer file is a step whose answer nothing can read."""
     never_written = tmp_path / "never-written.json"
 
-    result = cut_file(never_written)
+    result = read_file(never_written)
 
     failing(result, naming=str(never_written))
 
@@ -178,7 +180,7 @@ def test_an_artifact_build_that_no_longer_reads_the_answer_is_refused_by_the_gat
     broken = gate_copy()
     broken.edit(
         WORKFLOW,
-        f"    if: needs.release.outputs.{DECLARED['cut_output']} != ''\n    strategy:\n",
+        f"    if: needs.release.outputs.{DECLARED['answer_output']} != ''\n    strategy:\n",
         "    strategy:\n",
     )
 

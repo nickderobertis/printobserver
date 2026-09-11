@@ -256,6 +256,18 @@ site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "The judged tier read this suite as expensive work that belongs in a tier of its own. It is where its neighbours are: `test_taking.py` in the same directory installs all three routes for real and `test_clients.py` builds the `printobserver` program and starts a real supervisor, so what edges this project's `test` target is what it proves rather than what it costs. Moving one of the four out would split identical work across two projects, and it would leave `registries.py` and `standin.py` measured by no tier that carries a coverage floor — the end-to-end tier is not measured. The end-to-end journeys over the same behaviour, which drive the real recipes, are in `tests/repo-e2e` where that tier's own work belongs."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The committed step is `release-plz release-pr`, and that command is `release-plz update` followed by opening a pull request on a forge: the computation this journey exists to prove — each package's next version, compared against what the registry serves — is the whole of `update`, and the pull request is the one part a journey cannot drive, because it needs a forge and a token and leaves a pull request on a real repository. So the journey runs the real program's real computation against a real (stand-in) registry over a real copy, and stops before the one step that is somebody else's server. Driving `release-pr` instead would prove the same computation and then fail on the forge whatever the tree looked like."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
+reason = "The sample is the one source in this repository of what `release-plz release --output json` answers, and every fixture and the reader are built from it; what it cannot have is a drift gate against a live release-plz, because that program writes this answer only having released something — which needs a forge, a registry and a publish, none of which a tier here may do. The reconciliation is the real release path itself: a shape that moved fails `just release-answer` in the `release` job naming the field, rather than reading as `released nothing`, and the same journey (`tests/repo-e2e/tests/test_release_program.py`) proves the committed argument list, `--output json` included, is one the installed program accepts. Recorded with the release-plz revision the shape was read from, so the day it moves a reader knows what to re-read."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.Request("

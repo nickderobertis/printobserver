@@ -771,8 +771,8 @@ each package's difference against the registry and can die doing it, and that
 must not stop a publication that is ready. And `release-plz release` exits zero
 having released nothing, while the Python and JavaScript registries refuse a
 version they already serve — so `artifacts` and `publish` are gated on what it
-**answered** (`--output json`, read by `just release-cut` into the job output
-`repo-policy.toml`'s `release.cut_output` names), never on its exit status.
+**answered** (`--output json`, read by `just release-answer` into the job output
+`repo-policy.toml`'s `release.answer_output` names), never on its exit status.
 `just check-repo`'s `release-gating` enforces both.
 
 `release-targets.toml` declares what this repository publishes.

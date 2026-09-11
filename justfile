@@ -187,8 +187,8 @@ release-version COMMIT ROOT:
 # publish on a push that cut nothing turns `main` red. An answer that is not
 # that program's is refused rather than read as "none": a publish skipped over
 # an unreadable answer is a release nobody can install and nothing reported.
-release-cut ANSWER:
-    @uv run -q python -m release_artifacts cut --answer {{ANSWER}}
+release-answer ANSWER:
+    @uv run -q python -m release_artifacts answered --answer {{ANSWER}}
 
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it

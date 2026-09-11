@@ -477,7 +477,7 @@ def publish_credentials(repo: Repo) -> list[str]:
 #: output it publishes that answer under, and the module that reads it — all
 #: declared in `repo-policy.toml`, so the workflow, the recipe and the reader
 #: cannot drift on a name.
-GATING = ("cut_recipe", "cut_output", "cut_source")
+GATING = ("answer_recipe", "answer_output", "answer_source")
 
 #: The two halves of the release program: what drafts the next release's pull
 #: request, and what publishes what is already due. Told apart by the command a
@@ -552,20 +552,20 @@ def release_gating(repo: Repo) -> list[str]:
         findings.append(f"no committed job runs `{PUBLISHING}`, so nothing publishes a release")
 
     declared = parse_recipes(repo.justfile)
-    recipe = declared.get(gating["cut_recipe"])
+    recipe = declared.get(gating["answer_recipe"])
     if recipe is None:
         findings.append(
-            f"the justfile declares no `{gating['cut_recipe']}` recipe, which "
+            f"the justfile declares no `{gating['answer_recipe']}` recipe, which "
             f"`repo-policy.toml` names as what reads the release program's answer"
         )
-    if not repo.exists(gating["cut_source"]):
+    if not repo.exists(gating["answer_source"]):
         findings.append(
-            f"`repo-policy.toml` names {gating['cut_source']} as what reads the release "
+            f"`repo-policy.toml` names {gating['answer_source']} as what reads the release "
             f"program's answer, and this repository commits no such file"
         )
-    elif f'"{gating["cut_output"]}"' not in repo.read(gating["cut_source"]):
+    elif f'"{gating["answer_output"]}"' not in repo.read(gating["answer_source"]):
         findings.append(
-            f"{gating['cut_source']} declares no `{gating['cut_output']}`, which is the "
+            f"{gating['answer_source']} declares no `{gating['answer_output']}`, which is the "
             f"field `repo-policy.toml` and the committed workflow gate the artifacts on"
         )
     return findings
@@ -596,7 +596,7 @@ def _answer_findings(job: Job, name: str, gating: dict[str, str], file: str) -> 
                 f"what it released and the artifact jobs cannot be gated on it"
             )
 
-    recipe = f"just {gating['cut_recipe']}"
+    recipe = f"just {gating['answer_recipe']}"
     reading = [
         step
         for step in steps_of(job)
@@ -618,12 +618,12 @@ def _answer_findings(job: Job, name: str, gating: dict[str, str], file: str) -> 
             f"answered reaches no job output"
         )
     outputs = job.get("outputs")
-    declared = outputs.get(gating["cut_output"], "") if isinstance(outputs, dict) else ""
+    declared = outputs.get(gating["answer_output"], "") if isinstance(outputs, dict) else ""
     published = " ".join(str(declared).split())
-    expected = f"steps.{identifier}.outputs.{gating['cut_output']}"
+    expected = f"steps.{identifier}.outputs.{gating['answer_output']}"
     if expected not in published:
         findings.append(
-            f"{where} publishes no output `{gating['cut_output']}` from `{expected}`, which "
+            f"{where} publishes no output `{gating['answer_output']}` from `{expected}`, which "
             f"is what the artifact jobs are gated on"
         )
     return findings
@@ -637,7 +637,7 @@ def _gated_findings(
     file: str,
 ) -> list[str]:
     """Every job building or publishing the artifacts follows the answer, not the status."""
-    gate = f"needs.{publishing}.outputs.{gating['cut_output']} != ''"
+    gate = f"needs.{publishing}.outputs.{gating['answer_output']} != ''"
     findings: list[str] = []
     for recipe in ARTIFACT_RECIPES:
         for name in _jobs_running(jobs, f"just {recipes[recipe]}"):

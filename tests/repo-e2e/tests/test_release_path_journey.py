@@ -152,6 +152,7 @@ def tagged(gate_copy: Callable[..., GateCopy], versions: tuple[str, ...]) -> Gat
     return copy
 
 
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def drafted(copy: GateCopy, registry: EmptyIndex) -> tuple[int, str]:
     """Drive the drafting tool's computation over the copy, against the stand-in.
 

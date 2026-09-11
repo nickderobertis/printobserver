@@ -124,6 +124,7 @@ TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 #: `PackageRelease` structs of `crates/release_plz_core/src/command/release.rs`
 #: at release-plz 0.3.160. The reader below and every fixture the suites build
 #: read this one file, so the shape is written down once.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 RELEASE_ANSWER_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release.json")
 
 #: How long a registry is given to say what it serves.
@@ -375,22 +376,40 @@ def released_by(answer: str) -> tuple[str, ...]:
         raise RegistryError(msg)
     tags: list[str] = []
     for release in releases:
-        tag = release.get("tag") if isinstance(release, dict) else None
-        if not isinstance(tag, str) or not tag.strip():
-            msg = f"a release in the release program's answer names no tag:\n{release!r}"
-            raise RegistryError(msg)
-        # Narrowed to a tag release automation writes before it reaches a job
-        # output file: that file is read a line at a time as `name=value`, so
-        # a tag carrying a newline would write a second output nothing named.
-        if not TAG.match(tag):
-            msg = (
-                f"a release in the release program's answer names the tag {tag!r}, which is "
-                f"not one release automation writes (`v<major>.<minor>.<patch>`)"
-            )
-            raise RegistryError(msg)
-        if tag not in tags:
-            tags.append(tag)
-    return tuple(tags)
+        tags.append(_tag_of(release))
+    return tuple(dict.fromkeys(tags))
+
+
+def _tag_of(release: object) -> str:
+    """The tag one entry of the release program's answer names, once it is one it writes.
+
+    Raises:
+        RegistryError: If the entry is not the shape `RELEASE_ANSWER_SAMPLE`
+            records — the fields it carries, and a tag that is the version
+            release automation writes, `v` included. Narrowed HERE because the
+            tag reaches a job output file that is read a line at a time as
+            `name=value`, so one carrying a newline would write a second output
+            nothing named.
+    """
+    fields = ("package_name", "tag", "version")
+    if not isinstance(release, dict) or any(
+        not isinstance(release.get(field), str) or not release[field].strip() for field in fields
+    ):
+        msg = (
+            f"a release in the release program's answer carries no "
+            f"{', '.join(f'`{field}`' for field in fields)}, which is what "
+            f"`release-plz release --output json` writes for each package:\n{release!r}"
+        )
+        raise RegistryError(msg)
+    tag = str(release["tag"])
+    if not TAG.match(tag) or tag != f"v{release['version']}":
+        msg = (
+            f"a release in the release program's answer names the tag {tag!r} for version "
+            f"{release['version']!r}; release automation writes `v<major>.<minor>.<patch>`, "
+            f"and this is not that"
+        )
+        raise RegistryError(msg)
+    return tag
 
 
 def ordered(version: str) -> tuple[int, ...]:

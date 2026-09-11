@@ -436,9 +436,9 @@ publish_recipe = "publish-artifacts"
 # module that reads the answer to the output's, and refuses a publishing job
 # that waits on the job drafting the next release's pull request: a drafting
 # job that cannot draft must not be able to stop a publication that is ready.
-cut_recipe = "release-cut"
-cut_output = "released"
-cut_source = "tools/release-artifacts/src/release_artifacts/registries.py"
+answer_recipe = "release-answer"
+answer_output = "released"
+answer_source = "tools/release-artifacts/src/release_artifacts/registries.py"
 
 [manifests]
 # The only manifests permitted to carry a version field, because release

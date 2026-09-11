@@ -246,10 +246,10 @@ def test_a_publishing_job_that_reads_its_answer_into_no_output_is_refused(
     broken = tree()
     broken.edit(
         RELEASE,
-        "      - id: cut\n        run: just release-cut",
-        "      - run: true\n      - run: just release-cut",
+        "      - id: answer\n        run: just release-answer",
+        "      - run: true\n      - run: just release-answer",
     )
-    broken.edit(RELEASE, "released: ${{ steps.cut.outputs.released }}", "released: ''")
+    broken.edit(RELEASE, "released: ${{ steps.answer.outputs.released }}", "released: ''")
 
     findings = release_gating(broken.repo)
 
@@ -323,11 +323,11 @@ def test_a_gating_recipe_the_justfile_does_not_declare_is_refused(
 ) -> None:
     """A workflow step running a recipe nothing declares fails after a merge."""
     broken = tree()
-    broken.edit("justfile", "release-cut ANSWER:", "release-read ANSWER:")
+    broken.edit("justfile", "release-answer ANSWER:", "release-read ANSWER:")
 
     findings = release_gating(broken.repo)
 
-    refused(findings, "declares no `release-cut` recipe")
+    refused(findings, "declares no `release-answer` recipe")
 
 
 def test_a_gating_check_with_no_publishing_step_at_all_is_refused(
@@ -348,11 +348,11 @@ def test_a_gating_check_with_no_publishing_step_at_all_is_refused(
 def test_a_publishing_job_with_no_reading_step_is_refused(tree: Callable[[], Tree]) -> None:
     """An answer nothing reads gates nothing."""
     broken = tree()
-    broken.edit(RELEASE, "        run: just release-cut", "        run: just release-dry-run")
+    broken.edit(RELEASE, "        run: just release-answer", "        run: just release-dry-run")
 
     findings = release_gating(broken.repo)
 
-    refused(findings, "runs no `just release-cut` step")
+    refused(findings, "runs no `just release-answer` step")
 
 
 def test_a_reading_step_that_reaches_no_job_output_is_refused(tree: Callable[[], Tree]) -> None:
@@ -372,8 +372,8 @@ def test_a_gating_policy_naming_no_reader_is_refused(tree: Callable[[], Tree]) -
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'cut_source = "tools/release-artifacts/src/release_artifacts/registries.py"',
-        'cut_source = "tools/release-artifacts/src/release_artifacts/answers.py"',
+        'answer_source = "tools/release-artifacts/src/release_artifacts/registries.py"',
+        'answer_source = "tools/release-artifacts/src/release_artifacts/answers.py"',
     )
 
     findings = release_gating(broken.repo)
@@ -384,8 +384,8 @@ def test_a_gating_policy_naming_no_reader_is_refused(tree: Callable[[], Tree]) -
 def test_a_gating_policy_missing_a_name_is_refused(tree: Callable[[], Tree]) -> None:
     """A check cannot hold the workflow to a name the policy does not declare."""
     broken = tree()
-    broken.edit("repo-policy.toml", 'cut_output = "released"\n', "")
+    broken.edit("repo-policy.toml", 'answer_output = "released"\n', "")
 
     findings = release_gating(broken.repo)
 
-    refused(findings, "declares no `release.cut_output` string")
+    refused(findings, "declares no `release.answer_output` string")

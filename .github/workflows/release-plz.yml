@@ -55,14 +55,14 @@ jobs:
     name: release
     runs-on: ubuntu-24.04
     outputs:
-      # What `release-plz release` answered it released, as `just release-cut`
+      # What `release-plz release` answered it released, as `just release-answer`
       # reads it: the tag of every package, and empty where it released none.
       # The two jobs below are gated on this rather than on this job's exit
       # status, because the program exits zero having released nothing — every
       # ordinary push, under `release_always` — and the Python and JavaScript
       # registries refuse a version they already serve, so an artifact publish
       # on such a push turns `main` red.
-      released: ${{ steps.cut.outputs.released }}
+      released: ${{ steps.answer.outputs.released }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -81,8 +81,8 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - id: cut
-        run: just release-cut "$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"
+      - id: answer
+        run: just release-answer "$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"
 
   artifacts:
     name: artifacts (${{ matrix.platform.id }})
