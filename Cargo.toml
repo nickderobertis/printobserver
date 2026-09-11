@@ -20,7 +20,11 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+# Written by release automation, and by hand exactly once: `0.1.0` was moved to
+# `0.2.0` on 2026-09-10 to unwedge a release path that had published two
+# scaffold crates at `0.1.0` and could then draft nothing. AGENTS.md's "Commits,
+# releases, and merging" is the record; the next number is release-plz's.
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
@@ -38,8 +42,8 @@ authors = ["Nick DeRobertis"]
 jsonschema = { version = "0.34", default-features = false }
 oneharness-core = "0.12.3"
 oneharness = "0.11.4"
-printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.1.0" }
-printobserver-types = { path = "crates/printobserver-types", version = "0.1.0" }
+printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.2.0" }
+printobserver-types = { path = "crates/printobserver-types", version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

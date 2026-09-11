@@ -770,6 +770,23 @@ hand-edits a version, hand-tags, or hand-dispatches a publish.
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
 
+**The one time a version was moved by hand.** On 2026-09-10 the workspace was
+taken from `0.1.0` to `0.2.0` in a commit rather than by release automation,
+and this paragraph is the record of it. The first run of the release workflow
+published two of the thirteen crates — `printobserver` and `printobserver-core`,
+each a content-free scaffold — at `0.1.0` and tagged `v0.1.0`, and then nothing
+else ever ran: `release-plz release-pr` refuses to compute a next version for a
+package the registry does not carry while a tag naming its version exists, so
+the eleven absent crates wedged every run after it, and `0.1.0` could never
+have been the installable version in any case. Moving to a version no crate had
+served and no tag named made all thirteen publishable coherently in one release,
+with nothing left on a public registry as a lever. It is a single, deliberate
+exception that hands control straight back to release automation — the next
+version is whatever `release-plz` writes — and it does not change the rule
+above. `tests/repo-e2e/tests/test_release_path_journey.py` drives the drafting
+tool over a copy of this tree against a stand-in registry serving none of its
+crates, so a tree that returned to a tagged version would be refused there.
+
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
 that manifest spells it, and `just check-repo` enforces that too.

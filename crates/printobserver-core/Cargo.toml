@@ -9,11 +9,11 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.1.0" }
-printobserver-store-api = { path = "../printobserver-store-api", version = "0.1.0" }
-printobserver-supervisor-api = { path = "../printobserver-supervisor-api", version = "0.1.0" }
-printobserver-types = { path = "../printobserver-types", version = "0.1.0" }
-printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.1.0" }
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.2.0" }
+printobserver-store-api = { path = "../printobserver-store-api", version = "0.2.0" }
+printobserver-supervisor-api = { path = "../printobserver-supervisor-api", version = "0.2.0" }
+printobserver-types = { path = "../printobserver-types", version = "0.2.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
 
 # Test-only readers of this crate's own sources. The structural checks this
 # crate is held to are claims about declarations — which function issues an
