@@ -245,6 +245,18 @@ reason = "The rule asks that project rules live in a nested `AGENTS.md` and that
 
 [[suppression]]
 rule = "S310"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.Request(url"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it. Every URL this journey opens goes through this one helper, so the rule has one reviewable pair of lines rather than one per caller: the stand-in registry forwarding an index read to `https://index.crates.io` — a literal this module owns — and the journey driving the stand-in forge on the loopback `http://127.0.0.1:<port>` it composed itself."
+
+[[suppression]]
+rule = "S310"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every exchange in this journey goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "S310"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.Request("
 reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it. Every read this proof makes of a registry goes through this one helper, so the rule has one reviewable pair of lines rather than one per registry — and the scheme IS audited, on the line above the directive: a URL that is not `http` or `https` is refused before anything is asked over it. The addresses are the three registry bases this repository declares, or the one stand-in address a caller pointed them at."
@@ -290,6 +302,60 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and be run by the same `nx run-many` the tier already is, so there is no placement that would spare an unrelated change this journey. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and the `test-e2e` recipe in the justfile runs the tier through `nx run-many`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInRegistry"
+reason = "What stands in is crates.io's WRITE path, for the one reason the release-path journey's `EmptyIndex` stands its read path in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — two of thirteen crates on the registry and no tag on the forge — is one the real registry leaves the moment the release completes. Everything the stand-in takes is real: the real `cargo publish` upload the real run performed, the sparse-index protocol and the download path cargo itself speaks to it over HTTP, and every third-party crate read forwarded to the real crates.io, because cargo resolves this workspace's siblings from crates.io whatever `--registry` names and a stand-in that owned only the siblings would resolve nothing. The layer under test is the release program's tagging over this configuration, and it is not what is substituted."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInForge"
+reason = "What stands in is GitHub, and for the same reason: a journey may not create a tag or a release on the real repository to prove that the second one is refused. The stand-in answers the four endpoints `release-plz release` touches with GitHub's own status codes, refuses a second `POST …/git/refs` for one ref with `422 Reference already exists` exactly as GitHub does — which is the answer the `0.2.0` release died on — and records every write in the same ordered record the registry writes to, so the ordering the change promises (the tag after the last upload) is read off one sequence rather than argued from timestamps. Its refusal is held by a journey of its own, driven over HTTP."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "REFERENCE_EXISTS = ("
+reason = "The constant IS the one source, and it is a recording rather than a restatement: the response body GitHub answered the real release of 0.2.0 with, read verbatim from the `release` job's log of workflow run 34578287017 on 2026-09-11 (`gh run view 34578287017 --log`, the `Response body:` line release-plz prints when a forge refuses it), with that provenance written beside it. What it reconciles is reconciled: the forge stand-in serves the recording and the former-configuration journey holds the real release-plz to reporting it exactly as that run's log did. What the rule still asks for — a drift gate against the live endpoint — has one possible implementation, creating one ref twice on github.com/nickderobertis/printobserver, and no tier here may write to the real forge; the day GitHub changes this body, the real release path is where it shows, exactly as `tools/release-artifacts/src/release_artifacts/registries.py`'s entry for this rule records for release-plz's answer shape. The directive sits on the constant itself so the site is named rather than covered by the stand-in's class-level entry."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInRegistry"
+reason = "What this stand-in restates is cargo's registry web API and sparse-index format, and the drift gate is cargo itself: the real `cargo publish` uploads to it and the real `cargo info` reads its index and downloads from it on every run of this journey, so a frame, a route or an index field cargo stopped speaking fails the journey at the boundary rather than being approximated. There is no machine-readable source of that protocol to generate from — cargo documents it in prose — and the one consumer that matters is the one driven here."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "class StandInForge"
+reason = "What this stand-in restates is the four GitHub endpoints `release-plz release` touches and GitHub's answers to them, and the consumer under test is the real release-plz, so a route or a status it stopped accepting fails the journey naming it. What it cannot have is a drift gate against GitHub, for the same reason `tools/release-artifacts` cannot: the behaviour it models — a second ref refused with `422 Reference already exists` — can only be reconciled by creating a tag on the real repository twice, and no tier here may write to the real forge. The reconciliation is the real release path: the same program creates the same ref on GitHub on every push to `main` that cuts a release."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.Request(url"
+reason = "The one place this journey opens a URL, and neither half of the rule applies to it. It is called from inside a synchronous `http.server` handler — the stand-in registry forwarding an index read to crates.io while cargo waits on that very request — and from a journey whose assertions are strictly sequential over a loopback forge it stood up itself; an awaited client under either would need an event loop with nothing to overlap. The typed half is answered where the answer is consumed: the forwarded body is handed back to cargo byte for byte, which is the one consumer that validates a sparse-index entry, and the forge's answer is narrowed to a status and a body the journey asserts on."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "urllib.request.urlopen(request"
+reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every exchange in this journey goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "def released"
+reason = "The argument list is the committed step's own, read through `release_step_arguments()` rather than restated, and what is added is routing and one verification skip: `--registry`, `--token`, `--repo-url` and `--git-token` point the program at the two stand-ins on loopback, and `--no-verify` skips the release build every `cargo publish` otherwise performs of the crate it just packaged — which is cargo's verification of the packaged source, proven elsewhere by the build tier, and not what this journey is about. Without it thirteen release-mode builds of the workspace would sit between the journey and the one thing it asks: which package creates the tag, and when."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "def released"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — eleven real `cargo publish` uploads to a loopback registry, about a minute — is already bounded by `--no-verify` and by seeding with a real publish rather than a build; the remaining cost is the release program doing the thing under test."
 
 [[suppression]]
 rule = "e2e_not_mocked"
