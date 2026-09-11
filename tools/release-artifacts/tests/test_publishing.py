@@ -45,19 +45,27 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     Bases,
     RegistryError,
+    Token,
     exchange,
     npm_versions,
     pypi_files,
     pypi_name,
     release_of,
 )
-from release_artifacts.standin import FORGE_PREFIX, PYPI_PREFIX, Registries, StandinError, Write
+from release_artifacts.standin import (
+    FORGE_PREFIX,
+    PYPI_PREFIX,
+    Authorization,
+    Registries,
+    StandinError,
+    Write,
+)
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 
 #: The tokens this journey publishes under, one per registry, under the real
 #: credential names — so that what reaches each registry can be read back.
-TOKENS = {name: f"a-{name.lower()}-this-journey-made-up" for name in CREDENTIALS.values()}
+TOKENS = {name: Token(f"a-{name.lower()}-this-journey-made-up") for name in CREDENTIALS.values()}
 
 #: What the release of 2026-09-11 met: the JavaScript registry refusing a
 #: per-platform package because its organization did not exist yet.
@@ -242,7 +250,7 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
                 "npm",
                 "PUT",
                 platform_package.rpartition("@")[0],
-                f"Bearer {TOKENS['NPM_TOKEN']}",
+                Authorization(f"Bearer {TOKENS['NPM_TOKEN']}"),
                 refused=False,
             )
         ],
@@ -357,7 +365,10 @@ def test_an_asset_whose_upload_never_finished_is_replaced(
     registries.release(f"v{version}")
     publish(repo, dist, environment)
     asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    download = f"{bases.releases}/download/v{version}/{asset}"
     registries.interrupted(f"v{version}", asset)
+    with pytest.raises(RegistryError, match="404"):
+        exchange(download)
     del registries.written[:]
 
     said = publish(repo, dist, environment)
@@ -372,6 +383,95 @@ def test_an_asset_whose_upload_never_finished_is_replaced(
     )
     listed = release_of(bases, version).named(asset)
     truth(listed is not None and listed.state == "uploaded", describing="what the forge lists")
+    equal(exchange(download), (dist / asset).read_bytes(), describing="what a download reads now")
+
+
+def test_a_forge_refusing_to_remove_an_interrupted_asset_uploads_nothing_over_it(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+    bases: Bases,
+) -> None:
+    """The deletion is a request of its own, and one the forge refused is the asset's refusal.
+
+    Nothing is uploaded after it: the forge refuses a second upload under a
+    taken name, so the interrupted one stays listed as it was, and the run
+    fails naming the forge's own words about the deletion.
+    """
+    registries.release(f"v{version}")
+    publish(repo, dist, environment)
+    asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    registries.interrupted(f"v{version}", asset)
+    registries.refuse("release", asset, status=403, body=b'{"message": "Resource not accessible"}')
+    del registries.written[:]
+
+    with pytest.raises(PublishError) as refused:
+        publish(repo, dist, environment)
+
+    contains(str(refused.value), "Resource not accessible", describing="the forge's own words")
+    equal(_outcomes(refused.value.said)[f"release {asset}"], Outcome.REFUSED, describing="its line")
+    equal(
+        [(write.method, write.name) for write in registries.written],
+        [("DELETE", asset)],
+        describing="the one write: the deletion, and no upload after its refusal",
+    )
+    listed = release_of(bases, version).named(asset)
+    truth(listed is not None and listed.state != "uploaded", describing="what the forge lists")
+
+
+def test_an_upload_refused_after_the_deletion_landed_is_finished_by_running_it_again(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+    bases: Bases,
+) -> None:
+    """A forge that took the deletion and refused the upload leaves the name free.
+
+    The run reports the refusal in the forge's words; what the second run
+    meets is a release with nothing under that name, so it uploads with nothing
+    to delete first and the release ends up carrying exactly the file.
+    """
+    registries.release(f"v{version}")
+    publish(repo, dist, environment)
+    asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    registries.interrupted(f"v{version}", asset)
+    registries.refuse(
+        "release", asset, status=502, body=b'{"message": "Bad Gateway"}', method="POST"
+    )
+    del registries.written[:]
+
+    with pytest.raises(PublishError) as refused:
+        publish(repo, dist, environment)
+
+    contains(str(refused.value), "Bad Gateway", describing="the forge's own words")
+    equal(
+        [(write.method, write.name, write.refused) for write in registries.written],
+        [("DELETE", asset, False), ("POST", asset, True)],
+        describing="the writes: the deletion taken, the upload refused",
+    )
+    truth(release_of(bases, version).named(asset) is None, describing="the name left free")
+
+    registries.accept("release", asset)
+    del registries.written[:]
+    said = publish(repo, dist, environment)
+
+    equal(_outcomes(said)[f"release {asset}"], Outcome.PUBLISHED, describing="the second run")
+    equal(
+        [(write.method, write.name) for write in registries.written],
+        [("POST", asset)],
+        describing="the second run's writes: the upload, with nothing to delete first",
+    )
+    listed = release_of(bases, version).named(asset)
+    truth(listed is not None and listed.state == "uploaded", describing="what the forge lists")
+    equal(
+        registries.assets_of(f"v{version}")[asset],
+        (dist / asset).read_bytes(),
+        describing="what the release carries",
+    )
 
 
 def test_a_forge_listing_no_release_refuses_the_assets_and_the_rest_still_lands(
@@ -467,7 +567,7 @@ def test_the_credential_line_for_the_real_registry_is_the_one_always_written(
 ) -> None:
     """Composed from `Bases`, and byte-identical for the real registry to what it was."""
     equal(
-        npmrc_line(Bases.read(repo, {}), "a-token"),
+        npmrc_line(Bases.read(repo, {}), Token("a-token")),
         "//registry.npmjs.org/:_authToken=a-token\n",
         describing="the line `npm publish` reads against the real registry",
     )
@@ -519,6 +619,13 @@ def test_a_registry_answering_no_metadata_document_lists_no_files(
     [
         b'{"message": "not a release"}',
         b'{"id": 1, "upload_url": "x", "assets": [{"name": "no id or size"}]}',
+        # A boolean is an integer in Python, and a document answering one for
+        # an id would otherwise read as release number one.
+        b'{"id": true, "upload_url": "x", "assets": []}',
+        b'{"id": 1, "upload_url": "x",'
+        b' "assets": [{"id": 2, "name": "x", "size": -1, "state": "uploaded"}]}',
+        b'{"id": 1, "upload_url": "x",'
+        b' "assets": [{"id": false, "name": "x", "size": 1, "state": "uploaded"}]}',
     ],
 )
 def test_a_forge_answering_no_release_document_is_refused(
@@ -553,7 +660,20 @@ def test_a_release_naming_an_upload_address_off_the_forge_is_refused(
     contains(str(refused.value), "uploads.example.invalid", describing="the address refused")
     contains(str(refused.value), bases.uploads, describing="where that forge takes uploads")
 
+    # Under the forge's own uploads base and still not this release's address:
+    # one a check of the prefix would pass, and one the forge would resolve
+    # to some other repository's releases.
     its_own = f"{bases.uploads}/7/assets"
+    for beside in (f"{bases.uploads}/8/assets", f"{bases.uploads}/../elsewhere/releases/7/assets"):
+        registries.answers(
+            served,
+            json.dumps({"id": 7, "upload_url": beside + "{?name,label}", "assets": []}).encode(),
+        )
+        with pytest.raises(RegistryError) as refused:
+            release_of(bases, version)
+        contains(str(refused.value), beside, describing="the address refused")
+        contains(str(refused.value), its_own, describing="the release's own address")
+
     registries.answers(
         served,
         json.dumps({"id": 7, "upload_url": its_own + "{?name,label}", "assets": []}).encode(),
@@ -608,9 +728,26 @@ def test_a_forge_refusing_an_upload_is_reported_in_its_own_words(
         (
             "PUT",
             "/npm/nothing",
-            b'{"versions": {"1.0.0": {}}, "_attachments": {"t.tgz": {"data": "not base64!"}}}',
+            b'{"versions": {"1.0.0": {"name": "nothing", "version": "1.0.0"}},'
+            b' "_attachments": {"t.tgz": {"data": "not base64!"}}}',
             "application/json",
             "not an attachment",
+        ),
+        (
+            "PUT",
+            "/npm/nothing",
+            b'{"versions": {"1.0.0": {"name": "other", "version": "1.0.0"}},'
+            b' "_attachments": {"t.tgz": {"data": "eA=="}}}',
+            "application/json",
+            "not the package named",
+        ),
+        (
+            "PUT",
+            "/npm/nothing",
+            b'{"versions": {"1.0.0": {"name": "nothing", "version": "2.0.0"}},'
+            b' "_attachments": {"t.tgz": {"data": "eA=="}}}',
+            "application/json",
+            "not the package named",
         ),
         ("PUT", "/npm/nothing", b'{"versions": {}}', "application/json", "not a publish document"),
         (

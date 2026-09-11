@@ -779,14 +779,8 @@ workflow under the forge's scheduling rules to prove them.
 **A `publish` job that failed is run again, never repaired by hand.** A
 hand-run with an operator's tokens is the manual step this design forbids, so
 the recovery from a publish that stopped partway is GitHub's own re-run, with
-nothing cleaned up first. `just publish-artifacts` decides per
-artifact — skipping each one its registry already serves, attempting every
-artifact whatever an earlier one answered, uploading the release assets whether
-or not a package registry refused, and failing at the end naming every refusal
-in the registry's own words. The forge upload is a direct call under
-`RELEASE_PLZ_TOKEN`, and no tier here may write to the real forge: the stand-in
-is the only thing it is driven against, and a release's own publication is its
-first proof against GitHub.
+nothing cleaned up first. What makes that safe is `just publish-artifacts`'s
+own, and `tools/release-artifacts/AGENTS.md` holds it.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests

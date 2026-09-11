@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import NewType
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from repo_checks.model import Repo
@@ -62,6 +63,8 @@ from release_artifacts.registries import (
     STANDIN_PYPI,
     STANDIN_PYPI_UPLOAD,
     UPLOADED,
+    AssetId,
+    ReleaseId,
     ordered,
     pypi_name,
 )
@@ -109,6 +112,13 @@ LARGEST_WRITE = 256 * 1024 * 1024
 #: than a silent gap no journey can drive.
 REGISTRIES = tuple(CREDENTIALS)
 
+#: The `Authorization` header one write arrived with, verbatim: `Basic` and
+#: what `uv` encodes under it, or `Bearer` and the token `npm` or a forge
+#: upload sends. Its own type because it is the one thing a write records
+#: that is a secret, and a journey reads it back to say which token reached
+#: which registry — it is not a name to be compared with one.
+Authorization = NewType("Authorization", str)
+
 
 class StandinError(ValueError):
     """A caller asked the stand-in registries to serve something they cannot."""
@@ -141,21 +151,33 @@ class Write:
     method: str
     #: The wheel's file name, the package's name, or the asset's name.
     name: str
-    #: The `Authorization` header as it arrived, which is how the real
-    #: registries take a credential: `Basic` from `uv`, `Bearer` from `npm`
-    #: and from a forge upload.
-    credential: str
+    #: The credential as it arrived, which is how the real registries take
+    #: one: `Basic` from `uv`, `Bearer` from `npm` and from a forge upload.
+    credential: Authorization
     #: Whether a refusal this stand-in was TOLD to make met this write. A write
     #: that met none may still be answered as malformed, so this says what the
     #: caller arranged rather than what the whole answer was.
     refused: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _Refusal:
+    """What a caller arranged one artifact's writes to be answered with."""
+
+    answer: Answer
+    #: The one method it meets, or empty for every write of the artifact.
+    method: str
+
+    def meets(self, method: str) -> bool:
+        """Whether a write by one method is the one this refuses."""
+        return self.method in {"", method}
+
+
 @dataclass(slots=True)
 class _Asset:
     """One asset a release here carries."""
 
-    id: int
+    id: AssetId
     content: bytes
     state: str = UPLOADED
 
@@ -191,10 +213,10 @@ class Registries:
         #: Every asset each release carries, by tag and then by name, with
         #: the forge's own numbering of releases and of assets.
         self._assets: dict[str, dict[str, _Asset]] = {}
-        self._release_ids: dict[str, int] = {}
+        self._release_ids: dict[str, ReleaseId] = {}
         self._next_id = 1
         #: What a write of one artifact is refused with, by registry and name.
-        self._refusals: dict[tuple[str, str], Answer] = {}
+        self._refusals: dict[tuple[str, str], _Refusal] = {}
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
@@ -281,7 +303,7 @@ class Registries:
         """
         if tag not in self._tags:
             self._tags.append(tag)
-            self._release_ids[tag] = self._numbered()
+            self._release_ids[tag] = ReleaseId(self._numbered())
         self.answers(
             FORGE_PREFIX,
             json.dumps(
@@ -301,6 +323,7 @@ class Registries:
         status: int,
         body: bytes,
         content_type: str = "application/json",
+        method: str = "",
     ) -> None:
         """Refuse every write of one artifact with exactly this answer.
 
@@ -308,7 +331,10 @@ class Registries:
         wheel's file name, a package's name, or an asset's name. The status and
         the body are the caller's, because what a publish reports of a refusal
         is the registry's own words, and the words this repository's release of
-        2026-09-11 met were `404` and `Scope not found`.
+        2026-09-11 met were `404` and `Scope not found`. Given a `method`, only
+        that write of the artifact is refused — which is how a forge that took
+        the deletion of an asset and then refused the upload over it is stood
+        in for, since the two are two requests the forge answers apart.
 
         Raises:
             StandinError: If the registry is not one a write is recorded under.
@@ -316,7 +342,7 @@ class Registries:
         if registry not in REGISTRIES:
             msg = f"`{registry}` is not a registry here: they are {', '.join(REGISTRIES)}"
             raise StandinError(msg)
-        self._refusals[registry, name] = Answer(content_type, body, status)
+        self._refusals[registry, name] = _Refusal(Answer(content_type, body, status), method)
 
     def accept(self, registry: str, name: str) -> None:
         """Stop refusing one artifact, which is the organization coming to exist."""
@@ -328,7 +354,9 @@ class Registries:
         The forge lists an asset whose upload was interrupted under its name in
         a state other than `uploaded`, and a download of the release does not
         find it — so a publish that read the name alone would skip an asset
-        nobody can download.
+        nobody can download. Both halves are stood in for: the listing changes
+        state, and the download address stops answering until an upload over
+        it lands.
 
         Raises:
             StandinError: If the release carries no such asset.
@@ -338,6 +366,7 @@ class Registries:
             msg = f"{tag} carries no asset {name} to have interrupted"
             raise StandinError(msg)
         asset.state = INTERRUPTED
+        self._answers.pop(f"{FORGE_PREFIX}/download/{tag}/{name}", None)
         self._serve_release_document(tag)
 
     def assets_of(self, tag: str) -> dict[str, bytes]:
@@ -398,7 +427,7 @@ class Registries:
         does not.
         """
         where = _served_path(path)
-        credential = headers.get("authorization", "")
+        credential = Authorization(headers.get("authorization", ""))
         if method == "POST" and where == PYPI_UPLOAD.rstrip("/"):
             return self._take_wheel(headers.get("content-type", ""), body, credential)
         if method == "PUT" and where.startswith(f"{NPM_PREFIX}/"):
@@ -411,13 +440,16 @@ class Registries:
             return self._delete_asset(where.removeprefix(f"{FORGE_PREFIX}/assets/"), credential)
         return Answer("text/plain", f"{method} {path} is not served here\n".encode(), 404)
 
-    def _refused(self, registry: str, name: str, method: str, credential: str) -> Answer | None:
+    def _refused(
+        self, registry: str, name: str, method: str, credential: Authorization
+    ) -> Answer | None:
         """The refusal one write meets, recording it either way."""
         refusal = self._refusals.get((registry, name))
-        self.written.append(Write(registry, method, name, credential, refusal is not None))
-        return refusal
+        met = refusal is not None and refusal.meets(method)
+        self.written.append(Write(registry, method, name, credential, met))
+        return refusal.answer if refusal is not None and met else None
 
-    def _take_wheel(self, content_type: str, body: bytes, credential: str) -> Answer:
+    def _take_wheel(self, content_type: str, body: bytes, credential: Authorization) -> Answer:
         """Take the legacy upload form `uv publish` posts, and serve the file it carries."""
         fields = _form(content_type, body)
         name = _text(fields.get("name", Field()).content)
@@ -437,8 +469,14 @@ class Registries:
         self._serve_file(pypi_name(name), version, file_name, content)
         return Answer("text/plain", b"")
 
-    def _take_package(self, name: str, body: bytes, credential: str) -> Answer:
-        """Take the publish document `npm publish` puts, and serve the version in it."""
+    def _take_package(self, name: str, body: bytes, credential: Authorization) -> Answer:
+        """Take the publish document `npm publish` puts, and serve the version in it.
+
+        As the registry takes it: a version's manifest has to name the package
+        the document was put at and the version it is listed under, or the
+        publish is refused — a packument serving a manifest that says it is
+        some other package is not one any install could resolve through.
+        """
         refusal = self._refused("npm", name, "PUT", credential)
         if refusal is not None:
             return refusal
@@ -453,15 +491,19 @@ class Registries:
         for version, manifest in versions.items():
             if not isinstance(manifest, dict):
                 return Answer("application/json", b'{"error": "not a manifest"}', 400)
+            if manifest.get("name") != name or manifest.get("version") != version:
+                return Answer("application/json", b'{"error": "not the package named"}', 400)
             file_name, attached = next(iter(attachments.items()), ("", {}))
             data = attached.get("data", "") if isinstance(attached, dict) else ""
             raw = _attached(file_name, data)
             if raw is None:
                 return Answer("application/json", b'{"error": "not an attachment"}', 400)
-            self._serve_version(name, str(version), manifest, file_name, raw)
+            self._serve_version(name, version, manifest, file_name, raw)
         return Answer("application/json", b'{"ok": true}')
 
-    def _take_asset(self, numbered: str, name: str, body: bytes, credential: str) -> Answer:
+    def _take_asset(
+        self, numbered: str, name: str, body: bytes, credential: Authorization
+    ) -> Answer:
         """Take one asset's bytes on a release's own upload address."""
         tag = next((tag for tag, id in self._release_ids.items() if str(id) == numbered), "")
         if not tag or not name:
@@ -472,12 +514,12 @@ class Registries:
         assets = self._assets.setdefault(tag, {})
         if name in assets:
             return Answer("application/json", b'{"message": "already_exists"}', 422)
-        asset = _Asset(self._numbered(), body)
+        asset = _Asset(AssetId(self._numbered()), body)
         assets[name] = asset
         self._serve_asset(tag, name)
         return Answer("application/json", json.dumps(self._listed(name, asset)).encode(), 201)
 
-    def _delete_asset(self, numbered: str, credential: str) -> Answer:
+    def _delete_asset(self, numbered: str, credential: Authorization) -> Answer:
         """Remove one asset by the number the forge here gave it."""
         for tag, assets in self._assets.items():
             for name, asset in assets.items():
@@ -665,8 +707,8 @@ class Registries:
         written = archive.write(self.into / "releases" / version / asset)
         tag = f"v{version}"
         assets = self._assets.setdefault(tag, {})
-        assets[asset] = _Asset(self._numbered(), written.read_bytes())
-        assets[CHECKSUMS] = _Asset(self._numbered(), packages.checksums([written]))
+        assets[asset] = _Asset(AssetId(self._numbered()), written.read_bytes())
+        assets[CHECKSUMS] = _Asset(AssetId(self._numbered()), packages.checksums([written]))
         for name in (asset, CHECKSUMS):
             self._serve_asset(tag, name)
             self.answers(

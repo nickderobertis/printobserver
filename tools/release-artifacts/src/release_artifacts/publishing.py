@@ -51,6 +51,7 @@ from release_artifacts.registries import (
     Bases,
     RegistryError,
     Release,
+    Token,
     exchange,
     npm_versions,
     pypi_files,
@@ -68,7 +69,11 @@ CREDENTIALS = {
     "release": "RELEASE_PLZ_TOKEN",
 }
 
-#: How long any one publish is given.
+#: How long any one publish is given: fifteen minutes, as `installing.py`
+#: gives an install, rather than the minute a read of a registry gets — a
+#: publish sends an artifact's whole bytes up a hosted runner's link where a
+#: read brings one document down it, and a publish this cut off short would
+#: be the partial state the module exists to recover from rather than cause.
 PUBLISH_TIMEOUT_SECONDS = 900
 
 
@@ -153,7 +158,7 @@ class _Run:
         self.said.append(f"{registry}\t{artifact}\t{outcome}")
 
 
-def _credential(environment: dict[str, str], registry: str) -> str:
+def _credential(environment: dict[str, str], registry: str) -> Token:
     """The token one registry is published under.
 
     Raises:
@@ -168,7 +173,7 @@ def _credential(environment: dict[str, str], registry: str) -> str:
             f"It is a repository secret `gh-secrets.json` declares."
         )
         raise PublishError(msg)
-    return token
+    return Token(token)
 
 
 def _ran(argv: list[str], *, cwd: Path, env: dict[str, str], describing: str) -> str:
@@ -257,7 +262,7 @@ def _refusals(refused: list[Refusal]) -> str:
 
 
 def publish_wheel(
-    repo: Repo, bases: Bases, token: str, wheel: Path, version: str, environment: dict[str, str]
+    repo: Repo, bases: Bases, token: Token, wheel: Path, version: str, environment: dict[str, str]
 ) -> bool:
     """Send one wheel to the Python registry, unless it already serves that file.
 
@@ -278,7 +283,7 @@ def publish_wheel(
     return True
 
 
-def npmrc_line(bases: Bases, token: str) -> str:
+def npmrc_line(bases: Bases, token: Token) -> str:
     """The one line `npm publish` reads its credential from, for the registry it is sent to.
 
     `npm` keys a credential by the registry's host and path, so the line is
@@ -327,7 +332,9 @@ def publish_package(
     return True
 
 
-def _publish_release(bases: Bases, token: str, dist: Path, version: str, publishing: _Run) -> None:
+def _publish_release(
+    bases: Bases, token: Token, dist: Path, version: str, publishing: _Run
+) -> None:
     """Put the per-platform artifacts the install script downloads on the release.
 
     Every `printobserver-*.tar.gz` in `dist`, and then ONE checksum file listing
@@ -364,7 +371,7 @@ def _raise(refused: RegistryError) -> bool:
 
 
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-def publish_asset(bases: Bases, token: str, release: Release, path: Path) -> bool:
+def publish_asset(bases: Bases, token: Token, release: Release, path: Path) -> bool:
     """Put one file on the release, unless the forge already lists exactly it.
 
     Exactly it: an asset of the same name and size, in the state a finished
