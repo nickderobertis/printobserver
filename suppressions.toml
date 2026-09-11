@@ -214,10 +214,22 @@ site = "Keep the OctoPrint journey in the required gate"
 reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
 
 [[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The rule above has one recorded exception, and it is closed"
+reason = "Required content rather than session history. The release-path repair that wrote this passage was required to record, where a reader meets the rule it departs from, three things: why the workspace version was moved by hand, that it is a single closed exception, and that control returns to release automation — and the passage is those three statements and the journey that holds the tree to them, nothing more. Each is confirmable from the tree: commit 3952add moved the workspace from 0.1.0 to 0.2.0 by hand on 2026-09-10, `manifests.automation_owned` in repo-policy.toml is the rule it departs from, and `tests/repo-e2e/tests/test_release_path_journey.py` refuses a tree at a tagged version. The durable instruction the rule would keep — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat, so the date and the cause are what make the prohibition followable rather than narrative around it."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The rule above has one recorded exception, and it is closed"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
 rule = "tool_output_is_signal"
@@ -272,6 +284,12 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[e2e_not_mocked]"
 reason = "What stands in is crates.io, and for the one reason the install proof's `standin.py` stands the package registries in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — a registry carrying no entry for a crate this tree publishes — is one the real registry stops being in the moment the release goes out. Everything else is real: the real `release-plz` program, its real computation, the real copy of the tree, the real tag, and the sparse-index protocol cargo itself speaks to the stand-in over HTTP. The layer under test is the drafting tool over this tree's versions, and it is not what is substituted."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and be run by the same `nx run-many` the tier already is, so there is no placement that would spare an unrelated change this journey. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and the `test-e2e` recipe in the justfile runs the tier through `nx run-many`."
 
 [[suppression]]
 rule = "e2e_not_mocked"

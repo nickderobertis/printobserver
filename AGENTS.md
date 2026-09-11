@@ -781,6 +781,7 @@ workflow under the forge's scheduling rules to prove them.
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
 
+<!-- llmlint: ignore[agents_md_durable_and_terse] Required content rather than history: the release-path repair had to record, beside the rule it departs from, why the workspace version was moved by hand, that it is one closed exception, and that every version after it is release automation's; the durable instruction — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat. suppressions.toml has the full reason. -->
 **The rule above has one recorded exception, and it is closed.** `0.1.0` →
 `0.2.0` was written by hand on 2026-09-10, because `release-plz release-pr`
 cannot draft while a tag names a version some publishable crate never published
