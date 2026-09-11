@@ -37,6 +37,7 @@ carried, so that a journey can say which token reached which registry.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import threading
@@ -95,6 +96,10 @@ PYPI_UPLOAD = f"{PYPI_PREFIX}/legacy/"
 UPLOADED = "uploaded"
 INTERRUPTED = "starter"
 
+#: The largest body one write may carry, which is far above any artifact this
+#: repository publishes and far below what a stand-in should hold in memory.
+LARGEST_WRITE = 256 * 1024 * 1024
+
 #: The registries a write is recorded under, as `release-targets.toml` names
 #: them.
 REGISTRIES = ("pypi", "npm", "release")
@@ -125,7 +130,10 @@ class Write:
     #: registries take a credential: `Basic` from `uv`, `Bearer` from `npm`
     #: and from a forge upload.
     credential: str
-    accepted: bool
+    #: Whether a refusal this stand-in was TOLD to make met this write. A write
+    #: that met none may still be answered as malformed, so this says what the
+    #: caller arranged rather than what the whole answer was.
+    refused: bool
 
 
 @dataclass(slots=True)
@@ -391,21 +399,23 @@ class Registries:
     def _refused(self, registry: str, name: str, method: str, credential: str) -> Answer | None:
         """The refusal one write meets, recording it either way."""
         refusal = self._refusals.get((registry, name))
-        self.written.append(Write(registry, method, name, credential, refusal is None))
+        self.written.append(Write(registry, method, name, credential, refusal is not None))
         return refusal
 
     def _take_wheel(self, content_type: str, body: bytes, credential: str) -> Answer:
         """Take the legacy upload form `uv publish` posts, and serve the file it carries."""
         fields = _form(content_type, body)
-        name = fields.get("name", (b"", ""))[0].decode()
-        version = fields.get("version", (b"", ""))[0].decode()
+        name = _text(fields.get("name", (b"", ""))[0])
+        version = _text(fields.get("version", (b"", ""))[0])
+        digest = _text(fields.get("sha256_digest", (b"", ""))[0])
         content, file_name = fields.get("content", (b"", ""))
+        if name is None or version is None or digest is None:
+            return Answer("text/plain", b"the upload carries a field that is not text\n", 400)
         if not name or not version or not file_name:
             return Answer("text/plain", b"the upload names no file\n", 400)
         refusal = self._refused("pypi", file_name, "POST", credential)
         if refusal is not None:
             return refusal
-        digest = fields.get("sha256_digest", (b"", ""))[0].decode()
         if digest and digest != hashlib.sha256(content).hexdigest():
             return Answer("text/plain", b"the digest does not match the file\n", 400)
         self._serve_file(pypi_name(name), version, file_name, content)
@@ -429,7 +439,10 @@ class Registries:
                 return Answer("application/json", b'{"error": "not a manifest"}', 400)
             file_name, attached = next(iter(attachments.items()), ("", {}))
             data = attached.get("data", "") if isinstance(attached, dict) else ""
-            self._serve_version(name, str(version), manifest, file_name, base64.b64decode(data))
+            raw = _attached(file_name, data)
+            if raw is None:
+                return Answer("application/json", b'{"error": "not an attachment"}', 400)
+            self._serve_version(name, str(version), manifest, file_name, raw)
         return Answer("application/json", b'{"ok": true}')
 
     def _take_asset(self, numbered: str, name: str, body: bytes, credential: str) -> Answer:
@@ -604,6 +617,10 @@ class Registries:
             **manifest,
             "dist": {
                 "tarball": f"{self.base}{NPM_PREFIX}/{name}/-/{file_name}",
+                # SHA-1 because `dist.shasum` is SHA-1 by the JavaScript
+                # registry's own protocol, and `npm` refuses to install from a
+                # packument carrying anything else. suppressions.toml has the
+                # whole reason; `integrity` beside it carries SHA-512.
                 "shasum": hashlib.sha1(raw).hexdigest(),  # noqa: S324
                 "integrity": "sha512-"
                 + base64.b64encode(hashlib.sha512(raw).digest()).decode("ascii"),
@@ -703,6 +720,40 @@ def _form(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
     return fields
 
 
+def _text(raw: bytes) -> str | None:
+    """One form field as text, or nothing where what arrived is not text at all."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _attached(file_name: object, data: object) -> bytes | None:
+    """The tarball one publish document attaches, or nothing where it attaches none."""
+    if not isinstance(file_name, str) or not file_name or not isinstance(data, str):
+        return None
+    try:
+        return base64.b64decode(data, validate=True)
+    except binascii.Error:
+        return None
+
+
+def _length(declared: str | None) -> int | None:
+    """How many bytes a write says it carries, or nothing where that is not a length.
+
+    A write with no `Content-Length` carries none, which is what a `DELETE`
+    here is. Anything that is not a number, is negative, or is larger than
+    this stand-in will hold is refused rather than read.
+    """
+    if declared is None:
+        return 0
+    try:
+        length = int(declared)
+    except ValueError:
+        return None
+    return length if 0 <= length <= LARGEST_WRITE else None
+
+
 def _newest(served: Mapping[str, object]) -> str:
     """The newest version a registry below serves, as its own answer states it."""
     return max(served, key=ordered, default="")
@@ -734,7 +785,13 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
 
         def _take(self, method: str) -> None:
             """Read the whole body a write carries and answer as its registry would."""
-            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            length = _length(self.headers.get("Content-Length"))
+            if length is None:
+                self._answer(
+                    Answer("text/plain", b"the request declares no length this can read\n", 400)
+                )
+                return
+            body = self.rfile.read(length)
             headers = {name.lower(): value for name, value in self.headers.items()}
             self._answer(registries.take(method, self.path, headers, body))
 

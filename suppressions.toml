@@ -434,3 +434,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.urlopen(request"
 reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every read of a registry goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/publishing.py"
+site = '"uv", "publish"'
+reason = "The client at this boundary is `uv`, which is the Python registry's own upload client and the one this repository already depends on: a wheel reaches PyPI through the legacy multipart form, signed and checked the way that client composes it, and an HTTP client written here would be a second, hand-rolled implementation of an upload protocol nobody here owns. There is no typed async Python client that publishes a wheel, and there is no event loop for an awaited one to live in — this is a command-line tool a `just` recipe and a GitHub Actions step run to completion, whose every subprocess goes through `repo_checks.shell.run` in order. The typed half is answered where it can be: what the registry SERVES is read back through `pypi_files`, which narrows that document at its own boundary and refuses anything that is not the document PyPI's protocol serves, and that read is what decides whether this publish happens at all."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/publishing.py"
+site = '"npm",'
+reason = "The same ground as the entry above it, for the other registry: the client here is `npm` itself, which is how a package is published to that registry — it composes the publish document, the attachment and the integrity digests its own protocol requires, and it is the client every consumer of this artifact installs with. Replacing it with an HTTP call written here would restate that protocol in a place nothing reconciles it. The async half does not apply for the same reason: no event loop exists in this program, and one awaited publish would have nothing to overlap with. What the registry serves afterwards is read back through `npm_versions`, which narrows the packument at that boundary, and that read is what decides whether this publish happens at all."

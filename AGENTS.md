@@ -788,10 +788,12 @@ addresses `Bases` gives each registry; every artifact is attempted whatever an
 earlier one answered, of the same registry or another; the release assets are
 uploaded whether or not a package registry refused; and the job's failure
 names every refusal in the registry's own words. The forge upload is a direct
-call on the release's own upload address under `RELEASE_PLZ_TOKEN`, and it is
-proven only against the stand-in in `standin.py`, because nothing here may
-write to the real forge — so the install-path workflow on the next release is
-its first real proof, and that release is the first test of it.
+call on the release's own upload address under `RELEASE_PLZ_TOKEN`, and nothing
+here proves it against the real forge: the stand-in in `standin.py` is the only
+thing it is driven against, because no tier of this repository may write to
+GitHub. Its first real proof is therefore the first release published under it,
+and the install-path proof that reads that release afterwards is where a reader
+sees whether the assets landed.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests

@@ -249,6 +249,12 @@ class Bases:
     npm: str
     #: Where the forge lists this repository's releases.
     listing: str
+    #: Where that forge takes an asset's bytes. The real one takes them on a
+    #: host of its own beside the one it is read on, so it is written here
+    #: rather than inferred from a release document: what that document names
+    #: is checked against this, because an upload address is sent the release
+    #: token and a document naming somewhere else would send it there.
+    uploads: str
     #: Where the install script downloads a release's artifacts from.
     releases: str
 
@@ -278,6 +284,7 @@ class Bases:
                 pypi_upload=f"{standing_in}/pypi/legacy/",
                 npm=f"{standing_in}/npm",
                 listing=f"{standing_in}/forge/releases",
+                uploads=f"{standing_in}/forge/releases",
                 releases=f"{standing_in}/forge/releases",
             )
         return cls(
@@ -285,6 +292,7 @@ class Bases:
             pypi_upload="https://upload.pypi.org/legacy/",
             npm="https://registry.npmjs.org",
             listing=f"https://api.github.com/repos/{owner}/{name}/releases",
+            uploads=f"https://uploads.github.com/repos/{owner}/{name}/releases",
             releases=f"https://github.com/{owner}/{name}/releases",
         )
 
@@ -809,32 +817,15 @@ def release_of(bases: Bases, version: str) -> Release:
             raise RegistryError(malformed)
         assets.append(Asset(listed["id"], listed["name"], listed["size"], listed["state"]))
     upload_url = str(answer["upload_url"]).partition("{")[0]
-    if not _same_forge(bases.listing, upload_url):
+    if not upload_url.startswith(f"{bases.uploads}/"):
         msg = (
-            f"{url} names {upload_url} as where its assets are uploaded, which is not the "
-            f"forge {bases.listing} is read from. Nothing is sent there: an upload address "
-            f"is sent the release token, and it goes to the forge this was pointed at or "
-            f"nowhere. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+            f"{url} names {upload_url} as where its assets are uploaded, which is not under "
+            f"{bases.uploads}, where the forge this was pointed at takes them. Nothing is "
+            f"sent there: an upload address is sent the release token, and it goes to that "
+            f"forge or nowhere. {NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
         )
         raise RegistryError(msg)
     return Release(answer["id"], upload_url, tuple(assets))
-
-
-def _same_forge(listing: str, upload_url: str) -> bool:
-    """Whether an upload address a release document names belongs to the forge read.
-
-    The real forge takes uploads on a host of its own beside the one it is
-    read on — `uploads.github.com` beside `api.github.com` — so what is
-    required is the listing's scheme and either its host or a host under the
-    same parent domain. A stand-in names one host for both.
-    """
-    read, write = urlsplit(listing), urlsplit(upload_url)
-    if write.scheme != read.scheme or not write.hostname:
-        return False
-    if write.netloc == read.netloc:
-        return True
-    parent = read.hostname.partition(".")[2] if read.hostname else ""
-    return bool(parent) and "." in parent and write.hostname.endswith(f".{parent}")
 
 
 def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:

@@ -17,10 +17,13 @@ running it again.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import shutil
+import socket
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from release_artifacts.__main__ import main
@@ -110,16 +113,18 @@ def _artifacts(repo: Repo, dist: Path, version: str) -> dict[str, Path]:
 def _served(bases: Bases, artifact: str, path: Path, version: str) -> bool:
     """Whether the registry serves one artifact, asked through the publisher's own reads."""
     registry, _, name = artifact.partition(" ")
-    if registry == "pypi":
-        return path.name in pypi_files(bases, pypi_name(name.partition("-")[0]), version)
-    if registry == "npm":
-        package, _, published = name.rpartition("@")
-        return published in npm_versions(bases, package)
-    try:
-        listed = release_of(bases, version).named(name)
-    except RegistryError:
-        return False
-    return listed is not None and listed.size == path.stat().st_size
+    match registry:
+        case "pypi":
+            return path.name in pypi_files(bases, pypi_name(name.partition("-")[0]), version)
+        case "npm":
+            package, _, published = name.rpartition("@")
+            return published in npm_versions(bases, package)
+        case _:
+            try:
+                listed = release_of(bases, version).named(name)
+            except RegistryError:
+                return False
+            return listed is not None and listed.size == path.stat().st_size
 
 
 def _platform_package(repo: Repo, version: str) -> str:
@@ -160,7 +165,10 @@ def test_every_artifact_reaches_the_registry_it_is_declared_for(
         },
         describing="the credential each registry was sent",
     )
-    truth(all(write.accepted for write in registries.written), describing="every write taken")
+    truth(
+        not any(write.refused for write in registries.written),
+        describing="every write taken",
+    )
     absent([path.name for path in dist.iterdir()], ".npmrc", describing="the credential file")
 
 
@@ -235,7 +243,7 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
                 "PUT",
                 platform_package.rpartition("@")[0],
                 f"Bearer {TOKENS['NPM_TOKEN']}",
-                accepted=True,
+                refused=False,
             )
         ],
         describing="the writes the second run made",
@@ -469,8 +477,15 @@ def test_every_registry_is_written_where_it_is_read(repo: Repo) -> None:
     """One stand-in address covers the writes as it covers the reads."""
     real = Bases.read(repo, {})
     equal(real.pypi_upload, "https://upload.pypi.org/legacy/", describing="the real upload")
+    declared = repo.policy["repository"]
+    equal(
+        real.uploads,
+        f"https://uploads.github.com/repos/{declared['owner']}/{declared['name']}/releases",
+        describing="the real forge's own upload host",
+    )
     standing_in = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: "http://127.0.0.1:9"})
     equal(standing_in.pypi_upload, "http://127.0.0.1:9/pypi/legacy/", describing="the stand-in's")
+    equal(standing_in.uploads, "http://127.0.0.1:9/forge/releases", describing="its uploads")
 
 
 def test_a_registry_listing_a_version_as_something_other_than_files_is_refused(
@@ -516,6 +531,41 @@ def test_a_forge_answering_no_release_document_is_refused(
         release_of(bases, version)
 
 
+def test_a_release_naming_an_upload_address_off_the_forge_is_refused(
+    repo: Repo, version: str, registries: Registries, bases: Bases
+) -> None:
+    """An upload address is sent the release credential, so it is the forge's or nothing.
+
+    Where a release document names somewhere else, the read refuses it naming
+    both addresses and nothing is sent; where it names the address `Bases`
+    says that forge takes uploads at — which for the real one is a host of its
+    own beside the one it is read on — it is taken.
+    """
+    served = f"{FORGE_PREFIX}/tags/v{version}"
+    elsewhere = "https://uploads.example.invalid/repos/x/y/releases/7/assets{?name,label}"
+    registries.answers(
+        served, json.dumps({"id": 7, "upload_url": elsewhere, "assets": []}).encode()
+    )
+
+    with pytest.raises(RegistryError) as refused:
+        release_of(bases, version)
+
+    contains(str(refused.value), "uploads.example.invalid", describing="the address refused")
+    contains(str(refused.value), bases.uploads, describing="where that forge takes uploads")
+
+    its_own = f"{bases.uploads}/7/assets"
+    registries.answers(
+        served,
+        json.dumps({"id": 7, "upload_url": its_own + "{?name,label}", "assets": []}).encode(),
+    )
+
+    equal(
+        release_of(bases, version).upload_url,
+        its_own,
+        describing="the upload address the forge's own document names",
+    )
+
+
 def test_a_forge_refusing_an_upload_is_reported_in_its_own_words(
     repo: Repo, version: str, registries: Registries, bases: Bases
 ) -> None:
@@ -547,7 +597,21 @@ def test_a_forge_refusing_an_upload_is_reported_in_its_own_words(
             "multipart/form-data; boundary=x",
             "no file",
         ),
+        (
+            "POST",
+            "/pypi/legacy/",
+            b'--x\r\nContent-Disposition: form-data; name="name"\r\n\r\n\xff\xfe\r\n--x--\r\n',
+            "multipart/form-data; boundary=x",
+            "not text",
+        ),
         ("PUT", "/npm/nothing", b"not json", "application/json", "not a publish document"),
+        (
+            "PUT",
+            "/npm/nothing",
+            b'{"versions": {"1.0.0": {}}, "_attachments": {"t.tgz": {"data": "not base64!"}}}',
+            "application/json",
+            "not an attachment",
+        ),
         ("PUT", "/npm/nothing", b'{"versions": {}}', "application/json", "not a publish document"),
         (
             "PUT",
@@ -584,6 +648,30 @@ def test_the_stand_in_answers_a_write_it_cannot_take_as_the_registry_would(
         exchange(f"{registries.base}{path}", method=method, body=body, content_type=content_type)
 
     contains(str(refused.value), naming, describing="what the stand-in said")
+
+
+def test_the_stand_in_refuses_a_write_declaring_a_length_it_cannot_read(
+    registries: Registries,
+) -> None:
+    """A body is read by what the request says it is, so what that says is checked.
+
+    The bytes below are what a client sending a malformed `Content-Length`
+    puts on the wire, and the stand-in answers them the way a server does —
+    with a status — rather than failing inside its own handler.
+    """
+    where = urlsplit(registries.base)
+    with socket.create_connection((where.hostname, where.port or 80), timeout=30) as connection:
+        connection.sendall(
+            b"POST /pypi/legacy/ HTTP/1.1\r\n"
+            b"Host: standin\r\n"
+            b"Content-Type: application/octet-stream\r\n"
+            b"Content-Length: as-many-as-it-likes\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        answered = connection.recv(4096).decode("utf-8", "replace")
+
+    contains(answered, "400", describing="the status a malformed length is answered with")
+    contains(answered, "no length this can read", describing="what the stand-in said")
 
 
 def test_an_asset_uploaded_under_a_taken_name_is_refused_as_the_forge_refuses_it(
