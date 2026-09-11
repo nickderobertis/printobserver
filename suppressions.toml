@@ -446,3 +446,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/publishing.py"
 site = '"npm",'
 reason = "The same ground as the entry above it, for the other registry: the client here is `npm` itself, which is how a package is published to that registry — it composes the publish document, the attachment and the integrity digests its own protocol requires, and it is the client every consumer of this artifact installs with. Replacing it with an HTTP call written here would restate that protocol in a place nothing reconciles it. The async half does not apply for the same reason: no event loop exists in this program, and one awaited publish would have nothing to overlap with. What the registry serves afterwards is read back through `npm_versions`, which narrows the packument at that boundary, and that read is what decides whether this publish happens at all."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/tests/test_publishing.py"
+site = "socket.create_connection"
+reason = "What this one test puts on the wire is a request no HTTP client will send: a `Content-Length` that is not a number. Every client — typed, async, or neither — composes that header itself from the body it was handed, so reaching the stand-in through one would test the client's arithmetic rather than what this stand-in does with a length it cannot read, which is the behaviour under test. A raw socket is the only way to state the malformed request, and it is one connection, opened and closed inside a strictly sequential assertion with nothing to overlap it with. Every other exchange in this suite goes through `registries.exchange`, which is the narrowed reader the rule is about."

@@ -55,7 +55,16 @@ from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 
 # The one version ordering. A stand-in that sorted versions its own way could
 # serve a newest the proof selecting from it disagreed about.
-from release_artifacts.registries import ordered, pypi_name
+from release_artifacts.publishing import CREDENTIALS
+from release_artifacts.registries import (
+    STANDIN_FORGE,
+    STANDIN_NPM,
+    STANDIN_PYPI,
+    STANDIN_PYPI_UPLOAD,
+    UPLOADED,
+    ordered,
+    pypi_name,
+)
 
 #: The program a served package carries: it runs, and it answers `--version`
 #: with whatever the caller asked it to, which is the whole of what a route's
@@ -79,30 +88,26 @@ echo "{PROGRAM}: this program cannot run on this host" >&2
 exit 1
 """
 
-#: Where each registry answers under the one base, as that registry's own
-#: service spells its paths. `pypi` and `npm` are read as registry bases and the
-#: forge's is read as both the release list and the download root, exactly as
-#: the real ones are.
-PYPI_PREFIX = "/pypi"
-NPM_PREFIX = "/npm"
-FORGE_PREFIX = "/forge/releases"
+#: Where each registry answers under the one base, and where the Python one
+#: takes an upload — the addresses `Bases` composes a stand-in's from, so that
+#: what is served here and what a publish is pointed at cannot drift apart.
+PYPI_PREFIX = STANDIN_PYPI
+NPM_PREFIX = STANDIN_NPM
+FORGE_PREFIX = STANDIN_FORGE
+PYPI_UPLOAD = STANDIN_PYPI_UPLOAD
 
-#: Where the Python registry takes an upload: the legacy multipart form, on
-#: the path the real one serves it at under its own upload host.
-PYPI_UPLOAD = f"{PYPI_PREFIX}/legacy/"
-
-#: The state the forge lists an asset in once its upload finished, and the
-#: state an interrupted upload leaves one in.
-UPLOADED = "uploaded"
+#: The state an interrupted upload leaves an asset in, beside `UPLOADED` — the
+#: forge's own, read from the module that reads a release document.
 INTERRUPTED = "starter"
 
 #: The largest body one write may carry, which is far above any artifact this
 #: repository publishes and far below what a stand-in should hold in memory.
 LARGEST_WRITE = 256 * 1024 * 1024
 
-#: The registries a write is recorded under, as `release-targets.toml` names
-#: them.
-REGISTRIES = ("pypi", "npm", "release")
+#: The registries a write is recorded under: exactly the ones the publisher
+#: holds a credential for, so a registry gained there gains a stand-in rather
+#: than a silent gap no journey can drive.
+REGISTRIES = tuple(CREDENTIALS)
 
 
 class StandinError(ValueError):
@@ -116,6 +121,16 @@ class Answer:
     content_type: str
     body: bytes
     status: int = 200
+
+
+@dataclass(frozen=True, slots=True)
+class Field:
+    """One field of a multipart form: its bytes, and the file name it carried."""
+
+    content: bytes = b""
+    #: Empty for a field that carried no file, which is every field of the
+    #: legacy upload form but the wheel itself.
+    file_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,10 +420,11 @@ class Registries:
     def _take_wheel(self, content_type: str, body: bytes, credential: str) -> Answer:
         """Take the legacy upload form `uv publish` posts, and serve the file it carries."""
         fields = _form(content_type, body)
-        name = _text(fields.get("name", (b"", ""))[0])
-        version = _text(fields.get("version", (b"", ""))[0])
-        digest = _text(fields.get("sha256_digest", (b"", ""))[0])
-        content, file_name = fields.get("content", (b"", ""))
+        name = _text(fields.get("name", Field()).content)
+        version = _text(fields.get("version", Field()).content)
+        digest = _text(fields.get("sha256_digest", Field()).content)
+        uploaded = fields.get("content", Field())
+        content, file_name = uploaded.content, uploaded.file_name
         if name is None or version is None or digest is None:
             return Answer("text/plain", b"the upload carries a field that is not text\n", 400)
         if not name or not version or not file_name:
@@ -703,12 +719,12 @@ def _asset_type(name: str) -> str:
     return "text/plain" if name == CHECKSUMS else "application/octet-stream"
 
 
-def _form(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
+def _form(content_type: str, body: bytes) -> dict[str, Field]:
     """The fields of one multipart form, each with the file name it carried, if any."""
     message = BytesParser().parsebytes(
         f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
     )
-    fields: dict[str, tuple[bytes, str]] = {}
+    fields: dict[str, Field] = {}
     for part in message.walk():
         if part.is_multipart():
             continue
@@ -716,7 +732,9 @@ def _form(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
         if not isinstance(name, str):
             continue
         payload = part.get_payload(decode=True)
-        fields[name] = (payload if isinstance(payload, bytes) else b"", part.get_filename() or "")
+        fields[name] = Field(
+            payload if isinstance(payload, bytes) else b"", part.get_filename() or ""
+        )
     return fields
 
 
@@ -772,15 +790,15 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
             self._answer(registries.answer(self.path))
 
         def do_POST(self) -> None:
-            """Take an upload."""
+            """Take a wheel's legacy upload form, or one release asset's bytes."""
             self._take("POST")
 
         def do_PUT(self) -> None:
-            """Take a publish."""
+            """Take a package's publish document, which is how that registry is written."""
             self._take("PUT")
 
         def do_DELETE(self) -> None:
-            """Take a deletion."""
+            """Take the removal of a release asset, which an upload over one does first."""
             self._take("DELETE")
 
         def _take(self, method: str) -> None:
@@ -796,7 +814,7 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
             self._answer(registries.take(method, self.path, headers, body))
 
         def _answer(self, answer: Answer) -> None:
-            """Write one answer."""
+            """Answer, declaring the length every client reads the body by."""
             self.send_response(answer.status)
             self.send_header("Content-Type", answer.content_type)
             self.send_header("Content-Length", str(len(answer.body)))

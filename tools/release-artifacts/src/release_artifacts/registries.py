@@ -157,6 +157,19 @@ OCTET_STREAM = "application/octet-stream"
 #: that is an asset a download of the release would not find.
 UPLOADED = "uploaded"
 
+#: The paths a stand-in answers each registry on, which `Bases` composes a
+#: stand-in's addresses from and `standin.py` serves. They are written here
+#: rather than there because an address of a registry comes from this module
+#: and from nowhere else: a stand-in whose paths were declared beside its own
+#: handlers would be one half of a pair nothing holds together.
+STANDIN_PYPI = "/pypi"
+STANDIN_NPM = "/npm"
+STANDIN_FORGE = "/forge/releases"
+
+#: Where a stand-in takes a wheel: the legacy multipart form, on the path the
+#: real registry serves it at under its own upload host.
+STANDIN_PYPI_UPLOAD = f"{STANDIN_PYPI}/legacy/"
+
 
 class Outcome(StrEnum):
     """What a route's own proof found, in the words its report names it by."""
@@ -280,12 +293,12 @@ class Bases:
         standing_in = environment.get(PRINTOBSERVER_PROOF_REGISTRIES, "").strip().rstrip("/")
         if standing_in:
             return cls(
-                pypi=f"{standing_in}/pypi",
-                pypi_upload=f"{standing_in}/pypi/legacy/",
-                npm=f"{standing_in}/npm",
-                listing=f"{standing_in}/forge/releases",
-                uploads=f"{standing_in}/forge/releases",
-                releases=f"{standing_in}/forge/releases",
+                pypi=f"{standing_in}{STANDIN_PYPI}",
+                pypi_upload=f"{standing_in}{STANDIN_PYPI_UPLOAD}",
+                npm=f"{standing_in}{STANDIN_NPM}",
+                listing=f"{standing_in}{STANDIN_FORGE}",
+                uploads=f"{standing_in}{STANDIN_FORGE}",
+                releases=f"{standing_in}{STANDIN_FORGE}",
             )
         return cls(
             pypi="https://pypi.org",

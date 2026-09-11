@@ -776,24 +776,17 @@ that step *answered* it released, never on its exit status. `just check-repo`'s
 `tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
-**A `publish` job that failed is run again, never repaired by hand.** GitHub's
-re-run of the failed job, or of the whole run, is the recovery from a publish
-that stopped partway, with nothing cleaned up and nothing moved by hand — and a
-hand-run with an operator's tokens is exactly the manual step this design
-forbids. That is safe because `python -m release_artifacts publish` decides per
-artifact: each is skipped when its registry already serves it — a wheel by its
-file name, a package by its name and version, a release asset by its name and
-size — read through the same documents the install-path proof reads, at the
-addresses `Bases` gives each registry; every artifact is attempted whatever an
-earlier one answered, of the same registry or another; the release assets are
-uploaded whether or not a package registry refused; and the job's failure
-names every refusal in the registry's own words. The forge upload is a direct
-call on the release's own upload address under `RELEASE_PLZ_TOKEN`, and nothing
-here proves it against the real forge: the stand-in in `standin.py` is the only
-thing it is driven against, because no tier of this repository may write to
-GitHub. Its first real proof is therefore the first release published under it,
-and the install-path proof that reads that release afterwards is where a reader
-sees whether the assets landed.
+**A `publish` job that failed is run again, never repaired by hand.** A
+hand-run with an operator's tokens is the manual step this design forbids, so
+the recovery from a publish that stopped partway is GitHub's own re-run, with
+nothing cleaned up first. `python -m release_artifacts publish` decides per
+artifact — skipping each one its registry already serves, attempting every
+artifact whatever an earlier one answered, uploading the release assets whether
+or not a package registry refused, and failing at the end naming every refusal
+in the registry's own words. The forge upload is a direct call under
+`RELEASE_PLZ_TOKEN`, and no tier here may write to the real forge: the stand-in
+is the only thing it is driven against, and a release's own publication is its
+first proof against GitHub.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests

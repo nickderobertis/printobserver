@@ -660,6 +660,7 @@ def test_the_stand_in_refuses_a_write_declaring_a_length_it_cannot_read(
     with a status — rather than failing inside its own handler.
     """
     where = urlsplit(registries.base)
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     with socket.create_connection((where.hostname, where.port or 80), timeout=30) as connection:
         connection.sendall(
             b"POST /pypi/legacy/ HTTP/1.1\r\n"

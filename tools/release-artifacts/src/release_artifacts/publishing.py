@@ -354,7 +354,12 @@ def _publish_release(bases: Bases, token: str, dist: Path, version: str, publish
 
 
 def _raise(refused: RegistryError) -> bool:
-    """Refuse, with what the forge said when asked for the release."""
+    """Attempt an asset by failing it, with what the forge said when asked for the release.
+
+    A forge that could not be read costs every asset its own line rather than
+    the run its report: the attempt vocabulary takes a callable, and this is
+    the one that has already been refused.
+    """
     raise refused
 
 
