@@ -237,8 +237,6 @@ file = "tools/release-artifacts/AGENTS.md"
 site = "# release-artifacts"
 reason = "The rule asks that project rules live in a nested `AGENTS.md` and that `CODEOWNERS` routes reviews, and both hold: this file is that nested one, and `.github/CODEOWNERS` assigns every path with `* @nickderobertis`. The judged tier runs over a diff and is handed only the files that changed, so that unchanged file is outside what it reads — run `20260910T235643Z-7ce94` listed `.github/CODEOWNERS` among its `diff_excluded_files` and then failed this file for having no routing. The same diff passed this rule on the two runs before it; this directive makes the answer not depend on which files a diff happens to carry."
 
-# --- the registry install-path proof: one URL-opening site, and npm's own digest ---
-
 [[suppression]]
 rule = "S310"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
