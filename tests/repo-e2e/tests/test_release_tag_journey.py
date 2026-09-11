@@ -29,16 +29,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 import shutil
 import struct
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import NamedTuple, Self
+from typing import NamedTuple, Protocol, Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
@@ -80,6 +80,14 @@ CREATION_EVERYWHERE = (
 CRATES_IO_INDEX = "https://index.crates.io"
 CRATES_IO_DOWNLOAD = "https://static.crates.io/crates/{name}/{version}/download"
 
+#: What a crate name looks like where cargo writes it into a sparse-index
+#: path: lowercased, and nothing outside letters, digits, `-` and `_`. A path
+#: whose last segment is not one of these names nothing in any registry.
+CRATE_NAME = re.compile(r"[a-z0-9_-]{1,64}")
+
+#: The kinds a dependency can be, as cargo spells them in a publish.
+DEPENDENCY_KINDS = ("normal", "build", "dev")
+
 #: The most a stand-in reads of one request body. A `.crate` of this workspace
 #: is kilobytes and a forge write is one small JSON document; anything larger
 #: is not a request either protocol makes.
@@ -97,23 +105,70 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+class CopiesTheTree(Protocol):
+    """What the `gate_copy` fixture is: a factory for copies of the committed tree.
+
+    `node_modules=False` is the copy a publication is cut from, and the one
+    the release program is driven over here — it copies the whole tree aside
+    to diff it, and refuses a symbolic link out of the tree.
+    """
+
+    def __call__(self, *, node_modules: bool = True) -> GateCopy:
+        """Make one more copy, with or without the JavaScript dependencies linked in."""
+        ...
+
+
+def sparse_path(name: str) -> str:
+    """Where a sparse index keeps `name`'s entry: cargo's own layout, by name length."""
+    match len(name):
+        case 1:
+            return f"/1/{name}"
+        case 2:
+            return f"/2/{name}"
+        case 3:
+            return f"/3/{name[0]}/{name}"
+        case _:
+            return f"/{name[:2]}/{name[2:4]}/{name}"
+
+
+def crate_named_by(path: str) -> str | None:
+    """The crate whose sparse-index entry `path` is, or none if it is not such a path.
+
+    A well-formed path is exactly `sparse_path` of a well-formed name — the
+    prefix segments are derived from the name, so a path with the right shape
+    and the wrong prefix names nothing either.
+    """
+    name = path.rsplit("/", 1)[-1]
+    if CRATE_NAME.fullmatch(name) and sparse_path(name) == path:
+        return name
+    return None
+
+
+def framed(metadata: object, crate: bytes) -> bytes:
+    """The body `cargo publish` sends: two length-prefixed parts, metadata then crate."""
+    document = json.dumps(metadata).encode()
+    return struct.pack("<I", len(document)) + document + struct.pack("<I", len(crate)) + crate
+
+
 def opened(
     url: str,
     *,
     data: bytes | None = None,
     method: str = "GET",
-    credential: str = "",
+    authorization: str = "",
     timeout: int = 60,
 ) -> tuple[int, bytes]:
     """One HTTP exchange, as a status and a body, whatever the status was.
 
     The one place this module opens a URL: the stand-in registry forwarding a
-    read to crates.io, and the journey that drives the stand-in forge directly
-    — which sends `credential` as GitHub's bearer token where it gives one.
+    read to crates.io, and the journeys that drive the two stand-ins directly
+    — sending `authorization` as the header's whole value where they give one,
+    because the two speak different schemes: GitHub takes `Bearer <token>`
+    and a cargo registry takes the bare token.
     """
     headers = {"User-Agent": "printobserver-repo-e2e (stand-in registry)"}
-    if credential:
-        headers["Authorization"] = f"Bearer {credential}"
+    if authorization:
+        headers["Authorization"] = authorization
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     request = urllib.request.Request(url, data=data, method=method, headers=headers)  # noqa: S310
     try:
@@ -305,6 +360,103 @@ class _Handler(BaseHTTPRequestHandler):
         """Say nothing: a stand-in whose log is the output is not signal."""
 
 
+def _typed[T](mapping: dict[str, object], field: str, kind: type[T]) -> T:
+    """`mapping[field]`, once it is present and a `kind`.
+
+    Raises:
+        ValueError: Naming the field, if it is absent or of another type.
+    """
+    value = mapping.get(field)
+    if not isinstance(value, kind):
+        msg = f"`{field}` is missing or not {kind.__name__}"
+        raise ValueError(msg)
+    return value
+
+
+def _nullable(mapping: dict[str, object], field: str) -> str | None:
+    """`mapping[field]`, a string or null — and absent is null, which is how cargo sends one.
+
+    A publish carries `explicit_name_in_toml`, `target`, `registry` and
+    `links` only when they are set, so a missing one is the null case rather
+    than a malformed body; anything present that is not a string is.
+    """
+    value = mapping.get(field)
+    if not (value is None or isinstance(value, str)):
+        msg = f"`{field}` is not a string or null"
+        raise ValueError(msg)
+    return value
+
+
+def _strings(mapping: dict[str, object], field: str) -> list[str]:
+    """`mapping[field]`, once it is a list of strings."""
+    listed = _typed(mapping, field, list)
+    if not all(isinstance(item, str) for item in listed):
+        msg = f"`{field}` is not a list of strings"
+        raise ValueError(msg)
+    return [str(item) for item in listed]
+
+
+class Published(NamedTuple):
+    """What one publish's metadata says, as the index line will carry it."""
+
+    name: str
+    version: str
+    dependencies: list[dict[str, object]]
+    features: dict[str, list[str]]
+    links: str | None
+
+
+def _published(metadata: object) -> Published:
+    """One publish's metadata, every field that reaches the index checked first.
+
+    Each is held to the type cargo's publish metadata gives it, and every
+    crate name to `CRATE_NAME`, before any of it is written where cargo will
+    read it back.
+
+    Raises:
+        ValueError: Naming the first field that is not what cargo sends.
+    """
+    if not isinstance(metadata, dict):
+        msg = "metadata is not a JSON object"
+        raise ValueError(msg)
+    name = _typed(metadata, "name", str)
+    version = _typed(metadata, "vers", str)
+    if not CRATE_NAME.fullmatch(name) or not version:
+        msg = f"`{name}` at `{version}` is not a crate name and a version"
+        raise ValueError(msg)
+    dependencies: list[dict[str, object]] = []
+    for listed in _typed(metadata, "deps", list):
+        if not isinstance(listed, dict):
+            msg = "a dependency is not a JSON object"
+            raise ValueError(msg)
+        dependency_name = _typed(listed, "name", str)
+        renamed = _nullable(listed, "explicit_name_in_toml")
+        kind = _typed(listed, "kind", str)
+        if not CRATE_NAME.fullmatch(dependency_name) or kind not in DEPENDENCY_KINDS:
+            msg = f"dependency `{dependency_name}` of kind `{kind}` is not one cargo would send"
+            raise ValueError(msg)
+        dependencies.append(
+            {
+                "name": renamed or dependency_name,
+                "req": _typed(listed, "version_req", str),
+                "features": _strings(listed, "features"),
+                "optional": _typed(listed, "optional", bool),
+                "default_features": _typed(listed, "default_features", bool),
+                "target": _nullable(listed, "target"),
+                "kind": kind,
+                "registry": _nullable(listed, "registry"),
+                "package": dependency_name if renamed else None,
+            }
+        )
+    features: dict[str, list[str]] = {}
+    for feature, enables in _typed(metadata, "features", dict).items():
+        if not isinstance(feature, str) or not isinstance(enables, list):
+            msg = "`features` is not a map of feature to the features it enables"
+            raise ValueError(msg)
+        features[feature] = _strings({"enables": enables}, "enables")
+    return Published(name, version, dependencies, features, _nullable(metadata, "links"))
+
+
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class StandInRegistry(_StandIn):
@@ -333,6 +485,7 @@ class StandInRegistry(_StandIn):
         #: stand-in, so it is nothing a source file carries.
         self.credential = secrets.token_hex(16)
         self.uploads: list[tuple[str, str]] = []
+        self.forwarded: list[str] = []
         self._crates: dict[tuple[str, str], bytes] = {}
         self._index: dict[str, list[dict[str, object]]] = {}
         super().__init__(record, "registry")
@@ -390,46 +543,18 @@ class StandInRegistry(_StandIn):
         if len(crate) != crate_length or crate_at + crate_length != len(payload):
             msg = "crate length does not fill the body"
             raise ValueError(msg)
-        if (
-            not isinstance(metadata, dict)
-            or not isinstance(metadata.get("name"), str)
-            or not isinstance(metadata.get("vers"), str)
-            or not isinstance(metadata.get("deps"), list)
-            or any(
-                not isinstance(dependency, dict)
-                or not isinstance(dependency.get("name"), str)
-                or not isinstance(dependency.get("version_req"), str)
-                for dependency in metadata["deps"]
-            )
-        ):
-            msg = "metadata is not a crate with a name, a version and dependencies"
-            raise ValueError(msg)
-        name, version = str(metadata["name"]), str(metadata["vers"])
+        published = _published(metadata)
+        name, version = published.name, published.version
         self._crates[(name, version)] = crate
         self._index.setdefault(name, []).append(
             {
                 "name": name,
                 "vers": version,
-                "deps": [
-                    {
-                        "name": dependency.get("explicit_name_in_toml") or dependency["name"],
-                        "req": dependency["version_req"],
-                        "features": dependency.get("features", []),
-                        "optional": dependency.get("optional", False),
-                        "default_features": dependency.get("default_features", True),
-                        "target": dependency.get("target"),
-                        "kind": dependency.get("kind", "normal"),
-                        "registry": dependency.get("registry"),
-                        "package": (
-                            dependency["name"] if dependency.get("explicit_name_in_toml") else None
-                        ),
-                    }
-                    for dependency in metadata["deps"]
-                ],
+                "deps": published.dependencies,
                 "cksum": hashlib.sha256(crate).hexdigest(),
-                "features": metadata.get("features", {}),
+                "features": published.features,
                 "yanked": False,
-                "links": metadata.get("links"),
+                "links": published.links,
                 "v": 2,
             }
         )
@@ -440,7 +565,12 @@ class StandInRegistry(_StandIn):
         registry = self
 
         class Handler(_Handler):
-            """The sparse index, the download path, and the publish endpoint."""
+            """The sparse index, the download path, and the publish endpoint.
+
+            A read that is not `config.json`, a download of one named crate at
+            one version, or a well-formed sparse-index path is `404` here and
+            reaches crates.io no more than a read for an owned crate does.
+            """
 
             def do_GET(self) -> None:
                 """Answer a read: owned from what was taken, the rest from crates.io."""
@@ -453,7 +583,7 @@ class StandInRegistry(_StandIn):
                     return
                 if self.path.startswith("/dl/"):
                     parts = self.path.removeprefix("/dl/").split("/")
-                    if len(parts) != 2 or not all(parts):
+                    if len(parts) != 2 or not CRATE_NAME.fullmatch(parts[0]) or not parts[1]:
                         self.answer(404)
                         return
                     name, version = parts
@@ -466,7 +596,10 @@ class StandInRegistry(_StandIn):
                         return
                     self.answer(302, Location=CRATES_IO_DOWNLOAD.format(name=name, version=version))
                     return
-                name = self.path.rsplit("/", 1)[-1]
+                name = crate_named_by(self.path)
+                if name is None:
+                    self.answer(404)
+                    return
                 if name in registry.owned:
                     lines = registry._index.get(name)
                     if lines is None:
@@ -500,6 +633,7 @@ class StandInRegistry(_StandIn):
                 )
 
             def _forward(self) -> None:
+                registry.forwarded.append(self.path)
                 self.answer(*opened(f"{CRATES_IO_INDEX}{self.path}"))
 
         return Handler
@@ -620,7 +754,7 @@ class Released(NamedTuple):
 class Stage:
     """A copy of the tree wired to a registry and a forge, sharing one record."""
 
-    def __init__(self, gate_copy: Callable[..., GateCopy], tags: tuple[str, ...] = ()) -> None:
+    def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:
         """Stand both stand-ins up, then copy the tree carrying `tags` and wire it to them.
 
         The stand-ins come first because the copy's `.cargo/config.toml`
@@ -713,7 +847,7 @@ class Stage:
 
 
 def test_a_partially_published_version_completes_under_one_tag_after_the_last_publish(
-    gate_copy: Callable[..., GateCopy], tmp_path: Path
+    gate_copy: CopiesTheTree, tmp_path: Path
 ) -> None:
     """The state `main` is in: two crates on the registry, eleven not, no tag on the forge.
 
@@ -777,7 +911,7 @@ def test_a_partially_published_version_completes_under_one_tag_after_the_last_pu
 
 
 def test_a_fully_published_version_releases_nothing_and_writes_nothing(
-    gate_copy: Callable[..., GateCopy], tmp_path: Path
+    gate_copy: CopiesTheTree, tmp_path: Path
 ) -> None:
     """After a completed release, as the workflow's checkout sees it: the tag present.
 
@@ -803,7 +937,7 @@ def test_a_fully_published_version_releases_nothing_and_writes_nothing(
 
 
 def test_creation_enabled_for_every_package_dies_on_the_second_ref(
-    gate_copy: Callable[..., GateCopy], tmp_path: Path
+    gate_copy: CopiesTheTree, tmp_path: Path
 ) -> None:
     """The former configuration, put back: the release stops on the second package's tag.
 
@@ -859,7 +993,7 @@ def test_the_forge_refuses_a_ref_it_already_holds() -> None:
         equal(forge.refs, [], describing="the refs the forge holds after a refused write")
 
         def posted() -> tuple[int, bytes]:
-            return opened(url, data=body, method="POST", credential=forge.credential)
+            return opened(url, data=body, method="POST", authorization=f"Bearer {forge.credential}")
 
         equal(posted()[0], 201, describing="the first ref")
         status, refusal = posted()
@@ -871,3 +1005,96 @@ def test_the_forge_refuses_a_ref_it_already_holds() -> None:
         [(position, f"/api/v3/repos/{OWNER}/{NAME}/git/refs") for position in range(3)],
         describing="what the record holds",
     )
+
+
+def test_the_registry_takes_only_a_publish_and_forwards_only_an_index_path() -> None:
+    """What the registry stand-in refuses, and what it does not send to crates.io.
+
+    Held here because the cases above read what this stand-in recorded: an
+    upload it took while refusing nothing, or a read it forwarded for a path
+    that names no crate, would make those records worth less than they claim.
+    """
+    record = Record()
+    with StandInRegistry(record, ("printobserver-types",)) as registry:
+        publish = f"{registry.base}/api/v1/crates/new"
+        crate = b"not a real crate archive, and nothing here opens it"
+        dependency = {
+            "name": "serde",
+            "version_req": "^1",
+            "features": [],
+            "optional": False,
+            "default_features": True,
+            "target": None,
+            "kind": "normal",
+            "registry": None,
+            "explicit_name_in_toml": None,
+        }
+        metadata = {
+            "name": "printobserver-types",
+            "vers": "0.0.0-standin",
+            "deps": [dependency],
+            "features": {"default": []},
+            "links": None,
+        }
+
+        def put(body: bytes, *, authorization: str = registry.credential) -> tuple[int, str]:
+            status, said = opened(publish, data=body, method="PUT", authorization=authorization)
+            return status, said.decode()
+
+        # Refused, each naming its own reason, and none of them taken.
+        for authorization in ("", f"Bearer {registry.credential}"):
+            status, said = put(framed(metadata, crate), authorization=authorization)
+            equal(status, 403, describing=f"a publish under {authorization!r}")
+            contains(said, "must be logged in", describing="the refusal")
+        malformed = (
+            (framed(metadata, crate)[:-8], "crate length does not fill the body"),
+            (b"\x00" * 3, "no metadata length"),
+            (framed(["not", "an", "object"], crate), "metadata is not a JSON object"),
+            (framed({**metadata, "name": "Print Observer"}, crate), "not a crate name"),
+            (
+                framed({**metadata, "deps": [{**dependency, "optional": "yes"}]}, crate),
+                "`optional`",
+            ),
+            (framed({**metadata, "deps": [{**dependency, "kind": "runtime"}]}, crate), "`runtime`"),
+            (framed({**metadata, "deps": [{**dependency, "target": 7}]}, crate), "`target`"),
+            (framed({**metadata, "features": {"default": "serde"}}, crate), "`features`"),
+            (framed({**metadata, "links": ["z"]}, crate), "`links`"),
+        )
+        for body, reason in malformed:
+            status, said = put(body)
+            equal(status, 400, describing=f"a publish refused for {reason!r}")
+            contains(said, reason, describing="what the refusal named")
+        equal(registry.uploads, [], describing="what was taken while everything was refused")
+        truth(
+            not registry.carries("printobserver-types", "0.0.0-standin"),
+            describing="the refused crate to be served by nothing",
+        )
+
+        # Taken, and then served back exactly as cargo reads a registry.
+        equal(put(framed(metadata, crate))[0], 200, describing="the well-formed publish")
+        equal(registry.uploads, [("printobserver-types", "0.0.0-standin")], describing="uploads")
+        status, line = opened(f"{registry.base}{sparse_path('printobserver-types')}")
+        equal(status, 200, describing="the index entry")
+        entry = json.loads(line)
+        equal(entry["cksum"], hashlib.sha256(crate).hexdigest(), describing="the checksum")
+        equal(entry["deps"][0]["req"], "^1", describing="the requirement carried over")
+        status, served = opened(f"{registry.base}/dl/printobserver-types/0.0.0-standin")
+        equal((status, served), (200, crate), describing="the download")
+
+        # Not forwarded: a path that is not a sparse-index path, an owned crate
+        # nothing has taken, and a download that names no crate at one version.
+        for path in (
+            "/etc/passwd",
+            "/api/v1/crates/new",
+            "/pr/in/printobserver-types/extra",
+            "/xx/yy/printobserver-types",
+            "/pr/in/Printobserver-Types",
+            "/dl/printobserver-types",
+            "/dl/../serde/1.0.0",
+        ):
+            equal(opened(f"{registry.base}{path}")[0], 404, describing=f"a read of {path}")
+        equal(registry.forwarded, [], describing="what reached crates.io")
+        truth(
+            all(path == "/api/v1/crates/new" for _, path in record.of("registry", "PUT")),
+            describing="every PUT to have been recorded at the publish endpoint",
+        )
