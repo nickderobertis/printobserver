@@ -50,6 +50,34 @@ refused; and the run fails at the end naming every refusal in the registry's
 own words. A publisher that stopped at the first refusal would leave every
 artifact after it for a person to send, which is the hand-run this forbids.
 
+## A dispatched publish is the workflow's own, for a release that exists
+
+Two commands serve the release workflow's second shape, and both are held to
+the same answer shape a push produces so that the artifact jobs read one gate.
+`dispatched` answers `released=<tag>` for a tag only after three things hold —
+it is a tag release automation writes, the checkout carries it, and the
+workspace manifest at that tag declares the version the tag names — and it
+refuses everything else with nothing printed and nothing written, because a
+tag that reaches the artifact jobs unverified is another release's tree built
+and published under this one's name. The shallow, tagless checkout is the
+refusal worth naming: an existing tag is invisible to it, so the refusal says
+the checkout carries no tags and what fetches them, rather than that the
+release does not exist. `recorded` reads back the one line `dispatched` wrote,
+and refuses a record it cannot read for the reason `answered` refuses an
+unreadable answer: the proof after the run skips on an empty field, and a
+proof skipped over an unreadable record is a publish nobody checked.
+
+## The version published is handed in on a dispatch, and `dist` is held to it
+
+A push publishes at the workspace's own version, which is the tree the run
+checked out. A dispatch builds an existing tag's tree and publishes with the
+publisher at `main`, whose workspace has moved on, so the version arrives in
+`PRINTOBSERVER_PUBLISH_VERSION` instead. Whichever it is, every wheel's file
+name and every package's manifest in `dist` is held to it before any write:
+the release tarballs carry no version in their names, so nothing else stops
+one tag's artifacts landing on another's release, and that is the one state
+nothing downstream can tell from a correct publish.
+
 ## No tier writes to the real forge
 
 The forge upload is a direct call under `RELEASE_PLZ_TOKEN`, and GitHub
