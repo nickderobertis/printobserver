@@ -214,6 +214,9 @@ def _release_time_version(checkout: Path, commit: str) -> str:
     field = str(BINDING["release_output"])
     answered = [line for line in output(result).splitlines() if line.startswith(f"{field}=")]
     equal(len(answered), 1, describing=f"the one `{field}=` line a job reads its output from")
+    # And nothing beside it, on either stream: a tool that worked says its one
+    # line and stops, and the job appends that stream to its output file.
+    equal(output(result).strip(), answered[0], describing=f"what a passing `just {recipe}` said")
     return answered[0].partition("=")[2].strip()
 
 

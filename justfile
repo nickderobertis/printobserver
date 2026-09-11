@@ -174,7 +174,7 @@ prove-registry-script:
 # finding nothing unreleased — answers an empty field, and that is what those
 # jobs are gated on. Needs a checkout carrying the commit and its tags.
 release-version COMMIT ROOT:
-    uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
+    @uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
 
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
