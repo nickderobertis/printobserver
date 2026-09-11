@@ -689,27 +689,24 @@ commands executable is the `server` node — each held to this section.
 
 ## The registry install-path proof
 
-<!-- llmlint: ignore[agents_md_durable_and_terse] This section is the least `just check-repo` accepts: `checks_install_proof._prose_findings` refuses one that does not state `just test-install-proof` as a pasteable command, name `PRINTOBSERVER_PROOF_VERSION`, and carry the schedule block, so the command and the variable here are what the check demands, and the paragraph beside them is the one judgment the root file keeps — why this tier is outside the gate. Everything else about the tier is with the project, in `tools/release-artifacts/AGENTS.md`, and in `docs/reference/testing.md`. -->
-`just test-install-proof` takes each of the three routes above from its own
-registry and runs what it installed, which is the only thing that says this
-repository is installable. `PRINTOBSERVER_PROOF_VERSION` names the version under
-test — never the number in this tree, because what a user gets is whatever the
-registry is serving.
-
-**It is not one of `just check`'s tiers** and `just check` does not invoke it: it
-reads the real registries, so over a change it could only report what was
-published before that change. It runs after a release, on the schedule below,
-and on a manual invocation:
-
-[//]: # (BEGIN install-proof-schedule)
-- cron: `0 6 * * 1`
-[//]: # (END install-proof-schedule)
-
-**How to run it by hand**, against the real registries:
+The one thing that says this repository is installable: each of the three
+routes above taken from its own registry, and what it installed run.
 
 ```console
 just test-install-proof
 ```
+
+`PRINTOBSERVER_PROOF_VERSION` names the version under test — never the number in
+this tree, because what a user gets is whatever the registry is serving.
+
+**It is not one of `just check`'s tiers** and `just check` does not invoke it: it
+reads the real registries, so over a change it could only report what was
+published before that change. It runs after a release, on a manual invocation,
+and on this schedule:
+
+[//]: # (BEGIN install-proof-schedule)
+- cron: `0 6 * * 1`
+[//]: # (END install-proof-schedule)
 
 ## Commits, releases, and merging
 
