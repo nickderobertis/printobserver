@@ -28,10 +28,9 @@ from release_artifacts.build import CHECKSUMS, PROGRAM, manifest_of
 from release_artifacts.packages import digest_of
 from release_artifacts.platforms import host, supported
 from release_artifacts.publishing import (
-    ALREADY_PUBLISHED,
     CREDENTIALS,
-    PUBLISHED,
-    REFUSED,
+    Outcome,
+    Package,
     PublishError,
     npmrc_line,
     publish,
@@ -147,7 +146,7 @@ def test_every_artifact_reaches_the_registry_it_is_declared_for(
     said = publish(repo, dist, environment)
 
     artifacts = _artifacts(repo, dist, version)
-    equal(_outcomes(said), dict.fromkeys(artifacts, PUBLISHED), describing="what was said")
+    equal(_outcomes(said), dict.fromkeys(artifacts, Outcome.PUBLISHED), describing="what was said")
     for artifact, path in artifacts.items():
         truth(_served(bases, artifact, path, version), describing=f"{artifact} to be served")
     basic = base64.b64encode(f"__token__:{TOKENS['PYPI_TOKEN']}".encode()).decode()
@@ -205,10 +204,10 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
     equal(exit_status, 1, describing="the exit of a publish that was refused one artifact")
     out, err = capsys.readouterr()
     artifacts = _artifacts(repo, dist, version)
-    expected = dict.fromkeys(artifacts, ALREADY_PUBLISHED)
-    expected[f"npm @printobserver/sdk@{version}"] = PUBLISHED
-    expected[f"release {PROGRAM}-{host(repo).id}.tar.gz"] = PUBLISHED
-    expected[f"npm {platform_package}"] = REFUSED
+    expected = dict.fromkeys(artifacts, Outcome.ALREADY_PUBLISHED)
+    expected[f"npm @printobserver/sdk@{version}"] = Outcome.PUBLISHED
+    expected[f"release {PROGRAM}-{host(repo).id}.tar.gz"] = Outcome.PUBLISHED
+    expected[f"npm {platform_package}"] = Outcome.REFUSED
     equal(_outcomes(out.splitlines()), expected, describing="what the run said")
     contains(err, platform_package.rpartition("@")[0], describing="the refused package named")
     contains(err, "Scope not found", describing="the registry's own reason")
@@ -225,8 +224,8 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
     del registries.written[:]
     said = publish(repo, dist, environment)
 
-    expected = dict.fromkeys(artifacts, ALREADY_PUBLISHED)
-    expected[f"npm {platform_package}"] = PUBLISHED
+    expected = dict.fromkeys(artifacts, Outcome.ALREADY_PUBLISHED)
+    expected[f"npm {platform_package}"] = Outcome.PUBLISHED
     equal(_outcomes(said), expected, describing="what the second run said")
     equal(
         registries.written,
@@ -271,7 +270,7 @@ def test_a_fail_fast_publish_leaves_the_artifacts_after_the_refusal_unserved(
         for wheel in sorted(dist.glob("*.whl")):
             publish_wheel(repo, bases, TOKENS["PYPI_TOKEN"], wheel, version, environment)
         for tarball in sorted(dist.glob("*.tgz")):
-            publish_package(repo, bases, tarball, manifest_of(tarball), npmrc, environment)
+            publish_package(repo, bases, tarball, Package.of(tarball), npmrc, environment)
 
     artifacts = _artifacts(repo, dist, version)
     unserved = {
@@ -320,9 +319,13 @@ def test_the_checksum_file_lists_every_platforms_tarball(
     said = publish(repo, dist, environment)
 
     outcomes = _outcomes(said)
-    equal(outcomes[f"release {CHECKSUMS}"], PUBLISHED, describing="the checksum file replaced")
+    equal(
+        outcomes[f"release {CHECKSUMS}"], Outcome.PUBLISHED, describing="the checksum file replaced"
+    )
     for path in other:
-        equal(outcomes[f"release {path.name}"], PUBLISHED, describing="the other platform's")
+        equal(
+            outcomes[f"release {path.name}"], Outcome.PUBLISHED, describing="the other platform's"
+        )
     served = registries.assets_of(f"v{version}")[CHECKSUMS].decode()
     for path in tarballs.values():
         contains(served, f"{digest_of(path)}  {path.name}\n", describing="the served checksums")
@@ -351,7 +354,9 @@ def test_an_asset_whose_upload_never_finished_is_replaced(
 
     said = publish(repo, dist, environment)
 
-    equal(_outcomes(said)[f"release {asset}"], PUBLISHED, describing="the interrupted asset")
+    equal(
+        _outcomes(said)[f"release {asset}"], Outcome.PUBLISHED, describing="the interrupted asset"
+    )
     equal(
         [(write.method, write.name) for write in registries.written],
         [("DELETE", asset), ("POST", asset)],
@@ -432,8 +437,8 @@ def test_a_registry_that_refuses_what_it_was_sent_is_reported(
         str(refused.value), "non-existent authentication", describing="the registry's own words"
     )
     outcomes = _outcomes(refused.value.said)
-    equal(outcomes.pop(f"pypi {wheel}"), REFUSED, describing="the refused wheel")
-    equal(set(outcomes.values()), {PUBLISHED}, describing="every other artifact")
+    equal(outcomes.pop(f"pypi {wheel}"), Outcome.REFUSED, describing="the refused wheel")
+    equal(set(outcomes.values()), {Outcome.PUBLISHED}, describing="every other artifact")
     absent([path.name for path in dist.iterdir()], ".npmrc", describing="the credential file")
 
 
