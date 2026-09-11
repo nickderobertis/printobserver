@@ -71,10 +71,8 @@ REFERENCE_EXISTS = (
     '"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}'
 )
 
-#: What the program says of a package the registry already carries.
 ALREADY_PUBLISHED = "{crate} {version}: already published"
 
-#: What the program says when the forge refuses the ref, naming it.
 FAILED_REF = "failed to create ref refs/tags/v"
 
 #: The edits that put the former configuration back — creation on for every
