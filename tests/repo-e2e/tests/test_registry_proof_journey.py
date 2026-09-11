@@ -47,7 +47,7 @@ ROUTES = {
 }
 
 #: A version the stand-in registries serve. Deliberately not the one the
-#: workspace declares (`0.1.0`): what a user gets is what the registry serves,
+#: workspace declares: what a user gets is what the registry serves,
 #: and a proof that read this tree's number would pass over a registry serving
 #: nothing.
 SERVED = "0.3.0"

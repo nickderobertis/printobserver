@@ -12,15 +12,19 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from release_artifacts import targets
 from repo_checks.model import Repo
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 #: A program every route's artifact carries, in place of the real one. It runs,
 #: and it says which version it is, which is what a route's own assertion is.
+#: The version is the workspace's own rather than a number written here: release
+#: automation moves that one, and a copy kept by hand is stale the first time it
+#: does.
 STAND_IN = """#!/bin/sh
-if [ "${1:-}" = "--version" ]; then
-    echo "printobserver 0.1.0"
+if [ "${{1:-}}" = "--version" ]; then
+    echo "printobserver {version}"
     exit 0
 fi
 echo "printobserver: a stand-in program, which does nothing" >&2
@@ -35,10 +39,16 @@ def repo() -> Repo:
 
 
 @pytest.fixture
-def program(tmp_path: Path) -> Path:
-    """A runnable program a route's artifact can carry."""
+def version() -> str:
+    """The version the workspace declares, which is the one every artifact carries."""
+    return targets.workspace(REPO_ROOT)["version"]
+
+
+@pytest.fixture
+def program(tmp_path: Path, version: str) -> Path:
+    """A runnable program a route's artifact can carry, reporting the tree's version."""
     path = tmp_path / "printobserver"
-    path.write_text(STAND_IN, encoding="utf-8")
+    path.write_text(STAND_IN.format(version=version), encoding="utf-8")
     path.chmod(0o755)
     return path
 
