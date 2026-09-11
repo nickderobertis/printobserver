@@ -689,6 +689,7 @@ commands executable is the `server` node — each held to this section.
 
 ## The registry install-path proof
 
+<!-- llmlint: ignore[agents_md_durable_and_terse] This section is the least `just check-repo` accepts: `checks_install_proof._prose_findings` refuses one that does not state `just test-install-proof` as a pasteable command, name `PRINTOBSERVER_PROOF_VERSION`, and carry the schedule block, so the command and the variable here are what the check demands, and the paragraph beside them is the one judgment the root file keeps — why this tier is outside the gate. Everything else about the tier is with the project, in `tools/release-artifacts/AGENTS.md`, and in `docs/reference/testing.md`. -->
 `just test-install-proof` takes each of the three routes above from its own
 registry and runs what it installed, which is the only thing that says this
 repository is installable. `PRINTOBSERVER_PROOF_VERSION` names the version under

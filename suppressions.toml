@@ -220,6 +220,18 @@ site = "Keep the OctoPrint journey in the required gate"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
 
 [[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "`just test-install-proof` takes each of the three routes above"
+reason = "The judged rule refuses a root section that restates what a command already shows, and `just check-repo` refuses one that does not: `checks_install_proof._prose_findings` requires `## The registry install-path proof` to state `just test-install-proof` as a pasteable fenced command, to name `PRINTOBSERVER_PROOF_VERSION`, and to carry the `install-proof-schedule` block, and it fails the gate on any of the three missing. The section is those three and one paragraph of judgment — why the tier is outside the gate — and the deterministic check is the one that holds; run `20260911T001001Z-2c53c` failed the section after five runs had passed it unchanged, and the mechanics it might have been restating were moved to `tools/release-artifacts/AGENTS.md` in e15ba61."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "`just test-install-proof` takes each of the three routes above"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same section is scanned through this path too; the entry above is the reason."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "tools/release-artifacts/AGENTS.md"
 site = "# release-artifacts"
