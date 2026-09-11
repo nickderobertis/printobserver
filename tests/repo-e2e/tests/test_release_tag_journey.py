@@ -168,7 +168,11 @@ def publishable_crates() -> tuple[str, ...]:
 
 
 class Request(NamedTuple):
-    """One request a stand-in took, and which stand-in it was."""
+    """One request, tagged with the stand-in that took it.
+
+    The tag is what lets a registry upload and a forge write be ordered against
+    each other: both kinds sit in one sequence, and `who` tells them apart.
+    """
 
     who: str
     method: str
@@ -190,7 +194,12 @@ class Record:
     """
 
     def __init__(self) -> None:
-        """Start with no request taken."""
+        """Own the lock the two stand-ins' handler threads append under.
+
+        Each stand-in serves on threads of its own, so without one lock the
+        order this record ends up in would be the order two threads happened
+        to interleave their appends, not the order the requests arrived.
+        """
         self.entries: list[Request] = []
         self._lock = threading.Lock()
 
@@ -212,7 +221,13 @@ class _StandIn:
     """A loopback HTTP server whose handler is one of the two below."""
 
     def __init__(self, record: Record, who: str) -> None:
-        """Start answering on a port the operating system chooses."""
+        """Bind a free loopback port and serve on a daemon thread from here on.
+
+        Serving starts here rather than in `__enter__`, because a caller needs
+        the port — to write it into the copy's cargo configuration — before the
+        `with` block. The thread is a daemon so a journey that fails before
+        `stop` cannot hang the process on it.
+        """
         self.record = record
         self.who = who
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -229,16 +244,21 @@ class _StandIn:
         raise NotImplementedError
 
     def stop(self) -> None:
-        """Stop answering."""
+        """Shut the serving thread down and release the port.
+
+        Once, from `__exit__`: `shutdown` blocks until the serving loop has
+        returned, and a second call would block forever on a loop that is not
+        running.
+        """
         self._server.shutdown()
         self._server.server_close()
 
     def __enter__(self) -> Self:
-        """Serve for the duration of a `with` block."""
+        """Hand the already-serving stand-in to the block; `__init__` started it."""
         return self
 
     def __exit__(self, *_: object) -> None:
-        """Stop serving when the block ends."""
+        """Release the port whether the block passed or raised, leaving no listener behind."""
         self.stop()
 
 
@@ -257,7 +277,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def answer_json(self, status: int, document: object) -> None:
-        """Send one JSON answer."""
+        """Send `document` as JSON, typed as such: cargo and release-plz both parse only that."""
         self.answer(status, json.dumps(document).encode(), Content_Type="application/json")
 
     def body(self) -> bytes | None:
@@ -294,7 +314,12 @@ class StandInRegistry(_StandIn):
     """
 
     def __init__(self, record: Record, owned: tuple[str, ...]) -> None:
-        """Own `owned` — every crate the workspace publishes — and carry none of them yet."""
+        """Own `owned` — every crate the workspace publishes — and carry none of them yet.
+
+        Owning a name means never forwarding it: a read for an owned crate
+        this registry has not taken answers `404`, as a registry that has
+        never seen it would, rather than reaching crates.io for it.
+        """
         self.owned = set(owned)
         self.uploads: list[tuple[str, str]] = []
         self._crates: dict[tuple[str, str], bytes] = {}
@@ -324,7 +349,11 @@ class StandInRegistry(_StandIn):
     credential = "stand-in-credential"
 
     def environment(self) -> dict[str, str]:
-        """The token cargo publishes to this registry under."""
+        """The credential, in the one variable `cargo publish --registry` reads it from.
+
+        The release program is handed the same value on `--token`, so the two
+        paths an upload can take here authenticate as one client.
+        """
         return {f"CARGO_REGISTRIES_{STANDIN.upper()}_TOKEN": self.credential}
 
     def carries(self, name: str, version: str) -> bool:
@@ -481,7 +510,11 @@ class StandInForge(_StandIn):
     """
 
     def __init__(self, record: Record) -> None:
-        """Start as the forge was before the release: no tag, no ref, no release."""
+        """Start as the forge was before the release: no tag, no ref, no release.
+
+        Nothing here is ever deleted: a ref once taken is held for the life of
+        the stand-in, which is what makes the second request for it refusable.
+        """
         self.refs: list[str] = []
         self.releases: list[dict[str, object]] = []
         self.tags: list[dict[str, object]] = []
@@ -574,7 +607,12 @@ class Stage:
     """A copy of the tree wired to a registry and a forge, sharing one record."""
 
     def __init__(self, gate_copy: Callable[..., GateCopy], tags: tuple[str, ...] = ()) -> None:
-        """Copy the tree carrying `tags`, and stand both stand-ins up."""
+        """Stand both stand-ins up, then copy the tree carrying `tags` and wire it to them.
+
+        The stand-ins come first because the copy's `.cargo/config.toml`
+        names the registry's port, and that port exists only once it is bound.
+        The copy is pytest's to remove; the listeners are this stage's.
+        """
         self.record = Record()
         self.registry = StandInRegistry(self.record, publishable_crates())
         self.forge = StandInForge(self.record)
@@ -582,16 +620,16 @@ class Stage:
         self.copy.write(".cargo/config.toml", self.registry.cargo_config())
 
     def __enter__(self) -> Self:
-        """Serve for the duration of a `with` block."""
+        """Hand the wired stage to the block; both stand-ins are already serving."""
         return self
 
     def __exit__(self, *_: object) -> None:
-        """Stop both stand-ins when the block ends."""
+        """Release both ports whether the block passed or raised, the registry's first."""
         self.registry.stop()
         self.forge.stop()
 
     def environment(self) -> dict[str, str]:
-        """What every program run over the copy runs under."""
+        """The caller's environment, cleaned, plus the credential the registry uploads need."""
         return clean_environment(**self.registry.environment())
 
     def seed(self, *crates: str) -> None:
