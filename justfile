@@ -196,14 +196,17 @@ release-answer ANSWER:
 # build and the artifact publish are gated on one field whichever way the run
 # was started. TAG is an existing release tag, `v<version>`; ROOT is a checkout
 # carrying it — the whole history and its tags, which `fetch-depth: 0` gives
-# and a shallow checkout does not — and RECORD is where the one
-# `version=<version>` line `release-version` prints is written, for the
-# install-path proof to read after the run. A tag that is not release
-# automation's, one the checkout cannot see, or one whose tree's workspace
-# version is not the one it names is refused naming why, and nothing is
-# printed or written: the job fails, and the jobs after it are skipped.
-release-dispatched TAG ROOT RECORD:
-    @uv run -q python -m release_artifacts dispatched --tag {{TAG}} --root {{ROOT}} --record {{RECORD}}
+# and a shallow checkout does not; RECORD is where the one `version=<version>`
+# line `release-version` prints is written, for the install-path proof to read
+# after the run; and REF is the ref the run was started on, which must be the
+# base branch `repo-policy.toml` declares, because that is where the publisher
+# and the secrets it runs with are the ones a release trusts. A run on any
+# other ref, a tag that is not release automation's, one the checkout cannot
+# see, or one whose tree's workspace version is not the one it names is
+# refused naming why, and nothing is printed or written: the job fails, and
+# the jobs after it are skipped.
+release-dispatched TAG ROOT RECORD REF:
+    @uv run -q python -m release_artifacts dispatched --tag {{TAG}} --root {{ROOT}} --record {{RECORD}} --ref {{REF}}
 
 # Which version a dispatched run recorded, as `version=<version>`, off RECORD.
 #

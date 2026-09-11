@@ -121,16 +121,18 @@ jobs:
       - id: answer
         if: github.event_name == 'push'
         run: just release-answer "$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"
-      # A dispatch's alone: the tag exists in this checkout and its tree's
-      # workspace version is the one it names, or this job fails naming which
-      # and nothing is built or published. What it answers is the same
-      # `released=<tag>` line the step above answers for a cut release, and
-      # the record it writes is what the install-path proof reads afterwards.
+      # A dispatch's alone: the run is on `main`, the tag exists in this
+      # checkout and its tree's workspace version is the one it names, or this
+      # job fails naming which and nothing is built or published. What it
+      # answers is the same `released=<tag>` line the step above answers for a
+      # cut release, and the record it writes is what the install-path proof
+      # reads afterwards.
       - id: dispatched
         if: github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ inputs.tag }}
-        run: just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version" >> "$GITHUB_OUTPUT"
+          REF: ${{ github.ref }}
+        run: just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version" "$REF" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
         with:

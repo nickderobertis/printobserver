@@ -300,16 +300,21 @@ def released(
 
 
 def dispatched(
-    gate_copy: Callable[..., GateCopy], tmp_path: Path, tag: str = "", *, run_id: str = "1"
+    gate_copy: Callable[..., GateCopy],
+    tmp_path: Path,
+    tag: str = "",
+    *,
+    run_id: str = "1",
+    ref: str = "refs/heads/main",
 ) -> tuple[Driven, str]:
-    """Run the release workflow dispatched with `tag`, over a copy tagged at its own version.
+    """Run the release workflow dispatched with `tag` on `ref`, over a copy tagged at its version.
 
     `tag` names the copy's own tag, `v<X>`, when empty. Returns the run and
     the copy's version, `X`.
     """
     copy = gate_copy()
     version = tagged(copy)
-    event = Event("workflow_dispatch", inputs={"tag": tag or f"v{version}"})
+    event = Event("workflow_dispatch", inputs={"tag": tag or f"v{version}"}, ref=ref)
     return driven(copy, tmp_path, WORKFLOW, event=event, run_id=run_id), version
 
 
@@ -381,7 +386,7 @@ def test_a_push_runs_nothing_of_the_dispatched_shape(
     equal(done.run.result(PUBLISH), Result.SUCCESS, describing="the publish on a push")
     absent(
         done.run.commands(PUBLISHING),
-        'just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version" '
+        'just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version" "$REF" '
         '>> "$GITHUB_OUTPUT"',
         describing="the verifying step, which a push must not run",
     )
@@ -597,6 +602,30 @@ def test_a_dispatch_naming_a_tag_over_another_releases_tree_is_refused_at_releas
     equal(done.run.result(ARTIFACTS), Result.SKIPPED, describing="the build's result")
     equal(done.run.result(PUBLISH), Result.SKIPPED, describing="the publish's result")
     equal(done.reached, [], describing="the downstream recipes reached")
+    equal(done.store.names(done.run_id), [], describing="what the run uploaded")
+
+
+def test_a_dispatch_on_any_ref_but_main_is_refused_at_release(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """An existing tag dispatched from a branch would publish with whatever that branch carries."""
+    done, _ = dispatched(gate_copy, tmp_path, run_id="30", ref="refs/heads/a-branch")
+
+    equal(
+        results(done.run),
+        {
+            DRAFTING: Result.SKIPPED,
+            PUBLISHING: Result.FAILURE,
+            ARTIFACTS: Result.SKIPPED,
+            PUBLISH: Result.SKIPPED,
+        },
+        describing="what the forge would report each job as",
+    )
+    refused = done.run.jobs[PUBLISHING].steps[-1].output
+    contains(refused, "`refs/heads/a-branch`", describing=f"the ref the run was on: {refused}")
+    contains(refused, "`refs/heads/main`", describing="the ref a dispatch is made on")
+    equal(done.reached, [], describing="the downstream recipes reached")
+    equal(done.invoked, [], describing="the release program's invocations")
     equal(done.store.names(done.run_id), [], describing="what the run uploaded")
 
 

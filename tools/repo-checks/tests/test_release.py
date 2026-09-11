@@ -407,8 +407,9 @@ DISPATCHED_STEP = (
     "        if: github.event_name == 'workflow_dispatch'\n"
     "        env:\n"
     "          TAG: ${{ inputs.tag }}\n"
+    "          REF: ${{ github.ref }}\n"
     '        run: just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version"'
-    ' >> "$GITHUB_OUTPUT"\n'
+    ' "$REF" >> "$GITHUB_OUTPUT"\n'
 )
 RELEASED_OUTPUT = (
     "released: ${{ steps.answer.outputs.released || steps.dispatched.outputs.released }}"
@@ -500,9 +501,7 @@ def test_a_dispatched_tag_that_reaches_the_artifact_jobs_unverified_is_refused(
     )
 
     unpublished = tree()
-    unpublished.edit(
-        RELEASE, '/dispatched-release/version" >> "$GITHUB_OUTPUT"', '/dispatched-release/version"'
-    )
+    unpublished.edit(RELEASE, '"$REF" >> "$GITHUB_OUTPUT"', '"$REF"')
     refused(release_dispatch(unpublished.repo), "does not append to `$GITHUB_OUTPUT`")
 
 
@@ -609,7 +608,9 @@ def test_a_dispatch_recipe_the_justfile_does_not_declare_is_refused(
     """A workflow step running a recipe nothing declares fails after a merge."""
     verifying = tree()
     verifying.edit(
-        "justfile", "release-dispatched TAG ROOT RECORD:", "release-verify TAG ROOT RECORD:"
+        "justfile",
+        "release-dispatched TAG ROOT RECORD REF:",
+        "release-verify TAG ROOT RECORD REF:",
     )
     refused(release_dispatch(verifying.repo), "declares no `release-dispatched` recipe")
 

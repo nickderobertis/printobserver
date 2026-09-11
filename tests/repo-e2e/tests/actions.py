@@ -36,8 +36,8 @@ where a rule modelled here wrongly would show up.
   * `if:` and `${{ }}` expressions are the forge's grammar over the contexts
     this repository's workflows read: `needs.<job>.outputs.<name>`,
     `steps.<id>.outputs.<name>`, `secrets.<NAME>`, `matrix.<...>`,
-    `github.event_name`, `github.event.workflow_run.<field>`, `github.run_id`,
-    `github.token`, `inputs.<name>`, `runner.temp`, string literals, `==`,
+    `github.event_name`, `github.event.workflow_run.<field>`, `github.ref`,
+    `github.run_id`, `github.token`, `inputs.<name>`, `runner.temp`, string literals, `==`,
     `!=`, `&&`, `||`, `!` and parentheses. String comparison is
     case-insensitive, as the forge's is. The event a run is under is the
     caller's to say — `push` by default, `workflow_dispatch` with its inputs,
@@ -303,9 +303,11 @@ class Event:
     name: str = "push"
     inputs: dict[str, str] = field(default_factory=dict)
     workflow_run: dict[str, str] = field(default_factory=dict)
+    #: The ref the run was started on, as the forge names it.
+    ref: str = "refs/heads/main"
 
     def github(self, run_id: str) -> Declared:
-        """The `github` context: the event's name and payload, this run's id and token."""
+        """The `github` context: the event's name, payload and ref, this run's id and token."""
         payload: Declared = {}
         if self.workflow_run:
             payload["workflow_run"] = dict(self.workflow_run)
@@ -314,6 +316,7 @@ class Event:
         return {
             "event_name": self.name,
             "event": payload,
+            "ref": self.ref,
             "run_id": run_id,
             # The forge's own token, which nothing here can reach a forge with;
             # a boundary given it records this placeholder.

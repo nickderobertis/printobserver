@@ -115,6 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="the record of which version a dispatched run published, written or read",
     )
+    parser.add_argument(
+        "--ref",
+        default="",
+        metavar="REF",
+        help="the ref a hand-dispatched run was started on, as the forge names it",
+    )
     parser.add_argument("--into", type=Path, default=Path("dist"))
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -296,11 +302,35 @@ def _dispatched(repo: Repo, arguments: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    version = dispatched(repo.root, arguments.tag)
+    if not arguments.ref:
+        print("dispatched takes --ref <ref>: the ref the run was started on", file=sys.stderr)
+        return 2
+    version = dispatched(repo.root, arguments.tag, arguments.ref, _base_branch(repo))
     arguments.record.parent.mkdir(parents=True, exist_ok=True)
     arguments.record.write_text(f"{VERSION_FIELD}={version}\n", encoding="utf-8")
     print(f"{RELEASED_FIELD}={arguments.tag.strip()}")
     return 0
+
+
+def _base_branch(repo: Repo) -> str:
+    """The branch a dispatched publish is made on, as `repo-policy.toml` declares it.
+
+    Raises:
+        RegistryError: If the checkout declares none, which is a checkout of
+            something other than this repository.
+    """
+    try:
+        declared = repo.policy.get("repository", {}).get("base_branch", "")
+    except OSError as unreadable:
+        msg = f"{repo.root} carries no readable `repo-policy.toml`: {unreadable}"
+        raise RegistryError(msg) from unreadable
+    if not isinstance(declared, str) or not declared.strip():
+        msg = (
+            f"{repo.root}'s `repo-policy.toml` declares no `repository.base_branch`, so "
+            f"nothing says which ref a dispatched publish is made on"
+        )
+        raise RegistryError(msg)
+    return declared.strip()
 
 
 def _recorded(arguments: argparse.Namespace) -> int:

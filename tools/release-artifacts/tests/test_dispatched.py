@@ -36,6 +36,10 @@ from repo_checks.shell import run
 #: the real one: the tag exists, and its tree builds another release.
 MISMATCHED = "9.9.9"
 
+#: The ref a dispatched publish is made on: the base branch `repo-policy.toml`
+#: declares, as the forge names it.
+ON_MAIN = "refs/heads/main"
+
 
 @dataclass(frozen=True, slots=True)
 class Tagged:
@@ -68,8 +72,12 @@ def tagged(repo: Repo, tmp_path: Path) -> Tagged:
     checkout.git("config", "user.name", "release automation")
     checkout.git("commit", "--allow-empty", "-m", "chore: before any manifest")
     checkout.git("tag", "v0.0.1")
-    (root / "Cargo.toml").write_bytes((repo.root / "Cargo.toml").read_bytes())
-    checkout.git("add", "Cargo.toml")
+    # The policy beside the manifest: it is where the base branch a dispatch
+    # must run on is read from, off the working tree, and a clone of this
+    # repository carries it as this one does.
+    for name in ("Cargo.toml", "repo-policy.toml"):
+        (root / name).write_bytes((repo.root / name).read_bytes())
+    checkout.git("add", "Cargo.toml", "repo-policy.toml")
     checkout.git("commit", "-m", f"chore: release v{checkout.version}")
     checkout.git("tag", f"v{checkout.version}")
     checkout.git("tag", f"v{MISMATCHED}")
@@ -77,10 +85,27 @@ def tagged(repo: Repo, tmp_path: Path) -> Tagged:
 
 
 def dispatch(
-    tag: str, root: Path, record: Path, capsys: pytest.CaptureFixture[str]
+    tag: str,
+    root: Path,
+    record: Path,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    ref: str = ON_MAIN,
 ) -> tuple[int, str, str]:
     """Drive the command the workflow's dispatched step runs, as it runs it."""
-    code = main(["dispatched", "--tag", tag, "--root", str(root), "--record", str(record)])
+    code = main(
+        [
+            "dispatched",
+            "--tag",
+            tag,
+            "--root",
+            str(root),
+            "--record",
+            str(record),
+            "--ref",
+            ref,
+        ]
+    )
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 
@@ -102,6 +127,46 @@ def test_an_existing_tag_whose_tree_agrees_is_answered_and_recorded(
         describing="the record, its parent created",
     )
     equal(recorded(record), tagged.version, describing="what the proof reads back off it")
+
+
+@pytest.mark.parametrize("ref", ["refs/heads/a-branch", "refs/tags/v0.2.0", "main", ""])
+def test_a_dispatch_on_any_ref_but_the_base_branch_is_refused_naming_both(
+    ref: str, tagged: Tagged, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The publisher and the secrets a release trusts are the base branch's, and no other's.
+
+    Refused before the tag is looked at: an existing tag over a run started on
+    a branch would publish with whatever that branch carries.
+    """
+    record = tmp_path / "record"
+
+    code, out, err = dispatch(f"v{tagged.version}", tagged.path, record, capsys, ref=ref)
+
+    equal(code, 2 if not ref else 1, describing=f"the exit a dispatch on `{ref}` gets")
+    equal(out, "", describing="the output a job would have read a field from")
+    contains(err, ON_MAIN if ref else "takes --ref", describing="the ref it requires")
+    if ref:
+        contains(err, f"`{ref}`", describing="the ref it got")
+    truth(not record.exists(), describing="no record for a refused dispatch")
+
+
+def test_a_checkout_declaring_no_base_branch_cannot_say_where_a_dispatch_runs(
+    tagged: Tagged, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The base branch is the policy's to declare, and a checkout without it is refused."""
+    (tagged.path / "repo-policy.toml").write_text("[repository]\nowner = 'x'\n", encoding="utf-8")
+
+    code, out, err = dispatch(f"v{tagged.version}", tagged.path, tmp_path / "record", capsys)
+
+    equal(code, 1, describing="the exit a checkout declaring no base branch gets")
+    equal(out, "", describing="the output a job would have read a field from")
+    contains(err, "repository.base_branch", describing="what it named")
+
+    (tagged.path / "repo-policy.toml").unlink()
+    code, out, err = dispatch(f"v{tagged.version}", tagged.path, tmp_path / "record", capsys)
+
+    equal(code, 1, describing="the exit a checkout with no policy at all gets")
+    contains(err, "repo-policy.toml", describing="what it named")
 
 
 def test_a_tag_the_checkout_does_not_carry_is_refused_naming_it(
@@ -180,28 +245,28 @@ def test_a_name_that_is_not_a_release_tag_is_refused_before_the_checkout_is_aske
 def test_a_tag_whose_tree_carries_no_readable_manifest_is_refused(tagged: Tagged) -> None:
     """A tree with no workspace manifest, and one whose manifest declares no version."""
     with pytest.raises(RegistryError) as unreadable:
-        dispatched(tagged.path, "v0.0.1")
+        dispatched(tagged.path, "v0.0.1", ON_MAIN, "main")
     contains(str(unreadable.value), "could not read the workspace manifest", describing="a tree")
 
     (tagged.path / "Cargo.toml").write_text("[workspace]\nmembers = []\n", encoding="utf-8")
     tagged.git("commit", "-am", "chore: a manifest declaring no version")
     tagged.git("tag", "v0.0.2")
     with pytest.raises(RegistryError) as undeclared:
-        dispatched(tagged.path, "v0.0.2")
+        dispatched(tagged.path, "v0.0.2", ON_MAIN, "main")
     contains(str(undeclared.value), "declares no version", describing="a versionless manifest")
 
     (tagged.path / "Cargo.toml").write_text("this is not = [toml\n", encoding="utf-8")
     tagged.git("commit", "-am", "chore: a manifest nothing can parse")
     tagged.git("tag", "v0.0.3")
     with pytest.raises(RegistryError) as unparsed:
-        dispatched(tagged.path, "v0.0.3")
+        dispatched(tagged.path, "v0.0.3", ON_MAIN, "main")
     contains(str(unparsed.value), "declares no version", describing="an unparseable manifest")
 
 
 def test_a_directory_that_is_no_repository_cannot_be_asked(tmp_path: Path) -> None:
     """The question is git's, and a directory git refuses is refused naming the question."""
     with pytest.raises(RegistryError) as refused:
-        dispatched(tmp_path, "v0.2.0")
+        dispatched(tmp_path, "v0.2.0", ON_MAIN, "main")
 
     contains(str(refused.value), "could not be asked which tags", describing="what it said")
 
@@ -217,6 +282,10 @@ def test_dispatching_without_a_record_path_is_refused(
     )
 
     contains(capsys.readouterr().err, "takes --record", describing="what it said")
+    truth(
+        not any(path.name == "record" for path in tagged.path.iterdir()),
+        describing="nothing written",
+    )
 
 
 def test_the_recorded_version_is_answered_as_the_field_the_proof_reads(

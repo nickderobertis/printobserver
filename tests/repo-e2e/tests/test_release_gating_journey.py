@@ -54,6 +54,9 @@ DECLARED = Repo(REPO_ROOT).policy["release"]
 #: the copy's own: the tag exists, and its tree builds another release.
 MISMATCHED = "9.9.9"
 
+#: The ref a dispatched publish is made on, as the forge names the base branch.
+ON_MAIN = f"refs/heads/{Repo(REPO_ROOT).policy['repository']['base_branch']}"
+
 
 def answer(*versions: str) -> str:
     """What `release-plz release --output json` answers having released `versions`.
@@ -233,7 +236,7 @@ def test_a_dispatch_of_an_existing_tag_answers_the_field_and_records_the_version
     record = tmp_path / "dispatched-release" / "version"
 
     code, said = recipe(
-        str(DECLARED["dispatched_recipe"]), f"v{version}", str(copy.root), str(record)
+        str(DECLARED["dispatched_recipe"]), f"v{version}", str(copy.root), str(record), ON_MAIN
     )
 
     passing((code, said), describing=f"`just {DECLARED['dispatched_recipe']}` over an existing tag")
@@ -270,9 +273,36 @@ def test_a_dispatch_of_any_other_tag_is_refused_naming_why_and_records_nothing(
     tagged(copy)
     record = tmp_path / "record"
 
-    code, said = recipe(str(DECLARED["dispatched_recipe"]), tag, str(copy.root), str(record))
+    code, said = recipe(
+        str(DECLARED["dispatched_recipe"]), tag, str(copy.root), str(record), ON_MAIN
+    )
 
     failing((code, said), naming=named)
+    truth(
+        not any(line.startswith(f"{DECLARED['answer_output']}=") for line in said.splitlines()),
+        describing=f"no field for a job to read off a refused dispatch: {said!r}",
+    )
+    truth(not record.exists(), describing="no record for a refused dispatch")
+
+
+def test_a_dispatch_on_a_ref_other_than_the_base_branch_is_refused_naming_both(
+    gate_copy: Callable[[], GateCopy], tmp_path: Path
+) -> None:
+    """The publisher and the secrets a release trusts are the base branch's, and no other's."""
+    copy = gate_copy()
+    version = tagged(copy)
+    record = tmp_path / "record"
+
+    code, said = recipe(
+        str(DECLARED["dispatched_recipe"]),
+        f"v{version}",
+        str(copy.root),
+        str(record),
+        "refs/heads/a-branch",
+    )
+
+    failing((code, said), naming="`refs/heads/a-branch`")
+    contains(said, f"`{ON_MAIN}`", describing="the ref a dispatch is made on")
     truth(
         not any(line.startswith(f"{DECLARED['answer_output']}=") for line in said.splitlines()),
         describing=f"no field for a job to read off a refused dispatch: {said!r}",
@@ -300,7 +330,7 @@ def test_a_shallow_tagless_checkout_refuses_a_tag_its_origin_carries(
     record = tmp_path / "record"
 
     code, said = recipe(
-        str(DECLARED["dispatched_recipe"]), f"v{version}", str(shallow), str(record)
+        str(DECLARED["dispatched_recipe"]), f"v{version}", str(shallow), str(record), ON_MAIN
     )
 
     failing((code, said), naming=f"v{version}")

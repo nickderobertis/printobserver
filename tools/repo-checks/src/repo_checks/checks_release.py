@@ -495,6 +495,13 @@ STATUS_GATES = (".result", "success()", "failure()")
 #: value it needs.
 Job = dict[str, Any]
 
+#: One step of a job, and one whole workflow, as the same reader hands them
+#: back and for the same reason: `uses`, `with`, `if`, `on`, `concurrency` and
+#: whatever else the author wrote, each narrowed by the one reader that needs
+#: it rather than by a model of a GitHub workflow held here.
+Step = dict[str, Any]
+Workflow = dict[str, Any]
+
 
 def _needs(job: Job) -> list[str]:
     """The jobs a job waits on, however the workflow spells them."""
@@ -699,7 +706,7 @@ WHOLE_HISTORY = "0"
 TRIGGERING_RUN = "github.event.workflow_run.id"
 
 
-def _conditioned(job: Job, step: dict[str, Any], on: str) -> bool:
+def _conditioned(job: Job, step: Step, on: str) -> bool:
     """Whether a step runs only under `on`, by its own condition or its job's."""
     return any(
         on in " ".join(str(condition).split())
@@ -707,7 +714,7 @@ def _conditioned(job: Job, step: dict[str, Any], on: str) -> bool:
     )
 
 
-def _with(step: dict[str, Any]) -> dict[str, str]:
+def _with(step: Step) -> dict[str, str]:
     """A `uses:` step's inputs, each as one whitespace-normalised string."""
     given = step.get("with")
     if not isinstance(given, dict):
@@ -715,12 +722,12 @@ def _with(step: dict[str, Any]) -> dict[str, str]:
     return {str(key): " ".join(str(value).split()) for key, value in given.items()}
 
 
-def _using(job: Job, action: str) -> list[dict[str, Any]]:
+def _using(job: Job, action: str) -> list[Step]:
     """The steps of a job using one action, whatever it is pinned at."""
     return [step for step in steps_of(job) if str(step.get("uses", "")).startswith(action)]
 
 
-def _running(job: Job, recipe: str) -> list[dict[str, Any]]:
+def _running(job: Job, recipe: str) -> list[Step]:
     """The steps of a job running `just <recipe>`, as the whole line or its first words."""
     return [
         step
@@ -806,7 +813,7 @@ def release_dispatch(repo: Repo) -> list[str]:
     return findings
 
 
-def _input_findings(workflow: dict[str, Any], dispatch: dict[str, str], file: str) -> list[str]:
+def _input_findings(workflow: Workflow, dispatch: dict[str, str], file: str) -> list[str]:
     """The dispatch takes the tag as its one required input."""
     name = dispatch["dispatch_input"]
     triggers = workflow.get("on")
@@ -829,7 +836,7 @@ def _input_findings(workflow: dict[str, Any], dispatch: dict[str, str], file: st
     return findings
 
 
-def _concurrency_findings(workflow: dict[str, Any], file: str) -> list[str]:
+def _concurrency_findings(workflow: Workflow, file: str) -> list[str]:
     """A dispatch and a push on one ref are serialised, and neither is cancelled."""
     concurrency = workflow.get("concurrency")
     group = str(concurrency.get("group", "")) if isinstance(concurrency, dict) else ""

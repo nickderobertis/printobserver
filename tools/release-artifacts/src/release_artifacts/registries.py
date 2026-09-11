@@ -504,22 +504,34 @@ def _tag_of(release: object) -> str:
     return tag
 
 
-def dispatched(root: Path, tag: str) -> str:
+def dispatched(root: Path, tag: str, ref: str, base_branch: str) -> str:
     """The version an existing release tag names, once the tree at that tag agrees.
 
     A hand-dispatched run of the release workflow builds and publishes the
     artifacts of a release that was already cut, and the tag is the whole of
-    what the dispatcher names. Three things have to hold before anything is
-    built from it: the tag is one release automation writes, the checkout can
-    see it, and the workspace at that tag declares the version the tag names
-    — so that one tag's artifacts cannot land on another's release.
+    what the dispatcher names. Four things have to hold before anything is
+    built from it: the run was dispatched on the base branch, whose publisher
+    and secrets are the ones this design trusts; the tag is one release
+    automation writes; the checkout can see it; and the workspace at that tag
+    declares the version the tag names — so that one tag's artifacts cannot
+    land on another's release.
 
     Raises:
-        RegistryError: If the tag is not `v<major>.<minor>.<patch>`; if no tag
-            of the checkout names it, which a shallow, tagless checkout answers
-            for every tag there is; or if the workspace manifest at that tag
-            declares a different version, or none a reader can find.
+        RegistryError: If the ref is not the base branch's; if the tag is not
+            `v<major>.<minor>.<patch>`; if no tag of the checkout names it,
+            which a shallow, tagless checkout answers for every tag there is;
+            or if the workspace manifest at that tag declares a different
+            version, or none a reader can find.
     """
+    required = f"refs/heads/{base_branch}"
+    if ref.strip() != required:
+        msg = (
+            f"`{ref.strip() or 'no ref at all'}` is not the ref a dispatched publish runs on: "
+            f"it is made on `{required}`, where the publisher and the secrets it runs with "
+            f"are the ones a release trusts, and a run started anywhere else would publish "
+            f"with whatever that ref carries"
+        )
+        raise RegistryError(msg)
     named = tag.strip()
     version = supported_version(named)
     if not TAG.match(named) or not version:
