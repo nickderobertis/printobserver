@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from repo_checks.checks_install_proof import install_proof
+from repo_checks.checks_release import release_dispatch
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
@@ -567,3 +568,99 @@ def test_a_declaration_naming_a_consumer_that_is_not_there_is_refused(
     )
 
     refused(install_proof(broken.repo), "commits no such file")
+
+
+#: How the resolving job reads a dispatched run's record, as the workflow
+#: spells it; each test below takes one piece away.
+RECORD_DOWNLOAD = "          name: dispatched-release\n"
+RECORD_RUN_ID = "          run-id: ${{ github.event.workflow_run.id }}\n"
+RECORD_STEP = (
+    "      - id: dispatched\n"
+    "        if: github.event_name == 'workflow_run' && "
+    "github.event.workflow_run.event == 'workflow_dispatch'\n"
+    '        run: just release-version-dispatched "$RUNNER_TEMP/dispatched-release/version"'
+    ' >> "$GITHUB_OUTPUT"\n'
+)
+RESOLVED_OUTPUT = "version: ${{ steps.cut.outputs.version || steps.dispatched.outputs.version }}"
+
+
+def test_the_resolving_job_reads_a_dispatched_runs_record_as_committed(committed: Repo) -> None:
+    """After a dispatched publish, the proof runs for the version that run recorded."""
+    accepted(release_dispatch(committed))
+
+
+def test_a_record_downloaded_under_another_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """The two workflows name one artifact, or the proof downloads nothing and proves nothing."""
+    renamed = tree()
+    renamed.edit(WORKFLOW, RECORD_DOWNLOAD, "          name: dispatched\n")
+    refused(
+        release_dispatch(renamed.repo),
+        "downloads no artifact named `dispatched-release` (`dispatched`)",
+    )
+
+    missing = tree()
+    missing.edit(
+        WORKFLOW,
+        "      - uses: actions/download-artifact@v4\n",
+        "      - uses: actions/setup-node@v5\n",
+    )
+    refused(
+        release_dispatch(missing.repo),
+        "downloads no artifact named `dispatched-release` (none at all)",
+    )
+
+
+def test_a_record_downloaded_from_this_run_rather_than_the_triggering_one_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The record is the release run's, and this run uploaded none."""
+    broken = tree()
+    broken.edit(WORKFLOW, RECORD_RUN_ID, "")
+
+    refused(release_dispatch(broken.repo), "without `run-id: ${{ github.event.workflow_run.id }}`")
+
+
+def test_a_resolving_job_that_does_not_read_the_record_into_its_version_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The version a dispatched run published reaches the route proofs through this output."""
+    unread = tree()
+    unread.edit(WORKFLOW, RECORD_STEP, "      - run: true\n")
+    refused(release_dispatch(unread.repo), "runs no `just release-version-dispatched` step")
+
+    nameless = tree()
+    nameless.edit(WORKFLOW, "      - id: dispatched\n        if:", "      - if:")
+    refused(
+        release_dispatch(nameless.repo), "`just release-version-dispatched` step carries no `id`"
+    )
+
+    unpublished = tree()
+    unpublished.edit(
+        WORKFLOW,
+        '"$RUNNER_TEMP/dispatched-release/version" >> "$GITHUB_OUTPUT"',
+        '"$RUNNER_TEMP/dispatched-release/version"',
+    )
+    refused(
+        release_dispatch(unpublished.repo),
+        "`just release-version-dispatched` step does not append to `$GITHUB_OUTPUT`",
+    )
+
+    unrouted = tree()
+    unrouted.edit(WORKFLOW, RESOLVED_OUTPUT, "version: ${{ steps.cut.outputs.version }}")
+    refused(
+        release_dispatch(unrouted.repo),
+        "publishes no output `version` from `steps.dispatched.outputs.version`",
+    )
+
+
+def test_a_proof_workflow_with_no_resolving_job_is_refused_by_the_dispatch_check(
+    tree: Callable[[], Tree],
+) -> None:
+    """Nothing else can read a dispatched run's record."""
+    renamed = tree()
+    renamed.edit(POLICY, 'release_job = "resolve"', 'release_job = "which-release"')
+    refused(release_dispatch(renamed.repo), "declares no `which-release` job")
+
+    absent = tree()
+    absent.edit(POLICY, 'workflow = "install-path.yml"', 'workflow = "install-proof.yml"')
+    refused(release_dispatch(absent.repo), "install-proof.yml, which is not there")
