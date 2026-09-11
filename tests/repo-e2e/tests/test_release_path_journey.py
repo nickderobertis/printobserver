@@ -68,6 +68,7 @@ def workspace_version() -> str:
         return str(tomllib.load(handle)["workspace"]["package"]["version"])
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 class EmptyIndex:
     """A sparse cargo registry index carrying no crate at all.
 

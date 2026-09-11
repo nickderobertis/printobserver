@@ -12,7 +12,9 @@ registry and a forge — are found on the PATH first.
 The rules kept are exactly the ones this repository's workflows lean on, and
 nothing outside them is guessed at: a construct or an expression this runner
 does not know is refused by name rather than approximated, so a workflow that
-grows past what is modelled here fails the journey loudly.
+grows past what is modelled here fails the journey loudly. What the forge does
+with the same text is what every push to the base branch shows, and that run is
+where a rule modelled here wrongly would show up.
 
   * A job runs after every job it `needs`, and only if each of them succeeded —
     the implicit `success()` the forge applies to every job condition — and its
@@ -24,9 +26,11 @@ grows past what is modelled here fails the journey loudly.
     literals, `==`, `!=`, `&&`, `||`, `!` and parentheses. String comparison is
     case-insensitive, as the forge's is.
   * A `run:` step is `bash -e` over the step's text, in the checkout, with the
-    step's `env` on top of the caller's, `GITHUB_OUTPUT` a file of its own and
-    `RUNNER_TEMP` the job's one directory; `name=value` lines it appends to
-    `GITHUB_OUTPUT` become `steps.<id>.outputs.<name>`.
+    job's `env` and then the step's on top of the caller's, `GITHUB_OUTPUT` a
+    file of its own and `RUNNER_TEMP` the job's one directory; `name=value`
+    lines it appends to `GITHUB_OUTPUT` become `steps.<id>.outputs.<name>`. An
+    expression inside the step's text is refused: that is the injection the
+    forge documents, and no workflow here writes one.
   * A job's `outputs:` are its expressions evaluated once its steps are done.
   * A job with a `strategy.matrix` runs once per cell, and succeeds when every
     cell does.
@@ -46,11 +50,18 @@ from typing import Any
 import yaml
 from repo_checks.shell import run as shell_run
 
-#: The step keys this runner knows what to do with. Anything else on a step is
-#: a semantic it would otherwise silently drop, so it is refused instead.
+#: One job, one step, or one matrix cell as the YAML reader hands it back. The
+#: keys are the workflow author's own and the values whatever the author wrote,
+#: so there is no narrower shape to read one as; every reader below narrows the
+#: one value it takes and refuses a key it does not model.
+Declared = dict[str, Any]
+
+#: The step keys this runner models. Anything else on a step is a semantic it
+#: would otherwise silently drop, so it is refused instead.
 STEP_KEYS = frozenset({"id", "name", "run", "uses", "with", "env", "if"})
 
-#: The job keys this runner knows what to do with, on the same terms.
+#: The job keys this runner models, plus `permissions`: what the forge grants
+#: its own token is a boundary here, since nothing a step runs reaches the forge.
 JOB_KEYS = frozenset(
     {"name", "needs", "if", "runs-on", "outputs", "steps", "strategy", "env", "permissions"}
 )
@@ -62,6 +73,8 @@ STEP_TIMEOUT_SECONDS = 600
 
 #: How a workflow names a secret.
 SECRET_REFERENCE = re.compile(r"secrets\.([A-Za-z0-9_]+)")
+
+INTERPOLATION = re.compile(r"\$\{\{(.*?)\}\}")
 
 
 class UnsupportedError(ValueError):
@@ -94,11 +107,6 @@ class JobRun:
     steps: list[StepRun] = field(default_factory=list)
     boundaries: list[str] = field(default_factory=list)
 
-    @property
-    def ran(self) -> bool:
-        """Whether the job executed at all, whatever it then did."""
-        return self.result is not Result.SKIPPED
-
 
 @dataclass(frozen=True, slots=True)
 class WorkflowRun:
@@ -115,30 +123,80 @@ class WorkflowRun:
         return [step.command for step in self.jobs[job].steps]
 
 
-# --- expressions --------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class Needed:
+    """What one needed job hands the jobs after it."""
+
+    result: str
+    outputs: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class Contexts:
+    """The forge's contexts an expression may read, as one job sees them."""
+
+    needs: dict[str, Needed] = field(default_factory=dict)
+    steps: dict[str, dict[str, str]] = field(default_factory=dict)
+    secrets: dict[str, str] = field(default_factory=dict)
+    matrix: Declared = field(default_factory=dict)
+
+    def resolve(self, dotted: str) -> object:
+        """The value at one dotted path, or `None` where the forge would give `null`.
+
+        Raises:
+            UnsupportedError: If the path starts in a context this runner does
+                not carry.
+        """
+        head, *rest = dotted.split(".")
+        match head:
+            case "needs":
+                value: object = {
+                    name: {"result": needed.result, "outputs": needed.outputs}
+                    for name, needed in self.needs.items()
+                }
+            case "steps":
+                value = {name: {"outputs": outputs} for name, outputs in self.steps.items()}
+            case "secrets":
+                value = self.secrets
+            case "matrix":
+                value = self.matrix
+            case _:
+                msg = f"the `{head}` context is not one this runner carries"
+                raise UnsupportedError(msg)
+        for part in rest:
+            value = value.get(part) if isinstance(value, dict) else None
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class Token:
+    """One token of an expression: what kind it is, and its text."""
+
+    kind: str
+    text: str
+
 
 TOKEN = re.compile(
     r"\s*(?:(?P<string>'(?:[^']|'')*')|(?P<op>==|!=|&&|\|\||[!()])"
     r"|(?P<name>[A-Za-z_][A-Za-z0-9_.-]*))"
 )
+LITERALS = {"true": True, "false": False, "null": None}
 
 
 class _Expression:
     """A recursive-descent reader of the forge's expression grammar, over one context set."""
 
-    def __init__(self, text: str, contexts: dict[str, Any]) -> None:
+    def __init__(self, text: str, contexts: Contexts) -> None:
         self.text = text
         self.contexts = contexts
         self.tokens = self._tokens(text)
         self.at = 0
 
     @staticmethod
-    def _tokens(text: str) -> list[tuple[str, str]]:
-        tokens: list[tuple[str, str]] = []
+    def _tokens(text: str) -> list[Token]:
+        tokens: list[Token] = []
         position = 0
-        while position < len(text):
-            if text[position:].strip() == "":
-                break
+        while text[position:].strip():
             match = TOKEN.match(text, position)
             if match is None:
                 msg = (
@@ -146,7 +204,7 @@ class _Expression:
                 )
                 raise UnsupportedError(msg)
             kind = str(match.lastgroup)
-            tokens.append((kind, match.group(kind)))
+            tokens.append(Token(kind, match.group(kind)))
             position = match.end()
         return tokens
 
@@ -157,17 +215,17 @@ class _Expression:
             raise UnsupportedError(msg)
         return value
 
-    def _peek(self) -> tuple[str, str] | None:
+    def _peek(self) -> Token | None:
         return self.tokens[self.at] if self.at < len(self.tokens) else None
 
-    def _take(self) -> tuple[str, str]:
+    def _take(self) -> Token:
         token = self.tokens[self.at]
         self.at += 1
         return token
 
     def _or(self) -> object:
         left = self._and()
-        while self._peek() == ("op", "||"):
+        while self._peek() == Token("op", "||"):
             self._take()
             right = self._and()
             left = left if _truthy(left) else right
@@ -175,7 +233,7 @@ class _Expression:
 
     def _and(self) -> object:
         left = self._equality()
-        while self._peek() == ("op", "&&"):
+        while self._peek() == Token("op", "&&"):
             self._take()
             right = self._equality()
             left = right if _truthy(left) else left
@@ -183,52 +241,47 @@ class _Expression:
 
     def _equality(self) -> object:
         left = self._unary()
-        while self._peek() in (("op", "=="), ("op", "!=")):
-            _, operator = self._take()
+        while self._peek() in (Token("op", "=="), Token("op", "!=")):
+            operator = self._take().text
             right = self._unary()
             same = _same(left, right)
             left = same if operator == "==" else not same
         return left
 
     def _unary(self) -> object:
-        if self._peek() == ("op", "!"):
+        if self._peek() == Token("op", "!"):
             self._take()
             return not _truthy(self._unary())
         return self._primary()
 
     def _primary(self) -> object:
-        token = self._peek()
-        if token is None:
+        if self._peek() is None:
             msg = f"expression `{self.text}` ends where a value was expected"
             raise UnsupportedError(msg)
-        kind, text = self._take()
-        if kind == "string":
-            return text[1:-1].replace("''", "'")
-        if kind == "op" and text == "(":
-            value = self._or()
-            if self._take() != ("op", ")"):
-                msg = f"expression `{self.text}` opens a parenthesis it does not close"
+        match self._take():
+            case Token("string", text):
+                return text[1:-1].replace("''", "'")
+            case Token("op", "("):
+                value = self._or()
+                if self._take() != Token("op", ")"):
+                    msg = f"expression `{self.text}` opens a parenthesis it does not close"
+                    raise UnsupportedError(msg)
+                return value
+            case Token("name", name) if self._peek() == Token("op", "("):
+                msg = f"expression `{self.text}` calls `{name}()`, which this runner does not model"
                 raise UnsupportedError(msg)
-            return value
-        if kind == "name":
-            if self._peek() == ("op", "("):
-                msg = f"expression `{self.text}` calls `{text}()`, which this runner does not model"
+            case Token("name", name) if name in LITERALS:
+                return LITERALS[name]
+            case Token("name", name):
+                try:
+                    return self.contexts.resolve(name)
+                except UnsupportedError as outside:
+                    msg = f"expression `{self.text}` reads {outside}"
+                    raise UnsupportedError(msg) from outside
+            case Token(_, text):
+                msg = f"expression `{self.text}` has `{text}` where a value was expected"
                 raise UnsupportedError(msg)
-            return self._lookup(text)
-        msg = f"expression `{self.text}` has `{text}` where a value was expected"
-        raise UnsupportedError(msg)
-
-    def _lookup(self, dotted: str) -> object:
-        if dotted in ("true", "false", "null"):
-            return {"true": True, "false": False, "null": None}[dotted]
-        head, *rest = dotted.split(".")
-        if head not in self.contexts:
-            msg = f"expression `{self.text}` reads the `{head}` context, which is not carried here"
-            raise UnsupportedError(msg)
-        value: object = self.contexts[head]
-        for part in rest:
-            value = value.get(part) if isinstance(value, dict) else None
-        return value
+        return None
 
 
 def _truthy(value: object) -> bool:
@@ -245,15 +298,12 @@ def _same(left: object, right: object) -> bool:
     return left == right
 
 
-def evaluate(expression: str, contexts: dict[str, Any]) -> object:
+def evaluate(expression: str, contexts: Contexts) -> object:
     """Evaluate one bare expression, as an `if:` carries it."""
     return _Expression(expression, contexts).evaluate()
 
 
-INTERPOLATION = re.compile(r"\$\{\{(.*?)\}\}")
-
-
-def interpolate(text: str, contexts: dict[str, Any]) -> str:
+def interpolate(text: str, contexts: Contexts) -> str:
     """Replace every `${{ ... }}` in `text` with what it evaluates to."""
 
     def replace(match: re.Match[str]) -> str:
@@ -263,10 +313,7 @@ def interpolate(text: str, contexts: dict[str, Any]) -> str:
     return INTERPOLATION.sub(replace, text)
 
 
-# --- running ------------------------------------------------------------------
-
-
-def _needs(job: dict[str, Any]) -> list[str]:
+def _needs(job: Declared) -> list[str]:
     match job.get("needs"):
         case str() as one:
             return [one]
@@ -276,7 +323,7 @@ def _needs(job: dict[str, Any]) -> list[str]:
             return []
 
 
-def _ordered(jobs: dict[str, dict[str, Any]]) -> list[str]:
+def _ordered(jobs: dict[str, Declared]) -> list[str]:
     """Every job after everything it needs, refusing a cycle."""
     ordered: list[str] = []
     remaining = dict(jobs)
@@ -291,7 +338,7 @@ def _ordered(jobs: dict[str, dict[str, Any]]) -> list[str]:
     return ordered
 
 
-def _cells(job: dict[str, Any]) -> list[dict[str, Any]]:
+def _cells(job: Declared) -> list[Declared]:
     """The matrix cells a job runs over: one empty cell where it declares none."""
     strategy = job.get("strategy") or {}
     unknown = set(strategy) - {"matrix", "fail-fast"}
@@ -308,13 +355,33 @@ def _cells(job: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(zip(keys, values, strict=True)) for values in product(*matrix.values())]
 
 
-def _refuse_unknown(mapping: dict[str, Any], allowed: frozenset[str], what: str) -> None:
+def _refuse_unknown(mapping: Declared, allowed: frozenset[str], what: str) -> None:
     unknown = set(mapping) - allowed
     if unknown:
         msg = f"{what} carries {sorted(unknown)}, which this runner does not model"
         raise UnsupportedError(msg)
 
 
+def _jobs(workflow: Path) -> dict[str, Declared]:
+    """The workflow's jobs, once the file is a workflow at all."""
+    data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, dict) or not all(isinstance(job, dict) for job in jobs.values()):
+        msg = f"{workflow} is not a workflow: it carries no mapping of jobs"
+        raise UnsupportedError(msg)
+    return {str(name): job for name, job in jobs.items()}
+
+
+def _environment(*layers: Declared | None, contexts: Contexts) -> dict[str, str]:
+    """`env:` mappings evaluated and layered, the later winning."""
+    environment: dict[str, str] = {}
+    for layer in layers:
+        for key, value in (layer or {}).items():
+            environment[str(key)] = interpolate(str(value), contexts)
+    return environment
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class Runner:
     """Run one committed workflow's jobs in a checkout, with stand-ins first on the PATH."""
 
@@ -334,18 +401,16 @@ class Runner:
             checkout: The tree a `checkout` boundary would have produced.
             path_first: A directory of stand-in programs, ahead of everything.
             env: The environment every step runs under.
-            secrets: What `secrets.<NAME>` answers; a placeholder per name if
-                omitted, since nothing a stand-in does should need the value.
+            secrets: What `secrets.<NAME>` answers; a placeholder per name the
+                workflow references if omitted, since nothing a stand-in does
+                should need the value.
         """
-        text = workflow.read_text(encoding="utf-8")
-        self.jobs: dict[str, dict[str, Any]] = dict(yaml.safe_load(text)["jobs"])
+        self.jobs = _jobs(workflow)
         self.checkout = checkout
         self.path_first = path_first
         self.env = env
-        # Every secret the workflow names, each a value that is visibly not it.
-        self.secrets: dict[str, str] = secrets or {
-            name: f"<secret {name}>" for name in set(SECRET_REFERENCE.findall(text))
-        }
+        named = set(SECRET_REFERENCE.findall(workflow.read_text(encoding="utf-8")))
+        self.secrets: dict[str, str] = secrets or {name: f"<secret {name}>" for name in named}
 
     def run(self) -> WorkflowRun:
         """Run every job in dependency order, as the forge would schedule them."""
@@ -354,58 +419,53 @@ class Runner:
             done[name] = self._job(name, self.jobs[name], done)
         return WorkflowRun(done)
 
-    def _job(self, name: str, job: dict[str, Any], done: dict[str, JobRun]) -> JobRun:
+    def _job(self, name: str, job: Declared, done: dict[str, JobRun]) -> JobRun:
         _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
         needs = _needs(job)
         if any(done[needed].result is not Result.SUCCESS for needed in needs):
             return JobRun(Result.SKIPPED)
-        contexts = self._contexts(needs, done)
+        contexts = Contexts(
+            needs={n: Needed(str(done[n].result), dict(done[n].outputs)) for n in needs},
+            secrets=self.secrets,
+        )
         condition = job.get("if")
         if condition is not None and not _truthy(evaluate(str(condition), contexts)):
             return JobRun(Result.SKIPPED)
 
         run = JobRun(Result.SUCCESS)
         for cell in _cells(job):
-            cell_contexts = {**contexts, "matrix": cell}
-            steps: dict[str, dict[str, dict[str, str]]] = {}
+            steps: dict[str, dict[str, str]] = {}
             # One `RUNNER_TEMP` per job, as the forge gives it: a file one step
             # writes there is what the step after it reads.
             with tempfile.TemporaryDirectory(prefix="runner-temp-") as runner_temp:
                 for step in job.get("steps") or []:
                     _refuse_unknown(step, STEP_KEYS, f"a step of job `{name}`")
-                    if "uses" in step:
-                        run.boundaries.append(interpolate(str(step["uses"]), cell_contexts))
-                        continue
                     if "if" in step:
                         msg = f"a step condition on job `{name}` is not modelled"
                         raise UnsupportedError(msg)
-                    step_run, outputs = self._step(
-                        step, {**cell_contexts, "steps": steps}, Path(runner_temp)
-                    )
+                    seen = Contexts(contexts.needs, steps, self.secrets, cell)
+                    if "uses" in step:
+                        run.boundaries.append(interpolate(str(step["uses"]), seen))
+                        continue
+                    step_run, outputs = self._step(job, step, seen, Path(runner_temp))
                     run.steps.append(step_run)
                     if step.get("id"):
-                        steps[str(step["id"])] = {"outputs": outputs}
+                        steps[str(step["id"])] = outputs
                     if step_run.returncode != 0:
                         run.result = Result.FAILURE
                         return run
+            seen = Contexts(contexts.needs, steps, self.secrets, cell)
             for key, expression in (job.get("outputs") or {}).items():
-                run.outputs[str(key)] = interpolate(
-                    str(expression), {**cell_contexts, "steps": steps}
-                )
+                run.outputs[str(key)] = interpolate(str(expression), seen)
         return run
 
-    def _contexts(self, needs: list[str], done: dict[str, JobRun]) -> dict[str, Any]:
-        return {
-            "needs": {
-                n: {"outputs": dict(done[n].outputs), "result": str(done[n].result)} for n in needs
-            },
-            "secrets": self.secrets,
-        }
-
     def _step(
-        self, step: dict[str, Any], contexts: dict[str, Any], runner_temp: Path
+        self, job: Declared, step: Declared, contexts: Contexts, runner_temp: Path
     ) -> tuple[StepRun, dict[str, str]]:
         command = str(step["run"])
+        if INTERPOLATION.search(command):
+            msg = f"step `{command}` carries an expression in its text, which is not modelled"
+            raise UnsupportedError(msg)
         with tempfile.TemporaryDirectory(prefix="runner-output-") as scratch:
             output_file = Path(scratch) / "output"
             output_file.touch()
@@ -415,10 +475,9 @@ class Runner:
             )
             env["GITHUB_OUTPUT"] = str(output_file)
             env["RUNNER_TEMP"] = str(runner_temp)
-            for key, value in (step.get("env") or {}).items():
-                env[str(key)] = interpolate(str(value), contexts)
+            env.update(_environment(job.get("env"), step.get("env"), contexts=contexts))
             completed = shell_run(
-                [*DEFAULT_SHELL, "-c", interpolate(command, contexts)],
+                [*DEFAULT_SHELL, "-c", command],
                 cwd=self.checkout,
                 env=env,
                 timeout=STEP_TIMEOUT_SECONDS,

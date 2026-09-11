@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from actions import Result, Runner, UnsupportedError, evaluate
+from actions import Contexts, Needed, Result, Runner, UnsupportedError, evaluate
 from journey import clean_environment
 from repo_checks.expect import contains, equal
 
@@ -26,14 +26,20 @@ on: push
 jobs:
   answers:
     runs-on: ubuntu-24.04
+    env:
+      WORD: ${{ secrets.WORD }}
+      LOUD: quietly
     outputs:
       word: ${{ steps.say.outputs.word }}
+      loud: ${{ steps.say.outputs.loud }}
     steps:
       - uses: actions/checkout@v5
       - id: say
-        run: echo "word=$WORD" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "word=$WORD" >> "$GITHUB_OUTPUT"
+          echo "loud=$LOUD" >> "$GITHUB_OUTPUT"
         env:
-          WORD: ${{ secrets.WORD }}
+          LOUD: loudly
   gated-open:
     needs: answers
     if: needs.answers.outputs.word != ''
@@ -72,10 +78,13 @@ jobs:
           - id: two
             runner: ubuntu-24.04-arm
     steps:
-      - run: echo "${{ matrix.platform.id }}"
+      - run: echo "$CELL"
+        env:
+          CELL: ${{ matrix.platform.id }}
 """
 
 
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def run_small(tmp_path: Path, **secrets: str) -> Runner:
     """A runner over the small workflow, in an empty checkout."""
     workflow = tmp_path / "small.yml"
@@ -109,12 +118,16 @@ def test_a_job_follows_what_it_needs_and_what_its_condition_reads(tmp_path: Path
         },
         describing="what the forge would report each job as",
     )
-    equal(run.jobs["answers"].outputs, {"word": "spoken"}, describing="the outputs a step wrote")
+    equal(
+        run.jobs["answers"].outputs,
+        {"word": "spoken", "loud": "loudly"},
+        describing="the outputs a step wrote, under the job's env and then its own",
+    )
     equal(run.jobs["answers"].boundaries, ["actions/checkout@v5"], describing="the boundaries")
     equal(len(run.jobs["falls"].steps), 1, describing="the steps run before a failure stops a job")
     equal(
         [step.command for step in run.jobs["cells"].steps],
-        ['echo "${{ matrix.platform.id }}"'] * 2,
+        ['echo "$CELL"'] * 2,
         describing="one run per matrix cell",
     )
     equal(
@@ -145,7 +158,7 @@ def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
 )
 def test_the_expression_grammar_is_the_forges(expression: str, value: bool) -> None:
     """Case-insensitive strings, `null` equal to the empty string, short-circuit logic."""
-    contexts = {"needs": {"a": {"outputs": {"x": "v0.2.0"}}}}
+    contexts = Contexts(needs={"a": Needed("success", {"x": "v0.2.0"})})
 
     equal(bool(evaluate(expression, contexts)), value, describing=expression)
 
@@ -157,7 +170,7 @@ def test_the_expression_grammar_is_the_forges(expression: str, value: bool) -> N
 def test_an_expression_outside_the_modelled_grammar_is_refused_by_name(expression: str) -> None:
     """Status functions, unknown contexts and arithmetic are not guessed at."""
     with pytest.raises(UnsupportedError) as refused:
-        evaluate(expression, {"needs": {}})
+        evaluate(expression, Contexts())
 
     contains(str(refused.value), expression.split()[0].rstrip("()"), describing="what it named")
 
@@ -176,3 +189,37 @@ def test_a_step_construct_outside_the_modelled_set_is_refused_by_name(tmp_path: 
         Runner(workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
 
     contains(str(refused.value), "continue-on-error", describing="what it named")
+
+
+@pytest.mark.parametrize(
+    ("step", "named"),
+    [
+        # A conditional step would change which steps run, so it is refused.
+        ("      - uses: actions/checkout@v5\n        if: always()\n", "step condition"),
+        # An expression inside a step's text is the injection the forge documents.
+        ('      - run: echo "${{ secrets.WORD }}"\n', "expression in its text"),
+    ],
+)
+def test_a_step_shape_outside_the_modelled_set_is_refused_before_anything_runs(
+    step: str, named: str, tmp_path: Path
+) -> None:
+    """A construct that would change what runs is refused rather than run some other way."""
+    workflow = tmp_path / "odd.yml"
+    workflow.write_text(f"jobs:\n  odd:\n    runs-on: x\n    steps:\n{step}", encoding="utf-8")
+    (tmp_path / "checkout").mkdir()
+
+    with pytest.raises(UnsupportedError) as refused:
+        Runner(workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
+
+    contains(str(refused.value), named, describing="what it named")
+
+
+def test_a_file_that_is_not_a_workflow_is_refused(tmp_path: Path) -> None:
+    """Nothing is read off a document that carries no mapping of jobs."""
+    workflow = tmp_path / "odd.yml"
+    workflow.write_text("- not a workflow\n", encoding="utf-8")
+
+    with pytest.raises(UnsupportedError) as refused:
+        Runner(workflow, tmp_path, path_first=tmp_path, env=clean_environment())
+
+    contains(str(refused.value), "no mapping of jobs", describing="what it named")

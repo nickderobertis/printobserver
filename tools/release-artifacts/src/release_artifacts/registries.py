@@ -406,6 +406,12 @@ def _tag_of(release: object) -> str:
             f"`release-plz release --output json` writes for each package:\n{release!r}"
         )
         raise RegistryError(msg)
+    if not isinstance(release.get("prs"), list):
+        msg = (
+            f"a release in the release program's answer carries no `prs` list, which is what "
+            f"`release-plz release --output json` writes for each package:\n{release!r}"
+        )
+        raise RegistryError(msg)
     tag = str(release["tag"])
     if not TAG.match(tag) or tag != f"v{release['version']}":
         msg = (

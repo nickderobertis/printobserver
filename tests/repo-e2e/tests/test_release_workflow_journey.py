@@ -120,6 +120,8 @@ def answer(*versions: str) -> str:
     )
 
 
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 def released(
     gate_copy: Callable[..., GateCopy],
     tmp_path: Path,
