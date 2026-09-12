@@ -192,7 +192,7 @@ def component(value: str, what: str) -> str:
     return value
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate, e2e_not_mocked] see suppressions.toml
 class ArtifactStore:
     """What the forge keeps between jobs and between runs, keyed by run id.
 

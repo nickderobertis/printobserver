@@ -221,8 +221,7 @@ def head(copy: GateCopy) -> str:
     return shell_run(["git", "rev-parse", "HEAD"], cwd=copy.root, check=True).stdout.strip()
 
 
-# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
-# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+# llmlint: ignore[tests_mirror_real_usage, e2e_not_mocked] suppressions.toml has the reasons.
 def driven(
     copy: GateCopy,
     tmp_path: Path,

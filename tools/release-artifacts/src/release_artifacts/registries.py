@@ -243,6 +243,24 @@ NEXT_DISPATCH = (
     "clone does not — and the job's checkout must fetch them: `fetch-depth: 0` on its own "
     "checkout step, or `git fetch --tags` on a clone made by hand."
 )
+#: And for a dispatch that names something other than such a tag: the repair is
+#: the name, and the forge's own release list is where the right one is read.
+NEXT_TAG = (
+    "Next: dispatch the workflow again naming the release's tag as the forge lists it, "
+    "`v<major>.<minor>.<patch>` — `git tag --list 'v*'` in a checkout carrying the tags "
+    "says which exist, and `git show <tag>:Cargo.toml` which version each tree declares."
+)
+#: And for a dispatch started anywhere but the base branch.
+NEXT_REF = "Next: dispatch the workflow again with the branch selector on `{required}`."
+#: And for a record the install-path proof cannot read. The record is written
+#: by the dispatched run's `release` job and downloaded by the proof, so the
+#: repair is on one of those two sides rather than in the file.
+NEXT_RECORD = (
+    "Next: the record is uploaded by the dispatched release run's `release` job as its "
+    "`dispatched-release` artifact, after `just release-dispatched` accepted the tag. A run "
+    "that job refused uploads none — dispatch it again once the tag is right; a run that "
+    "did upload one is the run this job must download it from, by that run's id."
+)
 
 
 class RegistryError(RuntimeError):
@@ -529,7 +547,7 @@ def dispatched(root: Path, tag: str, ref: str, base_branch: str) -> str:
             f"`{ref.strip() or 'no ref at all'}` is not the ref a dispatched publish runs on: "
             f"it is made on `{required}`, where the publisher and the secrets it runs with "
             f"are the ones a release trusts, and a run started anywhere else would publish "
-            f"with whatever that ref carries"
+            f"with whatever that ref carries.\n{NEXT_REF.format(required=required)}"
         )
         raise RegistryError(msg)
     named = tag.strip()
@@ -537,7 +555,7 @@ def dispatched(root: Path, tag: str, ref: str, base_branch: str) -> str:
     if not TAG.match(named) or not version:
         msg = (
             f"`{named}` is not a release tag to dispatch a publish for: release automation "
-            f"writes `v<major>.<minor>.<patch>`, and a dispatch names one of those"
+            f"writes `v<major>.<minor>.<patch>`, and a dispatch names one of those.\n{NEXT_TAG}"
         )
         raise RegistryError(msg)
     listed = run(["git", "tag", "--list"], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
@@ -555,18 +573,24 @@ def dispatched(root: Path, tag: str, ref: str, base_branch: str) -> str:
         raise RegistryError(msg)
     shown = run(["git", "show", f"{named}:Cargo.toml"], cwd=root, timeout=CHECKOUT_TIMEOUT_SECONDS)
     if shown.returncode != 0:
-        msg = f"{root} could not read the workspace manifest at `{named}`:\n{shown.stderr}"
+        msg = (
+            f"{root} could not read the workspace manifest at `{named}`:\n{shown.stderr}\n"
+            f"{NEXT_TAG}"
+        )
         raise RegistryError(msg)
     try:
         declared = targets.workspace_of(shown.stdout.encode("utf-8"))["version"]
     except (targets.TargetError, UnicodeDecodeError, ValueError) as undeclared:
-        msg = f"the workspace manifest at `{named}` declares no version to publish: {undeclared}"
+        msg = (
+            f"the workspace manifest at `{named}` declares no version to publish: "
+            f"{undeclared}\n{NEXT_TAG}"
+        )
         raise RegistryError(msg) from undeclared
     if declared != version:
         msg = (
             f"`{named}` names version {version}, and the workspace at that tag declares "
             f"{declared}: a release's artifacts are built from the tree its tag names, and "
-            f"this tag's tree would build another release's"
+            f"this tag's tree would build another release's.\n{NEXT_TAG}"
         )
         raise RegistryError(msg)
     return version
@@ -589,13 +613,16 @@ def recorded(record: Path) -> str:
     if not record.is_file():
         msg = (
             f"{record} is not there, so nothing says which version the dispatched run "
-            f"published: it is the record `release-dispatched` writes"
+            f"published: it is the record `release-dispatched` writes.\n{NEXT_RECORD}"
         )
         raise RegistryError(msg)
     try:
         text = record.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as unreadable:
-        msg = f"{record} could not be read as a dispatched release's record: {unreadable}"
+        msg = (
+            f"{record} could not be read as a dispatched release's record: {unreadable}\n"
+            f"{NEXT_RECORD}"
+        )
         raise RegistryError(msg) from unreadable
     lines = [line for line in text.splitlines() if line.strip()]
     field, separator, value = lines[0].partition("=") if len(lines) == 1 else ("", "", "")
@@ -605,7 +632,7 @@ def recorded(record: Path) -> str:
     if not version or value != version:
         msg = (
             f"{record} does not hold the one `{VERSION_FIELD}=<version>` line a dispatched "
-            f"release's record carries:\n{text!r}"
+            f"release's record carries:\n{text!r}\n{NEXT_RECORD}"
         )
         raise RegistryError(msg)
     return version
