@@ -86,14 +86,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ("EventSource", &[]),
     ("ExecutionOutcome", &[("failed", "object", true)]),
     ("FileName", &[]),
-    (
-        "HeaterSnapshot",
-        &[
-            ("actual_c", "Reported", false),
-            ("offset_c", "Reported", false),
-            ("target_c", "Reported", false),
-        ],
-    ),
     ("ImageId", &[]),
     (
         "ImageRecord",
@@ -148,20 +140,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
-        "JobSnapshot",
-        &[
-            ("completion", "Reported", false),
-            ("error", "string", false),
-            ("estimated_print_time_s", "integer", false),
-            ("file_name", "string", false),
-            ("file_origin", "string", false),
-            ("print_time_left_s", "integer", false),
-            ("print_time_s", "integer", false),
-            ("size_bytes", "integer", false),
-            ("state", "PrinterState", true),
-        ],
-    ),
-    (
         "ManifestNarrowing",
         &[
             ("adjustable", "Adjustable", true),
@@ -199,19 +177,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("obico_print_id", "integer", false),
             ("opened_at", "Timestamp", true),
             ("state", "PrinterState", true),
-        ],
-    ),
-    (
-        "PrinterSnapshot",
-        &[
-            ("bed", "HeaterSnapshot", false),
-            ("chamber", "HeaterSnapshot", false),
-            ("connection", "PrinterState", true),
-            ("fan_percent", "Reported", false),
-            ("feedrate_factor", "Reported", false),
-            ("flowrate_factor", "Reported", false),
-            ("observed_at", "Timestamp", true),
-            ("tools", "array:HeaterSnapshot", true),
         ],
     ),
     ("PrinterState", &[("unknown", "string", true)]),

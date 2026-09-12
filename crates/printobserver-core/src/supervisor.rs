@@ -39,12 +39,11 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
 
-use printobserver_printer_api::{PrinterError, PrinterPort};
+use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot};
 use printobserver_store_api::{StoreError, StorePort};
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{
-    ActionRecord, ActionRequest, ExecutionOutcome, JobSnapshot, PolicyDecision, PrintAction,
-    PrintId, PrinterSnapshot, Timestamp,
+    ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction, PrintId, Timestamp,
 };
 use printobserver_vision_api::VisionPort;
 

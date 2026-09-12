@@ -2,7 +2,11 @@
 //!
 //! Owns: the port the physical printer speaks through — the trait for reading
 //! printer and job state and for asking the machine to do one of the bounded
-//! things the action vocabulary names, plus that port's own error type.
+//! things the action vocabulary names, plus that port's own error type — and
+//! the printer domain's vocabulary: the snapshots those reads answer
+//! ([`snapshot`]) and the plausibility ranges their reported numbers are read
+//! against ([`ranges`]). A change to what a printer reports edits this crate
+//! and the adapters behind it, and nothing central.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -24,10 +28,20 @@
 //! method answers a [`BoxFuture`] instead: the same asynchrony, in the one
 //! shape a trait object can carry.
 
+pub mod ranges;
+pub mod snapshot;
+
 use core::future::Future;
 use core::pin::Pin;
 
-use printobserver_types::{Adjustable, FileName, JobSnapshot, PrinterSnapshot};
+use printobserver_types::{Adjustable, FileName};
+
+pub use ranges::{
+    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
+    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
+    RangedField,
+};
+pub use snapshot::{HeaterSnapshot, JobSnapshot, PrinterSnapshot};
 
 /// A future this port's methods answer with, in the one shape a trait object
 /// can carry.

@@ -185,25 +185,33 @@ fn every_timestamp_serializes_at_a_zero_offset() {
 }
 
 /// A reported value serializes as its pair, and nothing else.
+///
+/// Driven over the representation's own canonical values and over every field
+/// a declared type here types as reported. The fields that carry one today are
+/// the printer port's snapshots, whose own `schemas` test walks them; this
+/// crate declares the representation, so the pair is asserted on it directly
+/// rather than found through a field that may be another crate's.
 #[test]
 fn a_reported_value_serializes_as_its_pair() {
     let mut checked = 0_usize;
     for entry in declared() {
-        for name in fields_with_format(&entry, "reported") {
-            for sample in driven_samples(&entry, &name) {
-                let reported = sample[&name]
-                    .as_object()
-                    .expect("a reported value is an object");
-                assert!(reported.get("value").is_some_and(Value::is_number));
-                assert!(reported.get("out_of_range").is_some_and(Value::is_boolean));
-                assert_eq!(
-                    reported.len(),
-                    2,
-                    "{}.{name} carries {reported:?}",
-                    entry.name
-                );
-                checked += 1;
-            }
+        let mut reported_values: Vec<Value> = fields_with_format(&entry, "reported")
+            .into_iter()
+            .flat_map(|name| {
+                driven_samples(&entry, &name)
+                    .into_iter()
+                    .map(move |sample| sample[&name].clone())
+            })
+            .collect();
+        if entry.name == "Reported" {
+            reported_values.extend(entry.samples());
+        }
+        for value in reported_values {
+            let reported = value.as_object().expect("a reported value is an object");
+            assert!(reported.get("value").is_some_and(Value::is_number));
+            assert!(reported.get("out_of_range").is_some_and(Value::is_boolean));
+            assert_eq!(reported.len(), 2, "{} carries {reported:?}", entry.name);
+            checked += 1;
         }
     }
     assert!(checked > 0, "no reported value was checked at all");

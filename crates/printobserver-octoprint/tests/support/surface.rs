@@ -63,14 +63,16 @@ pub fn port() -> syn::File {
     ))
 }
 
-/// One source of the type crate, parsed.
+/// One source of the printer port, parsed.
 ///
 /// # Panics
 ///
 /// Panics when the source cannot be read or does not parse.
-pub fn types_source(file_name: &str) -> syn::File {
+pub fn port_source(file_name: &str) -> syn::File {
     parse(&read(
-        &crate_dir("printobserver-types").join("src").join(file_name),
+        &crate_dir("printobserver-printer-api")
+            .join("src")
+            .join(file_name),
     ))
 }
 

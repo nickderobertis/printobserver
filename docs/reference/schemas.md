@@ -5216,7 +5216,7 @@ Declared by `printobserver-types`.
 
 ### HeaterSnapshot
 
-Declared by `printobserver-types`.
+Declared by `printobserver-printer-api`.
 
 ```json
 {
@@ -6259,7 +6259,7 @@ Declared by `printobserver-types`.
 
 ### JobSnapshot
 
-Declared by `printobserver-types`.
+Declared by `printobserver-printer-api`.
 
 ```json
 {
@@ -9639,7 +9639,7 @@ Declared by `printobserver-types`.
 
 ### PrinterSnapshot
 
-Declared by `printobserver-types`.
+Declared by `printobserver-printer-api`.
 
 ```json
 {

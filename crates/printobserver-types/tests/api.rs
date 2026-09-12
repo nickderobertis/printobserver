@@ -11,9 +11,11 @@ use chrono::{DateTime, TimeZone as _, Utc};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
     AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventKind, EventRecord,
-    FEEDRATE_FACTOR_RANGE, FileName, FileNameRefusal, PrintAction, PrintId, Range, RawBytes,
-    Reported, Timestamp,
+    FileName, FileNameRefusal, PrintAction, PrintId, Range, RawBytes, Reported, Timestamp,
 };
+
+/// A range to flag against, in the shape the printer port declares its own.
+const FACTOR_RANGE: Range = Range::new(0.1, 10.0);
 
 /// Every action reads back the kind, the reason and the actor it carries.
 #[test]
@@ -168,7 +170,7 @@ fn identical(left: f64, right: f64) -> bool {
 /// A reported value carries what it was given, and its range says the rest.
 #[test]
 fn a_reported_value_carries_what_it_was_given() {
-    let inside = Reported::new(1.0, FEEDRATE_FACTOR_RANGE);
+    let inside = Reported::new(1.0, FACTOR_RANGE);
     assert!(
         identical(inside.value(), 1.0),
         "{} is not the value it was given",
@@ -177,7 +179,7 @@ fn a_reported_value_carries_what_it_was_given() {
     assert!(!inside.out_of_range());
     assert_eq!(inside.to_string(), "1");
 
-    let outside = Reported::new(40.0, FEEDRATE_FACTOR_RANGE);
+    let outside = Reported::new(40.0, FACTOR_RANGE);
     assert!(
         identical(outside.value(), 40.0),
         "{} is not the value it was given",

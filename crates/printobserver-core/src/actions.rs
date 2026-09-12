@@ -15,10 +15,11 @@
 //! [`Supervisor::issue_decided_action`], which is the only function of this
 //! crate that reaches an action method of the printer port.
 
+use printobserver_printer_api::PrinterSnapshot;
 use printobserver_types::{
     ActionRecord, ActionRequest, Actor, ActorClass, Adjustable, EventBody, EventSource,
     Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId, PrintRecord,
-    PrinterSnapshot, Timestamp,
+    Timestamp,
 };
 
 use crate::bounds::{Bounds, effective_bounds};

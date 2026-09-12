@@ -5,9 +5,10 @@
 //! calling no expiry method and issuing no action — because a bounded
 //! intervention expires on its own and nothing has to ask it to.
 
+use printobserver_printer_api::{FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE};
 use printobserver_types::{
-    Actor, Adjustable, FEEDRATE_FACTOR_RANGE, Intervention, InterventionOutcome, PolicyDecision,
-    PrintAction, PrintId, PrinterState, Range, RejectionReason, Reported,
+    Actor, Adjustable, Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId,
+    PrinterState, Range, RejectionReason, Reported,
 };
 
 use crate::journal::Call;
@@ -260,7 +261,7 @@ fn a_second_change_supersedes_the_first_and_carries_its_prior_value_forward() {
     // The machine now reports what the first change put on it, which is what a
     // second change would capture if it did not carry the earlier value forward.
     let mut snapshot = crate::fakes::printer_snapshot(PrinterState::Printing);
-    snapshot.fan_percent = Some(Reported::new(80.0, printobserver_types::FAN_PERCENT_RANGE));
+    snapshot.fan_percent = Some(Reported::new(80.0, FAN_PERCENT_RANGE));
     world.printer.reports(snapshot);
 
     let second = world

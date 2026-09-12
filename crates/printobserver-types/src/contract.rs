@@ -33,68 +33,11 @@ use crate::intervention::{Intervention, InterventionOutcome};
 use crate::manifest::JobManifest;
 use crate::policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
 use crate::print::{ManifestNarrowing, PrintRecord};
-use crate::printer::{HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState};
+use crate::printer::PrinterState;
 use crate::raw::RawBytes;
-use crate::reported::{
-    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
-    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, Range, Reported,
-};
+use crate::reported::{Range, Reported};
 use crate::session::{SessionPhase, SupervisionSession};
 use crate::timestamp::Timestamp;
-
-/// One field this crate declares a plausibility range for.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RangedField {
-    /// The type the field belongs to.
-    pub type_name: &'static str,
-    /// The field's own name.
-    pub field: &'static str,
-    /// The plausibility range declared for it.
-    pub range: Range,
-}
-
-/// Every field this crate types as [`Reported<f64>`], with its declared range.
-///
-/// These are validity ranges on what a printer can plausibly report. They are
-/// not the operator's [`SafetyEnvelope`], and nothing intersects, compares or
-/// substitutes the two.
-pub const RANGED_FIELDS: [RangedField; 7] = [
-    RangedField {
-        type_name: "PrinterSnapshot",
-        field: "feedrate_factor",
-        range: FEEDRATE_FACTOR_RANGE,
-    },
-    RangedField {
-        type_name: "PrinterSnapshot",
-        field: "flowrate_factor",
-        range: FLOWRATE_FACTOR_RANGE,
-    },
-    RangedField {
-        type_name: "PrinterSnapshot",
-        field: "fan_percent",
-        range: FAN_PERCENT_RANGE,
-    },
-    RangedField {
-        type_name: "JobSnapshot",
-        field: "completion",
-        range: COMPLETION_RANGE,
-    },
-    RangedField {
-        type_name: "HeaterSnapshot",
-        field: "actual_c",
-        range: HEATER_ACTUAL_C_RANGE,
-    },
-    RangedField {
-        type_name: "HeaterSnapshot",
-        field: "target_c",
-        range: HEATER_TARGET_C_RANGE,
-    },
-    RangedField {
-        type_name: "HeaterSnapshot",
-        field: "offset_c",
-        range: HEATER_OFFSET_C_RANGE,
-    },
-];
 
 /// A canonical value of one type, for the schema set and the round-trip corpus.
 pub trait Sample: Sized {
@@ -287,7 +230,6 @@ pub fn declared() -> Vec<TypeContract> {
         EventSource,
         ExecutionOutcome,
         FileName,
-        HeaterSnapshot,
         ImageId,
         ImageRecord,
         ImageRef,
@@ -295,13 +237,11 @@ pub fn declared() -> Vec<TypeContract> {
         InterventionId,
         InterventionOutcome,
         JobManifest,
-        JobSnapshot,
         ManifestNarrowing,
         PolicyDecision,
         PrintAction,
         PrintId,
         PrintRecord,
-        PrinterSnapshot,
         PrinterState,
         Range,
         RawBytes,
@@ -442,7 +382,7 @@ impl Sample for Range {
 
 impl Sample for Reported<f64> {
     fn sample_full() -> Self {
-        Self::new(1.0, FEEDRATE_FACTOR_RANGE)
+        Self::new(1.0, Range::sample_full())
     }
 }
 
@@ -455,82 +395,6 @@ impl Sample for Adjustable {
 impl Sample for PrinterState {
     fn sample_full() -> Self {
         Self::Printing
-    }
-}
-
-impl Sample for HeaterSnapshot {
-    fn sample_full() -> Self {
-        Self {
-            actual_c: Some(Reported::new(214.5, HEATER_ACTUAL_C_RANGE)),
-            target_c: Some(Reported::new(215.0, HEATER_TARGET_C_RANGE)),
-            offset_c: Some(Reported::new(0.0, HEATER_OFFSET_C_RANGE)),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            actual_c: None,
-            target_c: None,
-            offset_c: None,
-        }
-    }
-}
-
-impl Sample for PrinterSnapshot {
-    fn sample_full() -> Self {
-        Self {
-            connection: PrinterState::Printing,
-            tools: vec![HeaterSnapshot::sample_full()],
-            bed: Some(HeaterSnapshot::sample_full()),
-            chamber: Some(HeaterSnapshot::sample_full()),
-            feedrate_factor: Some(Reported::new(1.0, FEEDRATE_FACTOR_RANGE)),
-            flowrate_factor: Some(Reported::new(1.0, FLOWRATE_FACTOR_RANGE)),
-            fan_percent: Some(Reported::new(100.0, FAN_PERCENT_RANGE)),
-            observed_at: instant(),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            connection: PrinterState::Printing,
-            tools: vec![],
-            bed: None,
-            chamber: None,
-            feedrate_factor: None,
-            flowrate_factor: None,
-            fan_percent: None,
-            observed_at: instant(),
-        }
-    }
-}
-
-impl Sample for JobSnapshot {
-    fn sample_full() -> Self {
-        Self {
-            file_name: Some("benchy.gcode".to_owned()),
-            file_origin: Some("local".to_owned()),
-            size_bytes: Some(4_194_304),
-            estimated_print_time_s: Some(7200),
-            completion: Some(Reported::new(0.42, COMPLETION_RANGE)),
-            print_time_s: Some(3024),
-            print_time_left_s: Some(4176),
-            state: PrinterState::Printing,
-            error: Some("none".to_owned()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            file_name: None,
-            file_origin: None,
-            size_bytes: None,
-            estimated_print_time_s: None,
-            completion: None,
-            print_time_s: None,
-            print_time_left_s: None,
-            state: PrinterState::Printing,
-            error: None,
-        }
     }
 }
 

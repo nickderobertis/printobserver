@@ -44,9 +44,10 @@
 //! * **Optionality.** An optional field absent means *the source did not report
 //!   it*, and is never rendered as a zero, an empty string, or a default.
 //!   Absent serializes as absent and parses back as absent.
-//! * **Declared ranges.** A numeric field this crate declares a range for is
-//!   typed [`Reported<f64>`]. See [`reported`] for the whole rule, including
-//!   why a non-finite value is out of range and why one is refused on emission.
+//! * **Reported numbers.** A numeric field a domain declares a plausibility
+//!   range for is typed [`Reported<f64>`]. See [`reported`] for the whole rule,
+//!   including why a non-finite value is out of range and why one is refused
+//!   on emission; the ranges themselves are the declaring domain's.
 //!
 //! # Why `serde`, `schemars` and `serde_json` are re-exported
 //!
@@ -81,8 +82,8 @@ pub use action::{
 pub use adjustable::{Adjustable, AdjustableError};
 pub use assessment::{AgentAssessment, Confidence};
 pub use contract::{
-    EVENT_KIND_MARKER, RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared,
-    event_schema_of, schema_of, wire_fields,
+    EVENT_KIND_MARKER, Sample, TypeContract, WireField, declared, event_schema_of, schema_of,
+    wire_fields,
 };
 pub use event::{
     EventBody, EventKind, EventKindError, EventPayload, EventRecord, EventSource, KIND_PATTERN,
@@ -94,12 +95,9 @@ pub use intervention::{Intervention, InterventionOutcome};
 pub use manifest::JobManifest;
 pub use policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
 pub use print::{ManifestNarrowing, PrintRecord};
-pub use printer::{HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState};
+pub use printer::PrinterState;
 pub use raw::RawBytes;
-pub use reported::{
-    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
-    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, Range, Reported,
-};
+pub use reported::{Range, Reported};
 pub use session::{SessionPhase, SupervisionSession};
 pub use timestamp::{Timestamp, TimestampError};
 

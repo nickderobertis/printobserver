@@ -1,6 +1,6 @@
 //! The seven plausibility ranges, and their separation from the safety envelope.
 //!
-//! Each of the seven fields this crate types as `Reported<f64>` declares
+//! Each of the seven fields this port types as `Reported<f64>` declares
 //! exactly the range the contract states for it, and its `out_of_range` flag is
 //! true exactly when the value is non-finite or lies outside that range — in
 //! both directions, on parse as well as on emission.
@@ -12,24 +12,22 @@
 //! `value < min || value > max` answers every other value here correctly and
 //! fails on `NaN` alone.
 
+#[path = "support/contracts.rs"]
+mod contracts;
+
 use std::collections::BTreeMap;
 
-use printobserver_types::contract::{RANGED_FIELDS, TypeContract, declared, schema_of};
-use printobserver_types::{
-    ActionKind, ActorClass, Adjustable, COMPLETION_RANGE, EffectiveBounds, FAN_PERCENT_RANGE,
-    FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE, HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE,
-    HEATER_TARGET_C_RANGE, HeaterSnapshot, JobSnapshot, PrinterSnapshot, Range, Reported,
-    SafetyEnvelope,
+use contracts::contract;
+use printobserver_printer_api::{
+    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
+    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot,
+    JobSnapshot, PrinterSnapshot, RANGED_FIELDS,
 };
-use serde_json::{Value, json};
-
-/// The contract for one declared type, by name.
-fn contract(type_name: &str) -> TypeContract {
-    declared()
-        .into_iter()
-        .find(|entry| entry.name == type_name)
-        .unwrap_or_else(|| panic!("{type_name} is declared"))
-}
+use printobserver_types::contract::{TypeContract, schema_of};
+use printobserver_types::serde_json::{self, Value, json};
+use printobserver_types::{
+    ActionKind, ActorClass, Adjustable, EffectiveBounds, Range, Reported, SafetyEnvelope,
+};
 
 /// Each of the seven fields declares exactly the range the contract states.
 #[test]

@@ -15,7 +15,9 @@ use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::Instant;
 
 use printobserver_core::{Clock, PrintContext, Supervisor};
-use printobserver_printer_api::{BoxFuture, PrinterError, PrinterPort};
+use printobserver_printer_api::{
+    BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+};
 use printobserver_store_api::{
     AuditPage, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError, StorePort,
     resolve_history_limit,
@@ -24,9 +26,8 @@ use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnOutcome,
 use printobserver_types::{
     ActionId, ActionRecord, ActionRequest, Adjustable, AgentAssessment, Confidence, EventId,
     EventRecord, ExecutionOutcome, FileName, ImageId, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, JobSnapshot, ManifestNarrowing, PolicyDecision, PrintAction,
-    PrintId, PrintRecord, PrinterSnapshot, PrinterState, RawBytes, SessionPhase,
-    SupervisionSession, Timestamp,
+    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintAction, PrintId,
+    PrintRecord, PrinterState, RawBytes, SessionPhase, SupervisionSession, Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
@@ -1291,10 +1292,11 @@ impl SupervisorPort for FakeSupervisor {
 /// A printer snapshot in one state, with a prior value for every adjustable.
 #[must_use]
 pub fn printer_snapshot(state: PrinterState) -> PrinterSnapshot {
-    use printobserver_types::{
+    use printobserver_printer_api::{
         FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE, HEATER_ACTUAL_C_RANGE,
-        HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot, Reported,
+        HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot,
     };
+    use printobserver_types::Reported;
     let heater = |target: f64| HeaterSnapshot {
         actual_c: Some(Reported::new(target - 0.5, HEATER_ACTUAL_C_RANGE)),
         target_c: Some(Reported::new(target, HEATER_TARGET_C_RANGE)),
@@ -1315,7 +1317,8 @@ pub fn printer_snapshot(state: PrinterState) -> PrinterSnapshot {
 /// The job the fake printer reports.
 #[must_use]
 pub fn job_snapshot() -> JobSnapshot {
-    use printobserver_types::{COMPLETION_RANGE, Reported};
+    use printobserver_printer_api::COMPLETION_RANGE;
+    use printobserver_types::Reported;
     JobSnapshot {
         file_name: Some("benchy.gcode".to_owned()),
         file_origin: Some("local".to_owned()),
