@@ -2,16 +2,21 @@
 //!
 //! Owns: the vocabulary every domain and every client must agree on — the
 //! identity and representation rules, the event log's envelope, the schema
-//! toolkit, and (until the later steps of the domain cut move them to their
-//! owners) the printer, policy and supervision records. It holds data and
-//! total functions over that data, never I/O.
+//! toolkit, and (until the next step of the domain cut moves them with the
+//! store) the policy and supervision records, `PrinterState`, `Adjustable`
+//! and the session types. It holds data and total functions over that data,
+//! never I/O.
 //!
 //! A type belongs here only if adding or changing one domain's concept does
 //! not require editing it. The event log is the case in point: [`event`]
 //! declares the envelope — an open [`EventKind`] name and an opaque payload —
 //! and **no kind**. Each kind is declared by the domain that owns the event, as
 //! a payload type implementing [`EventPayload`] under a `KIND` of its own, so
-//! that a domain adding an event edits its own crate and nothing central.
+//! that a domain adding an event edits its own crate and nothing central. The
+//! same holds for a domain's own shapes: a provider's wire format lives in its
+//! adapter, a port's vocabulary in the port, and the print's context in the
+//! supervision domain, each declared into the schema set through
+//! [`TypeContract::of`] rather than through a list here.
 //!
 //! May depend on: no crate of this workspace. It is the root of the graph, so a
 //! type it does not hold is a type the rest of the workspace cannot agree on.

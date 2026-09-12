@@ -1,11 +1,20 @@
 //! Reading a Rust source's declared surface, for the contract tests.
 //!
-//! These tests hold the port crates to the surface the contract states, and a
-//! surface is a property of a declaration rather than of a value, so they read
-//! the declarations themselves rather than a table somebody maintains beside
-//! them. A fixture trait or a fixture vocabulary is a source snippet read by
-//! this same reader, so what refuses a fixture is what reads the committed
-//! crate.
+//! The tests that hold a crate to the surface the contract states read the
+//! declarations themselves rather than a table somebody maintains beside them,
+//! because a surface is a property of a declaration rather than of a value. A
+//! fixture trait or a fixture vocabulary is a source snippet read by this same
+//! reader, so what refuses a fixture is what reads the committed crate.
+//!
+//! This one reader serves the type crate's own ownership tests and each port
+//! crate's `surface` test, which include it by `#[path]` from here rather
+//! than through a crate of its own. A port crate declares the type crate as
+//! its only workspace dependency and a reader crate would be a second edge —
+//! and what this reads is Rust source, a claim about no crate in particular,
+//! so it belongs to none of them. `env!("CARGO_MANIFEST_DIR")` below resolves
+//! in the including crate, and every crate of this workspace sits one
+//! directory under `crates/`, so [`crate_dir`] answers the same path from any
+//! of them.
 
 use std::path::PathBuf;
 
@@ -53,11 +62,13 @@ fn spelling<T: ToTokens>(node: &T) -> String {
 /// # Panics
 ///
 /// Panics when the source does not parse, which is what a broken fixture is.
+#[must_use]
 pub fn parse(source: &str) -> syn::File {
     syn::parse_file(source).expect("the source parses as Rust")
 }
 
 /// The path of one crate of this workspace.
+#[must_use]
 pub fn crate_dir(crate_name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -69,6 +80,7 @@ pub fn crate_dir(crate_name: &str) -> PathBuf {
 /// # Panics
 ///
 /// Panics when the crate has no readable `src/lib.rs`.
+#[must_use]
 pub fn crate_source(crate_name: &str) -> String {
     let path = crate_dir(crate_name).join("src").join("lib.rs");
     std::fs::read_to_string(&path)
@@ -80,6 +92,7 @@ pub fn crate_source(crate_name: &str) -> String {
 /// # Panics
 ///
 /// Panics when a source cannot be read or does not parse.
+#[must_use]
 pub fn crate_sources(crate_name: &str) -> Vec<syn::File> {
     let dir = crate_dir(crate_name).join("src");
     let mut sources = Vec::new();
@@ -126,6 +139,7 @@ fn fields_of(fields: &syn::Fields) -> Vec<Field> {
 }
 
 /// The methods one trait declares, in declaration order.
+#[must_use]
 pub fn trait_methods(file: &syn::File, trait_name: &str) -> Vec<Method> {
     let mut methods = Vec::new();
     for item in &file.items {
@@ -166,6 +180,7 @@ pub fn trait_methods(file: &syn::File, trait_name: &str) -> Vec<Method> {
 }
 
 /// The variants one enum declares, in declaration order.
+#[must_use]
 pub fn enum_variants(file: &syn::File, enum_name: &str) -> Vec<Variant> {
     let mut variants = Vec::new();
     for item in &file.items {
@@ -186,6 +201,7 @@ pub fn enum_variants(file: &syn::File, enum_name: &str) -> Vec<Variant> {
 }
 
 /// The fields one struct declares.
+#[must_use]
 pub fn struct_fields(file: &syn::File, struct_name: &str) -> Vec<Field> {
     for item in &file.items {
         let syn::Item::Struct(declaration) = item else {
@@ -204,6 +220,7 @@ fn is_public(visibility: &syn::Visibility) -> bool {
 }
 
 /// Every public struct and enum one source declares, by name.
+#[must_use]
 pub fn declared_type_names(file: &syn::File) -> Vec<String> {
     let mut names = Vec::new();
     for item in &file.items {
@@ -221,6 +238,7 @@ pub fn declared_type_names(file: &syn::File) -> Vec<String> {
 }
 
 /// Every public constant one source exports: its name and its type.
+#[must_use]
 pub fn public_constants(file: &syn::File) -> Vec<Field> {
     file.items
         .iter()
@@ -235,6 +253,7 @@ pub fn public_constants(file: &syn::File) -> Vec<Field> {
 }
 
 /// Every public free function one source exports.
+#[must_use]
 pub fn public_functions(file: &syn::File) -> Vec<Method> {
     file.items
         .iter()
@@ -268,6 +287,7 @@ pub fn public_functions(file: &syn::File) -> Vec<Method> {
 }
 
 /// The documentation attached to one method of one trait.
+#[must_use]
 pub fn trait_method_docs(file: &syn::File, trait_name: &str, method_name: &str) -> String {
     let mut lines = Vec::new();
     for item in &file.items {
@@ -317,6 +337,7 @@ fn derives(attrs: &[syn::Attribute], wanted: &str) -> bool {
 /// Three shapes reach that: a declaration deriving `JsonSchema`, one carrying a
 /// hand-written `impl JsonSchema`, and an identifier newtype the `identifier!`
 /// macro declares, whose expansion no source-level reader can see.
+#[must_use]
 pub fn schema_emitting_types(file: &syn::File) -> Vec<String> {
     let mut names = Vec::new();
     for item in &file.items {
@@ -350,6 +371,36 @@ pub fn schema_emitting_types(file: &syn::File) -> Vec<String> {
                 }
             }
             _ => {}
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The crates of this workspace one manifest names, across every dependency
+/// table.
+///
+/// A dependency of this workspace is one whose name carries the workspace's
+/// prefix; a reader of Rust sources such as `syn` is not one, so a port crate's
+/// test-only readers do not count against the one edge it may have.
+#[must_use]
+pub fn workspace_dependency_names(manifest: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut inside = false;
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            inside = trimmed.contains("dependencies]");
+            continue;
+        }
+        if inside
+            && !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && let Some((name, _)) = trimmed.split_once('=')
+            && name.trim().starts_with("printobserver-")
+        {
+            names.push(name.trim().to_owned());
         }
     }
     names.sort();

@@ -1462,6 +1462,8 @@ name = "printobserver-printer-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -1506,6 +1508,8 @@ name = "printobserver-store-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -1528,6 +1532,8 @@ name = "printobserver-supervisor-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -1551,6 +1557,8 @@ name = "printobserver-vision-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
