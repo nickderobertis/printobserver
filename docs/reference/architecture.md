@@ -22,17 +22,21 @@ roots that choose what runs.
 The vocabulary every domain and every client must agree on: the identity and
 representation rules, the event log's envelope — an open `EventKind` name and an
 opaque payload, with no kind declared here — and the schema toolkit, together
-with the printer, policy and supervision records the later steps of the domain
-cut have yet to move to their owners. A type belongs here only if adding or
-changing one domain's concept does not require editing it. Data and total
-functions over data, never I/O. It is the root of the graph and depends on no
-crate of this workspace.
+with the policy and supervision records, `PrinterState`, `Adjustable` and the
+session types, which the next step of the domain cut moves with the store. A
+type belongs here only if adding or changing one domain's concept does not
+require editing it: a provider's wire format lives in its adapter, a port's
+vocabulary in the port, and the print's context in the supervision domain. Data
+and total functions over data, never I/O. It is the root of the graph and
+depends on no crate of this workspace.
 
 ### printobserver-printer-api
 
 The port the physical printer speaks through: reading printer and job state, and
-asking the machine for one of the bounded things the action vocabulary names.
-Depends on the contracts alone.
+asking the machine for one of the bounded things the action vocabulary names —
+together with the printer domain's vocabulary, the snapshots those reads answer
+and the plausibility ranges their reported numbers are read against. Depends on
+the contracts alone.
 
 ### printobserver-vision-api
 
@@ -45,8 +49,10 @@ written down. Depends on the contracts alone.
 ### printobserver-supervisor-api
 
 The port the supervising agent is reached through: running one supervision turn,
-and closing a session; and the two kinds a session's opening and closing are
-written down under. Depends on the contracts alone.
+and closing a session; the assessment vocabulary a turn answers with, whose
+generated schema is the one artifact the agent's answer is constrained by; and
+the two kinds a session's opening and closing are written down under. Depends
+on the contracts alone.
 
 ### printobserver-store-api
 
@@ -62,8 +68,9 @@ surface has exactly one place it has to be kept right.
 
 ### printobserver-obico
 
-The Obico adapter — the one implementation of the vision port. It reads the body
-Obico's webhook notification plugin posts into an event under one of the two
+The Obico adapter — the one implementation of the vision port. It declares the
+nine wire shapes Obico's webhook notification plugin posts, beside the sample
+bodies that model them, reads a posted body into an event under one of the two
 kinds it declares for itself, fetches the snapshot that body names, and writes
 both down through the ingress. The supervision core never reads its kinds by
 name; it correlates on the print the adapter hands over beside the body.
@@ -88,7 +95,8 @@ database.
 The supervision logic: the loop that turns printer state and vision observations
 into supervisory decisions, the policy that decides which of them may reach the
 printer, the effective bounds a print runs under, and the expiry of bounded
-interventions — together with the seven event kinds and three source names that
+interventions — together with the print's context, the one aggregate a caller
+and the agent both read, and the seven event kinds and three source names that
 logic writes, declared here and nowhere central.
 
 ### printobserver-server
