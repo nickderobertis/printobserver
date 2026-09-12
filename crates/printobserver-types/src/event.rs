@@ -1,404 +1,196 @@
-//! The history: one closed pair of an event kind and the payload it carries.
+//! The event log's envelope: an open kind name and an opaque payload.
 //!
-//! [`EventKind`] and [`EventPayload`] are one closed pair rather than two
-//! fields that happen to agree. Every kind has exactly one payload variant and
-//! every payload variant has exactly one kind, so a consumer that matches the
-//! kind knows the payload's shape, and a mismatched pair is unrepresentable
-//! rather than merely undocumented: an [`EventRecord`] carries the payload, the
-//! `kind` on the wire is that payload's own tag, and a serialized record naming
-//! one kind while carrying another's payload fails to parse.
+//! An [`EventRecord`] is what the store holds and the server serves, and the
+//! one thing every domain and every client agree on about it is its shape:
+//! the fields every event carries, a `kind` naming which event it is, and a
+//! `payload` whose form is the kind's own. Nothing here lists the kinds. Each
+//! is declared by the domain that owns the event — a payload type implementing
+//! [`EventPayload`] under a [`KIND`](EventPayload::KIND) of its own — so a
+//! domain that adds an event edits its own crate and nothing central.
+//!
+//! # Why the log is open
+//!
+//! A closed pair — one enum of kinds and one enum of payloads, a variant per
+//! domain's events — made the crate every other crate builds against the place
+//! every domain's payload had to be written, and let a reader match on another
+//! domain's kind by name. The envelope makes neither possible: a reader of the
+//! log carries a record through, filters by name, or reads a typed payload out
+//! of it with [`EventBody::read`] and is answered nothing when the kind is
+//! another's. A record under a kind no crate of this workspace declares — a
+//! row written by a newer server, say — survives a round trip unchanged.
+//!
+//! # The wire form, which is unchanged
+//!
+//! [`EventBody`] is flattened into the record, so the wire form of a record is
+//! still the fields `id`, `print_id`, `source`, `received_at`, `image`, `kind`,
+//! `payload` and `raw`, and `{"kind": .., "payload": ..}` is the text the
+//! closed pair's tagged form serialized to.
 
-use schemars::JsonSchema;
+use core::fmt;
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::action::{AcknowledgementDisposition, PrintAction};
-use crate::adjustable::Adjustable;
-use crate::assessment::AgentAssessment;
-use crate::ids::{ActionId, EventId, InterventionId, PrintId};
+use crate::ids::{EventId, PrintId};
 use crate::image::ImageRef;
-use crate::intervention::InterventionOutcome;
-use crate::policy::PolicyDecision;
 use crate::raw::RawBytes;
 use crate::timestamp::Timestamp;
 
-/// Where an event came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum EventSource {
-    /// Obico, over its webhook.
-    Obico,
-    /// A person.
-    Operator,
-    /// The supervising agent.
-    Agent,
-    /// The supervisor itself.
-    System,
-}
+/// The pattern every kind name matches: lowercase `snake_case`.
+pub const KIND_PATTERN: &str = "^[a-z][a-z0-9_]*$";
 
-/// The kind of printer notification Obico sent, normalized.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ObicoNotificationType {
-    /// A print started.
-    Started,
-    /// A print finished.
-    Done,
-    /// A print was cancelled.
-    Cancelled,
-    /// A print was paused.
-    Paused,
-    /// A print was resumed.
-    Resumed,
-    /// The printer is waiting for a filament change.
-    FilamentChange,
-    /// A heater cooled down.
-    HeaterCooled,
-    /// A heater reached its target.
-    HeaterTarget,
-}
-
-/// Obico reported a print failure.
+/// The name one kind of event is written down under.
 ///
-/// The two instants are optional because Obico's own field for each is a Unix
-/// timestamp number, an empty string, or absent, and the last two both mean the
-/// producer reported no instant. An absent field here is that, never an epoch
-/// date standing in for it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ObicoFailureAlertPayload {
-    /// Whether Obico called it a warning rather than a failure.
-    pub is_warning: bool,
-    /// Whether Obico paused the print itself.
-    pub print_paused: bool,
-    /// Obico's own identifier for the print, when it named one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub obico_print_id: Option<i64>,
-    /// The file being printed, when Obico named one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_name: Option<String>,
-    /// When the print started, when Obico reported an instant for it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<Timestamp>,
-    /// When the print ended, when Obico reported an instant for it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<Timestamp>,
-}
-
-/// Obico sent a printer notification.
-///
-/// The two instants are optional for the same reason
-/// [`ObicoFailureAlertPayload`]'s are, and are absent along with the rest of
-/// the print's fields when the notification is about no print at all.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ObicoPrinterNotificationPayload {
-    /// Which notification it is.
-    pub notification_type: ObicoNotificationType,
-    /// Obico's own identifier for the print, when the notification is about one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub obico_print_id: Option<i64>,
-    /// The file being printed, when the notification is about one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_name: Option<String>,
-    /// When the print started, when Obico reported an instant for it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<Timestamp>,
-    /// When the print ended, when Obico reported an instant for it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<Timestamp>,
-}
-
-/// An external body arrived that could not be read.
-///
-/// This kind always carries its `raw` bytes, and it exists so that an alert
-/// this system cannot read is written down rather than dropped.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct MalformedExternalEventPayload {
-    /// One line saying why the body could not be read.
-    pub detail: String,
-}
-
-/// Where a port failed while an event was being handled.
-///
-/// A closed set of exactly the sites at which a failure has nowhere else to be
-/// recorded. The printer's action methods record theirs on the
-/// [`ActionRecord`](crate::ActionRecord) the request minted, and a restoring
-/// call records its own on the [`Intervention`](crate::Intervention) it was
-/// expiring; those are not sites here, because a second record of them would be
-/// a second version of one fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum PortFailureSite {
-    /// Reading the printer's own state.
-    PrinterSnapshot,
-    /// Reading the job the printer reports it is running.
-    PrinterJob,
-    /// Writing the image the event arrived with.
-    ImageWrite,
-    /// Running the supervision turn the event prompted.
-    SupervisionTurn,
-}
-
-/// A port failed while one event was being handled.
-///
-/// The event is named rather than implied, so that a reader holding an event's
-/// identifier reaches every failure recorded while that event was being
-/// handled. A failure recorded here is one the handling survived: the event is
-/// already in the history by the time any of these sites is reached, and the
-/// loop goes on to handle the next event.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PortFailurePayload {
-    /// The event whose handling reached the failing call.
-    pub event_id: EventId,
-    /// Where it failed.
-    pub site: PortFailureSite,
-    /// What the port said about it, in the port's own words.
-    pub detail: String,
-}
-
-/// An actor asked for an action.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ActionRequestedPayload {
-    /// The action's identifier.
-    pub action_id: ActionId,
-    /// What was asked for.
-    pub action: PrintAction,
-    /// Who asked.
-    pub actor: crate::action::Actor,
-}
-
-/// An accepted action reached the printer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ActionExecutedPayload {
-    /// The action's identifier.
-    pub action_id: ActionId,
-    /// The bounded intervention it opened, when it opened one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub intervention_id: Option<InterventionId>,
-}
-
-/// Policy refused an action.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ActionRejectedPayload {
-    /// The action's identifier.
-    pub action_id: ActionId,
-    /// The whole decision, carrying which rejection it was.
-    pub decision: PolicyDecision,
-}
-
-/// A bounded intervention expired.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct InterventionExpiredPayload {
-    /// The intervention's identifier.
-    pub intervention_id: InterventionId,
-    /// What it had changed.
-    pub adjustable: Adjustable,
-    /// What became of it.
-    pub outcome: InterventionOutcome,
-}
-
-/// A supervision session was opened.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SupervisionSessionOpenedPayload {
-    /// The session's own name in the harness.
-    pub session_name: String,
-    /// The identity the harness ran it under.
-    pub harness_identity: String,
-}
-
-/// A supervision session was closed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SupervisionSessionClosedPayload {
-    /// The session's own name in the harness.
-    pub session_name: String,
-    /// Why it was closed.
-    pub close_reason: String,
-}
-
-/// The agent wrote down what it made of a turn.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AgentAssessmentPayload {
-    /// The session the turn ran in.
-    pub session_name: String,
-    /// What the agent answered with.
-    pub assessment: AgentAssessment,
-}
-
-/// An operator acknowledged an event.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct OperatorAcknowledgementPayload {
-    /// The event being acknowledged.
-    pub acknowledged_event_id: EventId,
-    /// What the operator asked for next.
-    pub disposition: AcknowledgementDisposition,
-}
-
-/// What one restart put back the way it found it.
-///
-/// A supervisor that has been restarted adopts whatever the store holds rather
-/// than starting empty, and each of these is one of those adoptions. They are
-/// recorded rather than merely done, because a print that carried on across a
-/// restart and one that was started again look identical afterwards unless the
-/// history says which happened.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum StartupOutcome {
-    /// A print left open was adopted as the print this supervisor is watching.
-    PrintAdopted,
-    /// A session left open was resumed rather than replaced.
-    SessionResumed {
-        /// The session's own name in the harness.
-        session_name: String,
-    },
-    /// An intervention already past its expiry was expired on start.
-    InterventionExpired {
-        /// The intervention that had outlived its bound.
-        intervention_id: InterventionId,
-        /// What it had changed.
-        adjustable: Adjustable,
-        /// What became of putting the prior value back.
-        outcome: InterventionOutcome,
-    },
-}
-
-/// A supervisor reconciled one thing the store held when it started.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct StartupReconciliationPayload {
-    /// The print it is about.
-    pub print_id: PrintId,
-    /// What was reconciled.
-    pub outcome: StartupOutcome,
-}
-
-/// Which event this is, without its payload.
-///
-/// Every kind here has exactly one [`EventPayload`] variant, and the spellings
-/// are the same on the wire.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum EventKind {
-    /// Obico reported a print failure.
-    ObicoFailureAlert,
-    /// Obico sent a printer notification.
-    ObicoPrinterNotification,
-    /// An external body arrived that could not be read.
-    MalformedExternalEvent,
-    /// An actor asked for an action.
-    ActionRequested,
-    /// An accepted action reached the printer.
-    ActionExecuted,
-    /// Policy refused an action.
-    ActionRejected,
-    /// A bounded intervention expired.
-    InterventionExpired,
-    /// A supervision session was opened.
-    SupervisionSessionOpened,
-    /// A supervision session was closed.
-    SupervisionSessionClosed,
-    /// The agent wrote down what it made of a turn.
-    AgentAssessment,
-    /// An operator acknowledged an event.
-    OperatorAcknowledgement,
-    /// A port failed while an event was being handled.
-    PortFailure,
-    /// A supervisor reconciled one thing the store held when it started.
-    StartupReconciliation,
-}
+/// Lowercase `snake_case`, declared by the domain that owns the event as the
+/// [`KIND`](EventPayload::KIND) of its payload type. It serializes as the bare
+/// string, and it is ordered and hashable so that a filter can hold a set of
+/// them.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EventKind(String);
 
 impl EventKind {
-    /// Every kind this vocabulary declares.
-    ///
-    /// The whole vocabulary, so that a test walking the kinds reads them off
-    /// this type rather than off a list of its own.
-    pub const ALL: [Self; 13] = [
-        Self::ObicoFailureAlert,
-        Self::ObicoPrinterNotification,
-        Self::MalformedExternalEvent,
-        Self::ActionRequested,
-        Self::ActionExecuted,
-        Self::ActionRejected,
-        Self::InterventionExpired,
-        Self::SupervisionSessionOpened,
-        Self::SupervisionSessionClosed,
-        Self::AgentAssessment,
-        Self::OperatorAcknowledgement,
-        Self::PortFailure,
-        Self::StartupReconciliation,
-    ];
-}
-
-/// What an event carries, tagged by the kind it belongs to.
-///
-/// The wire shape is the pair `kind` and `payload`, which is why an
-/// [`EventRecord`] carries this one value rather than two fields that could
-/// disagree.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", content = "payload", rename_all = "snake_case")]
-pub enum EventPayload {
-    /// Obico reported a print failure.
-    ObicoFailureAlert(ObicoFailureAlertPayload),
-    /// Obico sent a printer notification.
-    ObicoPrinterNotification(ObicoPrinterNotificationPayload),
-    /// An external body arrived that could not be read.
-    MalformedExternalEvent(MalformedExternalEventPayload),
-    /// An actor asked for an action.
-    ActionRequested(ActionRequestedPayload),
-    /// An accepted action reached the printer.
-    ActionExecuted(ActionExecutedPayload),
-    /// Policy refused an action.
-    ActionRejected(ActionRejectedPayload),
-    /// A bounded intervention expired.
-    InterventionExpired(InterventionExpiredPayload),
-    /// A supervision session was opened.
-    SupervisionSessionOpened(SupervisionSessionOpenedPayload),
-    /// A supervision session was closed.
-    SupervisionSessionClosed(SupervisionSessionClosedPayload),
-    /// The agent wrote down what it made of a turn.
-    AgentAssessment(AgentAssessmentPayload),
-    /// An operator acknowledged an event.
-    OperatorAcknowledgement(OperatorAcknowledgementPayload),
-    /// A port failed while an event was being handled.
-    PortFailure(PortFailurePayload),
-    /// A supervisor reconciled one thing the store held when it started.
-    StartupReconciliation(StartupReconciliationPayload),
-}
-
-impl EventPayload {
-    /// The kind this payload belongs to, and there is exactly one.
+    /// The kind this name spells.
     #[must_use]
-    pub const fn kind(&self) -> EventKind {
-        match self {
-            Self::ObicoFailureAlert(_) => EventKind::ObicoFailureAlert,
-            Self::ObicoPrinterNotification(_) => EventKind::ObicoPrinterNotification,
-            Self::MalformedExternalEvent(_) => EventKind::MalformedExternalEvent,
-            Self::ActionRequested(_) => EventKind::ActionRequested,
-            Self::ActionExecuted(_) => EventKind::ActionExecuted,
-            Self::ActionRejected(_) => EventKind::ActionRejected,
-            Self::InterventionExpired(_) => EventKind::InterventionExpired,
-            Self::SupervisionSessionOpened(_) => EventKind::SupervisionSessionOpened,
-            Self::SupervisionSessionClosed(_) => EventKind::SupervisionSessionClosed,
-            Self::AgentAssessment(_) => EventKind::AgentAssessment,
-            Self::OperatorAcknowledgement(_) => EventKind::OperatorAcknowledgement,
-            Self::PortFailure(_) => EventKind::PortFailure,
-            Self::StartupReconciliation(_) => EventKind::StartupReconciliation,
-        }
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    /// The name, as it is written down.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
-/// One event, as the store holds it.
+impl fmt::Display for EventKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl JsonSchema for EventKind {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("EventKind")
+    }
+
+    fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "string",
+            "title": "EventKind",
+            "description": "The name one kind of event is written down under: lowercase snake_case, declared by the domain that owns the event.",
+            "pattern": KIND_PATTERN
+        })
+    }
+}
+
+/// Where an event came from, as the bare string each domain declares for itself.
+///
+/// Nothing here lists the sources; each domain declares its own name as a
+/// constant beside the events it raises.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EventSource(String);
+
+impl EventSource {
+    /// The source this name spells.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    /// The name, as it is written down.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for EventSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl JsonSchema for EventSource {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("EventSource")
+    }
+
+    fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "string",
+            "title": "EventSource",
+            "description": "Where an event came from, as the bare string the domain that raised it declares for itself."
+        })
+    }
+}
+
+/// One typed payload declared under a kind name, by the domain that owns it.
+///
+/// [`KIND`](Self::KIND) is the one authoritative source of the kind's name:
+/// the schema marker is written from it by [`event_schema_of`], the store's
+/// kind column is written from it, and the clients' tables are generated from
+/// the marker.
+pub trait EventPayload: Serialize + DeserializeOwned + JsonSchema {
+    /// The name this payload's events are written down under.
+    const KIND: &'static str;
+
+    /// The kind this payload belongs to.
+    #[must_use]
+    fn kind() -> EventKind {
+        EventKind::new(Self::KIND)
+    }
+}
+
+/// The kind and the payload, as the log holds them.
+///
+/// The pair `{"kind": .., "payload": ..}`: the kind is the name a payload type
+/// declares, and the payload is that type's value, held as JSON so that a body
+/// under a kind this crate has never heard of is carried rather than refused.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EventBody {
+    /// Which event this is.
+    pub kind: EventKind,
+    /// What it carries, in the form its kind declares.
+    pub payload: Value,
+}
+
+impl EventBody {
+    /// The body of one typed payload, under the kind its type declares.
+    ///
+    /// # Errors
+    ///
+    /// Returns the serialization failure when the payload cannot be rendered
+    /// as JSON, which a payload type declared with `serde` never is.
+    pub fn of<P: EventPayload>(payload: &P) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            kind: P::kind(),
+            payload: serde_json::to_value(payload)?,
+        })
+    }
+
+    /// Whether this body is under the kind `P` declares.
+    #[must_use]
+    pub fn is<P: EventPayload>(&self) -> bool {
+        self.kind.as_str() == P::KIND
+    }
+
+    /// The payload as `P`, when this body is under the kind `P` declares.
+    ///
+    /// Answers nothing for another kind's body, and the parse failure for a
+    /// body under the right kind whose payload is not of the type.
+    #[must_use]
+    pub fn read<P: EventPayload>(&self) -> Option<Result<P, serde_json::Error>> {
+        self.is::<P>()
+            .then(|| serde_json::from_value(self.payload.clone()))
+    }
+}
+
+/// One event, as the store holds it and the server serves it.
 ///
 /// `raw` holds the bytes exactly as received for an externally sourced event
 /// and is absent for an internally raised one — it is what makes the history
@@ -419,18 +211,26 @@ pub struct EventRecord {
     /// The image it arrived with, when it arrived with one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<ImageRef>,
-    /// The kind and the payload, which are one closed pair.
+    /// The kind and the payload, flattened into the record's own fields.
     #[serde(flatten)]
-    pub payload: EventPayload,
+    pub body: EventBody,
     /// The bytes exactly as received, for an externally sourced event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw: Option<RawBytes>,
 }
 
 impl EventRecord {
-    /// Which event this is, read off the payload it carries.
+    /// Which event this is.
     #[must_use]
-    pub const fn kind(&self) -> EventKind {
-        self.payload.kind()
+    pub const fn kind(&self) -> &EventKind {
+        &self.body.kind
+    }
+
+    /// The payload as `P`, when this record is under the kind `P` declares.
+    ///
+    /// Answers nothing for a record of another kind; see [`EventBody::read`].
+    #[must_use]
+    pub fn payload_as<P: EventPayload>(&self) -> Option<Result<P, serde_json::Error>> {
+        self.body.read::<P>()
     }
 }

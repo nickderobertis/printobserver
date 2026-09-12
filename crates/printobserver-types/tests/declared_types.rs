@@ -7,9 +7,10 @@
 //! optionality is refused here rather than discovered by a consumer.
 //!
 //! A field's descriptor is the name of the type it references, or the JSON type
-//! of a primitive; `array:T` and `map:T` name what a list or a map holds, and
+//! of a primitive; `array:T` and `map:T` name what a list or a map holds,
 //! `union` is a field a tagged union declares at differing types in different
-//! arms. A type whose whole wire form is a scalar — an identifier, an instant,
+//! arms, and `any` is a field that admits any JSON value — the event envelope's
+//! payload, whose form is its kind's own. A type whose whole wire form is a scalar — an identifier, an instant,
 //! a file name — declares no field at all, and its wire form is asserted where
 //! the wire forms are.
 
@@ -26,13 +27,6 @@ type StatedType = (&'static str, &'static [StatedField]);
 /// The fields this crate declares, type by type.
 const DECLARED_FIELDS: &[StatedType] = &[
     ("AcknowledgementDisposition", &[]),
-    (
-        "ActionExecutedPayload",
-        &[
-            ("action_id", "ActionId", true),
-            ("intervention_id", "InterventionId", false),
-        ],
-    ),
     ("ActionId", &[]),
     ("ActionKind", &[]),
     (
@@ -47,26 +41,11 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
-        "ActionRejectedPayload",
-        &[
-            ("action_id", "ActionId", true),
-            ("decision", "PolicyDecision", true),
-        ],
-    ),
-    (
         "ActionRequest",
         &[
             ("action", "PrintAction", true),
             ("actor", "Actor", true),
             ("requested_at", "Timestamp", true),
-        ],
-    ),
-    (
-        "ActionRequestedPayload",
-        &[
-            ("action", "PrintAction", true),
-            ("action_id", "ActionId", true),
-            ("actor", "Actor", true),
         ],
     ),
     ("Actor", &[("agent", "object", true)]),
@@ -83,28 +62,21 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("why", "string", true),
         ],
     ),
-    (
-        "AgentAssessmentPayload",
-        &[
-            ("assessment", "AgentAssessment", true),
-            ("session_name", "string", true),
-        ],
-    ),
     ("Confidence", &[]),
     ("EffectiveBounds", &[("allowed", "map:Range", true)]),
     ("EventId", &[]),
     ("EventKind", &[]),
     (
-        "EventPayload",
-        &[("kind", "string", true), ("payload", "union", true)],
+        "EventBody",
+        &[("kind", "EventKind", true), ("payload", "any", true)],
     ),
     (
         "EventRecord",
         &[
             ("id", "EventId", true),
             ("image", "ImageRef", false),
-            ("kind", "string", true),
-            ("payload", "union", true),
+            ("kind", "EventKind", true),
+            ("payload", "any", true),
             ("print_id", "PrintId", false),
             ("raw", "RawBytes", false),
             ("received_at", "Timestamp", true),
@@ -156,14 +128,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("restored_at", "Timestamp", false),
         ],
     ),
-    (
-        "InterventionExpiredPayload",
-        &[
-            ("adjustable", "Adjustable", true),
-            ("intervention_id", "InterventionId", true),
-            ("outcome", "InterventionOutcome", true),
-        ],
-    ),
     ("InterventionId", &[]),
     (
         "InterventionOutcome",
@@ -198,10 +162,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
-        "MalformedExternalEventPayload",
-        &[("detail", "string", true)],
-    ),
-    (
         "ManifestNarrowing",
         &[
             ("adjustable", "Adjustable", true),
@@ -217,17 +177,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("img_url", "string", true),
             ("print", "ObicoPrintInfo", true),
             ("printer", "ObicoPrinterInfo", true),
-        ],
-    ),
-    (
-        "ObicoFailureAlertPayload",
-        &[
-            ("ended_at", "Timestamp", false),
-            ("file_name", "string", false),
-            ("is_warning", "boolean", true),
-            ("obico_print_id", "integer", false),
-            ("print_paused", "boolean", true),
-            ("started_at", "Timestamp", false),
         ],
     ),
     (
@@ -247,7 +196,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("type", "ObicoEventType", true),
         ],
     ),
-    ("ObicoNotificationType", &[]),
     (
         "ObicoPrintInfo",
         &[
@@ -270,34 +218,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("printer", "ObicoPrinterInfo", true),
         ],
     ),
-    (
-        "ObicoPrinterNotificationPayload",
-        &[
-            ("ended_at", "Timestamp", false),
-            ("file_name", "string", false),
-            ("notification_type", "ObicoNotificationType", true),
-            ("obico_print_id", "integer", false),
-            ("started_at", "Timestamp", false),
-        ],
-    ),
     ("ObicoTimestamp", &[]),
-    (
-        "OperatorAcknowledgementPayload",
-        &[
-            ("acknowledged_event_id", "EventId", true),
-            ("disposition", "AcknowledgementDisposition", true),
-        ],
-    ),
     ("PolicyDecision", &[("rejected", "RejectionReason", true)]),
-    (
-        "PortFailurePayload",
-        &[
-            ("detail", "string", true),
-            ("event_id", "EventId", true),
-            ("site", "PortFailureSite", true),
-        ],
-    ),
-    ("PortFailureSite", &[]),
     (
         "PrintAction",
         &[
@@ -382,20 +304,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("SessionPhase", &[]),
     (
-        "StartupOutcome",
-        &[
-            ("intervention_expired", "object", true),
-            ("session_resumed", "object", true),
-        ],
-    ),
-    (
-        "StartupReconciliationPayload",
-        &[
-            ("outcome", "StartupOutcome", true),
-            ("print_id", "PrintId", true),
-        ],
-    ),
-    (
         "SupervisionSession",
         &[
             ("close_reason", "string", false),
@@ -404,20 +312,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("harness_identity", "string", true),
             ("last_turn_at", "Timestamp", true),
             ("print_id", "PrintId", true),
-            ("session_name", "string", true),
-        ],
-    ),
-    (
-        "SupervisionSessionClosedPayload",
-        &[
-            ("close_reason", "string", true),
-            ("session_name", "string", true),
-        ],
-    ),
-    (
-        "SupervisionSessionOpenedPayload",
-        &[
-            ("harness_identity", "string", true),
             ("session_name", "string", true),
         ],
     ),

@@ -10,7 +10,7 @@ use std::str::FromStr as _;
 use chrono::{DateTime, TimeZone as _, Utc};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
-    AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventKind, EventPayload,
+    AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventKind, EventRecord,
     FEEDRATE_FACTOR_RANGE, FileName, FileNameRefusal, ObicoTimestamp, PrintAction, PrintId, Range,
     RawBytes, Reported, Timestamp,
 };
@@ -221,14 +221,11 @@ fn a_file_name_is_the_characters_it_was_given() {
     }
 }
 
-/// A payload's kind is the one kind it belongs to.
+/// The envelope's sample is under a kind of its own, and a disposition samples.
 #[test]
-fn a_payload_belongs_to_one_kind() {
-    assert_eq!(
-        EventPayload::sample_full().kind(),
-        EventKind::ObicoFailureAlert
-    );
-    assert_eq!(EventKind::ALL.len(), 13);
+fn the_envelope_sample_is_under_a_kind_of_its_own() {
+    assert_eq!(EventRecord::sample_full().kind(), &EventKind::sample_full());
+    assert_eq!(EventKind::sample_full().as_str(), "sample_event");
     assert_eq!(
         AcknowledgementDisposition::sample_full(),
         AcknowledgementDisposition::Watch

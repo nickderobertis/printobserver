@@ -26,14 +26,7 @@ use crate::action::{
 use crate::adjustable::Adjustable;
 use crate::assessment::{AgentAssessment, Confidence};
 use crate::context::PrintContext;
-use crate::event::{
-    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
-    MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
-    ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, StartupOutcome, StartupReconciliationPayload, SupervisionSessionClosedPayload,
-    SupervisionSessionOpenedPayload,
-};
+use crate::event::{EventBody, EventKind, EventPayload, EventRecord, EventSource};
 use crate::file_name::FileName;
 use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
 use crate::image::{ImageRecord, ImageRef};
@@ -201,6 +194,31 @@ pub fn schema_of<T: JsonSchema>() -> Value {
         .expect("a generated schema is JSON by construction")
 }
 
+/// The member an event payload's schema carries naming the kind it is under.
+pub const EVENT_KIND_MARKER: &str = "x-event-kind";
+
+/// The JSON Schema one event payload emits, marked with the kind it is under.
+///
+/// The schema [`schema_of`] answers for the payload type, plus one top-level
+/// member, `x-event-kind`, whose value is the type's own
+/// [`KIND`](EventPayload::KIND). Nothing writes that member by hand: the crate
+/// that owns the kind writes its schema file through this, and the clients'
+/// kind-to-payload tables are generated from the marker.
+///
+/// # Panics
+///
+/// Panics if the generated schema is not an object, which it is by
+/// construction for a payload type.
+#[must_use]
+pub fn event_schema_of<P: EventPayload>() -> Value {
+    let mut schema = schema_of::<P>();
+    schema
+        .as_object_mut()
+        .expect("a payload's schema is an object")
+        .insert(EVENT_KIND_MARKER.to_owned(), Value::from(P::KIND));
+    schema
+}
+
 /// Serialize a value, reporting a refusal as the message it carried.
 fn emit<T: Serialize>(value: &T) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|error| error.to_string())
@@ -251,23 +269,19 @@ macro_rules! declare {
 pub fn declared() -> Vec<TypeContract> {
     declare![
         AcknowledgementDisposition,
-        ActionExecutedPayload,
         ActionId,
         ActionKind,
         ActionRecord,
-        ActionRejectedPayload,
         ActionRequest,
-        ActionRequestedPayload,
         Actor,
         ActorClass,
         Adjustable,
         AgentAssessment,
-        AgentAssessmentPayload,
         Confidence,
         EffectiveBounds,
         EventId,
+        EventBody,
         EventKind,
-        EventPayload,
         EventRecord,
         EventSource,
         ExecutionOutcome,
@@ -277,29 +291,21 @@ pub fn declared() -> Vec<TypeContract> {
         ImageRecord,
         ImageRef,
         Intervention,
-        InterventionExpiredPayload,
         InterventionId,
         InterventionOutcome,
         JobManifest,
         JobSnapshot,
-        MalformedExternalEventPayload,
         ManifestNarrowing,
         ObicoEventType,
         ObicoFailureAlert,
-        ObicoFailureAlertPayload,
         ObicoFailureEvent,
         ObicoFailureEventType,
         ObicoNotificationEvent,
-        ObicoNotificationType,
         ObicoPrintInfo,
         ObicoPrinterInfo,
         ObicoPrinterNotification,
-        ObicoPrinterNotificationPayload,
         ObicoTimestamp,
-        OperatorAcknowledgementPayload,
         PolicyDecision,
-        PortFailurePayload,
-        PortFailureSite,
         PrintAction,
         PrintContext,
         PrintId,
@@ -312,11 +318,7 @@ pub fn declared() -> Vec<TypeContract> {
         Reported<f64> => "Reported",
         SafetyEnvelope,
         SessionPhase,
-        StartupOutcome,
-        StartupReconciliationPayload,
         SupervisionSession,
-        SupervisionSessionClosedPayload,
-        SupervisionSessionOpenedPayload,
         Timestamp,
     ]
 }
@@ -895,231 +897,22 @@ impl Sample for AgentAssessment {
 
 impl Sample for EventSource {
     fn sample_full() -> Self {
-        Self::Obico
-    }
-}
-
-impl Sample for ObicoNotificationType {
-    fn sample_full() -> Self {
-        Self::Started
+        Self::new("sample_source")
     }
 }
 
 impl Sample for EventKind {
     fn sample_full() -> Self {
-        Self::ObicoFailureAlert
+        Self::new("sample_event")
     }
 }
 
-impl Sample for ObicoFailureAlertPayload {
+impl Sample for EventBody {
     fn sample_full() -> Self {
         Self {
-            is_warning: true,
-            print_paused: false,
-            obico_print_id: Some(4211),
-            file_name: Some("benchy.gcode".to_owned()),
-            started_at: Some(instant()),
-            ended_at: Some(later_instant()),
+            kind: EventKind::sample_full(),
+            payload: serde_json::json!({ "detail": "a payload in the form its kind declares" }),
         }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            obico_print_id: None,
-            file_name: None,
-            started_at: None,
-            ended_at: None,
-            ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for ObicoPrinterNotificationPayload {
-    fn sample_full() -> Self {
-        Self {
-            notification_type: ObicoNotificationType::Started,
-            obico_print_id: Some(4211),
-            file_name: Some("benchy.gcode".to_owned()),
-            started_at: Some(instant()),
-            ended_at: Some(later_instant()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            obico_print_id: None,
-            file_name: None,
-            started_at: None,
-            ended_at: None,
-            ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for PortFailureSite {
-    fn sample_full() -> Self {
-        Self::PrinterSnapshot
-    }
-}
-
-impl Sample for PortFailurePayload {
-    fn sample_full() -> Self {
-        Self {
-            event_id: event_id(),
-            site: PortFailureSite::sample_full(),
-            detail: "the printer is unreachable: connection refused".to_owned(),
-        }
-    }
-}
-
-impl Sample for StartupOutcome {
-    fn sample_full() -> Self {
-        Self::InterventionExpired {
-            intervention_id: intervention_id(),
-            adjustable: Adjustable::Fan,
-            outcome: InterventionOutcome::Restored,
-        }
-    }
-
-    fn sample_alternates() -> Vec<Self> {
-        vec![
-            Self::PrintAdopted,
-            Self::SessionResumed {
-                session_name: "watch-4211".to_owned(),
-            },
-        ]
-    }
-}
-
-impl Sample for StartupReconciliationPayload {
-    fn sample_full() -> Self {
-        Self {
-            print_id: print_id(),
-            outcome: StartupOutcome::sample_full(),
-        }
-    }
-}
-
-impl Sample for MalformedExternalEventPayload {
-    fn sample_full() -> Self {
-        Self {
-            detail: "the body is not JSON: expected value at line 1 column 1".to_owned(),
-        }
-    }
-}
-
-impl Sample for ActionRequestedPayload {
-    fn sample_full() -> Self {
-        Self {
-            action_id: action_id(),
-            action: PrintAction::sample_full(),
-            actor: Actor::sample_full(),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            action: PrintAction::sample_minimal(),
-            ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for ActionExecutedPayload {
-    fn sample_full() -> Self {
-        Self {
-            action_id: action_id(),
-            intervention_id: Some(intervention_id()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            action_id: action_id(),
-            intervention_id: None,
-        }
-    }
-}
-
-impl Sample for ActionRejectedPayload {
-    fn sample_full() -> Self {
-        Self {
-            action_id: action_id(),
-            decision: PolicyDecision::sample_full(),
-        }
-    }
-}
-
-impl Sample for InterventionExpiredPayload {
-    fn sample_full() -> Self {
-        Self {
-            intervention_id: intervention_id(),
-            adjustable: Adjustable::Feedrate,
-            outcome: InterventionOutcome::Restored,
-        }
-    }
-}
-
-impl Sample for SupervisionSessionOpenedPayload {
-    fn sample_full() -> Self {
-        Self {
-            session_name: "print-0191f0a0".to_owned(),
-            harness_identity: "printobserver-supervisor".to_owned(),
-        }
-    }
-}
-
-impl Sample for SupervisionSessionClosedPayload {
-    fn sample_full() -> Self {
-        Self {
-            session_name: "print-0191f0a0".to_owned(),
-            close_reason: "the print ended".to_owned(),
-        }
-    }
-}
-
-impl Sample for AgentAssessmentPayload {
-    fn sample_full() -> Self {
-        Self {
-            session_name: "print-0191f0a0".to_owned(),
-            assessment: AgentAssessment::sample_full(),
-        }
-    }
-}
-
-impl Sample for OperatorAcknowledgementPayload {
-    fn sample_full() -> Self {
-        Self {
-            acknowledged_event_id: event_id(),
-            disposition: AcknowledgementDisposition::Watch,
-        }
-    }
-}
-
-impl Sample for EventPayload {
-    fn sample_full() -> Self {
-        Self::ObicoFailureAlert(ObicoFailureAlertPayload::sample_full())
-    }
-
-    fn sample_minimal() -> Self {
-        Self::ObicoFailureAlert(ObicoFailureAlertPayload::sample_minimal())
-    }
-
-    fn sample_alternates() -> Vec<Self> {
-        vec![
-            Self::ObicoPrinterNotification(ObicoPrinterNotificationPayload::sample_full()),
-            Self::MalformedExternalEvent(MalformedExternalEventPayload::sample_full()),
-            Self::ActionRequested(ActionRequestedPayload::sample_full()),
-            Self::ActionExecuted(ActionExecutedPayload::sample_full()),
-            Self::ActionRejected(ActionRejectedPayload::sample_full()),
-            Self::InterventionExpired(InterventionExpiredPayload::sample_full()),
-            Self::SupervisionSessionOpened(SupervisionSessionOpenedPayload::sample_full()),
-            Self::SupervisionSessionClosed(SupervisionSessionClosedPayload::sample_full()),
-            Self::AgentAssessment(AgentAssessmentPayload::sample_full()),
-            Self::OperatorAcknowledgement(OperatorAcknowledgementPayload::sample_full()),
-            Self::PortFailure(PortFailurePayload::sample_full()),
-            Self::StartupReconciliation(StartupReconciliationPayload::sample_full()),
-        ]
     }
 }
 
@@ -1128,10 +921,10 @@ impl Sample for EventRecord {
         Self {
             id: event_id(),
             print_id: Some(print_id()),
-            source: EventSource::Obico,
+            source: EventSource::sample_full(),
             received_at: instant(),
             image: Some(ImageRef::sample_full()),
-            payload: EventPayload::sample_full(),
+            body: EventBody::sample_full(),
             raw: Some(RawBytes::sample_full()),
         }
     }
@@ -1141,19 +934,8 @@ impl Sample for EventRecord {
             print_id: None,
             image: None,
             raw: None,
-            payload: EventPayload::sample_minimal(),
             ..Self::sample_full()
         }
-    }
-
-    fn sample_alternates() -> Vec<Self> {
-        EventPayload::sample_alternates()
-            .into_iter()
-            .map(|payload| Self {
-                payload,
-                ..Self::sample_full()
-            })
-            .collect()
     }
 }
 
@@ -1311,6 +1093,16 @@ fn sole_arm(arms: &[Value]) -> Option<&Value> {
 
 /// What one property schema declares the field to be.
 fn descriptor(schema: &Value) -> String {
+    // `schemars` emits the boolean schema `true` for a JSON value of any form,
+    // and, where the value carries a description, the empty object schema.
+    if schema == &Value::Bool(true) {
+        return "any".to_owned();
+    }
+    if let Some(object) = schema.as_object()
+        && object.keys().all(|key| key == "description")
+    {
+        return "any".to_owned();
+    }
     if let Some(Value::String(reference)) = schema.get("$ref") {
         return referenced(reference);
     }

@@ -1,9 +1,17 @@
 //! `printobserver-types`.
 //!
-//! Owns: the shared domain vocabulary every other crate speaks — printer and
-//! job identity, observed printer state, vision observations, supervisory
-//! decisions, and their serialized forms. It holds data and total functions
-//! over that data, never I/O.
+//! Owns: the vocabulary every domain and every client must agree on — the
+//! identity and representation rules, the event log's envelope, the schema
+//! toolkit, and (until the later steps of the domain cut move them to their
+//! owners) the printer, policy and supervision records. It holds data and
+//! total functions over that data, never I/O.
+//!
+//! A type belongs here only if adding or changing one domain's concept does
+//! not require editing it. The event log is the case in point: [`event`]
+//! declares the envelope — an open [`EventKind`] name and an opaque payload —
+//! and **no kind**. Each kind is declared by the domain that owns the event, as
+//! a payload type implementing [`EventPayload`] under a `KIND` of its own, so
+//! that a domain adding an event edits its own crate and nothing central.
 //!
 //! May depend on: no crate of this workspace. It is the root of the graph, so a
 //! type it does not hold is a type the rest of the workspace cannot agree on.
@@ -76,16 +84,10 @@ pub use adjustable::{Adjustable, AdjustableError};
 pub use assessment::{AgentAssessment, Confidence};
 pub use context::PrintContext;
 pub use contract::{
-    RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared, wire_fields,
+    EVENT_KIND_MARKER, RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared,
+    event_schema_of, schema_of, wire_fields,
 };
-pub use event::{
-    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
-    MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
-    ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, StartupOutcome, StartupReconciliationPayload, SupervisionSessionClosedPayload,
-    SupervisionSessionOpenedPayload,
-};
+pub use event::{EventBody, EventKind, EventPayload, EventRecord, EventSource, KIND_PATTERN};
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
 pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, PrintId};
 pub use image::{ImageRecord, ImageRef};
