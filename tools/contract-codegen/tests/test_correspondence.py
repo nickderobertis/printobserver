@@ -16,8 +16,12 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT
 from contract_codegen.generate import OUTPUTS, Output, drifted, write
-from contract_codegen.schemas import TYPES_DIR, ContractError, load
+from contract_codegen.schemas import SCHEMAS_DIR, ContractError, load
 from repo_checks.expect import accepted, contains, equal, truth
+
+#: Where the contract crate's own schemas are checked in, one of the directories
+#: the generator reads.
+TYPES_DIR = f"{SCHEMAS_DIR}/printobserver-types"
 
 #: The type whose schema the alteration journeys move, and a field of it that
 #: every one of the three clients carries.

@@ -12,7 +12,11 @@ from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
     ACTOR_PARAMETER,
+    ENVELOPE,
+    KIND_FIELD,
+    PAYLOAD_FIELD,
     Alias,
+    AnyValue,
     Contract,
     Declaration,
     Enumeration,
@@ -36,7 +40,7 @@ from contract_codegen.naming import (
     typescript_member,
     typescript_property,
 )
-from contract_codegen.walk import LiveStep
+from contract_codegen.walk import EventStep, LiveStep
 
 #: What each scalar of the contracts is in TypeScript.
 SCALARS = {"string": "string", "number": "number", "integer": "number", "boolean": "boolean"}
@@ -55,6 +59,8 @@ def type_name(shape: TypeExpr) -> str:
             return f"Record<string, {type_name(value)}>"
         case Nullable(inner):
             return f"{type_name(inner)} | null"
+        case AnyValue():
+            return "unknown"
     msg = f"{shape!r} is not a shape TypeScript is generated for"
     raise TypeError(msg)
 
@@ -218,6 +224,51 @@ def _method(operation: Operation) -> list[str]:
     return lines
 
 
+def _kind_table(contract: Contract) -> list[str]:
+    """The table from kind name to payload type, and the accessor that reads it.
+
+    One interface keyed by kind literal, one constant listing the kinds, and
+    one function answering an event's payload as the keyed type — for a
+    matching kind — and `undefined` for any other, a kind a newer server writes
+    included.
+    """
+    if not contract.event_kinds:
+        return []
+    lines = doc_lines(
+        "Every kind the server declares a payload type for, keyed by the kind's "
+        "name, and the type each payload has. A kind this client does not know "
+        f"flows through `{ENVELOPE}` untouched, and is in no table."
+    )
+    lines += [
+        "export interface EventPayloads {",
+        *(f"  {typescript_property(kind.name)}: {kind.payload};" for kind in contract.event_kinds),
+        "}",
+        "",
+        *doc_lines("Every kind the server declares a payload type for, in name order."),
+        "export const EVENT_KINDS = [",
+        *(f'  "{kind.name}",' for kind in contract.event_kinds),
+        "] as const satisfies ReadonlyArray<keyof EventPayloads>;",
+        "",
+        *doc_lines(
+            "The payload of one event as the type its kind declares, or `undefined` "
+            "for an event of any other kind — one this client knows or one it does "
+            "not. No validation beyond the kind's name: the payload is the document "
+            "the server sent, handed on as the type the table says it is."
+        ),
+        "export function payloadOf<K extends keyof EventPayloads>(",
+        f"  event: {ENVELOPE},",
+        "  kind: K,",
+        "): EventPayloads[K] | undefined {",
+        f"  if (event{typescript_member(KIND_FIELD)} !== kind) {{",
+        "    return undefined;",
+        "  }",
+        f"  return event{typescript_member(PAYLOAD_FIELD)} as EventPayloads[K];",
+        "}",
+        "",
+    ]
+    return lines
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Node client."""
     lines = [
@@ -248,6 +299,8 @@ def emit(contract: Contract) -> str:
     for declaration in contract.declarations:
         lines.extend(_declaration(declaration))
         lines.append("")
+
+    lines.extend(_kind_table(contract))
 
     lines.extend(
         doc_lines(
@@ -289,8 +342,9 @@ def _typescript_argument(parameter: Parameter, value: object) -> str:
 def emit_walk(contract: Contract) -> str:
     """The whole generated walk of the Node client."""
     from contract_codegen.walk import REASON_PARAMETER as REASON_NAME
-    from contract_codegen.walk import actor, document, plan
+    from contract_codegen.walk import actor, document, event_step, plan
 
+    events = event_step(contract)
     named = sorted(
         {
             parameter.carried.name
@@ -324,6 +378,11 @@ def emit_walk(contract: Contract) -> str:
         "",
         'import { expect, test } from "bun:test";',
         'import { Client } from "../src/client.ts";',
+        *(
+            ['import { EVENT_KINDS, payloadOf } from "../src/contract.ts";']
+            if events is not None
+            else []
+        ),
         f'import type {{ {", ".join(named)} }} from "../src/contract.ts";',
         'import { NoReason, Rejected } from "../src/surface.ts";',
         'import { Host } from "./host.ts";',
@@ -408,7 +467,46 @@ def emit_walk(contract: Contract) -> str:
                     "  }",
                 ]
             lines += ["});", ""]
+    if events is not None:
+        lines.extend(_typescript_event_walk(events))
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _typescript_event_walk(events: EventStep) -> list[str]:
+    """The walk over the kind table: a known kind reads, an unknown one flows through."""
+    from contract_codegen.walk import document
+
+    call = ", ".join(
+        _typescript_argument(parameter, value) for parameter, value in events.step.arguments
+    )
+    spelled = method_name(events.step.name, "typescript")
+    return [
+        f'test("{events.step.name} carries a known and an unknown kind through the kind table", '
+        "async () => {",
+        f"  const answer = JSON.parse('{document(events.answer)}');",
+        "  await using host = Host.answering(200, answer);",
+        "  const client = new Client({ server: host.address, actor: ACTOR });",
+        "",
+        f"  const answered = await client.{spelled}({call});",
+        "",
+        "  expect(answered).toEqual(answer);",
+        f"  const [known, unknown] = answered{typescript_member(events.field)};",
+        "  if (known === undefined || unknown === undefined) {",
+        '    throw new Error("the answer carried something other than the two events served");',
+        "  }",
+        f'  expect(known{typescript_member(KIND_FIELD)}).toBe("{events.known_kind}");',
+        f'  const read = payloadOf(known, "{events.known_kind}");',
+        f"  expect(read).toEqual(JSON.parse('{document(events.known['payload'])}'));",
+        f'  expect(unknown{typescript_member(KIND_FIELD)}).toBe("{events.unknown["kind"]}");',
+        f'  expect(payloadOf(unknown, "{events.known_kind}")).toBeUndefined();',
+        f"  expect(unknown{typescript_member(PAYLOAD_FIELD)}).toEqual(",
+        f"    JSON.parse('{document(events.unknown['payload'])}'),",
+        "  );",
+        f'  expect(EVENT_KINDS).toContain("{events.known_kind}");',
+        f'  expect(EVENT_KINDS).not.toContain("{events.unknown["kind"]}");',
+        "});",
+        "",
+    ]
 
 
 #: How each token the real-supervisor walk supplies a value with is written in

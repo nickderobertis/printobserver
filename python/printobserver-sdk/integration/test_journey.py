@@ -26,7 +26,7 @@ from typing import cast
 import pytest
 from live import Proxy, same
 from printobserver_sdk import Client, NoReasonError, RejectedError
-from printobserver_sdk.contract import JobManifest, PrinterState
+from printobserver_sdk.contract import JobManifest, PrinterState, payload_of
 from repo_checks.expect import contains, equal, truth
 from supervisor_world import Standing, Supervisor
 
@@ -238,27 +238,37 @@ def _unreasoned(world: Supervisor) -> None:
 
 
 def _accounting(client: Client, world: Supervisor) -> None:
-    """The history accounts for the accepted action, its decision and its outcome."""
+    """The history accounts for the accepted action, its decision and its outcome.
+
+    Each payload is read through the kind table: `payload_of` answers the
+    payload as its own type for an event under that kind and `None` for any
+    other, which is what lets a comprehension over the whole history pick out
+    one kind without matching on the name a second time.
+    """
     events = client.history(world.print_id, 200)["events"]
     asked = [
-        event
+        requested
         for event in events
-        if event["kind"] == "action_requested"
-        and event["payload"]["action"]["action"] == "set_feedrate_factor"
-        and event["payload"]["action"]["factor"] == INSIDE
+        if (requested := payload_of(event, "action_requested")) is not None
+        and requested["action"]["action"] == "set_feedrate_factor"
+        and requested["action"]["factor"] == INSIDE
     ]
     truth(asked, describing="the accepted adjustment to be in the history")
-    action_id = asked[0]["payload"]["action_id"]
+    action_id = asked[0]["action_id"]
 
     rejected = {
-        event["payload"]["action_id"] for event in events if event["kind"] == "action_rejected"
+        rejection["action_id"]
+        for event in events
+        if (rejection := payload_of(event, "action_rejected")) is not None
     }
     truth(
         action_id not in rejected,
         describing="the accepted adjustment not to be in the history as a rejected one",
     )
     executed = {
-        event["payload"]["action_id"] for event in events if event["kind"] == "action_executed"
+        execution["action_id"]
+        for event in events
+        if (execution := payload_of(event, "action_executed")) is not None
     }
     contains(executed, action_id, describing="the actions the history says reached the machine")
     truth(rejected, describing="the history to account for the refused adjustment")

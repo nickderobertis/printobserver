@@ -215,11 +215,10 @@ impl Sample for OperatorAcknowledgementPayload {
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
 /// recorded. The printer's action methods record theirs on the
-/// [`ActionRecord`](printobserver_types::ActionRecord) the request minted, and
-/// a restoring call records its own on the
-/// [`Intervention`](printobserver_types::Intervention) it was expiring; those
-/// are not sites here, because a second record of them would be a second
-/// version of one fact.
+/// [`ActionRecord`](printobserver_types::ActionRecord) the request minted, and a restoring
+/// call records its own on the [`Intervention`](printobserver_types::Intervention) it was
+/// expiring; those are not sites here, because a second record of them would be
+/// a second version of one fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     crate = "printobserver_types::serde",

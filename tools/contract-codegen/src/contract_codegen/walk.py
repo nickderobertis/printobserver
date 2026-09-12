@@ -13,14 +13,24 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from contract_codegen.examples import TEXT, answer_of, argument_of, rejection_of
+from contract_codegen.examples import (
+    TEXT,
+    answer_of,
+    argument_of,
+    known_event,
+    rejection_of,
+    unknown_event,
+)
 from contract_codegen.model import (
     ACTOR_PARAMETER,
+    ENVELOPE,
     REASON_PARAMETER,
     Contract,
+    ListOf,
     Operation,
     Parameter,
     Ref,
+    Struct,
 )
 
 #: The reason every mutating call of the walk carries.
@@ -102,6 +112,71 @@ def plan(contract: Contract) -> tuple[Step, ...]:
             )
         )
     return tuple(steps)
+
+
+@dataclass(frozen=True, slots=True)
+class EventStep:
+    """The one step that drives the kind table: a history read over two events.
+
+    The answer carries one event under a kind the client knows, with that
+    payload type's own example value, and one under a kind no client knows.
+    What the walk asserts is that both come back with their kind and payload
+    preserved, that the known one's payload reads as its type through the
+    table, and that the unknown one's accessor answers nothing while the
+    opaque payload is still there.
+    """
+
+    #: The read step the events are served through.
+    step: Step
+    #: The field of the answer that lists the events.
+    field: str
+    #: The kind the known event is under, and its payload type's name.
+    known_kind: str
+    known_type: str
+    #: The known event, and the unknown one.
+    known: dict[str, object]
+    unknown: dict[str, object]
+
+    @property
+    def answer(self) -> dict[str, object]:
+        """The document the host answers, carrying both events."""
+        answered = self.step.answer
+        if not isinstance(answered, dict):  # pragma: no cover - guarded by event_step
+            msg = f"`{self.step.name}` answers something events cannot be carried in"
+            raise ValueError(msg)
+        return {**answered, self.field: [self.known, self.unknown]}
+
+
+def event_step(contract: Contract) -> EventStep | None:
+    """The step that lists events, when the contract declares any kind at all.
+
+    Raises:
+        ValueError: If the contract declares event kinds and no operation
+            answers a list of the envelope — a kind table nothing could be
+            driven against.
+    """
+    if not contract.event_kinds:
+        return None
+    for step in plan(contract):
+        answered = contract.by_name.get(step.operation.answer)
+        if not isinstance(answered, Struct):
+            continue
+        for entry in answered.fields:
+            if entry.type == ListOf(Ref(ENVELOPE)):
+                kind, payload_type, known = known_event(contract)
+                return EventStep(
+                    step=step,
+                    field=entry.name,
+                    known_kind=kind,
+                    known_type=payload_type,
+                    known=known,
+                    unknown=unknown_event(contract),
+                )
+    msg = (
+        f"the contract declares event kinds and no operation answers a list of "
+        f"`{ENVELOPE}` for the kind table to be driven against"
+    )
+    raise ValueError(msg)
 
 
 def _located(operation: Operation, name: str) -> str:

@@ -15,7 +15,11 @@ answered, field for field, what the host sent.
 from __future__ import annotations
 
 from contract_codegen.model import (
+    ENVELOPE,
+    KIND_FIELD,
+    PAYLOAD_FIELD,
     Alias,
+    AnyValue,
     Contract,
     Enumeration,
     Field,
@@ -47,6 +51,16 @@ INTEGER = 7
 #: shape today; a value is still needed, because a builder that recursed
 #: forever would hang the generator rather than report anything.
 CYCLE: dict[str, object] = {}
+
+#: What a value of any form is given where nothing says which form: an object
+#: rather than a scalar, so that a client which flattened or coerced what it
+#: carried opaquely fails the walk's equality.
+ANYTHING: dict[str, object] = {"anything": TEXT}
+
+#: A kind no client knows, for the walk to drive the kind table's other answer
+#: with. No crate declares it, and the codegen refuses a payload marked with it
+#: only by the ordinary rule that a kind has one owner.
+UNKNOWN_KIND = "kind_from_a_newer_server"
 
 
 class ExampleError(ValueError):
@@ -85,6 +99,8 @@ def value_of(shape: TypeExpr, contract: Contract, seen: frozenset[str] = frozens
             return {"feedrate": value_of(item, contract, seen)}
         case Nullable(inner):
             return value_of(inner, contract, seen)
+        case AnyValue():
+            return dict(ANYTHING)
     msg = f"{shape!r} is not a shape a canonical value can be built for"
     raise ExampleError(msg)
 
@@ -121,6 +137,16 @@ def _declared(declaration: object, contract: Contract, seen: frozenset[str]) -> 
                 **_fields(fields, contract, seen),
                 tag_field: arm.tag,
                 **_fields(arm.fields, contract, seen),
+            }
+        case Struct(name, _, fields, _, _) if name == ENVELOPE and contract.event_kinds:
+            # The envelope's example is under the first declared kind and
+            # carries that payload type's own example, so a client's kind
+            # table has something to read out of it.
+            first = contract.event_kinds[0]
+            return {
+                **_fields(fields, contract, seen),
+                KIND_FIELD: first.name,
+                PAYLOAD_FIELD: value_of(Ref(first.payload), contract, seen),
             }
         case Struct(_, _, fields, _, _):
             return _fields(fields, contract, seen)
@@ -180,3 +206,38 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
 def argument_of(shape: TypeExpr, contract: Contract) -> object:
     """One canonical value a generated method is called with."""
     return value_of(shape, contract)
+
+
+def envelope_of(contract: Contract, kind: str, payload: object) -> dict[str, object]:
+    """One event under a kind, carrying a payload, with every other field canonical.
+
+    Raises:
+        ExampleError: If the contract declares no envelope to build one of.
+    """
+    example = value_of(Ref(ENVELOPE), contract)
+    if not isinstance(example, dict):
+        msg = f"`{ENVELOPE}` is not an object for an event to be built as"
+        raise ExampleError(msg)
+    return {**example, KIND_FIELD: kind, PAYLOAD_FIELD: payload}
+
+
+def known_event(contract: Contract) -> tuple[str, str, dict[str, object]]:
+    """One event under the first declared kind: the kind, its payload type, the event.
+
+    Raises:
+        ExampleError: If the contract declares no event kind at all.
+    """
+    if not contract.event_kinds:
+        msg = "the contract declares no event kind for a known event to be built under"
+        raise ExampleError(msg)
+    first = contract.event_kinds[0]
+    return (
+        first.name,
+        first.payload,
+        envelope_of(contract, first.name, value_of(Ref(first.payload), contract)),
+    )
+
+
+def unknown_event(contract: Contract) -> dict[str, object]:
+    """One event under a kind no client knows, carrying a payload of some form."""
+    return envelope_of(contract, UNKNOWN_KIND, dict(ANYTHING))

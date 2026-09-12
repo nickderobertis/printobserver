@@ -1,12 +1,16 @@
 """Reading the checked-in schemas into the model the emitters are written from.
 
-The schemas are the one source. `schemas/printobserver-types/` holds one file
-per type the contracts declare and `schemas/printobserver-server/` holds one
-per shape a route answers, plus the description of the operations themselves.
-Every `$ref` in either resolves to a *file* rather than to the `$defs` copy
-beside it, so altering a type's own file moves every client type built from it
-— which is what makes the drift gate over the generated clients a gate over the
-contracts rather than over a checksum.
+The schemas are the one source. The set is keyed by type name across every
+declaring crate: `schemas/<crate>/` holds one file per type that crate
+declares — the contract crate's shared vocabulary, each port's shapes, and each
+domain's event payloads, marked with the kind they are written under — and
+`schemas/printobserver-server/` holds the shapes a route answers beside the
+description of the operations themselves. A type moving crates moves its file
+between directories and changes no generated line. Every `$ref` resolves to a
+*file* rather than to the `$defs` copy beside it, so altering a type's own
+file moves every client type built from it — which is what makes the drift
+gate over the generated clients a gate over the contracts rather than over a
+checksum.
 """
 
 from __future__ import annotations
@@ -18,10 +22,15 @@ from pathlib import Path
 from typing import Any
 
 from contract_codegen.model import (
+    ENVELOPE,
+    KIND_FIELD,
+    PAYLOAD_FIELD,
     Alias,
+    AnyValue,
     Contract,
     Declaration,
     Enumeration,
+    EventKind,
     Field,
     ListOf,
     MapOf,
@@ -36,11 +45,14 @@ from contract_codegen.model import (
     Variant,
 )
 
-#: Where the contracts' own types are checked in.
-TYPES_DIR = "schemas/printobserver-types"
+#: Where every crate's schemas are checked in, one directory per crate.
+SCHEMAS_DIR = "schemas"
 
 #: Where the shapes this server answers, and its operation list, are checked in.
 SERVER_DIR = "schemas/printobserver-server"
+
+#: The member a payload's schema carries naming the event kind it is under.
+EVENT_KIND_MARKER = "x-event-kind"
 
 #: The file the operation list is checked in under.
 OPERATIONS_FILE = "operations.json"
@@ -98,7 +110,22 @@ def _scalar(named: str) -> Scalar:
     return Scalar(named)
 
 
-def type_of(schema: dict[str, Any]) -> TypeExpr:
+#: The members a schema may carry and still constrain a value's form not at all.
+UNCONSTRAINING = {"description", "title"}
+
+
+def _any_value(schema: object) -> bool:
+    """Whether one schema admits a JSON value of any form.
+
+    `schemars` writes the boolean schema `true` for such a value, and the
+    object carrying nothing but a description where the value is documented.
+    """
+    if schema is True:
+        return True
+    return isinstance(schema, dict) and set(schema) <= UNCONSTRAINING
+
+
+def type_of(schema: dict[str, Any] | bool) -> TypeExpr:
     """The shape one property or item declares.
 
     Raises:
@@ -106,6 +133,11 @@ def type_of(schema: dict[str, Any]) -> TypeExpr:
             generated for, which is a contract that has grown a form this
             generator has never been taught.
     """
+    if _any_value(schema):
+        return AnyValue()
+    if not isinstance(schema, dict):
+        msg = f"the schema {schema!r} is not one a property may take"
+        raise ContractError(msg)
     reference = schema.get("$ref")
     if isinstance(reference, str):
         if not reference.startswith(REF_PREFIX):
@@ -180,10 +212,10 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             name=name,
             type=type_of(property_schema),
             required=name in required_names,
-            doc=_doc(property_schema, known),
+            doc=_doc(property_schema, known) if isinstance(property_schema, dict) else "",
         )
         for name, property_schema in sorted(properties.items())
-        if name != skip and isinstance(property_schema, dict)
+        if name != skip and (isinstance(property_schema, dict) or property_schema is True)
     )
 
 
@@ -356,19 +388,93 @@ def _operation(described: dict[str, Any], answers: dict[str, str]) -> Operation:
     )
 
 
+def schema_files(root: Path) -> list[Path]:
+    """Every checked-in schema, under every crate's directory, in a stable order.
+
+    The operation description is not one: it describes what the server serves
+    rather than declaring a shape.
+    """
+    return [
+        path
+        for directory in sorted(entry for entry in (root / SCHEMAS_DIR).iterdir() if entry.is_dir())
+        for path in sorted(directory.glob("*.json"))
+        if path.name != OPERATIONS_FILE
+    ]
+
+
+def read_schemas(root: Path) -> dict[str, dict[str, Any]]:
+    """Every checked-in schema by type name, across every declaring crate.
+
+    Raises:
+        ContractError: If one type name is declared under two directories —
+            two crates each claiming the type — or a file is not a schema.
+    """
+    schemas: dict[str, dict[str, Any]] = {}
+    declared_by: dict[str, Path] = {}
+    for path in schema_files(root):
+        if path.stem in schemas:
+            msg = (
+                f"`{path.stem}` is declared under both {declared_by[path.stem].parent.name} "
+                f"and {path.parent.name}; a type has one owner"
+            )
+            raise ContractError(msg)
+        schemas[path.stem] = _read(path)
+        declared_by[path.stem] = path
+    return schemas
+
+
+def event_kinds_of(schemas: dict[str, dict[str, Any]]) -> tuple[EventKind, ...]:
+    """Every event kind the schema set declares, read off each payload's marker.
+
+    Raises:
+        ContractError: If two schemas carry the same kind — two domains each
+            claiming one name — or a marker is not a string.
+    """
+    owners: dict[str, str] = {}
+    for name in sorted(schemas):
+        marked = schemas[name].get(EVENT_KIND_MARKER)
+        if marked is None:
+            continue
+        if not isinstance(marked, str) or not marked:
+            msg = f"`{name}` carries a `{EVENT_KIND_MARKER}` that is not a kind name"
+            raise ContractError(msg)
+        if marked in owners:
+            msg = (
+                f"the kind `{marked}` is declared by both `{owners[marked]}` and `{name}`; "
+                f"a kind has one owner"
+            )
+            raise ContractError(msg)
+        owners[marked] = name
+    return tuple(EventKind(name=kind, payload=owners[kind]) for kind in sorted(owners))
+
+
+def _envelope_findings(by_name: dict[str, Declaration]) -> str:
+    """Why the envelope is not one a kind table can be generated against, if it is not."""
+    envelope = by_name.get(ENVELOPE)
+    if not isinstance(envelope, Struct):
+        return f"`{ENVELOPE}` is not an object shape for the kind table to read"
+    fields = {entry.name: entry.type for entry in envelope.fields}
+    if not isinstance(fields.get(KIND_FIELD), Ref):
+        return f"`{ENVELOPE}.{KIND_FIELD}` is not a named type for the kind table to read"
+    if not isinstance(fields.get(PAYLOAD_FIELD), AnyValue):
+        return f"`{ENVELOPE}.{PAYLOAD_FIELD}` is not a value of any form for the kind table to read"
+    return ""
+
+
 def load(root: Path) -> Contract:
     """Read every checked-in schema a client is generated from.
+
+    The root set is the closure of the operations the server describes plus
+    every payload type marked with an event kind — a payload is emitted whether
+    or not an operation reaches it by reference, because the envelope carries
+    every kind opaquely and a client reads a payload out through the table.
 
     Raises:
         ContractError: If the description or a schema is one no client can be
             generated from.
     """
-    schemas: dict[str, dict[str, Any]] = {}
-    for directory in (TYPES_DIR, SERVER_DIR):
-        for path in sorted((root / directory).glob("*.json")):
-            if path.name == OPERATIONS_FILE:
-                continue
-            schemas[path.stem] = _read(path)
+    schemas = read_schemas(root)
+    event_kinds = event_kinds_of(schemas)
 
     description = _read(root / SERVER_DIR / OPERATIONS_FILE)
     operations = tuple(_operation(described, {}) for described in description["operations"])
@@ -383,6 +489,7 @@ def load(root: Path) -> Contract:
             if isinstance(parameter.type, Ref)
         }
         | {"ErrorAnswer"}
+        | {kind.payload for kind in event_kinds}
     )
     missing = [name for name in roots if name not in schemas]
     if missing:
@@ -391,13 +498,21 @@ def load(root: Path) -> Contract:
 
     known = _reachable(roots, schemas)
     declarations = tuple(declaration_of(name, schemas[name], known) for name in sorted(known))
+    by_name = {declaration.name: declaration for declaration in declarations}
+    for kind in event_kinds:
+        if not isinstance(by_name[kind.payload], Struct):
+            msg = f"`{kind.payload}` is marked as the `{kind.name}` payload and is not an object"
+            raise ContractError(msg)
+    if event_kinds and (finding := _envelope_findings(by_name)):
+        raise ContractError(finding)
     return Contract(
         version=workspace_version(root),
         version_prefix=str(description["version_prefix"]),
         media_type=str(description["media_type"]),
         declarations=declarations,
         operations=operations,
-        by_name={declaration.name: declaration for declaration in declarations},
+        by_name=by_name,
+        event_kinds=event_kinds,
     )
 
 

@@ -31,8 +31,9 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use printobserver_sdk::{
-    Actor, Client, ClientError, EventRecordKind, ExecutionOutcome, JobManifest, PolicyDecision,
-    PrintAction, PrinterState, Range, RejectionReason,
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, Actor, Client,
+    ClientError, EventRecord, ExecutionOutcome, JobManifest, PolicyDecision, PrintAction,
+    PrinterState, Range, RejectionReason,
 };
 
 /// The reason every mutating step of this walk carries.
@@ -280,6 +281,19 @@ fn unreasoned(world: &supervisor::Supervisor) {
     );
 }
 
+/// One event's payload as the type its kind declares, through the kind table,
+/// or nothing for an event of another kind.
+///
+/// # Panics
+///
+/// Panics when an event under the kind is not of the type, which is a server
+/// and a client generated from two different contracts.
+fn read_as<P: printobserver_sdk::EventPayloadKind>(event: &EventRecord) -> Option<P> {
+    event
+        .payload_as::<P>()
+        .map(|read| read.expect("a payload under its own kind is of its own type"))
+}
+
 /// Step eight: read history, and find the accepted action, its decision and
 /// its outcome.
 fn accounting(client: &Client, world: &supervisor::Supervisor) {
@@ -289,10 +303,7 @@ fn accounting(client: &Client, world: &supervisor::Supervisor) {
     let asked = history
         .events
         .iter()
-        .filter_map(|event| match &event.kind {
-            EventRecordKind::ActionRequested { payload } => Some(payload),
-            _ => None,
-        })
+        .filter_map(read_as::<ActionRequestedPayload>)
         .find(|payload| {
             matches!(
                 payload.action,
@@ -304,26 +315,28 @@ fn accounting(client: &Client, world: &supervisor::Supervisor) {
 
     // Its decision: it is in the history as requested and not as rejected.
     assert!(
-        !history.events.iter().any(|event| matches!(
-            &event.kind,
-            EventRecordKind::ActionRejected { payload } if payload.action_id == asked.action_id
-        )),
+        !history
+            .events
+            .iter()
+            .filter_map(read_as::<ActionRejectedPayload>)
+            .any(|payload| payload.action_id == asked.action_id),
         "the accepted adjustment is in the history as a rejected one"
     );
     // And its outcome: it reached the machine.
     assert!(
-        history.events.iter().any(|event| matches!(
-            &event.kind,
-            EventRecordKind::ActionExecuted { payload } if payload.action_id == asked.action_id
-        )),
+        history
+            .events
+            .iter()
+            .filter_map(read_as::<ActionExecutedPayload>)
+            .any(|payload| payload.action_id == asked.action_id),
         "the history accounts for the accepted adjustment reaching no machine"
     );
     assert!(
-        history.events.iter().any(|event| matches!(
-            &event.kind,
-            EventRecordKind::ActionRejected { payload }
-                if matches!(payload.decision, PolicyDecision::Rejected(_))
-        )),
+        history
+            .events
+            .iter()
+            .filter_map(read_as::<ActionRejectedPayload>)
+            .any(|payload| matches!(payload.decision, PolicyDecision::Rejected(_))),
         "the history accounts for no refused action"
     );
     // And the alert this print was opened by: a history that had lost the

@@ -21,11 +21,14 @@ from typing import cast
 from host import Host
 from printobserver_sdk import Client, NoReasonError, RejectedError
 from printobserver_sdk.contract import (
+    EVENT_PAYLOAD_TYPES,
     AcknowledgementDisposition,
+    ActionExecutedPayload,
     Actor,
     EventId,
     FileName,
     JobManifest,
+    payload_of,
 )
 from repo_checks.expect import equal, truth
 
@@ -138,15 +141,14 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         'arget_c": {"out_of_range": true, "value": 1.5}}]}, "recent_e'
         'vents": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ima'
         'ge": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256"'
-        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_fa'
-        'ilure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc", "is_warning": true, "obico_print_id": 7, "print_p'
-        'aused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-1234567'
-        '89abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
-        ' "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at'
-        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"'
-        '}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_e'
+        'xecuted", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "recei'
+        'ved_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "'
+        '0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:
@@ -190,15 +192,13 @@ def test_history_sends_what_it_declares_and_answers_what_was_sent() -> None:
     answer = json.loads(
         '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
         'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
-        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico'
-        '_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc", "is_warning": true, "obico_print_id": 7, "prin'
-        't_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
-        'c", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received'
-        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obi'
-        'co"}]}'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}'
     )
 
     with Host(200, answer) as host:
@@ -1521,3 +1521,61 @@ def test_acknowledge_failure_makes_no_request_when_the_reason_is_empty() -> None
             truth(False, describing="a blank reason to be refused")
 
         equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_history_carries_a_known_and_an_unknown_kind_through_the_kind_table() -> None:
+    """`history` drives the kind table over a known and an unknown kind.
+
+    Both events come back with their kind and payload preserved; the known
+    one's payload reads as its type through the table, and the unknown
+    one's accessor answers nothing while its opaque payload is still
+    there.
+    """
+    answer = json.loads(
+        '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc"}, "kind": "kind_from_a_newer_server", "payloa'
+        'd": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "p'
+        'rint_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}]}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        answered = client.history("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7)
+
+    equal(answered, answer, describing="the two events, carried through untouched")
+    known, unknown = answered["events"]
+    equal(known["kind"], "action_executed")
+    read = payload_of(known, "action_executed")
+    equal(
+        read,
+        json.loads(
+            '{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inter'
+            'vention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        ),
+        describing="the known kind's payload, read through the table",
+    )
+    equal(unknown["kind"], "kind_from_a_newer_server")
+    equal(payload_of(unknown, "action_executed"), None)
+    equal(
+        unknown["payload"],
+        json.loads('{"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'),
+        describing="the opaque payload of a kind this client does not know",
+    )
+    equal(EVENT_PAYLOAD_TYPES["action_executed"], ActionExecutedPayload)
+    truth(
+        "kind_from_a_newer_server" not in EVENT_PAYLOAD_TYPES,
+        describing="a kind no client knows to be in no table",
+    )

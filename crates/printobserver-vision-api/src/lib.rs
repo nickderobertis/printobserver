@@ -97,12 +97,13 @@ impl NormalizedAlert {
     }
 }
 
+// The written-down form of `VisionError::Malformed`, which is why this port
+// declares it rather than any one adapter. Said here rather than in the
+// description, which is the contract's and travels into every client.
 /// An external body arrived that could not be read.
 ///
 /// This kind always carries its `raw` bytes, and it exists so that an alert
-/// this system cannot read is written down rather than dropped. It is the
-/// written-down form of [`VisionError::Malformed`], which is why this port
-/// declares it rather than any one adapter.
+/// this system cannot read is written down rather than dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]

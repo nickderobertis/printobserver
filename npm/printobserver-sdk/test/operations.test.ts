@@ -16,6 +16,7 @@
 
 import { expect, test } from "bun:test";
 import { Client } from "../src/client.ts";
+import { EVENT_KINDS, payloadOf } from "../src/contract.ts";
 import type {
   AcknowledgementDisposition,
   Actor,
@@ -49,7 +50,7 @@ test("status sends what it declares and answers what the server sent", async () 
 
 test("context sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "obico_print_id": 7, "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "is_warning": true, "obico_print_id": 7, "print_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+    '{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "obico_print_id": 7, "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -81,7 +82,7 @@ test("image sends what it declares and answers what the server sent", async () =
 
 test("history sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "is_warning": true, "obico_print_id": 7, "print_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"}]}',
+    '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -977,4 +978,34 @@ test("acknowledge_failure makes no request when the reason is empty", async () =
     expect(refused).toBeInstanceOf(NoReason);
     expect(host.requests()).toBe(0);
   }
+});
+
+test("history carries a known and an unknown kind through the kind table", async () => {
+  const answer = JSON.parse(
+    '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "kind_from_a_newer_server", "payload": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.history("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7);
+
+  expect(answered).toEqual(answer);
+  const [known, unknown] = answered.events;
+  if (known === undefined || unknown === undefined) {
+    throw new Error("the answer carried something other than the two events served");
+  }
+  expect(known.kind).toBe("action_executed");
+  const read = payloadOf(known, "action_executed");
+  expect(read).toEqual(
+    JSON.parse(
+      '{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+    ),
+  );
+  expect(unknown.kind).toBe("kind_from_a_newer_server");
+  expect(payloadOf(unknown, "action_executed")).toBeUndefined();
+  expect(unknown.payload).toEqual(
+    JSON.parse('{"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'),
+  );
+  expect(EVENT_KINDS).toContain("action_executed");
+  expect(EVENT_KINDS).not.toContain("kind_from_a_newer_server");
 });

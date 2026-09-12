@@ -81,7 +81,7 @@ impl JsonSchema for EventKind {
         json_schema!({
             "type": "string",
             "title": "EventKind",
-            "description": "The name one kind of event is written down under: lowercase snake_case, declared by the domain that owns the event.",
+            "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
             "pattern": KIND_PATTERN
         })
     }

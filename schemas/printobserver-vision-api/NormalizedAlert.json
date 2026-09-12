@@ -1,7 +1,7 @@
 {
   "$defs": {
     "EventKind": {
-      "description": "The name one kind of event is written down under: lowercase snake_case, declared by the domain that owns the event.",
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
       "pattern": "^[a-z][a-z0-9_]*$",
       "title": "EventKind",
       "type": "string"

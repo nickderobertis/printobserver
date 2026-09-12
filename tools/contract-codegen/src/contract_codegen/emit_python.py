@@ -13,7 +13,11 @@ from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
     ACTOR_PARAMETER,
+    ENVELOPE,
+    KIND_FIELD,
+    PAYLOAD_FIELD,
     Alias,
+    AnyValue,
     Contract,
     Declaration,
     Enumeration,
@@ -31,7 +35,7 @@ from contract_codegen.model import (
     Variant,
 )
 from contract_codegen.naming import method_name, pascal, python_identifier
-from contract_codegen.walk import LiveStep
+from contract_codegen.walk import EventStep, LiveStep
 
 #: What each scalar of the contracts is in Python.
 SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool"}
@@ -50,6 +54,8 @@ def type_name(shape: TypeExpr) -> str:
             return f"dict[str, {type_name(value)}]"
         case Nullable(inner):
             return f"{type_name(inner)} | None"
+        case AnyValue():
+            return "object"
     msg = f"{shape!r} is not a shape Python is generated for"
     raise TypeError(msg)
 
@@ -265,15 +271,71 @@ def _method(operation: Operation) -> list[str]:
     return lines
 
 
+def _kind_table(contract: Contract) -> list[str]:
+    """The table from kind name to payload type, and the accessor that reads it.
+
+    One mapping from every kind the server declares to the `TypedDict` its
+    payload is, and one function answering an event's payload as that type —
+    for a matching kind, with one overload per kind so a caller's annotation
+    narrows — and `None` for any other, a kind a newer server writes included.
+    """
+    if not contract.event_kinds:
+        return []
+    lines = [
+        *comment(
+            "Every kind the server declares a payload type for, and the type each "
+            f"payload has. A kind this client does not know flows through `{ENVELOPE}` "
+            "untouched, and is in no table.",
+            "",
+        ),
+        "EVENT_PAYLOAD_TYPES: dict[str, type] = {",
+        *(f'    "{kind.name}": {kind.payload},' for kind in contract.event_kinds),
+        "}",
+        "",
+        "",
+    ]
+    for kind in contract.event_kinds:
+        lines += [
+            "@overload",
+            f'def payload_of(event: {ENVELOPE}, kind: Literal["{kind.name}"]) '
+            f"-> {kind.payload} | None: ...",
+            "",
+            "",
+        ]
+    lines += [
+        "@overload",
+        f"def payload_of(event: {ENVELOPE}, kind: str) -> object | None: ...",
+        "",
+        "",
+        f"def payload_of(event: {ENVELOPE}, kind: str) -> object | None:",
+        *docstring(
+            "The payload of one event as the type its kind declares, or `None`.",
+            "`None` for an event of any other kind — one this client knows or one "
+            "it does not. No validation beyond the kind's name: the payload is the "
+            "document the server sent, handed on as the type the table says it is.",
+            "    ",
+        ),
+        f'    if event["{KIND_FIELD}"] != kind:',
+        "        return None",
+        f'    return event["{PAYLOAD_FIELD}"]',
+        "",
+        "",
+    ]
+    return lines
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
+    typing_names = ["Literal", "NotRequired", "TypedDict", "cast"]
+    if contract.event_kinds:
+        typing_names.append("overload")
     lines = [
         '"""' + banner("", "the Python client's request and response types").lstrip(),
         '"""',
         "",
         "from __future__ import annotations",
         "",
-        "from typing import Literal, NotRequired, TypedDict, cast",
+        f"from typing import {', '.join(sorted(typing_names))}",
         "",
         "from printobserver_sdk._surface import GeneratedSurface, reason_given",
         "",
@@ -293,6 +355,8 @@ def emit(contract: Contract) -> str:
         lines.extend(_declaration(declaration))
         lines.append("")
         lines.append("")
+
+    lines.extend(_kind_table(contract))
 
     lines.append("class GeneratedClient(GeneratedSurface):")
     lines.extend(
@@ -350,8 +414,9 @@ def _python_argument(parameter: Parameter, value: object) -> str:
 def emit_walk(contract: Contract) -> str:
     """The whole generated walk of the Python client."""
     from contract_codegen.walk import REASON_PARAMETER as REASON_NAME
-    from contract_codegen.walk import actor, document, plan
+    from contract_codegen.walk import actor, document, event_step, plan
 
+    events = event_step(contract)
     named = sorted(
         {
             parameter.carried.name
@@ -360,6 +425,11 @@ def emit_walk(contract: Contract) -> str:
             if isinstance(parameter.carried, Ref)
         }
         | {"Actor"}
+        | ({"EVENT_PAYLOAD_TYPES", "payload_of", events.known_type} if events else set())
+    )
+    # ruff orders a module's names constants first, then classes, then functions.
+    named = sorted(
+        named, key=lambda name: (0 if name.isupper() else 1 if name[0].isupper() else 2, name)
     )
     lines = [
         '"""'
@@ -469,7 +539,59 @@ def emit_walk(contract: Contract) -> str:
                     f'        equal(host.requests(), 0, describing="what {said} sent")',
                 ]
             lines += ["", ""]
+    if events is not None:
+        lines.extend(_python_event_walk(events))
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _python_event_walk(events: EventStep) -> list[str]:
+    """The walk over the kind table: a known kind reads, an unknown one flows through."""
+    from contract_codegen.walk import document
+
+    call = ", ".join(
+        _python_argument(parameter, value) for parameter, value in events.step.arguments
+    )
+    spelled = method_name(events.step.name, "python")
+    return [
+        f"def test_{events.step.name}_carries_a_known_and_an_unknown_kind_through_the_kind_table() "
+        "-> None:",
+        *docstring(
+            f"`{events.step.name}` drives the kind table over a known and an unknown kind.",
+            "Both events come back with their kind and payload preserved; the known "
+            "one's payload reads as its type through the table, and the unknown one's "
+            "accessor answers nothing while its opaque payload is still there.",
+            "    ",
+        ),
+        f"    answer = json.loads({literal(document(events.answer))})",
+        "",
+        "    with Host(200, answer) as host:",
+        "        client = Client(host.address, ACTOR)",
+        f"        answered = client.{spelled}({call})",
+        "",
+        '    equal(answered, answer, describing="the two events, carried through untouched")',
+        f'    known, unknown = answered["{events.field}"]',
+        f'    equal(known["{KIND_FIELD}"], "{events.known_kind}")',
+        f'    read = payload_of(known, "{events.known_kind}")',
+        "    equal(",
+        "        read,",
+        f"        json.loads({literal(document(events.known['payload']))}),",
+        '        describing="the known kind\'s payload, read through the table",',
+        "    )",
+        f'    equal(unknown["{KIND_FIELD}"], "{events.unknown["kind"]}")',
+        f'    equal(payload_of(unknown, "{events.known_kind}"), None)',
+        "    equal(",
+        f'        unknown["{PAYLOAD_FIELD}"],',
+        f"        json.loads({literal(document(events.unknown['payload']))}),",
+        '        describing="the opaque payload of a kind this client does not know",',
+        "    )",
+        f'    equal(EVENT_PAYLOAD_TYPES["{events.known_kind}"], {events.known_type})',
+        "    truth(",
+        f'        "{events.unknown["kind"]}" not in EVENT_PAYLOAD_TYPES,',
+        '        describing="a kind no client knows to be in no table",',
+        "    )",
+        "",
+        "",
+    ]
 
 
 #: How each token the real-supervisor walk supplies a value with is written in

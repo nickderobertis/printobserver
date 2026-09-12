@@ -6,8 +6,12 @@ from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
     ACTOR_PARAMETER,
+    ENVELOPE,
+    KIND_FIELD,
+    PAYLOAD_FIELD,
     REASON_PARAMETER,
     Alias,
+    AnyValue,
     Contract,
     Declaration,
     Enumeration,
@@ -25,7 +29,7 @@ from contract_codegen.model import (
     Variant,
 )
 from contract_codegen.naming import method_name, pascal, rust_identifier
-from contract_codegen.walk import LiveStep
+from contract_codegen.walk import EventStep, LiveStep
 
 #: What each scalar of the contracts is in Rust.
 SCALARS = {
@@ -53,6 +57,8 @@ def type_name(shape: TypeExpr) -> str:
             return f"BTreeMap<String, {type_name(value)}>"
         case Nullable(inner):
             return f"Option<{type_name(inner)}>"
+        case AnyValue():
+            return "serde_json::Value"
     msg = f"{shape!r} is not a shape Rust is generated for"
     raise TypeError(msg)
 
@@ -257,6 +263,62 @@ def _method(operation: Operation) -> list[str]:
     return lines
 
 
+def _kind_table(contract: Contract) -> list[str]:
+    """The table from kind name to payload type, and the accessor that reads it.
+
+    One trait implemented per payload type the server declares, and one method
+    on the envelope reading a payload out as that type — for a matching kind —
+    and answering nothing for any other, a kind a newer server writes included.
+    """
+    if not contract.event_kinds:
+        return []
+    lines = doc_lines(
+        "One payload type declared under a kind name, by the domain that owns it.\n\n"
+        "The table from kind name to payload type, as the server declares it: "
+        "every kind below has exactly one implementation here, and a kind this "
+        f"client does not know flows through `{ENVELOPE}` untouched."
+    )
+    lines += [
+        "pub trait EventPayloadKind: serde::de::DeserializeOwned {",
+        "    /// The name this payload's events are written down under.",
+        "    const KIND: &'static str;",
+        "}",
+        "",
+    ]
+    for kind in contract.event_kinds:
+        lines += [
+            f"impl EventPayloadKind for {kind.payload} {{",
+            f'    const KIND: &\'static str = "{kind.name}";',
+            "}",
+            "",
+        ]
+    lines += doc_lines("Every kind the server declares a payload type for, in name order.")
+    lines += [
+        f"pub const EVENT_KINDS: [&str; {len(contract.event_kinds)}] = [",
+        *(f'    "{kind.name}",' for kind in contract.event_kinds),
+        "];",
+        "",
+        f"impl {ENVELOPE} {{",
+        *doc_lines(
+            "The payload as `P`, when this event is under the kind `P` declares.\n\n"
+            "Answers `None` for an event of any other kind — one this client knows "
+            "or one it does not — and the parse failure for an event under the "
+            "right kind whose payload is not of the type.",
+            "    ",
+        ),
+        "    #[must_use]",
+        "    pub fn payload_as<P: EventPayloadKind>(&self) -> "
+        "Option<Result<P, serde_json::Error>> {",
+        f"        (self.{rust_identifier(KIND_FIELD)} == P::KIND)",
+        f"            .then(|| serde_json::from_value("
+        f"self.{rust_identifier(PAYLOAD_FIELD)}.clone()))",
+        "    }",
+        "}",
+        "",
+    ]
+    return lines
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Rust client."""
     lines = [
@@ -289,6 +351,8 @@ def emit(contract: Contract) -> str:
     for declaration in contract.declarations:
         lines.extend(_declaration(declaration))
         lines.append("")
+
+    lines.extend(_kind_table(contract))
 
     lines.append("impl Client {")
     for operation in contract.operations:
@@ -326,8 +390,9 @@ def _rust_argument(parameter: Parameter, value: object, contract: Contract) -> s
 def emit_walk(contract: Contract) -> str:
     """The whole generated walk of the Rust client."""
     from contract_codegen.walk import REASON_PARAMETER as REASON_NAME
-    from contract_codegen.walk import actor, document, plan
+    from contract_codegen.walk import actor, document, event_step, plan
 
+    events = event_step(contract)
     named = sorted(
         {
             parameter.carried.name
@@ -336,6 +401,7 @@ def emit_walk(contract: Contract) -> str:
             if isinstance(parameter.carried, Ref)
         }
         | {"Actor", "Client", "ClientError", "RejectionReason"}
+        | ({"EVENT_KINDS", events.known_type} if events else set())
     )
     lines = [
         line.rstrip()
@@ -472,7 +538,64 @@ def emit_walk(contract: Contract) -> str:
                 "}",
                 "",
             ]
+    if events is not None:
+        lines.extend(_rust_event_walk(events, contract))
     return "\n".join(lines) + "\n"
+
+
+def _rust_event_walk(events: EventStep, contract: Contract) -> list[str]:
+    """The walk over the kind table: a known kind reads, an unknown one flows through."""
+    from contract_codegen.walk import document
+
+    call = ", ".join(
+        _rust_argument(parameter, value, contract) for parameter, value in events.step.arguments
+    )
+    spelled = method_name(events.step.name, "rust")
+    return [
+        f"/// `{events.step.name}` carries every event through, and the kind table reads a",
+        "/// known kind's payload as its type and answers nothing for a kind no client knows.",
+        "#[test]",
+        f"fn {events.step.name}_carries_a_known_and_an_unknown_kind_through_the_kind_table() {{",
+        f'    let answer: Value = serde_json::from_str(r#"{document(events.answer)}"#)',
+        '        .expect("a generated answer is a document");',
+        "    let host = Host::answering(200, &answer.to_string());",
+        "    let client = Client::new(host.address(), actor());",
+        "",
+        f"    let answered = client.{spelled}({call})",
+        f'        .expect("`{events.step.name}` is answered");',
+        "",
+        "    assert_eq!(",
+        '        serde_json::to_value(&answered).expect("an answer is a document"),',
+        "        answer,",
+        '        "an event under a kind this client knows, or one it does not, \\',
+        '         was changed on the way through"',
+        "    );",
+        f"    let [known, unknown] = answered.{rust_identifier(events.field)}.as_slice() else {{",
+        '        panic!("the answer carried something other than the two events served");',
+        "    };",
+        f'    assert_eq!(known.{rust_identifier(KIND_FIELD)}, "{events.known_kind}");',
+        f"    let read: {events.known_type} = known",
+        f"        .payload_as::<{events.known_type}>()",
+        '        .expect("a known kind reads through the table")',
+        '        .expect("the payload is of its own type");',
+        "    assert_eq!(",
+        '        serde_json::to_value(&read).expect("a payload is a document"),',
+        f'        serde_json::from_str::<Value>(r#"{document(events.known["payload"])}"#)',
+        '            .expect("a generated payload is a document")',
+        "    );",
+        f'    assert_eq!(unknown.{rust_identifier(KIND_FIELD)}, "{events.unknown["kind"]}");',
+        f"    assert!(unknown.payload_as::<{events.known_type}>().is_none());",
+        "    assert_eq!(",
+        f"        unknown.{rust_identifier(PAYLOAD_FIELD)},",
+        f'        serde_json::from_str::<Value>(r#"{document(events.unknown["payload"])}"#)',
+        '            .expect("a generated payload is a document"),',
+        '        "the opaque payload of a kind this client does not know was not carried through"',
+        "    );",
+        f'    assert!(EVENT_KINDS.contains(&"{events.known_kind}"));',
+        f'    assert!(!EVENT_KINDS.contains(&"{events.unknown["kind"]}"));',
+        "}",
+        "",
+    ]
 
 
 #: How each token the real-supervisor walk supplies a value with is written in

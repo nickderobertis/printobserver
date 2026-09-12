@@ -47,7 +47,18 @@ class Nullable:
     inner: TypeExpr
 
 
-TypeExpr = Ref | Scalar | ListOf | MapOf | Nullable
+@dataclass(frozen=True, slots=True)
+class AnyValue:
+    """A JSON value of any form.
+
+    The event envelope's payload is one: its form is the kind's own, declared
+    by whichever domain owns the kind, so the envelope constrains it not at
+    all. A client carries it opaquely and reads a typed payload out of it
+    through the kind table.
+    """
+
+
+TypeExpr = Ref | Scalar | ListOf | MapOf | Nullable | AnyValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +238,28 @@ ACTOR_PARAMETER = "actor"
 REASON_PARAMETER = "reason"
 
 
+#: The envelope every event travels in, and the two fields the kind table
+#: reads: the kind's name, and the payload whose form is the kind's own.
+ENVELOPE = "EventRecord"
+KIND_FIELD = "kind"
+PAYLOAD_FIELD = "payload"
+
+
+@dataclass(frozen=True, slots=True)
+class EventKind:
+    """One kind of event, and the payload type declared under it.
+
+    Read off the `x-event-kind` marker the owning crate's schema carries, so a
+    kind is spelled once — on the payload type's own `KIND` — and the clients'
+    tables are generated from that spelling rather than restating it.
+    """
+
+    #: The name the kind is written down under.
+    name: str
+    #: The declared type its payload has.
+    payload: str
+
+
 @dataclass(frozen=True, slots=True)
 class Contract:
     """Everything the three clients are generated from."""
@@ -240,3 +273,5 @@ class Contract:
     operations: tuple[Operation, ...] = ()
     #: Every declaration by name, for an emitter following a reference.
     by_name: dict[str, Declaration] = field(default_factory=dict)
+    #: Every event kind any crate declares, in name order.
+    event_kinds: tuple[EventKind, ...] = ()

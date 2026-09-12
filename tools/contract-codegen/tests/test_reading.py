@@ -25,6 +25,7 @@ from contract_codegen.examples import (
     value_of,
 )
 from contract_codegen.model import (
+    AnyValue,
     Contract,
     Declaration,
     Enumeration,
@@ -35,8 +36,8 @@ from contract_codegen.model import (
 )
 from contract_codegen.schemas import (
     OPERATIONS_FILE,
+    SCHEMAS_DIR,
     SERVER_DIR,
-    TYPES_DIR,
     ContractError,
     declaration_of,
     load,
@@ -45,6 +46,10 @@ from contract_codegen.schemas import (
 )
 from repo_checks.expect import equal, truth
 
+#: Where the contract crate's own schemas are checked in, one of the directories
+#: the generator reads.
+TYPES_DIR = f"{SCHEMAS_DIR}/printobserver-types"
+
 #: Every shape a property could take that no client can be generated for, with
 #: the words the refusal has to carry so a reader knows which one it met.
 UNREADABLE_PROPERTIES = [
@@ -52,7 +57,7 @@ UNREADABLE_PROPERTIES = [
     ({"anyOf": [{"type": "string"}, {"type": "number"}]}, "anyOf"),
     ({"type": ["string", "integer"]}, "type list"),
     ({"type": "array"}, "no item shape"),
-    ({"description": "a shape with no shape"}, "not one a property may take"),
+    ({"description": "a shape with no shape", "minimum": 1}, "not one a property may take"),
     ({"type": "chimera"}, "not a scalar"),
     ({"type": "object"}, "neither a map nor a named shape"),
     (
@@ -74,6 +79,26 @@ def test_a_property_shape_no_client_can_be_generated_for_is_refused(
     """A form the generator has never been taught stops it, naming the form."""
     with pytest.raises(ContractError, match=naming):
         type_of(shape)
+
+
+#: Every way a schema admits a value of any form: the boolean schema, the empty
+#: object, and the object carrying nothing but the words the contracts wrote
+#: for it — which is what `schemars` emits for a documented `serde_json::Value`.
+UNCONSTRAINED = [True, {}, {"description": "a value whose form is its kind's own"}]
+
+
+@pytest.mark.parametrize("shape", UNCONSTRAINED, ids=range(len(UNCONSTRAINED)))
+def test_a_schema_constraining_nothing_is_a_value_of_any_form(
+    shape: dict[str, object] | bool,
+) -> None:
+    """A schema that says nothing about a value's form is read as any form, not refused."""
+    equal(type_of(shape), AnyValue(), describing="what an unconstraining schema is read as")
+
+
+def test_a_schema_that_is_neither_an_object_nor_unconstraining_is_refused() -> None:
+    """A schema that is not an object and constrains something is not one a property may take."""
+    with pytest.raises(ContractError, match="not one a property may take"):
+        type_of(False)
 
 
 def test_an_arm_that_is_not_a_shape_is_refused() -> None:

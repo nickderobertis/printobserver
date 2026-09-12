@@ -17,8 +17,8 @@ mod host;
 
 use host::Host;
 use printobserver_sdk::{
-    AcknowledgementDisposition, Actor, Client, ClientError, EventId, FileName, JobManifest,
-    RejectionReason,
+    AcknowledgementDisposition, ActionExecutedPayload, Actor, Client, ClientError, EVENT_KINDS,
+    EventId, FileName, JobManifest, RejectionReason,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -67,7 +67,7 @@ fn status_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `context` sends what it declares and answers what the server sent.
 #[test]
 fn context_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "obico_print_id": 7, "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "is_warning": true, "obico_print_id": 7, "print_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
+    let answer: Value = serde_json::from_str(r#"{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "obico_print_id": 7, "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
@@ -119,7 +119,7 @@ fn image_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `history` sends what it declares and answers what the server sent.
 #[test]
 fn history_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "is_warning": true, "obico_print_id": 7, "print_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"}]}"#)
+    let answer: Value = serde_json::from_str(r#"{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
@@ -1048,4 +1048,48 @@ fn acknowledge_failure_makes_no_request_when_the_reason_is_empty() {
 
     assert!(matches!(refused, ClientError::NoReason));
     assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `history` carries every event through, and the kind table reads a
+/// known kind's payload as its type and answers nothing for a kind no client knows.
+#[test]
+fn history_carries_a_known_and_an_unknown_kind_through_the_kind_table() {
+    let answer: Value = serde_json::from_str(r#"{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "kind_from_a_newer_server", "payload": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .history("0198f0a1-2b3c-7d4e-8f90-123456789abc", Some(7))
+        .expect("`history` is answered");
+
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "an event under a kind this client knows, or one it does not, \
+         was changed on the way through"
+    );
+    let [known, unknown] = answered.events.as_slice() else {
+        panic!("the answer carried something other than the two events served");
+    };
+    assert_eq!(known.kind, "action_executed");
+    let read: ActionExecutedPayload = known
+        .payload_as::<ActionExecutedPayload>()
+        .expect("a known kind reads through the table")
+        .expect("the payload is of its own type");
+    assert_eq!(
+        serde_json::to_value(&read).expect("a payload is a document"),
+        serde_json::from_str::<Value>(r#"{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
+            .expect("a generated payload is a document")
+    );
+    assert_eq!(unknown.kind, "kind_from_a_newer_server");
+    assert!(unknown.payload_as::<ActionExecutedPayload>().is_none());
+    assert_eq!(
+        unknown.payload,
+        serde_json::from_str::<Value>(r#"{"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
+            .expect("a generated payload is a document"),
+        "the opaque payload of a kind this client does not know was not carried through"
+    );
+    assert!(EVENT_KINDS.contains(&"action_executed"));
+    assert!(!EVENT_KINDS.contains(&"kind_from_a_newer_server"));
 }

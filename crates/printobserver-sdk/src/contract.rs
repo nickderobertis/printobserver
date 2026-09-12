@@ -290,7 +290,11 @@ pub struct ErrorAnswer {
 /// A lowercase hyphenated version 7 UUID identifying one event.
 pub type EventId = String;
 
-/// One event, as the store holds it.
+/// The name one kind of event is written down under: lowercase `snake_case`,
+/// declared by the domain that owns the event.
+pub type EventKind = String;
+
+/// One event, as the store holds it and the server serves it.
 ///
 /// `raw` holds the bytes exactly as received for an externally sourced event
 /// and is absent for an internally raised one — it is what makes the history
@@ -305,6 +309,10 @@ pub struct EventRecord {
     /// The image it arrived with, when it arrived with one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<ImageRef>,
+    /// Which event this is.
+    pub kind: EventKind,
+    /// What it carries, in the form its kind declares.
+    pub payload: serde_json::Value,
     /// The print it belongs to, when it belongs to one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub print_id: Option<PrintId>,
@@ -315,112 +323,11 @@ pub struct EventRecord {
     pub received_at: Timestamp,
     /// Where it came from.
     pub source: EventSource,
-    /// Which arm this is, and what that arm carries. It travels flattened
-    /// into this object, under `kind`.
-    #[serde(flatten)]
-    pub kind: EventRecordKind,
 }
 
-/// Which arm one `EventRecord` is, and what that arm carries.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum EventRecordKind {
-    /// Obico reported a print failure.
-    #[serde(rename = "obico_failure_alert")]
-    ObicoFailureAlert {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: ObicoFailureAlertPayload,
-    },
-    /// Obico sent a printer notification.
-    #[serde(rename = "obico_printer_notification")]
-    ObicoPrinterNotification {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: ObicoPrinterNotificationPayload,
-    },
-    /// An external body arrived that could not be read.
-    #[serde(rename = "malformed_external_event")]
-    MalformedExternalEvent {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: MalformedExternalEventPayload,
-    },
-    /// An actor asked for an action.
-    #[serde(rename = "action_requested")]
-    ActionRequested {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: ActionRequestedPayload,
-    },
-    /// An accepted action reached the printer.
-    #[serde(rename = "action_executed")]
-    ActionExecuted {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: ActionExecutedPayload,
-    },
-    /// Policy refused an action.
-    #[serde(rename = "action_rejected")]
-    ActionRejected {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: ActionRejectedPayload,
-    },
-    /// A bounded intervention expired.
-    #[serde(rename = "intervention_expired")]
-    InterventionExpired {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: InterventionExpiredPayload,
-    },
-    /// A supervision session was opened.
-    #[serde(rename = "supervision_session_opened")]
-    SupervisionSessionOpened {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: SupervisionSessionOpenedPayload,
-    },
-    /// A supervision session was closed.
-    #[serde(rename = "supervision_session_closed")]
-    SupervisionSessionClosed {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: SupervisionSessionClosedPayload,
-    },
-    /// The agent wrote down what it made of a turn.
-    #[serde(rename = "agent_assessment")]
-    AgentAssessment {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: AgentAssessmentPayload,
-    },
-    /// An operator acknowledged an event.
-    #[serde(rename = "operator_acknowledgement")]
-    OperatorAcknowledgement {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: OperatorAcknowledgementPayload,
-    },
-    /// A port failed while an event was being handled.
-    #[serde(rename = "port_failure")]
-    PortFailure {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: PortFailurePayload,
-    },
-    /// A supervisor reconciled one thing the store held when it started.
-    #[serde(rename = "startup_reconciliation")]
-    StartupReconciliation {
-        /// One shape of the contracts, which say nothing more about it.
-        payload: StartupReconciliationPayload,
-    },
-}
-
-/// Where an event came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EventSource {
-    /// Obico, over its webhook.
-    #[serde(rename = "obico")]
-    Obico,
-    /// A person.
-    #[serde(rename = "operator")]
-    Operator,
-    /// The supervising agent.
-    #[serde(rename = "agent")]
-    Agent,
-    /// The supervisor itself.
-    #[serde(rename = "system")]
-    System,
-}
+/// Where an event came from, as the bare string the domain that raised it
+/// declares for itself.
+pub type EventSource = String;
 
 /// What happened when an accepted action reached the printer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1240,6 +1147,97 @@ pub struct SupervisionSessionOpenedPayload {
 
 /// An instant in UTC, as an RFC 3339 string with a zero offset.
 pub type Timestamp = String;
+
+/// One payload type declared under a kind name, by the domain that owns it.
+///
+/// The table from kind name to payload type, as the server declares it: every
+/// kind below has exactly one implementation here, and a kind this client
+/// does not know flows through `EventRecord` untouched.
+pub trait EventPayloadKind: serde::de::DeserializeOwned {
+    /// The name this payload's events are written down under.
+    const KIND: &'static str;
+}
+
+impl EventPayloadKind for ActionExecutedPayload {
+    const KIND: &'static str = "action_executed";
+}
+
+impl EventPayloadKind for ActionRejectedPayload {
+    const KIND: &'static str = "action_rejected";
+}
+
+impl EventPayloadKind for ActionRequestedPayload {
+    const KIND: &'static str = "action_requested";
+}
+
+impl EventPayloadKind for AgentAssessmentPayload {
+    const KIND: &'static str = "agent_assessment";
+}
+
+impl EventPayloadKind for InterventionExpiredPayload {
+    const KIND: &'static str = "intervention_expired";
+}
+
+impl EventPayloadKind for MalformedExternalEventPayload {
+    const KIND: &'static str = "malformed_external_event";
+}
+
+impl EventPayloadKind for ObicoFailureAlertPayload {
+    const KIND: &'static str = "obico_failure_alert";
+}
+
+impl EventPayloadKind for ObicoPrinterNotificationPayload {
+    const KIND: &'static str = "obico_printer_notification";
+}
+
+impl EventPayloadKind for OperatorAcknowledgementPayload {
+    const KIND: &'static str = "operator_acknowledgement";
+}
+
+impl EventPayloadKind for PortFailurePayload {
+    const KIND: &'static str = "port_failure";
+}
+
+impl EventPayloadKind for StartupReconciliationPayload {
+    const KIND: &'static str = "startup_reconciliation";
+}
+
+impl EventPayloadKind for SupervisionSessionClosedPayload {
+    const KIND: &'static str = "supervision_session_closed";
+}
+
+impl EventPayloadKind for SupervisionSessionOpenedPayload {
+    const KIND: &'static str = "supervision_session_opened";
+}
+
+/// Every kind the server declares a payload type for, in name order.
+pub const EVENT_KINDS: [&str; 13] = [
+    "action_executed",
+    "action_rejected",
+    "action_requested",
+    "agent_assessment",
+    "intervention_expired",
+    "malformed_external_event",
+    "obico_failure_alert",
+    "obico_printer_notification",
+    "operator_acknowledgement",
+    "port_failure",
+    "startup_reconciliation",
+    "supervision_session_closed",
+    "supervision_session_opened",
+];
+
+impl EventRecord {
+    /// The payload as `P`, when this event is under the kind `P` declares.
+    ///
+    /// Answers `None` for an event of any other kind — one this client knows
+    /// or one it does not — and the parse failure for an event under the
+    /// right kind whose payload is not of the type.
+    #[must_use]
+    pub fn payload_as<P: EventPayloadKind>(&self) -> Option<Result<P, serde_json::Error>> {
+        (self.kind == P::KIND).then(|| serde_json::from_value(self.payload.clone()))
+    }
+}
 
 impl Client {
     /// Call `status` on the configured supervisor.

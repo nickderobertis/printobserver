@@ -19,10 +19,14 @@ roots that choose what runs.
 
 ### printobserver-types
 
-The shared domain vocabulary every other crate speaks — printer and job
-identity, observed printer state, vision observations, supervisory decisions,
-and their serialized forms. Data and total functions over data, never I/O. It is
-the root of the graph and depends on no crate of this workspace.
+The vocabulary every domain and every client must agree on: the identity and
+representation rules, the event log's envelope — an open `EventKind` name and an
+opaque payload, with no kind declared here — and the schema toolkit, together
+with the printer, policy and supervision records the later steps of the domain
+cut have yet to move to their owners. A type belongs here only if adding or
+changing one domain's concept does not require editing it. Data and total
+functions over data, never I/O. It is the root of the graph and depends on no
+crate of this workspace.
 
 ### printobserver-printer-api
 
@@ -33,13 +37,16 @@ Depends on the contracts alone.
 ### printobserver-vision-api
 
 The port external observations arrive through: normalizing a received body into
-this system's own event vocabulary, and retrieving the image that body names.
-Depends on the contracts alone.
+an event under the adapter's own kind, beside the provider-neutral print
+correlation the supervision core reads, and retrieving the image that body
+names. It declares the one kind of its own — a body no adapter could read,
+written down. Depends on the contracts alone.
 
 ### printobserver-supervisor-api
 
 The port the supervising agent is reached through: running one supervision turn,
-and closing a session. Depends on the contracts alone.
+and closing a session; and the two kinds a session's opening and closing are
+written down under. Depends on the contracts alone.
 
 ### printobserver-store-api
 
@@ -56,8 +63,10 @@ surface has exactly one place it has to be kept right.
 ### printobserver-obico
 
 The Obico adapter — the one implementation of the vision port. It reads the body
-Obico's webhook notification plugin posts into this system's event vocabulary
-and fetches the snapshot that body names.
+Obico's webhook notification plugin posts into an event under one of the two
+kinds it declares for itself, fetches the snapshot that body names, and writes
+both down through the ingress. The supervision core never reads its kinds by
+name; it correlates on the print the adapter hands over beside the body.
 
 ### printobserver-oneharness
 
@@ -79,19 +88,25 @@ database.
 The supervision logic: the loop that turns printer state and vision observations
 into supervisory decisions, the policy that decides which of them may reach the
 printer, the effective bounds a print runs under, and the expiry of bounded
-interventions.
+interventions — together with the seven event kinds and three source names that
+logic writes, declared here and nowhere central.
 
 ### printobserver-server
 
 The long-running service: the HTTP surface clients call, the Obico ingress the
 failure detector posts to, the supervision loop's lifecycle, and the composition
 root that chooses which implementation backs each port. It declares the public
-operations once, and the router is folded over that declaration.
+operations once, and the router is folded over that declaration; and it declares
+the one kind a restart writes, the startup reconciliation its `reconcile` module
+alone records.
 
 ### printobserver-sdk
 
-The Rust client of the server's HTTP surface. It depends on the contracts and an
-HTTP client and on neither the core nor the server.
+The Rust client of the server's HTTP surface, generated from the schema set
+under `schemas/<crate>/` beside the Python and Node clients. It carries the
+event envelope open — a kind name and an opaque payload — with a generated
+table from kind name to payload type and a typed accessor over it. It depends
+on the contracts and an HTTP client and on neither the core nor the server.
 
 ### printobserver
 
