@@ -566,7 +566,7 @@ impl World {
 /// adapter, and what the journeys read back through it is the record.
 fn failure_alert_body() -> printobserver_types::EventBody {
     printobserver_types::EventBody {
-        kind: printobserver_types::EventKind::new("obico_failure_alert"),
+        kind: printobserver_types::EventKind::new("obico_failure_alert").expect("a kind name"),
         payload: printobserver_types::serde_json::json!({
             "is_warning": true,
             "print_paused": false,

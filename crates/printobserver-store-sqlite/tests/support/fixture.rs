@@ -131,7 +131,7 @@ pub fn body(kind: &str) -> EventBody {
         other => panic!("no fixture payload for {other}"),
     };
     EventBody {
-        kind: EventKind::new(kind),
+        kind: EventKind::new(kind).expect("a kind name"),
         payload,
     }
 }

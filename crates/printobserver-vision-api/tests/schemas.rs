@@ -104,7 +104,7 @@ fn the_malformed_kind_is_written_under_its_own_name_and_reads_back_under_it() {
         written
     );
     let other = EventBody {
-        kind: printobserver_types::EventKind::new("another_kind"),
+        kind: printobserver_types::EventKind::new("another_kind").expect("a kind name"),
         payload: body.payload.clone(),
     };
     assert!(other.read::<MalformedExternalEventPayload>().is_none());

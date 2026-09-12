@@ -908,7 +908,7 @@ impl Sample for EventSource {
 
 impl Sample for EventKind {
     fn sample_full() -> Self {
-        Self::new("sample_event")
+        Self::new("sample_event").expect("a fixed kind name")
     }
 }
 

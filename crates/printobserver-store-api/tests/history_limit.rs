@@ -56,7 +56,7 @@ fn a_limit_above_the_maximum_is_refused_rather_than_clamped() {
 fn a_query_resolves_its_limit_by_the_same_rule() {
     let query = HistoryQuery {
         print_id: PrintId::sample_full(),
-        kinds: vec![EventKind::new("obico_failure_alert")],
+        kinds: vec![EventKind::new("obico_failure_alert").expect("a kind name")],
         since: None,
         until: None,
         limit: None,

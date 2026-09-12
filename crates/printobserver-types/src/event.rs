@@ -27,11 +27,12 @@
 //! closed pair's tagged form serialized to.
 
 use core::fmt;
+use core::str::FromStr;
 use std::borrow::Cow;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::de::{DeserializeOwned, Error as _};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::ids::{EventId, PrintId};
@@ -40,29 +41,93 @@ use crate::raw::RawBytes;
 use crate::timestamp::Timestamp;
 
 /// The pattern every kind name matches: lowercase `snake_case`.
+///
+/// [`EventKind::new`] refuses a name outside it, and the envelope's schema
+/// declares it, so a kind read off the wire or out of the store is held to the
+/// same rule as one a domain declares.
 pub const KIND_PATTERN: &str = "^[a-z][a-z0-9_]*$";
+
+/// Why a string is not a kind name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventKindError {
+    /// The string that was refused.
+    name: String,
+}
+
+impl EventKindError {
+    /// The string that was refused.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl fmt::Display for EventKindError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{:?} is not a kind name: a kind is lowercase snake_case, matching {KIND_PATTERN}",
+            self.name
+        )
+    }
+}
+
+impl core::error::Error for EventKindError {}
+
+/// Whether a string is a kind name: what [`KIND_PATTERN`] admits, spelled as
+/// the check rather than as the pattern so that no regex engine is needed.
+fn is_kind_name(text: &str) -> bool {
+    let mut characters = text.chars();
+    characters
+        .next()
+        .is_some_and(|first| first.is_ascii_lowercase())
+        && characters.all(|rest| rest.is_ascii_lowercase() || rest.is_ascii_digit() || rest == '_')
+}
 
 /// The name one kind of event is written down under.
 ///
 /// Lowercase `snake_case`, declared by the domain that owns the event as the
 /// [`KIND`](EventPayload::KIND) of its payload type. It serializes as the bare
-/// string, and it is ordered and hashable so that a filter can hold a set of
-/// them.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// string, is refused on construction and on parse in any other spelling, and
+/// is ordered and hashable so that a filter can hold a set of them.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct EventKind(String);
 
 impl EventKind {
     /// The kind this name spells.
-    #[must_use]
-    pub fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EventKindError`] when the name is not lowercase `snake_case`.
+    pub fn new(name: impl Into<String>) -> Result<Self, EventKindError> {
+        let name = name.into();
+        if is_kind_name(&name) {
+            Ok(Self(name))
+        } else {
+            Err(EventKindError { name })
+        }
     }
 
     /// The name, as it is written down.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl FromStr for EventKind {
+    type Err = EventKindError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        Self::new(text)
+    }
+}
+
+impl<'de> Deserialize<'de> for EventKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::new(text).map_err(D::Error::custom)
     }
 }
 
@@ -136,13 +201,21 @@ impl JsonSchema for EventSource {
 /// kind column is written from it, and the clients' tables are generated from
 /// the marker.
 pub trait EventPayload: Serialize + DeserializeOwned + JsonSchema {
-    /// The name this payload's events are written down under.
+    /// The name this payload's events are written down under: lowercase
+    /// `snake_case`, as [`KIND_PATTERN`] states.
     const KIND: &'static str;
 
     /// The kind this payload belongs to.
+    ///
+    /// # Panics
+    ///
+    /// Panics when [`KIND`](Self::KIND) is not a kind name, which is a
+    /// declaring crate's own defect: its schema test drives this for every
+    /// kind it declares, and the client generator refuses a marker outside the
+    /// pattern, so a misspelt name never reaches a running system.
     #[must_use]
     fn kind() -> EventKind {
-        EventKind::new(Self::KIND)
+        EventKind::new(Self::KIND).expect("a declared kind name is lowercase snake_case")
     }
 }
 

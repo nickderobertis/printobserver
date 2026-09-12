@@ -54,6 +54,11 @@ SERVER_DIR = "schemas/printobserver-server"
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
 
+#: What a kind name is: lowercase snake_case, as the envelope's own schema
+#: declares for the record's `kind`. A marker outside it would name a kind no
+#: record could ever be read back under.
+KIND_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
 #: The file the operation list is checked in under.
 OPERATIONS_FILE = "operations.json"
 
@@ -435,8 +440,11 @@ def event_kinds_of(schemas: dict[str, dict[str, Any]]) -> tuple[EventKind, ...]:
         marked = schemas[name].get(EVENT_KIND_MARKER)
         if marked is None:
             continue
-        if not isinstance(marked, str) or not marked:
-            msg = f"`{name}` carries a `{EVENT_KIND_MARKER}` that is not a kind name"
+        if not isinstance(marked, str) or not KIND_NAME.match(marked):
+            msg = (
+                f"`{name}` carries a `{EVENT_KIND_MARKER}` that is not a kind name: "
+                f"{marked!r} is not lowercase snake_case"
+            )
             raise ContractError(msg)
         if marked in owners:
             msg = (

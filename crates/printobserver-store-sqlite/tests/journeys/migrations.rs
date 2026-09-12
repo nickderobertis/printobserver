@@ -246,11 +246,14 @@ fn read_every_seeded_record_back(store: &SqliteStore) {
     let undeclared = &history[0];
     assert_eq!(undeclared.id, identifier::<EventId>(UNDECLARED_EVENT));
     assert_eq!(undeclared.source.as_str(), "a_newer_server");
-    assert_eq!(undeclared.kind(), &EventKind::new(UNDECLARED_KIND));
+    assert_eq!(
+        undeclared.kind(),
+        &EventKind::new(UNDECLARED_KIND).expect("a kind name")
+    );
     assert_eq!(
         undeclared.body,
         EventBody {
-            kind: EventKind::new(UNDECLARED_KIND),
+            kind: EventKind::new(UNDECLARED_KIND).expect("a kind name"),
             payload: json!({ "anything": [1, 2, 3], "nested": { "deeply": true } }),
         },
         "a kind no crate declares did not read back as it was written"
@@ -258,11 +261,14 @@ fn read_every_seeded_record_back(store: &SqliteStore) {
     let seeded = &history[1];
     assert_eq!(seeded.id, identifier::<EventId>(EVENT));
     assert_eq!(seeded.received_at, at);
-    assert_eq!(seeded.kind(), &EventKind::new(SEEDED_KIND));
+    assert_eq!(
+        seeded.kind(),
+        &EventKind::new(SEEDED_KIND).expect("a kind name")
+    );
     assert_eq!(
         seeded.body,
         EventBody {
-            kind: EventKind::new(SEEDED_KIND),
+            kind: EventKind::new(SEEDED_KIND).expect("a kind name"),
             payload: json!({
                 "is_warning": false,
                 "print_paused": true,
@@ -274,7 +280,7 @@ fn read_every_seeded_record_back(store: &SqliteStore) {
     );
     let by_kind = block_on(port.history(HistoryQuery {
         print_id,
-        kinds: vec![EventKind::new(UNDECLARED_KIND)],
+        kinds: vec![EventKind::new(UNDECLARED_KIND).expect("a kind name")],
         since: None,
         until: None,
         limit: None,

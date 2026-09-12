@@ -170,11 +170,18 @@ def test_a_kind_declared_by_two_payloads_is_refused(scratch: Callable[[], Path])
         load(copy)
 
 
-def test_a_marker_that_is_not_a_kind_name_is_refused(scratch: Callable[[], Path]) -> None:
-    """A marker carrying something other than a name is not a kind."""
+@pytest.mark.parametrize("marker", [7, "", "Third-Kind", "third kind"])
+def test_a_marker_that_is_not_a_kind_name_is_refused(
+    marker: object, scratch: Callable[[], Path]
+) -> None:
+    """A marker that is not a lowercase snake_case name is not a kind.
+
+    The envelope's schema holds a record's `kind` to that pattern, so a payload
+    marked outside it would be one no record could be read back under.
+    """
     copy = scratch()
     schema = _marked(THIRD_KIND, THIRD_TYPE)
-    schema[EVENT_KIND_MARKER] = 7
+    schema[EVENT_KIND_MARKER] = marker
     _declare(copy, THIRD_CRATE, THIRD_TYPE, schema)
 
     with pytest.raises(ContractError, match="is not a kind name"):

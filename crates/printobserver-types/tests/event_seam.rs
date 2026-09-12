@@ -12,8 +12,8 @@ use printobserver_types::contract::Sample as _;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    EVENT_KIND_MARKER, EventBody, EventKind, EventPayload, EventRecord, EventSource, KIND_PATTERN,
-    event_schema_of, schema_of, wire_fields,
+    EVENT_KIND_MARKER, EventBody, EventKind, EventKindError, EventPayload, EventRecord,
+    EventSource, KIND_PATTERN, event_schema_of, schema_of, wire_fields,
 };
 use serde_json::json;
 
@@ -57,7 +57,10 @@ fn a_payload_reads_back_under_its_own_kind() {
         count: 3,
     };
     let body = EventBody::of(&written).expect("a payload renders");
-    assert_eq!(body.kind, EventKind::new("test_sighting"));
+    assert_eq!(
+        body.kind,
+        EventKind::new("test_sighting").expect("a kind name")
+    );
     assert_eq!(body.kind, Sighting::kind());
     assert!(body.is::<Sighting>());
     let read = body
@@ -103,7 +106,7 @@ fn a_payload_of_the_wrong_shape_under_the_right_kind_is_a_parse_failure() {
 #[test]
 fn a_record_under_an_undeclared_kind_survives_a_round_trip() {
     let held = record(EventBody {
-        kind: EventKind::new("kind_from_a_newer_server"),
+        kind: EventKind::new("kind_from_a_newer_server").expect("a kind name"),
         payload: json!({ "anything": [1, 2, 3], "nested": { "deeply": true } }),
     });
     let text = serde_json::to_string(&held).expect("a record serializes");
@@ -175,18 +178,24 @@ fn the_pair_and_the_names_serialize_bare() {
         json!({ "kind": "test_silence", "payload": { "seconds": 40 } })
     );
     assert_eq!(
-        serde_json::to_value(EventKind::new("test_silence")).expect("a kind serializes"),
+        serde_json::to_value(EventKind::new("test_silence").expect("a kind name"))
+            .expect("a kind serializes"),
         json!("test_silence")
     );
     assert_eq!(
         serde_json::to_value(EventSource::new("obico")).expect("a source serializes"),
         json!("obico")
     );
-    assert_eq!(EventKind::new("test_silence").to_string(), "test_silence");
+    assert_eq!(
+        EventKind::new("test_silence")
+            .expect("a kind name")
+            .to_string(),
+        "test_silence"
+    );
     assert_eq!(EventSource::new("obico").to_string(), "obico");
     let mut kinds = std::collections::BTreeSet::new();
-    kinds.insert(EventKind::new("b"));
-    kinds.insert(EventKind::new("a"));
+    kinds.insert(EventKind::new("b").expect("a kind name"));
+    kinds.insert(EventKind::new("a").expect("a kind name"));
     assert_eq!(
         kinds.iter().map(EventKind::as_str).collect::<Vec<_>>(),
         ["a", "b"]
@@ -254,5 +263,73 @@ fn the_field_reader_reads_any_and_union() {
             ("documented".to_owned(), "any".to_owned(), true),
             ("named".to_owned(), "EventKind".to_owned(), false),
         ]
+    );
+}
+
+/// A kind name is lowercase `snake_case` and nothing else, on construction and
+/// on parse alike: the pattern the schema declares is the one the type holds.
+#[test]
+fn a_kind_name_outside_the_pattern_is_refused() {
+    for admitted in ["a", "obico_failure_alert", "kind_2", "x_"] {
+        assert_eq!(
+            EventKind::new(admitted).map(|kind| kind.as_str().to_owned()),
+            Ok(admitted.to_owned())
+        );
+        assert_eq!(admitted.parse::<EventKind>(), EventKind::new(admitted));
+    }
+    for refused in [
+        "",
+        "Kind",
+        "kind-name",
+        "kind name",
+        "_kind",
+        "1kind",
+        "kind.name",
+        "kÿnd",
+    ] {
+        let error = EventKind::new(refused).expect_err(refused);
+        assert_eq!(error.name(), refused);
+        assert!(
+            error.to_string().contains(KIND_PATTERN),
+            "{error} does not say what a kind name is"
+        );
+        assert_eq!(refused.parse::<EventKind>(), Err(error));
+    }
+    // The schema's own pattern, driven by a real validator, agrees with the
+    // constructor on every one of those spellings.
+    let validator =
+        jsonschema::validator_for(&schema_of::<EventKind>()).expect("the schema compiles");
+    for name in [
+        "a",
+        "obico_failure_alert",
+        "kind_2",
+        "x_",
+        "",
+        "Kind",
+        "kind-name",
+        "kind name",
+        "_kind",
+        "1kind",
+        "kind.name",
+        "kÿnd",
+    ] {
+        assert_eq!(
+            validator.is_valid(&json!(name)),
+            EventKind::new(name).is_ok(),
+            "{name:?}: the schema's pattern and the constructor disagree"
+        );
+    }
+
+    let mut record = serde_json::to_value(EventRecord::sample_full()).expect("a record renders");
+    record["kind"] = json!("Not-A-Kind");
+    let refused =
+        serde_json::from_value::<EventRecord>(record).expect_err("an invalid kind parses");
+    assert!(
+        refused.to_string().contains("is not a kind name"),
+        "{refused}"
+    );
+    assert!(
+        matches!(EventKind::new("Not-A-Kind"), Err(EventKindError { .. })),
+        "the error type is the seam's own"
     );
 }

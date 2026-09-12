@@ -374,7 +374,7 @@ pub fn event(print_id: PrintId, body: EventBody) -> EventRecord {
 /// port renders into a prompt is the record, whatever its kind.
 pub fn body(kind: &str, payload: serde_json::Value) -> EventBody {
     EventBody {
-        kind: EventKind::new(kind),
+        kind: EventKind::new(kind).expect("a kind name"),
         payload,
     }
 }

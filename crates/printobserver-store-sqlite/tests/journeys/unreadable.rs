@@ -68,7 +68,7 @@ fn history(store: &SqliteStore, print_id: PrintId, _: ActionId) -> Result<(), St
 /// A column this build cannot read is reported rather than panicked on.
 #[test]
 fn a_row_this_build_cannot_read_is_reported() {
-    let cases: [(&str, Read); 6] = [
+    let cases: [(&str, Read); 7] = [
         (
             "UPDATE prints SET opened_at = 'not an instant'",
             |store, print_id, _| {
@@ -84,9 +84,13 @@ fn a_row_this_build_cannot_read_is_reported() {
             },
         ),
         ("UPDATE events SET payload = 'not json'", history),
-        // A `source` or a `kind` this build has never heard of is not one it
-        // cannot read — the log is open, and both columns hold bare names — so
-        // the column driven here is one whose spelling the store does own.
+        // A `kind` this build has never heard of is not one it cannot read —
+        // the log is open — but one spelled outside the kind pattern is: the
+        // pair's text is what the record's kind is read from.
+        (
+            "UPDATE events SET payload = '{\"kind\":\"Not-A-Kind\",\"payload\":{}}'",
+            history,
+        ),
         ("UPDATE events SET received_at = 'not an instant'", history),
         (
             "UPDATE interventions SET adjustable = 'nothing adjustable'",

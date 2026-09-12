@@ -307,7 +307,7 @@ fn the_history_read_orders_filters_and_refuses() {
             "{name}: the default read is not the newest window, newest first"
         );
 
-        let kind = EventKind::new("malformed_external_event");
+        let kind = EventKind::new("malformed_external_event").expect("a kind name");
         let by_kind = block_on(port.history(HistoryQuery {
             kinds: vec![kind.clone()],
             limit: Some(MAX_HISTORY_LIMIT),

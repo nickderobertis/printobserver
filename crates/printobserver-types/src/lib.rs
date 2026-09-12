@@ -87,7 +87,9 @@ pub use contract::{
     EVENT_KIND_MARKER, RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared,
     event_schema_of, schema_of, wire_fields,
 };
-pub use event::{EventBody, EventKind, EventPayload, EventRecord, EventSource, KIND_PATTERN};
+pub use event::{
+    EventBody, EventKind, EventKindError, EventPayload, EventRecord, EventSource, KIND_PATTERN,
+};
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
 pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, PrintId};
 pub use image::{ImageRecord, ImageRef};
