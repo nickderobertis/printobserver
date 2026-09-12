@@ -212,7 +212,8 @@ def test_a_publish_naming_no_secret_is_refused(tree: Callable[[], Tree]) -> None
         "      - run: just publish-artifacts\n        env:\n"
         "          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}\n"
         "          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n"
-        "          RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}\n",
+        "          RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
+        "          PRINTOBSERVER_PUBLISH_VERSION: ${{ inputs.tag }}\n",
         "      - run: just publish-artifacts\n",
     )
 

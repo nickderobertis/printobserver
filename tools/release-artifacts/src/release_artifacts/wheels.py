@@ -26,10 +26,26 @@ WHEEL_VERSION = "1.0"
 #: The tag a wheel carrying no compiled code takes.
 PURE_TAG = "py3-none-any"
 
+#: The fields a wheel's file name carries at the least: the distribution, the
+#: version, and the three tags, with a build tag optionally between.
+NAME_FIELDS = 5
+
 #: The interpreter and ABI a wheel of this repository takes. The program a
 #: platform wheel carries is not a Python extension: it runs under no
 #: interpreter, so the wheel is tagged for none in particular.
 INTERPRETER = "py3-none"
+
+
+def version_of(file_name: str) -> str:
+    """The version one wheel's own file name states, or nothing where it states none.
+
+    A wheel is named `<distribution>-<version>-<python>-<abi>-<platform>.whl`,
+    with the distribution's dashes turned into underscores, so the version is
+    the second dash-separated field of a name carrying at least five. This is
+    what a registry reads a wheel's version off as well.
+    """
+    fields = file_name.removesuffix(".whl").split("-")
+    return fields[1] if len(fields) >= NAME_FIELDS else ""
 
 
 @dataclass(frozen=True, slots=True)

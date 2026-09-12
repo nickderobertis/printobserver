@@ -102,9 +102,21 @@ def workspace(root: Path) -> dict[str, str]:
     Raises:
         TargetError: If the workspace declares none of them.
     """
-    with (root / "Cargo.toml").open("rb") as handle:
-        manifest = tomllib.load(handle)
-    package = manifest.get("workspace", {}).get("package", {})
+    return workspace_of((root / "Cargo.toml").read_bytes())
+
+
+def workspace_of(manifest: bytes) -> dict[str, str]:
+    """What one workspace manifest's bytes declare, wherever the bytes came from.
+
+    The tree's own manifest above, or the one at a release tag as `git show`
+    reads it: a dispatched publish verifies that a tag's tree carries the
+    version the tag names, and it reads that through this one reader rather
+    than through a second parser that could disagree with it.
+
+    Raises:
+        TargetError: If the manifest declares none of the inherited fields.
+    """
+    package = tomllib.loads(manifest.decode("utf-8")).get("workspace", {}).get("package", {})
     found = {key: str(package.get(key, "")) for key in ("version", "license", "repository")}
     missing = sorted(key for key, value in found.items() if not value)
     if missing:

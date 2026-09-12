@@ -50,6 +50,31 @@ refused; and the run fails at the end naming every refusal in the registry's
 own words. A publisher that stopped at the first refusal would leave every
 artifact after it for a person to send, which is the hand-run this forbids.
 
+## A dispatched publish answers the gate a push answers, and only for a release that exists
+
+The dispatched shape reuses the push's gate rather than adding one, so the
+artifact jobs read one field whichever way the run started. What earns a tag
+that field is that the run is on the base branch — whose publisher and
+secrets are the ones a release trusts, where any other ref's are whatever
+that ref carries — and that the tag names a release that exists in the job's
+checkout whose tree is that release's, because a tag reaching the artifact
+jobs unverified is another release's tree built and published under this
+one's name, which nothing downstream can tell from a correct publish. A shallow,
+tagless checkout is refused *as the checkout's fault*, naming what fetches the
+tags, because an existing tag is invisible to it and a refusal that said the
+release did not exist would send a reader to the wrong repair. The record that
+crosses to the install-path proof is refused rather than read as no version,
+for the reason the release program's answer is.
+
+## The version to publish is handed in on a dispatch, and `dist` is held to it
+
+A dispatch publishes an existing tag's tree with the publisher at `main`,
+whose workspace has moved on, so the version to publish cannot be read off
+the tree the publisher runs from: it is handed in, and `dist` is held to it
+before any write. The release tarballs carry no version in their names, so
+that check is the only thing standing between one tag's artifacts and
+another's release.
+
 ## No tier writes to the real forge
 
 The forge upload is a direct call under `RELEASE_PLZ_TOKEN`, and GitHub

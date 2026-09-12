@@ -524,7 +524,11 @@ def _job_findings(
             f"{relative} declares no `{policy.release_job}` job, and nothing else can say "
             f"which release the triggering run cut"
         )
-    elif f"just {policy.release_recipe}" not in " ".join(run_commands(resolving)):
+    elif not any(
+        command == f"just {policy.release_recipe}"
+        or command.startswith(f"just {policy.release_recipe} ")
+        for command in run_commands(resolving)
+    ):
         findings.append(
             f"{relative}: job `{policy.release_job}` does not run `just "
             f"{policy.release_recipe}`, which is what reads the release a run cut off the "

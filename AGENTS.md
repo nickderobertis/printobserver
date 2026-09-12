@@ -701,8 +701,10 @@ this tree, because what a user gets is whatever the registry is serving.
 
 **It is not one of `just check`'s tiers** and `just check` does not invoke it: it
 reads the real registries, so over a change it could only report what was
-published before that change. It runs after a release, on a manual invocation,
-and on this schedule:
+published before that change. It runs after a release — for the version that
+release cut, read off the tag at the run's commit, and after a dispatched
+publish too, for the version that dispatch published, read off the record the
+dispatched run uploads — on a manual invocation, and on this schedule:
 
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
@@ -758,12 +760,18 @@ squash-merge. Without it no branch of this repository could be published once
 finished.
 
 **How a release happens.** `.github/workflows/release-plz.yml` fires on every
-push to `main` with no manual invocation. `release-plz release-pr` opens the
-release pull request under `RELEASE_PLZ_TOKEN` — the workflow's built-in token
-is deliberately not used, because a pull request opened by it does not trigger
-the workflows that gate it — and `release-plz release` tags, cuts the GitHub
-Release and publishes every crate under `CARGO_REGISTRY_TOKEN`. Nobody
-hand-edits a version, hand-tags, or hand-dispatches a publish.
+push to `main`. `release-plz release-pr` opens the release pull request under
+`RELEASE_PLZ_TOKEN` — the workflow's built-in token is deliberately not used,
+because a pull request opened by it does not trigger the workflows that gate
+it — and `release-plz release` tags, cuts the GitHub Release and publishes
+every crate under `CARGO_REGISTRY_TOKEN`. Nobody hand-edits a version,
+hand-tags, or runs a publish with their own credentials. The same workflow
+dispatched by hand on `main` for an existing release tag is not that hand-run:
+it builds the tag's own tree's artifacts and publishes them with the publisher
+at the dispatched ref, through the same jobs, the same publisher and the same
+secrets read in CI, with an operator's credentials nowhere — and it runs the
+release program not at all, so a dispatch can finish a release and never cut
+one.
 
 **Publishing never waits on drafting, and the artifacts follow only a cut
 release.** Drafting the next release's pull request compares each package
@@ -776,19 +784,25 @@ that step *answered* it released, never on its exit status. `just check-repo`'s
 `tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
-**A `publish` job that failed is run again, never repaired by hand.** A
-hand-run with an operator's tokens is the manual step this design forbids, so
-the recovery from a publish that stopped partway is GitHub's own re-run — of
-the failed job or the whole run — with nothing cleaned up and nothing moved
-first. That is safe because `just publish-artifacts` decides per artifact
-rather than per run: one its registry already serves at the workspace version
-is skipped and reported, every artifact is attempted whatever an earlier one
-answered, and the job fails at the end naming each refusal in the registry's
-own words. **The forge upload is exercised only against the stand-in** in
+**A publish that stopped partway has two recoveries, and neither is a
+hand-run.** A failed `publish` job of a release published under the resumable
+publisher is re-run — GitHub's own re-run, with nothing cleaned up and nothing
+moved first. A release cut before that publisher existed, or one whose re-run
+cannot reach the fixed publisher because the run checked out a commit that
+predates it, is finished by dispatching the workflow for its tag, which builds
+the tag's own tree and publishes with the publisher at `main`. Both are safe
+because `just publish-artifacts` decides per artifact rather than per run — one
+its registry already serves is skipped and reported, every artifact is
+attempted whatever an earlier one answered, and the job fails at the end naming
+each refusal in the registry's own words — and because a dispatch is held, at
+`release`, to a run on `main` and a tag that exists whose tree is the release
+it names. **The
+forge upload is exercised only against the stand-in** in
 `tools/release-artifacts/src/release_artifacts/standin.py`, because nothing in
 this repository may write to the real forge; the install-path workflow that
 runs after a release publishes is where it is first proven against GitHub.
-`tools/release-artifacts/AGENTS.md` holds the rest.
+`just check-repo`'s `release-gating` and `release-dispatch` hold the workflows
+to both shapes.
 
 `release-targets.toml` declares what this repository publishes.
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests

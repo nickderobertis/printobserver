@@ -11,10 +11,12 @@
 # release-time trigger is `release-plz` HAVING FINISHED rather than the release
 # being published, because that workflow cuts the release before the two jobs
 # that build and publish its artifacts. And WHICH release a release-time run
-# proves is the one that run itself cut, read by `resolve` off the tag left at
-# the run's own commit and handed to every route proof as one concrete version
-# — never "the newest the forge lists", which on a repository releasing from
-# every push is somebody else's release as often as not.
+# proves is the one that run itself published, handed to every route proof as
+# one concrete version — never "the newest the forge lists", which on a
+# repository releasing from every push is somebody else's release as often as
+# not. After a push-triggered run, `resolve` reads it off the tag left at the
+# run's own commit; after a hand-dispatched run, which publishes an existing
+# tag from `main`, it reads the record that run uploaded saying which.
 
 name: install-path
 
@@ -60,8 +62,13 @@ jobs:
   resolve:
     name: resolve
     runs-on: ubuntu-24.04
+    # `actions: read` is what downloading another run's artifact needs, and
+    # nothing here writes.
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      version: ${{ steps.cut.outputs.version }}
+      version: ${{ steps.cut.outputs.version || steps.dispatched.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -73,10 +80,27 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - id: cut
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push'
         env:
           COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: just release-version "$COMMIT" . >> "$GITHUB_OUTPUT"
+      # A dispatched release run publishes an existing tag from `main`, so no
+      # tag at its commit says which: it uploads a record saying so, and that
+      # record is read here. A dispatch refused at `release` uploads none, so
+      # this download fails naming the missing artifact and nothing below is
+      # proven — one red run beside the red dispatch. Spelled `github.token`
+      # rather than as a secret: `gh-secrets.json` lists what this repository
+      # holds, and the workflow's own token is not a secret it holds.
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'workflow_dispatch'
+        with:
+          name: dispatched-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/dispatched-release
+      - id: dispatched
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'workflow_dispatch'
+        run: just release-version-dispatched "$RUNNER_TEMP/dispatched-release/version" >> "$GITHUB_OUTPUT"
 
   # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
   prove-registry-pypi:

@@ -190,6 +190,35 @@ release-version COMMIT ROOT:
 release-answer ANSWER:
     @uv run -q python -m release_artifacts answered --answer {{ANSWER}}
 
+# Which release a hand-dispatched run publishes, as `released=<tag>`, off TAG.
+#
+# The same line `release-answer` prints for a cut release, so the artifact
+# build and the artifact publish are gated on one field whichever way the run
+# was started. TAG is an existing release tag, `v<version>`; ROOT is a checkout
+# carrying it — the whole history and its tags, which `fetch-depth: 0` gives
+# and a shallow checkout does not; RECORD is where the one `version=<version>`
+# line `release-version` prints is written, for the install-path proof to read
+# after the run; and REF is the ref the run was started on, which must be the
+# base branch `repo-policy.toml` declares, because that is where the publisher
+# and the secrets it runs with are the ones a release trusts. A run on any
+# other ref, a tag that is not release automation's, one the checkout cannot
+# see, or one whose tree's workspace version is not the one it names is
+# refused naming why, and nothing is printed or written: the job fails, and
+# the jobs after it are skipped.
+release-dispatched TAG ROOT RECORD REF:
+    @uv run -q python -m release_artifacts dispatched --tag {{TAG}} --root {{ROOT}} --record {{RECORD}} --ref {{REF}}
+
+# Which version a dispatched run recorded, as `version=<version>`, off RECORD.
+#
+# What the install-path proof's resolving job answers after a dispatched run,
+# in place of reading a tag off the run's commit — a dispatch runs at `main`
+# and publishes a tag elsewhere in the history. A record that is not there or
+# holds anything but that one line is refused rather than read as an empty
+# field, because the route proofs skip on that field and a proof skipped over
+# an unreadable record is a publish nobody checked.
+release-version-dispatched RECORD:
+    @uv run -q python -m release_artifacts recorded --record {{RECORD}}
+
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
 # is, why it is not one of `just check`'s tiers, and when it runs.

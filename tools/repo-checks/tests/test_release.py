@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from repo_checks.checks_release import (
     _publishable_crates,
     release_automation,
+    release_dispatch,
     release_gating,
     release_targets,
 )
@@ -152,7 +154,7 @@ def test_a_release_workflow_with_no_release_step_is_refused(
     broken = tree()
     broken.write(
         RELEASE,
-        broken.read(RELEASE).replace("      - run: release-plz ", "      # was: release-plz "),
+        broken.read(RELEASE).replace("run: release-plz ", "run: true # was: release-plz "),
     )
 
     findings = release_automation(broken.repo)
@@ -246,10 +248,16 @@ def test_a_publishing_job_that_reads_its_answer_into_no_output_is_refused(
     broken = tree()
     broken.edit(
         RELEASE,
-        "      - id: answer\n        run: just release-answer",
-        "      - run: true\n      - run: just release-answer",
+        "      - id: answer\n        if: github.event_name == 'push'\n"
+        "        run: just release-answer",
+        "      - run: true\n      - if: github.event_name == 'push'\n"
+        "        run: just release-answer",
     )
-    broken.edit(RELEASE, "released: ${{ steps.answer.outputs.released }}", "released: ''")
+    broken.edit(
+        RELEASE,
+        "released: ${{ steps.answer.outputs.released || steps.dispatched.outputs.released }}",
+        "released: ${{ steps.dispatched.outputs.released }}",
+    )
 
     findings = release_gating(broken.repo)
 
@@ -337,7 +345,7 @@ def test_a_gating_check_with_no_publishing_step_at_all_is_refused(
     broken = tree()
     broken.write(
         RELEASE,
-        broken.read(RELEASE).replace("      - run: release-plz ", "      # was: release-plz "),
+        broken.read(RELEASE).replace("run: release-plz ", "run: true # was: release-plz "),
     )
 
     findings = release_gating(broken.repo)
@@ -389,3 +397,267 @@ def test_a_gating_policy_missing_a_name_is_refused(tree: Callable[[], Tree]) -> 
     findings = release_gating(broken.repo)
 
     refused(findings, "declares no `release.answer_output` string")
+
+
+#: Fragments of the committed release workflow the dispatched shape is made of,
+#: as the workflow spells them; each test below takes one away or changes it.
+PUSH_ONLY = "    if: github.event_name == 'push'\n"
+DISPATCHED_STEP = (
+    "      - id: dispatched\n"
+    "        if: github.event_name == 'workflow_dispatch'\n"
+    "        env:\n"
+    "          TAG: ${{ inputs.tag }}\n"
+    "          REF: ${{ github.ref }}\n"
+    '        run: just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version"'
+    ' "$REF" >> "$GITHUB_OUTPUT"\n'
+)
+RELEASED_OUTPUT = (
+    "released: ${{ steps.answer.outputs.released || steps.dispatched.outputs.released }}"
+)
+BUILD_CHECKOUT = (
+    "      - uses: actions/checkout@v5\n        with:\n          ref: ${{ inputs.tag }}\n"
+)
+PUBLISH_VERSION = "          PRINTOBSERVER_PUBLISH_VERSION: ${{ inputs.tag }}\n"
+RECORD_UPLOAD = "          name: dispatched-release\n"
+WHOLE_HISTORY = (
+    "      - uses: actions/checkout@v5\n"
+    "        with:\n"
+    "          fetch-depth: 0\n"
+    "          token: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
+    "      - uses: extractions/setup-just@v3\n"
+)
+
+
+def test_the_committed_dispatched_shape_is_accepted(committed: Repo) -> None:
+    """A dispatch finishes an existing release through the same jobs a push runs."""
+    accepted(release_dispatch(committed))
+
+
+def test_a_dispatch_that_takes_no_required_tag_is_refused(tree: Callable[[], Tree]) -> None:
+    """The tag is the whole of what a dispatcher names, so it is required and a string."""
+    optional = tree()
+    optional.edit(
+        RELEASE, "        required: true\n        type: string\n", "        type: string\n"
+    )
+    refused(release_dispatch(optional.repo), "is not `required: true`")
+
+    renamed = tree()
+    renamed.edit(RELEASE, "    inputs:\n      tag:\n", "    inputs:\n      ref:\n")
+    refused(release_dispatch(renamed.repo), "declares no `tag` input")
+
+    untyped = tree()
+    untyped.edit(RELEASE, "        type: string\n", "        type: boolean\n")
+    refused(release_dispatch(untyped.repo), "is not `type: string`")
+
+
+@pytest.mark.parametrize(
+    ("program", "job"),
+    [("release-plz release-pr", "release-pr"), ("release-plz release", "release")],
+)
+def test_a_release_program_that_runs_on_a_dispatch_is_refused(
+    program: str, job: str, tree: Callable[[], Tree]
+) -> None:
+    """A dispatch finishes a release that exists: it drafts nothing and cuts nothing."""
+    broken = tree()
+    if job == "release-pr":
+        broken.edit(RELEASE, f"    name: release-pr\n{PUSH_ONLY}", "    name: release-pr\n")
+    else:
+        broken.edit(
+            RELEASE,
+            f"      - {PUSH_ONLY.strip()}\n        run: {program} ",
+            f"      - run: {program} ",
+        )
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, f"job `{job}` runs `{program}` without `github.event_name == 'push'`")
+
+
+def test_a_dispatched_tag_that_reaches_the_artifact_jobs_unverified_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Nothing is built or published for a tag the verifying recipe did not answer."""
+    unverified = tree()
+    unverified.edit(RELEASE, DISPATCHED_STEP, "      - run: true\n")
+    refused(release_dispatch(unverified.repo), "no step runs `just release-dispatched`")
+
+    unread = tree()
+    unread.edit(RELEASE, RELEASED_OUTPUT, "released: ${{ steps.answer.outputs.released }}")
+    refused(release_dispatch(unread.repo), "publishes no output `released` from `steps.dispatched")
+
+    nameless = tree()
+    nameless.edit(RELEASE, "      - id: dispatched\n        if:", "      - if:")
+    refused(release_dispatch(nameless.repo), "carries no `id`")
+
+    ungated = tree()
+    ungated.edit(
+        RELEASE,
+        "      - id: dispatched\n        if: github.event_name == 'workflow_dispatch'\n",
+        "      - id: dispatched\n",
+    )
+    refused(
+        release_dispatch(ungated.repo),
+        "not conditioned on `github.event_name == 'workflow_dispatch'`",
+    )
+
+    unpublished = tree()
+    unpublished.edit(RELEASE, '"$REF" >> "$GITHUB_OUTPUT"', '"$REF"')
+    refused(release_dispatch(unpublished.repo), "does not append to `$GITHUB_OUTPUT`")
+
+
+def test_a_verifying_step_outside_the_job_the_artifacts_are_gated_on_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The artifact jobs read one job's output; an answer elsewhere reaches them from nowhere."""
+    broken = tree()
+    broken.edit(RELEASE, DISPATCHED_STEP, "      - run: true\n")
+    broken.edit(
+        RELEASE,
+        "  artifacts:\n",
+        "  verify:\n    runs-on: ubuntu-24.04\n    outputs:\n"
+        "      released: ${{ steps.dispatched.outputs.released }}\n    steps:\n"
+        "      - uses: actions/checkout@v5\n        with:\n          fetch-depth: 0\n"
+        f"{DISPATCHED_STEP}  artifacts:\n",
+    )
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, "is in a job the artifact jobs are not gated on")
+
+
+def test_a_build_that_does_not_check_out_the_dispatched_tag_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A dispatch would otherwise build `main`'s tree and publish it as the tag's release."""
+    broken = tree()
+    broken.edit(RELEASE, BUILD_CHECKOUT, "      - uses: actions/checkout@v5\n")
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, "runs `just build-artifacts` and its checkout does not take `ref:")
+
+
+def test_a_publish_not_handed_the_dispatched_version_is_refused(tree: Callable[[], Tree]) -> None:
+    """A dispatch would otherwise publish the tag's artifacts under `main`'s own version."""
+    broken = tree()
+    broken.edit(RELEASE, PUBLISH_VERSION, "")
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, "does not hand the recipe `PRINTOBSERVER_PUBLISH_VERSION` from `inputs.tag`")
+
+
+def test_a_record_uploaded_under_another_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """The proof downloads the record by the declared name, and would find nothing."""
+    renamed = tree()
+    renamed.edit(RELEASE, RECORD_UPLOAD, "          name: dispatched\n")
+    refused(
+        release_dispatch(renamed.repo), "uploads the dispatched release's record as `dispatched`"
+    )
+
+    missing = tree()
+    missing.edit(
+        RELEASE,
+        "      - uses: actions/upload-artifact@v4\n"
+        "        if: github.event_name == 'workflow_dispatch'\n",
+        "      - uses: actions/upload-artifact@v4\n        if: github.event_name == 'push'\n",
+    )
+    refused(release_dispatch(missing.repo), "uploads no artifact on a dispatch")
+
+
+def test_a_verifying_job_checking_out_less_than_the_whole_history_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A shallow checkout of `main` carries no tag, and would refuse every dispatch there is.
+
+    The copy the end-to-end tier drives cannot tell this defect from the
+    committed shape — it carries its tags already — so this is where it is
+    caught.
+    """
+    shallow = tree()
+    shallow.edit(
+        RELEASE,
+        WHOLE_HISTORY,
+        "      - uses: actions/checkout@v5\n        with:\n"
+        "          token: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
+        "      - uses: extractions/setup-just@v3\n",
+    )
+    refused(release_dispatch(shallow.repo), "does not carry `fetch-depth: 0`")
+
+    narrowed = tree()
+    narrowed.edit(
+        RELEASE, WHOLE_HISTORY, WHOLE_HISTORY.replace("fetch-depth: 0", "fetch-depth: 50")
+    )
+    refused(release_dispatch(narrowed.repo), "does not carry `fetch-depth: 0`")
+
+
+def test_a_concurrency_that_no_longer_keys_on_the_ref_is_refused(tree: Callable[[], Tree]) -> None:
+    """A dispatched run and a push-triggered run of one ref must not publish at once."""
+    unkeyed = tree()
+    unkeyed.edit(RELEASE, "  group: release-plz-${{ github.ref }}\n", "  group: release-plz\n")
+    refused(release_dispatch(unkeyed.repo), "does not read `github.ref`")
+
+    cancelling = tree()
+    cancelling.edit(RELEASE, "  cancel-in-progress: false\n", "  cancel-in-progress: true\n")
+    refused(release_dispatch(cancelling.repo), "cancels a run in progress")
+
+
+def test_a_dispatch_recipe_the_justfile_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow step running a recipe nothing declares fails after a merge."""
+    verifying = tree()
+    verifying.edit(
+        "justfile",
+        "release-dispatched TAG ROOT RECORD REF:",
+        "release-verify TAG ROOT RECORD REF:",
+    )
+    refused(release_dispatch(verifying.repo), "declares no `release-dispatched` recipe")
+
+    reading = tree()
+    reading.edit("justfile", "release-version-dispatched RECORD:", "release-recorded RECORD:")
+    refused(release_dispatch(reading.repo), "declares no `release-version-dispatched` recipe")
+
+
+def test_a_publisher_reading_another_variable_is_refused(tree: Callable[[], Tree]) -> None:
+    """Workflow, policy and publisher name one variable, or a dispatch publishes nothing."""
+    renamed = tree()
+    renamed.edit(
+        "tools/release-artifacts/src/release_artifacts/publishing.py",
+        'PRINTOBSERVER_PUBLISH_VERSION = "PRINTOBSERVER_PUBLISH_VERSION"',
+        'PRINTOBSERVER_PUBLISH_VERSION = "PRINTOBSERVER_RELEASE_VERSION"',
+    )
+    refused(release_dispatch(renamed.repo), "declares no `PRINTOBSERVER_PUBLISH_VERSION`")
+
+    elsewhere = tree()
+    elsewhere.edit(
+        "repo-policy.toml",
+        'publish_version_source = "tools/release-artifacts/src/release_artifacts/publishing.py"',
+        'publish_version_source = "tools/release-artifacts/src/release_artifacts/publisher.py"',
+    )
+    refused(release_dispatch(elsewhere.repo), "commits no such file")
+
+
+def test_a_dispatch_policy_missing_a_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """A check cannot hold the workflow to a name the policy does not declare."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'record_artifact = "dispatched-release"\n', "")
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, "declares no `release.record_artifact` string")
+
+
+def test_a_dispatch_check_with_no_publishing_step_at_all_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow that publishes nothing has no dispatched shape to hold."""
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace("run: release-plz ", "run: true # was: release-plz "),
+    )
+
+    findings = release_dispatch(broken.repo)
+
+    refused(findings, "no committed job runs `release-plz release`")

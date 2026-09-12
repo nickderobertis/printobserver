@@ -439,6 +439,26 @@ publish_recipe = "publish-artifacts"
 answer_recipe = "release-answer"
 answer_output = "released"
 answer_source = "tools/release-artifacts/src/release_artifacts/registries.py"
+# The second way the release workflow runs: dispatched by hand on `main` with
+# the name of an EXISTING release tag, it builds that tag's tree's artifacts and
+# publishes them with the publisher at the dispatched ref — the same jobs, the
+# same publisher and the same secrets as a push, and nothing of the operator's.
+# `dispatch_input` is the one input that dispatch takes. `dispatched_recipe`
+# verifies the tag in the job above and answers the same `answer_output` field
+# for it, so the two artifact jobs read one gate whichever way the run started;
+# `record_recipe` reads the record it wrote, in the install-path proof's
+# resolving job, and `record_artifact` is the name that record crosses between
+# the two workflows under. `publish_version_env` is how the version to publish
+# reaches the publish recipe on a dispatch, and `publish_version_source` is the
+# module that reads it, held to this name as `install_proof.version_source` is
+# to its. `just check-repo`'s `release-dispatch` holds both workflows, the
+# recipe set and that module to these names.
+dispatch_input = "tag"
+dispatched_recipe = "release-dispatched"
+record_recipe = "release-version-dispatched"
+record_artifact = "dispatched-release"
+publish_version_env = "PRINTOBSERVER_PUBLISH_VERSION"
+publish_version_source = "tools/release-artifacts/src/release_artifacts/publishing.py"
 
 [manifests]
 # The only manifests permitted to carry a version field, because release

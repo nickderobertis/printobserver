@@ -1,6 +1,15 @@
-# Automated releases from Conventional Commits. No manual invocation, no manual
-# step: a push to `main` is the only trigger, and merging the release pull
-# request this opens is the only human action in a release.
+# Automated releases from Conventional Commits. Two triggers, and no manual
+# step inside either. A push to `main` drafts the next release's pull request
+# and publishes what is already due — merging that pull request is the only
+# human action in a release. A hand dispatch on `main` names an EXISTING
+# release tag and finishes that release: it builds the tag's own tree's
+# artifacts and publishes them with the publisher at the dispatched ref, which
+# is how a release cut before the publisher could resume, or one whose publish
+# failed for a reason outside this repository, gets its artifacts without
+# anybody running anything by hand. The dispatch is not the hand-run the
+# release design forbids: it runs the same jobs, the same publisher and the
+# same secrets, and nothing of the operator's — a person supplies a tag and
+# nothing else.
 #
 # `release-plz.toml` is the configuration; `release-targets.toml` declares what
 # reaches which registry. Every target that declaration names beside the crates
@@ -14,17 +23,32 @@ name: release-plz
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          An existing release tag, `v<version>`, whose artifacts this run
+          builds from the tag's own tree and publishes with the publisher at
+          this ref.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+# Keyed on the ref: a dispatch on `main` and a push to `main` are both
+# `refs/heads/main`, so this one group serialises a dispatched run and a
+# push-triggered run of the same ref rather than letting two publishes race.
 concurrency:
   group: release-plz-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # A push's alone: a dispatch finishes a release that exists and drafts
+  # nothing.
   release-pr:
     name: release-pr
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -51,6 +75,11 @@ jobs:
   # registry does not carry while a tag naming its version exists, and for the
   # first two days of this repository's life that failure kept this job — and
   # the two after it — from ever running once.
+  #
+  # Runs on both triggers and answers WHICH release this run publishes. On a
+  # push that is what the release program cut; on a dispatch it is the tag the
+  # dispatcher named, once `just release-dispatched` has verified it. The two
+  # jobs below read one output either way, so their gates are one gate.
   release:
     name: release
     runs-on: ubuntu-24.04
@@ -61,9 +90,14 @@ jobs:
       # status, because the program exits zero having released nothing — every
       # ordinary push, under `release_always` — and the Python and JavaScript
       # registries refuse a version they already serve, so an artifact publish
-      # on such a push turns `main` red.
-      released: ${{ steps.answer.outputs.released }}
+      # on such a push turns `main` red. On a dispatch it is the verified tag,
+      # and a refused dispatch fails this job so that nothing after it runs.
+      released: ${{ steps.answer.outputs.released || steps.dispatched.outputs.released }}
     steps:
+      # The whole history and every tag, on both triggers: release-plz needs
+      # it on a push, and on a dispatch it is what makes an existing tag
+      # resolvable at all — a default shallow checkout of `main` carries no
+      # tag, and the verifier would refuse every dispatch there is.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -71,18 +105,39 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        if: github.event_name == 'push'
       - uses: taiki-e/install-action@v2
+        if: github.event_name == 'push'
         with:
           tool: release-plz,cargo-semver-checks
       # Tags, cuts the GitHub Release, and publishes every crate target
       # `release-targets.toml` declares. Idempotent: a version already on the
       # registry is skipped, so a partial failure is recovered by the next push.
-      - run: release-plz release --backend github --output json > "$RUNNER_TEMP/released.json"
+      - if: github.event_name == 'push'
+        run: release-plz release --backend github --output json > "$RUNNER_TEMP/released.json"
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - id: answer
+        if: github.event_name == 'push'
         run: just release-answer "$RUNNER_TEMP/released.json" >> "$GITHUB_OUTPUT"
+      # A dispatch's alone: the run is on `main`, the tag exists in this
+      # checkout and its tree's workspace version is the one it names, or this
+      # job fails naming which and nothing is built or published. What it
+      # answers is the same `released=<tag>` line the step above answers for a
+      # cut release, and the record it writes is what the install-path proof
+      # reads afterwards.
+      - id: dispatched
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+          REF: ${{ github.ref }}
+        run: just release-dispatched "$TAG" . "$RUNNER_TEMP/dispatched-release/version" "$REF" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: dispatched-release
+          path: ${{ runner.temp }}/dispatched-release
 
   artifacts:
     name: artifacts (${{ matrix.platform.id }})
@@ -101,7 +156,11 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.platform.runner }}
     steps:
+      # The tag's own tree on a dispatch, so what is built is that release's;
+      # empty on a push, which is today's checkout of the run's own commit.
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
       - uses: extractions/setup-just@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: astral-sh/setup-uv@v7
@@ -138,8 +197,14 @@ jobs:
       # the authoritative list of what this repository holds, and a publish
       # authenticated by something outside it would be a credential nobody
       # declared.
+      #
+      # The publisher is the one at the dispatched ref — `main`, where the
+      # resumable one is — whichever tree the artifacts were built from, and
+      # the version it publishes on a dispatch is the tag's rather than this
+      # tree's: empty on a push, where the workspace's own version is it.
       - run: just publish-artifacts
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          PRINTOBSERVER_PUBLISH_VERSION: ${{ inputs.tag }}
