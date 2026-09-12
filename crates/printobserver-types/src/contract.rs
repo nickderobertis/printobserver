@@ -25,7 +25,6 @@ use crate::action::{
 };
 use crate::adjustable::Adjustable;
 use crate::assessment::{AgentAssessment, Confidence};
-use crate::context::PrintContext;
 use crate::event::{EventBody, EventKind, EventPayload, EventRecord, EventSource};
 use crate::file_name::FileName;
 use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
@@ -300,7 +299,6 @@ pub fn declared() -> Vec<TypeContract> {
         ManifestNarrowing,
         PolicyDecision,
         PrintAction,
-        PrintContext,
         PrintId,
         PrintRecord,
         PrinterSnapshot,
@@ -933,34 +931,6 @@ impl Sample for EventRecord {
             image: None,
             raw: None,
             ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for PrintContext {
-    fn sample_full() -> Self {
-        Self {
-            print: PrintRecord::sample_full(),
-            printer: Some(PrinterSnapshot::sample_full()),
-            job: Some(JobSnapshot::sample_full()),
-            manifest: Some(JobManifest::sample_full()),
-            bounds: EffectiveBounds::sample_full(),
-            interventions: vec![Intervention::sample_full()],
-            recent_events: vec![EventRecord::sample_full()],
-            latest_image: Some(ImageRef::sample_full()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            print: PrintRecord::sample_minimal(),
-            printer: None,
-            job: None,
-            manifest: None,
-            bounds: EffectiveBounds::sample_full(),
-            interventions: vec![],
-            recent_events: vec![],
-            latest_image: None,
         }
     }
 }

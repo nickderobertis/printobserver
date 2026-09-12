@@ -3,7 +3,8 @@
 //! Owns: the supervision logic — the loop that turns printer state and vision
 //! observations into supervisory decisions, and the policy that decides which
 //! decisions are allowed to reach the printer — together with the event kinds
-//! and source names that logic writes ([`kinds`]).
+//! and source names that logic writes ([`kinds`]) and the one aggregate a
+//! caller and the agent both read, the print's context ([`context`]).
 //!
 //! May depend on: `printobserver-types` and the four port crates
 //! (`printobserver-printer-api`, `printobserver-vision-api`,
@@ -48,6 +49,7 @@ pub mod block_on;
 pub mod bounds;
 pub mod clock;
 pub mod config;
+pub mod context;
 pub mod decision;
 pub mod error;
 pub mod events;
@@ -61,6 +63,7 @@ pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{CoreConfig, DEFAULT_EXPIRY_POLL, DEFAULT_RECENT_EVENTS, PRINT_ID_PLACEHOLDER};
+pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, decide, valid_from};
 pub use error::CoreError;
 pub use events::TERMINAL_STATES;

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::Instant;
 
-use printobserver_core::{Clock, Supervisor};
+use printobserver_core::{Clock, PrintContext, Supervisor};
 use printobserver_printer_api::{BoxFuture, PrinterError, PrinterPort};
 use printobserver_store_api::{
     AuditPage, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError, StorePort,
@@ -25,7 +25,7 @@ use printobserver_types::{
     ActionId, ActionRecord, ActionRequest, Adjustable, AgentAssessment, Confidence, EventId,
     EventRecord, ExecutionOutcome, FileName, ImageId, ImageRecord, Intervention, InterventionId,
     InterventionOutcome, JobManifest, JobSnapshot, ManifestNarrowing, PolicyDecision, PrintAction,
-    PrintContext, PrintId, PrintRecord, PrinterSnapshot, PrinterState, RawBytes, SessionPhase,
+    PrintId, PrintRecord, PrinterSnapshot, PrinterState, RawBytes, SessionPhase,
     SupervisionSession, Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};

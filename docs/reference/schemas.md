@@ -8618,7 +8618,7 @@ Declared by `printobserver-types`.
 
 ### PrintContext
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {

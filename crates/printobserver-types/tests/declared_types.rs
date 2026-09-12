@@ -187,19 +187,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("tool", "integer", true),
         ],
     ),
-    (
-        "PrintContext",
-        &[
-            ("bounds", "EffectiveBounds", true),
-            ("interventions", "array:Intervention", true),
-            ("job", "JobSnapshot", false),
-            ("latest_image", "ImageRef", false),
-            ("manifest", "JobManifest", false),
-            ("print", "PrintRecord", true),
-            ("printer", "PrinterSnapshot", false),
-            ("recent_events", "array:EventRecord", true),
-        ],
-    ),
     ("PrintId", &[]),
     (
         "PrintRecord",

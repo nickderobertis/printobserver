@@ -6,9 +6,10 @@
 //! all. Every one of them is driven through the real core and read back off the
 //! context a supervision turn is given and off the print itself.
 
+use printobserver_core::PrintContext;
 use printobserver_types::{
-    Actor, Adjustable, FileName, JobManifest, PolicyDecision, PrintAction, PrintContext,
-    PrintRecord, PrinterState, Range, RejectionReason,
+    Actor, Adjustable, FileName, JobManifest, PolicyDecision, PrintAction, PrintRecord,
+    PrinterState, Range, RejectionReason,
 };
 
 use crate::world::{World, manifest};

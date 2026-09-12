@@ -27,11 +27,11 @@ use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
 };
 use printobserver_types::{
-    EventBody, EventRecord, ImageRef, PrintContext, PrintId, PrintRecord, PrinterState,
-    SessionPhase,
+    EventBody, EventRecord, ImageRef, PrintId, PrintRecord, PrinterState, SessionPhase,
 };
 use printobserver_vision_api::NormalizedAlert;
 
+use crate::context::PrintContext;
 use crate::error::CoreError;
 use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
 use crate::supervisor::Supervisor;

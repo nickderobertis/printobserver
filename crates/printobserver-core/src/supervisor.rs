@@ -44,9 +44,11 @@ use printobserver_store_api::{StoreError, StorePort};
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{
     ActionRecord, ActionRequest, ExecutionOutcome, JobSnapshot, PolicyDecision, PrintAction,
-    PrintContext, PrintId, PrinterSnapshot, Timestamp,
+    PrintId, PrinterSnapshot, Timestamp,
 };
 use printobserver_vision_api::VisionPort;
+
+use crate::context::PrintContext;
 
 use crate::block_on::block_on;
 use crate::clock::Clock;

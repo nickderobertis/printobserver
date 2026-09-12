@@ -158,7 +158,7 @@ impl World {
     pub fn context(
         &self,
         print_id: PrintId,
-    ) -> Result<printobserver_types::PrintContext, CoreError> {
+    ) -> Result<printobserver_core::PrintContext, CoreError> {
         block_on(self.core.context(print_id))
     }
 

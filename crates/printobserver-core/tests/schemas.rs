@@ -1,12 +1,17 @@
-//! The event kinds this crate declares emit their schemas, marked with their kinds.
+//! The types this crate declares emit their schemas, and the event kinds among
+//! them are marked with their kinds.
 //!
 //! The `printobserver-types:schemas` graph target runs this beside the other
 //! declaring crates' `schemas` tests: with `PRINTOBSERVER_SCHEMAS=write` it
-//! writes every kind's schema under `schemas/printobserver-core/`, and without
-//! it refuses a tree whose checked-in schema no longer matches what the types
-//! generate. Each schema carries the `x-event-kind` marker naming the kind, and
-//! the marker is written from the payload type's own `KIND` — nothing here
-//! spells a kind name a second time.
+//! writes every schema under `schemas/printobserver-core/`, and without it
+//! refuses a tree whose checked-in schema no longer matches what the types
+//! generate. Each kind's schema carries the `x-event-kind` marker naming the
+//! kind, and the marker is written from the payload type's own `KIND` —
+//! nothing here spells a kind name a second time.
+//!
+//! The print's context is this crate's declaration too, so the fields it
+//! carries, the round trip of its canonical values and the absent-optional
+//! rule are walked here over it.
 
 #[path = "support/schema_files.rs"]
 mod schema_files;
@@ -14,12 +19,19 @@ mod schema_files;
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, agent_source, operator_source, system_source,
+    PortFailureSite, PrintContext, agent_source, operator_source, system_source,
 };
-use printobserver_types::contract::{Sample, schema_of};
+use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
-use printobserver_types::{EVENT_KIND_MARKER, EventBody, EventPayload, event_schema_of};
+use printobserver_types::{
+    EVENT_KIND_MARKER, EventBody, EventPayload, WireField, event_schema_of, wire_fields,
+};
 use schema_files::reconcile;
+
+/// The print's context, with its canonical values.
+fn print_context() -> TypeContract {
+    TypeContract::of::<PrintContext>("PrintContext")
+}
 
 /// One kind this crate declares: its schema, its marker, and its samples.
 struct DeclaredKind {
@@ -78,6 +90,8 @@ fn generated() -> Vec<(String, Value)> {
         "PortFailureSite.json".to_owned(),
         schema_of::<PortFailureSite>(),
     ));
+    let context = print_context();
+    entries.push((format!("{}.json", context.name), context.schema()));
     entries
 }
 
@@ -156,4 +170,63 @@ fn the_source_names_are_the_ones_the_history_carries() {
     assert_eq!(system_source().as_str(), "system");
     assert_eq!(operator_source().as_str(), "operator");
     assert_eq!(agent_source().as_str(), "agent");
+}
+
+/// The field the contract states, as a name, what it is, and whether it is
+/// required.
+fn field(name: &str, descriptor: &str, required: bool) -> WireField {
+    WireField {
+        name: name.to_owned(),
+        descriptor: descriptor.to_owned(),
+        required,
+    }
+}
+
+/// The print's context carries exactly the fields the contract states.
+#[test]
+fn the_print_context_carries_exactly_the_stated_fields() {
+    let context = print_context();
+    assert_eq!(
+        wire_fields(&context.schema()),
+        vec![
+            field("bounds", "EffectiveBounds", true),
+            field("interventions", "array:Intervention", true),
+            field("job", "JobSnapshot", false),
+            field("latest_image", "ImageRef", false),
+            field("manifest", "JobManifest", false),
+            field("print", "PrintRecord", true),
+            field("printer", "PrinterSnapshot", false),
+            field("recent_events", "array:EventRecord", true),
+        ]
+    );
+    assert_eq!(
+        context.schema().get("title").and_then(Value::as_str),
+        Some("PrintContext")
+    );
+}
+
+/// The print's context round-trips its canonical values unchanged, and an
+/// optional it does not carry is absent from the serialized object rather
+/// than `null`: a snapshot that could not be taken is one the agent is not
+/// shown.
+#[test]
+fn the_print_context_round_trips_and_omits_what_it_does_not_carry() {
+    let context = print_context();
+    for value in context.samples() {
+        let round = context
+            .round_trip(value.clone())
+            .unwrap_or_else(|error| panic!("PrintContext: {error}"));
+        assert_eq!(round, value, "PrintContext does not survive a round trip");
+    }
+    let minimal = context.minimal();
+    let object = minimal.as_object().expect("an object");
+    for name in ["printer", "job", "manifest", "latest_image"] {
+        assert!(
+            !object.contains_key(name),
+            "the minimal context carries {name} as {:?}",
+            object.get(name)
+        );
+    }
+    let nonsense = printobserver_types::serde_json::json!({ "print": "not a record" });
+    assert!(context.round_trip(nonsense).is_err());
 }
