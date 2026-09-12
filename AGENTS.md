@@ -492,7 +492,7 @@ verdict:
 3. it captures the body that stack posts,
 4. it fetches the image *that captured body* points at and reads its bytes,
 5. it compares *that captured body* against the sample committed at
-   `crates/printobserver-types/samples/obico/failure-alert.json`,
+   `crates/printobserver-obico/samples/obico/failure-alert.json`,
 6. and it reports a verdict naming every field that moved.
 
 Nothing in it compares a body the capture did not produce — the alteration

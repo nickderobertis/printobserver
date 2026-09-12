@@ -32,11 +32,6 @@ use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
 use crate::image::{ImageRecord, ImageRef};
 use crate::intervention::{Intervention, InterventionOutcome};
 use crate::manifest::JobManifest;
-use crate::obico::{
-    ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,
-    ObicoNotificationEvent, ObicoPrintInfo, ObicoPrinterInfo, ObicoPrinterNotification,
-    ObicoTimestamp,
-};
 use crate::policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
 use crate::print::{ManifestNarrowing, PrintRecord};
 use crate::printer::{HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState};
@@ -142,6 +137,25 @@ pub struct TypeContract {
 }
 
 impl TypeContract {
+    /// The contract of one type, under the name its schema is written under.
+    ///
+    /// This is how a crate other than this one declares a type of its own into
+    /// the schema set: its `schemas` test lists its types through this and
+    /// reconciles the files under `schemas/<crate>/` against them, walking the
+    /// same round trip and the same absent-optional rule this crate's own
+    /// contract tests walk.
+    #[must_use]
+    pub fn of<T: Sample + JsonSchema + Serialize + DeserializeOwned>(name: &'static str) -> Self {
+        Self {
+            name,
+            schema: schema_of::<T>,
+            full: || canonical(&T::sample_full()),
+            minimal: || canonical(&T::sample_minimal()),
+            round_trip: round_trip_as::<T>,
+            alternates: || T::sample_alternates().iter().map(canonical).collect(),
+        }
+    }
+
     /// The JSON Schema this type emits.
     #[must_use]
     pub fn schema(&self) -> Value {
@@ -241,19 +255,7 @@ macro_rules! contract_of {
         contract_of!($ty, stringify!($ty))
     };
     ($ty:ty, $name:expr) => {
-        TypeContract {
-            name: $name,
-            schema: schema_of::<$ty>,
-            full: || canonical(&<$ty as Sample>::sample_full()),
-            minimal: || canonical(&<$ty as Sample>::sample_minimal()),
-            round_trip: round_trip_as::<$ty>,
-            alternates: || {
-                <$ty as Sample>::sample_alternates()
-                    .iter()
-                    .map(canonical)
-                    .collect()
-            },
-        }
+        TypeContract::of::<$ty>($name)
     };
 }
 
@@ -296,15 +298,6 @@ pub fn declared() -> Vec<TypeContract> {
         JobManifest,
         JobSnapshot,
         ManifestNarrowing,
-        ObicoEventType,
-        ObicoFailureAlert,
-        ObicoFailureEvent,
-        ObicoFailureEventType,
-        ObicoNotificationEvent,
-        ObicoPrintInfo,
-        ObicoPrinterInfo,
-        ObicoPrinterNotification,
-        ObicoTimestamp,
         PolicyDecision,
         PrintAction,
         PrintContext,
@@ -968,102 +961,6 @@ impl Sample for PrintContext {
             interventions: vec![],
             recent_events: vec![],
             latest_image: None,
-        }
-    }
-}
-
-impl Sample for ObicoFailureEventType {
-    fn sample_full() -> Self {
-        Self::PrintFailure
-    }
-}
-
-impl Sample for ObicoEventType {
-    fn sample_full() -> Self {
-        Self::PrintStarted
-    }
-}
-
-impl Sample for ObicoTimestamp {
-    fn sample_full() -> Self {
-        Self::Seconds(1_772_366_400.5)
-    }
-}
-
-impl Sample for ObicoPrinterInfo {
-    fn sample_full() -> Self {
-        Self {
-            id: 17,
-            name: "Prusa MK4".to_owned(),
-        }
-    }
-}
-
-impl Sample for ObicoPrintInfo {
-    fn sample_full() -> Self {
-        Self {
-            id: 4211,
-            filename: "benchy.gcode".to_owned(),
-            started_at: Some(ObicoTimestamp::Seconds(1_772_366_400.5)),
-            ended_at: Some(ObicoTimestamp::NotReported),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            started_at: None,
-            ended_at: None,
-            ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for ObicoFailureEvent {
-    fn sample_full() -> Self {
-        Self {
-            event_type: ObicoFailureEventType::PrintFailure,
-            is_warning: true,
-            print_paused: false,
-        }
-    }
-}
-
-impl Sample for ObicoNotificationEvent {
-    fn sample_full() -> Self {
-        Self {
-            event_type: ObicoEventType::PrintStarted,
-            is_warning: false,
-            print_paused: false,
-        }
-    }
-}
-
-impl Sample for ObicoFailureAlert {
-    fn sample_full() -> Self {
-        Self {
-            event: ObicoFailureEvent::sample_full(),
-            printer: ObicoPrinterInfo::sample_full(),
-            print: ObicoPrintInfo::sample_full(),
-            img_url: "https://obico.example/snapshots/4211.jpg".to_owned(),
-        }
-    }
-}
-
-impl Sample for ObicoPrinterNotification {
-    fn sample_full() -> Self {
-        Self {
-            event: ObicoNotificationEvent::sample_full(),
-            printer: ObicoPrinterInfo::sample_full(),
-            print: Some(ObicoPrintInfo::sample_full()),
-            img_url: Some("https://obico.example/snapshots/4211.jpg".to_owned()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            print: None,
-            img_url: None,
-            ..Self::sample_full()
         }
     }
 }

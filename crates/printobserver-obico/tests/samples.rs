@@ -14,9 +14,9 @@
 
 use std::path::PathBuf;
 
+use printobserver_obico::{ObicoFailureAlert, ObicoPrinterNotification, ObicoTimestamp};
 use printobserver_types::contract::schema_of;
-use printobserver_types::{ObicoFailureAlert, ObicoPrinterNotification};
-use serde_json::Value;
+use printobserver_types::serde_json::{self, Value};
 
 /// Where the committed samples live.
 fn sample(name: &str) -> Value {
@@ -301,4 +301,21 @@ fn the_completeness_check_refuses_every_fixture_it_must() {
             "the not-about-a-print form was accepted carrying a {extra}"
         );
     }
+}
+
+/// The producer's two timestamp forms are both held, and nothing else is.
+#[test]
+fn the_producers_two_timestamp_forms_are_both_held() {
+    assert_eq!(
+        serde_json::from_value::<ObicoTimestamp>(serde_json::json!(17)).expect("a number"),
+        ObicoTimestamp::Seconds(17.0)
+    );
+    assert_eq!(
+        serde_json::from_value::<ObicoTimestamp>(serde_json::json!("")).expect("an empty string"),
+        ObicoTimestamp::NotReported
+    );
+    assert!(
+        serde_json::from_value::<ObicoTimestamp>(serde_json::json!("yesterday")).is_err(),
+        "a string that is no timestamp was read as one"
+    );
 }

@@ -358,8 +358,8 @@ pub fn failure_alert(obico_print_id: i64, image_url: &str) -> serde_json::Value 
     sample
 }
 
-/// The committed `Obico` failure alert sample, read from the contracts' own file.
+/// The committed `Obico` failure alert sample, read from the adapter's own file.
 #[must_use]
 pub fn committed_sample() -> &'static str {
-    include_str!("../../../printobserver-types/samples/obico/failure-alert.json")
+    include_str!("../../../printobserver-obico/samples/obico/failure-alert.json")
 }

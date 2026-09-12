@@ -59,7 +59,7 @@ fn snapshot_bytes() -> Vec<u8> {
 /// The committed `Obico` failure alert, naming an image host this walk serves.
 fn alert_body(image_url: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../printobserver-types/samples/obico/failure-alert.json");
+        .join("../printobserver-obico/samples/obico/failure-alert.json");
     let mut sample: Value = printobserver_types::serde_json::from_str(
         &std::fs::read_to_string(&path).expect("the committed sample reads"),
     )

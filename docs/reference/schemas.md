@@ -6744,7 +6744,7 @@ Declared by `printobserver-vision-api`.
 
 ### ObicoEventType
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -6798,7 +6798,7 @@ Declared by `printobserver-types`.
 
 ### ObicoFailureAlert
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7017,7 +7017,7 @@ Declared by `printobserver-obico`.
 
 ### ObicoFailureEvent
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7061,7 +7061,7 @@ Declared by `printobserver-types`.
 
 ### ObicoFailureEventType
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7080,7 +7080,7 @@ Declared by `printobserver-types`.
 
 ### ObicoNotificationEvent
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7213,7 +7213,7 @@ Declared by `printobserver-obico`.
 
 ### ObicoPrintInfo
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7278,7 +7278,7 @@ Declared by `printobserver-types`.
 
 ### ObicoPrinterInfo
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7306,7 +7306,7 @@ Declared by `printobserver-types`.
 
 ### ObicoPrinterNotification
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {
@@ -7608,7 +7608,7 @@ Declared by `printobserver-obico`.
 
 ### ObicoTimestamp
 
-Declared by `printobserver-types`.
+Declared by `printobserver-obico`.
 
 ```json
 {

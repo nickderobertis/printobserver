@@ -3,8 +3,10 @@
 //! Owns: the `Obico` adapter — the one implementation of
 //! `printobserver-vision-api`, which reads the body the self-hosted `Obico`
 //! webhook notification plugin posts into an event under this adapter's own
-//! kind and fetches the snapshot that body names; the two event kinds and the
-//! source name it writes ([`events`]); and the ingress that writes both down.
+//! kind and fetches the snapshot that body names; the nine wire shapes that
+//! producer sends and the sample bodies committed beside them ([`wire`]); the
+//! two event kinds and the source name it writes ([`events`]); and the ingress
+//! that writes both down.
 //!
 //! May depend on: `printobserver-types`, `printobserver-vision-api`,
 //! `printobserver-store-api` and `printobserver-core` — the type crate, two
@@ -45,6 +47,7 @@ mod fetch;
 mod ingress;
 mod normalize;
 mod vision;
+pub mod wire;
 
 pub use events::{
     OBICO_SOURCE, ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload,
@@ -54,4 +57,9 @@ pub use ingress::{IngressError, ObicoIngress, Receipt};
 pub use vision::{
     DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, ObicoVision, ObicoVisionConfig,
     ObicoVisionError,
+};
+pub use wire::{
+    ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,
+    ObicoNotificationEvent, ObicoPrintInfo, ObicoPrinterInfo, ObicoPrinterNotification,
+    ObicoTimestamp,
 };

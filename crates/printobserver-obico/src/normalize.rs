@@ -11,14 +11,14 @@ use core::time::Duration;
 
 use chrono::DateTime;
 use printobserver_types::serde_json::{self, Value};
-use printobserver_types::{
-    EventBody, ObicoEventType, ObicoFailureAlert, ObicoPrintInfo, ObicoPrinterNotification,
-    ObicoTimestamp, RawBytes, Timestamp,
-};
+use printobserver_types::{EventBody, RawBytes, Timestamp};
 use printobserver_vision_api::{NormalizedAlert, ProviderPrint, VisionError};
 
 use crate::events::{
     ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload, obico_source,
+};
+use crate::wire::{
+    ObicoEventType, ObicoFailureAlert, ObicoPrintInfo, ObicoPrinterNotification, ObicoTimestamp,
 };
 
 /// The producer's own spelling of the `type` a failure alert's event carries.
@@ -244,9 +244,8 @@ pub(crate) fn read(
 
 #[cfg(test)]
 mod tests {
-    use printobserver_types::ObicoFailureEventType;
-
     use super::{FAILURE_EVENT_TYPE, instant_named_by};
+    use crate::wire::ObicoFailureEventType;
 
     /// The spelling this module dispatches on is the contract's own.
     #[test]

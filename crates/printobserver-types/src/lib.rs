@@ -67,7 +67,6 @@ pub mod ids;
 pub mod image;
 pub mod intervention;
 pub mod manifest;
-pub mod obico;
 pub mod policy;
 pub mod print;
 pub mod printer;
@@ -95,11 +94,6 @@ pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, Print
 pub use image::{ImageRecord, ImageRef};
 pub use intervention::{Intervention, InterventionOutcome};
 pub use manifest::JobManifest;
-pub use obico::{
-    ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,
-    ObicoNotificationEvent, ObicoPrintInfo, ObicoPrinterInfo, ObicoPrinterNotification,
-    ObicoTimestamp,
-};
 pub use policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
 pub use print::{ManifestNarrowing, PrintRecord};
 pub use printer::{HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState};

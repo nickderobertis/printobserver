@@ -1420,6 +1420,7 @@ name = "printobserver-obico"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "jsonschema 0.34.0",
  "printobserver-core",
  "printobserver-store-api",
  "printobserver-types",

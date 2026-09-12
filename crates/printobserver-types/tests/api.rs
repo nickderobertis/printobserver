@@ -11,8 +11,8 @@ use chrono::{DateTime, TimeZone as _, Utc};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
     AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventKind, EventRecord,
-    FEEDRATE_FACTOR_RANGE, FileName, FileNameRefusal, ObicoTimestamp, PrintAction, PrintId, Range,
-    RawBytes, Reported, Timestamp,
+    FEEDRATE_FACTOR_RANGE, FileName, FileNameRefusal, PrintAction, PrintId, Range, RawBytes,
+    Reported, Timestamp,
 };
 
 /// Every action reads back the kind, the reason and the actor it carries.
@@ -229,22 +229,5 @@ fn the_envelope_sample_is_under_a_kind_of_its_own() {
     assert_eq!(
         AcknowledgementDisposition::sample_full(),
         AcknowledgementDisposition::Watch
-    );
-}
-
-/// The producer's two timestamp forms are both held, and nothing else is.
-#[test]
-fn the_producers_two_timestamp_forms_are_both_held() {
-    assert_eq!(
-        serde_json::from_value::<ObicoTimestamp>(serde_json::json!(17)).expect("a number"),
-        ObicoTimestamp::Seconds(17.0)
-    );
-    assert_eq!(
-        serde_json::from_value::<ObicoTimestamp>(serde_json::json!("")).expect("an empty string"),
-        ObicoTimestamp::NotReported
-    );
-    assert!(
-        serde_json::from_value::<ObicoTimestamp>(serde_json::json!("yesterday")).is_err(),
-        "a string that is no timestamp was read as one"
     );
 }

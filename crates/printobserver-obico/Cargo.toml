@@ -17,6 +17,7 @@ printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.
 reqwest = { version = "0.13", default-features = false, features = ["http2", "rustls", "webpki-roots"] }
 
 [dev-dependencies]
+jsonschema.workspace = true
 sha2 = "0.10"
 tempfile = "3"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }

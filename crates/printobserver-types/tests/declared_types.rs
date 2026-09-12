@@ -169,56 +169,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("requested", "Range", true),
         ],
     ),
-    ("ObicoEventType", &[]),
-    (
-        "ObicoFailureAlert",
-        &[
-            ("event", "ObicoFailureEvent", true),
-            ("img_url", "string", true),
-            ("print", "ObicoPrintInfo", true),
-            ("printer", "ObicoPrinterInfo", true),
-        ],
-    ),
-    (
-        "ObicoFailureEvent",
-        &[
-            ("is_warning", "boolean", true),
-            ("print_paused", "boolean", true),
-            ("type", "ObicoFailureEventType", true),
-        ],
-    ),
-    ("ObicoFailureEventType", &[]),
-    (
-        "ObicoNotificationEvent",
-        &[
-            ("is_warning", "boolean", true),
-            ("print_paused", "boolean", true),
-            ("type", "ObicoEventType", true),
-        ],
-    ),
-    (
-        "ObicoPrintInfo",
-        &[
-            ("ended_at", "ObicoTimestamp", false),
-            ("filename", "string", true),
-            ("id", "integer", true),
-            ("started_at", "ObicoTimestamp", false),
-        ],
-    ),
-    (
-        "ObicoPrinterInfo",
-        &[("id", "integer", true), ("name", "string", true)],
-    ),
-    (
-        "ObicoPrinterNotification",
-        &[
-            ("event", "ObicoNotificationEvent", true),
-            ("img_url", "string", false),
-            ("print", "ObicoPrintInfo", false),
-            ("printer", "ObicoPrinterInfo", true),
-        ],
-    ),
-    ("ObicoTimestamp", &[]),
     ("PolicyDecision", &[("rejected", "RejectionReason", true)]),
     (
         "PrintAction",

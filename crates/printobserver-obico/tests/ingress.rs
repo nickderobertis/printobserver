@@ -7,8 +7,8 @@
 //! real server on the loopback address, so the bounds it runs under are the
 //! ones under test rather than ones a stub agreed to.
 //!
-//! The committed samples under `printobserver-types` are what the producer
-//! sends, and this tier is what holds this crate to them. Where a journey needs
+//! The committed samples under this crate's own `samples/obico/` are what the
+//! producer sends, and this tier is what holds this crate to them. Where a journey needs
 //! the snapshot actually fetched it re-points `img_url` at the host the test
 //! controls — that one field, and nothing else, because no test can reach the
 //! address the committed sample names.
@@ -45,8 +45,6 @@ const SAMPLE_OBICO_PRINT_ID: i64 = 4211;
 /// The bytes of a committed sample, exactly as they are on disk.
 fn sample_bytes(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("printobserver-types")
         .join("samples")
         .join("obico")
         .join(name);
