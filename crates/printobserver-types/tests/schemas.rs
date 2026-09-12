@@ -7,6 +7,12 @@
 //! in every other crate that declares a schema — the port crates, and each
 //! domain that owns event kinds — so one target generates every schema in the
 //! set and one target refuses any drift in it.
+//!
+//! Nothing here reads a file another suite rewrites while the gate runs: the
+//! one such file is the generated assessment schema, which is the supervisor
+//! port's, and that port's `schemas` test is the suite that takes the lock
+//! `repo-policy.toml`'s `supervisor.schema_lock` names against the journey
+//! that rewrites it.
 
 use std::path::{Path, PathBuf};
 
@@ -23,34 +29,6 @@ fn repo_root() -> PathBuf {
 /// Where the schemas one crate declares are checked in.
 fn schema_dir(root: &Path, crate_name: &str) -> PathBuf {
     root.join("schemas").join(crate_name)
-}
-
-/// The lock the whole checked-in schema tree is read and written under.
-///
-/// Every test in this file reads that tree, and one journey in
-/// `printobserver-oneharness` **writes** to it: it changes the checked-in
-/// assessment schema on disk, drives an answer that was accepted before, and
-/// puts the artifact back — which is what proves the port reads that artifact at
-/// run time rather than validating against a copy of its bytes. The two suites
-/// run at the same time, because `nx run-many` drives one project's tests while
-/// another's are still going, so both sides take this lock and neither ever sees
-/// the other's half-done tree.
-///
-/// The lock is the operating system's own, so the kernel releases it when the
-/// handle goes — a test that panics, or is killed, leaves nothing behind. The
-/// file sits under `target`, which is per-worktree and ignored, so two checkouts
-/// on one machine never block each other.
-///
-/// `repo-policy.toml`'s `supervisor.schema_lock` is where the name comes from,
-/// and `just check-repo` holds every holder it declares to that one name: two
-/// suites that locked two different files would be back to no lock at all.
-fn schema_lock() -> std::fs::File {
-    let directory = repo_root().join("target");
-    std::fs::create_dir_all(&directory).expect("the target directory is writable");
-    let file = std::fs::File::create(directory.join("printobserver-schemas.lock"))
-        .expect("the schema lock file is creatable");
-    file.lock().expect("the schema lock is takeable");
-    file
 }
 
 /// Whether this run writes the schemas rather than checking them.
@@ -145,7 +123,6 @@ fn drift(directory: &Path, entries: &[(String, Value)]) -> Vec<String> {
 /// The checked-in schemas of this crate are what its types generate.
 #[test]
 fn the_checked_in_schemas_are_what_the_types_generate() {
-    let _lock = schema_lock();
     ensure_written();
     let directory = schema_dir(&repo_root(), "printobserver-types");
     let entries = generated();
@@ -216,7 +193,6 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
 /// Every type in the schema set has a checked-in schema, the six included.
 #[test]
 fn every_type_in_the_schema_set_has_a_checked_in_schema() {
-    let _lock = schema_lock();
     ensure_written();
     let findings = schema_set_findings(&repo_root());
     assert!(
@@ -279,7 +255,6 @@ impl Drop for ScratchTree {
 /// this crate declares, so that the check is shown to reach both crates.
 #[test]
 fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
-    let _lock = schema_lock();
     ensure_written();
     let entries = generated();
 
@@ -340,7 +315,6 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
 /// falls out of the set without this crate's own declarations changing.
 #[test]
 fn the_schema_set_reading_refuses_a_tree_missing_one_of_the_six() {
-    let _lock = schema_lock();
     ensure_written();
     let scratch = ScratchTree::new("missing-six");
     assert!(

@@ -17,8 +17,9 @@
 
 use std::sync::Arc;
 
+use printobserver_supervisor_api::Confidence;
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{Confidence, EventBody, PrintId, serde_json};
+use printobserver_types::{EventBody, PrintId, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,

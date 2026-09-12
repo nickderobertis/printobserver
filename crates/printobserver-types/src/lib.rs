@@ -59,7 +59,6 @@
 
 pub mod action;
 pub mod adjustable;
-pub mod assessment;
 pub mod contract;
 pub mod event;
 pub mod file_name;
@@ -80,7 +79,6 @@ pub use action::{
     ExecutionOutcome, PrintAction,
 };
 pub use adjustable::{Adjustable, AdjustableError};
-pub use assessment::{AgentAssessment, Confidence};
 pub use contract::{
     EVENT_KIND_MARKER, Sample, TypeContract, WireField, declared, event_schema_of, schema_of,
     wire_fields,

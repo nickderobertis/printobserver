@@ -1,17 +1,69 @@
-//! This port's two shapes and two event kinds carry the stated fields and emit
-//! their schemas.
+//! This port's shapes, its assessment vocabulary and its two event kinds carry
+//! the stated fields and emit their schemas.
+//!
+//! The `printobserver-types:schemas` graph target runs this beside the other
+//! declaring crates' `schemas` tests: with `PRINTOBSERVER_SCHEMAS=write` it
+//! writes every schema under `schemas/printobserver-supervisor-api/`, and
+//! without it refuses a tree whose checked-in schema no longer matches what
+//! the types generate.
+//!
+//! One of the files it reconciles is the generated assessment schema, which is
+//! the artifact the agent's answer is constrained by — and one journey in
+//! `printobserver-oneharness` **writes** to it on disk, drives an answer that
+//! was accepted before, and puts it back. The two suites run at the same
+//! time, so every test here that reads the checked-in tree takes the lock
+//! [`schema_lock`] describes.
 
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
 use printobserver_supervisor_api::{
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest,
+    AgentAssessment, Confidence, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    TurnOutcome, TurnRequest,
 };
-use printobserver_types::contract::{Sample as _, schema_of};
+use printobserver_types::contract::{Sample as _, TypeContract, schema_of};
+use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{
     EVENT_KIND_MARKER, EventBody, EventPayload, WireField, event_schema_of, wire_fields,
 };
 use schema_files::reconcile;
+
+/// The lock the checked-in schema tree is read and written under.
+///
+/// `printobserver-oneharness`'s assessment-schema journey changes the
+/// checked-in `AgentAssessment.json` on disk and puts it back, which is what
+/// proves the port reads that artifact at run time rather than validating
+/// against a copy of its bytes; this suite reads that same file, and
+/// `nx run-many` drives the two at the same time. Both sides take this lock,
+/// so neither ever sees the other's half-done tree.
+///
+/// The lock is the operating system's own, so the kernel releases it when the
+/// handle goes — a test that panics, or is killed, leaves nothing behind. The
+/// file sits under `target`, which is per-worktree and ignored, so two
+/// checkouts on one machine never block each other.
+///
+/// `repo-policy.toml`'s `supervisor.schema_lock` is where the name comes from,
+/// and `just check-repo` holds every holder it declares to that one name: two
+/// suites that locked two different files would be back to no lock at all.
+fn schema_lock() -> std::fs::File {
+    let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("target");
+    std::fs::create_dir_all(&directory).expect("the target directory is writable");
+    let file = std::fs::File::create(directory.join("printobserver-schemas.lock"))
+        .expect("the schema lock file is creatable");
+    file.lock().expect("the schema lock is takeable");
+    file
+}
+
+/// The assessment vocabulary this port declares, each with its canonical values.
+fn assessment_vocabulary() -> Vec<TypeContract> {
+    vec![
+        TypeContract::of::<AgentAssessment>("AgentAssessment"),
+        TypeContract::of::<Confidence>("Confidence"),
+    ]
+}
 
 /// The field the contract states, as a name, what it is, and whether it is
 /// required.
@@ -24,8 +76,8 @@ fn field(name: &str, descriptor: &str, required: bool) -> WireField {
 }
 
 /// The schemas this crate declares, by the file name each is written under.
-fn generated() -> Vec<(String, printobserver_types::serde_json::Value)> {
-    vec![
+fn generated() -> Vec<(String, Value)> {
+    let mut entries = vec![
         ("TurnRequest.json".to_owned(), schema_of::<TurnRequest>()),
         ("TurnOutcome.json".to_owned(), schema_of::<TurnOutcome>()),
         (
@@ -36,12 +88,19 @@ fn generated() -> Vec<(String, printobserver_types::serde_json::Value)> {
             "SupervisionSessionClosedPayload.json".to_owned(),
             event_schema_of::<SupervisionSessionClosedPayload>(),
         ),
-    ]
+    ];
+    entries.extend(
+        assessment_vocabulary()
+            .into_iter()
+            .map(|entry| (format!("{}.json", entry.name), entry.schema())),
+    );
+    entries
 }
 
 /// The checked-in schemas of this crate are what its types generate.
 #[test]
 fn the_checked_in_schemas_are_what_the_types_generate() {
+    let _lock = schema_lock();
     let findings = reconcile("printobserver-supervisor-api", &generated());
     assert!(
         findings.is_empty(),
@@ -114,4 +173,86 @@ fn each_kind_is_written_under_its_own_name_and_reads_back_under_it() {
         opened
     );
     assert!(body.read::<SupervisionSessionClosedPayload>().is_none());
+}
+
+/// The assessment vocabulary carries exactly the fields the contract states,
+/// under the names the schemas carry.
+#[test]
+fn the_assessment_vocabulary_carries_exactly_the_stated_fields() {
+    let expected: [(&str, Vec<WireField>); 2] = [
+        (
+            "AgentAssessment",
+            vec![
+                field("confidence", "Confidence", true),
+                field("did", "string", true),
+                field("escalating", "boolean", true),
+                field("should_continue", "boolean", true),
+                field("summary", "string", true),
+                field("why", "string", true),
+            ],
+        ),
+        ("Confidence", vec![]),
+    ];
+    let declared = assessment_vocabulary();
+    assert_eq!(declared.len(), expected.len());
+    for (entry, (name, fields)) in declared.iter().zip(expected) {
+        assert_eq!(entry.name, name);
+        let schema = entry.schema();
+        assert_eq!(
+            wire_fields(&schema),
+            fields,
+            "{name} does not carry the stated fields"
+        );
+        assert_eq!(schema.get("title").and_then(Value::as_str), Some(name));
+    }
+}
+
+/// The confidence vocabulary is the closed set of three, in its lowercase
+/// spellings, and its sample is one of them.
+#[test]
+fn confidence_is_a_closed_set_of_three() {
+    let schema = schema_of::<Confidence>();
+    let spellings: Vec<&str> = schema["oneOf"]
+        .as_array()
+        .expect("a closed set of arms")
+        .iter()
+        .filter_map(|arm| arm["const"].as_str())
+        .collect();
+    assert_eq!(spellings, ["low", "medium", "high"]);
+    let sample = printobserver_types::serde_json::to_value(Confidence::sample_full())
+        .expect("a fieldless enum serializes");
+    assert!(spellings.contains(&sample.as_str().expect("a spelling")));
+}
+
+/// Every canonical value of the assessment vocabulary round-trips unchanged,
+/// and a value of no declared type is refused: an assessment carries every
+/// field or is not one.
+#[test]
+fn the_assessment_vocabulary_round_trips_and_refuses_what_it_does_not_declare() {
+    for entry in assessment_vocabulary() {
+        for value in entry.samples() {
+            let round = entry
+                .round_trip(value.clone())
+                .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+            assert_eq!(round, value, "{} does not survive a round trip", entry.name);
+        }
+        assert!(
+            entry
+                .round_trip(json!({ "printobserver": "no type declares this field" }))
+                .is_err(),
+            "{} accepted a value of no declared type",
+            entry.name
+        );
+    }
+    let mut without_why = TypeContract::of::<AgentAssessment>("AgentAssessment").full();
+    without_why
+        .as_object_mut()
+        .expect("an object")
+        .remove("why");
+    assert!(
+        TypeContract::of::<AgentAssessment>("AgentAssessment")
+            .round_trip(without_why)
+            .is_err(),
+        "an assessment missing a required field was accepted"
+    );
 }

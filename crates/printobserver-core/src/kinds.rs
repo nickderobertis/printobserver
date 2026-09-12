@@ -11,12 +11,13 @@
 //! The three source names are the actors this domain writes events on behalf
 //! of: the supervisor itself, a person, and the supervising agent.
 
+use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    AcknowledgementDisposition, ActionId, Actor, Adjustable, AgentAssessment, EventId,
-    EventPayload, EventSource, InterventionId, InterventionOutcome, PolicyDecision, PrintAction,
+    AcknowledgementDisposition, ActionId, Actor, Adjustable, EventId, EventPayload, EventSource,
+    InterventionId, InterventionOutcome, PolicyDecision, PrintAction,
 };
 
 /// The source name of an event the supervisor raised itself.

@@ -31,7 +31,7 @@ from treecopy import Tree
 CRATE = "crates/printobserver-oneharness"
 TEMPLATE = f"{CRATE}/assets/turn-prompt.md"
 ACTION_SCHEMA = "schemas/printobserver-types/PrintAction.json"
-ASSESSMENT_SCHEMA = "schemas/printobserver-types/AgentAssessment.json"
+ASSESSMENT_SCHEMA = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 
 # A source that spawns something whose name it worked out at run time. Nothing
 # in it says `oneharness`, which is the whole point: the check refuses the

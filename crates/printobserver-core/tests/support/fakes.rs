@@ -22,12 +22,14 @@ use printobserver_store_api::{
     AuditPage, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError, StorePort,
     resolve_history_limit,
 };
-use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnOutcome, TurnRequest};
+use printobserver_supervisor_api::{
+    AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+};
 use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, AgentAssessment, Confidence, EventId,
-    EventRecord, ExecutionOutcome, FileName, ImageId, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintAction, PrintId,
-    PrintRecord, PrinterState, RawBytes, SessionPhase, SupervisionSession, Timestamp,
+    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
+    FileName, ImageId, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
+    ManifestNarrowing, PolicyDecision, PrintAction, PrintId, PrintRecord, PrinterState, RawBytes,
+    SessionPhase, SupervisionSession, Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 

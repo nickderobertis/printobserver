@@ -24,7 +24,6 @@ use crate::action::{
     ExecutionOutcome, PrintAction,
 };
 use crate::adjustable::Adjustable;
-use crate::assessment::{AgentAssessment, Confidence};
 use crate::event::{EventBody, EventKind, EventPayload, EventRecord, EventSource};
 use crate::file_name::FileName;
 use crate::ids::{ActionId, EventId, ImageId, InterventionId, PrintId};
@@ -220,8 +219,6 @@ pub fn declared() -> Vec<TypeContract> {
         Actor,
         ActorClass,
         Adjustable,
-        AgentAssessment,
-        Confidence,
         EffectiveBounds,
         EventId,
         EventBody,
@@ -732,25 +729,6 @@ impl Sample for SupervisionSession {
             closed_at: None,
             close_reason: None,
             ..Self::sample_full()
-        }
-    }
-}
-
-impl Sample for Confidence {
-    fn sample_full() -> Self {
-        Self::Medium
-    }
-}
-
-impl Sample for AgentAssessment {
-    fn sample_full() -> Self {
-        Self {
-            summary: "the first layer is down and adhesion looks even".to_owned(),
-            confidence: Confidence::Medium,
-            should_continue: true,
-            did: "slowed the feedrate to 80% for ten minutes".to_owned(),
-            why: "the extrusion width was widening on the long edges".to_owned(),
-            escalating: false,
         }
     }
 }

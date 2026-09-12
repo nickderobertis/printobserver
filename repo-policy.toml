@@ -338,7 +338,7 @@ skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
 # The generated assessment schema's own checked-in artifact: written by the
 # contracts' generation target, which refuses the tree when it no longer matches
 # the types. It is the only schema the agent's answer may be constrained by.
-assessment_schema = "schemas/printobserver-types/AgentAssessment.json"
+assessment_schema = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 # The generated action vocabulary. The set of operations the prompt template may
 # not name is DERIVED from this file rather than restated here, so a variant
 # `PrintAction` gains enters that set the moment the generation target writes
@@ -359,7 +359,7 @@ context_read = "context"
 # two suites locking two different files are back to no lock at all.
 schema_lock = "printobserver-schemas.lock"
 schema_lock_holders = [
-    "crates/printobserver-types/tests/schemas.rs",
+    "crates/printobserver-supervisor-api/tests/schemas.rs",
     "crates/printobserver-oneharness/tests/supervision/support.rs",
 ]
 

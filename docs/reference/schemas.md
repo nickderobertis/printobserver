@@ -3714,7 +3714,7 @@ Declared by `printobserver-types`.
 
 ### AgentAssessment
 
-Declared by `printobserver-types`.
+Declared by `printobserver-supervisor-api`.
 
 ```json
 {
@@ -3742,7 +3742,7 @@ Declared by `printobserver-types`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+  "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
   "properties": {
     "confidence": {
       "$ref": "#/$defs/Confidence",
@@ -3791,7 +3791,7 @@ Declared by `printobserver-core`.
   "$defs": {
     "AgentAssessment": {
       "additionalProperties": false,
-      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
       "properties": {
         "confidence": {
           "$ref": "#/$defs/Confidence",
@@ -3874,7 +3874,7 @@ Declared by `printobserver-core`.
 
 ### Confidence
 
-Declared by `printobserver-types`.
+Declared by `printobserver-supervisor-api`.
 
 ```json
 {
@@ -11614,7 +11614,7 @@ Declared by `printobserver-supervisor-api`.
   "$defs": {
     "AgentAssessment": {
       "additionalProperties": false,
-      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
       "properties": {
         "confidence": {
           "$ref": "#/$defs/Confidence",

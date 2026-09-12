@@ -353,7 +353,9 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         &assets,
         "assessment-schema.json",
         &printobserver_types::serde_json::to_string_pretty(
-            &printobserver_types::contract::schema_of::<printobserver_types::AgentAssessment>(),
+            &printobserver_types::contract::schema_of::<
+                printobserver_supervisor_api::AgentAssessment,
+            >(),
         )
         .expect("the schema renders"),
     );

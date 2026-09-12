@@ -51,18 +51,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ("Actor", &[("agent", "object", true)]),
     ("ActorClass", &[]),
     ("Adjustable", &[]),
-    (
-        "AgentAssessment",
-        &[
-            ("confidence", "Confidence", true),
-            ("did", "string", true),
-            ("escalating", "boolean", true),
-            ("should_continue", "boolean", true),
-            ("summary", "string", true),
-            ("why", "string", true),
-        ],
-    ),
-    ("Confidence", &[]),
     ("EffectiveBounds", &[("allowed", "map:Range", true)]),
     ("EventId", &[]),
     ("EventKind", &[]),

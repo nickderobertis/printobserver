@@ -14,10 +14,10 @@ use std::thread;
 
 use block_on::block_on;
 use printobserver_supervisor_api::{
-    BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+    AgentAssessment, BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
 use printobserver_types::contract::Sample;
-use printobserver_types::{AgentAssessment, PrintId, SessionPhase, SupervisionSession};
+use printobserver_types::{PrintId, SessionPhase, SupervisionSession};
 
 /// The outcome the trivial implementation answers with.
 fn trivial_outcome() -> TurnOutcome {

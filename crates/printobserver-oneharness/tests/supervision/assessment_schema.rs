@@ -8,7 +8,7 @@
 //!
 //! **The drift half writes to the checked-in artifact itself**, which is the
 //! only file the identity half will accept the port naming, and puts it back.
-//! `printobserver-types`'s suite reads that same tree on every gate run, and
+//! `printobserver-supervisor-api`'s suite reads that same file on every gate run, and
 //! `nx run-many` drives it while this project's tests are still going, so both
 //! sides take the lock [`schema_lock`] describes and neither ever sees the
 //! other's half-done tree. The artifact is restored by a guard rather than by
@@ -20,8 +20,9 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use printobserver_supervisor_api::Confidence;
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{Confidence, EventBody, PrintId, serde_json};
+use printobserver_types::{EventBody, PrintId, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,

@@ -77,7 +77,7 @@ fn repo_root() -> PathBuf {
 pub fn generated_assessment_schema() -> PathBuf {
     repo_root()
         .join("schemas")
-        .join("printobserver-types")
+        .join("printobserver-supervisor-api")
         .join("AgentAssessment.json")
 }
 
@@ -88,7 +88,8 @@ pub fn generated_assessment_schema() -> PathBuf {
 /// before, and puts the artifact back, which is what proves the port reads that
 /// artifact at run time rather than validating against a copy of its bytes.
 /// Everything else that names the artifact reads it, in this suite and in
-/// `printobserver-types`'s `schemas` suite, and all of it runs at the same time:
+/// `printobserver-supervisor-api`'s `schemas` suite, and all of it runs at the
+/// same time:
 /// the test runner gives each test its own process, and `nx run-many` drives one
 /// project's tests while another's are still going.
 ///

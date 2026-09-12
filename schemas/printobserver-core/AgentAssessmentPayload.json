@@ -2,7 +2,7 @@
   "$defs": {
     "AgentAssessment": {
       "additionalProperties": false,
-      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](crate::PrintAction) that policy rules on.",
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
       "properties": {
         "confidence": {
           "$ref": "#/$defs/Confidence",

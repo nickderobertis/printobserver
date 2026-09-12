@@ -405,7 +405,9 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         &assets,
         SCHEMA_FILE,
         &printobserver_types::serde_json::to_string_pretty(
-            &printobserver_types::contract::schema_of::<printobserver_types::AgentAssessment>(),
+            &printobserver_types::contract::schema_of::<
+                printobserver_supervisor_api::AgentAssessment,
+            >(),
         )
         .map_err(|error| StartError::State {
             detail: error.to_string(),

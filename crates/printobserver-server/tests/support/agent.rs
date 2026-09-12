@@ -13,11 +13,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use printobserver_supervisor_api::{
-    BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+    AgentAssessment, BoxFuture, Confidence, SupervisorError, SupervisorPort, TurnOutcome,
+    TurnRequest,
 };
-use printobserver_types::{
-    AgentAssessment, Confidence, PrintId, SessionPhase, SupervisionSession, Timestamp,
-};
+use printobserver_types::{PrintId, SessionPhase, SupervisionSession, Timestamp};
 
 /// The harness identity this stands in for.
 pub const IDENTITY: &str = "claude-code";
