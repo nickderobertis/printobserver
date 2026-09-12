@@ -184,7 +184,7 @@ impl StorePort for MemoryStore {
                 source: draft.source,
                 received_at: draft.received_at,
                 image: None,
-                payload: draft.payload,
+                body: draft.body,
                 raw: draft.raw,
             };
             let mut held = self.held.lock().expect("the store is not poisoned");
@@ -329,7 +329,7 @@ impl StorePort for MemoryStore {
                 .iter()
                 .rev()
                 .filter(|record| record.print_id == Some(query.print_id))
-                .filter(|record| query.kinds.is_empty() || query.kinds.contains(&record.kind()))
+                .filter(|record| query.kinds.is_empty() || query.kinds.contains(record.kind()))
                 .take(limit)
                 .cloned()
                 .collect())

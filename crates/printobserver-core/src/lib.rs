@@ -2,7 +2,8 @@
 //!
 //! Owns: the supervision logic — the loop that turns printer state and vision
 //! observations into supervisory decisions, and the policy that decides which
-//! decisions are allowed to reach the printer.
+//! decisions are allowed to reach the printer — together with the event kinds
+//! and source names that logic writes ([`kinds`]).
 //!
 //! May depend on: `printobserver-types` and the four port crates
 //! (`printobserver-printer-api`, `printobserver-vision-api`,
@@ -51,6 +52,7 @@ pub mod decision;
 pub mod error;
 pub mod events;
 pub mod expiry;
+pub mod kinds;
 pub mod supervisor;
 pub mod turn_lock;
 
@@ -63,5 +65,10 @@ pub use decision::{DecisionInput, adjustment, decide, valid_from};
 pub use error::CoreError;
 pub use events::TERMINAL_STATES;
 pub use expiry::{rejection_detail, restoring_action};
+pub use kinds::{
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
+    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    PortFailureSite, agent_source, operator_source, system_source,
+};
 pub use supervisor::{Issued, Supervisor};
 pub use turn_lock::{TurnGuard, TurnLocks};

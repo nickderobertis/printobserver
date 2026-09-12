@@ -9,11 +9,10 @@ use std::sync::Arc;
 use printobserver_store_api::{EventDraft, StorePort};
 use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
 use printobserver_types::contract::Sample;
+use printobserver_types::serde_json::json;
 use printobserver_types::{
-    AcknowledgementDisposition, ActionRequest, Actor, EventId, EventPayload, EventSource,
-    JobManifest, MalformedExternalEventPayload, ObicoFailureAlertPayload,
-    OperatorAcknowledgementPayload, PrintAction, PrintId, SupervisionSession,
-    SupervisionSessionOpenedPayload, Timestamp,
+    ActionRequest, Actor, EventBody, EventId, EventKind, EventSource, JobManifest, PrintAction,
+    PrintId, SupervisionSession, Timestamp,
 };
 use tempfile::TempDir;
 
@@ -106,45 +105,49 @@ pub fn instant(text: &str) -> Timestamp {
     text.parse().expect("a fixed RFC 3339 instant")
 }
 
-/// One payload of each kind these journeys drive the history with.
-pub fn payload(kind: &str) -> EventPayload {
-    match kind {
-        "obico_failure_alert" => EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-            is_warning: false,
-            print_paused: true,
-            obico_print_id: Some(7),
-            file_name: Some("bracket.gcode".to_owned()),
-            started_at: None,
-            ended_at: None,
+/// One body of each kind these journeys drive the history with.
+///
+/// The store is a reader of the log that knows no kind: these are the pair as
+/// the domains write it, spelled here as the JSON the store persists rather
+/// than through the types that own them, because a store that could only hold
+/// a kind it had linked would be a closed log again.
+pub fn body(kind: &str) -> EventBody {
+    let payload = match kind {
+        "obico_failure_alert" => json!({
+            "is_warning": false,
+            "print_paused": true,
+            "obico_print_id": 7,
+            "file_name": "bracket.gcode",
         }),
-        "malformed_external_event" => {
-            EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: "the body was not JSON".to_owned(),
-            })
-        }
-        "supervision_session_opened" => {
-            EventPayload::SupervisionSessionOpened(SupervisionSessionOpenedPayload {
-                session_name: "watch-7".to_owned(),
-                harness_identity: "oneharness".to_owned(),
-            })
-        }
-        "operator_acknowledgement" => {
-            EventPayload::OperatorAcknowledgement(OperatorAcknowledgementPayload {
-                acknowledged_event_id: EventId::sample_full(),
-                disposition: AcknowledgementDisposition::Watch,
-            })
-        }
+        "malformed_external_event" => json!({ "detail": "the body was not JSON" }),
+        "supervision_session_opened" => json!({
+            "session_name": "watch-7",
+            "harness_identity": "oneharness",
+        }),
+        "operator_acknowledgement" => json!({
+            "acknowledged_event_id": EventId::sample_full(),
+            "disposition": "watch",
+        }),
         other => panic!("no fixture payload for {other}"),
+    };
+    EventBody {
+        kind: EventKind::new(kind),
+        payload,
     }
+}
+
+/// The source every externally sourced fixture event carries.
+pub fn obico() -> EventSource {
+    EventSource::new("obico")
 }
 
 /// One event on its way into a store.
 pub fn draft(print_id: Option<PrintId>, kind: &str, received_at: Timestamp) -> EventDraft {
     EventDraft {
         print_id,
-        source: EventSource::Obico,
+        source: obico(),
         received_at,
-        payload: payload(kind),
+        body: body(kind),
         raw: None,
     }
 }

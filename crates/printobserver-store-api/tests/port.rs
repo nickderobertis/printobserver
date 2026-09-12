@@ -243,9 +243,9 @@ fn query() -> HistoryQuery {
 fn draft() -> EventDraft {
     EventDraft {
         print_id: Some(print_id()),
-        source: printobserver_types::EventSource::Obico,
+        source: printobserver_types::EventSource::sample_full(),
         received_at: Timestamp::sample_full(),
-        payload: printobserver_types::EventPayload::sample_minimal(),
+        body: printobserver_types::EventBody::sample_full(),
         raw: None,
     }
 }

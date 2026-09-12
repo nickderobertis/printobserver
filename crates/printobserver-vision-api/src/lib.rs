@@ -1,9 +1,11 @@
 //! `printobserver-vision-api`.
 //!
 //! Owns: the port external observations arrive through — the trait for
-//! normalizing a received body into this system's own event vocabulary and for
-//! retrieving the image one names, the two shapes those methods carry, and that
-//! port's own error type.
+//! normalizing a received body into an event under the adapter's own kind and
+//! for retrieving the image one names, the shapes those methods carry, that
+//! port's own error type, and the one event kind this port itself declares:
+//! [`MalformedExternalEventPayload`], a body no adapter could read, written
+//! down.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -12,8 +14,17 @@
 //!
 //! Ingress transport belongs to the server: nothing here listens, routes or
 //! authenticates. A body arrives here already received, and what leaves is
-//! either a [`NormalizedAlert`] in this system's own vocabulary or a
-//! [`VisionError`] saying why one could not be made.
+//! either a [`NormalizedAlert`] or a [`VisionError`] saying why one could not
+//! be made.
+//!
+//! # This port is provider-neutral
+//!
+//! A [`NormalizedAlert`] carries an [`EventBody`] under whatever kind the
+//! adapter declares, and beside it the one thing the supervision domain reads
+//! off an alert: [`ProviderPrint`], the provider's own identifier for the print
+//! the alert is about. The supervision core correlates on that and never on a
+//! provider's payload by kind, which is what lets a second provider's adapter
+//! land without the core hearing of it.
 //!
 //! # Why the methods answer a boxed future
 //!
@@ -25,20 +36,37 @@
 use core::future::Future;
 use core::pin::Pin;
 
+use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventKind, EventPayload, EventSource, RawBytes, Timestamp};
+use printobserver_types::{EventBody, EventKind, EventPayload, EventSource, RawBytes, Timestamp};
 
 /// A future this port's methods answer with, in the one shape a trait object
 /// can carry.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// One external body, read into this system's own event vocabulary.
+/// The provider's own identifier for the print an alert is about.
 ///
-/// `kind` and `payload` are the one closed pair
-/// [`EventPayload`](printobserver_types::EventPayload) declares, so a
-/// normalization naming one kind while carrying another's payload is
-/// unrepresentable here as it is in the store.
+/// Held in the provider's representation — a 64-bit integer, which is what
+/// every provider this system has met uses — and named for what it is rather
+/// than for the provider, so that the supervision domain correlates on it
+/// without knowing whose it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct ProviderPrint {
+    /// The provider's own identifier for the print.
+    pub id: i64,
+    /// The file the provider named, when it named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+}
+
+/// One external body, read into an event under the adapter's own kind.
+///
+/// `kind` and `payload` are the [`EventBody`] flattened into this shape, so an
+/// alert's wire form is the pair the store holds. `print` is what the
+/// supervision domain correlates on; an alert about no print carries none.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
 #[schemars(crate = "printobserver_types::schemars")]
@@ -47,21 +75,51 @@ pub struct NormalizedAlert {
     pub source: EventSource,
     /// When it was received.
     pub received_at: Timestamp,
-    /// The kind and the payload, which are one closed pair.
+    /// The kind and the payload, flattened into this shape's own fields.
     #[serde(flatten)]
-    pub payload: EventPayload,
+    pub body: EventBody,
     /// The bytes exactly as received.
     pub raw: RawBytes,
     /// The image this alert names, when it names one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_url: Option<String>,
+    /// The provider's own identifier for the print this alert is about, and
+    /// the file it named, when the alert is about a print at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print: Option<ProviderPrint>,
 }
 
 impl NormalizedAlert {
-    /// Which event this is, read off the payload it carries.
+    /// Which event this is.
     #[must_use]
-    pub const fn kind(&self) -> EventKind {
-        self.payload.kind()
+    pub const fn kind(&self) -> &EventKind {
+        &self.body.kind
+    }
+}
+
+/// An external body arrived that could not be read.
+///
+/// This kind always carries its `raw` bytes, and it exists so that an alert
+/// this system cannot read is written down rather than dropped. It is the
+/// written-down form of [`VisionError::Malformed`], which is why this port
+/// declares it rather than any one adapter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct MalformedExternalEventPayload {
+    /// One line saying why the body could not be read.
+    pub detail: String,
+}
+
+impl EventPayload for MalformedExternalEventPayload {
+    const KIND: &'static str = "malformed_external_event";
+}
+
+impl Sample for MalformedExternalEventPayload {
+    fn sample_full() -> Self {
+        Self {
+            detail: "the body is not JSON: expected value at line 1 column 1".to_owned(),
+        }
     }
 }
 

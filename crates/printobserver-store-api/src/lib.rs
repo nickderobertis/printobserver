@@ -59,7 +59,7 @@ use std::path::PathBuf;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventKind, EventRecord,
+    ActionId, ActionRecord, ActionRequest, Adjustable, EventBody, EventId, EventKind, EventRecord,
     EventSource, ExecutionOutcome, ImageId, ImageRecord, Intervention, InterventionId,
     InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintId, PrintRecord,
     PrinterState, RawBytes, SupervisionSession, Timestamp,
@@ -117,19 +117,19 @@ pub struct EventDraft {
     pub source: EventSource,
     /// When it was received.
     pub received_at: Timestamp,
-    /// The kind and the payload, which are one closed pair.
+    /// The kind and the payload, flattened into the draft's own fields.
     #[serde(flatten)]
-    pub payload: printobserver_types::EventPayload,
+    pub body: EventBody,
     /// The bytes exactly as received, for an externally sourced event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw: Option<RawBytes>,
 }
 
 impl EventDraft {
-    /// Which event this is, read off the payload it carries.
+    /// Which event this is.
     #[must_use]
-    pub const fn kind(&self) -> EventKind {
-        self.payload.kind()
+    pub const fn kind(&self) -> &EventKind {
+        &self.body.kind
     }
 }
 

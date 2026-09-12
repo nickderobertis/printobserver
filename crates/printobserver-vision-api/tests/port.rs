@@ -14,17 +14,25 @@ use std::thread;
 
 use block_on::block_on;
 use printobserver_types::contract::Sample;
-use printobserver_types::{EventKind, EventPayload, EventSource, RawBytes, Timestamp};
-use printobserver_vision_api::{BoxFuture, FetchedImage, NormalizedAlert, VisionError, VisionPort};
+use printobserver_types::{EventBody, EventSource, RawBytes, Timestamp};
+use printobserver_vision_api::{
+    BoxFuture, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
+    VisionError, VisionPort,
+};
 
 /// The alert the trivial implementation answers with.
 fn trivial_alert() -> NormalizedAlert {
     NormalizedAlert {
-        source: EventSource::Obico,
+        source: EventSource::new("trivial"),
         received_at: Timestamp::sample_full(),
-        payload: EventPayload::sample_minimal(),
+        body: EventBody::of(&MalformedExternalEventPayload::sample_full())
+            .expect("a payload renders"),
         raw: RawBytes::default(),
         image_url: None,
+        print: Some(ProviderPrint {
+            id: 4211,
+            file_name: Some("benchy.gcode".to_owned()),
+        }),
     }
 }
 
@@ -69,10 +77,10 @@ fn every_method_answers_its_declared_success_type() {
     );
 }
 
-/// A normalized alert reads its kind off the closed pair it carries.
+/// A normalized alert reads its kind off the body it carries.
 #[test]
-fn a_normalized_alert_reads_its_kind_off_its_payload() {
-    assert_eq!(trivial_alert().kind(), EventKind::ObicoFailureAlert);
+fn a_normalized_alert_reads_its_kind_off_its_body() {
+    assert_eq!(trivial_alert().kind().as_str(), "malformed_external_event");
 }
 
 /// The same trait object is shareable across threads, which is what core needs.

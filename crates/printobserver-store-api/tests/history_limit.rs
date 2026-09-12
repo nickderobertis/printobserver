@@ -56,7 +56,7 @@ fn a_limit_above_the_maximum_is_refused_rather_than_clamped() {
 fn a_query_resolves_its_limit_by_the_same_rule() {
     let query = HistoryQuery {
         print_id: PrintId::sample_full(),
-        kinds: vec![EventKind::ObicoFailureAlert],
+        kinds: vec![EventKind::new("obico_failure_alert")],
         since: None,
         until: None,
         limit: None,
@@ -85,19 +85,19 @@ fn a_query_resolves_its_limit_by_the_same_rule() {
     );
 }
 
-/// A draft reads its kind off the closed pair it carries.
+/// A draft reads its kind off the body it carries.
 #[test]
-fn a_draft_reads_its_kind_off_its_payload() {
+fn a_draft_reads_its_kind_off_its_body() {
     use printobserver_store_api::EventDraft;
-    use printobserver_types::{EventPayload, EventSource, Timestamp};
+    use printobserver_types::{EventBody, EventSource, Timestamp};
 
     let draft = EventDraft {
         print_id: Some(PrintId::sample_full()),
-        source: EventSource::Obico,
+        source: EventSource::sample_full(),
         received_at: Timestamp::sample_full(),
-        payload: EventPayload::sample_minimal(),
+        body: EventBody::sample_full(),
         raw: None,
     };
-    assert_eq!(draft.kind(), EventKind::ObicoFailureAlert);
-    assert_eq!(draft.kind(), draft.payload.kind());
+    assert_eq!(draft.kind(), &EventKind::sample_full());
+    assert_eq!(draft.kind(), &draft.body.kind);
 }

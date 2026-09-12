@@ -21,13 +21,23 @@
 //! type file `schemas/printobserver-types/` carries for it. That is what lets
 //! the client generator resolve a reference to the contracts' own file rather
 //! than to a second copy of it.
+//!
+//! # And the one event kind this crate declares
+//!
+//! The startup reconciliation is written down by this crate's own `reconcile`
+//! module and nothing else, so its payload's schema — marked with its kind
+//! through [`event_schema_of`] — is written here beside the answer shapes.
 
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
-use printobserver_server::{Answer, Effect, OPERATIONS, Operation, VERSION_PREFIX};
-use printobserver_types::contract::schema_of;
+use printobserver_server::{
+    Answer, Effect, OPERATIONS, Operation, StartupOutcome, StartupReconciliationPayload,
+    VERSION_PREFIX,
+};
+use printobserver_types::contract::{Sample as _, schema_of};
 use printobserver_types::serde_json::{Value, json};
+use printobserver_types::{EVENT_KIND_MARKER, EventBody, EventPayload, event_schema_of};
 use schema_files::reconcile;
 
 /// The file the operation list is written under.
@@ -142,9 +152,24 @@ fn answer_schemas() -> Vec<(String, Value)> {
     ]
 }
 
+/// The one event kind this crate declares, and the vocabulary it carries.
+fn event_schemas() -> Vec<(String, Value)> {
+    vec![
+        (
+            "StartupReconciliationPayload.json".to_owned(),
+            event_schema_of::<StartupReconciliationPayload>(),
+        ),
+        (
+            "StartupOutcome.json".to_owned(),
+            schema_of::<StartupOutcome>(),
+        ),
+    ]
+}
+
 /// Everything this crate writes into its own schema directory.
 fn generated() -> Vec<(String, Value)> {
     let mut entries = answer_schemas();
+    entries.extend(event_schemas());
     entries.push((OPERATIONS_FILE.to_owned(), operations_document()));
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     entries
@@ -289,5 +314,33 @@ fn every_mutating_operation_is_described_as_answering_a_rejection() {
                 assert_eq!(answers, vec!["success".to_owned()], "`{}`", operation.name);
             }
         }
+    }
+}
+
+/// The startup kind is written under its own name, marked with it, and reads
+/// back under that name in each of the three outcomes it can carry.
+#[test]
+fn the_startup_kind_is_written_under_its_own_name_and_reads_back_under_it() {
+    assert_eq!(StartupReconciliationPayload::KIND, "startup_reconciliation");
+    assert_eq!(
+        event_schema_of::<StartupReconciliationPayload>()[EVENT_KIND_MARKER],
+        "startup_reconciliation"
+    );
+    let mut outcomes = vec![StartupOutcome::sample_full()];
+    outcomes.extend(StartupOutcome::sample_alternates());
+    assert_eq!(outcomes.len(), 3, "the three outcomes a restart records");
+    for outcome in outcomes {
+        let written = StartupReconciliationPayload {
+            print_id: printobserver_types::PrintId::sample_full(),
+            outcome,
+        };
+        let body = EventBody::of(&written).expect("a payload renders");
+        assert_eq!(body.kind.as_str(), "startup_reconciliation");
+        assert_eq!(
+            body.read::<StartupReconciliationPayload>()
+                .expect("under its own kind")
+                .expect("of its own type"),
+            written
+        );
     }
 }

@@ -842,7 +842,7 @@ fn the_history_documentation_reading_refuses_an_undocumented_history() {
     assert!(!documentation.contains("every kind"));
 }
 
-/// The type crate declares none of the ten types the port crates own.
+/// The type crate declares none of the types the port crates own.
 #[test]
 fn the_type_crate_declares_none_of_the_port_owned_types() {
     let declared: Vec<String> = crate_sources("printobserver-types")

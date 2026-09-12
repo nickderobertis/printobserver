@@ -16,15 +16,17 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, PolicyDecision, PrintAction, PrintId, PrinterState,
-    Range, RejectionReason,
+    ActionKind, Actor, ActorClass, Adjustable, EventPayload as _, PolicyDecision, PrintAction,
+    PrintId, PrinterState, Range, RejectionReason,
 };
 
 use crate::journal::{Call, Port};
 use crate::source::{crate_dir, enum_variant_names, parse, read};
 use crate::world::{
-    ACTION_KINDS, World, agent_actor, failure_alert_with_image, permissive_envelope,
+    ACTION_KINDS, World, agent_actor, alert_kind, failure_alert_with_image, permissive_envelope,
 };
 
 /// One rejection driven by a direct action request.
@@ -212,8 +214,8 @@ fn every_rejection_is_reached_and_changes_nothing_at_the_printer() {
             refused.writes,
             vec![
                 Call::RecordAction(PolicyDecision::Rejected(expected.clone())),
-                Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
-                Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
+                Call::AppendEvent(ActionRequestedPayload::kind()),
+                Call::AppendEvent(ActionRejectedPayload::kind()),
             ],
             "{expected:?} wrote something beside the record of its own rejection and the \
              two events that put that rejection in the print's own history"
@@ -287,14 +289,14 @@ fn a_rejection_while_an_event_is_handled_leaves_the_loops_own_writes_standing() 
     assert_eq!(
         world.journal.store_writes(),
         vec![
-            Call::AppendEvent(printobserver_types::EventKind::ObicoFailureAlert),
+            Call::AppendEvent(alert_kind()),
             Call::PutImage,
             Call::RecordAction(rejection.clone()),
-            Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
-            Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
-            Call::AppendEvent(printobserver_types::EventKind::SupervisionSessionOpened),
+            Call::AppendEvent(ActionRequestedPayload::kind()),
+            Call::AppendEvent(ActionRejectedPayload::kind()),
+            Call::AppendEvent(SupervisionSessionOpenedPayload::kind()),
             Call::PutSession,
-            Call::AppendEvent(printobserver_types::EventKind::AgentAssessment),
+            Call::AppendEvent(AgentAssessmentPayload::kind()),
         ],
         "the loop's own writes for the event, plus the record of the rejection, and nothing else"
     );

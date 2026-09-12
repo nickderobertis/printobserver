@@ -2,7 +2,8 @@
 //!
 //! Owns: the port the supervising agent is reached through — the trait for
 //! running one supervision turn and for closing a session, the two shapes those
-//! methods carry, and that port's own error type.
+//! methods carry, that port's own error type, and the two event kinds a
+//! session's opening and closing are written down under.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -24,10 +25,11 @@ use core::future::Future;
 use core::pin::Pin;
 use std::path::PathBuf;
 
+use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    AgentAssessment, EventRecord, PrintId, SessionPhase, SupervisionSession,
+    AgentAssessment, EventPayload, EventRecord, PrintId, SessionPhase, SupervisionSession,
 };
 
 /// A future this port's methods answer with, in the one shape a trait object
@@ -61,6 +63,54 @@ pub struct TurnOutcome {
     pub phase: SessionPhase,
     /// The agent's written record of the turn.
     pub assessment: AgentAssessment,
+}
+
+/// A supervision session was opened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SupervisionSessionOpenedPayload {
+    /// The session's own name in the harness.
+    pub session_name: String,
+    /// The identity the harness ran it under.
+    pub harness_identity: String,
+}
+
+impl EventPayload for SupervisionSessionOpenedPayload {
+    const KIND: &'static str = "supervision_session_opened";
+}
+
+impl Sample for SupervisionSessionOpenedPayload {
+    fn sample_full() -> Self {
+        Self {
+            session_name: "print-0191f0a0".to_owned(),
+            harness_identity: "printobserver-supervisor".to_owned(),
+        }
+    }
+}
+
+/// A supervision session was closed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SupervisionSessionClosedPayload {
+    /// The session's own name in the harness.
+    pub session_name: String,
+    /// Why it was closed.
+    pub close_reason: String,
+}
+
+impl EventPayload for SupervisionSessionClosedPayload {
+    const KIND: &'static str = "supervision_session_closed";
+}
+
+impl Sample for SupervisionSessionClosedPayload {
+    fn sample_full() -> Self {
+        Self {
+            session_name: "print-0191f0a0".to_owned(),
+            close_reason: "the print ended".to_owned(),
+        }
+    }
 }
 
 /// Why a supervision turn did not produce an assessment.

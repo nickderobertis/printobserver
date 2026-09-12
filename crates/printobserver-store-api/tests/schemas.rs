@@ -41,8 +41,8 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
 #[test]
 fn event_draft_carries_exactly_the_stated_fields() {
     let expected = vec![
-        field("kind", "string", true),
-        field("payload", "union", true),
+        field("kind", "EventKind", true),
+        field("payload", "any", true),
         field("print_id", "PrintId", false),
         field("raw", "RawBytes", false),
         field("received_at", "Timestamp", true),

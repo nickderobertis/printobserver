@@ -14,18 +14,16 @@ use std::sync::Arc;
 use oneharness_core::domain::report::RunReport;
 use printobserver_oneharness::{HarnessIdentity, SessionName, TurnReport};
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId, SessionPhase};
+use printobserver_types::{EventBody, PrintId, SessionPhase};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn,
+    generated_assessment_schema, port, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
-fn payload() -> EventPayload {
-    EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-        detail: "the body was not JSON".to_owned(),
-    })
+fn payload() -> EventBody {
+    unreadable("the body was not JSON")
 }
 
 /// The session every report here was answered about, read off the report

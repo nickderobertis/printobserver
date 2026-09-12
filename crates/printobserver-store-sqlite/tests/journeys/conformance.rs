@@ -269,7 +269,7 @@ impl Written {
     /// The events matching a kind and a span, oldest first.
     fn matching(
         &self,
-        kind: Option<EventKind>,
+        kind: Option<&EventKind>,
         span: Option<(Timestamp, Timestamp)>,
     ) -> Vec<EventRecord> {
         self.events
@@ -307,14 +307,14 @@ fn the_history_read_orders_filters_and_refuses() {
             "{name}: the default read is not the newest window, newest first"
         );
 
-        let kind = EventKind::MalformedExternalEvent;
+        let kind = EventKind::new("malformed_external_event");
         let by_kind = block_on(port.history(HistoryQuery {
-            kinds: vec![kind],
+            kinds: vec![kind.clone()],
             limit: Some(MAX_HISTORY_LIMIT),
             ..whole_window(print.id)
         }))
         .expect("a filtered history reads");
-        let expected_kind = reversed(written.matching(Some(kind), None));
+        let expected_kind = reversed(written.matching(Some(&kind), None));
         assert!(
             !expected_kind.is_empty(),
             "{name}: the corpus has no {kind:?}"
@@ -343,15 +343,15 @@ fn the_history_read_orders_filters_and_refuses() {
         );
 
         let both = block_on(port.history(HistoryQuery {
-            kinds: vec![kind],
+            kinds: vec![kind.clone()],
             since: Some(span.0),
             until: Some(span.1),
             limit: Some(MAX_HISTORY_LIMIT),
             ..whole_window(print.id)
         }))
         .expect("a filtered history reads");
-        let expected_both = reversed(written.matching(Some(kind), Some(span)));
-        assert_distinguishing(name, &written, kind, span);
+        let expected_both = reversed(written.matching(Some(&kind), Some(span)));
+        assert_distinguishing(name, &written, &kind, span);
         assert_eq!(
             both, expected_both,
             "{name}: the two filters together did not hold"
@@ -390,7 +390,7 @@ fn reversed(mut events: Vec<EventRecord>) -> Vec<EventRecord> {
 fn assert_distinguishing(
     name: &str,
     written: &Written,
-    kind: EventKind,
+    kind: &EventKind,
     span: (Timestamp, Timestamp),
 ) {
     let both = written.matching(Some(kind), Some(span));

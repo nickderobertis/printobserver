@@ -70,7 +70,7 @@ pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<EventRecord> {
         source: from_tag(row, 2)?,
         received_at: parsed(row, 3)?,
         image,
-        payload: from_json(row, 4)?,
+        body: from_json(row, 4)?,
         raw: row
             .get::<_, Option<Vec<u8>>>(5)?
             .map(printobserver_types::RawBytes::new),

@@ -565,7 +565,7 @@ impl StorePort for FakeStore {
         &self,
         draft: EventDraft,
     ) -> printobserver_store_api::BoxFuture<'_, Result<EventRecord, StoreError>> {
-        self.journal.record(Call::AppendEvent(draft.kind()));
+        self.journal.record(Call::AppendEvent(draft.kind().clone()));
         if let Some(error) = self.induced(StoreMethod::AppendEvent) {
             return ready(Err(error));
         }
@@ -575,7 +575,7 @@ impl StorePort for FakeStore {
             source: draft.source,
             received_at: draft.received_at,
             image: None,
-            payload: draft.payload,
+            body: draft.body,
             raw: draft.raw,
         };
         self.held
@@ -866,7 +866,7 @@ impl StorePort for FakeStore {
             .iter()
             .rev()
             .filter(|event| event.print_id == Some(query.print_id))
-            .filter(|event| query.kinds.is_empty() || query.kinds.contains(&event.kind()))
+            .filter(|event| query.kinds.is_empty() || query.kinds.contains(event.kind()))
             .take(limit)
             .cloned()
             .collect();

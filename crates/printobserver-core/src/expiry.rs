@@ -253,15 +253,15 @@ impl Supervisor {
         self.store()
             .append_event(printobserver_store_api::EventDraft {
                 print_id: Some(intervention.print_id),
-                source: printobserver_types::EventSource::System,
+                source: crate::kinds::system_source(),
                 received_at: self.clock().now(),
-                payload: printobserver_types::EventPayload::InterventionExpired(
-                    printobserver_types::InterventionExpiredPayload {
+                body: printobserver_types::EventBody::of(
+                    &crate::kinds::InterventionExpiredPayload {
                         intervention_id: intervention.id,
                         adjustable: intervention.adjustable,
                         outcome,
                     },
-                ),
+                )?,
                 raw: None,
             })
             .await?;

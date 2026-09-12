@@ -21,20 +21,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{
-    Confidence, EventPayload, MalformedExternalEventPayload, PrintId, serde_json,
-};
+use printobserver_types::{Confidence, EventBody, PrintId, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_lock, turn,
+    generated_assessment_schema, port, schema_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
-fn payload() -> EventPayload {
-    EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-        detail: "the body was not JSON".to_owned(),
-    })
+fn payload() -> EventBody {
+    unreadable("the body was not JSON")
 }
 
 /// Drive one turn under one scripted answer, and answer what the port made of

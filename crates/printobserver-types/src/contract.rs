@@ -323,20 +323,25 @@ pub fn declared() -> Vec<TypeContract> {
     ]
 }
 
-/// The ten types the port crates own, which this crate declares none of.
+/// The types the port crates own, which this crate declares none of.
 ///
-/// Each names a shape one port's methods carry rather than a shape the domain
-/// holds, so it is declared by the crate whose methods carry it. Declaring one
-/// here would either duplicate it or relocate it out of the port that owns it.
-pub const PORT_OWNED_TYPES: [&str; 10] = [
+/// Each names a shape one port's methods carry, or an event kind one port
+/// declares, rather than a shape the whole workspace holds, so it is declared
+/// by the crate whose methods carry it. Declaring one here would either
+/// duplicate it or relocate it out of the port that owns it.
+pub const PORT_OWNED_TYPES: [&str; 14] = [
     "PrinterError",
     "VisionError",
     "SupervisorError",
     "StoreError",
     "NormalizedAlert",
     "FetchedImage",
+    "ProviderPrint",
+    "MalformedExternalEventPayload",
     "TurnRequest",
     "TurnOutcome",
+    "SupervisionSessionOpenedPayload",
+    "SupervisionSessionClosedPayload",
     "EventDraft",
     "HistoryQuery",
 ];

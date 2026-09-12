@@ -35,13 +35,11 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use printobserver_core::Supervisor;
-use printobserver_obico::ObicoVision;
+use printobserver_obico::{ObicoVision, obico_source};
 use printobserver_store_api::{EventDraft, StorePort};
 use printobserver_types::serde::Deserialize;
-use printobserver_types::{
-    EventPayload, EventSource, MalformedExternalEventPayload, RawBytes, Timestamp,
-};
-use printobserver_vision_api::VisionPort;
+use printobserver_types::{EventBody, RawBytes, Timestamp};
+use printobserver_vision_api::{MalformedExternalEventPayload, VisionPort};
 use tokio::sync::{mpsc, watch};
 
 use crate::config::SharedSecret;
@@ -189,9 +187,10 @@ async fn record_unread(store: &Arc<dyn StorePort>, body: RawBytes, detail: Strin
     let _ = store
         .append_event(EventDraft {
             print_id: None,
-            source: EventSource::Obico,
+            source: obico_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload { detail }),
+            body: EventBody::of(&MalformedExternalEventPayload { detail })
+                .expect("a payload of one string renders"),
             raw: Some(body),
         })
         .await;

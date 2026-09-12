@@ -17,20 +17,16 @@ use printobserver_oneharness::{
     SupervisorConfig, TurnSeam, TurnTimeout,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{
-    EventPayload, MalformedExternalEventPayload, PrintId, SessionPhase, serde_json,
-};
+use printobserver_types::{EventBody, PrintId, SessionPhase, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
-    generated_assessment_schema, identity, port, schema_read_lock, turn,
+    generated_assessment_schema, identity, port, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
-fn payload() -> EventPayload {
-    EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-        detail: "the body was not JSON".to_owned(),
-    })
+fn payload() -> EventBody {
+    unreadable("the body was not JSON")
 }
 
 /// A configuration that would run a turn, answering conformingly.

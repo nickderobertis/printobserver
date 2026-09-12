@@ -15,8 +15,9 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use printobserver_obico::ObicoFailureAlertPayload;
 use printobserver_store_api::HistoryQuery;
-use printobserver_types::EventKind;
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 
 use crate::agent::StandInAgent;
 use crate::http_host::image_host;
@@ -213,7 +214,7 @@ async fn the_committed_sample_is_taken_and_handled() {
     let events = recorded_against_open_prints(&world).await;
     let alert = events
         .iter()
-        .find(|event| event.kind() == EventKind::ObicoFailureAlert)
+        .find(|event| event.body.is::<ObicoFailureAlertPayload>())
         .expect("the alert was recorded");
     assert!(
         alert.image.is_some(),
@@ -222,7 +223,7 @@ async fn the_committed_sample_is_taken_and_handled() {
     assert!(
         events
             .iter()
-            .any(|event| event.kind() == EventKind::SupervisionSessionOpened),
+            .any(|event| event.body.is::<SupervisionSessionOpenedPayload>()),
         "no session opened for the alert: {:?}",
         events
             .iter()

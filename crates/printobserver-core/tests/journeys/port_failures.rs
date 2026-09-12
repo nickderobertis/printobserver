@@ -15,18 +15,18 @@
 //! against — and it is recorded so that a reader can tell what value the
 //! printer was left holding, which is the whole point of recording it.
 
+use printobserver_core::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite};
 use printobserver_printer_api::PrinterError;
 use printobserver_store_api::StoreError;
 use printobserver_supervisor_api::SupervisorError;
 use printobserver_types::{
-    ActionKind, Actor, EventPayload, ExecutionOutcome, InterventionOutcome, PortFailurePayload,
-    PortFailureSite, PrintAction, PrintId, PrinterState,
+    ActionKind, Actor, ExecutionOutcome, InterventionOutcome, PrintAction, PrintId, PrinterState,
 };
 use printobserver_vision_api::VisionError;
 
 use crate::action_vocabulary::{action_for, state_for};
 use crate::fakes::{PrinterMethod, StoreMethod};
-use crate::world::{World, assert_same, failure_alert, failure_alert_with_image};
+use crate::world::{World, alert_kind, assert_same, failure_alert, failure_alert_with_image};
 
 /// The action one printer method is reached by, for the methods that are actions.
 const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
@@ -57,10 +57,8 @@ fn recorded_failures(world: &World, print_id: PrintId) -> Vec<PortFailurePayload
         .store
         .events_of(print_id)
         .into_iter()
-        .filter_map(|record| match record.payload {
-            EventPayload::PortFailure(payload) => Some(payload),
-            _ => None,
-        })
+        .filter_map(|record| record.payload_as::<PortFailurePayload>())
+        .map(|read| read.expect("a port failure is of its own type"))
         .collect()
 }
 
@@ -70,7 +68,7 @@ fn assessments(world: &World, print_id: PrintId) -> usize {
         .store
         .events_of(print_id)
         .into_iter()
-        .filter(|record| matches!(record.payload, EventPayload::AgentAssessment(_)))
+        .filter(|record| record.body.is::<AgentAssessmentPayload>())
         .count()
 }
 
@@ -382,9 +380,7 @@ fn the_initial_append_failing_calls_no_other_port_and_is_answered() {
     let writes = world.journal.store_writes();
     assert_eq!(
         writes,
-        vec![crate::journal::Call::AppendEvent(
-            printobserver_types::EventKind::ObicoFailureAlert
-        )],
+        vec![crate::journal::Call::AppendEvent(alert_kind())],
         "the store was written to after the failed append"
     );
 

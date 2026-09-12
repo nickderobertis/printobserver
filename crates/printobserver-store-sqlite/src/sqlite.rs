@@ -268,6 +268,11 @@ impl SqliteStore {
     }
 
     /// Append one event, minting its identifier.
+    ///
+    /// The `kind` column holds the bare kind name and the `payload` column the
+    /// JSON text of the whole `{"kind": .., "payload": ..}` pair — the same
+    /// text the closed vocabulary's tagged form wrote, so a row written under
+    /// it reads back under this store unchanged.
     fn insert_event(&self, draft: EventDraft) -> Result<EventRecord, StoreError> {
         let record = EventRecord {
             id: EventId::new(),
@@ -275,12 +280,12 @@ impl SqliteStore {
             source: draft.source,
             received_at: draft.received_at,
             image: None,
-            payload: draft.payload,
+            body: draft.body,
             raw: draft.raw,
         };
         let source = tag_text(&record.source)?;
-        let kind = tag_text(&record.kind())?;
-        let payload = json_text(&record.payload)?;
+        let kind = tag_text(record.kind())?;
+        let payload = json_text(&record.body)?;
         let raw = record.raw.as_ref().map(|bytes| bytes.as_slice().to_vec());
         self.on_connection(|connection| {
             connection

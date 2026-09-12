@@ -15,12 +15,14 @@
 use std::sync::Arc;
 
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
-use printobserver_server::{Ports, Server, ServerConfig};
+use printobserver_server::{
+    Ports, Server, ServerConfig, StartupOutcome, StartupReconciliationPayload,
+};
 use printobserver_store_api::{HistoryQuery, StorePort};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::{
-    ActionRequest, Actor, Adjustable, EventKind, EventPayload, PolicyDecision, PrintAction,
-    PrintId, StartupOutcome, Timestamp,
+    ActionRequest, Actor, Adjustable, EventPayload as _, PolicyDecision, PrintAction, PrintId,
+    Timestamp,
 };
 use tempfile::TempDir;
 
@@ -158,7 +160,7 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
     let recorded: Vec<StartupOutcome> = store
         .history(HistoryQuery {
             print_id,
-            kinds: vec![EventKind::StartupReconciliation],
+            kinds: vec![StartupReconciliationPayload::kind()],
             since: None,
             until: None,
             limit: None,
@@ -166,10 +168,8 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
         .await
         .expect("the history reads")
         .into_iter()
-        .filter_map(|event| match event.payload {
-            EventPayload::StartupReconciliation(payload) => Some(payload.outcome),
-            _ => None,
-        })
+        .filter_map(|event| event.payload_as::<StartupReconciliationPayload>())
+        .map(|read| read.expect("a reconciliation is of its own type").outcome)
         .collect();
 
     assert!(
@@ -391,7 +391,7 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
     let outcomes: Vec<StartupOutcome> = store
         .history(HistoryQuery {
             print_id,
-            kinds: vec![EventKind::StartupReconciliation],
+            kinds: vec![StartupReconciliationPayload::kind()],
             since: None,
             until: None,
             limit: None,
@@ -399,10 +399,8 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
         .await
         .expect("the history reads")
         .into_iter()
-        .filter_map(|event| match event.payload {
-            EventPayload::StartupReconciliation(payload) => Some(payload.outcome),
-            _ => None,
-        })
+        .filter_map(|event| event.payload_as::<StartupReconciliationPayload>())
+        .map(|read| read.expect("a reconciliation is of its own type").outcome)
         .collect();
     assert!(
         outcomes.iter().any(|outcome| matches!(

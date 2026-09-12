@@ -19,10 +19,9 @@
 //!
 //! # Which kind a failed fetch is recorded under
 //!
-//! The contracts declare a kind for exactly this: a
-//! [`PortFailure`](printobserver_types::EventKind::PortFailure) at the
-//! [`ImageWrite`](PortFailureSite::ImageWrite) site, naming the event whose
-//! handling reached the failing call. That is what a failed fetch is — the
+//! The supervision domain declares a kind for exactly this: a
+//! [`PortFailurePayload`] at the [`ImageWrite`](PortFailureSite::ImageWrite)
+//! site, naming the event whose handling reached the failing call. That is what a failed fetch is — the
 //! alert itself was read perfectly, and only getting the image it pointed at
 //! failed — and it is the same kind and the same site the supervision core
 //! records its own image failures under.
@@ -44,13 +43,16 @@
 
 use std::sync::Arc;
 
+use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_store_api::{EventDraft, StoreError, StorePort};
 use printobserver_types::{
-    EventId, EventPayload, EventRecord, EventSource, ImageRecord, MalformedExternalEventPayload,
-    PortFailurePayload, PortFailureSite, PrintId, PrintRecord, RawBytes, Timestamp,
+    EventBody, EventId, EventRecord, ImageRecord, PrintId, PrintRecord, RawBytes, Timestamp,
 };
-use printobserver_vision_api::{VisionError, VisionPort};
+use printobserver_vision_api::{
+    MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort,
+};
 
+use crate::events::obico_source;
 use crate::vision::{ObicoVision, ObicoVisionConfig, ObicoVisionError};
 
 /// What one received body left behind it.
@@ -109,22 +111,6 @@ impl From<StoreError> for IngressError {
     }
 }
 
-/// What one normalized payload says about the print it is about.
-///
-/// Only the two Obico kinds name a print; every other kind is one this adapter
-/// does not produce, and none of them correlates.
-fn correlation_of(payload: &EventPayload) -> Option<(i64, Option<String>)> {
-    match payload {
-        EventPayload::ObicoFailureAlert(alert) => {
-            alert.obico_print_id.map(|id| (id, alert.file_name.clone()))
-        }
-        EventPayload::ObicoPrinterNotification(notification) => notification
-            .obico_print_id
-            .map(|id| (id, notification.file_name.clone())),
-        _ => None,
-    }
-}
-
 /// What one refusal says, in the one line the malformed kind carries.
 ///
 /// A refusal to *read a body* carries its own line and that line is the whole
@@ -173,11 +159,12 @@ impl ObicoIngress {
     async fn refuse(&self, body: RawBytes, refusal: VisionError) -> IngressError {
         let draft = EventDraft {
             print_id: None,
-            source: EventSource::Obico,
+            source: obico_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
+            body: EventBody::of(&MalformedExternalEventPayload {
                 detail: detail_of(&refusal),
-            }),
+            })
+            .expect("a payload of one string renders"),
             raw: Some(body),
         };
         match self.store.append_event(draft).await {
@@ -192,17 +179,22 @@ impl ObicoIngress {
     /// The print one alert belongs to, opening a record only for an unknown id.
     ///
     /// An id the store already holds a print for is not an unknown id, whether
-    /// that print is open or ended, so it is answered rather than replaced.
-    async fn print_for(&self, payload: &EventPayload) -> Result<Option<PrintRecord>, IngressError> {
-        let Some((obico_print_id, file_name)) = correlation_of(payload) else {
+    /// that print is open or ended, so it is answered rather than replaced. The
+    /// correlation is the one the adapter hands over beside the body, which is
+    /// the same one the supervision core reads.
+    async fn print_for(
+        &self,
+        print: Option<&ProviderPrint>,
+    ) -> Result<Option<PrintRecord>, IngressError> {
+        let Some(print) = print else {
             return Ok(None);
         };
-        if let Some(held) = self.store.print_by_obico_id(obico_print_id).await? {
+        if let Some(held) = self.store.print_by_obico_id(print.id).await? {
             return Ok(Some(held));
         }
         Ok(Some(
             self.store
-                .open_print(Some(obico_print_id), file_name)
+                .open_print(Some(print.id), print.file_name.clone())
                 .await?,
         ))
     }
@@ -221,13 +213,14 @@ impl ObicoIngress {
     ) -> Result<(), IngressError> {
         let draft = EventDraft {
             print_id: Some(print_id),
-            source: EventSource::System,
+            source: system_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::PortFailure(PortFailurePayload {
+            body: EventBody::of(&PortFailurePayload {
                 event_id,
                 site: PortFailureSite::ImageWrite,
                 detail: failure.to_string(),
-            }),
+            })
+            .expect("a payload of an identifier, a site and a string renders"),
             raw: None,
         };
         self.store.append_event(draft).await?;
@@ -250,14 +243,14 @@ impl ObicoIngress {
             Ok(alert) => alert,
             Err(refusal) => return Err(self.refuse(body, refusal).await),
         };
-        let print = self.print_for(&alert.payload).await?;
+        let print = self.print_for(alert.print.as_ref()).await?;
         let event = self
             .store
             .append_event(EventDraft {
                 print_id: print.as_ref().map(|record| record.id),
                 source: alert.source,
                 received_at: alert.received_at,
-                payload: alert.payload,
+                body: alert.body,
                 raw: Some(alert.raw),
             })
             .await?;
@@ -299,17 +292,10 @@ impl ObicoIngress {
 mod tests {
     use printobserver_store_api::StoreError;
     use printobserver_types::contract::Sample as _;
-    use printobserver_types::{ActionExecutedPayload, EventPayload, EventRecord, RawBytes};
+    use printobserver_types::{EventRecord, RawBytes};
     use printobserver_vision_api::VisionError;
 
-    use super::{IngressError, correlation_of, detail_of};
-
-    /// A payload of a kind this adapter does not produce correlates to nothing.
-    #[test]
-    fn a_kind_this_adapter_does_not_produce_correlates_to_nothing() {
-        let payload = EventPayload::ActionExecuted(ActionExecutedPayload::sample_full());
-        assert_eq!(correlation_of(&payload), None);
-    }
+    use super::{IngressError, detail_of};
 
     /// A refusal that is not about reading a body says so in its own words.
     #[test]

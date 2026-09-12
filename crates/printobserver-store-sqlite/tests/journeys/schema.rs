@@ -10,6 +10,7 @@ use crate::contracts::{Reference, record_kinds, references};
 use crate::fixture::{draft, instant, manifest, request, session};
 use printobserver_store_api::{StoreError, StorePort};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MIGRATIONS, SqliteStore, connect};
+use printobserver_types::serde_json::{self, json};
 use printobserver_types::{
     ActionId, Adjustable, ExecutionOutcome, PolicyDecision, PrintId, PrinterState, RawBytes,
 };
@@ -319,5 +320,54 @@ fn an_execution_outcome_against_no_action_is_refused_for_the_constraint() {
         }),
         "the two answers are told apart by the variant each carries, and this is \
          the other one"
+    );
+}
+
+/// An appended event's `kind` column is the bare kind name and its `payload`
+/// column the JSON text of the `{"kind","payload"}` pair — the text the closed
+/// vocabulary wrote, read here off the columns rather than back through the port.
+#[test]
+fn an_event_is_written_as_the_bare_kind_and_the_pair_s_text() {
+    let dir = TempDir::new().expect("a temporary state directory");
+    let store = SqliteStore::open(dir.path()).expect("the store opens");
+    let port: &dyn StorePort = &store;
+    let print = block_on(port.open_print(None, None)).expect("a print opens");
+    let event = block_on(port.append_event(draft(
+        Some(print.id),
+        "obico_failure_alert",
+        instant("2026-03-01T12:00:00Z"),
+    )))
+    .expect("an event is appended");
+
+    let (kind, payload, source) = opened(&dir)
+        .query_row(
+            "SELECT kind, payload, source FROM events WHERE id = ?1",
+            [event.id.to_string()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .expect("the row reads");
+    assert_eq!(kind, "obico_failure_alert");
+    assert_eq!(source, "obico");
+    assert!(
+        payload.starts_with(r#"{"kind":"obico_failure_alert","payload":{"#),
+        "the payload column is not the pair's text: {payload}"
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&payload).expect("the column is JSON"),
+        json!({
+            "kind": "obico_failure_alert",
+            "payload": {
+                "is_warning": false,
+                "print_paused": true,
+                "obico_print_id": 7,
+                "file_name": "bracket.gcode",
+            },
+        })
     );
 }

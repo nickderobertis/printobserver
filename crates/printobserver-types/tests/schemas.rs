@@ -4,7 +4,8 @@
 //! target: run with `PRINTOBSERVER_SCHEMAS=write` it writes every schema this
 //! crate declares, and run without it refuses a tree whose checked-in schema no
 //! longer matches what the types generate. The same target runs the same test
-//! in each of the four port crates, so one target generates every schema in the
+//! in every other crate that declares a schema — the port crates, and each
+//! domain that owns event kinds — so one target generates every schema in the
 //! set and one target refuses any drift in it.
 
 use std::path::{Path, PathBuf};
@@ -304,12 +305,22 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
             .expect("the schema is JSON");
     let port_entries = vec![("NormalizedAlert.json".to_owned(), generated_port)];
     let port_dir = schema_dir(&port.root, "printobserver-vision-api");
+    // The entries name one of that crate's schemas, so every other file it
+    // checks in is reported as one nothing here generates — and nothing else.
+    let mut undeclared: Vec<String> = std::fs::read_dir(&port_dir)
+        .expect("the scratch port directory is readable")
+        .map(|entry| entry.expect("a readable directory entry").path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name != "NormalizedAlert.json")
+        })
+        .map(|path| format!("{} is a schema no declared type generates", path.display()))
+        .collect();
+    undeclared.sort();
+    let mut found = drift(&port_dir, &port_entries);
+    found.sort();
     assert_eq!(
-        drift(&port_dir, &port_entries),
-        vec![format!(
-            "{} is a schema no declared type generates",
-            port_dir.join("FetchedImage.json").display()
-        )],
+        found, undeclared,
         "the matching port tree was refused for the wrong reason"
     );
     port.alter("printobserver-vision-api", "NormalizedAlert");

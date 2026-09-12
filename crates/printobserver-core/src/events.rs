@@ -23,15 +23,17 @@
 //! drifted to since.
 
 use printobserver_store_api::HistoryQuery;
-use printobserver_supervisor_api::TurnRequest;
+use printobserver_supervisor_api::{
+    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
+};
 use printobserver_types::{
-    EventPayload, EventRecord, EventSource, ImageRef, PortFailurePayload, PortFailureSite,
-    PrintContext, PrintId, PrintRecord, PrinterState, SessionPhase,
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    EventBody, EventRecord, ImageRef, PrintContext, PrintId, PrintRecord, PrinterState,
+    SessionPhase,
 };
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::error::CoreError;
+use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
 use crate::supervisor::Supervisor;
 
 /// The states a print does not carry on from.
@@ -44,24 +46,6 @@ pub const TERMINAL_STATES: [PrinterState; 3] = [
     PrinterState::Error,
     PrinterState::Offline,
 ];
-
-/// Obico's own identifier for the print an alert is about, when it names one.
-fn obico_print_id(payload: &EventPayload) -> Option<i64> {
-    match payload {
-        EventPayload::ObicoFailureAlert(alert) => alert.obico_print_id,
-        EventPayload::ObicoPrinterNotification(notification) => notification.obico_print_id,
-        _ => None,
-    }
-}
-
-/// The file an alert names, when it names one.
-fn alert_file_name(payload: &EventPayload) -> Option<String> {
-    match payload {
-        EventPayload::ObicoFailureAlert(alert) => alert.file_name.clone(),
-        EventPayload::ObicoPrinterNotification(notification) => notification.file_name.clone(),
-        _ => None,
-    }
-}
 
 impl Supervisor {
     /// Handle one normalized event, from the store's own append to the turn.
@@ -77,9 +61,9 @@ impl Supervisor {
         let print = self.resolve_print(&alert).await?;
         let draft = printobserver_store_api::EventDraft {
             print_id: print.as_ref().map(|record| record.id),
-            source: alert.source,
+            source: alert.source.clone(),
             received_at: alert.received_at,
-            payload: alert.payload.clone(),
+            body: alert.body.clone(),
             raw: Some(alert.raw.clone()),
         };
         let event = self
@@ -101,19 +85,23 @@ impl Supervisor {
     }
 
     /// The print an alert belongs to, opened if this system has not seen it.
+    ///
+    /// Correlated on the provider's own identifier the alert carries beside its
+    /// body, and never on the body by kind: which provider raised the alert is
+    /// the adapter's business, and this loop reads nothing an adapter declares.
     async fn resolve_print(
         &self,
         alert: &NormalizedAlert,
     ) -> Result<Option<PrintRecord>, CoreError> {
-        let Some(obico_print_id) = obico_print_id(&alert.payload) else {
+        let Some(provider_print) = &alert.print else {
             return Ok(None);
         };
-        if let Some(found) = self.store().print_by_obico_id(obico_print_id).await? {
+        if let Some(found) = self.store().print_by_obico_id(provider_print.id).await? {
             return Ok(Some(found));
         }
         let opened = self
             .store()
-            .open_print(Some(obico_print_id), alert_file_name(&alert.payload))
+            .open_print(Some(provider_print.id), provider_print.file_name.clone())
             .await?;
         Ok(Some(opened))
     }
@@ -206,10 +194,10 @@ impl Supervisor {
                 if outcome.phase == SessionPhase::Created {
                     self.append_system_event(
                         print.id,
-                        EventPayload::SupervisionSessionOpened(SupervisionSessionOpenedPayload {
+                        EventBody::of(&SupervisionSessionOpenedPayload {
                             session_name: outcome.session.session_name.clone(),
                             harness_identity: outcome.session.harness_identity.clone(),
-                        }),
+                        })?,
                     )
                     .await?;
                 }
@@ -217,10 +205,10 @@ impl Supervisor {
                 self.store().put_session(outcome.session).await?;
                 self.append_system_event(
                     print.id,
-                    EventPayload::AgentAssessment(printobserver_types::AgentAssessmentPayload {
+                    EventBody::of(&AgentAssessmentPayload {
                         session_name,
                         assessment: outcome.assessment,
-                    }),
+                    })?,
                 )
                 .await?;
             }
@@ -349,10 +337,10 @@ impl Supervisor {
         if let Some(session) = self.store().session(print.id).await? {
             self.append_system_event(
                 print.id,
-                EventPayload::SupervisionSessionClosed(SupervisionSessionClosedPayload {
+                EventBody::of(&SupervisionSessionClosedPayload {
                     session_name: session.session_name,
                     close_reason: reason,
-                }),
+                })?,
             )
             .await?;
         }
@@ -363,15 +351,15 @@ impl Supervisor {
     async fn append_system_event(
         &self,
         print_id: PrintId,
-        payload: EventPayload,
+        body: EventBody,
     ) -> Result<EventRecord, CoreError> {
         Ok(self
             .store()
             .append_event(printobserver_store_api::EventDraft {
                 print_id: Some(print_id),
-                source: EventSource::System,
+                source: system_source(),
                 received_at: self.clock().now(),
-                payload,
+                body,
                 raw: None,
             })
             .await?)
@@ -406,11 +394,12 @@ impl Supervisor {
         let _ = self
             .append_system_event(
                 print_id,
-                EventPayload::PortFailure(PortFailurePayload {
+                EventBody::of(&PortFailurePayload {
                     event_id,
                     site,
                     detail,
-                }),
+                })
+                .expect("a payload of an identifier, a site and a string renders"),
             )
             .await;
     }

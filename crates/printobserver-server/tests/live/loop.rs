@@ -20,12 +20,16 @@
 //! conversion, because the number on the wire is that adapter's business and no
 //! crate but that adapter may spell one.
 
+use printobserver_core::AgentAssessmentPayload;
+use printobserver_obico::ObicoFailureAlertPayload;
 use printobserver_octoprint::{
     FAN_PWM_PARAMETER, FAN_SET_COMMAND, fan_pwm_of_percent, percent_of_multiplier,
 };
+use printobserver_server::StartupReconciliationPayload;
 use printobserver_server::{Effect, OPERATIONS, Operation};
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{EventKind, PrintId};
+use printobserver_types::{EventKind, EventPayload as _, PrintId};
 
 use crate::composition::{
     AGENT_DURATION_S, AGENT_FACTOR, AGENT_REFUSED_FACTOR, Composed, NARROWED, SECRET,
@@ -357,13 +361,13 @@ pub async fn walk(instance: &Scripted) {
 
     let reconciled = history(&world, print_id).await;
     assert!(
-        reconciled.contains(&EventKind::StartupReconciliation),
+        reconciled.contains(&StartupReconciliationPayload::kind()),
         "the restart recorded none of what it adopted: {reconciled:?}"
     );
     assert_eq!(
         reconciled
             .iter()
-            .filter(|kind| **kind == EventKind::SupervisionSessionOpened)
+            .filter(|kind| **kind == SupervisionSessionOpenedPayload::kind())
             .count(),
         1,
         "the second alert opened a session of its own: {reconciled:?}"
@@ -384,11 +388,11 @@ async fn an_alert_opens_a_print_a_session_and_an_image(
     let print_id = print_of(world).await;
     let recorded = history(world, print_id).await;
     assert!(
-        recorded.contains(&EventKind::ObicoFailureAlert),
+        recorded.contains(&ObicoFailureAlertPayload::kind()),
         "the alert was not recorded: {recorded:?}"
     );
     assert!(
-        recorded.contains(&EventKind::SupervisionSessionOpened),
+        recorded.contains(&SupervisionSessionOpenedPayload::kind()),
         "no session opened through the harness: {recorded:?}"
     );
     let opened = status(world, print_id).await;
@@ -1024,11 +1028,11 @@ async fn the_history_accounts_for_every_step(world: &Composed, print_id: PrintId
     let records = history_records(world, print_id).await;
     let kinds: Vec<Value> = records.iter().map(|event| event["kind"].clone()).collect();
     for wanted in [
-        EventKind::ObicoFailureAlert,
-        EventKind::SupervisionSessionOpened,
-        EventKind::AgentAssessment,
+        ObicoFailureAlertPayload::kind(),
+        SupervisionSessionOpenedPayload::kind(),
+        AgentAssessmentPayload::kind(),
     ] {
-        let spelled = printobserver_types::serde_json::to_value(wanted).expect("a kind renders");
+        let spelled = printobserver_types::serde_json::to_value(&wanted).expect("a kind renders");
         assert!(
             kinds.contains(&spelled),
             "the history does not account for {wanted:?}: {kinds:?}"

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The kind of printer notification Obico sent, normalized.",
+  "oneOf": [
+    {
+      "const": "started",
+      "description": "A print started.",
+      "type": "string"
+    },
+    {
+      "const": "done",
+      "description": "A print finished.",
+      "type": "string"
+    },
+    {
+      "const": "cancelled",
+      "description": "A print was cancelled.",
+      "type": "string"
+    },
+    {
+      "const": "paused",
+      "description": "A print was paused.",
+      "type": "string"
+    },
+    {
+      "const": "resumed",
+      "description": "A print was resumed.",
+      "type": "string"
+    },
+    {
+      "const": "filament_change",
+      "description": "The printer is waiting for a filament change.",
+      "type": "string"
+    },
+    {
+      "const": "heater_cooled",
+      "description": "A heater cooled down.",
+      "type": "string"
+    },
+    {
+      "const": "heater_target",
+      "description": "A heater reached its target.",
+      "type": "string"
+    }
+  ],
+  "title": "ObicoNotificationType"
+}

@@ -9,9 +9,9 @@
 //! restored.
 //!
 //! Each of the three is **recorded** as having happened at startup, under the
-//! [`StartupReconciliation`](printobserver_types::EventKind::StartupReconciliation)
-//! kind, because a print that carried on across a restart and one that was
-//! started again are otherwise indistinguishable in the history.
+//! [`StartupReconciliationPayload`] kind this module declares and alone writes,
+//! because a print that carried on across a restart and one that was started
+//! again are otherwise indistinguishable in the history.
 //!
 //! # The due interventions are read before the supervisor exists
 //!
@@ -24,12 +24,91 @@
 
 use std::sync::Arc;
 
-use printobserver_core::{CoreError, Supervisor};
+use printobserver_core::{CoreError, Supervisor, system_source};
 use printobserver_store_api::{EventDraft, StorePort};
+use printobserver_types::contract::Sample;
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    EventPayload, EventSource, Intervention, InterventionId, PrintId, StartupOutcome,
-    StartupReconciliationPayload, Timestamp,
+    Adjustable, EventBody, EventPayload, Intervention, InterventionId, InterventionOutcome,
+    PrintId, Timestamp,
 };
+
+/// What one restart put back the way it found it.
+///
+/// A supervisor that has been restarted adopts whatever the store holds rather
+/// than starting empty, and each of these is one of those adoptions. They are
+/// recorded rather than merely done, because a print that carried on across a
+/// restart and one that was started again look identical afterwards unless the
+/// history says which happened.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum StartupOutcome {
+    /// A print left open was adopted as the print this supervisor is watching.
+    PrintAdopted,
+    /// A session left open was resumed rather than replaced.
+    SessionResumed {
+        /// The session's own name in the harness.
+        session_name: String,
+    },
+    /// An intervention already past its expiry was expired on start.
+    InterventionExpired {
+        /// The intervention that had outlived its bound.
+        intervention_id: InterventionId,
+        /// What it had changed.
+        adjustable: Adjustable,
+        /// What became of putting the prior value back.
+        outcome: InterventionOutcome,
+    },
+}
+
+impl Sample for StartupOutcome {
+    fn sample_full() -> Self {
+        Self::InterventionExpired {
+            intervention_id: InterventionId::sample_full(),
+            adjustable: Adjustable::Fan,
+            outcome: InterventionOutcome::Restored,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::PrintAdopted,
+            Self::SessionResumed {
+                session_name: "watch-4211".to_owned(),
+            },
+        ]
+    }
+}
+
+/// A supervisor reconciled one thing the store held when it started.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct StartupReconciliationPayload {
+    /// The print it is about.
+    pub print_id: PrintId,
+    /// What was reconciled.
+    pub outcome: StartupOutcome,
+}
+
+impl EventPayload for StartupReconciliationPayload {
+    const KIND: &'static str = "startup_reconciliation";
+}
+
+impl Sample for StartupReconciliationPayload {
+    fn sample_full() -> Self {
+        Self {
+            print_id: PrintId::sample_full(),
+            outcome: StartupOutcome::sample_full(),
+        }
+    }
+}
 
 /// What one start adopted.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -117,12 +196,9 @@ async fn record(
     store
         .append_event(EventDraft {
             print_id: Some(print_id),
-            source: EventSource::System,
+            source: system_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::StartupReconciliation(StartupReconciliationPayload {
-                print_id,
-                outcome,
-            }),
+            body: EventBody::of(&StartupReconciliationPayload { print_id, outcome })?,
             raw: None,
         })
         .await?;

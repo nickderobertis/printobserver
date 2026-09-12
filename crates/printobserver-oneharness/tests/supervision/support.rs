@@ -25,7 +25,7 @@ use printobserver_oneharness::{
 };
 use printobserver_supervisor_api::TurnRequest;
 use printobserver_types::{
-    EventId, EventPayload, EventRecord, EventSource, PrintId, Timestamp, serde_json,
+    EventBody, EventId, EventKind, EventRecord, EventSource, PrintId, Timestamp, serde_json,
 };
 
 /// The harness every journey runs on unless it is about a second identity.
@@ -354,16 +354,80 @@ pub fn in_turn(session_id: &str, answers: &[&str], counter: &Path) -> Vec<EnvAss
 }
 
 /// One event of a print, at the instant it arrived.
-pub fn event(print_id: PrintId, payload: EventPayload) -> EventRecord {
+pub fn event(print_id: PrintId, body: EventBody) -> EventRecord {
     EventRecord {
         id: EventId::new(),
         print_id: Some(print_id),
-        source: EventSource::Obico,
+        source: EventSource::new("obico"),
         received_at: Timestamp::now(),
         image: None,
-        payload,
+        body,
         raw: None,
     }
+}
+
+/// One body under a kind, spelled as the pair the log holds.
+///
+/// This crate depends on the supervisor port and the type crate alone, so the
+/// events these journeys hang a turn off are built as the envelope carries
+/// them rather than through the payload types other domains declare: what the
+/// port renders into a prompt is the record, whatever its kind.
+pub fn body(kind: &str, payload: serde_json::Value) -> EventBody {
+    EventBody {
+        kind: EventKind::new(kind),
+        payload,
+    }
+}
+
+/// A body this system could not read, written down.
+pub fn unreadable(detail: &str) -> EventBody {
+    body(
+        "malformed_external_event",
+        serde_json::json!({ "detail": detail }),
+    )
+}
+
+/// One payload about a print, with the file name present only when named:
+/// an absent optional is absent from the pair rather than null.
+fn about_a_print(
+    mut payload: serde_json::Value,
+    obico_print_id: i64,
+    file_name: Option<&str>,
+) -> serde_json::Value {
+    let fields = payload.as_object_mut().expect("a payload is an object");
+    fields.insert("obico_print_id".to_owned(), obico_print_id.into());
+    if let Some(name) = file_name {
+        fields.insert("file_name".to_owned(), name.into());
+    }
+    payload
+}
+
+/// A failure alert about a print, as the vision adapter writes one down.
+pub fn failure_alert(obico_print_id: i64, file_name: Option<&str>) -> EventBody {
+    body(
+        "obico_failure_alert",
+        about_a_print(
+            serde_json::json!({ "is_warning": false, "print_paused": true }),
+            obico_print_id,
+            file_name,
+        ),
+    )
+}
+
+/// A printer notification about a print, as the vision adapter writes one down.
+pub fn notification(
+    notification_type: &str,
+    obico_print_id: i64,
+    file_name: Option<&str>,
+) -> EventBody {
+    body(
+        "obico_printer_notification",
+        about_a_print(
+            serde_json::json!({ "notification_type": notification_type }),
+            obico_print_id,
+            file_name,
+        ),
+    )
 }
 
 /// One turn about one event of one print.

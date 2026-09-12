@@ -84,7 +84,10 @@ fn a_row_this_build_cannot_read_is_reported() {
             },
         ),
         ("UPDATE events SET payload = 'not json'", history),
-        ("UPDATE events SET source = 'nowhere'", history),
+        // A `source` or a `kind` this build has never heard of is not one it
+        // cannot read — the log is open, and both columns hold bare names — so
+        // the column driven here is one whose spelling the store does own.
+        ("UPDATE events SET received_at = 'not an instant'", history),
         (
             "UPDATE interventions SET adjustable = 'nothing adjustable'",
             |store, print_id, _| {
