@@ -54,11 +54,6 @@ SERVER_DIR = "schemas/printobserver-server"
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
 
-#: What a kind name is: lowercase snake_case, as the envelope's own schema
-#: declares for the record's `kind`. A marker outside it would name a kind no
-#: record could ever be read back under.
-KIND_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
-
 #: The file the operation list is checked in under.
 OPERATIONS_FILE = "operations.json"
 
@@ -431,6 +426,11 @@ def read_schemas(root: Path) -> dict[str, dict[str, Any]]:
 def event_kinds_of(schemas: dict[str, dict[str, Any]]) -> tuple[EventKind, ...]:
     """Every event kind the schema set declares, read off each payload's marker.
 
+    What a kind *name* is — the pattern the envelope's own `kind` type declares
+    — is not held here: `load` reads it off that type's schema once the
+    envelope is known, so the rule has one source and this reader restates it
+    nowhere.
+
     Raises:
         ContractError: If two schemas carry the same kind — two domains each
             claiming one name — or a marker is not a string.
@@ -440,11 +440,8 @@ def event_kinds_of(schemas: dict[str, dict[str, Any]]) -> tuple[EventKind, ...]:
         marked = schemas[name].get(EVENT_KIND_MARKER)
         if marked is None:
             continue
-        if not isinstance(marked, str) or not KIND_NAME.match(marked):
-            msg = (
-                f"`{name}` carries a `{EVENT_KIND_MARKER}` that is not a kind name: "
-                f"{marked!r} is not lowercase snake_case"
-            )
+        if not isinstance(marked, str):
+            msg = f"`{name}` carries a `{EVENT_KIND_MARKER}` that is not a string: {marked!r}"
             raise ContractError(msg)
         if marked in owners:
             msg = (
@@ -456,16 +453,43 @@ def event_kinds_of(schemas: dict[str, dict[str, Any]]) -> tuple[EventKind, ...]:
     return tuple(EventKind(name=kind, payload=owners[kind]) for kind in sorted(owners))
 
 
-def _envelope_findings(by_name: dict[str, Declaration]) -> str:
-    """Why the envelope is not one a kind table can be generated against, if it is not."""
+def _kind_table_findings(
+    by_name: dict[str, Declaration],
+    schemas: dict[str, dict[str, Any]],
+    event_kinds: tuple[EventKind, ...],
+) -> str:
+    """Why a kind table cannot be generated against the envelope, if it cannot.
+
+    The envelope has to be an object whose `kind` is a named type and whose
+    `payload` is a value of any form; and every declared kind has to be a name
+    that named type admits. What a kind name is — lowercase snake_case, today —
+    is read off the `pattern` that type's own schema declares rather than
+    restated here, so a marker outside it is refused by the rule the envelope
+    itself is held to, and a change to that rule reaches this reader unedited.
+    """
     envelope = by_name.get(ENVELOPE)
     if not isinstance(envelope, Struct):
         return f"`{ENVELOPE}` is not an object shape for the kind table to read"
     fields = {entry.name: entry.type for entry in envelope.fields}
-    if not isinstance(fields.get(KIND_FIELD), Ref):
+    kind_type = fields.get(KIND_FIELD)
+    if not isinstance(kind_type, Ref):
         return f"`{ENVELOPE}.{KIND_FIELD}` is not a named type for the kind table to read"
     if not isinstance(fields.get(PAYLOAD_FIELD), AnyValue):
         return f"`{ENVELOPE}.{PAYLOAD_FIELD}` is not a value of any form for the kind table to read"
+    pattern = schemas[kind_type.name].get("pattern")
+    if not isinstance(pattern, str):
+        return (
+            f"`{kind_type.name}` declares no `pattern` saying what a kind name is, "
+            f"so no `{EVENT_KIND_MARKER}` can be held to one"
+        )
+    admitted = re.compile(pattern)
+    for kind in event_kinds:
+        if not admitted.match(kind.name):
+            return (
+                f"`{kind.payload}` carries a `{EVENT_KIND_MARKER}` that is not a kind name: "
+                f"{kind.name!r} does not match the pattern `{kind_type.name}` declares, "
+                f"{pattern}"
+            )
     return ""
 
 
@@ -511,7 +535,7 @@ def load(root: Path) -> Contract:
         if not isinstance(by_name[kind.payload], Struct):
             msg = f"`{kind.payload}` is marked as the `{kind.name}` payload and is not an object"
             raise ContractError(msg)
-    if event_kinds and (finding := _envelope_findings(by_name)):
+    if event_kinds and (finding := _kind_table_findings(by_name, schemas, event_kinds)):
         raise ContractError(finding)
     return Contract(
         version=workspace_version(root),
