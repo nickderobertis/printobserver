@@ -201,7 +201,7 @@ fn read_printer_notification(parsed: Value, body: &RawBytes) -> Result<Read, Vis
     })
 }
 
-/// Read one received body into this system's own event vocabulary.
+/// Read one received body into an event under this adapter's own kind.
 ///
 /// `content_type` is what the caller was told the body is, and it appears in
 /// the refusal when the body does not parse — the one thing it is good for

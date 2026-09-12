@@ -198,7 +198,7 @@ impl core::error::Error for VisionError {}
 /// shareable across threads, because the supervision core holds it behind
 /// `Arc<dyn VisionPort>`.
 pub trait VisionPort: Send + Sync {
-    /// Read a received body into this system's own event vocabulary.
+    /// Read a received body into an event under this adapter's own kind.
     fn normalize(
         &self,
         body: RawBytes,
