@@ -223,3 +223,36 @@ fn the_schema_marker_carries_the_kind() {
         json!("#/$defs/EventKind")
     );
 }
+
+/// The field reader says `any` for a payload of any form, in either spelling
+/// `schemars` emits, and `union` for a field the arms of a schema declare at
+/// differing types.
+#[test]
+fn the_field_reader_reads_any_and_union() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "bare": true,
+            "documented": { "description": "a value of any form" },
+            "named": { "$ref": "#/$defs/EventKind" }
+        },
+        "required": ["bare", "documented"],
+        "oneOf": [
+            { "properties": { "arm": { "type": "string" } }, "required": ["arm"] },
+            { "properties": { "arm": { "type": "integer" } } }
+        ]
+    });
+    let fields: Vec<(String, String, bool)> = wire_fields(&schema)
+        .into_iter()
+        .map(|field| (field.name, field.descriptor, field.required))
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            ("arm".to_owned(), "union".to_owned(), false),
+            ("bare".to_owned(), "any".to_owned(), true),
+            ("documented".to_owned(), "any".to_owned(), true),
+            ("named".to_owned(), "EventKind".to_owned(), false),
+        ]
+    );
+}

@@ -76,6 +76,23 @@ fn every_core_error_says_what_failed_and_says_it_distinctly() {
     assert_eq!(said.len(), errors.len(), "two errors read the same");
 }
 
+/// A payload that will not render is a core error naming the payload.
+///
+/// The one way an event this crate writes could fail to become a body is its
+/// rendering, and that arrives as the unrepresentable error rather than as a
+/// panic in the loop — carrying the renderer's own words.
+#[test]
+fn a_payload_that_will_not_render_is_an_unrepresentable_error() {
+    let refused = printobserver_types::serde_json::from_str::<i64>("not a number")
+        .expect_err("a word is not a number");
+    let error = CoreError::from(refused);
+    assert!(
+        matches!(&error, CoreError::Unrepresentable { detail } if detail.contains("payload")),
+        "{error:?}"
+    );
+    assert!(error.to_string().contains("not representable"), "{error}");
+}
+
 /// Every rejection reads back in words a caller can act on, and distinctly.
 #[test]
 fn every_rejection_reads_back_in_words_a_caller_can_act_on() {

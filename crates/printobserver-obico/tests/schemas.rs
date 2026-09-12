@@ -81,6 +81,35 @@ fn each_kind_is_written_under_its_own_name() {
     assert_eq!(obico_source().as_str(), "obico");
 }
 
+/// The notification type is a closed set of eight spellings, and its sample is
+/// one of them.
+#[test]
+fn the_notification_type_is_a_closed_set_of_eight() {
+    let schema = schema_of::<ObicoNotificationType>();
+    let spellings: Vec<&str> = schema["oneOf"]
+        .as_array()
+        .expect("a closed set of arms")
+        .iter()
+        .filter_map(|arm| arm["const"].as_str())
+        .collect();
+    assert_eq!(
+        spellings,
+        [
+            "started",
+            "done",
+            "cancelled",
+            "paused",
+            "resumed",
+            "filament_change",
+            "heater_cooled",
+            "heater_target",
+        ]
+    );
+    let sample = printobserver_types::serde_json::to_value(ObicoNotificationType::sample_full())
+        .expect("a fieldless enum serializes");
+    assert!(spellings.contains(&sample.as_str().expect("a spelling")));
+}
+
 /// The two payloads carry exactly the fields the contract states.
 #[test]
 fn the_payloads_carry_exactly_the_stated_fields() {

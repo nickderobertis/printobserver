@@ -14,6 +14,8 @@ answered, field for field, what the host sent.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from contract_codegen.model import (
     ENVELOPE,
     KIND_FIELD,
@@ -221,8 +223,20 @@ def envelope_of(contract: Contract, kind: str, payload: object) -> dict[str, obj
     return {**example, KIND_FIELD: kind, PAYLOAD_FIELD: payload}
 
 
-def known_event(contract: Contract) -> tuple[str, str, dict[str, object]]:
-    """One event under the first declared kind: the kind, its payload type, the event.
+@dataclass(frozen=True, slots=True)
+class KnownEvent:
+    """One event under a kind the clients know, with the payload type it reads as."""
+
+    #: The kind the event is under.
+    kind: str
+    #: The declared type its payload has.
+    payload_type: str
+    #: The event itself, carrying that type's example value as its payload.
+    event: dict[str, object]
+
+
+def known_event(contract: Contract) -> KnownEvent:
+    """One event under the first declared kind, carrying that payload type's example.
 
     Raises:
         ExampleError: If the contract declares no event kind at all.
@@ -231,10 +245,10 @@ def known_event(contract: Contract) -> tuple[str, str, dict[str, object]]:
         msg = "the contract declares no event kind for a known event to be built under"
         raise ExampleError(msg)
     first = contract.event_kinds[0]
-    return (
-        first.name,
-        first.payload,
-        envelope_of(contract, first.name, value_of(Ref(first.payload), contract)),
+    return KnownEvent(
+        kind=first.name,
+        payload_type=first.payload,
+        event=envelope_of(contract, first.name, value_of(Ref(first.payload), contract)),
     )
 
 

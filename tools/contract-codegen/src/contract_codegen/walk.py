@@ -163,13 +163,13 @@ def event_step(contract: Contract) -> EventStep | None:
             continue
         for entry in answered.fields:
             if entry.type == ListOf(Ref(ENVELOPE)):
-                kind, payload_type, known = known_event(contract)
+                known = known_event(contract)
                 return EventStep(
                     step=step,
                     field=entry.name,
-                    known_kind=kind,
-                    known_type=payload_type,
-                    known=known,
+                    known_kind=known.kind,
+                    known_type=known.payload_type,
+                    known=known.event,
                     unknown=unknown_event(contract),
                 )
     msg = (
