@@ -1,4 +1,4 @@
-"""The crate set, the module comments, and the dependency rule the design rests on."""
+"""The crate set, the module comments, and the edge table the dependency rule is."""
 
 # `assert` is how pytest states an assertion and how it produces the failure
 # message a reader acts on; suppressions.toml carries the reason.
@@ -33,6 +33,16 @@ REQUIRED_CRATES = (
 
 DEPENDENCY = '{name} = {{ path = "../{name}" }}\n'
 DEPENDENCIES = "[dependencies]\n"
+POLICY = "repo-policy.toml"
+
+# The four adapters and the store: the crates the composition root alone may
+# name, which the edge table says by admitting them in one row.
+IMPLEMENTATIONS = (
+    "printobserver-octoprint",
+    "printobserver-obico",
+    "printobserver-oneharness",
+    "printobserver-store-sqlite",
+)
 
 
 def with_only_dependencies(manifest: str, *names: str) -> str:
@@ -131,7 +141,7 @@ def test_a_crate_whose_comment_omits_its_dependencies_is_refused(
 def test_core_depending_on_an_implementation_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The edge the whole design exists to forbid."""
+    """The edge the whole design exists to forbid, refused by the table's row for core."""
     broken = tree()
     broken.write(
         "crates/printobserver-core/Cargo.toml",
@@ -143,21 +153,32 @@ def test_core_depending_on_an_implementation_is_refused(
     findings = workspace(broken.repo)
 
     refused(findings, "printobserver-core` depends on `printobserver-octoprint")
+    refused(findings, "which the dependency table does not admit")
 
 
-def test_core_depending_outside_its_layer_is_refused(tree: Callable[[], Tree]) -> None:
-    """Core may name the type crate and the four ports, and nothing else."""
+def test_an_edge_the_table_does_not_admit_is_refused_in_any_dependency_table(
+    tree: Callable[[], Tree],
+) -> None:
+    """A test-only edge is an edge: the rule reads every dependency table.
+
+    Driven over a port naming an adapter under `dev-dependencies`, because that
+    is the table a reader forgets, and a port that could reach an
+    implementation through its tests would stop being a port.
+    """
     broken = tree()
+    manifest = broken.read("crates/printobserver-vision-api/Cargo.toml")
     broken.write(
-        "crates/printobserver-core/Cargo.toml",
-        with_only_dependencies(
-            broken.read("crates/printobserver-core/Cargo.toml"), "printobserver-server"
+        "crates/printobserver-vision-api/Cargo.toml",
+        manifest.replace(
+            "[dev-dependencies]\n",
+            "[dev-dependencies]\n" + DEPENDENCY.format(name="printobserver-obico"),
         ),
     )
+    contains(broken.read("crates/printobserver-vision-api/Cargo.toml"), "printobserver-obico")
 
     findings = workspace(broken.repo)
 
-    refused(findings, "outside its layer")
+    refused(findings, "`printobserver-vision-api` depends on `printobserver-obico`")
 
 
 def test_an_implementation_depending_on_another_is_refused(
@@ -174,13 +195,13 @@ def test_an_implementation_depending_on_another_is_refused(
 
     findings = workspace(broken.repo)
 
-    refused(findings, "no implementation crate may depend on another")
+    refused(findings, "`printobserver-obico` depends on `printobserver-octoprint`")
 
 
 def test_a_client_depending_on_an_implementation_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Only the composition roots may name an implementation."""
+    """The generated client's row admits nothing, so it may name nothing."""
     broken = tree()
     broken.write(
         "crates/printobserver-sdk/Cargo.toml",
@@ -191,21 +212,115 @@ def test_a_client_depending_on_an_implementation_is_refused(
 
     findings = workspace(broken.repo)
 
-    refused(findings, "may name an implementation")
+    refused(findings, "`printobserver-sdk` depends on `printobserver-octoprint`")
+    refused(findings, "names no crate at all")
+
+
+def test_a_row_naming_a_crate_the_workspace_lacks_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A row for a crate nobody has is a rule about nothing."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            '"printobserver-sdk" = []\n',
+            '"printobserver-sdk" = []\n"printobserver-store-api" = ["printobserver-types"]\n',
+        ),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "declares crate `printobserver-store-api`, which the workspace does not hold")
+
+
+def test_a_row_admitting_a_crate_the_workspace_lacks_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An admitted edge to a crate nobody has is an edge nothing can check."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            '"printobserver-sdk" = []\n',
+            '"printobserver-sdk" = ["printobserver-store-api"]\n',
+        ),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(
+        findings,
+        "row for `printobserver-sdk` admits `printobserver-store-api`, which the workspace "
+        "does not hold",
+    )
+
+
+def test_a_workspace_crate_the_table_omits_is_refused(tree: Callable[[], Tree]) -> None:
+    """A crate with no row has no rule, and a rule with a gap is not the rule."""
+    broken = tree()
+    broken.write(POLICY, broken.read(POLICY).replace('"printobserver-sdk" = []\n', ""))
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "holds crate `printobserver-sdk`, which `repo-policy.toml` does not declare")
+
+
+def test_a_policy_with_no_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """A rule stated nowhere refuses nothing, so its absence is the finding."""
+    broken = tree()
+    broken.write(
+        POLICY, broken.read(POLICY).replace("[crates.may_depend_on]", "[crates.was_a_table]")
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "declares no `crates.may_depend_on` table")
+
+
+def test_the_table_equals_the_graph_the_design_states(committed: Repo) -> None:
+    """The four properties the graph is drawn for, read off the committed rows.
+
+    The type crate depends on nothing; each port on the type crate alone; the
+    supervision domain on the type crate and the three ports and on no adapter
+    or store; and every adapter and the store are admitted by the server's row
+    and by no other. The command reaches them through the server.
+    """
+    table = committed.policy["crates"]["may_depend_on"]
+    equal(table["printobserver-types"], [])
+    for port in (
+        "printobserver-printer-api",
+        "printobserver-vision-api",
+        "printobserver-supervisor-api",
+    ):
+        equal(table[port], ["printobserver-types"])
+    equal(
+        sorted(table["printobserver-core"]),
+        sorted(
+            [
+                "printobserver-types",
+                "printobserver-printer-api",
+                "printobserver-vision-api",
+                "printobserver-supervisor-api",
+            ]
+        ),
+    )
+    for implementation in IMPLEMENTATIONS:
+        admitting = sorted(name for name, admitted in table.items() if implementation in admitted)
+        equal(admitting, ["printobserver-server"], describing=implementation)
 
 
 def test_the_server_is_the_only_crate_that_names_an_implementation(
     committed: Repo,
 ) -> None:
-    """The rule permits every composition root, and one of them uses it.
+    """The one crate the table lets name an implementation is the one that does.
 
     `printobserver` reaches the implementations through `printobserver-server`
     rather than naming them itself, so the tree this repository ships has
-    exactly one crate that names one. A second would not be refused by the rule
-    above — a composition root is allowed to — so it is asserted here, where a
-    reader can see which crate that is.
+    exactly one crate that names one — asserted over the manifests here, where
+    a reader can see which crate that is, beside the table that admits it.
     """
-    implementations = set(committed.policy["crates"]["implementations"])
+    implementations = set(IMPLEMENTATIONS)
     naming = sorted(
         name
         for name in committed.crate_names

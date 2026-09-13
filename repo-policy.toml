@@ -289,41 +289,78 @@ safe_commands = [
 max_lines = 200
 
 [crates]
-# The roles the dependency rule is stated in terms of. `just check-repo`
-# enforces: core may depend on the type crate and the four ports and on no
-# implementation crate; no implementation crate may depend on another.
-types = "printobserver-types"
-ports = [
+# The dependency rule, stated as the edges it admits rather than as layers.
+#
+# `may_depend_on` below names, for every workspace crate, the workspace crates
+# it may depend on — across `dependencies`, `dev-dependencies` and
+# `build-dependencies`, and exactly the third column of the crate table
+# AGENTS.md's "The dependency rule" states. `just check-repo` refuses a
+# manifest edge the row does not admit, a row naming a crate the workspace does
+# not hold, and a workspace crate with no row: the step that draws an edge is
+# the step that admits it here, so the check proves the graph rather than a
+# rule about it.
+#
+# The crates the other checks name by role. `core` is the supervision domain,
+# whose stated dependency direction the architecture document is held to;
+# `clients` are the generated clients the API document inventories.
+core = "printobserver-core"
+clients = ["printobserver-sdk"]
+# The command-line program, and the two edges it may not have.
+#
+# The table already admits it the server and the client alone; these two say
+# *why* the edges it must not have are the two vendor adapters, so that a
+# reader of a refusal is told the reason rather than the row. For everything
+# but starting the server it is a client of an already-running one, and a
+# client that could name the printer's adapter or the failure detector's could
+# reach a printer without the supervisor in between. That is the one thing
+# this program exists to make impossible.
+cli = "printobserver"
+# What it must depend on: the server it starts, and the typed client of the
+# surface it talks to.
+cli_requires = ["printobserver-server", "printobserver-sdk"]
+# What it must not, whatever the table said.
+cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
+
+# The four properties the graph is drawn for read straight off the rows: the
+# type crate sits under every crate and depends on nothing; each port depends
+# on the type crate alone; the supervision domain depends on the type crate
+# and the three ports and on no adapter or store, which is what keeps the
+# graph acyclic; and every adapter and the store are reached by the
+# composition roots — `printobserver-server`, and through it the command —
+# and by nothing else.
+[crates.may_depend_on]
+"printobserver-types" = []
+"printobserver-printer-api" = ["printobserver-types"]
+"printobserver-vision-api" = ["printobserver-types"]
+"printobserver-supervisor-api" = ["printobserver-types"]
+"printobserver-core" = [
+    "printobserver-types",
     "printobserver-printer-api",
     "printobserver-vision-api",
     "printobserver-supervisor-api",
 ]
-implementations = [
+"printobserver-octoprint" = ["printobserver-printer-api", "printobserver-types"]
+"printobserver-obico" = ["printobserver-vision-api", "printobserver-core", "printobserver-types"]
+"printobserver-oneharness" = ["printobserver-supervisor-api", "printobserver-types"]
+"printobserver-store-sqlite" = [
+    "printobserver-core",
+    "printobserver-supervisor-api",
+    "printobserver-printer-api",
+    "printobserver-types",
+]
+"printobserver-server" = [
+    "printobserver-types",
+    "printobserver-printer-api",
+    "printobserver-vision-api",
+    "printobserver-supervisor-api",
+    "printobserver-core",
     "printobserver-octoprint",
     "printobserver-obico",
     "printobserver-oneharness",
     "printobserver-store-sqlite",
 ]
-core = "printobserver-core"
-# The only crates allowed to name an implementation: something has to choose
-# which one runs.
-composition_roots = ["printobserver-server", "printobserver"]
-clients = ["printobserver-sdk"]
-# The command-line program, and the two edges it may not have.
-#
-# It is a composition root — it starts the server — so the rule above permits
-# it any implementation. What it must not have is either **vendor** adapter: for
-# everything but starting the server it is a client of an already-running one,
-# and a client that could name the printer's adapter or the failure detector's
-# could reach a printer without the supervisor in between. That is the one thing
-# this program exists to make impossible, so the edge is refused here rather
-# than left to a reader.
-cli = "printobserver"
-# What it must depend on: the server it starts, and the typed client of the
-# surface it talks to.
-cli_requires = ["printobserver-server", "printobserver-sdk"]
-# What it must not, whatever layer they sit in.
-cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
+"printobserver-sdk" = []
+"printobserver" = ["printobserver-server", "printobserver-sdk", "printobserver-types"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held
