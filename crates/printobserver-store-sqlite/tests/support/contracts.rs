@@ -78,7 +78,7 @@ pub const STORE_TRAITS: [&str; 5] = [
 ];
 
 /// The supervision domain's `store` module, where the traits are declared.
-pub fn port_source() -> syn::File {
+pub fn store_source() -> syn::File {
     parse(&read(
         &crate_dir("printobserver-core").join("src").join("store.rs"),
     ))
@@ -101,7 +101,7 @@ pub fn store_trait_methods(file: &syn::File) -> Vec<Method> {
 pub fn record_kinds() -> BTreeSet<String> {
     let declared = struct_names(&record_sources());
     let mut kinds = BTreeSet::new();
-    for method in store_trait_methods(&port_source()) {
+    for method in store_trait_methods(&store_source()) {
         for name in named_types(&method.returns) {
             if declared.contains(&name) {
                 kinds.insert(name);

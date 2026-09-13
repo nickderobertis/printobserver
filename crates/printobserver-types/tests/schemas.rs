@@ -135,9 +135,10 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
     );
 }
 
-/// The six shapes the ports and the supervision domain own that cross a
-/// process boundary, and the crate each is declared by.
-const PORT_OWNED_SHAPES: [(&str, &str); 6] = [
+/// The six shapes another crate declares that cross a process boundary, and
+/// the crate each is declared by: the ports' own, and the supervision
+/// domain's store shapes.
+const SHAPES_DECLARED_ELSEWHERE: [(&str, &str); 6] = [
     ("printobserver-vision-api", "NormalizedAlert"),
     ("printobserver-vision-api", "FetchedImage"),
     ("printobserver-supervisor-api", "TurnRequest"),
@@ -146,8 +147,9 @@ const PORT_OWNED_SHAPES: [(&str, &str); 6] = [
     ("printobserver-core", "HistoryQuery"),
 ];
 
-/// The four port-shaped error vocabularies, which cross no process boundary.
-const PORT_ERRORS: [(&str, &str); 4] = [
+/// The four error vocabularies that cross no process boundary and so emit no
+/// schema: the three ports' own, and the supervision domain's store error.
+const ERRORS_WITHOUT_A_SCHEMA: [(&str, &str); 4] = [
     ("printobserver-printer-api", "PrinterError"),
     ("printobserver-vision-api", "VisionError"),
     ("printobserver-supervisor-api", "SupervisorError"),
@@ -159,8 +161,8 @@ const PORT_ERRORS: [(&str, &str); 4] = [
 /// The set is wider than this crate's own declarations, because six of the
 /// types that cross a process boundary are the ports' and the supervision
 /// domain's own, so this reads both: a type cannot fall out of the set by
-/// being declared in another crate rather than here, and a port-shaped error
-/// vocabulary — which reaches no process boundary — cannot slip into it.
+/// being declared in another crate rather than here, and an error vocabulary
+/// — which reaches no process boundary — cannot slip into it.
 fn schema_set_findings(root: &Path) -> Vec<String> {
     let mut findings = Vec::new();
     for entry in declared() {
@@ -169,7 +171,7 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
             findings.push(format!("{} emits no checked-in schema", entry.name));
         }
     }
-    for (crate_name, type_name) in PORT_OWNED_SHAPES {
+    for (crate_name, type_name) in SHAPES_DECLARED_ELSEWHERE {
         let path = schema_dir(root, crate_name).join(format!("{type_name}.json"));
         let Ok(text) = std::fs::read_to_string(&path) else {
             findings.push(format!("{type_name} emits no checked-in schema"));
@@ -180,11 +182,11 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
             findings.push(format!("{} is not {type_name}'s schema", path.display()));
         }
     }
-    for (crate_name, error_name) in PORT_ERRORS {
+    for (crate_name, error_name) in ERRORS_WITHOUT_A_SCHEMA {
         let path = schema_dir(root, crate_name).join(format!("{error_name}.json"));
         if path.exists() {
             findings.push(format!(
-                "{error_name} emits a schema, and a port error reaches no process boundary"
+                "{error_name} emits a schema, and an error reaches no process boundary"
             ));
         }
     }
@@ -217,7 +219,7 @@ impl ScratchTree {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&root);
-        for (crate_name, _) in PORT_OWNED_SHAPES
+        for (crate_name, _) in SHAPES_DECLARED_ELSEWHERE
             .into_iter()
             .chain([("printobserver-types", "")])
         {

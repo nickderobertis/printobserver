@@ -183,14 +183,20 @@ async fn handle(
 }
 
 /// Write down one body this system did not read, and the reason it did not.
+///
+/// The record is attempted rather than waited on, and a record that will not
+/// render is dropped exactly as one the store refuses is: the post has already
+/// been answered, and nothing here may take the ingress worker down.
 async fn record_unread(events: &Arc<dyn EventStore>, body: RawBytes, detail: String) {
+    let Ok(rendered) = EventBody::of(&MalformedExternalEventPayload { detail }) else {
+        return;
+    };
     let _ = events
         .append_event(EventDraft {
             print_id: None,
             source: obico_source(),
             received_at: Timestamp::now(),
-            body: EventBody::of(&MalformedExternalEventPayload { detail })
-                .expect("a payload of one string renders"),
+            body: rendered,
             raw: Some(body),
         })
         .await;

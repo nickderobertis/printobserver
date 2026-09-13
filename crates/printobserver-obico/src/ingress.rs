@@ -85,6 +85,12 @@ pub enum IngressError {
         /// What the store said.
         error: StoreError,
     },
+    /// The record this system would have written down would not render as
+    /// JSON, so nothing was written down.
+    Unrepresentable {
+        /// What would not render.
+        detail: String,
+    },
 }
 
 impl core::fmt::Display for IngressError {
@@ -98,6 +104,10 @@ impl core::fmt::Display for IngressError {
                 )
             }
             Self::Store { error } => write!(formatter, "nothing was written down: {error}"),
+            Self::Unrepresentable { detail } => write!(
+                formatter,
+                "nothing was written down: the record would not render: {detail}"
+            ),
         }
     }
 }
@@ -107,6 +117,14 @@ impl core::error::Error for IngressError {}
 impl From<StoreError> for IngressError {
     fn from(error: StoreError) -> Self {
         Self::Store { error }
+    }
+}
+
+impl From<printobserver_types::serde_json::Error> for IngressError {
+    fn from(error: printobserver_types::serde_json::Error) -> Self {
+        Self::Unrepresentable {
+            detail: error.to_string(),
+        }
     }
 }
 
@@ -170,14 +188,17 @@ impl ObicoIngress {
 
     /// Record one body this system could not read, and refuse it.
     async fn refuse(&self, body: RawBytes, refusal: VisionError) -> IngressError {
+        let rendered = match EventBody::of(&MalformedExternalEventPayload {
+            detail: detail_of(&refusal),
+        }) {
+            Ok(rendered) => rendered,
+            Err(error) => return IngressError::from(error),
+        };
         let draft = EventDraft {
             print_id: None,
             source: obico_source(),
             received_at: Timestamp::now(),
-            body: EventBody::of(&MalformedExternalEventPayload {
-                detail: detail_of(&refusal),
-            })
-            .expect("a payload of one string renders"),
+            body: rendered,
             raw: Some(body),
         };
         match self.events.append_event(draft).await {
@@ -232,8 +253,7 @@ impl ObicoIngress {
                 event_id,
                 site: PortFailureSite::ImageWrite,
                 detail: failure.to_string(),
-            })
-            .expect("a payload of an identifier, a site and a string renders"),
+            })?,
             raw: None,
         };
         self.events.append_event(draft).await?;
@@ -326,9 +346,9 @@ mod tests {
         );
     }
 
-    /// Both refusals say which they are, and the recorded one names its record.
+    /// Every refusal says which it is, and the recorded one names its record.
     #[test]
-    fn both_refusals_say_which_they_are() {
+    fn every_refusal_says_which_it_is() {
         let recorded = EventRecord::sample_full();
         let refused = IngressError::Refused {
             refusal: VisionError::TimedOut,
@@ -339,5 +359,18 @@ mod tests {
             detail: "the disk is full".to_owned(),
         });
         assert!(refused_by_store.to_string().contains("the disk is full"));
+        let unrepresentable = IngressError::from(
+            printobserver_types::serde_json::from_str::<u8>("not a number")
+                .expect_err("a string is no number"),
+        );
+        assert!(matches!(
+            unrepresentable,
+            IngressError::Unrepresentable { .. }
+        ));
+        assert!(
+            unrepresentable
+                .to_string()
+                .contains("the record would not render")
+        );
     }
 }

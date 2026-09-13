@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use crate::contracts::{port_source, store_trait_methods};
+use crate::contracts::{store_source, store_trait_methods};
 use crate::surface::{method_calls, parse, read, trait_methods};
 
 /// The files the conformance suite is written across.
@@ -39,7 +39,7 @@ fn unexercised(traits: &[String], suite: &[syn::File]) -> Vec<String> {
 /// The suite exercises every method every store trait declares.
 #[test]
 fn the_conformance_suite_exercises_every_method_the_traits_declare() {
-    let declared: Vec<String> = store_trait_methods(&port_source())
+    let declared: Vec<String> = store_trait_methods(&store_source())
         .into_iter()
         .map(|method| method.name)
         .collect();

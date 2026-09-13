@@ -158,7 +158,7 @@ a crate the workspace lacks, and a crate the table omits.
 | `printobserver-obico` | `printobserver-vision-api`, `printobserver-core`, `printobserver-types` |
 | `printobserver-oneharness` | `printobserver-supervisor-api`, `printobserver-types` |
 | `printobserver-store-sqlite` | `printobserver-core`, `printobserver-supervisor-api`, `printobserver-printer-api`, `printobserver-types` |
-| `printobserver-server` | every crate above |
+| `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-store-sqlite` |
 | `printobserver-sdk` | — |
 | `printobserver` | `printobserver-server`, `printobserver-sdk`, `printobserver-types` |
 

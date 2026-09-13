@@ -404,16 +404,16 @@ impl Supervisor {
         site: PortFailureSite,
         detail: String,
     ) {
-        let _ = self
-            .append_system_event(
-                print_id,
-                EventBody::of(&PortFailurePayload {
-                    event_id,
-                    site,
-                    detail,
-                })
-                .expect("a payload of an identifier, a site and a string renders"),
-            )
-            .await;
+        // A record that will not render is dropped exactly as one the store
+        // refuses is: the failure it was about has already been answered, and
+        // the loop survives not having written it down.
+        let Ok(body) = EventBody::of(&PortFailurePayload {
+            event_id,
+            site,
+            detail,
+        }) else {
+            return;
+        };
+        let _ = self.append_system_event(print_id, body).await;
     }
 }

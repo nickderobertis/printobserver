@@ -309,3 +309,117 @@ def test_documentation_paths_cannot_escape_the_repository(
     for findings in (skill(repo), reference(repo), schema_document(repo)):
         refused(findings, "must be a relative path inside the repository")
         refused(findings, "docs.document.path" if key == "path" else f"docs.{key}")
+
+
+#: A policy declaring a two-crate edge table, for the architecture document's
+#: own table to be held to.
+TABLED = (
+    DECLARED
+    + """
+[crates.may_depend_on]
+"printobserver-types" = []
+"printobserver-core" = ["printobserver-types"]
+"""
+)
+
+#: The one sentence the check reads core's dependency direction off.
+CORE_SENTENCE = "`printobserver-core` depends on `printobserver-types`.\n"
+
+#: An architecture document whose table is the policy's, row for row.
+ARCHITECTURE = (
+    "# The architecture\n\n## The crates\n\n"
+    "### printobserver-types\n\n### printobserver-core\n\n"
+    "## Why core names no implementation crate\n\n"
+    + CORE_SENTENCE
+    + "\n| Crate | May depend on |\n| --- | --- |\n"
+    "| `printobserver-types` | — |\n"
+    "| `printobserver-core` | `printobserver-types` |\n"
+)
+
+
+def _two_crates(root: Path) -> Repo:
+    """A repository of two crates whose manifests carry the one edge the table admits."""
+    repo = _declaring(root, TABLED)
+    _write(
+        root, "crates/printobserver-types/Cargo.toml", '[package]\nname = "printobserver-types"\n'
+    )
+    _write(
+        root,
+        "crates/printobserver-core/Cargo.toml",
+        '[package]\nname = "printobserver-core"\n\n[dependencies]\n'
+        'printobserver-types = { path = "../printobserver-types" }\n',
+    )
+    _write(root, "surface.json", json.dumps(MANIFEST))
+    return repo
+
+
+def test_an_architecture_table_that_is_the_policys_is_accepted(tmp_path: Path) -> None:
+    """The document's dependency table restates the policy's, and the read agrees."""
+    repo = _two_crates(tmp_path)
+
+    accepted(_architecture(repo, "guide.md", ARCHITECTURE, EMPTY))
+
+
+def test_an_architecture_table_row_that_disagrees_with_the_policy_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A row admitting an edge the policy does not is the drift this read exists for."""
+    repo = _two_crates(tmp_path)
+    drifted = ARCHITECTURE.replace(
+        "| `printobserver-types` | — |", "| `printobserver-types` | `printobserver-core` |"
+    )
+
+    findings = _architecture(repo, "guide.md", drifted, EMPTY)
+
+    refused(findings, "says `printobserver-types` may depend on `printobserver-core`")
+    refused(findings, "admits no crate at all")
+
+
+def test_an_architecture_table_missing_a_row_the_policy_declares_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Every crate the policy has a row for has a row in the document."""
+    repo = _two_crates(tmp_path)
+    short = ARCHITECTURE.replace("| `printobserver-types` | — |\n", "")
+
+    refused(
+        _architecture(repo, "guide.md", short, EMPTY),
+        "has no row for `printobserver-types`, and `repo-policy.toml` declares one",
+    )
+
+
+def test_an_architecture_table_row_the_policy_lacks_is_refused(tmp_path: Path) -> None:
+    """A row for a crate the policy has no row for is a rule the policy never made."""
+    repo = _two_crates(tmp_path)
+    extra = ARCHITECTURE + "| `printobserver-store-api` | `printobserver-types` |\n"
+
+    refused(
+        _architecture(repo, "guide.md", extra, EMPTY),
+        "carries a row for `printobserver-store-api`, and `repo-policy.toml` declares none",
+    )
+
+
+def test_an_architecture_document_with_no_table_is_refused(tmp_path: Path) -> None:
+    """A policy that declares a table is restated by a document that carries one."""
+    repo = _two_crates(tmp_path)
+    tableless = ARCHITECTURE[: ARCHITECTURE.index("| Crate")]
+
+    refused(_architecture(repo, "guide.md", tableless, EMPTY), "carries no dependency table")
+
+
+def test_an_architecture_document_over_a_policy_with_no_table_says_so(tmp_path: Path) -> None:
+    """The document cannot be held to a table the policy does not declare."""
+    repo = _declaring(tmp_path)
+    _write(
+        tmp_path, "crates/printobserver-core/Cargo.toml", '[package]\nname = "printobserver-core"\n'
+    )
+    _write(tmp_path, "surface.json", json.dumps(MANIFEST))
+    document = (
+        "# The architecture\n\n## The crates\n\n### printobserver-core\n\n"
+        "## Why core names no implementation crate\n\n`printobserver-core` depends on nothing.\n"
+    )
+
+    refused(
+        _architecture(repo, "guide.md", document, EMPTY),
+        "declares no `crates.may_depend_on` table",
+    )

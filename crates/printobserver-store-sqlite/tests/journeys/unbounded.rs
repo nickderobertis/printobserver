@@ -9,7 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::contracts::{port_source, store_trait_methods};
+use crate::contracts::{store_source, store_trait_methods};
 use crate::surface::{
     Method, crate_dir, crate_sources, exposed_methods, named_types, parse, read, struct_fields,
     struct_names,
@@ -21,7 +21,7 @@ const STORE_TYPES: [&str; 2] = ["SqliteStore", "MemoryStore"];
 /// The sources the enumeration reads: this crate's, and the store traits'.
 fn sources() -> Vec<syn::File> {
     let mut files = crate_sources("printobserver-store-sqlite");
-    files.push(port_source());
+    files.push(store_source());
     files
 }
 
