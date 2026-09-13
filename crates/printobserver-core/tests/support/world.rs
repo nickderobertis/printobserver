@@ -134,10 +134,10 @@ impl World {
     /// # Panics
     ///
     /// Panics when the store refuses to open it.
-    pub fn open_print(&self, obico_print_id: i64) -> PrintRecord {
+    pub fn open_print(&self, provider_print_id: i64) -> PrintRecord {
         block_on(printobserver_core::store::PrintStore::open_print(
             self.store.as_ref(),
-            Some(obico_print_id),
+            Some(provider_print_id),
             Some("benchy.gcode".to_owned()),
         ))
         .expect("the store opens a print")

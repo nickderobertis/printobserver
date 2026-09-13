@@ -246,7 +246,7 @@ fn the_child_writes_one_of_every_record_kind() {
     let image = block_on(port.put_image(
         print.id,
         event.id,
-        Some("https://obico.example/snapshot.jpg".to_owned()),
+        Some("https://detector.example/snapshot.jpg".to_owned()),
         "image/jpeg".to_owned(),
         RawBytes::new(b"the surviving snapshot".to_vec()),
     ))

@@ -202,7 +202,7 @@ impl ObicoIngress {
         let Some(print) = print else {
             return Ok(None);
         };
-        if let Some(held) = self.prints.print_by_obico_id(print.id).await? {
+        if let Some(held) = self.prints.print_by_provider_id(print.id).await? {
             return Ok(Some(held));
         }
         Ok(Some(

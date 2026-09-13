@@ -20,17 +20,19 @@ pub struct ManifestNarrowing {
 
 /// One print, and the record supervision keys from.
 ///
-/// Obico's own print id is carried beside this record's identifier rather than
-/// as it, because a print may be observed before Obico has one.
+/// The provider's own print id is carried beside this record's identifier
+/// rather than as it, because a print may be observed before the provider
+/// that reports it has one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct PrintRecord {
     /// This print's identifier, minted by the store.
     pub id: PrintId,
-    /// Obico's own identifier for the print, when Obico has one.
+    /// The provider's own identifier for the print, whichever provider
+    /// reported it, when one has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub obico_print_id: Option<i64>,
+    pub provider_print_id: Option<i64>,
     /// The file being printed, as the source reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,

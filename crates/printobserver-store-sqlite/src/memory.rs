@@ -121,10 +121,14 @@ impl MemoryStore {
     }
 
     /// Open a print, minting its identifier.
-    fn insert_print(&self, obico_print_id: Option<i64>, file_name: Option<String>) -> PrintRecord {
+    fn insert_print(
+        &self,
+        provider_print_id: Option<i64>,
+        file_name: Option<String>,
+    ) -> PrintRecord {
         let record = PrintRecord {
             id: PrintId::new(),
-            obico_print_id,
+            provider_print_id,
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
@@ -279,10 +283,10 @@ impl MemoryStore {
 impl PrintStore for MemoryStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        Box::pin(async move { Ok(self.insert_print(obico_print_id, file_name)) })
+        Box::pin(async move { Ok(self.insert_print(provider_print_id, file_name)) })
     }
 
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
@@ -295,16 +299,16 @@ impl PrintStore for MemoryStore {
         })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         Box::pin(async move {
             let records = lock(&self.records);
             let mut found: Vec<&PrintRecord> = records
                 .prints
                 .iter()
-                .filter(|print| print.obico_print_id == Some(obico_print_id))
+                .filter(|print| print.provider_print_id == Some(provider_print_id))
                 .collect();
             found.sort_by_key(|print| (print.opened_at, print.id));
             Ok(found.last().map(|print| (*print).clone()))

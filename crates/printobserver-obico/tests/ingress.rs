@@ -515,7 +515,7 @@ async fn an_alert_for_an_unknown_id_opens_a_print_carrying_it() {
 
     let prints = store.prints();
     assert_eq!(prints.len(), 1, "no single print record was opened");
-    assert_eq!(prints[0].obico_print_id, Some(SAMPLE_OBICO_PRINT_ID));
+    assert_eq!(prints[0].provider_print_id, Some(SAMPLE_OBICO_PRINT_ID));
     assert_eq!(stored_event(&store, &receipt).print_id, Some(prints[0].id));
 }
 
@@ -543,7 +543,7 @@ async fn an_alert_for_an_ended_print_does_not_reopen_it() {
     let carrying: Vec<PrintRecord> = store
         .prints()
         .into_iter()
-        .filter(|record| record.obico_print_id == Some(SAMPLE_OBICO_PRINT_ID))
+        .filter(|record| record.provider_print_id == Some(SAMPLE_OBICO_PRINT_ID))
         .collect();
     assert_eq!(carrying.len(), 1, "a replacement print record was opened");
     assert_eq!(carrying[0].id, ended.id);

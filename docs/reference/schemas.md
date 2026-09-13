@@ -27,7 +27,7 @@ so a type entering or leaving it moves this document with it.
 
 ### AcknowledgementDisposition
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -1205,7 +1205,7 @@ Declared by `printobserver-core`.
 
 ### ActionId
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -1220,7 +1220,7 @@ Declared by `printobserver-types`.
 
 ### ActionKind
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -1284,7 +1284,7 @@ Declared by `printobserver-types`.
 
 ### ActionRecord
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -2568,7 +2568,7 @@ Declared by `printobserver-core`.
 
 ### ActionRequest
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -3624,7 +3624,7 @@ Declared by `printobserver-core`.
 
 ### Actor
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -3671,7 +3671,7 @@ Declared by `printobserver-types`.
 
 ### ActorClass
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -3700,7 +3700,7 @@ Declared by `printobserver-types`.
 
 ### Adjustable
 
-Declared by `printobserver-types`.
+Declared by `printobserver-printer-api`.
 
 ```json
 {
@@ -3742,7 +3742,7 @@ Declared by `printobserver-supervisor-api`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
+  "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n`PrintAction` that policy rules on.",
   "properties": {
     "confidence": {
       "$ref": "#/$defs/Confidence",
@@ -3791,7 +3791,7 @@ Declared by `printobserver-core`.
   "$defs": {
     "AgentAssessment": {
       "additionalProperties": false,
-      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n`PrintAction` that policy rules on.",
       "properties": {
         "confidence": {
           "$ref": "#/$defs/Confidence",
@@ -4471,7 +4471,7 @@ Declared by `printobserver-server`.
     },
     "PrintRecord": {
       "additionalProperties": false,
-      "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+      "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
       "properties": {
         "end_reason": {
           "description": "Why it ended, if it has.",
@@ -4509,17 +4509,17 @@ Declared by `printobserver-server`.
           },
           "type": "array"
         },
-        "obico_print_id": {
-          "description": "Obico's own identifier for the print, when Obico has one.",
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "provider_print_id": {
+          "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
           "format": "int64",
           "type": [
             "integer",
             "null"
           ]
-        },
-        "opened_at": {
-          "$ref": "#/$defs/Timestamp",
-          "description": "When the print was opened."
         },
         "state": {
           "$ref": "#/$defs/PrinterState",
@@ -4741,7 +4741,7 @@ Declared by `printobserver-server`.
 
 ### EffectiveBounds
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -4849,7 +4849,7 @@ Declared by `printobserver-types`.
 
 ### EventDraft
 
-Declared by `printobserver-store-api`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -5120,7 +5120,7 @@ Declared by `printobserver-types`.
 
 ### ExecutionOutcome
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -5440,7 +5440,7 @@ Declared by `printobserver-server`.
 
 ### HistoryQuery
 
-Declared by `printobserver-store-api`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -5653,7 +5653,7 @@ Declared by `printobserver-types`.
 
 ### ImageRecord
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -5785,7 +5785,7 @@ Declared by `printobserver-types`.
 
 ### Intervention
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -6079,7 +6079,7 @@ Declared by `printobserver-core`.
 
 ### InterventionId
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -6094,7 +6094,7 @@ Declared by `printobserver-types`.
 
 ### InterventionOutcome
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -6178,7 +6178,7 @@ Declared by `printobserver-types`.
 
 ### JobManifest
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -6576,7 +6576,7 @@ Declared by `printobserver-server`.
 
 ### ManifestNarrowing
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -7687,7 +7687,7 @@ Declared by `printobserver-core`.
 
 ### PolicyDecision
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -8032,7 +8032,7 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     "PortFailureSite": {
-      "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](printobserver_types::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](printobserver_types::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
+      "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](crate::records::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](crate::records::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
       "oneOf": [
         {
           "const": "printer_snapshot",
@@ -8092,7 +8092,7 @@ Declared by `printobserver-core`.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](printobserver_types::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](printobserver_types::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
+  "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](crate::records::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](crate::records::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
   "oneOf": [
     {
       "const": "printer_snapshot",
@@ -8121,7 +8121,7 @@ Declared by `printobserver-core`.
 
 ### PrintAction
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -9107,7 +9107,7 @@ Declared by `printobserver-core`.
     },
     "PrintRecord": {
       "additionalProperties": false,
-      "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+      "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
       "properties": {
         "end_reason": {
           "description": "Why it ended, if it has.",
@@ -9145,17 +9145,17 @@ Declared by `printobserver-core`.
           },
           "type": "array"
         },
-        "obico_print_id": {
-          "description": "Obico's own identifier for the print, when Obico has one.",
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "provider_print_id": {
+          "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
           "format": "int64",
           "type": [
             "integer",
             "null"
           ]
-        },
-        "opened_at": {
-          "$ref": "#/$defs/Timestamp",
-          "description": "When the print was opened."
         },
         "state": {
           "$ref": "#/$defs/PrinterState",
@@ -9451,7 +9451,7 @@ Declared by `printobserver-types`.
 
 ### PrintRecord
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -9571,7 +9571,7 @@ Declared by `printobserver-types`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+  "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
   "properties": {
     "end_reason": {
       "description": "Why it ended, if it has.",
@@ -9609,17 +9609,17 @@ Declared by `printobserver-types`.
       },
       "type": "array"
     },
-    "obico_print_id": {
-      "description": "Obico's own identifier for the print, when Obico has one.",
+    "opened_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the print was opened."
+    },
+    "provider_print_id": {
+      "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
       "format": "int64",
       "type": [
         "integer",
         "null"
       ]
-    },
-    "opened_at": {
-      "$ref": "#/$defs/Timestamp",
-      "description": "When the print was opened."
     },
     "state": {
       "$ref": "#/$defs/PrinterState",
@@ -9844,7 +9844,7 @@ Declared by `printobserver-printer-api`.
 
 ### PrinterState
 
-Declared by `printobserver-types`.
+Declared by `printobserver-printer-api`.
 
 ```json
 {
@@ -9976,7 +9976,7 @@ Declared by `printobserver-types`.
 
 ### RejectionReason
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -10311,7 +10311,7 @@ Declared by `printobserver-types`.
 
 ### SafetyEnvelope
 
-Declared by `printobserver-types`.
+Declared by `printobserver-core`.
 
 ```json
 {
@@ -10395,7 +10395,7 @@ Declared by `printobserver-types`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Server configuration: what any actor may ask for at all.\n\nThis is the operator's safety envelope. It is a different contract from the\nplausibility ranges [`Reported`](crate::Reported) fields carry, is narrower\nby orders of magnitude, and the two are never intersected, compared or\nsubstituted for one another.",
+  "description": "Server configuration: what any actor may ask for at all.\n\nThis is the operator's safety envelope. It is a different contract from the\nplausibility ranges [`Reported`](printobserver_types::Reported) fields carry, is narrower\nby orders of magnitude, and the two are never intersected, compared or\nsubstituted for one another.",
   "properties": {
     "actions": {
       "additionalProperties": {
@@ -10435,7 +10435,7 @@ Declared by `printobserver-types`.
 
 ### SessionPhase
 
-Declared by `printobserver-types`.
+Declared by `printobserver-supervisor-api`.
 
 ```json
 {
@@ -11109,7 +11109,7 @@ Declared by `printobserver-server`.
     },
     "PrintRecord": {
       "additionalProperties": false,
-      "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+      "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
       "properties": {
         "end_reason": {
           "description": "Why it ended, if it has.",
@@ -11147,17 +11147,17 @@ Declared by `printobserver-server`.
           },
           "type": "array"
         },
-        "obico_print_id": {
-          "description": "Obico's own identifier for the print, when Obico has one.",
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "provider_print_id": {
+          "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
           "format": "int64",
           "type": [
             "integer",
             "null"
           ]
-        },
-        "opened_at": {
-          "$ref": "#/$defs/Timestamp",
-          "description": "When the print was opened."
         },
         "state": {
           "$ref": "#/$defs/PrinterState",
@@ -11459,7 +11459,7 @@ Declared by `printobserver-server`.
 
 ### SupervisionSession
 
-Declared by `printobserver-types`.
+Declared by `printobserver-supervisor-api`.
 
 ```json
 {
@@ -11614,7 +11614,7 @@ Declared by `printobserver-supervisor-api`.
   "$defs": {
     "AgentAssessment": {
       "additionalProperties": false,
-      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n[`PrintAction`](printobserver_types::PrintAction) that policy rules on.",
+      "description": "The agent's written record of one supervision turn.\n\nThis is deliberately not how the agent acts: acting is a\n`PrintAction` that policy rules on.",
       "properties": {
         "confidence": {
           "$ref": "#/$defs/Confidence",

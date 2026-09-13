@@ -17,8 +17,8 @@
 //!
 //! # The policy, which is the reason this layer exists
 //!
-//! Obico can already see a failure and `OctoPrint` can already drive the
-//! machine. What does not exist without this crate is the thing in between that
+//! A failure detector can already see a failure and a printer can already
+//! drive the machine. What does not exist without this crate is the thing in between that
 //! decides what an agent is allowed to do about it, and its whole value is in
 //! being thin, bounded, and the **single** place that decision is made — so
 //! that an operator's own commands are bounded by exactly the same rules an

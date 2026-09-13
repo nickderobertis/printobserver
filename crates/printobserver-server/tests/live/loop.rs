@@ -272,7 +272,7 @@ async fn print_of(world: &Composed) -> PrintId {
     world
         .stores
         .prints
-        .print_by_obico_id(OBICO_PRINT)
+        .print_by_provider_id(OBICO_PRINT)
         .await
         .expect("the print reads")
         .expect("the alert opened a print")

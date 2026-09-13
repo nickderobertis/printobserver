@@ -41,7 +41,7 @@ async fn stored_image(world: &World, bytes: Vec<u8>) -> (PrintId, ImageId) {
     let print = world
         .stores
         .prints
-        .print_by_obico_id(4211)
+        .print_by_provider_id(4211)
         .await
         .expect("the print reads")
         .expect("the alert opened a print");

@@ -2,10 +2,12 @@
 //!
 //! A database created under each prior version is opened and read back through
 //! the port, so a step is proven over rows that were written before it ran
-//! rather than over an empty database. The rows are seeded with the column
-//! order that version declares — a step that changed a table's columns would
-//! need its own seeding here, which is the point: the version a database was
-//! written at is a fact about the database, not about this build.
+//! rather than over an empty database. The rows are seeded with the columns
+//! that version declares — the print's external correlation under the name
+//! the first version created it as, until the step that renamed it — which is
+//! the point: the version a database was written at is a fact about the
+//! database, not about this build, and the read-back below asks for the
+//! print's correlation under the name the record carries today.
 
 use std::path::Path;
 
@@ -44,6 +46,9 @@ const SEEDED_AT: &str = "2026-03-01T12:00:00.000000000Z";
 
 /// A later instant, so the two seeded events order.
 const SEEDED_LATER: &str = "2026-03-01T12:00:01.000000000Z";
+
+/// The version that renamed the print's external correlation column.
+const PROVIDER_PRINT_ID_VERSION: u32 = 3;
 
 /// The `kind` column of the seeded event, as 0.2.0 wrote it.
 const SEEDED_KIND: &str = "obico_failure_alert";
@@ -88,7 +93,7 @@ fn database_at(path: &Path, version: u32) -> Connection {
         .pragma_update(None, "user_version", i64::from(version))
         .expect("the version is recorded");
     if version >= 1 {
-        seed(&connection);
+        seed(&connection, version);
     }
     connection
 }
@@ -125,12 +130,19 @@ fn seeded_events() -> Vec<(&'static str, Vec<rusqlite::types::Value>)> {
     ]
 }
 
-/// One row in every table the first version declares.
-fn seed(connection: &Connection) {
+/// One row in every table the first version declares, under the columns the
+/// given version names them by.
+fn seed(connection: &Connection, version: u32) {
+    let prints_insert = if version >= PROVIDER_PRINT_ID_VERSION {
+        "INSERT INTO prints (id, provider_print_id, file_name, state, opened_at, ended_at, \
+         end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)"
+    } else {
+        "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
+         end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)"
+    };
     let mut statements: Vec<(&str, Vec<rusqlite::types::Value>)> = vec![
         (
-            "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
-             end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)",
+            prints_insert,
             vec![
                 text(PRINT),
                 7_i64.into(),
@@ -223,18 +235,36 @@ where
     text.parse().expect("a fixed version 7 identifier")
 }
 
-/// Read every seeded record back through the port.
-fn read_every_seeded_record_back(store: &SqliteStore) {
-    let port: &dyn Store = store;
+/// Read the seeded print back, by its own identifier and by the provider's.
+fn read_the_seeded_print_back(port: &dyn Store) {
     let print_id: PrintId = identifier(PRINT);
     let at: Timestamp = identifier(SEEDED_AT);
-
     let print = block_on(port.print(print_id))
         .expect("the print reads")
         .expect("the seeded print survived the migration");
     assert_eq!(print.id, print_id);
     assert_eq!(print.opened_at, at);
-    assert_eq!(print.obico_print_id, Some(7));
+    assert_eq!(
+        print.provider_print_id,
+        Some(7),
+        "the correlation the first version wrote as obico_print_id did not read back \
+         under the record's own name"
+    );
+    assert_eq!(
+        block_on(port.print_by_provider_id(7))
+            .expect("the lookup reads")
+            .map(|found| found.id),
+        Some(print_id),
+        "the renamed column is not what the lookup by the provider's identifier reads"
+    );
+}
+
+/// Read every seeded record back through the port.
+fn read_every_seeded_record_back(store: &SqliteStore) {
+    let port: &dyn Store = store;
+    let print_id: PrintId = identifier(PRINT);
+    let at: Timestamp = identifier(SEEDED_AT);
+    read_the_seeded_print_back(port);
 
     let history = block_on(port.history(HistoryQuery {
         print_id,

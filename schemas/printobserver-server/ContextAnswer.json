@@ -563,7 +563,7 @@
     },
     "PrintRecord": {
       "additionalProperties": false,
-      "description": "One print, and the record supervision keys from.\n\nObico's own print id is carried beside this record's identifier rather than\nas it, because a print may be observed before Obico has one.",
+      "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
       "properties": {
         "end_reason": {
           "description": "Why it ended, if it has.",
@@ -601,17 +601,17 @@
           },
           "type": "array"
         },
-        "obico_print_id": {
-          "description": "Obico's own identifier for the print, when Obico has one.",
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "provider_print_id": {
+          "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
           "format": "int64",
           "type": [
             "integer",
             "null"
           ]
-        },
-        "opened_at": {
-          "$ref": "#/$defs/Timestamp",
-          "description": "When the print was opened."
         },
         "state": {
           "$ref": "#/$defs/PrinterState",

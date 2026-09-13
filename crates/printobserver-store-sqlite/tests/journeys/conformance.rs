@@ -68,7 +68,7 @@ fn every_record_kind_is_written_and_read_back() {
         let image = block_on(port.put_image(
             print.id,
             event.id,
-            Some("https://obico.example/snapshot.jpg".to_owned()),
+            Some("https://detector.example/snapshot.jpg".to_owned()),
             "image/jpeg".to_owned(),
             RawBytes::new(b"the first snapshot".to_vec()),
         ))
@@ -127,7 +127,7 @@ fn every_record_kind_is_written_and_read_back() {
     }
 }
 
-/// A print is read by its own identifier and by Obico's, and ends once.
+/// A print is read by its own identifier and by the provider's, and ends once.
 #[test]
 fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
     for store in Fixture::both() {
@@ -136,14 +136,14 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
         let print = block_on(port.open_print(Some(41), None)).expect("a print opens");
 
         assert_eq!(
-            block_on(port.print_by_obico_id(41)),
+            block_on(port.print_by_provider_id(41)),
             Ok(Some(print.clone())),
-            "{name}: the print did not read back by Obico's identifier"
+            "{name}: the print did not read back by the provider's identifier"
         );
         assert_eq!(
-            block_on(port.print_by_obico_id(42)),
+            block_on(port.print_by_provider_id(42)),
             Ok(None),
-            "{name}: an unknown Obico identifier answered a print"
+            "{name}: an unknown provider identifier answered a print"
         );
 
         let narrowed = block_on(port.record_narrowing(

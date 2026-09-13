@@ -296,7 +296,7 @@ pub trait PrintStore: Send + Sync {
     /// Open a print, minting its identifier.
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>>;
 
@@ -311,10 +311,10 @@ pub trait PrintStore: Send + Sync {
     /// order to say it had adopted it.
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>>;
 
-    /// Read one print by Obico's own identifier for it.
-    fn print_by_obico_id(
+    /// Read one print by the provider's own identifier for it.
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>>;
 
     /// End a print, in a terminal state, at an instant, for a reason.

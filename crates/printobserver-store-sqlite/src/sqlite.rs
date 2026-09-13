@@ -132,12 +132,12 @@ impl SqliteStore {
     /// Open a print, minting its identifier.
     fn insert_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> Result<PrintRecord, StoreError> {
         let record = PrintRecord {
             id: PrintId::new(),
-            obico_print_id,
+            provider_print_id,
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
@@ -151,12 +151,12 @@ impl SqliteStore {
             connection
                 .execute(
                     "INSERT INTO prints \
-                     (id, obico_print_id, file_name, state, opened_at, ended_at, \
+                     (id, provider_print_id, file_name, state, opened_at, ended_at, \
                       end_reason, narrowings) \
                      VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)",
                     params![
                         record.id.to_string(),
-                        record.obico_print_id,
+                        record.provider_print_id,
                         record.file_name,
                         state,
                         instant_text(record.opened_at),
@@ -800,10 +800,10 @@ impl SqliteStore {
 impl PrintStore for SqliteStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        Box::pin(async move { self.insert_print(obico_print_id, file_name) })
+        Box::pin(async move { self.insert_print(provider_print_id, file_name) })
     }
 
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
@@ -813,11 +813,13 @@ impl PrintStore for SqliteStore {
         })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
-        Box::pin(async move { self.read_print("obico_print_id = ?1", params![obico_print_id]) })
+        Box::pin(
+            async move { self.read_print("provider_print_id = ?1", params![provider_print_id]) },
+        )
     }
 
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {

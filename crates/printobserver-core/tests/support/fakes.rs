@@ -5,7 +5,7 @@
 //! paths a source check cannot resolve. A second printer double would be a
 //! second set of rules about what may reach a machine, so a check refuses one.
 //!
-//! None of these is a real printer, a real Obico or a real model: this crate
+//! None of these is a real printer, a real detector or a real model: this crate
 //! depends on three ports and declares its own store interfaces, with nothing
 //! that implements any of them, and its tests hold to
 //! that.
@@ -450,13 +450,13 @@ fn ready<T: Send + 'static>(value: T) -> BoxFuture<'static, T> {
 impl PrintStore for FakeStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
         self.journal.record(Call::OpenPrint);
         let record = PrintRecord {
             id: PrintId::new(),
-            obico_print_id,
+            provider_print_id,
             file_name,
             state: PrinterState::Printing,
             opened_at: self.clock.now(),
@@ -486,18 +486,18 @@ impl PrintStore for FakeStore {
         Box::pin(async move { Ok(found) })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
-        self.journal.record(Call::ReadPrintByObicoId);
+        self.journal.record(Call::ReadPrintByProviderId);
         let found = self
             .held
             .lock()
             .expect("the store holds")
             .prints
             .values()
-            .find(|print| print.obico_print_id == Some(obico_print_id))
+            .find(|print| print.provider_print_id == Some(provider_print_id))
             .cloned();
         Box::pin(async move { Ok(found) })
     }

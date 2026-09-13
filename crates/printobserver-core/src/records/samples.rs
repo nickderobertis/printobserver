@@ -70,7 +70,7 @@ impl Sample for PrintRecord {
     fn sample_full() -> Self {
         Self {
             id: PrintId::sample_full(),
-            obico_print_id: Some(4211),
+            provider_print_id: Some(4211),
             file_name: Some("benchy.gcode".to_owned()),
             state: PrinterState::Printing,
             opened_at: Timestamp::sample_full(),
@@ -83,7 +83,7 @@ impl Sample for PrintRecord {
     fn sample_minimal() -> Self {
         Self {
             id: PrintId::sample_full(),
-            obico_print_id: None,
+            provider_print_id: None,
             file_name: None,
             state: PrinterState::Printing,
             opened_at: Timestamp::sample_full(),
@@ -100,7 +100,7 @@ impl Sample for ImageRecord {
             id: ImageId::sample_full(),
             print_id: PrintId::sample_full(),
             event_id: EventId::sample_full(),
-            source_url: Some("https://obico.example/snapshots/1.jpg".to_owned()),
+            source_url: Some("https://detector.example/snapshots/1.jpg".to_owned()),
             fetched_at: Timestamp::sample_full(),
             content_type: "image/jpeg".to_owned(),
             byte_len: 51_200,

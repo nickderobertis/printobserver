@@ -69,7 +69,7 @@ where
 impl PrintStore for FailingStore {
     fn open_print(
         &self,
-        _obico_print_id: Option<i64>,
+        _provider_print_id: Option<i64>,
         _file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         failed()
@@ -86,9 +86,9 @@ impl PrintStore for FailingStore {
         failed()
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        _obico_print_id: i64,
+        _provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         failed()
     }

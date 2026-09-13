@@ -149,7 +149,7 @@ async fn write_everything(world: &World, image_url: &str) -> Written {
     let print_id = world
         .stores
         .prints
-        .print_by_obico_id(4211)
+        .print_by_provider_id(4211)
         .await
         .expect("the print reads")
         .expect("the alert opened a print")

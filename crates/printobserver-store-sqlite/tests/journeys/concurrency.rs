@@ -23,7 +23,7 @@ const SPILLING_ROWS: usize = 5_000;
 fn fill(writer: &rusqlite::Connection) {
     let mut statement = writer
         .prepare(
-            "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
+            "INSERT INTO prints (id, provider_print_id, file_name, state, opened_at, ended_at, \
              end_reason, narrowings) VALUES (?1, NULL, NULL, '\"printing\"', ?2, NULL, NULL, '[]')",
         )
         .expect("the statement prepares");
@@ -105,7 +105,7 @@ fn a_second_store_on_the_same_directory_reads_what_the_first_wrote() {
     let print =
         block_on(writer.open_print(Some(11), None)).expect("a print opens on the first store");
     assert_eq!(
-        block_on(reader.print_by_obico_id(11)),
+        block_on(reader.print_by_provider_id(11)),
         Ok(Some(print)),
         "a second store on the same state directory did not read what the first wrote"
     );

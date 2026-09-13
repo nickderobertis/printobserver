@@ -305,7 +305,7 @@ fn a_printer_notification_opens_the_print_it_names() {
         .store
         .print_now(print_id)
         .expect("the print was opened");
-    assert_eq!(opened.obico_print_id, Some(9));
+    assert_eq!(opened.provider_print_id, Some(9));
     assert_eq!(opened.file_name, Some("benchy.gcode".to_owned()));
     assert_eq!(world.agent.turns().len(), 1);
     assert_eq!(world.agent.turns()[0].print_id, print_id);

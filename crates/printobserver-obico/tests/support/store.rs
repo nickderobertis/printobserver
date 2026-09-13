@@ -88,13 +88,13 @@ impl MemoryStore {
 impl PrintStore for MemoryStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         Box::pin(async move {
             let record = PrintRecord {
                 id: PrintId::new(),
-                obico_print_id,
+                provider_print_id,
                 file_name,
                 state: PrinterState::Printing,
                 opened_at: Timestamp::now(),
@@ -119,16 +119,16 @@ impl PrintStore for MemoryStore {
         })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         Box::pin(async move {
             let held = self.held.lock().expect("the store is not poisoned");
             Ok(held
                 .prints
                 .iter()
-                .find(|record| record.obico_print_id == Some(obico_print_id))
+                .find(|record| record.provider_print_id == Some(provider_print_id))
                 .cloned())
         })
     }
@@ -320,7 +320,7 @@ fn refused<T: Send + 'static>() -> BoxFuture<'static, Result<T, StoreError>> {
 impl PrintStore for RefusingStore {
     fn open_print(
         &self,
-        _obico_print_id: Option<i64>,
+        _provider_print_id: Option<i64>,
         _file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         refused()
@@ -330,9 +330,9 @@ impl PrintStore for RefusingStore {
         refused()
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        _obico_print_id: i64,
+        _provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         refused()
     }

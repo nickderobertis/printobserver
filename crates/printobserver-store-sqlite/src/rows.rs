@@ -12,7 +12,7 @@ use rusqlite::Row;
 use crate::values::{from_json, from_json_option, from_tag, parsed, parsed_option};
 
 /// Every column of one print, in the order [`print_from_row`] reads them.
-pub(crate) const PRINT_SELECT: &str = "SELECT id, obico_print_id, file_name, state, opened_at, \
+pub(crate) const PRINT_SELECT: &str = "SELECT id, provider_print_id, file_name, state, opened_at, \
      ended_at, end_reason, narrowings FROM prints";
 
 /// Every column of one event, with the image it arrived with.
@@ -47,7 +47,7 @@ pub(crate) const SESSION_SELECT: &str = "SELECT print_id, session_name, harness_
 pub(crate) fn print_from_row(row: &Row<'_>) -> rusqlite::Result<PrintRecord> {
     Ok(PrintRecord {
         id: parsed(row, 0)?,
-        obico_print_id: row.get(1)?,
+        provider_print_id: row.get(1)?,
         file_name: row.get(2)?,
         state: from_json(row, 3)?,
         opened_at: parsed(row, 4)?,

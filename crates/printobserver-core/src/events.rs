@@ -101,7 +101,7 @@ impl Supervisor {
         if let Some(found) = self
             .stores()
             .prints
-            .print_by_obico_id(provider_print.id)
+            .print_by_provider_id(provider_print.id)
             .await?
         {
             return Ok(Some(found));

@@ -33,10 +33,10 @@ struct TrivialStore;
 impl PrintStore for TrivialStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        let _ = (obico_print_id, file_name);
+        let _ = (provider_print_id, file_name);
         Box::pin(async { Ok(PrintRecord::sample_minimal()) })
     }
 
@@ -45,11 +45,11 @@ impl PrintStore for TrivialStore {
         Box::pin(async { Ok(Some(PrintRecord::sample_minimal())) })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
-        let _ = obico_print_id;
+        let _ = provider_print_id;
         Box::pin(async { Ok(Some(PrintRecord::sample_minimal())) })
     }
 
@@ -270,7 +270,7 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
         Ok(Some(PrintRecord::sample_minimal()))
     );
     assert_eq!(
-        block_on(stores.prints.print_by_obico_id(1)),
+        block_on(stores.prints.print_by_provider_id(1)),
         Ok(Some(PrintRecord::sample_minimal()))
     );
     assert_eq!(

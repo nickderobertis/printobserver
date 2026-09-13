@@ -891,9 +891,9 @@ pub type PrintId = String;
 
 /// One print, and the record supervision keys from.
 ///
-/// Obico's own print id is carried beside this record's identifier rather
-/// than
-/// as it, because a print may be observed before Obico has one.
+/// The provider's own print id is carried beside this record's identifier
+/// rather than as it, because a print may be observed before the provider
+/// that reports it has one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintRecord {
     /// Why it ended, if it has.
@@ -909,11 +909,12 @@ pub struct PrintRecord {
     pub id: PrintId,
     /// Every manifest range this print narrowed to the envelope's.
     pub narrowings: Vec<ManifestNarrowing>,
-    /// Obico's own identifier for the print, when Obico has one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub obico_print_id: Option<i64>,
     /// When the print was opened.
     pub opened_at: Timestamp,
+    /// The provider's own identifier for the print, whichever provider
+    /// reported it, when one has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_print_id: Option<i64>,
     /// The state the print is in.
     pub state: PrinterState,
 }

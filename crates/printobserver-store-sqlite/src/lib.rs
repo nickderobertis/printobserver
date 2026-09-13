@@ -69,9 +69,10 @@
 //!   being watched, so the print opens in
 //!   [`PrinterState::Printing`](printobserver_printer_api::PrinterState::Printing);
 //!   `end_print` is what puts it in a terminal state.
-//! * **Which print an Obico identifier names.** Obico reuses nothing, but this
-//!   system may have opened a print for one identifier more than once, so
-//!   `print_by_obico_id` answers the most recently opened of them.
+//! * **Which print a provider's identifier names.** A provider reuses
+//!   nothing, but this system may have opened a print for one identifier more
+//!   than once, so `print_by_provider_id` answers the most recently opened of
+//!   them.
 
 mod hold;
 mod images;

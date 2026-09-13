@@ -986,9 +986,9 @@ class PrintRecord(TypedDict):
 
     One print, and the record supervision keys from.
 
-    Obico's own print id is carried beside this record's identifier rather
-    than
-    as it, because a print may be observed before Obico has one.
+    The provider's own print id is carried beside this record's identifier
+    rather than as it, because a print may be observed before the provider
+    that reports it has one.
     """
 
     # Why it ended, if it has.
@@ -1001,10 +1001,11 @@ class PrintRecord(TypedDict):
     id: PrintId
     # Every manifest range this print narrowed to the envelope's.
     narrowings: list[ManifestNarrowing]
-    # Obico's own identifier for the print, when Obico has one.
-    obico_print_id: NotRequired[int | None]
     # When the print was opened.
     opened_at: Timestamp
+    # The provider's own identifier for the print, whichever provider
+    # reported it, when one has.
+    provider_print_id: NotRequired[int | None]
     # The state the print is in.
     state: PrinterState
 
