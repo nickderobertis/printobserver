@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use printobserver_server::store::{EventStore as _, ImageStore as _, PrintStore as _};
+use printobserver_core::store::{EventStore as _, ImageStore as _, PrintStore as _};
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -359,7 +359,7 @@ impl World {
             runtime.block_on(async {
                 let print = self.print_id.parse().expect("a print identifier");
                 let event = store
-                    .append_event(printobserver_server::store::EventDraft {
+                    .append_event(printobserver_core::store::EventDraft {
                         print_id: Some(print),
                         source: printobserver_types::EventSource::new("obico"),
                         received_at: printobserver_types::Timestamp::now(),
@@ -404,8 +404,8 @@ impl World {
                 .block_on(store.image(self.image_id.parse().expect("an image identifier")))
                 .expect("the image is there");
             match lookup {
-                printobserver_server::store::ImageLookup::Found { record, .. }
-                | printobserver_server::store::ImageLookup::FileMissing { record } => {
+                printobserver_core::store::ImageLookup::Found { record, .. }
+                | printobserver_core::store::ImageLookup::FileMissing { record } => {
                     record.relative_path
                 }
             }
@@ -585,9 +585,9 @@ fn failure_alert_body() -> printobserver_types::EventBody {
 /// something in the record beside a supervisor that is serving from it.
 fn with_the_store<T>(
     state: PathBuf,
-    doing: impl FnOnce(&printobserver_server::store::SqliteStore, &tokio::runtime::Runtime) -> T,
+    doing: impl FnOnce(&printobserver_store_sqlite::SqliteStore, &tokio::runtime::Runtime) -> T,
 ) -> T {
-    let store = printobserver_server::store::SqliteStore::open(state).expect("the store opens");
+    let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime");
@@ -604,7 +604,7 @@ fn printable_file(printer: &Printer) -> String {
 
 /// Open a print, append an event and store an image against it.
 fn seed(state: &Path, file: &str) -> (String, String, String) {
-    let store = printobserver_server::store::SqliteStore::open(state).expect("the store opens");
+    let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime");
@@ -614,7 +614,7 @@ fn seed(state: &Path, file: &str) -> (String, String, String) {
             .await
             .expect("a print opens");
         let event = store
-            .append_event(printobserver_server::store::EventDraft {
+            .append_event(printobserver_core::store::EventDraft {
                 print_id: Some(print.id),
                 source: printobserver_types::EventSource::new("obico"),
                 received_at: printobserver_types::Timestamp::now(),

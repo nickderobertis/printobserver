@@ -845,11 +845,14 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 The rule is an edge table, not a set of layers: `repo-policy.toml`'s
 `crates.may_depend_on` names, per crate, the workspace crates it may depend on
-across every dependency table, `docs/reference/architecture.md`'s "Why core
-names no implementation crate" carries the same table in prose, and `just
-check-repo` refuses an edge the row does not admit, a row naming a crate the
-workspace lacks, and a crate the table omits. The step that draws an edge is
-the step that admits it — the boundary is a check, not a convention.
+across every dependency table — with `crates.may_depend_on_in_tests` naming
+the few edges a crate's tests may add under `dev-dependencies` alone —
+`docs/reference/architecture.md`'s "Why core names no implementation crate"
+carries the same table in prose, and `just check-repo` refuses an edge the
+rows do not admit, a test-only edge in a table the shipped code is built from,
+a row naming a crate the workspace lacks, and a crate the table omits. The
+step that draws an edge is the step that admits it — the boundary is a check,
+not a convention.
 
 Two things the table does not say in so many words. The supervision domain
 (`printobserver-core`) owns its records, its identifiers and its

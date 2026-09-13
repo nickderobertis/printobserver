@@ -293,12 +293,14 @@ max_lines = 200
 #
 # `may_depend_on` below names, for every workspace crate, the workspace crates
 # it may depend on — across `dependencies`, `dev-dependencies` and
-# `build-dependencies`, and exactly the third column of the crate table
-# AGENTS.md's "The dependency rule" states. `just check-repo` refuses a
-# manifest edge the row does not admit, a row naming a crate the workspace does
-# not hold, and a workspace crate with no row: the step that draws an edge is
-# the step that admits it here, so the check proves the graph rather than a
-# rule about it.
+# `build-dependencies`, and exactly the crate table AGENTS.md's "The dependency
+# rule" points at. `may_depend_on_in_tests` names the few edges a crate's tests
+# may add under `dev-dependencies` alone: a runtime or build dependency on one
+# of those is refused exactly as an edge no row admits. `just check-repo`
+# refuses a manifest edge the rows do not admit, a row naming a crate the
+# workspace does not hold, and a workspace crate with no row: the step that
+# draws an edge is the step that admits it here, so the check proves the graph
+# rather than a rule about it.
 #
 # The crates the other checks name by role. `core` is the supervision domain,
 # whose stated dependency direction the architecture document is held to;
@@ -361,6 +363,16 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 ]
 "printobserver-sdk" = []
 "printobserver" = ["printobserver-server", "printobserver-sdk", "printobserver-types"]
+
+# The edges a crate's tests may add, under `dev-dependencies` and no other
+# table. The command's journeys seed a state directory — a print, an event, an
+# image — before starting a server on it, through the real SQLite store and the
+# supervision domain's own store traits, because a print record is minted by
+# the supervisor and no client command opens one; the program itself reaches
+# the store only through the server it starts, and this table does not let it
+# reach either crate at run time.
+[crates.may_depend_on_in_tests]
+"printobserver" = ["printobserver-core", "printobserver-store-sqlite"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held

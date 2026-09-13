@@ -216,6 +216,91 @@ def test_a_client_depending_on_an_implementation_is_refused(
     refused(findings, "names no crate at all")
 
 
+#: The two edges the command's tests may add, and no table of its shipped code may.
+TEST_ONLY_EDGES = ("printobserver-core", "printobserver-store-sqlite")
+
+
+def test_the_commands_test_only_edges_are_admitted_under_dev_dependencies_alone(
+    committed: Repo,
+) -> None:
+    """The committed command names the two under `dev-dependencies` and nowhere else."""
+    manifest = tomllib.loads(committed.path(CLI).read_text(encoding="utf-8"))
+    for edge in TEST_ONLY_EDGES:
+        contains(str(sorted(manifest["dev-dependencies"])), edge)
+        equal(edge in manifest.get("dependencies", {}), False, describing=edge)
+        equal(edge in manifest.get("build-dependencies", {}), False, describing=edge)
+    equal(
+        sorted(committed.policy["crates"]["may_depend_on_in_tests"]["printobserver"]),
+        sorted(TEST_ONLY_EDGES),
+    )
+    accepted(workspace(committed))
+
+
+def test_a_test_only_edge_planted_as_a_runtime_dependency_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An edge admitted for a crate's tests is refused the moment its shipped code takes it.
+
+    Driven over each of the two, in each table the shipped code is built from:
+    a command that could reach the store, or the supervision domain, at run time
+    is a second way to a printer's record beside the server it starts.
+    """
+    for edge in TEST_ONLY_EDGES:
+        for table in ("dependencies", "build-dependencies"):
+            broken = tree()
+            manifest = broken.read(CLI)
+            if table == "dependencies":
+                planted = with_only_dependencies(manifest, *CLI_REQUIRES, edge)
+            else:
+                planted = manifest + "\n[build-dependencies]\n" + DEPENDENCY.format(name=edge)
+            broken.write(CLI, planted)
+
+            findings = workspace(broken.repo)
+
+            refused(findings, f"`printobserver` depends on `{edge}` outside `dev-dependencies`")
+            refused(findings, "admits that edge for its tests alone")
+
+
+def test_a_test_only_row_naming_a_crate_the_table_lacks_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A test-only row extends a row; a crate with no row has nothing to extend."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            "[crates.may_depend_on_in_tests]\n",
+            "[crates.may_depend_on_in_tests]\n"
+            '"printobserver-store-api" = ["printobserver-types"]\n',
+        ),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(findings, "`may_depend_on_in_tests` names `printobserver-store-api`, which")
+
+
+def test_a_test_only_row_admitting_a_crate_the_workspace_lacks_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A test-only edge to a crate nobody has is an edge nothing can check."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            '"printobserver" = ["printobserver-core", "printobserver-store-sqlite"]\n',
+            '"printobserver" = ["printobserver-core", "printobserver-store-api"]\n',
+        ),
+    )
+
+    findings = workspace(broken.repo)
+
+    refused(
+        findings,
+        "`may_depend_on_in_tests` row for `printobserver` admits `printobserver-store-api`",
+    )
+
+
 def test_a_row_naming_a_crate_the_workspace_lacks_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
@@ -284,7 +369,8 @@ def test_the_table_equals_the_graph_the_design_states(committed: Repo) -> None:
     The type crate depends on nothing; each port on the type crate alone; the
     supervision domain on the type crate and the three ports and on no adapter
     or store; and every adapter and the store are admitted by the server's row
-    and by no other. The command reaches them through the server.
+    and by no other. The command reaches them through the server, and its tests
+    alone take the store and the domain directly.
     """
     table = committed.policy["crates"]["may_depend_on"]
     equal(table["printobserver-types"], [])
@@ -308,6 +394,8 @@ def test_the_table_equals_the_graph_the_design_states(committed: Repo) -> None:
     for implementation in IMPLEMENTATIONS:
         admitting = sorted(name for name, admitted in table.items() if implementation in admitted)
         equal(admitting, ["printobserver-server"], describing=implementation)
+    in_tests = committed.policy["crates"]["may_depend_on_in_tests"]
+    equal(sorted(in_tests), ["printobserver"], describing="the crates with test-only edges")
 
 
 def test_the_server_is_the_only_crate_that_names_an_implementation(

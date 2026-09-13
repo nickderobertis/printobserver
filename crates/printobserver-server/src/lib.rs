@@ -38,7 +38,6 @@ pub mod ingress;
 pub mod operations;
 pub mod reconcile;
 pub mod server;
-pub mod store;
 pub mod wire;
 
 pub use api::{ApiState, router};

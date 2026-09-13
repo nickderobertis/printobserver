@@ -162,6 +162,14 @@ a crate the workspace lacks, and a crate the table omits.
 | `printobserver-sdk` | — |
 | `printobserver` | `printobserver-server`, `printobserver-sdk`, `printobserver-types` |
 
+The table is over the crates a crate's shipped code is built from. One row has
+edges its tests alone may add, under `dev-dependencies` and no other table:
+`printobserver`'s journeys seed a state directory through
+`printobserver-store-sqlite` and `printobserver-core`'s store traits before
+starting a server on it, because a print record is minted by the supervisor and
+no client command opens one — and the same check refuses either crate the
+moment it appears in a table the program itself is built from.
+
 Stated against the manifests rather than as prose: `printobserver-core` depends
 on `printobserver-printer-api`, `printobserver-supervisor-api`,
 `printobserver-types` and `printobserver-vision-api`, and on no adapter and no

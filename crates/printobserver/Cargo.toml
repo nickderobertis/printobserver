@@ -44,9 +44,14 @@ required-features = ["test-fixtures"]
 # configuration as values and renders it, so what it writes is a document rather
 # than a string somebody has to keep well formed by hand.
 toml = { version = "0.9", default-features = false, features = ["display", "parse", "serde"] }
-# The store the service keeps its record in, so that a journey can put a print
-# in the state directory the installer created and then ask the running program
-# to read that print's context — which is the one thing a supervision turn does.
+# The store the service keeps its record in, and the supervision domain's own
+# traits it is driven through, so that a journey can put a print in the state
+# directory the installer created and then ask the running program to read that
+# print's context — which is the one thing a supervision turn does. The edge
+# table admits these two under `dev-dependencies` alone: the program itself
+# reaches the store only through the server it starts.
+printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.2.0" }
 # The validator the format journey holds a machine-readable answer to its own
 # declared response schema with — a real parser and a real schema validator
 # rather than a comparison of field names.

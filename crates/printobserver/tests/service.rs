@@ -21,7 +21,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use printobserver_server::store::PrintStore as _;
+use printobserver_core::store::PrintStore as _;
 use tempfile::TempDir;
 
 /// The unit's name, as the install-path section states it. `just check-repo`'s
@@ -432,7 +432,7 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
 
 /// One print in a state directory, as an alert would have opened it.
 fn a_print_in(state: &Path) -> String {
-    let store = printobserver_server::store::SqliteStore::open(state).expect("the store opens");
+    let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime");
