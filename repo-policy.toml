@@ -698,6 +698,7 @@ headings = [
 path = "docs/reference/architecture.md"
 headings = [
     "The crates",
+    "Why the crates are cut by domain",
     "Why core names no implementation crate",
     "Why the agent reaches this system the way an operator does",
 ]

@@ -1,9 +1,10 @@
 # The architecture
 
 What each crate of this workspace owns, the edge table the dependency rule is,
-and the two structural rules the whole design rests on. This document covers the
-crates — one entry each — why core names no implementation crate, and why the
-agent reaches this system the way an operator does.
+and the three structural rules the whole design rests on. This document covers
+the crates — one entry each — why the crates are cut by domain, why core names
+no implementation crate, and why the agent reaches this system the way an
+operator does.
 
 Everything asserted here is asserted against the tree rather than as prose: the
 crates named below are the ones the workspace declares, and the dependency
@@ -138,6 +139,67 @@ The `printobserver` command — the single installable artifact. Its `server`
 subcommand runs the supervisor; every other subcommand is one request to an
 already-running one. It builds its whole command surface by folding over what
 the server declares, so it holds no list of commands or options of its own.
+
+## Why the crates are cut by domain
+
+The rule the graph follows: **a declaration lives in the crate of the domain
+that owns it.** A provider's wire format lives in that provider's adapter, a
+port's vocabulary in the port, the supervision domain's records and store
+interfaces in the supervision domain — and `printobserver-types` holds only
+what every domain and every client must agree on. It never enumerates the
+domains: no enum with a variant per provider, no list of event kinds, no list
+of source names, no type another domain would have to edit it to add. The test
+of whether a type belongs there is whether adding or changing one domain's
+concept can be done without touching it.
+
+The event log is where that rule is easiest to break and where it is held. The
+contract crate declares the **envelope** — `EventRecord`: `id`, `print_id`,
+`source`, `received_at`, `image`, `kind`, `payload`, `raw` — with `kind` an
+open `EventKind` name (lowercase `snake_case`) and `payload` an opaque JSON
+value, and no kind of its own. A domain **registers a typed payload** by
+declaring a type that implements `EventPayload` with a `KIND` const, in its own
+crate; that const is the one authoritative source of the kind name. Everything
+else is derived from it: `EventBody::of` writes a record under it, the store
+column is written from it, the owning crate's schema test writes the type's
+schema with an `x-event-kind` marker through `event_schema_of`, and the
+generated clients' kind-to-payload tables are produced from the marker — with
+`just check-repo`'s `generated-clients` check red when a generated copy parts
+from what the schema set writes, and the codegen refusing two schemas under one
+kind name. Thirteen kinds are
+declared today, each by its owner: `printobserver-core` writes
+`action_requested`, `action_executed`, `action_rejected`,
+`intervention_expired`, `agent_assessment`, `operator_acknowledgement` and
+`port_failure`; `printobserver-obico` writes `obico_failure_alert` and
+`obico_printer_notification`; `printobserver-vision-api` declares
+`malformed_external_event`; `printobserver-supervisor-api` declares
+`supervision_session_opened` and `supervision_session_closed`; and
+`printobserver-server` writes `startup_reconciliation`. **A reader handles a
+kind it does not know**: it carries the record through, filters by the kind's
+name, or asks for a typed payload with `payload_as::<P>()` and gets `None` when
+the kind is another's. Nothing matches the log exhaustively, so a kind from a
+newer server flows through an older reader — the store, the server, a client, a
+test — unchanged. The persisted form is the same text it was under the closed
+envelope: `kind` as the bare name and `payload` as the JSON of
+`{"kind": .., "payload": ..}`.
+
+What the cut buys is measured rather than promised. The same two edits — one
+doc-comment line on the Obico **wire** type `ObicoFailureAlert`, one on the
+Obico **event payload** `ObicoFailureAlertPayload` — were made after a full
+build on the tree before the refactor and on the tree after it, each followed
+by `cargo check --workspace`, reading which crates recompiled:
+
+| Edit | Tree | Crates that recompiled |
+| --- | --- | --- |
+| `ObicoFailureAlert`, in `crates/printobserver-types/src/obico.rs` | before, `7231704` | every crate but `printobserver-sdk` — all twelve of the thirteen then in the workspace, `printobserver-store-api` included |
+| `ObicoFailureAlertPayload`, in `crates/printobserver-types/src/event.rs` | before, `7231704` | the same twelve |
+| `ObicoFailureAlert`, in `crates/printobserver-obico/src/wire.rs` | after, `a8429da` | `printobserver-obico`, `printobserver-server`, `printobserver` |
+| `ObicoFailureAlertPayload`, in `crates/printobserver-obico/src/events.rs` | after, `a8429da` | `printobserver-obico`, `printobserver-server`, `printobserver` |
+
+Three crates rather than twelve, and the three are the adapter and the two
+composition roots that name it — which is exactly the reverse-dependency set
+`cargo tree -i` reads for each of `printobserver-octoprint`,
+`printobserver-obico`, `printobserver-oneharness` and
+`printobserver-store-sqlite`.
 
 ## Why core names no implementation crate
 
