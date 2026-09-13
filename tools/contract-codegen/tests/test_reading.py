@@ -48,7 +48,7 @@ from repo_checks.expect import equal, truth
 
 #: Where the supervision domain's own schemas are checked in, one of the
 #: directories the generator reads.
-TYPES_DIR = f"{SCHEMAS_DIR}/printobserver-core"
+CORE_DIR = f"{SCHEMAS_DIR}/printobserver-core"
 
 #: Every shape a property could take that no client can be generated for, with
 #: the words the refusal has to carry so a reader knows which one it met.
@@ -160,7 +160,7 @@ def test_an_answer_shape_no_schema_declares_is_refused(scratch: Callable[[], Pat
 def test_a_schema_file_that_is_not_a_schema_is_refused(scratch: Callable[[], Path]) -> None:
     """A file that parses and is not an object is not a shape."""
     copy = scratch()
-    (copy / TYPES_DIR / "ImageRecord.json").write_text("[]", encoding="utf-8")
+    (copy / CORE_DIR / "ImageRecord.json").write_text("[]", encoding="utf-8")
 
     with pytest.raises(ContractError, match="is not a schema"):
         load(copy)

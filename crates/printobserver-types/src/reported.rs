@@ -30,10 +30,10 @@
 //! report, and it is not the operator's safety envelope.** A reading outside
 //! one says the source reported something implausible — a disconnected
 //! thermistor, a firmware that answers in another unit. What an actor is
-//! *allowed to ask for* is [`SafetyEnvelope`](crate::SafetyEnvelope), which is
-//! server configuration and is narrower by orders of magnitude; nothing reads
-//! a plausibility range as a bound on an action, and the two are never
-//! intersected, compared or substituted for one another.
+//! *allowed to ask for* is the supervision domain's `SafetyEnvelope`, declared
+//! in `printobserver-core` as server configuration and narrower by orders of
+//! magnitude; nothing reads a plausibility range as a bound on an action, and
+//! the two are never intersected, compared or substituted for one another.
 
 use core::fmt;
 use std::borrow::Cow;
