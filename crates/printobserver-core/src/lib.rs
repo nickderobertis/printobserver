@@ -3,14 +3,17 @@
 //! Owns: the supervision logic — the loop that turns printer state and vision
 //! observations into supervisory decisions, and the policy that decides which
 //! decisions are allowed to reach the printer — together with the event kinds
-//! and source names that logic writes ([`kinds`]) and the one aggregate a
-//! caller and the agent both read, the print's context ([`context`]).
+//! and source names that logic writes ([`kinds`]), the one aggregate a
+//! caller and the agent both read, the print's context ([`context`]), and the
+//! persistence interfaces it needs, one per aggregate ([`store`]).
 //!
-//! May depend on: `printobserver-types` and the four port crates
+//! May depend on: `printobserver-types` and the three port crates
 //! (`printobserver-printer-api`, `printobserver-vision-api`,
-//! `printobserver-supervisor-api`, `printobserver-store-api`), and NO
-//! implementation crate. This is the rule the whole design rests on and `just
-//! check-repo` enforces it.
+//! `printobserver-supervisor-api`), and NO implementation crate. This is the
+//! rule the whole design rests on and `just check-repo` enforces it. The
+//! persistence interfaces this crate needs are its own ([`store`]), one trait
+//! per aggregate it persists, and the store implementation depends on this
+//! crate to implement them.
 //!
 //! # The policy, which is the reason this layer exists
 //!
@@ -55,6 +58,7 @@ pub mod error;
 pub mod events;
 pub mod expiry;
 pub mod kinds;
+pub mod store;
 pub mod supervisor;
 pub mod turn_lock;
 
@@ -72,6 +76,11 @@ pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
     PortFailureSite, agent_source, operator_source, system_source,
+};
+pub use store::{
+    ActionStore, AuditPage, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore, HistoryQuery,
+    ImageLookup, ImageStore, MAX_HISTORY_LIMIT, PrintStore, SessionStore, SettleOutcome,
+    StoreError, Stores, resolve_history_limit,
 };
 pub use supervisor::{Issued, Supervisor};
 pub use turn_lock::{TurnGuard, TurnLocks};

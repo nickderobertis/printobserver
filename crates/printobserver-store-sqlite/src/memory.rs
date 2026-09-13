@@ -1,18 +1,18 @@
-//! The same port, held in process memory, for a tier that needs no durability.
+//! The same traits, held in process memory, for a tier that needs no durability.
 //!
-//! Not a mock: it answers the port's questions the way the durable store does,
+//! Not a mock: it answers the traits' questions the way the durable store does,
 //! and the one conformance suite in `tests/` drives every journey against both
 //! of them so that it cannot drift into answering differently. Image bytes are
-//! on the filesystem here too, because the port hands a caller the path its
+//! on the filesystem here too, because the image store hands a caller the path its
 //! bytes are at and an implementation holding them in memory would have to
 //! answer a path nothing is at.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort, resolve_history_limit,
+use printobserver_core::store::{
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
 };
 use printobserver_types::{
     ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
@@ -274,7 +274,7 @@ impl MemoryStore {
     }
 }
 
-impl StorePort for MemoryStore {
+impl PrintStore for MemoryStore {
     fn open_print(
         &self,
         obico_print_id: Option<i64>,
@@ -350,6 +350,37 @@ impl StorePort for MemoryStore {
         )
     }
 
+    fn put_manifest(
+        &self,
+        print_id: PrintId,
+        manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move {
+            let mut records = lock(&self.records);
+            if !records.prints.iter().any(|print| print.id == print_id) {
+                return Err(refused("manifests.print_id"));
+            }
+            records.manifests.retain(|(held, _)| *held != print_id);
+            records.manifests.push((print_id, manifest));
+            Ok(())
+        })
+    }
+
+    fn manifest(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        Box::pin(async move {
+            Ok(lock(&self.records)
+                .manifests
+                .iter()
+                .find(|(held, _)| *held == print_id)
+                .map(|(_, manifest)| manifest.clone()))
+        })
+    }
+}
+
+impl EventStore for MemoryStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move {
             let mut records = lock(&self.records);
@@ -372,6 +403,57 @@ impl StorePort for MemoryStore {
         })
     }
 
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move {
+            let limit = query.resolved_limit()? as usize;
+            let records = lock(&self.records);
+            let mut found: Vec<EventRecord> = Self::events_of(&records, query.print_id)
+                .into_iter()
+                .filter(|event| query.kinds.is_empty() || query.kinds.contains(event.kind()))
+                .filter(|event| query.since.is_none_or(|since| event.received_at >= since))
+                .filter(|event| query.until.is_none_or(|until| event.received_at <= until))
+                .collect();
+            found.reverse();
+            found.truncate(limit);
+            Ok(found)
+        })
+    }
+
+    fn audit_page(
+        &self,
+        print_id: PrintId,
+        after: Option<EventId>,
+        page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        Box::pin(async move {
+            let asked_for = (page_size > 0).then_some(page_size);
+            let size = resolve_history_limit(asked_for)? as usize;
+            let records = lock(&self.records);
+            let all = Self::events_of(&records, print_id);
+            let start = match after {
+                None => 0,
+                Some(cursor) => {
+                    let found = records
+                        .events
+                        .iter()
+                        .find(|event| event.id == cursor)
+                        .ok_or_else(|| not_found(&format!("event {cursor}")))?;
+                    all.iter()
+                        .position(|event| {
+                            (event.received_at, event.id) > (found.received_at, found.id)
+                        })
+                        .unwrap_or(all.len())
+                }
+            };
+            let mut events: Vec<EventRecord> = all.into_iter().skip(start).collect();
+            let next = (events.len() > size).then(|| events[size - 1].id);
+            events.truncate(size);
+            Ok(AuditPage { events, next })
+        })
+    }
+}
+
+impl ImageStore for MemoryStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -421,7 +503,9 @@ impl StorePort for MemoryStore {
             }
         })
     }
+}
 
+impl ActionStore for MemoryStore {
     fn record_action(
         &self,
         request: ActionRequest,
@@ -506,85 +590,9 @@ impl StorePort for MemoryStore {
             Ok(found)
         })
     }
+}
 
-    fn put_manifest(
-        &self,
-        print_id: PrintId,
-        manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        Box::pin(async move {
-            let mut records = lock(&self.records);
-            if !records.prints.iter().any(|print| print.id == print_id) {
-                return Err(refused("manifests.print_id"));
-            }
-            records.manifests.retain(|(held, _)| *held != print_id);
-            records.manifests.push((print_id, manifest));
-            Ok(())
-        })
-    }
-
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        Box::pin(async move {
-            Ok(lock(&self.records)
-                .manifests
-                .iter()
-                .find(|(held, _)| *held == print_id)
-                .map(|(_, manifest)| manifest.clone()))
-        })
-    }
-
-    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        Box::pin(async move {
-            let limit = query.resolved_limit()? as usize;
-            let records = lock(&self.records);
-            let mut found: Vec<EventRecord> = Self::events_of(&records, query.print_id)
-                .into_iter()
-                .filter(|event| query.kinds.is_empty() || query.kinds.contains(event.kind()))
-                .filter(|event| query.since.is_none_or(|since| event.received_at >= since))
-                .filter(|event| query.until.is_none_or(|until| event.received_at <= until))
-                .collect();
-            found.reverse();
-            found.truncate(limit);
-            Ok(found)
-        })
-    }
-
-    fn audit_page(
-        &self,
-        print_id: PrintId,
-        after: Option<EventId>,
-        page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        Box::pin(async move {
-            let asked_for = (page_size > 0).then_some(page_size);
-            let size = resolve_history_limit(asked_for)? as usize;
-            let records = lock(&self.records);
-            let all = Self::events_of(&records, print_id);
-            let start = match after {
-                None => 0,
-                Some(cursor) => {
-                    let found = records
-                        .events
-                        .iter()
-                        .find(|event| event.id == cursor)
-                        .ok_or_else(|| not_found(&format!("event {cursor}")))?;
-                    all.iter()
-                        .position(|event| {
-                            (event.received_at, event.id) > (found.received_at, found.id)
-                        })
-                        .unwrap_or(all.len())
-                }
-            };
-            let mut events: Vec<EventRecord> = all.into_iter().skip(start).collect();
-            let next = (events.len() > size).then(|| events[size - 1].id);
-            events.truncate(size);
-            Ok(AuditPage { events, next })
-        })
-    }
-
+impl SessionStore for MemoryStore {
     fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let mut records = lock(&self.records);

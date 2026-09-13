@@ -11,7 +11,9 @@ use std::path::Path;
 
 use crate::block_on::block_on;
 use crate::fixture::manifest;
-use printobserver_store_api::{HistoryQuery, ImageLookup, StoreError, StorePort};
+use printobserver_core::store::{HistoryQuery, ImageLookup, StoreError};
+
+use crate::fixture::Store;
 use printobserver_store_sqlite::{
     CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, MIGRATIONS, SqliteStore,
 };
@@ -222,7 +224,7 @@ where
 
 /// Read every seeded record back through the port.
 fn read_every_seeded_record_back(store: &SqliteStore) {
-    let port: &dyn StorePort = store;
+    let port: &dyn Store = store;
     let print_id: PrintId = identifier(PRINT);
     let at: Timestamp = identifier(SEEDED_AT);
 

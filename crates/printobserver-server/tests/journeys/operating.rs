@@ -690,7 +690,7 @@ async fn a_history_read_above_the_stores_maximum_is_refused() {
     let url = format!(
         "{}?limit={}",
         world.operation_url(&path("history"), print_id),
-        printobserver_store_api::MAX_HISTORY_LIMIT + 1
+        printobserver_core::store::MAX_HISTORY_LIMIT + 1
     );
 
     let (status, answer) = world.get(&url).await;

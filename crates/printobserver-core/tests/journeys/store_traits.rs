@@ -1,24 +1,21 @@
-//! The store port is implementable, dyn-compatible and shareable.
+//! The store traits are implementable, dyn-compatible and shareable.
 //!
-//! A test-only implementation, held behind the same shared trait object the
-//! supervision core will hold it behind, with every method the trait declares
-//! called and awaited and each asserted to answer that method's declared
-//! success type rather than an error. It behaves trivially rather than
+//! A test-only implementation of all five, held behind the same shared trait
+//! objects the supervisor holds them behind, with every method each trait
+//! declares called and awaited and each asserted to answer that method's
+//! declared success type rather than an error. It behaves trivially rather than
 //! erroring, because a not-yet-implemented error would be a variant no real
 //! implementation can ever produce and every consumer would still have to match
 //! it.
-
-#[path = "support/block_on.rs"]
-mod block_on;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
-use block_on::block_on;
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort,
+use printobserver_core::block_on;
+use printobserver_core::store::{
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, Stores,
 };
 use printobserver_types::contract::Sample;
 use printobserver_types::{
@@ -31,7 +28,7 @@ use printobserver_types::{
 /// A store that answers every method with the success type it declares.
 struct TrivialStore;
 
-impl StorePort for TrivialStore {
+impl PrintStore for TrivialStore {
     fn open_print(
         &self,
         obico_print_id: Option<i64>,
@@ -78,11 +75,52 @@ impl StorePort for TrivialStore {
         Box::pin(async { Ok(PrintRecord::sample_minimal()) })
     }
 
+    fn put_manifest(
+        &self,
+        print_id: PrintId,
+        manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        let _ = (print_id, manifest);
+        Box::pin(async { Ok(()) })
+    }
+
+    fn manifest(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        let _ = print_id;
+        Box::pin(async { Ok(Some(JobManifest::sample_full())) })
+    }
+}
+
+impl EventStore for TrivialStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         let _ = draft;
         Box::pin(async { Ok(EventRecord::sample_minimal()) })
     }
 
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let _ = query;
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn audit_page(
+        &self,
+        print_id: PrintId,
+        after: Option<EventId>,
+        page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        let _ = (print_id, after, page_size);
+        Box::pin(async {
+            Ok(AuditPage {
+                events: Vec::new(),
+                next: None,
+            })
+        })
+    }
+}
+
+impl ImageStore for TrivialStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -104,7 +142,9 @@ impl StorePort for TrivialStore {
             })
         })
     }
+}
 
+impl ActionStore for TrivialStore {
     fn record_action(
         &self,
         request: ActionRequest,
@@ -171,44 +211,9 @@ impl StorePort for TrivialStore {
         let _ = print_id;
         Box::pin(async { Ok(Vec::new()) })
     }
+}
 
-    fn put_manifest(
-        &self,
-        print_id: PrintId,
-        manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        let _ = (print_id, manifest);
-        Box::pin(async { Ok(()) })
-    }
-
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        let _ = print_id;
-        Box::pin(async { Ok(Some(JobManifest::sample_full())) })
-    }
-
-    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        let _ = query;
-        Box::pin(async { Ok(Vec::new()) })
-    }
-
-    fn audit_page(
-        &self,
-        print_id: PrintId,
-        after: Option<EventId>,
-        page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        let _ = (print_id, after, page_size);
-        Box::pin(async {
-            Ok(AuditPage {
-                events: Vec::new(),
-                next: None,
-            })
-        })
-    }
-
+impl SessionStore for TrivialStore {
     fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         let _ = session;
         Box::pin(async { Ok(()) })
@@ -253,21 +258,21 @@ fn draft() -> EventDraft {
 /// Every print and event method answers its declared success type.
 #[test]
 fn every_print_and_event_method_answers_its_declared_success_type() {
-    let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
+    let stores = Stores::of(Arc::new(TrivialStore));
     assert_eq!(
-        block_on(port.open_print(None, None)),
+        block_on(stores.prints.open_print(None, None)),
         Ok(PrintRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.print(print_id())),
+        block_on(stores.prints.print(print_id())),
         Ok(Some(PrintRecord::sample_minimal()))
     );
     assert_eq!(
-        block_on(port.print_by_obico_id(1)),
+        block_on(stores.prints.print_by_obico_id(1)),
         Ok(Some(PrintRecord::sample_minimal()))
     );
     assert_eq!(
-        block_on(port.end_print(
+        block_on(stores.prints.end_print(
             print_id(),
             PrinterState::Operational,
             Timestamp::sample_full(),
@@ -276,16 +281,20 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
         Ok(PrintRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.record_narrowing(print_id(), ManifestNarrowing::sample_full())),
+        block_on(
+            stores
+                .prints
+                .record_narrowing(print_id(), ManifestNarrowing::sample_full())
+        ),
         Ok(PrintRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.append_event(draft())),
+        block_on(stores.events.append_event(draft())),
         Ok(EventRecord::sample_minimal())
     );
-    assert_eq!(block_on(port.history(query())), Ok(Vec::new()));
+    assert_eq!(block_on(stores.events.history(query())), Ok(Vec::new()));
     assert_eq!(
-        block_on(port.audit_page(print_id(), None, 10)),
+        block_on(stores.events.audit_page(print_id(), None, 10)),
         Ok(AuditPage {
             events: Vec::new(),
             next: None
@@ -296,9 +305,9 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
 /// Every image, action and intervention method answers its declared type.
 #[test]
 fn every_image_action_and_intervention_method_answers_its_declared_success_type() {
-    let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
+    let stores = Stores::of(Arc::new(TrivialStore));
     assert_eq!(
-        block_on(port.put_image(
+        block_on(stores.images.put_image(
             print_id(),
             EventId::sample_full(),
             None,
@@ -308,22 +317,30 @@ fn every_image_action_and_intervention_method_answers_its_declared_success_type(
         Ok(ImageRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.image(ImageId::sample_full())),
+        block_on(stores.images.image(ImageId::sample_full())),
         Ok(ImageLookup::Found {
             record: ImageRecord::sample_minimal(),
             path: PathBuf::new()
         })
     );
     assert_eq!(
-        block_on(port.record_action(ActionRequest::sample_minimal(), PolicyDecision::Accepted)),
+        block_on(
+            stores
+                .actions
+                .record_action(ActionRequest::sample_minimal(), PolicyDecision::Accepted)
+        ),
         Ok(ActionRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.record_execution(ActionId::sample_full(), ExecutionOutcome::Succeeded)),
+        block_on(
+            stores
+                .actions
+                .record_execution(ActionId::sample_full(), ExecutionOutcome::Succeeded)
+        ),
         Ok(ActionRecord::sample_minimal())
     );
     assert_eq!(
-        block_on(port.open_intervention(
+        block_on(stores.actions.open_intervention(
             ActionId::sample_full(),
             Adjustable::Feedrate,
             None,
@@ -335,18 +352,20 @@ fn every_image_action_and_intervention_method_answers_its_declared_success_type(
     );
     assert_eq!(
         block_on(
-            port.settle_intervention(InterventionId::sample_full(), InterventionOutcome::Restored)
+            stores
+                .actions
+                .settle_intervention(InterventionId::sample_full(), InterventionOutcome::Restored)
         ),
         Ok(SettleOutcome::Settled {
             intervention: Intervention::sample_minimal()
         })
     );
     assert_eq!(
-        block_on(port.due_interventions(Timestamp::sample_full())),
+        block_on(stores.actions.due_interventions(Timestamp::sample_full())),
         Ok(Vec::new())
     );
     assert_eq!(
-        block_on(port.active_interventions(print_id())),
+        block_on(stores.actions.active_interventions(print_id())),
         Ok(Vec::new())
     );
 }
@@ -354,21 +373,29 @@ fn every_image_action_and_intervention_method_answers_its_declared_success_type(
 /// Every manifest and session method answers its declared success type.
 #[test]
 fn every_manifest_and_session_method_answers_its_declared_success_type() {
-    let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
+    let stores = Stores::of(Arc::new(TrivialStore));
     assert_eq!(
-        block_on(port.put_manifest(print_id(), JobManifest::sample_full())),
+        block_on(
+            stores
+                .prints
+                .put_manifest(print_id(), JobManifest::sample_full())
+        ),
         Ok(())
     );
     assert_eq!(
-        block_on(port.manifest(print_id())),
+        block_on(stores.prints.manifest(print_id())),
         Ok(Some(JobManifest::sample_full()))
     );
     assert_eq!(
-        block_on(port.put_session(SupervisionSession::sample_minimal())),
+        block_on(
+            stores
+                .sessions
+                .put_session(SupervisionSession::sample_minimal())
+        ),
         Ok(())
     );
     assert_eq!(
-        block_on(port.session(print_id())),
+        block_on(stores.sessions.session(print_id())),
         Ok(Some(SupervisionSession::sample_minimal()))
     );
 }
@@ -376,10 +403,10 @@ fn every_manifest_and_session_method_answers_its_declared_success_type() {
 /// The same trait object is shareable across threads, which is what core needs.
 #[test]
 fn the_trait_object_is_shareable_across_threads() {
-    let port: Arc<dyn StorePort> = Arc::new(TrivialStore);
+    let stores = Stores::of(Arc::new(TrivialStore));
     let handles: Vec<_> = (0..4)
         .map(|_| {
-            let shared = Arc::clone(&port);
+            let shared: Arc<dyn PrintStore> = Arc::clone(&stores.prints);
             thread::spawn(move || block_on(shared.print(print_id())))
         })
         .collect();

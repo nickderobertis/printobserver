@@ -7,8 +7,8 @@
 
 use crate::block_on::block_on;
 use crate::contracts::{Reference, record_kinds, references};
-use crate::fixture::{draft, instant, manifest, request, session};
-use printobserver_store_api::{StoreError, StorePort};
+use crate::fixture::{Store, draft, instant, manifest, request, session};
+use printobserver_core::store::StoreError;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MIGRATIONS, SqliteStore, connect};
 use printobserver_types::serde_json::{self, json};
 use printobserver_types::{
@@ -22,7 +22,7 @@ use tempfile::TempDir;
 fn seeded() -> TempDir {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
 
     let print = block_on(port.open_print(Some(7), Some("bracket.gcode".to_owned())))
         .expect("a print opens");
@@ -296,7 +296,7 @@ fn the_action_rows_decision_column_admits_no_absent_value() {
 fn an_execution_outcome_against_no_action_is_refused_for_the_constraint() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let absent = ActionId::new();
 
     assert_eq!(
@@ -330,7 +330,7 @@ fn an_execution_outcome_against_no_action_is_refused_for_the_constraint() {
 fn an_event_is_written_as_the_bare_kind_and_the_pair_s_text() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let print = block_on(port.open_print(None, None)).expect("a print opens");
     let event = block_on(port.append_event(draft(
         Some(print.id),

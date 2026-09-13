@@ -29,7 +29,7 @@
 //! calls an action method itself — presents no reference here to refuse and no
 //! driven path to guard. That residue is bounded rather than checked: handing
 //! the handle out from anywhere is itself a finding of the second part, and
-//! this crate's manifest admits only the type crate and the four ports, none of
+//! this crate's manifest admits only the type crate and the three ports, none of
 //! which calls a port it declares.
 
 use crate::fakes::{FakePrinter, PrinterMethod};

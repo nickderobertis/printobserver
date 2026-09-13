@@ -5,8 +5,8 @@
 //! that says so rather than a panic in the middle of a supervision loop.
 
 use crate::block_on::block_on;
-use crate::fixture::{draft, instant, request};
-use printobserver_store_api::{HistoryQuery, StoreError, StorePort};
+use crate::fixture::{Store, draft, instant, request};
+use printobserver_core::store::{HistoryQuery, StoreError};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MemoryStore, SqliteStore, connect};
 use printobserver_types::{ActionId, Adjustable, ExecutionOutcome, PolicyDecision, PrintId};
 use rusqlite::Connection;
@@ -19,7 +19,7 @@ type Read = fn(&SqliteStore, PrintId, ActionId) -> Result<(), StoreError>;
 fn seeded() -> (TempDir, PrintId, ActionId) {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let print = block_on(port.open_print(None, None)).expect("a print opens");
     block_on(port.append_event(draft(
         Some(print.id),
@@ -54,7 +54,7 @@ fn corrupt(dir: &TempDir, statement: &str) {
 
 /// The whole history of one print, as far as a read gets.
 fn history(store: &SqliteStore, print_id: PrintId, _: ActionId) -> Result<(), StoreError> {
-    let port: &dyn StorePort = store;
+    let port: &dyn Store = store;
     block_on(port.history(HistoryQuery {
         print_id,
         kinds: Vec::new(),
@@ -72,14 +72,14 @@ fn a_row_this_build_cannot_read_is_reported() {
         (
             "UPDATE prints SET opened_at = 'not an instant'",
             |store, print_id, _| {
-                let port: &dyn StorePort = store;
+                let port: &dyn Store = store;
                 block_on(port.print(print_id)).map(|_| ())
             },
         ),
         (
             "UPDATE prints SET ended_at = 'not an instant'",
             |store, print_id, _| {
-                let port: &dyn StorePort = store;
+                let port: &dyn Store = store;
                 block_on(port.print(print_id)).map(|_| ())
             },
         ),
@@ -95,14 +95,14 @@ fn a_row_this_build_cannot_read_is_reported() {
         (
             "UPDATE interventions SET adjustable = 'nothing adjustable'",
             |store, print_id, _| {
-                let port: &dyn StorePort = store;
+                let port: &dyn Store = store;
                 block_on(port.active_interventions(print_id)).map(|_| ())
             },
         ),
         (
             "UPDATE actions SET decision = 'not a decision'",
             |store, _, action_id| {
-                let port: &dyn StorePort = store;
+                let port: &dyn Store = store;
                 block_on(port.record_execution(action_id, ExecutionOutcome::Succeeded)).map(|_| ())
             },
         ),
@@ -126,8 +126,8 @@ fn a_row_this_build_cannot_read_is_reported() {
 fn recording_an_execution_twice_is_refused() {
     let dir = TempDir::new().expect("a temporary state directory");
     for port in [
-        Box::new(SqliteStore::open(dir.path()).expect("the store opens")) as Box<dyn StorePort>,
-        Box::new(MemoryStore::new(dir.path()).expect("the store opens")) as Box<dyn StorePort>,
+        Box::new(SqliteStore::open(dir.path()).expect("the store opens")) as Box<dyn Store>,
+        Box::new(MemoryStore::new(dir.path()).expect("the store opens")) as Box<dyn Store>,
     ] {
         block_on(port.open_print(None, None)).expect("a print opens");
         let action = block_on(port.record_action(
@@ -212,7 +212,7 @@ fn each_store_answers_the_state_directory_it_was_opened_on() {
 fn an_unknown_print_reads_back_as_no_print() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     assert_eq!(block_on(port.print(PrintId::new())), Ok(None));
     assert_eq!(
         block_on(port.manifest(PrintId::new())),

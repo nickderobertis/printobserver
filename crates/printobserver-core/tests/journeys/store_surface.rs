@@ -1,22 +1,45 @@
-//! The store port declares exactly the surface the contract states.
+//! The store traits declare exactly the surface the contract states.
 //!
-//! These tests read this crate's own declarations rather than a table
-//! maintained beside them, and every fixture they are driven against is a
+//! These tests read this crate's own `store` module rather than a table
+//! maintained beside it, and every fixture they are driven against is a
 //! source snippet read by the same reader. The reader is the type crate's
-//! `tests/support/surface.rs`, included here by `#[path]`: a port crate
-//! declares the type crate as its only workspace dependency, and a reader of
-//! Rust sources is a claim about no crate in particular.
+//! `tests/support/surface.rs`, included by `#[path]` from the journey binary:
+//! a reader of Rust sources is a claim about no crate in particular, and this
+//! crate's tests reach no crate of this workspace beyond the ones its manifest
+//! names.
+//!
+//! One trait per aggregate is the shape held here too: no method of one trait
+//! acts on another trait's aggregate, which is what lets a consumer name only
+//! the aggregates it touches.
 
-#[path = "../../printobserver-types/tests/support/surface.rs"]
-pub mod surface;
-
-use surface::{
-    Field, Method, Param, Variant, crate_dir, crate_source, enum_variants, parse, public_constants,
-    public_functions, trait_method_docs, trait_methods, workspace_dependency_names,
+use crate::declarations::{
+    Field, Method, Param, Variant, crate_dir, enum_variants, parse, public_constants,
+    public_functions, trait_method_docs, trait_methods,
 };
 
-/// This crate's own name.
-const CRATE: &str = "printobserver-store-api";
+/// The five traits, in the order the module declares them.
+const TRAITS: [&str; 5] = [
+    "PrintStore",
+    "EventStore",
+    "ImageStore",
+    "ActionStore",
+    "SessionStore",
+];
+
+/// The `store` module's own source.
+fn store_source() -> String {
+    let path = crate_dir("printobserver-core").join("src").join("store.rs");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+}
+
+/// Every method every store trait declares, in declaration order.
+fn every_store_method(source: &syn::File) -> Vec<Method> {
+    TRAITS
+        .iter()
+        .flat_map(|name| trait_methods(source, name))
+        .collect()
+}
 
 /// The method the contract states, as a name, its parameters and its answer.
 fn method(name: &str, params: &[(&str, &str)], returns: &str) -> Method {
@@ -47,8 +70,8 @@ fn variant(name: &str, fields: &[(&str, &str)]) -> Variant {
     }
 }
 
-/// The store port's stated methods over prints, events, images and actions.
-fn stated_store_methods_through_actions() -> Vec<Method> {
+/// The print store's stated methods: the record, its manifest, its narrowings.
+fn stated_print_methods() -> Vec<Method> {
     vec![
         method(
             "open_print",
@@ -89,10 +112,46 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
             "BoxFuture<'_,Result<PrintRecord,StoreError>>",
         ),
         method(
+            "put_manifest",
+            &[("print_id", "PrintId"), ("manifest", "JobManifest")],
+            "BoxFuture<'_,Result<(),StoreError>>",
+        ),
+        method(
+            "manifest",
+            &[("print_id", "PrintId")],
+            "BoxFuture<'_,Result<Option<JobManifest>,StoreError>>",
+        ),
+    ]
+}
+
+/// The event store's stated methods: the log.
+fn stated_event_methods() -> Vec<Method> {
+    vec![
+        method(
             "append_event",
             &[("draft", "EventDraft")],
             "BoxFuture<'_,Result<EventRecord,StoreError>>",
         ),
+        method(
+            "history",
+            &[("query", "HistoryQuery")],
+            "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
+        ),
+        method(
+            "audit_page",
+            &[
+                ("print_id", "PrintId"),
+                ("after", "Option<EventId>"),
+                ("page_size", "u32"),
+            ],
+            "BoxFuture<'_,Result<AuditPage,StoreError>>",
+        ),
+    ]
+}
+
+/// The image store's stated methods.
+fn stated_image_methods() -> Vec<Method> {
+    vec![
         method(
             "put_image",
             &[
@@ -109,6 +168,12 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
             &[("image_id", "ImageId")],
             "BoxFuture<'_,Result<ImageLookup,StoreError>>",
         ),
+    ]
+}
+
+/// The action store's stated methods: actions and the interventions they open.
+fn stated_action_methods() -> Vec<Method> {
+    vec![
         method(
             "record_action",
             &[("request", "ActionRequest"), ("decision", "PolicyDecision")],
@@ -119,12 +184,6 @@ fn stated_store_methods_through_actions() -> Vec<Method> {
             &[("action_id", "ActionId"), ("outcome", "ExecutionOutcome")],
             "BoxFuture<'_,Result<ActionRecord,StoreError>>",
         ),
-    ]
-}
-
-/// The store port's stated methods over interventions, manifests and history.
-fn stated_store_methods_from_interventions() -> Vec<Method> {
-    vec![
         method(
             "open_intervention",
             &[
@@ -155,30 +214,12 @@ fn stated_store_methods_from_interventions() -> Vec<Method> {
             &[("print_id", "PrintId")],
             "BoxFuture<'_,Result<Vec<Intervention>,StoreError>>",
         ),
-        method(
-            "put_manifest",
-            &[("print_id", "PrintId"), ("manifest", "JobManifest")],
-            "BoxFuture<'_,Result<(),StoreError>>",
-        ),
-        method(
-            "manifest",
-            &[("print_id", "PrintId")],
-            "BoxFuture<'_,Result<Option<JobManifest>,StoreError>>",
-        ),
-        method(
-            "history",
-            &[("query", "HistoryQuery")],
-            "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
-        ),
-        method(
-            "audit_page",
-            &[
-                ("print_id", "PrintId"),
-                ("after", "Option<EventId>"),
-                ("page_size", "u32"),
-            ],
-            "BoxFuture<'_,Result<AuditPage,StoreError>>",
-        ),
+    ]
+}
+
+/// The session store's stated methods.
+fn stated_session_methods() -> Vec<Method> {
+    vec![
         method(
             "put_session",
             &[("session", "SupervisionSession")],
@@ -192,19 +233,107 @@ fn stated_store_methods_from_interventions() -> Vec<Method> {
     ]
 }
 
-/// Every method the store port is stated to declare, and no other.
+/// Every method each store trait is stated to declare, and no other.
 #[test]
-fn store_port_declares_exactly_the_stated_methods() {
-    let source = parse(&crate_source(CRATE));
-    let mut expected = stated_store_methods_through_actions();
-    expected.extend(stated_store_methods_from_interventions());
-    assert_eq!(trait_methods(&source, "StorePort"), expected);
+fn each_store_trait_declares_exactly_the_stated_methods() {
+    let source = parse(&store_source());
+    let stated = [
+        stated_print_methods(),
+        stated_event_methods(),
+        stated_image_methods(),
+        stated_action_methods(),
+        stated_session_methods(),
+    ];
+    for (name, expected) in TRAITS.iter().zip(stated) {
+        assert_eq!(trait_methods(&source, name), expected, "{name}");
+    }
 }
 
-/// Every variant the store port's error vocabulary is stated to carry.
+/// No aggregate's methods are declared under another aggregate's trait.
+///
+/// Read off the parameter and answer types: a method of the print store may
+/// take or answer no image, action, intervention or session, and so on for
+/// each of the other four. Identifiers are the exception — a method takes the
+/// identifier of a record another aggregate holds in order to relate to it —
+/// so a type that is an identifier is not a record of the aggregate it names.
+#[test]
+fn no_trait_acts_on_another_traits_aggregate() {
+    let source = parse(&store_source());
+    let records: [(&str, &[&str]); 5] = [
+        (
+            "PrintStore",
+            &["PrintRecord", "JobManifest", "ManifestNarrowing"],
+        ),
+        (
+            "EventStore",
+            &["EventDraft", "EventRecord", "HistoryQuery", "AuditPage"],
+        ),
+        ("ImageStore", &["ImageRecord", "ImageLookup"]),
+        (
+            "ActionStore",
+            &[
+                "ActionRecord",
+                "ActionRequest",
+                "PolicyDecision",
+                "ExecutionOutcome",
+                "Intervention",
+                "InterventionOutcome",
+                "SettleOutcome",
+            ],
+        ),
+        ("SessionStore", &["SupervisionSession"]),
+    ];
+    let mut checked = 0_usize;
+    for (own, _) in records {
+        for declared in trait_methods(&source, own) {
+            let mentioned: Vec<String> = declared
+                .params
+                .iter()
+                .map(|param| param.ty.clone())
+                .chain(std::iter::once(declared.returns.clone()))
+                .collect();
+            for (other, theirs) in records {
+                if other == own {
+                    continue;
+                }
+                for record in theirs {
+                    assert!(
+                        !mentioned.iter().any(|ty| ty.contains(record)),
+                        "{own}::{} carries {record}, which is {other}'s",
+                        declared.name
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 0, "no method was checked at all");
+}
+
+/// A fixture trait whose print method answers another aggregate's record.
+const FIXTURE_CROSS_AGGREGATE: &str = r"
+pub trait PrintStore: Send + Sync {
+    fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>>;
+    fn latest_image(&self, print_id: PrintId) -> BoxFuture<'_, Result<ImageRecord, StoreError>>;
+}
+";
+
+/// The aggregate reading sees a method that reaches into another aggregate.
+#[test]
+fn the_aggregate_reading_sees_a_method_reaching_into_another_aggregate() {
+    let fixture = parse(FIXTURE_CROSS_AGGREGATE);
+    let reaching: Vec<String> = trait_methods(&fixture, "PrintStore")
+        .into_iter()
+        .filter(|declared| declared.returns.contains("ImageRecord"))
+        .map(|declared| declared.name)
+        .collect();
+    assert_eq!(reaching, vec!["latest_image".to_owned()]);
+}
+
+/// Every variant the store error vocabulary is stated to carry.
 #[test]
 fn store_error_carries_exactly_the_stated_variants() {
-    let source = parse(&crate_source(CRATE));
+    let source = parse(&store_source());
     let expected = vec![
         variant("ConstraintRefused", &[("constraint", "String")]),
         variant("NotFound", &[("what", "String")]),
@@ -215,26 +344,26 @@ fn store_error_carries_exactly_the_stated_variants() {
     assert_eq!(enum_variants(&source, "StoreError"), expected);
 }
 
-/// Every port method is asynchronous, in the one shape a trait object carries.
+/// Every store method is asynchronous, in the one shape a trait object carries.
 #[test]
-fn every_port_method_answers_a_boxed_future() {
-    let source = parse(&crate_source(CRATE));
-    let methods = trait_methods(&source, "StorePort");
-    assert!(!methods.is_empty(), "StorePort declares no method");
+fn every_store_method_answers_a_boxed_future() {
+    let source = parse(&store_source());
+    let methods = every_store_method(&source);
+    assert!(!methods.is_empty(), "the store traits declare no method");
     for declared in methods {
         assert!(
             declared.returns.starts_with("BoxFuture<'_,Result<"),
-            "StorePort::{} answers {}, which is neither asynchronous nor a Result",
+            "{} answers {}, which is neither asynchronous nor a Result",
             declared.name,
             declared.returns
         );
     }
 }
 
-/// The port's error vocabulary carries no not-yet-implemented variant.
+/// The store's error vocabulary carries no not-yet-implemented variant.
 #[test]
-fn the_port_error_carries_no_not_yet_implemented_variant() {
-    let source = parse(&crate_source(CRATE));
+fn the_store_error_carries_no_not_yet_implemented_variant() {
+    let source = parse(&store_source());
     for declared in enum_variants(&source, "StoreError") {
         let name = declared.name.to_lowercase();
         assert!(
@@ -247,23 +376,11 @@ fn the_port_error_carries_no_not_yet_implemented_variant() {
     }
 }
 
-/// This crate names the type crate as its only workspace dependency, across
-/// every dependency table: a port that named an implementation would stop
-/// being a port.
-#[test]
-fn the_manifest_names_the_type_crate_and_no_other_workspace_crate() {
-    let manifest = std::fs::read_to_string(crate_dir(CRATE).join("Cargo.toml"))
-        .expect("the manifest is readable");
-    assert_eq!(
-        workspace_dependency_names(&manifest),
-        vec!["printobserver-types".to_owned()]
-    );
-}
-
 /// Which store methods take either half of the action pair.
-fn action_pair_partition(source: &syn::File, trait_name: &str) -> (Vec<Method>, Vec<Method>) {
-    trait_methods(source, trait_name)
-        .into_iter()
+fn action_pair_partition(source: &syn::File, traits: &[&str]) -> (Vec<Method>, Vec<Method>) {
+    traits
+        .iter()
+        .flat_map(|name| trait_methods(source, name))
         .partition(|declared| {
             declared.params.iter().any(|param| {
                 param.ty.contains("ActionRequest") || param.ty.contains("PolicyDecision")
@@ -274,8 +391,8 @@ fn action_pair_partition(source: &syn::File, trait_name: &str) -> (Vec<Method>, 
 /// `record_action` is the only method taking either half, and it takes both.
 #[test]
 fn record_action_is_the_only_method_taking_the_action_pair() {
-    let source = parse(&crate_source(CRATE));
-    let (taking, rest) = action_pair_partition(&source, "StorePort");
+    let source = parse(&store_source());
+    let (taking, rest) = action_pair_partition(&source, &TRAITS);
     assert_eq!(
         taking.len(),
         1,
@@ -343,7 +460,7 @@ pub trait Fixture {
 #[test]
 fn the_action_pair_partition_refuses_every_fixture_it_must() {
     let fixture = parse(FIXTURE_SECOND_REQUEST);
-    let (taking, _) = action_pair_partition(&fixture, "Fixture");
+    let (taking, _) = action_pair_partition(&fixture, &["Fixture"]);
     assert_eq!(
         taking.len(),
         2,
@@ -351,7 +468,7 @@ fn the_action_pair_partition_refuses_every_fixture_it_must() {
     );
 
     let fixture = parse(FIXTURE_DECISION_ALONE);
-    let (taking, _) = action_pair_partition(&fixture, "Fixture");
+    let (taking, _) = action_pair_partition(&fixture, &["Fixture"]);
     assert_eq!(taking.len(), 1);
     assert_ne!(
         taking[0].name, "record_action",
@@ -359,7 +476,7 @@ fn the_action_pair_partition_refuses_every_fixture_it_must() {
     );
 
     let fixture = parse(FIXTURE_REQUEST_WITHOUT_DECISION);
-    let (taking, _) = action_pair_partition(&fixture, "Fixture");
+    let (taking, _) = action_pair_partition(&fixture, &["Fixture"]);
     assert_eq!(
         taking[0]
             .params
@@ -371,7 +488,7 @@ fn the_action_pair_partition_refuses_every_fixture_it_must() {
     );
 
     let fixture = parse(FIXTURE_NO_ACTION_ID);
-    let (taking, _) = action_pair_partition(&fixture, "Fixture");
+    let (taking, _) = action_pair_partition(&fixture, &["Fixture"]);
     assert!(
         !taking[0].returns.contains("ActionRecord"),
         "a record_action answering nothing was read as answering a record"
@@ -408,10 +525,10 @@ fn limit_resolutions(source: &syn::File) -> Vec<Method> {
         .collect()
 }
 
-/// A consumer importing the store port finds one answer of each, not two.
+/// A consumer importing the store module finds one answer of each, not two.
 #[test]
-fn the_store_port_exports_one_of_each_history_answer() {
-    let source = parse(&crate_source(CRATE));
+fn the_store_module_exports_one_of_each_history_answer() {
+    let source = parse(&store_source());
     assert_eq!(
         default_window_constants(&source)
             .into_iter()
@@ -479,7 +596,7 @@ fn the_exported_surface_reading_refuses_a_second_answer() {
 /// The default window is below the maximum limit.
 #[test]
 fn the_default_window_is_below_the_maximum_limit() {
-    let source = crate_source(CRATE);
+    let source = store_source();
     assert!(
         constant_value(&source, "DEFAULT_HISTORY_WINDOW")
             < constant_value(&source, "MAX_HISTORY_LIMIT"),
@@ -505,8 +622,8 @@ fn constant_value(source: &str, name: &str) -> u32 {
 /// The `history` documentation states the ordering and the empty-kinds meaning.
 #[test]
 fn the_history_documentation_states_its_two_unvalued_facts() {
-    let source = parse(&crate_source(CRATE));
-    let documentation = trait_method_docs(&source, "StorePort", "history").to_lowercase();
+    let source = parse(&store_source());
+    let documentation = trait_method_docs(&source, "EventStore", "history").to_lowercase();
     assert!(
         documentation.contains("newest first"),
         "the history documentation does not state the ordering: {documentation}"

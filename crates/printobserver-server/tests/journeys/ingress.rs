@@ -15,8 +15,8 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use printobserver_core::store::HistoryQuery;
 use printobserver_obico::ObicoFailureAlertPayload;
-use printobserver_store_api::HistoryQuery;
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 
 use crate::agent::StandInAgent;
@@ -56,14 +56,16 @@ async fn post(world: &World, body: &str, token: Option<&str>) -> reqwest::Status
 async fn recorded_against_open_prints(world: &World) -> Vec<printobserver_types::EventRecord> {
     let mut found = Vec::new();
     for print in world
-        .store
+        .stores
+        .prints
         .open_prints()
         .await
         .expect("the open prints read")
     {
         found.extend(
             world
-                .store
+                .stores
+                .events
                 .history(HistoryQuery {
                     print_id: print.id,
                     kinds: Vec::new(),
@@ -141,7 +143,8 @@ async fn a_post_with_no_valid_secret_is_refused_and_recorded() {
 
     assert!(
         world
-            .store
+            .stores
+            .prints
             .open_prints()
             .await
             .expect("the open prints read")
@@ -372,7 +375,7 @@ async fn what_the_ingress_says_about_itself_carries_no_secret() {
     let ingress =
         printobserver_server::IngressState::start(
             std::sync::Arc::clone(world.server.supervisor()),
-            std::sync::Arc::clone(world.server.store()),
+            std::sync::Arc::clone(&world.server.stores().events),
             std::sync::Arc::new(
                 printobserver_obico::ObicoVision::new(
                     printobserver_obico::ObicoVisionConfig::default(),

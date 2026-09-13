@@ -39,14 +39,16 @@ async fn stored_image(world: &World, bytes: Vec<u8>) -> (PrintId, ImageId) {
     completions.changed().await.expect("the handling finishes");
 
     let print = world
-        .store
+        .stores
+        .prints
         .print_by_obico_id(4211)
         .await
         .expect("the print reads")
         .expect("the alert opened a print");
     let events = world
-        .store
-        .history(printobserver_store_api::HistoryQuery {
+        .stores
+        .events
+        .history(printobserver_core::store::HistoryQuery {
             print_id: print.id,
             kinds: Vec::new(),
             since: None,

@@ -13,13 +13,13 @@
 
 use core::time::Duration;
 
+use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload, system_source,
 };
 use printobserver_obico::{ObicoFailureAlertPayload, ObicoPrinterNotificationPayload};
 use printobserver_server::StartupReconciliationPayload;
-use printobserver_store_api::{EventDraft, HistoryQuery};
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
 };
@@ -87,7 +87,8 @@ async fn write_every_kind(world: &World, print_id: PrintId) {
     assert_eq!(distinct.len(), DECLARED_KINDS, "two kinds share a name");
     for body in bodies {
         world
-            .store
+            .stores
+            .events
             .append_event(EventDraft {
                 print_id: Some(print_id),
                 source: system_source(),
@@ -145,7 +146,8 @@ struct Written {
 async fn write_everything(world: &World, image_url: &str) -> Written {
     alert(world, image_url).await;
     let print_id = world
-        .store
+        .stores
+        .prints
         .print_by_obico_id(4211)
         .await
         .expect("the print reads")
@@ -316,7 +318,8 @@ async fn still_acts(world: &World, print_id: PrintId, status_before: &Value, ima
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let active = world
-            .store
+            .stores
+            .actions
             .active_interventions(print_id)
             .await
             .expect("the interventions read");
@@ -339,13 +342,14 @@ async fn still_acts(world: &World, print_id: PrintId, status_before: &Value, ima
 /// One print's whole history, newest first.
 async fn read_history(world: &World, print_id: PrintId) -> Vec<printobserver_types::EventRecord> {
     world
-        .store
+        .stores
+        .events
         .history(HistoryQuery {
             print_id,
             kinds: Vec::new(),
             since: None,
             until: None,
-            limit: Some(printobserver_store_api::MAX_HISTORY_LIMIT),
+            limit: Some(printobserver_core::store::MAX_HISTORY_LIMIT),
         })
         .await
         .expect("the history reads")

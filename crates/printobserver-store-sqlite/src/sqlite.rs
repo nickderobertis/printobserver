@@ -4,9 +4,9 @@ use core::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort, resolve_history_limit,
+use printobserver_core::store::{
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
 };
 use printobserver_types::{
     ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
@@ -795,7 +795,7 @@ impl SqliteStore {
     }
 }
 
-impl StorePort for SqliteStore {
+impl PrintStore for SqliteStore {
     fn open_print(
         &self,
         obico_print_id: Option<i64>,
@@ -840,10 +840,42 @@ impl StorePort for SqliteStore {
         Box::pin(async move { self.write_narrowing(print_id, narrowing) })
     }
 
+    fn put_manifest(
+        &self,
+        print_id: PrintId,
+        manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move { self.write_manifest(print_id, &manifest) })
+    }
+
+    fn manifest(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        Box::pin(async move { self.read_manifest(print_id) })
+    }
+}
+
+impl EventStore for SqliteStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move { self.insert_event(draft) })
     }
 
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move { self.read_history(&query) })
+    }
+
+    fn audit_page(
+        &self,
+        print_id: PrintId,
+        after: Option<EventId>,
+        page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        Box::pin(async move { self.read_audit_page(print_id, after, page_size) })
+    }
+}
+
+impl ImageStore for SqliteStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -860,7 +892,9 @@ impl StorePort for SqliteStore {
     fn image(&self, image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
         Box::pin(async move { self.read_image(image_id) })
     }
+}
 
+impl ActionStore for SqliteStore {
     fn record_action(
         &self,
         request: ActionRequest,
@@ -933,35 +967,9 @@ impl StorePort for SqliteStore {
             )
         })
     }
+}
 
-    fn put_manifest(
-        &self,
-        print_id: PrintId,
-        manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        Box::pin(async move { self.write_manifest(print_id, &manifest) })
-    }
-
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        Box::pin(async move { self.read_manifest(print_id) })
-    }
-
-    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        Box::pin(async move { self.read_history(&query) })
-    }
-
-    fn audit_page(
-        &self,
-        print_id: PrintId,
-        after: Option<EventId>,
-        page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        Box::pin(async move { self.read_audit_page(print_id, after, page_size) })
-    }
-
+impl SessionStore for SqliteStore {
     fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move { self.write_session(&session) })
     }

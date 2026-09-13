@@ -297,7 +297,6 @@ ports = [
     "printobserver-printer-api",
     "printobserver-vision-api",
     "printobserver-supervisor-api",
-    "printobserver-store-api",
 ]
 implementations = [
     "printobserver-octoprint",

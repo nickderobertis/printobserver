@@ -16,7 +16,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use printobserver_store_api::StoreError;
+use printobserver_core::store::StoreError;
 use rusqlite::Connection;
 
 use crate::values::{database_error, io_error};

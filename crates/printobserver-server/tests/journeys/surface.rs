@@ -279,7 +279,10 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
     let world = World::open().await;
     let state = printobserver_server::ApiState {
         supervisor: std::sync::Arc::clone(world.server.supervisor()),
-        store: std::sync::Arc::clone(world.server.store()),
+        prints: std::sync::Arc::clone(&world.server.stores().prints),
+        events: std::sync::Arc::clone(&world.server.stores().events),
+        images: std::sync::Arc::clone(&world.server.stores().images),
+        sessions: std::sync::Arc::clone(&world.server.stores().sessions),
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",
@@ -287,7 +290,7 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
         printobserver_server::Ports {
             printer: std::sync::Arc::clone(&world.printer)
                 as std::sync::Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: std::sync::Arc::clone(world.server.store()),
+            stores: world.server.stores().clone(),
             vision: std::sync::Arc::new(
                 printobserver_obico::ObicoVision::new(
                     printobserver_obico::ObicoVisionConfig::default()

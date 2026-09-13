@@ -109,7 +109,7 @@ impl World {
         let core = Supervisor::new(
             config,
             Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
-            Arc::clone(&store) as Arc<dyn printobserver_store_api::StorePort>,
+            printobserver_core::store::Stores::of(Arc::clone(&store)),
             Arc::clone(&vision) as Arc<dyn printobserver_vision_api::VisionPort>,
             Arc::clone(&agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
             Arc::clone(&clock) as Arc<dyn printobserver_core::Clock>,
@@ -132,7 +132,7 @@ impl World {
     ///
     /// Panics when the store refuses to open it.
     pub fn open_print(&self, obico_print_id: i64) -> PrintRecord {
-        block_on(printobserver_store_api::StorePort::open_print(
+        block_on(printobserver_core::store::PrintStore::open_print(
             self.store.as_ref(),
             Some(obico_print_id),
             Some("benchy.gcode".to_owned()),

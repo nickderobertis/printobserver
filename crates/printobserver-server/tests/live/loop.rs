@@ -270,7 +270,8 @@ async fn deliver(world: &Composed, proxy: &Proxy, image_url: &str) {
 /// The print this walk's alerts opened.
 async fn print_of(world: &Composed) -> PrintId {
     world
-        .store
+        .stores
+        .prints
         .print_by_obico_id(OBICO_PRINT)
         .await
         .expect("the print reads")
@@ -978,8 +979,9 @@ async fn the_reads_answer_the_records_they_name(world: &Composed, print_id: Prin
 /// the record declares.
 async fn stored_image_is_a_path(world: &Composed, print_id: PrintId) {
     let image = world
-        .store
-        .history(printobserver_store_api::HistoryQuery {
+        .stores
+        .events
+        .history(printobserver_core::store::HistoryQuery {
             print_id,
             kinds: Vec::new(),
             since: None,

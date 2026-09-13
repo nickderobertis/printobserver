@@ -11,7 +11,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use chrono::SecondsFormat;
-use printobserver_store_api::StoreError;
+use printobserver_core::store::StoreError;
 use printobserver_types::Timestamp;
 use printobserver_types::serde::Serialize;
 use printobserver_types::serde::de::DeserializeOwned;
@@ -19,14 +19,14 @@ use printobserver_types::serde_json::{self, Value};
 use rusqlite::Row;
 use rusqlite::types::Type;
 
-/// The failure a driver reported, as this port's own vocabulary.
+/// The failure a driver reported, as the store's own vocabulary.
 pub(crate) fn database_error(error: &rusqlite::Error) -> StoreError {
     StoreError::Database {
         detail: error.to_string(),
     }
 }
 
-/// A file the store could not read or write, as this port's own vocabulary.
+/// A file the store could not read or write, as the store's own vocabulary.
 pub(crate) fn io_error(path: &Path, error: &std::io::Error) -> StoreError {
     StoreError::Io {
         detail: format!("{}: {error}", path.display()),

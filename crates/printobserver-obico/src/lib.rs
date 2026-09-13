@@ -8,11 +8,11 @@
 //! two event kinds and the source name it writes ([`events`]); and the ingress
 //! that writes both down.
 //!
-//! May depend on: `printobserver-types`, `printobserver-vision-api`,
-//! `printobserver-store-api` and `printobserver-core` — the type crate, two
-//! ports, and the supervision domain whose port-failure kind a failed fetch is
-//! recorded under — plus whatever it needs to reach `Obico`. Never another
-//! implementation crate.
+//! May depend on: `printobserver-types`, `printobserver-vision-api` and
+//! `printobserver-core` — the type crate, the port it implements, and the
+//! supervision domain whose store traits the ingress writes through and whose
+//! port-failure kind a failed fetch is recorded under — plus whatever it needs
+//! to reach `Obico`. Never another implementation crate.
 //!
 //! # The three shapes, and the fourth thing that arrives
 //!

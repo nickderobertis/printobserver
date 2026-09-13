@@ -95,14 +95,17 @@ fn refused(findings: &[String], expected: &str) {
     );
 }
 
-/// The manifest declares the type crate and the four ports and nothing else.
+/// The manifest declares the type crate and the three ports and nothing else.
+///
+/// The store is not a port this crate depends on: its persistence interfaces
+/// are this crate's own, declared in its `store` module, so an implementation
+/// of them depends on this crate rather than the other way round.
 #[test]
-fn the_manifest_declares_the_type_crate_and_the_four_ports_and_nothing_else() {
+fn the_manifest_declares_the_type_crate_and_the_three_ports_and_nothing_else() {
     assert_eq!(
         manifest_dependencies(CRATE, "dependencies"),
         vec![
             "printobserver-printer-api".to_owned(),
-            "printobserver-store-api".to_owned(),
             "printobserver-supervisor-api".to_owned(),
             "printobserver-types".to_owned(),
             "printobserver-vision-api".to_owned(),

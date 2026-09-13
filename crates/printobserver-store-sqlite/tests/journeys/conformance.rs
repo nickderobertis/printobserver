@@ -10,10 +10,9 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::block_on::block_on;
-use crate::fixture::{Fixture, draft, instant, manifest, request, session};
-use printobserver_store_api::{
-    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome,
-    StoreError, StorePort,
+use crate::fixture::{Fixture, Store, draft, instant, manifest, request, session};
+use printobserver_core::store::{
+    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome, StoreError,
 };
 use printobserver_store_sqlite::settle_label;
 use printobserver_types::{
@@ -34,7 +33,7 @@ fn whole_window(print_id: PrintId) -> HistoryQuery {
 }
 
 /// A print with one event on it, which most journeys need before anything else.
-fn print_and_event(port: &Arc<dyn StorePort>) -> (PrintRecord, EventRecord) {
+fn print_and_event(port: &Arc<dyn Store>) -> (PrintRecord, EventRecord) {
     let print = block_on(port.open_print(Some(7), Some("bracket.gcode".to_owned())))
         .expect("a print opens");
     let event = block_on(port.append_event(draft(
@@ -244,7 +243,7 @@ struct Written {
 
 impl Written {
     /// Write more events than the default window, over several kinds and spans.
-    fn write(port: &Arc<dyn StorePort>, print_id: PrintId) -> Self {
+    fn write(port: &Arc<dyn Store>, print_id: PrintId) -> Self {
         let kinds = [
             "obico_failure_alert",
             "malformed_external_event",

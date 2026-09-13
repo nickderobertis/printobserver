@@ -11,11 +11,13 @@
 //!
 //! The print's context is this crate's declaration too, so the fields it
 //! carries, the round trip of its canonical values and the absent-optional
-//! rule are walked here over it.
+//! rule are walked here over it; and so are the two shapes the store traits
+//! carry across a process boundary, the event draft and the history query.
 
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
+use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
@@ -92,6 +94,8 @@ fn generated() -> Vec<(String, Value)> {
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
+    entries.push(("EventDraft.json".to_owned(), schema_of::<EventDraft>()));
+    entries.push(("HistoryQuery.json".to_owned(), schema_of::<HistoryQuery>()));
     entries
 }
 
@@ -229,4 +233,32 @@ fn the_print_context_round_trips_and_omits_what_it_does_not_carry() {
     }
     let nonsense = printobserver_types::serde_json::json!({ "print": "not a record" });
     assert!(context.round_trip(nonsense).is_err());
+}
+
+/// The event draft carries exactly the fields the contract states: the
+/// envelope's own less the identifier and the image the store adds.
+#[test]
+fn the_event_draft_carries_exactly_the_stated_fields() {
+    let expected = vec![
+        field("kind", "EventKind", true),
+        field("payload", "any", true),
+        field("print_id", "PrintId", false),
+        field("raw", "RawBytes", false),
+        field("received_at", "Timestamp", true),
+        field("source", "EventSource", true),
+    ];
+    assert_eq!(wire_fields(&schema_of::<EventDraft>()), expected);
+}
+
+/// The history query carries exactly the fields the contract states.
+#[test]
+fn the_history_query_carries_exactly_the_stated_fields() {
+    let expected = vec![
+        field("kinds", "array:EventKind", true),
+        field("limit", "integer", false),
+        field("print_id", "PrintId", true),
+        field("since", "Timestamp", false),
+        field("until", "Timestamp", false),
+    ];
+    assert_eq!(wire_fields(&schema_of::<HistoryQuery>()), expected);
 }

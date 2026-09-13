@@ -23,13 +23,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use image_host::{Answer, ImageHost, unreachable_url};
+use printobserver_core::store::{EventStore, HistoryQuery, ImageLookup, ImageStore, PrintStore};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
     DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, IngressError, ObicoFailureAlertPayload,
     ObicoIngress, ObicoNotificationType, ObicoPrinterNotificationPayload, ObicoVisionConfig,
     Receipt, obico_source,
 };
-use printobserver_store_api::{HistoryQuery, ImageLookup, StorePort};
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{
     EventPayload, EventRecord, ImageRecord, PrintRecord, PrinterState, RawBytes, Timestamp,
@@ -76,7 +76,13 @@ fn prompt_bounds() -> ObicoVisionConfig {
 
 /// The ingress, over one store, under one set of bounds.
 fn ingress(store: &Arc<MemoryStore>, config: ObicoVisionConfig) -> ObicoIngress {
-    ObicoIngress::new(Arc::clone(store) as Arc<dyn StorePort>, config).expect("the ingress builds")
+    ObicoIngress::new(
+        Arc::clone(store) as Arc<dyn PrintStore>,
+        Arc::clone(store) as Arc<dyn EventStore>,
+        Arc::clone(store) as Arc<dyn ImageStore>,
+        config,
+    )
+    .expect("the ingress builds")
 }
 
 /// The failure payload one event carries.
@@ -801,8 +807,11 @@ async fn every_notification_type_normalizes_to_its_own_spelling() {
 /// accepted, which is what a caller needs in order to retry it.
 #[tokio::test]
 async fn a_store_that_refuses_the_write_says_nothing_was_written_down() {
+    let refusing = Arc::new(RefusingStore);
     let ingress = ObicoIngress::new(
-        Arc::new(RefusingStore) as Arc<dyn StorePort>,
+        Arc::clone(&refusing) as Arc<dyn PrintStore>,
+        Arc::clone(&refusing) as Arc<dyn EventStore>,
+        refusing as Arc<dyn ImageStore>,
         prompt_bounds(),
     )
     .expect("the ingress builds");

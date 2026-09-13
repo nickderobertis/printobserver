@@ -135,31 +135,32 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
     );
 }
 
-/// The six shapes the port crates own, and the crate each is declared by.
+/// The six shapes the ports and the supervision domain own that cross a
+/// process boundary, and the crate each is declared by.
 const PORT_OWNED_SHAPES: [(&str, &str); 6] = [
     ("printobserver-vision-api", "NormalizedAlert"),
     ("printobserver-vision-api", "FetchedImage"),
     ("printobserver-supervisor-api", "TurnRequest"),
     ("printobserver-supervisor-api", "TurnOutcome"),
-    ("printobserver-store-api", "EventDraft"),
-    ("printobserver-store-api", "HistoryQuery"),
+    ("printobserver-core", "EventDraft"),
+    ("printobserver-core", "HistoryQuery"),
 ];
 
-/// The four port error vocabularies, which cross no process boundary.
+/// The four port-shaped error vocabularies, which cross no process boundary.
 const PORT_ERRORS: [(&str, &str); 4] = [
     ("printobserver-printer-api", "PrinterError"),
     ("printobserver-vision-api", "VisionError"),
     ("printobserver-supervisor-api", "SupervisorError"),
-    ("printobserver-store-api", "StoreError"),
+    ("printobserver-core", "StoreError"),
 ];
 
 /// Every way a tree falls short of carrying the whole schema set.
 ///
 /// The set is wider than this crate's own declarations, because six of the
-/// types that cross a process boundary are the ports' own, so this reads both:
-/// a type cannot fall out of the set by being declared in a port crate rather
-/// than here, and a port's error vocabulary — which reaches no process boundary
-/// — cannot slip into it.
+/// types that cross a process boundary are the ports' and the supervision
+/// domain's own, so this reads both: a type cannot fall out of the set by
+/// being declared in another crate rather than here, and a port-shaped error
+/// vocabulary — which reaches no process boundary — cannot slip into it.
 fn schema_set_findings(root: &Path) -> Vec<String> {
     let mut findings = Vec::new();
     for entry in declared() {

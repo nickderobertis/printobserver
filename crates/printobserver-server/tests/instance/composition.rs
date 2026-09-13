@@ -11,6 +11,7 @@ use core::time::Duration;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter};
 use printobserver_oneharness::{
@@ -19,7 +20,6 @@ use printobserver_oneharness::{
 };
 use printobserver_printer_api::PrinterPort as _;
 use printobserver_server::{Ports, Running, Server, ServerConfig};
-use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::json;
 use tempfile::TempDir;
@@ -64,7 +64,7 @@ pub struct Composed {
     /// The server, serving.
     pub server: Running,
     /// Durable state, as the server holds it.
-    pub store: Arc<dyn StorePort>,
+    pub stores: Stores,
     /// The client this tier drives the real surface with.
     pub client: reqwest::Client,
     /// The configuration it is running under.
@@ -80,11 +80,11 @@ impl Composed {
     pub async fn open(instance: &Scripted, octoprint: &str) -> Self {
         let root = TempDir::new().expect("this tier's own root");
         let config = configuration(root.path(), instance, octoprint);
-        let (server, store) = start(&config).await;
+        let (server, stores) = start(&config).await;
         Self {
             root,
             server,
-            store,
+            stores,
             client: reqwest::Client::new(),
             config,
         }
@@ -129,11 +129,11 @@ impl Composed {
             ..
         } = self;
         server.stop().await;
-        let (server, store) = start(&config).await;
+        let (server, stores) = start(&config).await;
         Self {
             root,
             server,
-            store,
+            stores,
             client,
             config,
         }
@@ -448,9 +448,10 @@ fn responder_actions() -> String {
 }
 
 /// Start one server over the real four.
-async fn start(config: &ServerConfig) -> (Running, Arc<dyn StorePort>) {
-    let store: Arc<dyn StorePort> =
-        Arc::new(SqliteStore::open(&config.state_dir).expect("the store opens"));
+async fn start(config: &ServerConfig) -> (Running, Stores) {
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store opens"),
+    ));
     let printer = Arc::new(OctoPrintPrinter::new(
         config.octoprint.clone().with_timeout(TIMEOUT),
     ));
@@ -458,7 +459,7 @@ async fn start(config: &ServerConfig) -> (Running, Arc<dyn StorePort>) {
         config.clone(),
         Ports {
             printer: printer as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: Arc::clone(&store),
+            stores: stores.clone(),
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),
@@ -467,5 +468,5 @@ async fn start(config: &ServerConfig) -> (Running, Arc<dyn StorePort>) {
     )
     .await
     .expect("the server starts against the scripted instance");
-    (server, store)
+    (server, stores)
 }

@@ -49,11 +49,6 @@ manifest = "crates/printobserver-vision-api/Cargo.toml"
 id = "crate:printobserver-supervisor-api"
 manifest = "crates/printobserver-supervisor-api/Cargo.toml"
 
-# The store port.
-[[target]]
-id = "crate:printobserver-store-api"
-manifest = "crates/printobserver-store-api/Cargo.toml"
-
 # The OctoPrint adapter behind the printer port.
 [[target]]
 id = "crate:printobserver-octoprint"

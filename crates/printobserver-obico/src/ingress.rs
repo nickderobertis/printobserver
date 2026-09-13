@@ -43,8 +43,8 @@
 
 use std::sync::Arc;
 
+use printobserver_core::store::{EventDraft, EventStore, ImageStore, PrintStore, StoreError};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
-use printobserver_store_api::{EventDraft, StoreError, StorePort};
 use printobserver_types::{
     EventBody, EventId, EventRecord, ImageRecord, PrintId, PrintRecord, RawBytes, Timestamp,
 };
@@ -123,29 +123,43 @@ fn detail_of(refusal: &VisionError) -> String {
     }
 }
 
-/// The Obico ingress: the adapter and the store it writes through.
+/// The Obico ingress: the adapter and the three stores it writes through.
+///
+/// It names the three aggregates its steps touch and no other: the print the
+/// alert is correlated to, the event log it is appended to, and the image
+/// stored beside it. Actions, interventions and sessions are the supervision
+/// domain's own to write, and nothing here can reach them.
 #[derive(Clone)]
 pub struct ObicoIngress {
     /// The adapter that reads a body and fetches a snapshot.
     vision: ObicoVision,
-    /// Where every step of the handling is written down.
-    store: Arc<dyn StorePort>,
+    /// The print records an alert is correlated to.
+    prints: Arc<dyn PrintStore>,
+    /// The log every step of the handling is written down in.
+    events: Arc<dyn EventStore>,
+    /// The images stored beside the events.
+    images: Arc<dyn ImageStore>,
 }
 
 impl ObicoIngress {
-    /// The ingress, under the bounds given.
+    /// The ingress, over the three stores it writes through, under the bounds
+    /// given.
     ///
     /// # Errors
     ///
     /// Returns [`ObicoVisionError`] when the adapter's HTTP client cannot be
     /// built.
     pub fn new(
-        store: Arc<dyn StorePort>,
+        prints: Arc<dyn PrintStore>,
+        events: Arc<dyn EventStore>,
+        images: Arc<dyn ImageStore>,
         config: ObicoVisionConfig,
     ) -> Result<Self, ObicoVisionError> {
         Ok(Self {
             vision: ObicoVision::new(config)?,
-            store,
+            prints,
+            events,
+            images,
         })
     }
 
@@ -167,7 +181,7 @@ impl ObicoIngress {
             .expect("a payload of one string renders"),
             raw: Some(body),
         };
-        match self.store.append_event(draft).await {
+        match self.events.append_event(draft).await {
             Ok(recorded) => IngressError::Refused {
                 refusal,
                 recorded: Box::new(recorded),
@@ -189,11 +203,11 @@ impl ObicoIngress {
         let Some(print) = print else {
             return Ok(None);
         };
-        if let Some(held) = self.store.print_by_obico_id(print.id).await? {
+        if let Some(held) = self.prints.print_by_obico_id(print.id).await? {
             return Ok(Some(held));
         }
         Ok(Some(
-            self.store
+            self.prints
                 .open_print(Some(print.id), print.file_name.clone())
                 .await?,
         ))
@@ -223,7 +237,7 @@ impl ObicoIngress {
             .expect("a payload of an identifier, a site and a string renders"),
             raw: None,
         };
-        self.store.append_event(draft).await?;
+        self.events.append_event(draft).await?;
         Ok(())
     }
 
@@ -245,7 +259,7 @@ impl ObicoIngress {
         };
         let print = self.print_for(alert.print.as_ref()).await?;
         let event = self
-            .store
+            .events
             .append_event(EventDraft {
                 print_id: print.as_ref().map(|record| record.id),
                 source: alert.source,
@@ -261,7 +275,7 @@ impl ObicoIngress {
             match self.vision.fetch_image(source_url.clone()).await {
                 Ok(fetched) => {
                     image = Some(
-                        self.store
+                        self.images
                             .put_image(
                                 record.id,
                                 event.id,
@@ -290,7 +304,7 @@ impl ObicoIngress {
 
 #[cfg(test)]
 mod tests {
-    use printobserver_store_api::StoreError;
+    use printobserver_core::store::StoreError;
     use printobserver_types::contract::Sample as _;
     use printobserver_types::{EventRecord, RawBytes};
     use printobserver_vision_api::VisionError;

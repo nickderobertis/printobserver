@@ -24,8 +24,8 @@
 
 use std::sync::Arc;
 
+use printobserver_core::store::{ActionStore, EventDraft, EventStore, PrintStore, SessionStore};
 use printobserver_core::{CoreError, Supervisor, system_source};
-use printobserver_store_api::{EventDraft, StorePort};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -128,10 +128,30 @@ pub struct Reconciliation {
 ///
 /// Returns the store's own error when they could not be read.
 pub async fn overdue(
-    store: &Arc<dyn StorePort>,
+    actions: &Arc<dyn ActionStore>,
     at: Timestamp,
 ) -> Result<Vec<Intervention>, CoreError> {
-    Ok(store.due_interventions(at).await?)
+    Ok(actions.due_interventions(at).await?)
+}
+
+/// The three stores a reconciliation reads and writes: the prints it adopts,
+/// the sessions it resumes, and the log it records each adoption in.
+#[derive(Clone)]
+pub struct ReconcileStores {
+    /// The print records.
+    pub prints: Arc<dyn PrintStore>,
+    /// The supervision sessions.
+    pub sessions: Arc<dyn SessionStore>,
+    /// The event log.
+    pub events: Arc<dyn EventStore>,
+}
+
+impl core::fmt::Debug for ReconcileStores {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ReconcileStores")
+            .finish_non_exhaustive()
+    }
 }
 
 /// Adopt what the store holds, and record each adoption.
@@ -144,22 +164,22 @@ pub async fn overdue(
 /// which is the same rule the ordinary expiry sweep takes.
 pub async fn reconcile(
     supervisor: &Arc<Supervisor>,
-    store: &Arc<dyn StorePort>,
+    stores: &ReconcileStores,
     overdue: Vec<Intervention>,
 ) -> Result<Reconciliation, CoreError> {
     let mut found = Reconciliation::default();
 
-    for print in store.open_prints().await? {
-        record(store, print.id, StartupOutcome::PrintAdopted).await?;
+    for print in stores.prints.open_prints().await? {
+        record(&stores.events, print.id, StartupOutcome::PrintAdopted).await?;
         found.adopted.push(print.id);
-        let Some(session) = store.session(print.id).await? else {
+        let Some(session) = stores.sessions.session(print.id).await? else {
             continue;
         };
         if session.closed_at.is_some() {
             continue;
         }
         record(
-            store,
+            &stores.events,
             print.id,
             StartupOutcome::SessionResumed {
                 session_name: session.session_name,
@@ -172,7 +192,7 @@ pub async fn reconcile(
     for intervention in overdue {
         let outcome = supervisor.expire_intervention(&intervention).await?;
         record(
-            store,
+            &stores.events,
             intervention.print_id,
             StartupOutcome::InterventionExpired {
                 intervention_id: intervention.id,
@@ -189,11 +209,11 @@ pub async fn reconcile(
 
 /// Write one adoption down.
 async fn record(
-    store: &Arc<dyn StorePort>,
+    events: &Arc<dyn EventStore>,
     print_id: PrintId,
     outcome: StartupOutcome,
 ) -> Result<(), CoreError> {
-    store
+    events
         .append_event(EventDraft {
             print_id: Some(print_id),
             source: system_source(),

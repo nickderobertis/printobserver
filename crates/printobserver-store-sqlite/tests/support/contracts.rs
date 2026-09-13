@@ -2,7 +2,7 @@
 //!
 //! Two of this crate's checks rest on a set nobody maintains by hand: which
 //! record kinds the contracts declare, and which references those records make
-//! to one another. Both are read off the declarations — the store port's own
+//! to one another. Both are read off the declarations — the store traits' own
 //! answers, and the type crate's own structs — so a record kind or a reference
 //! added to the contracts is one this crate is held to without anybody
 //! remembering to add it here.
@@ -10,7 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::surface::{
-    crate_dir, crate_sources, named_types, parse, read, struct_fields, struct_names, trait_methods,
+    Method, crate_dir, crate_sources, named_types, parse, read, struct_fields, struct_names,
+    trait_methods,
 };
 
 /// The table each record kind is held in.
@@ -55,25 +56,40 @@ pub fn type_sources() -> Vec<syn::File> {
     crate_sources("printobserver-types")
 }
 
-/// The store port, parsed.
+/// The five store traits, in the order the supervision domain declares them.
+pub const STORE_TRAITS: [&str; 5] = [
+    "PrintStore",
+    "EventStore",
+    "ImageStore",
+    "ActionStore",
+    "SessionStore",
+];
+
+/// The supervision domain's `store` module, where the traits are declared.
 pub fn port_source() -> syn::File {
     parse(&read(
-        &crate_dir("printobserver-store-api")
-            .join("src")
-            .join("lib.rs"),
+        &crate_dir("printobserver-core").join("src").join("store.rs"),
     ))
+}
+
+/// Every method every store trait declares, in declaration order.
+pub fn store_trait_methods(file: &syn::File) -> Vec<Method> {
+    STORE_TRAITS
+        .iter()
+        .flat_map(|name| trait_methods(file, name))
+        .collect()
 }
 
 /// Every record kind the contracts declare that this store persists.
 ///
-/// A record kind is a struct the type crate declares that a method of the store
-/// port answers: the port answering it is what makes it a record this store
+/// A record kind is a struct the type crate declares that a method of a store
+/// trait answers: the trait answering it is what makes it a record this store
 /// holds, and the type crate declaring it is what makes it a contract rather
-/// than a shape of the port's own.
+/// than a shape of the trait's own.
 pub fn record_kinds() -> BTreeSet<String> {
     let declared = struct_names(&type_sources());
     let mut kinds = BTreeSet::new();
-    for method in trait_methods(&port_source(), "StorePort") {
+    for method in store_trait_methods(&port_source()) {
         for name in named_types(&method.returns) {
             if declared.contains(&name) {
                 kinds.insert(name);

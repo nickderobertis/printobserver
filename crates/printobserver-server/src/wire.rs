@@ -11,8 +11,8 @@
 use std::path::PathBuf;
 
 use printobserver_core::PrintContext;
+use printobserver_core::store::ImageLookup;
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
-use printobserver_store_api::ImageLookup;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{

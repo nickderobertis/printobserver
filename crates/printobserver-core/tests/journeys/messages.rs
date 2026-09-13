@@ -6,8 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_core::store::StoreError;
 use printobserver_printer_api::PrinterError;
-use printobserver_store_api::StoreError;
 use printobserver_supervisor_api::SupervisorError;
 use printobserver_types::{
     ActionKind, Actor, ActorClass, Adjustable, PrintAction, PrintId, PrinterState, Range,

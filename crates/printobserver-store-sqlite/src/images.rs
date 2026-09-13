@@ -11,7 +11,7 @@ use core::fmt::Write as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use printobserver_store_api::StoreError;
+use printobserver_core::store::StoreError;
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 

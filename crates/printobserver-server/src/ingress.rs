@@ -35,8 +35,8 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use printobserver_core::Supervisor;
+use printobserver_core::store::{EventDraft, EventStore};
 use printobserver_obico::{ObicoVision, obico_source};
-use printobserver_store_api::{EventDraft, StorePort};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::{EventBody, RawBytes, Timestamp};
 use printobserver_vision_api::{MalformedExternalEventPayload, VisionPort};
@@ -80,8 +80,8 @@ pub struct TokenParam {
 /// What the ingress endpoint is given.
 #[derive(Clone)]
 pub struct IngressState {
-    /// Where an unauthenticated post is written down.
-    store: Arc<dyn StorePort>,
+    /// The log an unauthenticated post is written down in.
+    events: Arc<dyn EventStore>,
     /// The secret every post must carry, which is a value nothing can read out
     /// of this state: what it offers is the comparison rather than the value.
     secret: Arc<SharedSecret>,
@@ -109,14 +109,14 @@ impl IngressState {
     /// the server it belongs to is.
     pub fn start(
         supervisor: Arc<Supervisor>,
-        store: Arc<dyn StorePort>,
+        events: Arc<dyn EventStore>,
         vision: Arc<ObicoVision>,
         secret: SharedSecret,
         bound: core::time::Duration,
     ) -> Self {
         let (queue, mut incoming) = mpsc::channel::<Received>(QUEUE_DEPTH);
         let (completed, _) = watch::channel(0);
-        let worker_store = Arc::clone(&store);
+        let worker_events = Arc::clone(&events);
         let counter = completed.clone();
         tokio::spawn(async move {
             while let Some(received) = incoming.recv().await {
@@ -130,10 +130,10 @@ impl IngressState {
                 // its own turn, and an alert that starved it would answer the
                 // agent minutes after it asked.
                 let supervisor = Arc::clone(&supervisor);
-                let store = Arc::clone(&worker_store);
+                let events = Arc::clone(&worker_events);
                 let vision = Arc::clone(&vision);
                 let handled = tokio::task::spawn_blocking(move || {
-                    printobserver_core::block_on(handle(&supervisor, &store, &vision, received));
+                    printobserver_core::block_on(handle(&supervisor, &events, &vision, received));
                 })
                 .await;
                 debug_assert!(handled.is_ok(), "the handling of one alert panicked");
@@ -141,7 +141,7 @@ impl IngressState {
             }
         });
         Self {
-            store,
+            events,
             secret: Arc::new(secret),
             bound,
             queue,
@@ -161,7 +161,7 @@ impl IngressState {
 /// Handle one body the endpoint took: read it, and give it to the loop.
 async fn handle(
     supervisor: &Arc<Supervisor>,
-    store: &Arc<dyn StorePort>,
+    events: &Arc<dyn EventStore>,
     vision: &Arc<ObicoVision>,
     received: Received,
 ) {
@@ -177,14 +177,14 @@ async fn handle(
             let _ = supervisor.handle_event(alert).await;
         }
         Err(refusal) => {
-            record_unread(store, received.body, refusal.to_string()).await;
+            record_unread(events, received.body, refusal.to_string()).await;
         }
     }
 }
 
 /// Write down one body this system did not read, and the reason it did not.
-async fn record_unread(store: &Arc<dyn StorePort>, body: RawBytes, detail: String) {
-    let _ = store
+async fn record_unread(events: &Arc<dyn EventStore>, body: RawBytes, detail: String) {
+    let _ = events
         .append_event(EventDraft {
             print_id: None,
             source: obico_source(),
@@ -217,7 +217,7 @@ pub(crate) async fn receive(
         let _ = tokio::time::timeout(
             state.bound,
             record_unread(
-                &state.store,
+                &state.events,
                 body,
                 "the post carried no valid shared secret, so this system did not read it"
                     .to_owned(),

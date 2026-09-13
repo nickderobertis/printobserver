@@ -21,7 +21,6 @@ REQUIRED_CRATES = (
     "printobserver-printer-api",
     "printobserver-vision-api",
     "printobserver-supervisor-api",
-    "printobserver-store-api",
     "printobserver-octoprint",
     "printobserver-obico",
     "printobserver-oneharness",

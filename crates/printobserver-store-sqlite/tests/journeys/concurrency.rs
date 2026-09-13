@@ -10,7 +10,7 @@
 //! generous enough to pass slow work can let incorrect work through.
 
 use crate::block_on::block_on;
-use printobserver_store_api::StorePort;
+use crate::fixture::Store;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
 use printobserver_types::PrintId;
 use rusqlite::params;
@@ -42,7 +42,7 @@ fn fill(writer: &rusqlite::Connection) {
 fn a_read_answers_the_pre_write_state_while_a_write_is_uncommitted() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let print =
         block_on(port.open_print(None, Some("before.gcode".to_owned()))).expect("a print opens");
 
@@ -99,8 +99,8 @@ fn a_second_store_on_the_same_directory_reads_what_the_first_wrote() {
     let dir = TempDir::new().expect("a temporary state directory");
     let first = SqliteStore::open(dir.path()).expect("the store opens");
     let second = SqliteStore::open(dir.path()).expect("a second store opens");
-    let writer: &dyn StorePort = &first;
-    let reader: &dyn StorePort = &second;
+    let writer: &dyn Store = &first;
+    let reader: &dyn Store = &second;
 
     let print =
         block_on(writer.open_print(Some(11), None)).expect("a print opens on the first store");

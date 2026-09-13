@@ -1,11 +1,11 @@
 //! The history read's limit rule has one resolution, and it refuses.
 //!
-//! This crate declares the default window, the maximum limit and the one
-//! resolution of the rule, so an implementation imports an answer rather than
-//! choosing one. What an implementation then does with it is proven where the
+//! This crate's `store` module declares the default window, the maximum limit
+//! and the one resolution of the rule, so an implementation imports an answer
+//! rather than choosing one. What an implementation then does with it is proven where the
 //! implementations are.
 
-use printobserver_store_api::{
+use printobserver_core::store::{
     DEFAULT_HISTORY_WINDOW, HistoryQuery, MAX_HISTORY_LIMIT, StoreError, resolve_history_limit,
 };
 use printobserver_types::contract::Sample;
@@ -88,7 +88,7 @@ fn a_query_resolves_its_limit_by_the_same_rule() {
 /// A draft reads its kind off the body it carries.
 #[test]
 fn a_draft_reads_its_kind_off_its_body() {
-    use printobserver_store_api::EventDraft;
+    use printobserver_core::store::EventDraft;
     use printobserver_types::{EventBody, EventSource, Timestamp};
 
     let draft = EventDraft {

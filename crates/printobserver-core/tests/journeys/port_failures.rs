@@ -15,9 +15,9 @@
 //! against — and it is recorded so that a reader can tell what value the
 //! printer was left holding, which is the whole point of recording it.
 
+use printobserver_core::store::StoreError;
 use printobserver_core::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite};
 use printobserver_printer_api::PrinterError;
-use printobserver_store_api::StoreError;
 use printobserver_supervisor_api::SupervisorError;
 use printobserver_types::{
     ActionKind, Actor, ExecutionOutcome, InterventionOutcome, PrintAction, PrintId, PrinterState,

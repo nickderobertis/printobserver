@@ -6,7 +6,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use printobserver_store_api::{EventDraft, StorePort};
+use printobserver_core::store::{
+    ActionStore, EventDraft, EventStore, ImageStore, PrintStore, SessionStore,
+};
 use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
 use printobserver_types::contract::Sample;
 use printobserver_types::serde_json::json;
@@ -15,6 +17,17 @@ use printobserver_types::{
     PrintId, SupervisionSession, Timestamp,
 };
 use tempfile::TempDir;
+
+/// Every store trait at once: one handle a journey drives more than one
+/// aggregate over.
+///
+/// The domain declares one trait per aggregate so that a consumer names only
+/// the aggregates it touches; a conformance journey is the one consumer that
+/// touches all of them, and this is how it holds an implementation of all five
+/// behind one trait object. Every type implementing the five implements this.
+pub trait Store: PrintStore + EventStore + ImageStore + ActionStore + SessionStore {}
+
+impl<S: PrintStore + EventStore + ImageStore + ActionStore + SessionStore + ?Sized> Store for S {}
 
 /// Which implementation a fixture is holding.
 enum Backing {
@@ -74,11 +87,11 @@ impl Fixture {
         }
     }
 
-    /// The store, behind the trait object the supervision core holds it behind.
-    pub fn port(&self) -> Arc<dyn StorePort> {
+    /// The store, behind one trait object carrying every aggregate's trait.
+    pub fn port(&self) -> Arc<dyn Store> {
         match &self.backing {
-            Backing::Sqlite(store) => Arc::clone(store) as Arc<dyn StorePort>,
-            Backing::Memory(store) => Arc::clone(store) as Arc<dyn StorePort>,
+            Backing::Sqlite(store) => Arc::clone(store) as Arc<dyn Store>,
+            Backing::Memory(store) => Arc::clone(store) as Arc<dyn Store>,
         }
     }
 

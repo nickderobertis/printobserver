@@ -8,9 +8,9 @@
 
 use std::sync::Arc;
 
+use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{Method, OPERATIONS, Ports, Running, Server, ServerConfig, StartError};
-use printobserver_store_api::StorePort;
 use printobserver_types::PrintId;
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
@@ -21,7 +21,7 @@ use crate::printer::RecordingPrinter;
 use crate::world::{document, manifest_write, write};
 
 /// One server over the store given, in a root of its own.
-async fn served(root: &std::path::Path, store: Arc<dyn StorePort>) -> Result<Running, StartError> {
+async fn served(root: &std::path::Path, stores: Stores) -> Result<Running, StartError> {
     let path = write(root, &document(root, "http://127.0.0.1:1"));
     let config = ServerConfig::load(&path).expect("the configuration is accepted");
     Server::start_with(
@@ -29,7 +29,7 @@ async fn served(root: &std::path::Path, store: Arc<dyn StorePort>) -> Result<Run
         Ports {
             printer: RecordingPrinter::printing()
                 as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store,
+            stores,
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),

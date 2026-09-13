@@ -22,7 +22,7 @@
 //! about is the state the event was handled at, not whatever the machine has
 //! drifted to since.
 
-use printobserver_store_api::HistoryQuery;
+use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
 };
@@ -59,7 +59,7 @@ impl Supervisor {
     /// recorded against the event rather than answered here.
     pub async fn handle_event(&self, alert: NormalizedAlert) -> Result<EventRecord, CoreError> {
         let print = self.resolve_print(&alert).await?;
-        let draft = printobserver_store_api::EventDraft {
+        let draft = EventDraft {
             print_id: print.as_ref().map(|record| record.id),
             source: alert.source.clone(),
             received_at: alert.received_at,
@@ -67,7 +67,8 @@ impl Supervisor {
             raw: Some(alert.raw.clone()),
         };
         let event = self
-            .store()
+            .stores()
+            .events
             .append_event(draft)
             .await
             .map_err(CoreError::Store)?;
@@ -96,11 +97,17 @@ impl Supervisor {
         let Some(provider_print) = &alert.print else {
             return Ok(None);
         };
-        if let Some(found) = self.store().print_by_obico_id(provider_print.id).await? {
+        if let Some(found) = self
+            .stores()
+            .prints
+            .print_by_obico_id(provider_print.id)
+            .await?
+        {
             return Ok(Some(found));
         }
         let opened = self
-            .store()
+            .stores()
+            .prints
             .open_print(Some(provider_print.id), provider_print.file_name.clone())
             .await?;
         Ok(Some(opened))
@@ -128,7 +135,8 @@ impl Supervisor {
             }
         };
         match self
-            .store()
+            .stores()
+            .images
             .put_image(
                 print.id,
                 event.id,
@@ -202,7 +210,7 @@ impl Supervisor {
                     .await?;
                 }
                 let session_name = outcome.session.session_name.clone();
-                self.store().put_session(outcome.session).await?;
+                self.stores().sessions.put_session(outcome.session).await?;
                 self.append_system_event(
                     print.id,
                     EventBody::of(&AgentAssessmentPayload {
@@ -240,7 +248,8 @@ impl Supervisor {
             return Ok(held);
         }
         let print = self
-            .store()
+            .stores()
+            .prints
             .print(print_id)
             .await?
             .ok_or(CoreError::NoSuchPrint { print_id })?;
@@ -284,11 +293,12 @@ impl Supervisor {
                 None
             }
         };
-        let manifest = self.store().manifest(print.id).await?;
+        let manifest = self.stores().prints.manifest(print.id).await?;
         let bounds = self.bounds_for(Some(print), print.id).await?;
-        let interventions = self.store().active_interventions(print.id).await?;
+        let interventions = self.stores().actions.active_interventions(print.id).await?;
         let recent_events = self
-            .store()
+            .stores()
+            .events
             .history(HistoryQuery {
                 print_id: print.id,
                 kinds: Vec::new(),
@@ -312,8 +322,8 @@ impl Supervisor {
 
     /// Where one image's bytes are, when the store still has them.
     async fn image_path(&self, image: &ImageRef) -> Option<std::path::PathBuf> {
-        match self.store().image(image.id).await {
-            Ok(printobserver_store_api::ImageLookup::Found { path, .. }) => Some(path),
+        match self.stores().images.image(image.id).await {
+            Ok(ImageLookup::Found { path, .. }) => Some(path),
             _ => None,
         }
     }
@@ -330,11 +340,12 @@ impl Supervisor {
     ) -> Result<(), CoreError> {
         let reason = format!("the print reached {state:?}");
         self.expire_all_active(print.id).await?;
-        self.store()
+        self.stores()
+            .prints
             .end_print(print.id, state.clone(), self.clock().now(), reason.clone())
             .await?;
         let _ = self.agent().close_session(print.id, reason.clone()).await;
-        if let Some(session) = self.store().session(print.id).await? {
+        if let Some(session) = self.stores().sessions.session(print.id).await? {
             self.append_system_event(
                 print.id,
                 EventBody::of(&SupervisionSessionClosedPayload {
@@ -354,8 +365,9 @@ impl Supervisor {
         body: EventBody,
     ) -> Result<EventRecord, CoreError> {
         Ok(self
-            .store()
-            .append_event(printobserver_store_api::EventDraft {
+            .stores()
+            .events
+            .append_event(EventDraft {
                 print_id: Some(print_id),
                 source: system_source(),
                 received_at: self.clock().now(),

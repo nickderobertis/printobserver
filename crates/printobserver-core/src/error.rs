@@ -1,10 +1,11 @@
 //! The one error type core answers its callers with.
 
 use printobserver_printer_api::PrinterError;
-use printobserver_store_api::StoreError;
 use printobserver_supervisor_api::SupervisorError;
 use printobserver_types::PrintId;
 use printobserver_vision_api::VisionError;
+
+use crate::store::StoreError;
 
 /// Why core could not do what it was asked.
 ///

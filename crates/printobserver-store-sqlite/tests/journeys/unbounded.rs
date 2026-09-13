@@ -3,39 +3,36 @@
 //! This is a property of the surface rather than of any answer: a store
 //! exposing both a correct paged read and an unbounded one satisfies every
 //! assertion the paged read is held to. So this enumerates every method the
-//! crate's store types expose and every method the port declares, and refuses
+//! crate's store types expose and every method the store traits declare, and refuses
 //! one whose answer carries a collection of events under neither bound — a
 //! limit the declared maximum bounds, or a page size answered with a cursor.
 
 use std::collections::BTreeSet;
 
+use crate::contracts::{port_source, store_trait_methods};
 use crate::surface::{
     Method, crate_dir, crate_sources, exposed_methods, named_types, parse, read, struct_fields,
-    struct_names, trait_methods,
+    struct_names,
 };
 
 /// The store types this crate exposes.
 const STORE_TYPES: [&str; 2] = ["SqliteStore", "MemoryStore"];
 
-/// The sources the enumeration reads: this crate's, and the port's.
+/// The sources the enumeration reads: this crate's, and the store traits'.
 fn sources() -> Vec<syn::File> {
     let mut files = crate_sources("printobserver-store-sqlite");
-    files.push(parse(&read(
-        &crate_dir("printobserver-store-api")
-            .join("src")
-            .join("lib.rs"),
-    )));
+    files.push(port_source());
     files
 }
 
-/// Every method the enumeration covers, across the stores and the port.
+/// Every method the enumeration covers, across the stores and the traits.
 fn enumerated(files: &[syn::File]) -> Vec<Method> {
     let mut methods: Vec<Method> = STORE_TYPES
         .iter()
         .flat_map(|name| exposed_methods(files, name))
         .collect();
     for file in files {
-        methods.extend(trait_methods(file, "StorePort"));
+        methods.extend(store_trait_methods(file));
     }
     methods
 }
@@ -88,7 +85,7 @@ fn unbounded(files: &[syn::File]) -> Vec<String> {
         .collect()
 }
 
-/// No method the store types or the port expose answers events unbounded.
+/// No method the store types or the traits expose answers events unbounded.
 #[test]
 fn no_exposed_method_answers_events_under_no_bound() {
     let files = sources();

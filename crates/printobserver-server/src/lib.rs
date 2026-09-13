@@ -6,7 +6,7 @@
 //! each port, and the one event kind a restart writes — the startup
 //! reconciliation [`reconcile`] alone records.
 //!
-//! May depend on: `printobserver-types`, the four port crates,
+//! May depend on: `printobserver-types`, the three port crates,
 //! `printobserver-core`, and the implementation crates — it is a composition
 //! root, so naming an implementation is its job rather than a violation.
 //!
@@ -38,6 +38,7 @@ pub mod ingress;
 pub mod operations;
 pub mod reconcile;
 pub mod server;
+pub mod store;
 pub mod wire;
 
 pub use api::{ApiState, router};
@@ -53,7 +54,8 @@ pub use operations::{
     ValueKind, operation,
 };
 pub use reconcile::{
-    Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue, reconcile,
+    ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue,
+    reconcile,
 };
 pub use server::{
     CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE,
