@@ -8,11 +8,13 @@
 //! the printer holding the intervention's applied value with nothing in the
 //! record saying so.
 
-use printobserver_printer_api::PrinterError;
-use printobserver_types::{
-    Actor, FAN_PERCENT_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot,
-    Intervention, InterventionOutcome, PrintAction, PrintId, PrinterState, Reported,
+use printobserver_core::{Actor, Intervention, InterventionOutcome, PrintAction};
+use printobserver_printer_api::PrinterState;
+use printobserver_printer_api::{
+    FAN_PERCENT_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot, PrinterError,
+    PrinterSnapshot,
 };
+use printobserver_types::{PrintId, Reported};
 
 use crate::fakes::{PrinterMethod, printer_snapshot};
 use crate::journal::Call;
@@ -20,7 +22,7 @@ use crate::world::{World, assert_same, failure_alert};
 
 /// The printer this cleanup runs against: a fan and a bed it reports, and a
 /// flowrate it does not.
-fn reporting_snapshot(state: PrinterState) -> printobserver_types::PrinterSnapshot {
+fn reporting_snapshot(state: PrinterState) -> PrinterSnapshot {
     let mut snapshot = printer_snapshot(state);
     snapshot.fan_percent = Some(Reported::new(40.0, FAN_PERCENT_RANGE));
     snapshot.flowrate_factor = None;

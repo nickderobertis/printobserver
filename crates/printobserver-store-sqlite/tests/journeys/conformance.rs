@@ -10,17 +10,17 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::block_on::block_on;
-use crate::fixture::{Fixture, draft, instant, manifest, request, session};
-use printobserver_store_api::{
-    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome,
-    StoreError, StorePort,
+use crate::fixture::{Fixture, Store, draft, instant, manifest, request, session};
+use printobserver_core::store::{
+    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome, StoreError,
 };
+use printobserver_core::{
+    ExecutionOutcome, InterventionId, InterventionOutcome, PolicyDecision, PrintRecord,
+    RejectionReason,
+};
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_store_sqlite::settle_label;
-use printobserver_types::{
-    Adjustable, EventKind, EventRecord, ExecutionOutcome, ImageId, InterventionId,
-    InterventionOutcome, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    RejectionReason, Timestamp,
-};
+use printobserver_types::{EventKind, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// A history read of one print, with no filter and no limit.
 fn whole_window(print_id: PrintId) -> HistoryQuery {
@@ -34,7 +34,7 @@ fn whole_window(print_id: PrintId) -> HistoryQuery {
 }
 
 /// A print with one event on it, which most journeys need before anything else.
-fn print_and_event(port: &Arc<dyn StorePort>) -> (PrintRecord, EventRecord) {
+fn print_and_event(port: &Arc<dyn Store>) -> (PrintRecord, EventRecord) {
     let print = block_on(port.open_print(Some(7), Some("bracket.gcode".to_owned())))
         .expect("a print opens");
     let event = block_on(port.append_event(draft(
@@ -68,7 +68,7 @@ fn every_record_kind_is_written_and_read_back() {
         let image = block_on(port.put_image(
             print.id,
             event.id,
-            Some("https://obico.example/snapshot.jpg".to_owned()),
+            Some("https://detector.example/snapshot.jpg".to_owned()),
             "image/jpeg".to_owned(),
             RawBytes::new(b"the first snapshot".to_vec()),
         ))
@@ -127,7 +127,7 @@ fn every_record_kind_is_written_and_read_back() {
     }
 }
 
-/// A print is read by its own identifier and by Obico's, and ends once.
+/// A print is read by its own identifier and by the provider's, and ends once.
 #[test]
 fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
     for store in Fixture::both() {
@@ -136,19 +136,19 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
         let print = block_on(port.open_print(Some(41), None)).expect("a print opens");
 
         assert_eq!(
-            block_on(port.print_by_obico_id(41)),
+            block_on(port.print_by_provider_id(41)),
             Ok(Some(print.clone())),
-            "{name}: the print did not read back by Obico's identifier"
+            "{name}: the print did not read back by the provider's identifier"
         );
         assert_eq!(
-            block_on(port.print_by_obico_id(42)),
+            block_on(port.print_by_provider_id(42)),
             Ok(None),
-            "{name}: an unknown Obico identifier answered a print"
+            "{name}: an unknown provider identifier answered a print"
         );
 
         let narrowed = block_on(port.record_narrowing(
             print.id,
-            printobserver_types::ManifestNarrowing {
+            printobserver_core::ManifestNarrowing {
                 adjustable: Adjustable::Fan,
                 requested: printobserver_types::Range {
                     min: 0.0,
@@ -164,7 +164,7 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
         assert_eq!(narrowed.narrowings.len(), 1, "{name}");
         let narrowed = block_on(port.record_narrowing(
             print.id,
-            printobserver_types::ManifestNarrowing {
+            printobserver_core::ManifestNarrowing {
                 adjustable: Adjustable::Feedrate,
                 requested: printobserver_types::Range { min: 0.5, max: 2.0 },
                 applied: printobserver_types::Range { min: 0.8, max: 1.2 },
@@ -244,7 +244,7 @@ struct Written {
 
 impl Written {
     /// Write more events than the default window, over several kinds and spans.
-    fn write(port: &Arc<dyn StorePort>, print_id: PrintId) -> Self {
+    fn write(port: &Arc<dyn Store>, print_id: PrintId) -> Self {
         let kinds = [
             "obico_failure_alert",
             "malformed_external_event",
@@ -269,7 +269,7 @@ impl Written {
     /// The events matching a kind and a span, oldest first.
     fn matching(
         &self,
-        kind: Option<EventKind>,
+        kind: Option<&EventKind>,
         span: Option<(Timestamp, Timestamp)>,
     ) -> Vec<EventRecord> {
         self.events
@@ -307,14 +307,14 @@ fn the_history_read_orders_filters_and_refuses() {
             "{name}: the default read is not the newest window, newest first"
         );
 
-        let kind = EventKind::MalformedExternalEvent;
+        let kind = EventKind::new("malformed_external_event").expect("a kind name");
         let by_kind = block_on(port.history(HistoryQuery {
-            kinds: vec![kind],
+            kinds: vec![kind.clone()],
             limit: Some(MAX_HISTORY_LIMIT),
             ..whole_window(print.id)
         }))
         .expect("a filtered history reads");
-        let expected_kind = reversed(written.matching(Some(kind), None));
+        let expected_kind = reversed(written.matching(Some(&kind), None));
         assert!(
             !expected_kind.is_empty(),
             "{name}: the corpus has no {kind:?}"
@@ -343,15 +343,15 @@ fn the_history_read_orders_filters_and_refuses() {
         );
 
         let both = block_on(port.history(HistoryQuery {
-            kinds: vec![kind],
+            kinds: vec![kind.clone()],
             since: Some(span.0),
             until: Some(span.1),
             limit: Some(MAX_HISTORY_LIMIT),
             ..whole_window(print.id)
         }))
         .expect("a filtered history reads");
-        let expected_both = reversed(written.matching(Some(kind), Some(span)));
-        assert_distinguishing(name, &written, kind, span);
+        let expected_both = reversed(written.matching(Some(&kind), Some(span)));
+        assert_distinguishing(name, &written, &kind, span);
         assert_eq!(
             both, expected_both,
             "{name}: the two filters together did not hold"
@@ -390,7 +390,7 @@ fn reversed(mut events: Vec<EventRecord>) -> Vec<EventRecord> {
 fn assert_distinguishing(
     name: &str,
     written: &Written,
-    kind: EventKind,
+    kind: &EventKind,
     span: (Timestamp, Timestamp),
 ) {
     let both = written.matching(Some(kind), Some(span));
@@ -507,7 +507,7 @@ fn every_reference_the_port_can_name_is_refused() {
         let (print, event) = print_and_event(&port);
         let absent_print = PrintId::new();
         let absent_event = printobserver_types::EventId::new();
-        let absent_action = printobserver_types::ActionId::new();
+        let absent_action = printobserver_core::ActionId::new();
 
         assert_eq!(
             block_on(port.append_event(draft(
@@ -583,7 +583,7 @@ fn an_execution_against_no_action_is_refused_for_the_constraint() {
     for store in Fixture::both() {
         let name = store.name();
         let port = store.port();
-        let absent_action = printobserver_types::ActionId::new();
+        let absent_action = printobserver_core::ActionId::new();
 
         assert_eq!(
             block_on(port.record_execution(absent_action, ExecutionOutcome::Succeeded)),

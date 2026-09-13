@@ -2,25 +2,30 @@
 //!
 //! Owns: the supervision logic — the loop that turns printer state and vision
 //! observations into supervisory decisions, and the policy that decides which
-//! decisions are allowed to reach the printer.
+//! decisions are allowed to reach the printer — together with the event kinds
+//! and source names that logic writes ([`kinds`]), the one aggregate a
+//! caller and the agent both read, the print's context ([`context`]), and the
+//! persistence interfaces it needs, one per aggregate ([`store`]).
 //!
-//! May depend on: `printobserver-types` and the four port crates
+//! May depend on: `printobserver-types` and the three port crates
 //! (`printobserver-printer-api`, `printobserver-vision-api`,
-//! `printobserver-supervisor-api`, `printobserver-store-api`), and NO
-//! implementation crate. This is the rule the whole design rests on and `just
-//! check-repo` enforces it.
+//! `printobserver-supervisor-api`), and NO implementation crate. This is the
+//! rule the whole design rests on and `just check-repo` enforces it. The
+//! persistence interfaces this crate needs are its own ([`store`]), one trait
+//! per aggregate it persists, and the store implementation depends on this
+//! crate to implement them.
 //!
 //! # The policy, which is the reason this layer exists
 //!
-//! Obico can already see a failure and `OctoPrint` can already drive the
-//! machine. What does not exist without this crate is the thing in between that
+//! A failure detector can already see a failure and a printer can already
+//! drive the machine. What does not exist without this crate is the thing in between that
 //! decides what an agent is allowed to do about it, and its whole value is in
 //! being thin, bounded, and the **single** place that decision is made — so
 //! that an operator's own commands are bounded by exactly the same rules an
 //! agent's are.
 //!
 //! * **Effective bounds** are the configured [safety
-//!   envelope](printobserver_types::SafetyEnvelope) intersected with the active
+//!   envelope](crate::records::SafetyEnvelope) intersected with the active
 //!   print's manifest. A manifest may only narrow; a range wider than the
 //!   envelope's is narrowed to the envelope's and the narrowing is recorded on
 //!   the print. See [`bounds`].
@@ -47,10 +52,14 @@ pub mod block_on;
 pub mod bounds;
 pub mod clock;
 pub mod config;
+pub mod context;
 pub mod decision;
 pub mod error;
 pub mod events;
 pub mod expiry;
+pub mod kinds;
+pub mod records;
+pub mod store;
 pub mod supervisor;
 pub mod turn_lock;
 
@@ -59,9 +68,26 @@ pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{CoreConfig, DEFAULT_EXPIRY_POLL, DEFAULT_RECENT_EVENTS, PRINT_ID_PLACEHOLDER};
+pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, decide, valid_from};
 pub use error::CoreError;
 pub use events::TERMINAL_STATES;
 pub use expiry::{rejection_detail, restoring_action};
+pub use kinds::{
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
+    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    PortFailureSite, agent_source, operator_source, system_source,
+};
+pub use records::{
+    AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
+    ActorClass, EffectiveBounds, ExecutionOutcome, ImageRecord, Intervention, InterventionId,
+    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintAction, PrintRecord,
+    RejectionReason, SafetyEnvelope,
+};
+pub use store::{
+    ActionStore, AuditPage, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore, HistoryQuery,
+    ImageLookup, ImageStore, MAX_HISTORY_LIMIT, PrintStore, SessionStore, SettleOutcome,
+    StoreError, Stores, resolve_history_limit,
+};
 pub use supervisor::{Issued, Supervisor};
 pub use turn_lock::{TurnGuard, TurnLocks};

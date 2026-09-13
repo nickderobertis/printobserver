@@ -234,7 +234,7 @@ fn documented_arguments_require_closed_quotes() {
 
 /// Whether one word is a UUID as this system spells one.
 fn is_identifier(word: &str) -> bool {
-    word.parse::<printobserver_types::ActionId>().is_ok()
+    word.parse::<printobserver_types::PrintId>().is_ok()
         && matches!(word.as_bytes().get(19), Some(b'8'..=b'b'))
 }
 

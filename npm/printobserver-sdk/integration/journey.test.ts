@@ -22,7 +22,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { Client } from "../src/client.ts";
-import type { JobManifest, PrinterState } from "../src/contract.ts";
+import { type JobManifest, type PrinterState, payloadOf } from "../src/contract.ts";
 import { NoReason, Rejected } from "../src/surface.ts";
 import { Recording, same } from "./live.ts";
 import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
@@ -178,22 +178,21 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
 
   // journey step 8: history — read after the adjustments, so it has them to
   //                           account for.
+  // Each payload is read through the kind table: `payloadOf` answers the
+  // payload as its own type for an event under that kind and nothing for any
+  // other, so a walk over the whole history picks one kind out without
+  // matching on the name a second time.
   const events = (await client.history(world.print_id, 200)).events;
-  const asked = events.find(
-    (event) =>
-      event.kind === "action_requested" &&
-      event.payload.action.action === "set_feedrate_factor" &&
-      event.payload.action.factor === INSIDE,
-  );
+  const asked = events
+    .flatMap((event) => payloadOf(event, "action_requested") ?? [])
+    .find(
+      (requested) =>
+        requested.action.action === "set_feedrate_factor" && requested.action.factor === INSIDE,
+    );
   expect(asked).toBeDefined();
-  const actionId =
-    asked?.kind === "action_requested" ? asked.payload.action_id : "no action was found";
-  const rejected = events.flatMap((event) =>
-    event.kind === "action_rejected" ? [event.payload.action_id] : [],
-  );
-  const executed = events.flatMap((event) =>
-    event.kind === "action_executed" ? [event.payload.action_id] : [],
-  );
+  const actionId = asked?.action_id ?? "no action was found";
+  const rejected = events.flatMap((event) => payloadOf(event, "action_rejected")?.action_id ?? []);
+  const executed = events.flatMap((event) => payloadOf(event, "action_executed")?.action_id ?? []);
   expect(rejected).not.toContain(actionId);
   expect(executed).toContain(actionId);
   expect(rejected.length).toBeGreaterThan(0);

@@ -23,7 +23,7 @@
 //! anyone requested, and none of them takes a decision — the event append in
 //! particular is the *first* thing the loop does, before any decision could
 //! exist. What the policy stands between is a requested
-//! [`PrintAction`](printobserver_types::PrintAction) and the printer.
+//! [`PrintAction`](crate::records::PrintAction) and the printer.
 //!
 //! The port's two reads, `snapshot` and `job`, are outside the rule for that
 //! same reason, and are reached through [`Supervisor::read_snapshot`] and
@@ -39,14 +39,14 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
 
-use printobserver_printer_api::{PrinterError, PrinterPort};
-use printobserver_store_api::{StoreError, StorePort};
+use crate::records::{ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction};
+use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{
-    ActionRecord, ActionRequest, ExecutionOutcome, JobSnapshot, PolicyDecision, PrintAction,
-    PrintContext, PrintId, PrinterSnapshot, Timestamp,
-};
+use printobserver_types::{PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
+
+use crate::context::PrintContext;
+use crate::store::{StoreError, Stores};
 
 use crate::block_on::block_on;
 use crate::clock::Clock;
@@ -87,8 +87,8 @@ impl Issued {
 pub struct Supervisor {
     /// The printer. Private to this module, and named nowhere else.
     printer: Arc<dyn PrinterPort>,
-    /// Durable state.
-    store: Arc<dyn StorePort>,
+    /// Durable state, one handle per aggregate.
+    stores: Stores,
     /// External observations.
     vision: Arc<dyn VisionPort>,
     /// The supervising agent's harness.
@@ -115,7 +115,8 @@ impl core::fmt::Debug for Supervisor {
 }
 
 impl Supervisor {
-    /// Build a supervisor over the four ports, and start its expiry driver.
+    /// Build a supervisor over the three ports and the stores, and start its
+    /// expiry driver.
     ///
     /// The driver is a thread of core's own holding a weak reference, so it
     /// stops of its own accord when the last handle to the supervisor is
@@ -131,7 +132,7 @@ impl Supervisor {
     pub fn new(
         config: CoreConfig,
         printer: Arc<dyn PrinterPort>,
-        store: Arc<dyn StorePort>,
+        stores: Stores,
         vision: Arc<dyn VisionPort>,
         agent: Arc<dyn SupervisorPort>,
         clock: Arc<dyn Clock>,
@@ -139,7 +140,7 @@ impl Supervisor {
         let poll = config.expiry_poll;
         let supervisor = Arc::new(Self {
             printer,
-            store,
+            stores,
             vision,
             agent,
             clock,
@@ -162,9 +163,9 @@ impl Supervisor {
         supervisor
     }
 
-    /// Durable state.
-    pub(crate) fn store(&self) -> &Arc<dyn StorePort> {
-        &self.store
+    /// Durable state, one handle per aggregate.
+    pub(crate) const fn stores(&self) -> &Stores {
+        &self.stores
     }
 
     /// External observations.
@@ -272,7 +273,8 @@ impl Supervisor {
         decision: PolicyDecision,
     ) -> Result<Issued, StoreError> {
         let record = self
-            .store
+            .stores
+            .actions
             .record_action(request.clone(), decision.clone())
             .await?;
         if decision != PolicyDecision::Accepted {
@@ -310,7 +312,7 @@ impl Supervisor {
             PrintAction::AcknowledgeFailure { disposition, .. } => {
                 if matches!(
                     disposition,
-                    printobserver_types::AcknowledgementDisposition::Stop
+                    crate::records::AcknowledgementDisposition::Stop
                 ) {
                     self.printer.cancel().await
                 } else {
@@ -324,7 +326,11 @@ impl Supervisor {
                 reason: error.to_string(),
             },
         };
-        let record = self.store.record_execution(record.id, outcome).await?;
+        let record = self
+            .stores
+            .actions
+            .record_execution(record.id, outcome)
+            .await?;
         Ok(Issued {
             record,
             executed: Some(executed),

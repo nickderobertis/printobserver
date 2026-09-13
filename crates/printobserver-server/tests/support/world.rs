@@ -9,9 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{Ports, Running, Server, ServerConfig};
-use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::{PrintId, serde_json};
 use tempfile::TempDir;
@@ -134,7 +134,7 @@ pub struct World {
     /// The agent it is supervising through.
     pub agent: Arc<StandInAgent>,
     /// Durable state, as the server holds it.
-    pub store: Arc<dyn StorePort>,
+    pub stores: Stores,
     /// The client a journey drives the real surface with.
     pub client: reqwest::Client,
 }
@@ -150,13 +150,13 @@ impl World {
         let root = TempDir::new().expect("a journey's own root");
         let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
-        let (server, store) = start(&config, &printer, &agent).await;
+        let (server, stores) = start(&config, &printer, &agent).await;
         Self {
             root,
             server,
             printer,
             agent,
-            store,
+            stores,
             client: reqwest::Client::new(),
         }
     }
@@ -176,13 +176,13 @@ impl World {
         } = self;
         let config = server.config().clone();
         server.stop().await;
-        let (server, store) = start(&config, &printer, &agent).await;
+        let (server, stores) = start(&config, &printer, &agent).await;
         Self {
             root,
             server,
             printer,
             agent,
-            store,
+            stores,
             client,
         }
     }
@@ -216,7 +216,8 @@ impl World {
 
     /// Open one print to act on.
     pub async fn open_print(&self) -> PrintId {
-        self.store
+        self.stores
+            .prints
             .open_print(Some(4211), Some("benchy.gcode".to_owned()))
             .await
             .expect("a print opens")
@@ -312,24 +313,24 @@ async fn start(
     config: &ServerConfig,
     printer: &Arc<RecordingPrinter>,
     agent: &Arc<StandInAgent>,
-) -> (Running, Arc<dyn StorePort>) {
-    let store: Arc<dyn StorePort> = Arc::new(
+) -> (Running, Stores) {
+    let stores = Stores::of(Arc::new(
         SqliteStore::open(&config.state_dir).expect("the store opens on the state directory"),
-    );
+    ));
     let vision =
         Arc::new(ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"));
     let server = Server::start_with(
         config.clone(),
         Ports {
             printer: Arc::clone(printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: Arc::clone(&store),
+            stores: stores.clone(),
             vision,
             agent: Arc::clone(agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
         },
     )
     .await
     .expect("the server starts");
-    (server, store)
+    (server, stores)
 }
 
 /// The body a manifest write takes: the manifest, and why it is being written.
@@ -358,8 +359,8 @@ pub fn failure_alert(obico_print_id: i64, image_url: &str) -> serde_json::Value 
     sample
 }
 
-/// The committed `Obico` failure alert sample, read from the contracts' own file.
+/// The committed `Obico` failure alert sample, read from the adapter's own file.
 #[must_use]
 pub fn committed_sample() -> &'static str {
-    include_str!("../../../printobserver-types/samples/obico/failure-alert.json")
+    include_str!("../../../printobserver-obico/samples/obico/failure-alert.json")
 }

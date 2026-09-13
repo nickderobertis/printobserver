@@ -18,9 +18,11 @@ use std::sync::Arc;
 use std::thread;
 
 use block_on::block_on;
-use printobserver_printer_api::{BoxFuture, PrinterError, PrinterPort};
+use printobserver_printer_api::{
+    BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+};
+use printobserver_types::FileName;
 use printobserver_types::contract::Sample;
-use printobserver_types::{FileName, JobSnapshot, PrinterSnapshot};
 
 /// A printer that answers every method with the success type it declares.
 struct TrivialPrinter;
@@ -138,7 +140,7 @@ fn every_error_variant_says_what_it_is() {
             detail: "already paused".to_owned(),
         },
         PrinterError::Unsupported {
-            adjustable: printobserver_types::Adjustable::ToolTarget { tool: 3 },
+            adjustable: printobserver_printer_api::Adjustable::ToolTarget { tool: 3 },
         },
         PrinterError::Malformed {
             detail: "not JSON".to_owned(),

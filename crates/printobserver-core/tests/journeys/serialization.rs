@@ -16,10 +16,11 @@
 use std::sync::Arc;
 use std::thread;
 
-use printobserver_types::{EventKind, PrinterState};
+use printobserver_printer_api::PrinterState;
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 
 use crate::journal::Call;
-use crate::world::{World, failure_alert};
+use crate::world::{World, alert_kind, failure_alert};
 
 /// A second event of one print is handled only after the turn ahead of it.
 #[test]
@@ -43,10 +44,7 @@ fn a_second_event_of_one_print_waits_for_the_turn_ahead_of_it() {
     // implementation handling the second event beside the first has by now
     // reached the point where it would call the supervisor port.
     world.wait_until("the second event is appended", || {
-        world
-            .journal
-            .count(&Call::AppendEvent(EventKind::ObicoFailureAlert))
-            >= 2
+        world.journal.count(&Call::AppendEvent(alert_kind())) >= 2
     });
     assert_eq!(
         world.agent.entered(),
@@ -93,7 +91,7 @@ fn a_second_event_of_one_print_waits_for_the_turn_ahead_of_it() {
             .store
             .events_of(print.id)
             .into_iter()
-            .filter(|record| record.kind() == EventKind::SupervisionSessionOpened)
+            .filter(|record| record.body.is::<SupervisionSessionOpenedPayload>())
             .count(),
         1,
         "a second session was opened for the queued event"

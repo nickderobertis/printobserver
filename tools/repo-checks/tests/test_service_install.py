@@ -301,7 +301,7 @@ def test_a_policy_naming_no_action_schema_is_refused(tree: Callable[[], Tree]) -
     broken.write(
         POLICY,
         broken.read(POLICY).replace(
-            'action_schema = "schemas/printobserver-types/PrintAction.json"', ""
+            'action_schema = "schemas/printobserver-core/PrintAction.json"', ""
         ),
     )
 
@@ -313,7 +313,7 @@ def test_a_policy_naming_no_action_schema_is_refused(tree: Callable[[], Tree]) -
 def test_an_absent_action_schema_is_refused(tree: Callable[[], Tree]) -> None:
     """The generated vocabulary has to be there to be read."""
     broken = tree()
-    broken.remove("schemas/printobserver-types/PrintAction.json")
+    broken.remove("schemas/printobserver-core/PrintAction.json")
 
     findings = service_install(broken.repo)
 
@@ -323,7 +323,7 @@ def test_an_absent_action_schema_is_refused(tree: Callable[[], Tree]) -> None:
 def test_an_action_schema_declaring_nothing_is_refused(tree: Callable[[], Tree]) -> None:
     """A document that declares no action is not the vocabulary."""
     broken = tree()
-    broken.write("schemas/printobserver-types/PrintAction.json", "{}")
+    broken.write("schemas/printobserver-core/PrintAction.json", "{}")
 
     findings = service_install(broken.repo)
 

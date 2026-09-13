@@ -4,16 +4,18 @@ use core::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort, resolve_history_limit,
+use printobserver_core::store::{
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
 };
-use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
-    ImageId, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    ManifestNarrowing, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    SupervisionSession, Timestamp,
+use printobserver_core::{
+    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
+    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
+    PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params, params_from_iter};
 
@@ -130,12 +132,12 @@ impl SqliteStore {
     /// Open a print, minting its identifier.
     fn insert_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> Result<PrintRecord, StoreError> {
         let record = PrintRecord {
             id: PrintId::new(),
-            obico_print_id,
+            provider_print_id,
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
@@ -149,12 +151,12 @@ impl SqliteStore {
             connection
                 .execute(
                     "INSERT INTO prints \
-                     (id, obico_print_id, file_name, state, opened_at, ended_at, \
+                     (id, provider_print_id, file_name, state, opened_at, ended_at, \
                       end_reason, narrowings) \
                      VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)",
                     params![
                         record.id.to_string(),
-                        record.obico_print_id,
+                        record.provider_print_id,
                         record.file_name,
                         state,
                         instant_text(record.opened_at),
@@ -268,6 +270,11 @@ impl SqliteStore {
     }
 
     /// Append one event, minting its identifier.
+    ///
+    /// The `kind` column holds the bare kind name and the `payload` column the
+    /// JSON text of the whole `{"kind": .., "payload": ..}` pair — the same
+    /// text the closed vocabulary's tagged form wrote, so a row written under
+    /// it reads back under this store unchanged.
     fn insert_event(&self, draft: EventDraft) -> Result<EventRecord, StoreError> {
         let record = EventRecord {
             id: EventId::new(),
@@ -275,12 +282,12 @@ impl SqliteStore {
             source: draft.source,
             received_at: draft.received_at,
             image: None,
-            payload: draft.payload,
+            body: draft.body,
             raw: draft.raw,
         };
         let source = tag_text(&record.source)?;
-        let kind = tag_text(&record.kind())?;
-        let payload = json_text(&record.payload)?;
+        let kind = tag_text(record.kind())?;
+        let payload = json_text(&record.body)?;
         let raw = record.raw.as_ref().map(|bytes| bytes.as_slice().to_vec());
         self.on_connection(|connection| {
             connection
@@ -790,13 +797,13 @@ impl SqliteStore {
     }
 }
 
-impl StorePort for SqliteStore {
+impl PrintStore for SqliteStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        Box::pin(async move { self.insert_print(obico_print_id, file_name) })
+        Box::pin(async move { self.insert_print(provider_print_id, file_name) })
     }
 
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
@@ -806,11 +813,13 @@ impl StorePort for SqliteStore {
         })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
-        Box::pin(async move { self.read_print("obico_print_id = ?1", params![obico_print_id]) })
+        Box::pin(
+            async move { self.read_print("provider_print_id = ?1", params![provider_print_id]) },
+        )
     }
 
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
@@ -835,10 +844,42 @@ impl StorePort for SqliteStore {
         Box::pin(async move { self.write_narrowing(print_id, narrowing) })
     }
 
+    fn put_manifest(
+        &self,
+        print_id: PrintId,
+        manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move { self.write_manifest(print_id, &manifest) })
+    }
+
+    fn manifest(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        Box::pin(async move { self.read_manifest(print_id) })
+    }
+}
+
+impl EventStore for SqliteStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move { self.insert_event(draft) })
     }
 
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move { self.read_history(&query) })
+    }
+
+    fn audit_page(
+        &self,
+        print_id: PrintId,
+        after: Option<EventId>,
+        page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        Box::pin(async move { self.read_audit_page(print_id, after, page_size) })
+    }
+}
+
+impl ImageStore for SqliteStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -855,7 +896,9 @@ impl StorePort for SqliteStore {
     fn image(&self, image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
         Box::pin(async move { self.read_image(image_id) })
     }
+}
 
+impl ActionStore for SqliteStore {
     fn record_action(
         &self,
         request: ActionRequest,
@@ -928,35 +971,9 @@ impl StorePort for SqliteStore {
             )
         })
     }
+}
 
-    fn put_manifest(
-        &self,
-        print_id: PrintId,
-        manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        Box::pin(async move { self.write_manifest(print_id, &manifest) })
-    }
-
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        Box::pin(async move { self.read_manifest(print_id) })
-    }
-
-    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        Box::pin(async move { self.read_history(&query) })
-    }
-
-    fn audit_page(
-        &self,
-        print_id: PrintId,
-        after: Option<EventId>,
-        page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        Box::pin(async move { self.read_audit_page(print_id, after, page_size) })
-    }
-
+impl SessionStore for SqliteStore {
     fn put_session(&self, session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move { self.write_session(&session) })
     }

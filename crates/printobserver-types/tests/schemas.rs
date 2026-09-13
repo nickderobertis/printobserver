@@ -4,8 +4,15 @@
 //! target: run with `PRINTOBSERVER_SCHEMAS=write` it writes every schema this
 //! crate declares, and run without it refuses a tree whose checked-in schema no
 //! longer matches what the types generate. The same target runs the same test
-//! in each of the four port crates, so one target generates every schema in the
+//! in every other crate that declares a schema — the port crates, and each
+//! domain that owns event kinds — so one target generates every schema in the
 //! set and one target refuses any drift in it.
+//!
+//! Nothing here reads a file another suite rewrites while the gate runs: the
+//! one such file is the generated assessment schema, which is the supervisor
+//! port's, and that port's `schemas` test is the suite that takes the lock
+//! `repo-policy.toml`'s `supervisor.schema_lock` names against the journey
+//! that rewrites it.
 
 use std::path::{Path, PathBuf};
 
@@ -22,34 +29,6 @@ fn repo_root() -> PathBuf {
 /// Where the schemas one crate declares are checked in.
 fn schema_dir(root: &Path, crate_name: &str) -> PathBuf {
     root.join("schemas").join(crate_name)
-}
-
-/// The lock the whole checked-in schema tree is read and written under.
-///
-/// Every test in this file reads that tree, and one journey in
-/// `printobserver-oneharness` **writes** to it: it changes the checked-in
-/// assessment schema on disk, drives an answer that was accepted before, and
-/// puts the artifact back — which is what proves the port reads that artifact at
-/// run time rather than validating against a copy of its bytes. The two suites
-/// run at the same time, because `nx run-many` drives one project's tests while
-/// another's are still going, so both sides take this lock and neither ever sees
-/// the other's half-done tree.
-///
-/// The lock is the operating system's own, so the kernel releases it when the
-/// handle goes — a test that panics, or is killed, leaves nothing behind. The
-/// file sits under `target`, which is per-worktree and ignored, so two checkouts
-/// on one machine never block each other.
-///
-/// `repo-policy.toml`'s `supervisor.schema_lock` is where the name comes from,
-/// and `just check-repo` holds every holder it declares to that one name: two
-/// suites that locked two different files would be back to no lock at all.
-fn schema_lock() -> std::fs::File {
-    let directory = repo_root().join("target");
-    std::fs::create_dir_all(&directory).expect("the target directory is writable");
-    let file = std::fs::File::create(directory.join("printobserver-schemas.lock"))
-        .expect("the schema lock file is creatable");
-    file.lock().expect("the schema lock is takeable");
-    file
 }
 
 /// Whether this run writes the schemas rather than checking them.
@@ -144,7 +123,6 @@ fn drift(directory: &Path, entries: &[(String, Value)]) -> Vec<String> {
 /// The checked-in schemas of this crate are what its types generate.
 #[test]
 fn the_checked_in_schemas_are_what_the_types_generate() {
-    let _lock = schema_lock();
     ensure_written();
     let directory = schema_dir(&repo_root(), "printobserver-types");
     let entries = generated();
@@ -157,31 +135,34 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
     );
 }
 
-/// The six shapes the port crates own, and the crate each is declared by.
-const PORT_OWNED_SHAPES: [(&str, &str); 6] = [
+/// The six shapes another crate declares that cross a process boundary, and
+/// the crate each is declared by: the ports' own, and the supervision
+/// domain's store shapes.
+const SHAPES_DECLARED_ELSEWHERE: [(&str, &str); 6] = [
     ("printobserver-vision-api", "NormalizedAlert"),
     ("printobserver-vision-api", "FetchedImage"),
     ("printobserver-supervisor-api", "TurnRequest"),
     ("printobserver-supervisor-api", "TurnOutcome"),
-    ("printobserver-store-api", "EventDraft"),
-    ("printobserver-store-api", "HistoryQuery"),
+    ("printobserver-core", "EventDraft"),
+    ("printobserver-core", "HistoryQuery"),
 ];
 
-/// The four port error vocabularies, which cross no process boundary.
-const PORT_ERRORS: [(&str, &str); 4] = [
+/// The four error vocabularies that cross no process boundary and so emit no
+/// schema: the three ports' own, and the supervision domain's store error.
+const ERRORS_WITHOUT_A_SCHEMA: [(&str, &str); 4] = [
     ("printobserver-printer-api", "PrinterError"),
     ("printobserver-vision-api", "VisionError"),
     ("printobserver-supervisor-api", "SupervisorError"),
-    ("printobserver-store-api", "StoreError"),
+    ("printobserver-core", "StoreError"),
 ];
 
 /// Every way a tree falls short of carrying the whole schema set.
 ///
 /// The set is wider than this crate's own declarations, because six of the
-/// types that cross a process boundary are the ports' own, so this reads both:
-/// a type cannot fall out of the set by being declared in a port crate rather
-/// than here, and a port's error vocabulary — which reaches no process boundary
-/// — cannot slip into it.
+/// types that cross a process boundary are the ports' and the supervision
+/// domain's own, so this reads both: a type cannot fall out of the set by
+/// being declared in another crate rather than here, and an error vocabulary
+/// — which reaches no process boundary — cannot slip into it.
 fn schema_set_findings(root: &Path) -> Vec<String> {
     let mut findings = Vec::new();
     for entry in declared() {
@@ -190,7 +171,7 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
             findings.push(format!("{} emits no checked-in schema", entry.name));
         }
     }
-    for (crate_name, type_name) in PORT_OWNED_SHAPES {
+    for (crate_name, type_name) in SHAPES_DECLARED_ELSEWHERE {
         let path = schema_dir(root, crate_name).join(format!("{type_name}.json"));
         let Ok(text) = std::fs::read_to_string(&path) else {
             findings.push(format!("{type_name} emits no checked-in schema"));
@@ -201,11 +182,11 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
             findings.push(format!("{} is not {type_name}'s schema", path.display()));
         }
     }
-    for (crate_name, error_name) in PORT_ERRORS {
+    for (crate_name, error_name) in ERRORS_WITHOUT_A_SCHEMA {
         let path = schema_dir(root, crate_name).join(format!("{error_name}.json"));
         if path.exists() {
             findings.push(format!(
-                "{error_name} emits a schema, and a port error reaches no process boundary"
+                "{error_name} emits a schema, and an error reaches no process boundary"
             ));
         }
     }
@@ -215,7 +196,6 @@ fn schema_set_findings(root: &Path) -> Vec<String> {
 /// Every type in the schema set has a checked-in schema, the six included.
 #[test]
 fn every_type_in_the_schema_set_has_a_checked_in_schema() {
-    let _lock = schema_lock();
     ensure_written();
     let findings = schema_set_findings(&repo_root());
     assert!(
@@ -239,7 +219,7 @@ impl ScratchTree {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&root);
-        for (crate_name, _) in PORT_OWNED_SHAPES
+        for (crate_name, _) in SHAPES_DECLARED_ELSEWHERE
             .into_iter()
             .chain([("printobserver-types", "")])
         {
@@ -278,7 +258,6 @@ impl Drop for ScratchTree {
 /// this crate declares, so that the check is shown to reach both crates.
 #[test]
 fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
-    let _lock = schema_lock();
     ensure_written();
     let entries = generated();
 
@@ -287,14 +266,14 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
         drift(&schema_dir(&scratch.root, "printobserver-types"), &entries).is_empty(),
         "the matching tree was refused"
     );
-    scratch.alter("printobserver-types", "PrintRecord");
+    scratch.alter("printobserver-types", "EventRecord");
     let findings = drift(&schema_dir(&scratch.root, "printobserver-types"), &entries);
     assert_eq!(
         findings.len(),
         1,
         "the altered type-crate schema was not refused: {findings:?}"
     );
-    assert!(findings[0].contains("PrintRecord.json"));
+    assert!(findings[0].contains("EventRecord.json"));
 
     let port = ScratchTree::new("vision");
     let committed =
@@ -304,12 +283,22 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
             .expect("the schema is JSON");
     let port_entries = vec![("NormalizedAlert.json".to_owned(), generated_port)];
     let port_dir = schema_dir(&port.root, "printobserver-vision-api");
+    // The entries name one of that crate's schemas, so every other file it
+    // checks in is reported as one nothing here generates — and nothing else.
+    let mut undeclared: Vec<String> = std::fs::read_dir(&port_dir)
+        .expect("the scratch port directory is readable")
+        .map(|entry| entry.expect("a readable directory entry").path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name != "NormalizedAlert.json")
+        })
+        .map(|path| format!("{} is a schema no declared type generates", path.display()))
+        .collect();
+    undeclared.sort();
+    let mut found = drift(&port_dir, &port_entries);
+    found.sort();
     assert_eq!(
-        drift(&port_dir, &port_entries),
-        vec![format!(
-            "{} is a schema no declared type generates",
-            port_dir.join("FetchedImage.json").display()
-        )],
+        found, undeclared,
         "the matching port tree was refused for the wrong reason"
     );
     port.alter("printobserver-vision-api", "NormalizedAlert");
@@ -329,7 +318,6 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
 /// falls out of the set without this crate's own declarations changing.
 #[test]
 fn the_schema_set_reading_refuses_a_tree_missing_one_of_the_six() {
-    let _lock = schema_lock();
     ensure_written();
     let scratch = ScratchTree::new("missing-six");
     assert!(

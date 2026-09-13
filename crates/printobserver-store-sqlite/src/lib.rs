@@ -1,14 +1,15 @@
 //! `printobserver-store-sqlite`.
 //!
-//! Owns: the `SQLite` adapter — the one durable implementation of
-//! `printobserver-store-api`, including its schema, its migrations and the
-//! content-addressed image files beside the database; and, beside it, the
-//! in-memory implementation of the same port that one shared conformance suite
-//! holds both of them to.
+//! Owns: the `SQLite` adapter — the one durable implementation of the store
+//! traits the supervision domain declares in `printobserver_core::store`,
+//! including its schema, its migrations and the content-addressed image files
+//! beside the database; and, beside it, the in-memory implementation of the
+//! same traits that one shared conformance suite holds both of them to.
 //!
-//! May depend on: `printobserver-types` and `printobserver-store-api`, plus its
-//! `SQLite` driver. Never another implementation crate, and never
-//! `printobserver-core`.
+//! May depend on: `printobserver-core`, whose store traits it implements, and
+//! the crates those traits' shapes are declared in — `printobserver-types`,
+//! `printobserver-printer-api`, `printobserver-supervisor-api` — plus its
+//! `SQLite` driver. Never another implementation crate.
 //!
 //! # The persisted schema is a contract of its own
 //!
@@ -31,15 +32,16 @@
 //! conformance suite drives one set of journeys against both, so the fake
 //! cannot drift into answering differently from the real one.
 //!
-//! Both live here rather than beside the port, because `printobserver-core` may
-//! depend on no implementation crate at all and so could not reach one wherever
-//! it were put; a tier inside core that needs a double defines its own, which is
-//! not a dependency on anything.
+//! Both live here rather than beside the traits, because `printobserver-core`
+//! may depend on no implementation crate at all and so could not reach one
+//! wherever it were put; a tier inside core that needs a double defines its
+//! own, which is not a dependency on anything.
 //!
-//! Image *bytes* are on the filesystem for both of them, because the port hands
-//! a caller a [`ImageLookup::Found`](printobserver_store_api::ImageLookup)
-//! path: an implementation that held bytes in memory would have to answer a
-//! path nothing is at. So [`MemoryStore`] takes a state directory too, and both
+//! Image *bytes* are on the filesystem for both of them, because the image
+//! store hands a caller a
+//! [`ImageLookup::Found`](printobserver_core::store::ImageLookup) path: an
+//! implementation that held bytes in memory would have to answer a path
+//! nothing is at. So [`MemoryStore`] takes a state directory too, and both
 //! stores write images through the same content-addressed writer.
 //!
 //! # The connection is part of the contract
@@ -51,24 +53,26 @@
 //! asks it over the connection this crate opens, rather than over one of its
 //! own that might differ.
 //!
-//! # Four facts the port leaves open, settled here
+//! # Four facts the traits leave open, settled here
 //!
 //! * **Which print an action binds to.** `record_action` answers an
 //!   `ActionRecord` carrying a print, and takes a request that names none. The
 //!   action binds to the *open* print — the most recently opened print with no
-//!   end recorded — and is refused with [`StoreError::NotFound`] when there is
+//!   end recorded — and is refused with
+//!   [`StoreError::NotFound`](printobserver_core::store::StoreError::NotFound) when there is
 //!   none, which is the same condition policy names `NoActivePrint`.
 //! * **A page size of zero.** `audit_page` resolves its page size through the
-//!   port's own [`resolve_history_limit`](printobserver_store_api::resolve_history_limit),
+//!   domain's own [`resolve_history_limit`](printobserver_core::store::resolve_history_limit),
 //!   and a zero page takes the default window, because a page of nothing cannot
 //!   walk a history to exhaustion.
 //! * **The state a print opens in.** `open_print` is called when a job starts
 //!   being watched, so the print opens in
-//!   [`PrinterState::Printing`](printobserver_types::PrinterState::Printing);
+//!   [`PrinterState::Printing`](printobserver_printer_api::PrinterState::Printing);
 //!   `end_print` is what puts it in a terminal state.
-//! * **Which print an Obico identifier names.** Obico reuses nothing, but this
-//!   system may have opened a print for one identifier more than once, so
-//!   `print_by_obico_id` answers the most recently opened of them.
+//! * **Which print a provider's identifier names.** A provider reuses
+//!   nothing, but this system may have opened a print for one identifier more
+//!   than once, so `print_by_provider_id` answers the most recently opened of
+//!   them.
 
 mod hold;
 mod images;

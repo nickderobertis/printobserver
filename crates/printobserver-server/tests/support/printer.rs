@@ -14,11 +14,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use printobserver_printer_api::{BoxFuture, PrinterError, PrinterPort};
-use printobserver_types::{
-    Adjustable, FileName, HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState, Reported,
-    Timestamp,
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_printer_api::{
+    BoxFuture, HeaterSnapshot, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
 };
+use printobserver_types::{FileName, Reported, Timestamp};
 
 /// One thing the machine was asked to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +63,7 @@ pub struct RecordingPrinter {
 
 /// One feedrate factor, flagged against the range the contracts declare for it.
 fn feedrate(value: f64) -> Reported<f64> {
-    Reported::new(value, printobserver_types::FEEDRATE_FACTOR_RANGE)
+    Reported::new(value, printobserver_printer_api::FEEDRATE_FACTOR_RANGE)
 }
 
 impl RecordingPrinter {
@@ -77,22 +77,22 @@ impl RecordingPrinter {
                     tools: vec![HeaterSnapshot {
                         actual_c: Some(Reported::new(
                             215.0,
-                            printobserver_types::HEATER_ACTUAL_C_RANGE,
+                            printobserver_printer_api::HEATER_ACTUAL_C_RANGE,
                         )),
                         target_c: Some(Reported::new(
                             215.0,
-                            printobserver_types::HEATER_TARGET_C_RANGE,
+                            printobserver_printer_api::HEATER_TARGET_C_RANGE,
                         )),
                         offset_c: None,
                     }],
                     bed: Some(HeaterSnapshot {
                         actual_c: Some(Reported::new(
                             60.0,
-                            printobserver_types::HEATER_ACTUAL_C_RANGE,
+                            printobserver_printer_api::HEATER_ACTUAL_C_RANGE,
                         )),
                         target_c: Some(Reported::new(
                             60.0,
-                            printobserver_types::HEATER_TARGET_C_RANGE,
+                            printobserver_printer_api::HEATER_TARGET_C_RANGE,
                         )),
                         offset_c: None,
                     }),
@@ -100,9 +100,12 @@ impl RecordingPrinter {
                     feedrate_factor: Some(feedrate(1.0)),
                     flowrate_factor: Some(Reported::new(
                         1.0,
-                        printobserver_types::FLOWRATE_FACTOR_RANGE,
+                        printobserver_printer_api::FLOWRATE_FACTOR_RANGE,
                     )),
-                    fan_percent: Some(Reported::new(40.0, printobserver_types::FAN_PERCENT_RANGE)),
+                    fan_percent: Some(Reported::new(
+                        40.0,
+                        printobserver_printer_api::FAN_PERCENT_RANGE,
+                    )),
                     observed_at: Timestamp::now(),
                 },
                 job: JobSnapshot {
@@ -110,7 +113,10 @@ impl RecordingPrinter {
                     file_origin: Some("local".to_owned()),
                     size_bytes: Some(4096),
                     estimated_print_time_s: Some(3600),
-                    completion: Some(Reported::new(0.25, printobserver_types::COMPLETION_RANGE)),
+                    completion: Some(Reported::new(
+                        0.25,
+                        printobserver_printer_api::COMPLETION_RANGE,
+                    )),
                     print_time_s: Some(900),
                     print_time_left_s: Some(2700),
                     state: PrinterState::Printing,
@@ -199,13 +205,13 @@ impl RecordingPrinter {
             Call::Feedrate(factor) => {
                 held.snapshot.feedrate_factor = Some(Reported::new(
                     *factor,
-                    printobserver_types::FEEDRATE_FACTOR_RANGE,
+                    printobserver_printer_api::FEEDRATE_FACTOR_RANGE,
                 ));
             }
             Call::Flowrate(factor) => {
                 held.snapshot.flowrate_factor = Some(Reported::new(
                     *factor,
-                    printobserver_types::FLOWRATE_FACTOR_RANGE,
+                    printobserver_printer_api::FLOWRATE_FACTOR_RANGE,
                 ));
             }
             Call::ToolTarget(tool, target) => {
@@ -215,7 +221,7 @@ impl RecordingPrinter {
                 {
                     heater.target_c = Some(Reported::new(
                         *target,
-                        printobserver_types::HEATER_TARGET_C_RANGE,
+                        printobserver_printer_api::HEATER_TARGET_C_RANGE,
                     ));
                 }
             }
@@ -223,14 +229,14 @@ impl RecordingPrinter {
                 if let Some(bed) = held.snapshot.bed.as_mut() {
                     bed.target_c = Some(Reported::new(
                         *target,
-                        printobserver_types::HEATER_TARGET_C_RANGE,
+                        printobserver_printer_api::HEATER_TARGET_C_RANGE,
                     ));
                 }
             }
             Call::Fan(percent) => {
                 held.snapshot.fan_percent = Some(Reported::new(
                     *percent,
-                    printobserver_types::FAN_PERCENT_RANGE,
+                    printobserver_printer_api::FAN_PERCENT_RANGE,
                 ));
             }
         }

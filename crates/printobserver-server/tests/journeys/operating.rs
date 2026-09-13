@@ -22,9 +22,9 @@
 //! particular — and a walk whose order was load-bearing would be proving the
 //! order rather than the operations.
 
-use printobserver_types::{
-    ActionKind, Adjustable, PrinterState, serde_json::Value, serde_json::json,
-};
+use printobserver_core::ActionKind;
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::{serde_json::Value, serde_json::json};
 
 use printobserver_server::{Effect, OPERATIONS, Operation};
 
@@ -61,7 +61,7 @@ fn body(actor: &Value, extra: &[(&str, Value)]) -> Value {
 /// A manifest a start is bounded by.
 fn manifest() -> Value {
     printobserver_types::serde_json::to_value(
-        <printobserver_types::JobManifest as printobserver_types::contract::Sample>::sample_full(),
+        <printobserver_core::JobManifest as printobserver_types::contract::Sample>::sample_full(),
     )
     .expect("a manifest renders")
 }
@@ -690,7 +690,7 @@ async fn a_history_read_above_the_stores_maximum_is_refused() {
     let url = format!(
         "{}?limit={}",
         world.operation_url(&path("history"), print_id),
-        printobserver_store_api::MAX_HISTORY_LIMIT + 1
+        printobserver_core::store::MAX_HISTORY_LIMIT + 1
     );
 
     let (status, answer) = world.get(&url).await;

@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One event on its way into the store, before the store mints its identifier.",
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/EventKind",
+      "description": "Which event this is."
+    },
+    "payload": {
+      "description": "What it carries, in the form its kind declares."
+    },
+    "print_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The print it belongs to, when it belongs to one."
+    },
+    "raw": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RawBytes"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bytes exactly as received, for an externally sourced event."
+    },
+    "received_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When it was received."
+    },
+    "source": {
+      "$ref": "#/$defs/EventSource",
+      "description": "Where it came from."
+    }
+  },
+  "required": [
+    "source",
+    "received_at",
+    "kind",
+    "payload"
+  ],
+  "title": "EventDraft",
+  "type": "object"
+}

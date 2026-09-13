@@ -54,7 +54,7 @@ from obico_env import PRINT_FILENAME, PRINTER_NAME, Stack, note, run_program
 # The committed sample this repository holds as its claim about the producer,
 # relative to the repository root. It is the `contracts` node's file and this
 # tier does not write it: a divergence found here is a finding to report.
-SAMPLE = "crates/printobserver-types/samples/obico/failure-alert.json"
+SAMPLE = "crates/printobserver-obico/samples/obico/failure-alert.json"
 
 # The snapshot the tier hands the stack, so the alert has an image to point at.
 SNAPSHOT = Path(__file__).resolve().parent / "snapshot" / "spaghetti.jpg"

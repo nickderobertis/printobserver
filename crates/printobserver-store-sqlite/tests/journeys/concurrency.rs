@@ -10,7 +10,7 @@
 //! generous enough to pass slow work can let incorrect work through.
 
 use crate::block_on::block_on;
-use printobserver_store_api::StorePort;
+use crate::fixture::Store;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
 use printobserver_types::PrintId;
 use rusqlite::params;
@@ -23,7 +23,7 @@ const SPILLING_ROWS: usize = 5_000;
 fn fill(writer: &rusqlite::Connection) {
     let mut statement = writer
         .prepare(
-            "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
+            "INSERT INTO prints (id, provider_print_id, file_name, state, opened_at, ended_at, \
              end_reason, narrowings) VALUES (?1, NULL, NULL, '\"printing\"', ?2, NULL, NULL, '[]')",
         )
         .expect("the statement prepares");
@@ -42,7 +42,7 @@ fn fill(writer: &rusqlite::Connection) {
 fn a_read_answers_the_pre_write_state_while_a_write_is_uncommitted() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let print =
         block_on(port.open_print(None, Some("before.gcode".to_owned()))).expect("a print opens");
 
@@ -99,13 +99,13 @@ fn a_second_store_on_the_same_directory_reads_what_the_first_wrote() {
     let dir = TempDir::new().expect("a temporary state directory");
     let first = SqliteStore::open(dir.path()).expect("the store opens");
     let second = SqliteStore::open(dir.path()).expect("a second store opens");
-    let writer: &dyn StorePort = &first;
-    let reader: &dyn StorePort = &second;
+    let writer: &dyn Store = &first;
+    let reader: &dyn Store = &second;
 
     let print =
         block_on(writer.open_print(Some(11), None)).expect("a print opens on the first store");
     assert_eq!(
-        block_on(reader.print_by_obico_id(11)),
+        block_on(reader.print_by_provider_id(11)),
         Ok(Some(print)),
         "a second store on the same state directory did not read what the first wrote"
     );

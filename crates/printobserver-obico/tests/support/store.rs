@@ -1,29 +1,30 @@
 //! A store these journeys read back through.
 //!
-//! It is a real implementation of the port rather than a stand-in for one: the
-//! ingress writes through the trait it will hold in the server, and every
-//! assertion below reads what this store *holds* afterwards through the port's
-//! own reads. It keeps its records in memory and its image bytes in a
-//! directory of its own, so that an image's record and its file are two facts
-//! here as they are in the real one.
+//! It is a real implementation of the three store traits the ingress names
+//! rather than a stand-in for one: the ingress writes through the traits it
+//! will hold in the server, and every assertion below reads what this store
+//! *holds* afterwards through the traits' own reads. It keeps its records in
+//! memory and its image bytes in a directory of its own, so that an image's
+//! record and its file are two facts here as they are in the real one.
 //!
-//! The methods no journey here reaches answer [`StoreError::NotFound`] naming
-//! themselves, rather than panicking: a store double that aborts the process is
-//! one whose failure reads as a crash instead of as a missing behaviour.
+//! It implements the print, event and image stores and no other, because the
+//! ingress holds no other: what the supervision domain persists beyond those —
+//! actions, interventions, sessions — is nothing an adapter can reach. The
+//! methods of those three no journey here reaches answer
+//! [`StoreError::NotFound`] naming themselves, rather than panicking: a store
+//! double that aborts the process is one whose failure reads as a crash
+//! instead of as a missing behaviour.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort,
+use printobserver_core::records::PrinterState;
+use printobserver_core::store::{
+    AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
+    PrintStore, StoreError,
 };
-use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
-    ImageId, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    ManifestNarrowing, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    SupervisionSession, Timestamp,
-};
+use printobserver_core::{ImageRecord, JobManifest, ManifestNarrowing, PrintRecord};
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 use sha2::{Digest as _, Sha256};
 
 /// Everything this store holds.
@@ -84,16 +85,16 @@ impl MemoryStore {
     }
 }
 
-impl StorePort for MemoryStore {
+impl PrintStore for MemoryStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         Box::pin(async move {
             let record = PrintRecord {
                 id: PrintId::new(),
-                obico_print_id,
+                provider_print_id,
                 file_name,
                 state: PrinterState::Printing,
                 opened_at: Timestamp::now(),
@@ -118,16 +119,16 @@ impl StorePort for MemoryStore {
         })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
+        provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         Box::pin(async move {
             let held = self.held.lock().expect("the store is not poisoned");
             Ok(held
                 .prints
                 .iter()
-                .find(|record| record.obico_print_id == Some(obico_print_id))
+                .find(|record| record.provider_print_id == Some(provider_print_id))
                 .cloned())
         })
     }
@@ -176,6 +177,23 @@ impl StorePort for MemoryStore {
         unsupported("record_narrowing")
     }
 
+    fn put_manifest(
+        &self,
+        _print_id: PrintId,
+        _manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        unsupported("put_manifest")
+    }
+
+    fn manifest(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        unsupported("manifest")
+    }
+}
+
+impl EventStore for MemoryStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move {
             let record = EventRecord {
@@ -184,7 +202,7 @@ impl StorePort for MemoryStore {
                 source: draft.source,
                 received_at: draft.received_at,
                 image: None,
-                payload: draft.payload,
+                body: draft.body,
                 raw: draft.raw,
             };
             let mut held = self.held.lock().expect("the store is not poisoned");
@@ -193,6 +211,33 @@ impl StorePort for MemoryStore {
         })
     }
 
+    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move {
+            let limit = usize::try_from(query.resolved_limit()?).unwrap_or(usize::MAX);
+            let held = self.held.lock().expect("the store is not poisoned");
+            Ok(held
+                .events
+                .iter()
+                .rev()
+                .filter(|record| record.print_id == Some(query.print_id))
+                .filter(|record| query.kinds.is_empty() || query.kinds.contains(record.kind()))
+                .take(limit)
+                .cloned()
+                .collect())
+        })
+    }
+
+    fn audit_page(
+        &self,
+        _print_id: PrintId,
+        _after: Option<EventId>,
+        _page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        unsupported("audit_page")
+    }
+}
+
+impl ImageStore for MemoryStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -254,107 +299,6 @@ impl StorePort for MemoryStore {
             }
         })
     }
-
-    fn record_action(
-        &self,
-        _request: ActionRequest,
-        _decision: PolicyDecision,
-    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        unsupported("record_action")
-    }
-
-    fn record_execution(
-        &self,
-        _action_id: ActionId,
-        _outcome: ExecutionOutcome,
-    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        unsupported("record_execution")
-    }
-
-    fn open_intervention(
-        &self,
-        _action_id: ActionId,
-        _adjustable: Adjustable,
-        _prior_value: Option<f64>,
-        _applied_value: f64,
-        _applied_at: Timestamp,
-        _expires_at: Timestamp,
-    ) -> BoxFuture<'_, Result<Intervention, StoreError>> {
-        unsupported("open_intervention")
-    }
-
-    fn settle_intervention(
-        &self,
-        _intervention_id: InterventionId,
-        _outcome: InterventionOutcome,
-    ) -> BoxFuture<'_, Result<SettleOutcome, StoreError>> {
-        unsupported("settle_intervention")
-    }
-
-    fn due_interventions(
-        &self,
-        _at: Timestamp,
-    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
-        unsupported("due_interventions")
-    }
-
-    fn active_interventions(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
-        unsupported("active_interventions")
-    }
-
-    fn put_manifest(
-        &self,
-        _print_id: PrintId,
-        _manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        unsupported("put_manifest")
-    }
-
-    fn manifest(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        unsupported("manifest")
-    }
-
-    fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        Box::pin(async move {
-            let limit = usize::try_from(query.resolved_limit()?).unwrap_or(usize::MAX);
-            let held = self.held.lock().expect("the store is not poisoned");
-            Ok(held
-                .events
-                .iter()
-                .rev()
-                .filter(|record| record.print_id == Some(query.print_id))
-                .filter(|record| query.kinds.is_empty() || query.kinds.contains(&record.kind()))
-                .take(limit)
-                .cloned()
-                .collect())
-        })
-    }
-
-    fn audit_page(
-        &self,
-        _print_id: PrintId,
-        _after: Option<EventId>,
-        _page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        unsupported("audit_page")
-    }
-
-    fn put_session(&self, _session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
-        unsupported("put_session")
-    }
-
-    fn session(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>> {
-        unsupported("session")
-    }
 }
 
 /// A store that refuses every write, and answers no read.
@@ -373,10 +317,10 @@ fn refused<T: Send + 'static>() -> BoxFuture<'static, Result<T, StoreError>> {
     })
 }
 
-impl StorePort for RefusingStore {
+impl PrintStore for RefusingStore {
     fn open_print(
         &self,
-        _obico_print_id: Option<i64>,
+        _provider_print_id: Option<i64>,
         _file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         refused()
@@ -386,9 +330,9 @@ impl StorePort for RefusingStore {
         refused()
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        _obico_print_id: i64,
+        _provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         refused()
     }
@@ -415,75 +359,6 @@ impl StorePort for RefusingStore {
         refused()
     }
 
-    fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
-        refused()
-    }
-
-    fn put_image(
-        &self,
-        _print_id: PrintId,
-        _event_id: EventId,
-        _source_url: Option<String>,
-        _content_type: String,
-        _bytes: RawBytes,
-    ) -> BoxFuture<'_, Result<ImageRecord, StoreError>> {
-        refused()
-    }
-
-    fn image(&self, _image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
-        refused()
-    }
-
-    fn record_action(
-        &self,
-        _request: ActionRequest,
-        _decision: PolicyDecision,
-    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        refused()
-    }
-
-    fn record_execution(
-        &self,
-        _action_id: ActionId,
-        _outcome: ExecutionOutcome,
-    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        refused()
-    }
-
-    fn open_intervention(
-        &self,
-        _action_id: ActionId,
-        _adjustable: Adjustable,
-        _prior_value: Option<f64>,
-        _applied_value: f64,
-        _applied_at: Timestamp,
-        _expires_at: Timestamp,
-    ) -> BoxFuture<'_, Result<Intervention, StoreError>> {
-        refused()
-    }
-
-    fn settle_intervention(
-        &self,
-        _intervention_id: InterventionId,
-        _outcome: InterventionOutcome,
-    ) -> BoxFuture<'_, Result<SettleOutcome, StoreError>> {
-        refused()
-    }
-
-    fn due_interventions(
-        &self,
-        _at: Timestamp,
-    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
-        refused()
-    }
-
-    fn active_interventions(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
-        refused()
-    }
-
     fn put_manifest(
         &self,
         _print_id: PrintId,
@@ -496,6 +371,12 @@ impl StorePort for RefusingStore {
         &self,
         _print_id: PrintId,
     ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        refused()
+    }
+}
+
+impl EventStore for RefusingStore {
+    fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         refused()
     }
 
@@ -511,15 +392,21 @@ impl StorePort for RefusingStore {
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         refused()
     }
+}
 
-    fn put_session(&self, _session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
+impl ImageStore for RefusingStore {
+    fn put_image(
+        &self,
+        _print_id: PrintId,
+        _event_id: EventId,
+        _source_url: Option<String>,
+        _content_type: String,
+        _bytes: RawBytes,
+    ) -> BoxFuture<'_, Result<ImageRecord, StoreError>> {
         refused()
     }
 
-    fn session(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>> {
+    fn image(&self, _image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
         refused()
     }
 }

@@ -238,21 +238,28 @@ def response_shapes(repo: Repo) -> list[str]:
     """
     import json
 
-    from contract_codegen.schemas import OPERATIONS_FILE, SERVER_DIR, TYPES_DIR
+    from contract_codegen.schemas import (
+        EVENT_KIND_MARKER,
+        OPERATIONS_FILE,
+        SERVER_DIR,
+        schema_files,
+    )
 
-    schemas: dict[str, dict[str, object]] = {}
-    for directory in (TYPES_DIR, SERVER_DIR):
-        for path in sorted((repo.root / directory).glob("*.json")):
-            if path.name != OPERATIONS_FILE:
-                schemas[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+    schemas: dict[str, dict[str, object]] = {
+        path.stem: json.loads(path.read_text(encoding="utf-8")) for path in schema_files(repo.root)
+    }
 
     described = json.loads(repo.read(f"{SERVER_DIR}/{OPERATIONS_FILE}"))
+    # Every payload marked with an event kind is a root too: the envelope
+    # carries it opaquely inside every history answer, so a byte field in one
+    # would reach a client through an answer shape all the same.
     roots = sorted(
         {
             str(answer["type"])
             for operation in described["operations"]
             for answer in operation["responses"]
         }
+        | {name for name, schema in schemas.items() if EVENT_KIND_MARKER in schema}
     )
     if not roots:
         return ["the server describes no answer shape at all, so this walk reads nothing"]

@@ -1,11 +1,14 @@
-//! Reported numbers, and the plausibility ranges this crate declares for them.
+//! Reported numbers, and the rule a plausibility range flags them under.
 //!
-//! A numeric field this crate declares a range for is typed [`Reported<f64>`],
+//! A numeric field a domain declares a range for is typed [`Reported<f64>`],
 //! which serializes as an object carrying a `value` and a boolean
 //! `out_of_range` that is true exactly when the reported `value` is non-finite
-//! or lies outside the range this crate declares for that field. A value
-//! outside the range is carried through as reported with that flag set, never
-//! coerced, never clamped and never dropped.
+//! or lies outside the range declared for that field. A value outside the
+//! range is carried through as reported with that flag set, never coerced,
+//! never clamped and never dropped. The ranges themselves are the declaring
+//! domain's — the printer port's, for what a printer reports — and this module
+//! holds the representation and [`deserialize_ranged`], the one reading of a
+//! field against its range, rather than any range.
 //!
 //! The non-finite half of that definition is deliberate, because `f64` admits
 //! inhabitants an ordinary range comparison answers wrongly. `NaN` compares
@@ -23,14 +26,14 @@
 //! a field the source did not report and turn an implausible reading into no
 //! reading at all.
 //!
-//! **These are validity ranges on what a printer can plausibly report, and they
-//! are not the operator's safety envelope.** A reading outside one of them says
-//! the source reported something implausible — a disconnected thermistor, a
-//! firmware that answers in another unit. What an actor is *allowed to ask for*
-//! is [`SafetyEnvelope`](crate::SafetyEnvelope), which is server configuration
-//! and is narrower by orders of magnitude; nothing in this crate reads these
-//! ranges as a bound on an action, and the two are never intersected, compared
-//! or substituted for one another.
+//! **A plausibility range is a validity range on what a source can plausibly
+//! report, and it is not the operator's safety envelope.** A reading outside
+//! one says the source reported something implausible — a disconnected
+//! thermistor, a firmware that answers in another unit. What an actor is
+//! *allowed to ask for* is the supervision domain's `SafetyEnvelope`, declared
+//! in `printobserver-core` as server configuration and narrower by orders of
+//! magnitude; nothing reads a plausibility range as a bound on an action, and
+//! the two are never intersected, compared or substituted for one another.
 
 use core::fmt;
 use std::borrow::Cow;
@@ -66,50 +69,6 @@ impl Range {
         value.is_finite() && value >= self.min && value <= self.max
     }
 }
-
-/// The plausibility range of `PrinterSnapshot::feedrate_factor`.
-///
-/// A multiplier where one means one hundred percent, spanning what the
-/// firmware's own speed command accepts. A validity range on what a printer can
-/// plausibly report, not a bound on what an actor may ask for.
-pub const FEEDRATE_FACTOR_RANGE: Range = Range::new(0.1, 10.0);
-
-/// The plausibility range of `PrinterSnapshot::flowrate_factor`.
-///
-/// A multiplier where one means one hundred percent, spanning what the
-/// firmware's own flow command accepts. A validity range on what a printer can
-/// plausibly report, not a bound on what an actor may ask for.
-pub const FLOWRATE_FACTOR_RANGE: Range = Range::new(0.1, 10.0);
-
-/// The plausibility range of `PrinterSnapshot::fan_percent`, in percent.
-///
-/// A validity range on what a printer can plausibly report, not a bound on what
-/// an actor may ask for.
-pub const FAN_PERCENT_RANGE: Range = Range::new(0.0, 100.0);
-
-/// The plausibility range of `JobSnapshot::completion`, as a fraction.
-///
-/// A validity range on what a printer can plausibly report, not a bound on what
-/// an actor may ask for.
-pub const COMPLETION_RANGE: Range = Range::new(0.0, 1.0);
-
-/// The plausibility range of `HeaterSnapshot::actual_c`, in degrees Celsius.
-///
-/// A validity range on what a printer can plausibly report, not a bound on what
-/// an actor may ask for.
-pub const HEATER_ACTUAL_C_RANGE: Range = Range::new(-20.0, 500.0);
-
-/// The plausibility range of `HeaterSnapshot::target_c`, in degrees Celsius.
-///
-/// A validity range on what a printer can plausibly report, not a bound on what
-/// an actor may ask for.
-pub const HEATER_TARGET_C_RANGE: Range = Range::new(0.0, 500.0);
-
-/// The plausibility range of `HeaterSnapshot::offset_c`, in degrees Celsius.
-///
-/// A validity range on what a printer can plausibly report, not a bound on what
-/// an actor may ask for.
-pub const HEATER_OFFSET_C_RANGE: Range = Range::new(-50.0, 50.0);
 
 /// A value a source reported, carrying whether it is outside the range this
 /// crate declares for the field it was reported in.
@@ -214,7 +173,17 @@ impl fmt::Display for Reported<f64> {
 
 /// Read an optional reported value, refusing a flag that disagrees with the
 /// value under the range declared for the field it was read in.
-fn read_ranged<'de, D: Deserializer<'de>>(
+///
+/// This is what a `deserialize_with` on a ranged field calls, naming the field
+/// and the range the declaring domain holds for it, so that a value never
+/// arrives carrying a flag some other range wrote.
+///
+/// # Errors
+///
+/// Answers the deserializer's own error for a value that is not a reported
+/// pair, and a refusal naming the field, the value and the range when the pair
+/// carries a flag the range disagrees with.
+pub fn deserialize_ranged<'de, D: Deserializer<'de>>(
     deserializer: D,
     field: &str,
     range: Range,
@@ -231,53 +200,4 @@ fn read_ranged<'de, D: Deserializer<'de>>(
         )));
     }
     Ok(Some(reported))
-}
-
-/// Read `PrinterSnapshot::feedrate_factor` against its declared range.
-pub(crate) fn de_feedrate_factor<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "feedrate_factor", FEEDRATE_FACTOR_RANGE)
-}
-
-/// Read `PrinterSnapshot::flowrate_factor` against its declared range.
-pub(crate) fn de_flowrate_factor<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "flowrate_factor", FLOWRATE_FACTOR_RANGE)
-}
-
-/// Read `PrinterSnapshot::fan_percent` against its declared range.
-pub(crate) fn de_fan_percent<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "fan_percent", FAN_PERCENT_RANGE)
-}
-
-/// Read `JobSnapshot::completion` against its declared range.
-pub(crate) fn de_completion<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "completion", COMPLETION_RANGE)
-}
-
-/// Read `HeaterSnapshot::actual_c` against its declared range.
-pub(crate) fn de_heater_actual_c<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "actual_c", HEATER_ACTUAL_C_RANGE)
-}
-
-/// Read `HeaterSnapshot::target_c` against its declared range.
-pub(crate) fn de_heater_target_c<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "target_c", HEATER_TARGET_C_RANGE)
-}
-
-/// Read `HeaterSnapshot::offset_c` against its declared range.
-pub(crate) fn de_heater_offset_c<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Reported<f64>>, D::Error> {
-    read_ranged(deserializer, "offset_c", HEATER_OFFSET_C_RANGE)
 }

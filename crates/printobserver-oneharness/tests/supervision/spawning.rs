@@ -15,11 +15,11 @@
 use std::sync::Arc;
 
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId};
+use printobserver_types::PrintId;
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, responder, schema_read_lock, turn,
+    generated_assessment_schema, port, responder, schema_read_lock, turn, unreadable,
 };
 
 /// Driving every method the port declares creates only the responder.
@@ -41,11 +41,7 @@ fn every_process_a_turn_creates_is_the_responder_this_repository_ships() {
     );
 
     let print_id = PrintId::new();
-    let payload = || {
-        EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-            detail: "the body was not JSON".to_owned(),
-        })
-    };
+    let payload = || unreadable("the body was not JSON");
 
     block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
         .expect("the turn runs");

@@ -289,42 +289,90 @@ safe_commands = [
 max_lines = 200
 
 [crates]
-# The roles the dependency rule is stated in terms of. `just check-repo`
-# enforces: core may depend on the type crate and the four ports and on no
-# implementation crate; no implementation crate may depend on another.
-types = "printobserver-types"
-ports = [
+# The dependency rule, stated as the edges it admits rather than as layers.
+#
+# `may_depend_on` below names, for every workspace crate, the workspace crates
+# it may depend on — across `dependencies`, `dev-dependencies` and
+# `build-dependencies`, and exactly the crate table AGENTS.md's "The dependency
+# rule" points at. `may_depend_on_in_tests` names the few edges a crate's tests
+# may add under `dev-dependencies` alone: a runtime or build dependency on one
+# of those is refused exactly as an edge no row admits. `just check-repo`
+# refuses a manifest edge the rows do not admit, a row naming a crate the
+# workspace does not hold, and a workspace crate with no row: the step that
+# draws an edge is the step that admits it here, so the check proves the graph
+# rather than a rule about it.
+#
+# The crates the other checks name by role. `core` is the supervision domain,
+# whose stated dependency direction the architecture document is held to;
+# `clients` are the generated clients the API document inventories.
+core = "printobserver-core"
+clients = ["printobserver-sdk"]
+# The command-line program, and the two edges it may not have.
+#
+# The table already admits it the server and the client alone; these two say
+# *why* the edges it must not have are the two vendor adapters, so that a
+# reader of a refusal is told the reason rather than the row. For everything
+# but starting the server it is a client of an already-running one, and a
+# client that could name the printer's adapter or the failure detector's could
+# reach a printer without the supervisor in between. That is the one thing
+# this program exists to make impossible.
+cli = "printobserver"
+# What it must depend on: the server it starts, and the typed client of the
+# surface it talks to.
+cli_requires = ["printobserver-server", "printobserver-sdk"]
+# What it must not, whatever the table said.
+cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
+
+# The four properties the graph is drawn for read straight off the rows: the
+# type crate sits under every crate and depends on nothing; each port depends
+# on the type crate alone; the supervision domain depends on the type crate
+# and the three ports and on no adapter or store, which is what keeps the
+# graph acyclic; and every adapter and the store are reached by the
+# composition roots — `printobserver-server`, and through it the command —
+# and by nothing else.
+[crates.may_depend_on]
+"printobserver-types" = []
+"printobserver-printer-api" = ["printobserver-types"]
+"printobserver-vision-api" = ["printobserver-types"]
+"printobserver-supervisor-api" = ["printobserver-types"]
+"printobserver-core" = [
+    "printobserver-types",
     "printobserver-printer-api",
     "printobserver-vision-api",
     "printobserver-supervisor-api",
-    "printobserver-store-api",
 ]
-implementations = [
+"printobserver-octoprint" = ["printobserver-printer-api", "printobserver-types"]
+"printobserver-obico" = ["printobserver-vision-api", "printobserver-core", "printobserver-types"]
+"printobserver-oneharness" = ["printobserver-supervisor-api", "printobserver-types"]
+"printobserver-store-sqlite" = [
+    "printobserver-core",
+    "printobserver-supervisor-api",
+    "printobserver-printer-api",
+    "printobserver-types",
+]
+"printobserver-server" = [
+    "printobserver-types",
+    "printobserver-printer-api",
+    "printobserver-vision-api",
+    "printobserver-supervisor-api",
+    "printobserver-core",
     "printobserver-octoprint",
     "printobserver-obico",
     "printobserver-oneharness",
     "printobserver-store-sqlite",
 ]
-core = "printobserver-core"
-# The only crates allowed to name an implementation: something has to choose
-# which one runs.
-composition_roots = ["printobserver-server", "printobserver"]
-clients = ["printobserver-sdk"]
-# The command-line program, and the two edges it may not have.
-#
-# It is a composition root — it starts the server — so the rule above permits
-# it any implementation. What it must not have is either **vendor** adapter: for
-# everything but starting the server it is a client of an already-running one,
-# and a client that could name the printer's adapter or the failure detector's
-# could reach a printer without the supervisor in between. That is the one thing
-# this program exists to make impossible, so the edge is refused here rather
-# than left to a reader.
-cli = "printobserver"
-# What it must depend on: the server it starts, and the typed client of the
-# surface it talks to.
-cli_requires = ["printobserver-server", "printobserver-sdk"]
-# What it must not, whatever layer they sit in.
-cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
+"printobserver-sdk" = []
+"printobserver" = ["printobserver-server", "printobserver-sdk", "printobserver-types"]
+
+# The edges a crate's tests may add, under `dev-dependencies` and no other
+# table. The command's journeys seed a state directory — a print, an event, an
+# image — before starting a server on it, through the real SQLite store and the
+# supervision domain's own store traits, because a print record is minted by
+# the supervisor and no client command opens one; the program itself reaches
+# the store only through the server it starts, and this table does not let it
+# reach either crate at run time.
+[crates.may_depend_on_in_tests]
+"printobserver" = ["printobserver-core", "printobserver-store-sqlite"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held
@@ -338,12 +386,12 @@ skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
 # The generated assessment schema's own checked-in artifact: written by the
 # contracts' generation target, which refuses the tree when it no longer matches
 # the types. It is the only schema the agent's answer may be constrained by.
-assessment_schema = "schemas/printobserver-types/AgentAssessment.json"
+assessment_schema = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 # The generated action vocabulary. The set of operations the prompt template may
 # not name is DERIVED from this file rather than restated here, so a variant
 # `PrintAction` gains enters that set the moment the generation target writes
 # it and the walk cannot fall behind the type.
-action_schema = "schemas/printobserver-types/PrintAction.json"
+action_schema = "schemas/printobserver-core/PrintAction.json"
 # The program whose operations the template may not name, and the reads this
 # system exposes beside the action vocabulary. `context_read` is the one
 # operation the template may name, because it is a read.
@@ -359,7 +407,7 @@ context_read = "context"
 # two suites locking two different files are back to no lock at all.
 schema_lock = "printobserver-schemas.lock"
 schema_lock_holders = [
-    "crates/printobserver-types/tests/schemas.rs",
+    "crates/printobserver-supervisor-api/tests/schemas.rs",
     "crates/printobserver-oneharness/tests/supervision/support.rs",
 ]
 
@@ -650,6 +698,7 @@ headings = [
 path = "docs/reference/architecture.md"
 headings = [
     "The crates",
+    "Why the crates are cut by domain",
     "Why core names no implementation crate",
     "Why the agent reaches this system the way an operator does",
 ]

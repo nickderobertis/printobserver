@@ -15,8 +15,8 @@
 
 use std::collections::BTreeSet;
 
+use printobserver_core::PrintAction;
 use printobserver_server::{BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERATIONS, Operation};
-use printobserver_types::PrintAction;
 use printobserver_types::serde_json::{Value, json};
 
 use crate::world::{World, manifest_write};
@@ -279,7 +279,10 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
     let world = World::open().await;
     let state = printobserver_server::ApiState {
         supervisor: std::sync::Arc::clone(world.server.supervisor()),
-        store: std::sync::Arc::clone(world.server.store()),
+        prints: std::sync::Arc::clone(&world.server.stores().prints),
+        events: std::sync::Arc::clone(&world.server.stores().events),
+        images: std::sync::Arc::clone(&world.server.stores().images),
+        sessions: std::sync::Arc::clone(&world.server.stores().sessions),
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",
@@ -287,7 +290,7 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
         printobserver_server::Ports {
             printer: std::sync::Arc::clone(&world.printer)
                 as std::sync::Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: std::sync::Arc::clone(world.server.store()),
+            stores: world.server.stores().clone(),
             vision: std::sync::Arc::new(
                 printobserver_obico::ObicoVision::new(
                     printobserver_obico::ObicoVisionConfig::default()
@@ -346,7 +349,7 @@ fn image_id() -> String {
 /// A manifest a write can carry.
 fn manifest() -> Value {
     printobserver_types::serde_json::to_value(
-        <printobserver_types::JobManifest as printobserver_types::contract::Sample>::sample_full(),
+        <printobserver_core::JobManifest as printobserver_types::contract::Sample>::sample_full(),
     )
     .expect("a manifest renders")
 }
@@ -362,25 +365,25 @@ fn body_for(operation: &Operation) -> Value {
     });
     let object = body.as_object_mut().expect("the body is an object");
     match kind {
-        printobserver_types::ActionKind::StartPrint => {
+        printobserver_core::ActionKind::StartPrint => {
             object.insert("file_name".to_owned(), json!("benchy.gcode"));
             object.insert("manifest".to_owned(), manifest());
         }
-        printobserver_types::ActionKind::SetFeedrateFactor
-        | printobserver_types::ActionKind::SetFlowrateFactor => {
+        printobserver_core::ActionKind::SetFeedrateFactor
+        | printobserver_core::ActionKind::SetFlowrateFactor => {
             object.insert("factor".to_owned(), json!(1.0));
         }
-        printobserver_types::ActionKind::SetToolTargetC => {
+        printobserver_core::ActionKind::SetToolTargetC => {
             object.insert("tool".to_owned(), json!(0));
             object.insert("target_c".to_owned(), json!(215.0));
         }
-        printobserver_types::ActionKind::SetBedTargetC => {
+        printobserver_core::ActionKind::SetBedTargetC => {
             object.insert("target_c".to_owned(), json!(60.0));
         }
-        printobserver_types::ActionKind::SetFanPercent => {
+        printobserver_core::ActionKind::SetFanPercent => {
             object.insert("percent".to_owned(), json!(40.0));
         }
-        printobserver_types::ActionKind::AcknowledgeFailure => {
+        printobserver_core::ActionKind::AcknowledgeFailure => {
             object.insert(
                 "event_id".to_owned(),
                 json!(printobserver_types::EventId::new()),

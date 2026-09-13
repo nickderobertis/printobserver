@@ -1,10 +1,11 @@
 //! The one error type core answers its callers with.
 
 use printobserver_printer_api::PrinterError;
-use printobserver_store_api::StoreError;
 use printobserver_supervisor_api::SupervisorError;
 use printobserver_types::PrintId;
 use printobserver_vision_api::VisionError;
+
+use crate::store::StoreError;
 
 /// Why core could not do what it was asked.
 ///
@@ -27,11 +28,20 @@ pub enum CoreError {
         /// The identifier nothing was found for.
         print_id: PrintId,
     },
-    /// An instant this crate computed is not representable.
+    /// A value this crate computed is not representable: an instant past what
+    /// a timestamp holds, or an event payload that would not render as JSON.
     Unrepresentable {
         /// What could not be represented.
         detail: String,
     },
+}
+
+impl From<printobserver_types::serde_json::Error> for CoreError {
+    fn from(error: printobserver_types::serde_json::Error) -> Self {
+        Self::Unrepresentable {
+            detail: format!("an event payload would not render: {error}"),
+        }
+    }
 }
 
 impl core::fmt::Display for CoreError {
@@ -43,7 +53,7 @@ impl core::fmt::Display for CoreError {
             Self::Supervisor(error) => write!(formatter, "the supervisor failed: {error}"),
             Self::NoSuchPrint { print_id } => write!(formatter, "there is no print {print_id}"),
             Self::Unrepresentable { detail } => {
-                write!(formatter, "an instant is not representable: {detail}")
+                write!(formatter, "a value is not representable: {detail}")
             }
         }
     }

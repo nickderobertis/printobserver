@@ -2,15 +2,17 @@
 //!
 //! Two of this crate's checks rest on a set nobody maintains by hand: which
 //! record kinds the contracts declare, and which references those records make
-//! to one another. Both are read off the declarations — the store port's own
-//! answers, and the type crate's own structs — so a record kind or a reference
+//! to one another. Both are read off the declarations — the store traits' own
+//! answers, and the structs the type crate and the supervision domain declare
+//! — so a record kind or a reference
 //! added to the contracts is one this crate is held to without anybody
 //! remembering to add it here.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::surface::{
-    crate_dir, crate_sources, named_types, parse, read, struct_fields, struct_names, trait_methods,
+    Method, crate_dir, crate_sources, named_types, parse, read, sources_under, struct_fields,
+    struct_names, trait_methods,
 };
 
 /// The table each record kind is held in.
@@ -50,30 +52,56 @@ pub struct Reference {
     pub references: String,
 }
 
-/// The type crate's sources, parsed.
-pub fn type_sources() -> Vec<syn::File> {
-    crate_sources("printobserver-types")
+/// The sources the records this store persists are declared in, parsed.
+///
+/// The type crate's, for the event record every domain agrees on; the
+/// supervision domain's `records` module, for the records that are its own;
+/// and the supervisor port's, for the session a turn runs in. The set is what
+/// the store is held to, so a record a domain adds to any of them is one this
+/// crate is held to without anybody remembering to add it here.
+pub fn record_sources() -> Vec<syn::File> {
+    let mut sources = crate_sources("printobserver-types");
+    sources.extend(sources_under(
+        &crate_dir("printobserver-core").join("src").join("records"),
+    ));
+    sources.extend(crate_sources("printobserver-supervisor-api"));
+    sources
 }
 
-/// The store port, parsed.
-pub fn port_source() -> syn::File {
+/// The five store traits, in the order the supervision domain declares them.
+pub const STORE_TRAITS: [&str; 5] = [
+    "PrintStore",
+    "EventStore",
+    "ImageStore",
+    "ActionStore",
+    "SessionStore",
+];
+
+/// The supervision domain's `store` module, where the traits are declared.
+pub fn store_source() -> syn::File {
     parse(&read(
-        &crate_dir("printobserver-store-api")
-            .join("src")
-            .join("lib.rs"),
+        &crate_dir("printobserver-core").join("src").join("store.rs"),
     ))
+}
+
+/// Every method every store trait declares, in declaration order.
+pub fn store_trait_methods(file: &syn::File) -> Vec<Method> {
+    STORE_TRAITS
+        .iter()
+        .flat_map(|name| trait_methods(file, name))
+        .collect()
 }
 
 /// Every record kind the contracts declare that this store persists.
 ///
-/// A record kind is a struct the type crate declares that a method of the store
-/// port answers: the port answering it is what makes it a record this store
-/// holds, and the type crate declaring it is what makes it a contract rather
-/// than a shape of the port's own.
+/// A record kind is a struct one of the record sources declares that a method
+/// of a store trait answers: the trait answering it is what makes it a record
+/// this store holds, and a record module declaring it is what makes it a
+/// contract rather than a shape of the trait's own.
 pub fn record_kinds() -> BTreeSet<String> {
-    let declared = struct_names(&type_sources());
+    let declared = struct_names(&record_sources());
     let mut kinds = BTreeSet::new();
-    for method in trait_methods(&port_source(), "StorePort") {
+    for method in store_trait_methods(&store_source()) {
         for name in named_types(&method.returns) {
             if declared.contains(&name) {
                 kinds.insert(name);
@@ -110,7 +138,7 @@ pub fn table_of(record: &str) -> &'static str {
 /// newtypes and which is not that record's own identifier — optional or not,
 /// since a reference that may be absent is still a reference when it is there.
 pub fn references() -> Vec<Reference> {
-    let sources = type_sources();
+    let sources = record_sources();
     let identifiers: BTreeMap<&str, &str> = IDENTIFIER_TABLES.iter().copied().collect();
     let mut found = Vec::new();
     for record in record_kinds() {

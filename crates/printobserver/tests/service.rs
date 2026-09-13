@@ -21,7 +21,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use printobserver_store_api::StorePort as _;
+use printobserver_core::store::PrintStore as _;
 use tempfile::TempDir;
 
 /// The unit's name, as the install-path section states it. `just check-repo`'s

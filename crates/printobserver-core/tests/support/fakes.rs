@@ -5,8 +5,9 @@
 //! paths a source check cannot resolve. A second printer double would be a
 //! second set of rules about what may reach a machine, so a check refuses one.
 //!
-//! None of these is a real printer, a real Obico or a real model: this crate
-//! declares four ports and nothing that implements them, and its tests hold to
+//! None of these is a real printer, a real detector or a real model: this crate
+//! depends on three ports and declares its own store interfaces, with nothing
+//! that implements any of them, and its tests hold to
 //! that.
 
 use std::collections::BTreeMap;
@@ -14,20 +15,25 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::Instant;
 
-use printobserver_core::{Clock, Supervisor};
-use printobserver_printer_api::{BoxFuture, PrinterError, PrinterPort};
-use printobserver_store_api::{
-    AuditPage, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError, StorePort,
-    resolve_history_limit,
+use printobserver_core::store::{
+    ActionStore, AuditPage, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
+    PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
 };
-use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnOutcome, TurnRequest};
-use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, AgentAssessment, Confidence, EventId,
-    EventRecord, ExecutionOutcome, FileName, ImageId, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, JobSnapshot, ManifestNarrowing, PolicyDecision, PrintAction,
-    PrintContext, PrintId, PrintRecord, PrinterSnapshot, PrinterState, RawBytes, SessionPhase,
-    SupervisionSession, Timestamp,
+use printobserver_core::{
+    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
+    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
+    PrintAction, PrintRecord,
 };
+use printobserver_core::{Clock, PrintContext, Supervisor};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_printer_api::{
+    BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+};
+use printobserver_supervisor_api::{
+    AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+};
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_types::{EventId, EventRecord, FileName, ImageId, PrintId, RawBytes, Timestamp};
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
 use crate::journal::{Call, Journal};
@@ -441,16 +447,16 @@ fn ready<T: Send + 'static>(value: T) -> BoxFuture<'static, T> {
     Box::pin(async move { value })
 }
 
-impl StorePort for FakeStore {
+impl PrintStore for FakeStore {
     fn open_print(
         &self,
-        obico_print_id: Option<i64>,
+        provider_print_id: Option<i64>,
         file_name: Option<String>,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
         self.journal.record(Call::OpenPrint);
         let record = PrintRecord {
             id: PrintId::new(),
-            obico_print_id,
+            provider_print_id,
             file_name,
             state: PrinterState::Printing,
             opened_at: self.clock.now(),
@@ -468,7 +474,7 @@ impl StorePort for FakeStore {
     fn print(
         &self,
         print_id: PrintId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadPrint);
         let found = self
             .held
@@ -480,25 +486,25 @@ impl StorePort for FakeStore {
         Box::pin(async move { Ok(found) })
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        obico_print_id: i64,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
-        self.journal.record(Call::ReadPrintByObicoId);
+        provider_print_id: i64,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+        self.journal.record(Call::ReadPrintByProviderId);
         let found = self
             .held
             .lock()
             .expect("the store holds")
             .prints
             .values()
-            .find(|print| print.obico_print_id == Some(obico_print_id))
+            .find(|print| print.provider_print_id == Some(provider_print_id))
             .cloned();
         Box::pin(async move { Ok(found) })
     }
 
     fn open_prints(
         &self,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
         let found: Vec<PrintRecord> = self
             .held
@@ -518,7 +524,7 @@ impl StorePort for FakeStore {
         state: PrinterState,
         ended_at: Timestamp,
         reason: String,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
         self.journal.record(Call::EndPrint(format!("{state:?}")));
         let mut held = self.held.lock().expect("the store holds");
         let answer = held.prints.get_mut(&print_id).map_or_else(
@@ -542,7 +548,7 @@ impl StorePort for FakeStore {
         &self,
         print_id: PrintId,
         narrowing: ManifestNarrowing,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
         self.journal
             .record(Call::RecordNarrowing(narrowing.adjustable));
         let mut held = self.held.lock().expect("the store holds");
@@ -561,11 +567,42 @@ impl StorePort for FakeStore {
         Box::pin(async move { answer })
     }
 
+    fn put_manifest(
+        &self,
+        print_id: PrintId,
+        manifest: JobManifest,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<(), StoreError>> {
+        self.journal.record(Call::PutManifest);
+        self.held
+            .lock()
+            .expect("the store holds")
+            .manifests
+            .insert(print_id, manifest);
+        ready(Ok(()))
+    }
+
+    fn manifest(
+        &self,
+        print_id: PrintId,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        self.journal.record(Call::ReadManifest);
+        let found = self
+            .held
+            .lock()
+            .expect("the store holds")
+            .manifests
+            .get(&print_id)
+            .cloned();
+        ready(Ok(found))
+    }
+}
+
+impl EventStore for FakeStore {
     fn append_event(
         &self,
         draft: EventDraft,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<EventRecord, StoreError>> {
-        self.journal.record(Call::AppendEvent(draft.kind()));
+    ) -> printobserver_core::store::BoxFuture<'_, Result<EventRecord, StoreError>> {
+        self.journal.record(Call::AppendEvent(draft.kind().clone()));
         if let Some(error) = self.induced(StoreMethod::AppendEvent) {
             return ready(Err(error));
         }
@@ -575,7 +612,7 @@ impl StorePort for FakeStore {
             source: draft.source,
             received_at: draft.received_at,
             image: None,
-            payload: draft.payload,
+            body: draft.body,
             raw: draft.raw,
         };
         self.held
@@ -586,6 +623,65 @@ impl StorePort for FakeStore {
         ready(Ok(record))
     }
 
+    fn history(
+        &self,
+        query: HistoryQuery,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        self.journal.record(Call::ReadHistory);
+        let limit = match resolve_history_limit(query.limit) {
+            Ok(limit) => limit as usize,
+            Err(error) => return ready(Err(error)),
+        };
+        let answered: Vec<EventRecord> = self
+            .held
+            .lock()
+            .expect("the store holds")
+            .events
+            .iter()
+            .rev()
+            .filter(|event| event.print_id == Some(query.print_id))
+            .filter(|event| query.kinds.is_empty() || query.kinds.contains(event.kind()))
+            .take(limit)
+            .cloned()
+            .collect();
+        ready(Ok(answered))
+    }
+
+    fn audit_page(
+        &self,
+        print_id: PrintId,
+        after: Option<EventId>,
+        page_size: u32,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<AuditPage, StoreError>> {
+        self.journal.record(Call::ReadAuditPage);
+        let size = match resolve_history_limit(Some(page_size)) {
+            Ok(size) => size as usize,
+            Err(error) => return ready(Err(error)),
+        };
+        let held = self.held.lock().expect("the store holds");
+        let all: Vec<EventRecord> = held
+            .events
+            .iter()
+            .filter(|event| event.print_id == Some(print_id))
+            .cloned()
+            .collect();
+        drop(held);
+        let start = after.map_or(0, |cursor| {
+            all.iter()
+                .position(|event| event.id == cursor)
+                .map_or(0, |index| index + 1)
+        });
+        let events: Vec<EventRecord> = all.iter().skip(start).take(size).cloned().collect();
+        let next = if start + events.len() < all.len() {
+            events.last().map(|event| event.id)
+        } else {
+            None
+        };
+        ready(Ok(AuditPage { events, next }))
+    }
+}
+
+impl ImageStore for FakeStore {
     fn put_image(
         &self,
         print_id: PrintId,
@@ -593,7 +689,7 @@ impl StorePort for FakeStore {
         source_url: Option<String>,
         content_type: String,
         bytes: RawBytes,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<ImageRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ImageRecord, StoreError>> {
         self.journal.record(Call::PutImage);
         if let Some(error) = self.induced(StoreMethod::PutImage) {
             return ready(Err(error));
@@ -635,7 +731,7 @@ impl StorePort for FakeStore {
     fn image(
         &self,
         image_id: ImageId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<ImageLookup, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ImageLookup, StoreError>> {
         self.journal.record(Call::ReadImage);
         let held = self.held.lock().expect("the store holds");
         let answer = held.images.get(&image_id).cloned().map_or_else(
@@ -656,12 +752,14 @@ impl StorePort for FakeStore {
         drop(held);
         Box::pin(async move { answer })
     }
+}
 
+impl ActionStore for FakeStore {
     fn record_action(
         &self,
         request: ActionRequest,
         decision: PolicyDecision,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<ActionRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ActionRecord, StoreError>> {
         self.journal.record(Call::RecordAction(decision.clone()));
         let mut held = self.held.lock().expect("the store holds");
         // This port carries no print on a request, so the record is attributed
@@ -693,7 +791,7 @@ impl StorePort for FakeStore {
         &self,
         action_id: ActionId,
         outcome: ExecutionOutcome,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<ActionRecord, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ActionRecord, StoreError>> {
         self.journal.record(Call::RecordExecution(outcome.clone()));
         let executed_at = self.clock.now();
         let mut held = self.held.lock().expect("the store holds");
@@ -721,7 +819,7 @@ impl StorePort for FakeStore {
         applied_value: f64,
         applied_at: Timestamp,
         expires_at: Timestamp,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Intervention, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Intervention, StoreError>> {
         self.journal.record(Call::OpenIntervention(adjustable));
         let mut held = self.held.lock().expect("the store holds");
         let Some(action) = held.actions.get(&action_id).cloned() else {
@@ -752,7 +850,7 @@ impl StorePort for FakeStore {
         &self,
         intervention_id: InterventionId,
         outcome: InterventionOutcome,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<SettleOutcome, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<SettleOutcome, StoreError>> {
         self.journal
             .record(Call::SettleIntervention(outcome.clone()));
         let restored_at = self.clock.now();
@@ -786,7 +884,7 @@ impl StorePort for FakeStore {
     fn due_interventions(
         &self,
         at: Timestamp,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
         let due: Vec<Intervention> = self
             .held
             .lock()
@@ -804,7 +902,7 @@ impl StorePort for FakeStore {
     fn active_interventions(
         &self,
         print_id: PrintId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
         self.journal.record(Call::ReadActiveInterventions);
         let active: Vec<Intervention> = self
             .held
@@ -819,97 +917,13 @@ impl StorePort for FakeStore {
             .collect();
         ready(Ok(active))
     }
+}
 
-    fn put_manifest(
-        &self,
-        print_id: PrintId,
-        manifest: JobManifest,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<(), StoreError>> {
-        self.journal.record(Call::PutManifest);
-        self.held
-            .lock()
-            .expect("the store holds")
-            .manifests
-            .insert(print_id, manifest);
-        ready(Ok(()))
-    }
-
-    fn manifest(
-        &self,
-        print_id: PrintId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        self.journal.record(Call::ReadManifest);
-        let found = self
-            .held
-            .lock()
-            .expect("the store holds")
-            .manifests
-            .get(&print_id)
-            .cloned();
-        ready(Ok(found))
-    }
-
-    fn history(
-        &self,
-        query: HistoryQuery,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        self.journal.record(Call::ReadHistory);
-        let limit = match resolve_history_limit(query.limit) {
-            Ok(limit) => limit as usize,
-            Err(error) => return ready(Err(error)),
-        };
-        let answered: Vec<EventRecord> = self
-            .held
-            .lock()
-            .expect("the store holds")
-            .events
-            .iter()
-            .rev()
-            .filter(|event| event.print_id == Some(query.print_id))
-            .filter(|event| query.kinds.is_empty() || query.kinds.contains(&event.kind()))
-            .take(limit)
-            .cloned()
-            .collect();
-        ready(Ok(answered))
-    }
-
-    fn audit_page(
-        &self,
-        print_id: PrintId,
-        after: Option<EventId>,
-        page_size: u32,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<AuditPage, StoreError>> {
-        self.journal.record(Call::ReadAuditPage);
-        let size = match resolve_history_limit(Some(page_size)) {
-            Ok(size) => size as usize,
-            Err(error) => return ready(Err(error)),
-        };
-        let held = self.held.lock().expect("the store holds");
-        let all: Vec<EventRecord> = held
-            .events
-            .iter()
-            .filter(|event| event.print_id == Some(print_id))
-            .cloned()
-            .collect();
-        drop(held);
-        let start = after.map_or(0, |cursor| {
-            all.iter()
-                .position(|event| event.id == cursor)
-                .map_or(0, |index| index + 1)
-        });
-        let events: Vec<EventRecord> = all.iter().skip(start).take(size).cloned().collect();
-        let next = if start + events.len() < all.len() {
-            events.last().map(|event| event.id)
-        } else {
-            None
-        };
-        ready(Ok(AuditPage { events, next }))
-    }
-
+impl SessionStore for FakeStore {
     fn put_session(
         &self,
         session: SupervisionSession,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<(), StoreError>> {
+    ) -> printobserver_core::store::BoxFuture<'_, Result<(), StoreError>> {
         self.journal.record(Call::PutSession);
         self.held
             .lock()
@@ -922,7 +936,7 @@ impl StorePort for FakeStore {
     fn session(
         &self,
         print_id: PrintId,
-    ) -> printobserver_store_api::BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>>
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>>
     {
         self.journal.record(Call::ReadSession);
         let found = self
@@ -1291,10 +1305,11 @@ impl SupervisorPort for FakeSupervisor {
 /// A printer snapshot in one state, with a prior value for every adjustable.
 #[must_use]
 pub fn printer_snapshot(state: PrinterState) -> PrinterSnapshot {
-    use printobserver_types::{
+    use printobserver_printer_api::{
         FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE, HEATER_ACTUAL_C_RANGE,
-        HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot, Reported,
+        HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot,
     };
+    use printobserver_types::Reported;
     let heater = |target: f64| HeaterSnapshot {
         actual_c: Some(Reported::new(target - 0.5, HEATER_ACTUAL_C_RANGE)),
         target_c: Some(Reported::new(target, HEATER_TARGET_C_RANGE)),
@@ -1315,7 +1330,8 @@ pub fn printer_snapshot(state: PrinterState) -> PrinterSnapshot {
 /// The job the fake printer reports.
 #[must_use]
 pub fn job_snapshot() -> JobSnapshot {
-    use printobserver_types::{COMPLETION_RANGE, Reported};
+    use printobserver_printer_api::COMPLETION_RANGE;
+    use printobserver_types::Reported;
     JobSnapshot {
         file_name: Some("benchy.gcode".to_owned()),
         file_origin: Some("local".to_owned()),

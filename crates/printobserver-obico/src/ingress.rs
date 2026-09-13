@@ -19,10 +19,9 @@
 //!
 //! # Which kind a failed fetch is recorded under
 //!
-//! The contracts declare a kind for exactly this: a
-//! [`PortFailure`](printobserver_types::EventKind::PortFailure) at the
-//! [`ImageWrite`](PortFailureSite::ImageWrite) site, naming the event whose
-//! handling reached the failing call. That is what a failed fetch is — the
+//! The supervision domain declares a kind for exactly this: a
+//! [`PortFailurePayload`] at the [`ImageWrite`](PortFailureSite::ImageWrite)
+//! site, naming the event whose handling reached the failing call. That is what a failed fetch is — the
 //! alert itself was read perfectly, and only getting the image it pointed at
 //! failed — and it is the same kind and the same site the supervision core
 //! records its own image failures under.
@@ -44,13 +43,15 @@
 
 use std::sync::Arc;
 
-use printobserver_store_api::{EventDraft, StoreError, StorePort};
-use printobserver_types::{
-    EventId, EventPayload, EventRecord, EventSource, ImageRecord, MalformedExternalEventPayload,
-    PortFailurePayload, PortFailureSite, PrintId, PrintRecord, RawBytes, Timestamp,
+use printobserver_core::store::{EventDraft, EventStore, ImageStore, PrintStore, StoreError};
+use printobserver_core::{ImageRecord, PrintRecord};
+use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
+use printobserver_types::{EventBody, EventId, EventRecord, PrintId, RawBytes, Timestamp};
+use printobserver_vision_api::{
+    MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort,
 };
-use printobserver_vision_api::{VisionError, VisionPort};
 
+use crate::events::obico_source;
 use crate::vision::{ObicoVision, ObicoVisionConfig, ObicoVisionError};
 
 /// What one received body left behind it.
@@ -84,6 +85,12 @@ pub enum IngressError {
         /// What the store said.
         error: StoreError,
     },
+    /// The record this system would have written down would not render as
+    /// JSON, so nothing was written down.
+    Unrepresentable {
+        /// What would not render.
+        detail: String,
+    },
 }
 
 impl core::fmt::Display for IngressError {
@@ -97,6 +104,10 @@ impl core::fmt::Display for IngressError {
                 )
             }
             Self::Store { error } => write!(formatter, "nothing was written down: {error}"),
+            Self::Unrepresentable { detail } => write!(
+                formatter,
+                "nothing was written down: the record would not render: {detail}"
+            ),
         }
     }
 }
@@ -109,19 +120,11 @@ impl From<StoreError> for IngressError {
     }
 }
 
-/// What one normalized payload says about the print it is about.
-///
-/// Only the two Obico kinds name a print; every other kind is one this adapter
-/// does not produce, and none of them correlates.
-fn correlation_of(payload: &EventPayload) -> Option<(i64, Option<String>)> {
-    match payload {
-        EventPayload::ObicoFailureAlert(alert) => {
-            alert.obico_print_id.map(|id| (id, alert.file_name.clone()))
+impl From<printobserver_types::serde_json::Error> for IngressError {
+    fn from(error: printobserver_types::serde_json::Error) -> Self {
+        Self::Unrepresentable {
+            detail: error.to_string(),
         }
-        EventPayload::ObicoPrinterNotification(notification) => notification
-            .obico_print_id
-            .map(|id| (id, notification.file_name.clone())),
-        _ => None,
     }
 }
 
@@ -137,29 +140,43 @@ fn detail_of(refusal: &VisionError) -> String {
     }
 }
 
-/// The Obico ingress: the adapter and the store it writes through.
+/// The Obico ingress: the adapter and the three stores it writes through.
+///
+/// It names the three aggregates its steps touch and no other: the print the
+/// alert is correlated to, the event log it is appended to, and the image
+/// stored beside it. Actions, interventions and sessions are the supervision
+/// domain's own to write, and nothing here can reach them.
 #[derive(Clone)]
 pub struct ObicoIngress {
     /// The adapter that reads a body and fetches a snapshot.
     vision: ObicoVision,
-    /// Where every step of the handling is written down.
-    store: Arc<dyn StorePort>,
+    /// The print records an alert is correlated to.
+    prints: Arc<dyn PrintStore>,
+    /// The log every step of the handling is written down in.
+    events: Arc<dyn EventStore>,
+    /// The images stored beside the events.
+    images: Arc<dyn ImageStore>,
 }
 
 impl ObicoIngress {
-    /// The ingress, under the bounds given.
+    /// The ingress, over the three stores it writes through, under the bounds
+    /// given.
     ///
     /// # Errors
     ///
     /// Returns [`ObicoVisionError`] when the adapter's HTTP client cannot be
     /// built.
     pub fn new(
-        store: Arc<dyn StorePort>,
+        prints: Arc<dyn PrintStore>,
+        events: Arc<dyn EventStore>,
+        images: Arc<dyn ImageStore>,
         config: ObicoVisionConfig,
     ) -> Result<Self, ObicoVisionError> {
         Ok(Self {
             vision: ObicoVision::new(config)?,
-            store,
+            prints,
+            events,
+            images,
         })
     }
 
@@ -171,16 +188,20 @@ impl ObicoIngress {
 
     /// Record one body this system could not read, and refuse it.
     async fn refuse(&self, body: RawBytes, refusal: VisionError) -> IngressError {
+        let rendered = match EventBody::of(&MalformedExternalEventPayload {
+            detail: detail_of(&refusal),
+        }) {
+            Ok(rendered) => rendered,
+            Err(error) => return IngressError::from(error),
+        };
         let draft = EventDraft {
             print_id: None,
-            source: EventSource::Obico,
+            source: obico_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: detail_of(&refusal),
-            }),
+            body: rendered,
             raw: Some(body),
         };
-        match self.store.append_event(draft).await {
+        match self.events.append_event(draft).await {
             Ok(recorded) => IngressError::Refused {
                 refusal,
                 recorded: Box::new(recorded),
@@ -192,17 +213,22 @@ impl ObicoIngress {
     /// The print one alert belongs to, opening a record only for an unknown id.
     ///
     /// An id the store already holds a print for is not an unknown id, whether
-    /// that print is open or ended, so it is answered rather than replaced.
-    async fn print_for(&self, payload: &EventPayload) -> Result<Option<PrintRecord>, IngressError> {
-        let Some((obico_print_id, file_name)) = correlation_of(payload) else {
+    /// that print is open or ended, so it is answered rather than replaced. The
+    /// correlation is the one the adapter hands over beside the body, which is
+    /// the same one the supervision core reads.
+    async fn print_for(
+        &self,
+        print: Option<&ProviderPrint>,
+    ) -> Result<Option<PrintRecord>, IngressError> {
+        let Some(print) = print else {
             return Ok(None);
         };
-        if let Some(held) = self.store.print_by_obico_id(obico_print_id).await? {
+        if let Some(held) = self.prints.print_by_provider_id(print.id).await? {
             return Ok(Some(held));
         }
         Ok(Some(
-            self.store
-                .open_print(Some(obico_print_id), file_name)
+            self.prints
+                .open_print(Some(print.id), print.file_name.clone())
                 .await?,
         ))
     }
@@ -221,16 +247,16 @@ impl ObicoIngress {
     ) -> Result<(), IngressError> {
         let draft = EventDraft {
             print_id: Some(print_id),
-            source: EventSource::System,
+            source: system_source(),
             received_at: Timestamp::now(),
-            payload: EventPayload::PortFailure(PortFailurePayload {
+            body: EventBody::of(&PortFailurePayload {
                 event_id,
                 site: PortFailureSite::ImageWrite,
                 detail: failure.to_string(),
-            }),
+            })?,
             raw: None,
         };
-        self.store.append_event(draft).await?;
+        self.events.append_event(draft).await?;
         Ok(())
     }
 
@@ -250,14 +276,14 @@ impl ObicoIngress {
             Ok(alert) => alert,
             Err(refusal) => return Err(self.refuse(body, refusal).await),
         };
-        let print = self.print_for(&alert.payload).await?;
+        let print = self.print_for(alert.print.as_ref()).await?;
         let event = self
-            .store
+            .events
             .append_event(EventDraft {
                 print_id: print.as_ref().map(|record| record.id),
                 source: alert.source,
                 received_at: alert.received_at,
-                payload: alert.payload,
+                body: alert.body,
                 raw: Some(alert.raw),
             })
             .await?;
@@ -268,7 +294,7 @@ impl ObicoIngress {
             match self.vision.fetch_image(source_url.clone()).await {
                 Ok(fetched) => {
                     image = Some(
-                        self.store
+                        self.images
                             .put_image(
                                 record.id,
                                 event.id,
@@ -297,19 +323,12 @@ impl ObicoIngress {
 
 #[cfg(test)]
 mod tests {
-    use printobserver_store_api::StoreError;
+    use printobserver_core::store::StoreError;
     use printobserver_types::contract::Sample as _;
-    use printobserver_types::{ActionExecutedPayload, EventPayload, EventRecord, RawBytes};
+    use printobserver_types::{EventRecord, RawBytes};
     use printobserver_vision_api::VisionError;
 
-    use super::{IngressError, correlation_of, detail_of};
-
-    /// A payload of a kind this adapter does not produce correlates to nothing.
-    #[test]
-    fn a_kind_this_adapter_does_not_produce_correlates_to_nothing() {
-        let payload = EventPayload::ActionExecuted(ActionExecutedPayload::sample_full());
-        assert_eq!(correlation_of(&payload), None);
-    }
+    use super::{IngressError, detail_of};
 
     /// A refusal that is not about reading a body says so in its own words.
     #[test]
@@ -327,9 +346,9 @@ mod tests {
         );
     }
 
-    /// Both refusals say which they are, and the recorded one names its record.
+    /// Every refusal says which it is, and the recorded one names its record.
     #[test]
-    fn both_refusals_say_which_they_are() {
+    fn every_refusal_says_which_it_is() {
         let recorded = EventRecord::sample_full();
         let refused = IngressError::Refused {
             refusal: VisionError::TimedOut,
@@ -340,5 +359,18 @@ mod tests {
             detail: "the disk is full".to_owned(),
         });
         assert!(refused_by_store.to_string().contains("the disk is full"));
+        let unrepresentable = IngressError::from(
+            printobserver_types::serde_json::from_str::<u8>("not a number")
+                .expect_err("a string is no number"),
+        );
+        assert!(matches!(
+            unrepresentable,
+            IngressError::Unrepresentable { .. }
+        ));
+        assert!(
+            unrepresentable
+                .to_string()
+                .contains("the record would not render")
+        );
     }
 }

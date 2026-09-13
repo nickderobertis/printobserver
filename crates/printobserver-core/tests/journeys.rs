@@ -19,6 +19,13 @@ mod source;
 #[path = "support/world.rs"]
 mod world;
 
+// The reader of Rust declarations the store contract's surface is held with:
+// the type crate's, included by path, because a reader of sources is a claim
+// about no crate in particular and this crate's tests name no crate of this
+// workspace beyond the ones its manifest does.
+#[path = "../../printobserver-types/tests/support/surface.rs"]
+pub mod declarations;
+
 #[path = "journeys/bounds.rs"]
 mod bounds;
 
@@ -51,3 +58,12 @@ mod messages;
 
 #[path = "journeys/surface.rs"]
 mod surface;
+
+#[path = "journeys/store_limits.rs"]
+mod store_limits;
+
+#[path = "journeys/store_surface.rs"]
+mod store_surface;
+
+#[path = "journeys/store_traits.rs"]
+mod store_traits;

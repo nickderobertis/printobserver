@@ -9,14 +9,12 @@ use std::sync::Arc;
 
 use printobserver_oneharness::{CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, SLOTS};
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{
-    EventPayload, MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
-    ObicoPrinterNotificationPayload, PrintId, serde_json,
-};
+use printobserver_types::{PrintId, serde_json};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, skill_path, template_path, turn,
+    Fixture, HARNESS, Watch, always, assessment, block_on, config, event, failure_alert,
+    generated_assessment_schema, notification, port, schema_read_lock, skill_path, template_path,
+    turn, unreadable,
 };
 
 /// The literal text of the committed template between its slots, in the order
@@ -96,32 +94,11 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     fs::write(&picture, b"not really a picture").expect("a scratch picture");
     let triggers = [
         (
-            EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-                is_warning: false,
-                print_paused: true,
-                obico_print_id: Some(7),
-                file_name: Some("bracket.gcode".to_owned()),
-                started_at: None,
-                ended_at: None,
-            }),
+            failure_alert(7, Some("bracket.gcode")),
             Some(picture.clone()),
         ),
-        (
-            EventPayload::ObicoPrinterNotification(ObicoPrinterNotificationPayload {
-                notification_type: ObicoNotificationType::FilamentChange,
-                obico_print_id: Some(7),
-                file_name: None,
-                started_at: None,
-                ended_at: None,
-            }),
-            None,
-        ),
-        (
-            EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: "the body was not JSON".to_owned(),
-            }),
-            Some(picture),
-        ),
+        (notification("filament_change", 7, None), None),
+        (unreadable("the body was not JSON"), Some(picture)),
     ];
 
     let mut seen = Vec::new();
@@ -186,12 +163,7 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
     let print_id = PrintId::new();
     block_on(supervisor.run_turn(turn(
         print_id,
-        event(
-            print_id,
-            EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: "the body was not JSON".to_owned(),
-            }),
-        ),
+        event(print_id, unreadable("the body was not JSON")),
         None,
     )))
     .expect("the turn runs");
@@ -221,12 +193,7 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
         let print_id = PrintId::new();
         block_on(rebuilt.run_turn(turn(
             print_id,
-            event(
-                print_id,
-                EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                    detail: "the body was not JSON".to_owned(),
-                }),
-            ),
+            event(print_id, unreadable("the body was not JSON")),
             None,
         )))
         .expect("the turn runs");

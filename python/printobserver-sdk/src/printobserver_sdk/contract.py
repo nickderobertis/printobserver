@@ -8,7 +8,7 @@ generate-clients`, and commit what that writes.
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict, cast
+from typing import Literal, NotRequired, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
 
@@ -282,10 +282,15 @@ class ErrorAnswer(TypedDict):
 type EventId = str
 
 
-class EventRecordCommon(TypedDict):
-    """What every arm of `EventRecord` carries beside its own payload.
+# The name one kind of event is written down under: lowercase `snake_case`,
+# declared by the domain that owns the event.
+type EventKind = str
 
-    One event, as the store holds it.
+
+class EventRecord(TypedDict):
+    """`EventRecord`, as the contracts declare it.
+
+    One event, as the store holds it and the server serves it.
 
     `raw` holds the bytes exactly as received for an externally sourced
     event
@@ -301,6 +306,10 @@ class EventRecordCommon(TypedDict):
     id: EventId
     # The image it arrived with, when it arrived with one.
     image: NotRequired[ImageRef | None]
+    # Which event this is.
+    kind: EventKind
+    # What it carries, in the form its kind declares.
+    payload: object
     # The print it belongs to, when it belongs to one.
     print_id: NotRequired[PrintId | None]
     # The bytes exactly as received, for an externally sourced event.
@@ -311,169 +320,9 @@ class EventRecordCommon(TypedDict):
     source: EventSource
 
 
-class EventRecordObicoFailureAlert(EventRecordCommon):
-    """The `obico_failure_alert` arm of `EventRecord`.
-
-    Obico reported a print failure.
-    """
-
-    kind: Literal["obico_failure_alert"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: ObicoFailureAlertPayload
-
-
-class EventRecordObicoPrinterNotification(EventRecordCommon):
-    """The `obico_printer_notification` arm of `EventRecord`.
-
-    Obico sent a printer notification.
-    """
-
-    kind: Literal["obico_printer_notification"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: ObicoPrinterNotificationPayload
-
-
-class EventRecordMalformedExternalEvent(EventRecordCommon):
-    """The `malformed_external_event` arm of `EventRecord`.
-
-    An external body arrived that could not be read.
-    """
-
-    kind: Literal["malformed_external_event"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: MalformedExternalEventPayload
-
-
-class EventRecordActionRequested(EventRecordCommon):
-    """The `action_requested` arm of `EventRecord`.
-
-    An actor asked for an action.
-    """
-
-    kind: Literal["action_requested"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: ActionRequestedPayload
-
-
-class EventRecordActionExecuted(EventRecordCommon):
-    """The `action_executed` arm of `EventRecord`.
-
-    An accepted action reached the printer.
-    """
-
-    kind: Literal["action_executed"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: ActionExecutedPayload
-
-
-class EventRecordActionRejected(EventRecordCommon):
-    """The `action_rejected` arm of `EventRecord`.
-
-    Policy refused an action.
-    """
-
-    kind: Literal["action_rejected"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: ActionRejectedPayload
-
-
-class EventRecordInterventionExpired(EventRecordCommon):
-    """The `intervention_expired` arm of `EventRecord`.
-
-    A bounded intervention expired.
-    """
-
-    kind: Literal["intervention_expired"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: InterventionExpiredPayload
-
-
-class EventRecordSupervisionSessionOpened(EventRecordCommon):
-    """The `supervision_session_opened` arm of `EventRecord`.
-
-    A supervision session was opened.
-    """
-
-    kind: Literal["supervision_session_opened"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: SupervisionSessionOpenedPayload
-
-
-class EventRecordSupervisionSessionClosed(EventRecordCommon):
-    """The `supervision_session_closed` arm of `EventRecord`.
-
-    A supervision session was closed.
-    """
-
-    kind: Literal["supervision_session_closed"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: SupervisionSessionClosedPayload
-
-
-class EventRecordAgentAssessment(EventRecordCommon):
-    """The `agent_assessment` arm of `EventRecord`.
-
-    The agent wrote down what it made of a turn.
-    """
-
-    kind: Literal["agent_assessment"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: AgentAssessmentPayload
-
-
-class EventRecordOperatorAcknowledgement(EventRecordCommon):
-    """The `operator_acknowledgement` arm of `EventRecord`.
-
-    An operator acknowledged an event.
-    """
-
-    kind: Literal["operator_acknowledgement"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: OperatorAcknowledgementPayload
-
-
-class EventRecordPortFailure(EventRecordCommon):
-    """The `port_failure` arm of `EventRecord`.
-
-    A port failed while an event was being handled.
-    """
-
-    kind: Literal["port_failure"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: PortFailurePayload
-
-
-class EventRecordStartupReconciliation(EventRecordCommon):
-    """The `startup_reconciliation` arm of `EventRecord`.
-
-    A supervisor reconciled one thing the store held when it started.
-    """
-
-    kind: Literal["startup_reconciliation"]
-    # One shape of the contracts, which say nothing more about it.
-    payload: StartupReconciliationPayload
-
-
-# EventRecord, as the contracts declare it.
-type EventRecord = (
-    EventRecordObicoFailureAlert
-    | EventRecordObicoPrinterNotification
-    | EventRecordMalformedExternalEvent
-    | EventRecordActionRequested
-    | EventRecordActionExecuted
-    | EventRecordActionRejected
-    | EventRecordInterventionExpired
-    | EventRecordSupervisionSessionOpened
-    | EventRecordSupervisionSessionClosed
-    | EventRecordAgentAssessment
-    | EventRecordOperatorAcknowledgement
-    | EventRecordPortFailure
-    | EventRecordStartupReconciliation
-)
-
-
-# Where an event came from.
-type EventSource = Literal["obico", "operator", "agent", "system"]
+# Where an event came from, as the bare string the domain that raised it
+# declares for itself.
+type EventSource = str
 
 
 class ExecutionOutcomeFailedPayload(TypedDict):
@@ -1137,9 +986,9 @@ class PrintRecord(TypedDict):
 
     One print, and the record supervision keys from.
 
-    Obico's own print id is carried beside this record's identifier rather
-    than
-    as it, because a print may be observed before Obico has one.
+    The provider's own print id is carried beside this record's identifier
+    rather than as it, because a print may be observed before the provider
+    that reports it has one.
     """
 
     # Why it ended, if it has.
@@ -1152,10 +1001,11 @@ class PrintRecord(TypedDict):
     id: PrintId
     # Every manifest range this print narrowed to the envelope's.
     narrowings: list[ManifestNarrowing]
-    # Obico's own identifier for the print, when Obico has one.
-    obico_print_id: NotRequired[int | None]
     # When the print was opened.
     opened_at: Timestamp
+    # The provider's own identifier for the print, whichever provider
+    # reported it, when one has.
+    provider_print_id: NotRequired[int | None]
     # The state the print is in.
     state: PrinterState
 
@@ -1484,6 +1334,118 @@ class SupervisionSessionOpenedPayload(TypedDict):
 
 # An instant in UTC, as an RFC 3339 string with a zero offset.
 type Timestamp = str
+
+
+# Every kind the server declares a payload type for, and the type each
+# payload has. A kind this client does not know flows through `EventRecord`
+# untouched, and is in no table.
+EVENT_PAYLOAD_TYPES: dict[str, type] = {
+    "action_executed": ActionExecutedPayload,
+    "action_rejected": ActionRejectedPayload,
+    "action_requested": ActionRequestedPayload,
+    "agent_assessment": AgentAssessmentPayload,
+    "intervention_expired": InterventionExpiredPayload,
+    "malformed_external_event": MalformedExternalEventPayload,
+    "obico_failure_alert": ObicoFailureAlertPayload,
+    "obico_printer_notification": ObicoPrinterNotificationPayload,
+    "operator_acknowledgement": OperatorAcknowledgementPayload,
+    "port_failure": PortFailurePayload,
+    "startup_reconciliation": StartupReconciliationPayload,
+    "supervision_session_closed": SupervisionSessionClosedPayload,
+    "supervision_session_opened": SupervisionSessionOpenedPayload,
+}
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["action_executed"]
+) -> ActionExecutedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["action_rejected"]
+) -> ActionRejectedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["action_requested"]
+) -> ActionRequestedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["agent_assessment"]
+) -> AgentAssessmentPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["intervention_expired"]
+) -> InterventionExpiredPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["malformed_external_event"]
+) -> MalformedExternalEventPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["obico_failure_alert"]
+) -> ObicoFailureAlertPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["obico_printer_notification"]
+) -> ObicoPrinterNotificationPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["operator_acknowledgement"]
+) -> OperatorAcknowledgementPayload | None: ...
+
+
+@overload
+def payload_of(event: EventRecord, kind: Literal["port_failure"]) -> PortFailurePayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["startup_reconciliation"]
+) -> StartupReconciliationPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["supervision_session_closed"]
+) -> SupervisionSessionClosedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["supervision_session_opened"]
+) -> SupervisionSessionOpenedPayload | None: ...
+
+
+@overload
+def payload_of(event: EventRecord, kind: str) -> object | None: ...
+
+
+def payload_of(event: EventRecord, kind: str) -> object | None:
+    """The payload of one event as the type its kind declares, or `None`.
+
+    `None` for an event of any other kind — one this client knows or one
+    it does not. No validation beyond the kind's name: the payload is the
+    document the server sent, handed on as the type the table says it is.
+    """
+    if event["kind"] != kind:
+        return None
+    return event["payload"]
 
 
 class GeneratedClient(GeneratedSurface):

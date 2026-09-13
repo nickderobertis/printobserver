@@ -456,7 +456,7 @@ def released_by(answer: str) -> tuple[str, ...]:
 
     That answer is the shape `RELEASE_ANSWER_SAMPLE` records, with an empty
     `releases` list where the run released nothing. A workspace releasing
-    thirteen crates under one version names one tag thirteen times, so what is
+    twelve crates under one version names one tag twelve times, so what is
     answered is the distinct tags, each once.
 
     Raises:

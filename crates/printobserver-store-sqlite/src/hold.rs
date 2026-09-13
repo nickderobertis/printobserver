@@ -12,7 +12,7 @@
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
-use printobserver_types::InterventionOutcome;
+use printobserver_core::InterventionOutcome;
 
 /// What a point is holding, and what a test has let through.
 #[derive(Debug, Default)]

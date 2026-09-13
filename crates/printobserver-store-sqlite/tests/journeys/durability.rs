@@ -12,14 +12,13 @@ use std::collections::BTreeSet;
 use crate::block_on::block_on;
 use crate::child;
 use crate::contracts::record_kinds;
-use crate::fixture::{draft, instant, manifest, request, session};
-use printobserver_store_api::{HistoryQuery, ImageLookup, StorePort};
+use crate::fixture::{Store, draft, instant, manifest, request, session};
+use printobserver_core::store::{HistoryQuery, ImageLookup};
+use printobserver_core::{ActionId, ExecutionOutcome, InterventionId, PolicyDecision};
+use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{
-    ActionId, Adjustable, EventId, ExecutionOutcome, ImageId, InterventionId, PolicyDecision,
-    PrintId, RawBytes, Timestamp,
-};
+use printobserver_types::{EventId, ImageId, PrintId, RawBytes, Timestamp};
 
 /// The line the child writes what it wrote on.
 const MARKER: &str = "PRINTOBSERVER-RECORDS ";
@@ -96,7 +95,7 @@ fn every_record_kind_survives_the_process_that_wrote_it() {
     // The process that wrote them has ended; this one opens the same state
     // directory for the first time.
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
 
     for kind in walked {
         read_one_back(port, &kind, &reported);
@@ -104,7 +103,7 @@ fn every_record_kind_survives_the_process_that_wrote_it() {
 }
 
 /// Read one record kind back, by the identifier the walk reported for it.
-fn read_one_back(port: &dyn StorePort, kind: &str, reported: &Value) {
+fn read_one_back(port: &dyn Store, kind: &str, reported: &Value) {
     match kind {
         "PrintRecord" => read_print_back(port, record(reported, kind)),
         "EventRecord" => read_event_back(port, record(reported, kind)),
@@ -118,7 +117,7 @@ fn read_one_back(port: &dyn StorePort, kind: &str, reported: &Value) {
 }
 
 /// The print survives, carrying the identifier and the instant it was written with.
-fn read_print_back(port: &dyn StorePort, reported: &Value) {
+fn read_print_back(port: &dyn Store, reported: &Value) {
     let id: PrintId = parsed(reported, "id");
     let print = block_on(port.print(id))
         .expect("the print reads")
@@ -129,7 +128,7 @@ fn read_print_back(port: &dyn StorePort, reported: &Value) {
 }
 
 /// The event survives, at the instant it was received.
-fn read_event_back(port: &dyn StorePort, reported: &Value) {
+fn read_event_back(port: &dyn Store, reported: &Value) {
     let id: EventId = parsed(reported, "id");
     let print_id: PrintId = parsed(reported, "print_id");
     let history = block_on(port.history(HistoryQuery {
@@ -148,7 +147,7 @@ fn read_event_back(port: &dyn StorePort, reported: &Value) {
 }
 
 /// The image survives, and so do the bytes its row points at.
-fn read_image_back(port: &dyn StorePort, reported: &Value) {
+fn read_image_back(port: &dyn Store, reported: &Value) {
     let id: ImageId = parsed(reported, "id");
     let image = match block_on(port.image(id)).expect("the image reads") {
         ImageLookup::Found { record, .. } => record,
@@ -168,7 +167,7 @@ fn read_image_back(port: &dyn StorePort, reported: &Value) {
 ///
 /// The port answers an action only by recording what the printer made of it,
 /// and what it answers is read out of the row the walk wrote.
-fn read_action_back(port: &dyn StorePort, reported: &Value) {
+fn read_action_back(port: &dyn Store, reported: &Value) {
     let id: ActionId = parsed(reported, "id");
     let action = block_on(port.record_execution(id, ExecutionOutcome::Succeeded))
         .expect("the action survived the process that wrote it");
@@ -181,7 +180,7 @@ fn read_action_back(port: &dyn StorePort, reported: &Value) {
 }
 
 /// The intervention survives, still active, at the instants it was written with.
-fn read_intervention_back(port: &dyn StorePort, reported: &Value) {
+fn read_intervention_back(port: &dyn Store, reported: &Value) {
     let id: InterventionId = parsed(reported, "id");
     let print_id: PrintId = parsed(reported, "print_id");
     let active = block_on(port.active_interventions(print_id)).expect("the interventions read");
@@ -194,7 +193,7 @@ fn read_intervention_back(port: &dyn StorePort, reported: &Value) {
 }
 
 /// The manifest survives, keyed to its print.
-fn read_manifest_back(port: &dyn StorePort, reported: &Value) {
+fn read_manifest_back(port: &dyn Store, reported: &Value) {
     let print_id: PrintId = parsed(reported, "print_id");
     assert_eq!(
         block_on(port.manifest(print_id)).expect("the manifest reads"),
@@ -204,7 +203,7 @@ fn read_manifest_back(port: &dyn StorePort, reported: &Value) {
 }
 
 /// The supervision session survives, at the instant it was opened.
-fn read_session_back(port: &dyn StorePort, reported: &Value) {
+fn read_session_back(port: &dyn Store, reported: &Value) {
     let print_id: PrintId = parsed(reported, "print_id");
     let watch = block_on(port.session(print_id))
         .expect("the session reads")
@@ -237,7 +236,7 @@ fn the_coverage_check_refuses_a_walk_that_misses_a_record_kind() {
 fn the_child_writes_one_of_every_record_kind() {
     let dir = child::state_dir();
     let store = SqliteStore::open(&dir).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let at: Timestamp = instant(WRITTEN_AT);
 
     let print = block_on(port.open_print(Some(7), Some("bracket.gcode".to_owned())))
@@ -247,7 +246,7 @@ fn the_child_writes_one_of_every_record_kind() {
     let image = block_on(port.put_image(
         print.id,
         event.id,
-        Some("https://obico.example/snapshot.jpg".to_owned()),
+        Some("https://detector.example/snapshot.jpg".to_owned()),
         "image/jpeg".to_owned(),
         RawBytes::new(b"the surviving snapshot".to_vec()),
     ))

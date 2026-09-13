@@ -1,9 +1,26 @@
 //! `printobserver-types`.
 //!
-//! Owns: the shared domain vocabulary every other crate speaks — printer and
-//! job identity, observed printer state, vision observations, supervisory
-//! decisions, and their serialized forms. It holds data and total functions
-//! over that data, never I/O.
+//! Owns: the vocabulary every domain and every client must agree on, and only
+//! that — the identity rule ([`ids`]: the exported [`identifier!`] macro, its
+//! error, the UUID-v7 rule, and the three identifiers the envelope reaches),
+//! the representation rules ([`Timestamp`], [`RawBytes`], [`FileName`],
+//! [`Reported`] and [`Range`]), the event log's envelope ([`event`], with the
+//! image handle [`ImageRef`] it carries), and the schema toolkit
+//! ([`contract`]). It holds data and total functions over that data, never
+//! I/O.
+//!
+//! A type belongs here only if adding or changing one domain's concept does
+//! not require editing it. The event log is the case in point: [`event`]
+//! declares the envelope — an open [`EventKind`] name and an opaque payload —
+//! and **no kind**. Each kind is declared by the domain that owns the event, as
+//! a payload type implementing [`EventPayload`] under a `KIND` of its own, so
+//! that a domain adding an event edits its own crate and nothing central. The
+//! same holds for a domain's own shapes: a provider's wire format lives in its
+//! adapter, a port's vocabulary in the port, and the supervision domain's
+//! records — the print, the action, the intervention, the policy, the image —
+//! and the identifiers it mints live in the supervision domain, each declared
+//! into the schema set through [`TypeContract::of`] rather than through a
+//! list here.
 //!
 //! May depend on: no crate of this workspace. It is the root of the graph, so a
 //! type it does not hold is a type the rest of the workspace cannot agree on.
@@ -26,7 +43,8 @@
 //!
 //! * **Identifiers.** Every identifier this system mints is a UUID version 7,
 //!   minted by the store, held as a distinct newtype per record, and serialized
-//!   as its lowercase hyphenated string. See [`ids`].
+//!   as its lowercase hyphenated string. See [`ids`]; a domain declares its own
+//!   through the [`identifier!`] macro.
 //! * **Numbers.** Every temperature, factor, multiplier, percentage and
 //!   fraction is a 64-bit float. Every byte count and every integer identifier
 //!   an external system supplies is a 64-bit signed integer. Every duration is
@@ -36,75 +54,40 @@
 //! * **Optionality.** An optional field absent means *the source did not report
 //!   it*, and is never rendered as a zero, an empty string, or a default.
 //!   Absent serializes as absent and parses back as absent.
-//! * **Declared ranges.** A numeric field this crate declares a range for is
-//!   typed [`Reported<f64>`]. See [`reported`] for the whole rule, including
-//!   why a non-finite value is out of range and why one is refused on emission.
+//! * **Reported numbers.** A numeric field a domain declares a plausibility
+//!   range for is typed [`Reported<f64>`]. See [`reported`] for the whole rule,
+//!   including why a non-finite value is out of range and why one is refused
+//!   on emission; the ranges themselves are the declaring domain's.
 //!
 //! # Why `serde`, `schemars` and `serde_json` are re-exported
 //!
-//! The four port crates depend on this crate and on nothing else, and each of
+//! The three port crates depend on this crate and on nothing else, and each of
 //! them declares request and answer shapes that cross a process boundary and so
 //! must derive the same traits these types derive. They reach the derive macros
 //! through [`serde`], [`schemars`] and [`serde_json`] here rather than by
 //! declaring a dependency of their own.
 
-pub mod action;
-pub mod adjustable;
-pub mod assessment;
-pub mod context;
 pub mod contract;
 pub mod event;
 pub mod file_name;
 pub mod ids;
 pub mod image;
-pub mod intervention;
-pub mod manifest;
-pub mod obico;
-pub mod policy;
-pub mod print;
-pub mod printer;
 pub mod raw;
 pub mod reported;
-pub mod session;
 pub mod timestamp;
 
-pub use action::{
-    AcknowledgementDisposition, ActionKind, ActionRecord, ActionRequest, Actor, ActorClass,
-    ExecutionOutcome, PrintAction,
-};
-pub use adjustable::{Adjustable, AdjustableError};
-pub use assessment::{AgentAssessment, Confidence};
-pub use context::PrintContext;
 pub use contract::{
-    RANGED_FIELDS, RangedField, Sample, TypeContract, WireField, declared, wire_fields,
+    EVENT_KIND_MARKER, Sample, TypeContract, WireField, declared, event_schema_of, schema_of,
+    wire_fields,
 };
 pub use event::{
-    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    EventKind, EventPayload, EventRecord, EventSource, InterventionExpiredPayload,
-    MalformedExternalEventPayload, ObicoFailureAlertPayload, ObicoNotificationType,
-    ObicoPrinterNotificationPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, StartupOutcome, StartupReconciliationPayload, SupervisionSessionClosedPayload,
-    SupervisionSessionOpenedPayload,
+    EventBody, EventKind, EventKindError, EventPayload, EventRecord, EventSource, KIND_PATTERN,
 };
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
-pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, PrintId};
-pub use image::{ImageRecord, ImageRef};
-pub use intervention::{Intervention, InterventionOutcome};
-pub use manifest::JobManifest;
-pub use obico::{
-    ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,
-    ObicoNotificationEvent, ObicoPrintInfo, ObicoPrinterInfo, ObicoPrinterNotification,
-    ObicoTimestamp,
-};
-pub use policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
-pub use print::{ManifestNarrowing, PrintRecord};
-pub use printer::{HeaterSnapshot, JobSnapshot, PrinterSnapshot, PrinterState};
+pub use ids::{EventId, IdentifierError, ImageId, PrintId};
+pub use image::ImageRef;
 pub use raw::RawBytes;
-pub use reported::{
-    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
-    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, Range, Reported,
-};
-pub use session::{SessionPhase, SupervisionSession};
+pub use reported::{Range, Reported};
 pub use timestamp::{Timestamp, TimestampError};
 
 pub use schemars;

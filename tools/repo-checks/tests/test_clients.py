@@ -24,7 +24,9 @@ from treecopy import REPO_ROOT, Tree, copy_tree
 RUST = "crates/printobserver-sdk/src/contract.rs"
 PYTHON = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
 NODE = "npm/printobserver-sdk/src/contract.ts"
-IMAGE_RECORD = "schemas/printobserver-types/ImageRecord.json"
+IMAGE_RECORD = "schemas/printobserver-core/ImageRecord.json"
+#: A payload marked with a kind, which no answer shape reaches by reference.
+PORT_FAILURE_PAYLOAD = "schemas/printobserver-core/PortFailurePayload.json"
 
 
 @pytest.fixture
@@ -291,6 +293,29 @@ def test_a_byte_sequence_field_a_response_reaches_is_refused(
     _alter(broken, add)
 
     refused_naming(response_shapes(broken.repo), "ImageRecord.thumbnail", "byte-sequence")
+
+
+def test_a_byte_sequence_field_in_a_marked_payload_is_refused(
+    client_tree: Callable[[], Tree],
+) -> None:
+    """A payload no answer names by reference still reaches a client, through the envelope.
+
+    Nothing refers to the port-failure payload: it is emitted because it is
+    marked with a kind, and a history answer carries it opaquely under that
+    kind. So the walk takes every marked payload as a root, and a byte field
+    planted in one is refused as it would be in an answer shape.
+    """
+    broken = client_tree()
+    schema = json.loads(broken.read(PORT_FAILURE_PAYLOAD))
+    schema["properties"]["thumbnail"] = {
+        "contentEncoding": "base64",
+        "description": "The image, inline.",
+        "type": "string",
+    }
+    schema["required"].append("thumbnail")
+    broken.write(PORT_FAILURE_PAYLOAD, json.dumps(schema, indent=2, sort_keys=True) + "\n")
+
+    refused_naming(response_shapes(broken.repo), "PortFailurePayload.thumbnail", "byte-sequence")
 
 
 def test_a_string_declared_as_image_content_is_refused(

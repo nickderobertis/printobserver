@@ -1,0 +1,76 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Which of a print's events to read.\n\nAn empty `kinds` means every kind rather than no kinds, and an absent\n`limit` means [`DEFAULT_HISTORY_WINDOW`].",
+  "properties": {
+    "kinds": {
+      "description": "The kinds to read; empty means every kind.",
+      "items": {
+        "$ref": "#/$defs/EventKind"
+      },
+      "type": "array"
+    },
+    "limit": {
+      "description": "How many events to answer; absent means [`DEFAULT_HISTORY_WINDOW`].",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print to read the history of."
+    },
+    "since": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The earliest instant to read from, inclusive."
+    },
+    "until": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The latest instant to read to, inclusive."
+    }
+  },
+  "required": [
+    "print_id",
+    "kinds"
+  ],
+  "title": "HistoryQuery",
+  "type": "object"
+}

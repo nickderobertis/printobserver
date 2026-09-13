@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from collections.abc import Iterable
 from typing import Any
 
 from repo_checks.model import Repo
@@ -206,28 +207,49 @@ def _crate_manifest(repo: Repo, crate: str) -> dict[str, Any]:
         return tomllib.load(handle)
 
 
-def _in_workspace_dependencies(manifest: dict[str, Any], names: set[str]) -> set[str]:
-    """The workspace crates one manifest depends on, across every dependency table."""
+#: The dependency tables a crate's shipped code is built from.
+SHIPPED_TABLES = ("dependencies", "build-dependencies")
+
+#: The one dependency table only a crate's tests are built from.
+TEST_TABLE = "dev-dependencies"
+
+
+def _in_workspace_dependencies(
+    manifest: dict[str, Any],
+    names: set[str],
+    tables: tuple[str, ...] = (*SHIPPED_TABLES, TEST_TABLE),
+) -> set[str]:
+    """The workspace crates one manifest depends on, across the tables named."""
     found: set[str] = set()
-    for table in ("dependencies", "dev-dependencies", "build-dependencies"):
+    for table in tables:
         found |= set(manifest.get(table, {})) & names
     for target in (manifest.get("target") or {}).values():
         if isinstance(target, dict):
-            found |= _in_workspace_dependencies(target, names)
+            found |= _in_workspace_dependencies(target, names, tables)
     return found
 
 
 def workspace(repo: Repo) -> list[str]:
-    """The crate set, each crate's module comment, and the dependency rule."""
+    """The crate set, each crate's module comment, and the dependency rule.
+
+    The rule is the edge table `repo-policy.toml`'s `crates.may_depend_on`
+    declares: for every workspace crate, the workspace crates it may depend on
+    across every dependency table, plus the few `crates.may_depend_on_in_tests`
+    admits under `dev-dependencies` alone. The table and the workspace are held
+    to each other in both directions — a row naming a crate the workspace does
+    not hold, and a crate the table has no row for, are each refused — and
+    every manifest edge between workspace crates is held to its row: one a
+    crate's tests may add is refused the moment it appears in a table the
+    shipped code is built from.
+    """
     crates = repo.policy["crates"]
-    declared = {
-        crates["types"],
-        crates["core"],
-        *crates["ports"],
-        *crates["implementations"],
-        *crates["composition_roots"],
-        *crates["clients"],
-    }
+    table = crates.get("may_depend_on")
+    if not isinstance(table, dict):
+        return ["`repo-policy.toml` declares no `crates.may_depend_on` table"]
+    in_tests = crates.get("may_depend_on_in_tests", {})
+    if not isinstance(in_tests, dict):
+        return ["`repo-policy.toml`'s `crates.may_depend_on_in_tests` is not a table"]
+    declared = set(table)
     present = set(repo.crate_names)
     findings = [
         f"`repo-policy.toml` declares crate `{name}`, which the workspace does not hold"
@@ -237,6 +259,33 @@ def workspace(repo: Repo) -> list[str]:
         f"the workspace holds crate `{name}`, which `repo-policy.toml` does not declare"
         for name in sorted(present - declared)
     )
+    for name in sorted(declared):
+        admitted = table[name]
+        if not isinstance(admitted, list) or any(not isinstance(edge, str) for edge in admitted):
+            findings.append(f"`repo-policy.toml`'s row for `{name}` is not a list of crate names")
+            continue
+        findings.extend(
+            f"`repo-policy.toml`'s row for `{name}` admits `{edge}`, which the workspace "
+            f"does not hold"
+            for edge in sorted(set(admitted) - present)
+        )
+    for name, admitted in in_tests.items():
+        if name not in declared:
+            findings.append(
+                f"`repo-policy.toml`'s `may_depend_on_in_tests` names `{name}`, which "
+                f"`may_depend_on` has no row for"
+            )
+        if not isinstance(admitted, list) or any(not isinstance(edge, str) for edge in admitted):
+            findings.append(
+                f"`repo-policy.toml`'s `may_depend_on_in_tests` row for `{name}` is not a "
+                f"list of crate names"
+            )
+            continue
+        findings.extend(
+            f"`repo-policy.toml`'s `may_depend_on_in_tests` row for `{name}` admits "
+            f"`{edge}`, which the workspace does not hold"
+            for edge in sorted(set(admitted) - present)
+        )
 
     for directory in repo.crate_dirs:
         source = directory / "src" / "lib.rs"
@@ -257,39 +306,34 @@ def workspace(repo: Repo) -> list[str]:
                 f"crate `{directory.name}`'s module comment does not say what it may depend on"
             )
 
-    implementations = set(crates["implementations"])
-    composition_roots = set(crates["composition_roots"])
-    allowed_for_core = {crates["types"], *crates["ports"]}
     for name in sorted(present):
         manifest = _crate_manifest(repo, name)
         edges = _in_workspace_dependencies(manifest, present)
-        # Something has to choose which implementation runs, and the composition
-        # roots are the only crates that may. A crate outside them that names one
-        # is a second place that choice is made, whatever layer it sits in — and
-        # `core` and the implementations say so in their own words below, because
-        # what is wrong with those two edges is more specific than this.
-        if name not in composition_roots and name != crates["core"] and name not in implementations:
+        admitted = table.get(name)
+        if isinstance(admitted, list):
+            shipped = {str(entry) for entry in admitted}
+            tested = in_tests.get(name)
+            in_tests_only = {str(entry) for entry in tested} if isinstance(tested, list) else set()
             findings.extend(
-                f"`{name}` depends on implementation crate `{edge}`: only "
-                f"{', '.join(sorted(composition_roots))} may name an implementation"
-                for edge in sorted(edges & implementations)
+                f"`{name}` depends on `{edge}`, which the dependency table does not admit: "
+                f"`repo-policy.toml`'s row for `{name}` names {_named(shipped)}"
+                for edge in sorted(edges - shipped - in_tests_only)
             )
-        if name == crates["core"]:
-            for edge in sorted(edges - allowed_for_core):
-                kind = "an implementation crate" if edge in implementations else "outside its layer"
-                findings.append(
-                    f"`{name}` depends on `{edge}`, which is {kind}: core may depend only on "
-                    f"`{crates['types']}` and the four port crates"
-                )
-        if name in implementations:
+            shipped_edges = _in_workspace_dependencies(manifest, present, SHIPPED_TABLES)
             findings.extend(
-                f"implementation crate `{name}` depends on implementation crate `{edge}`: "
-                f"no implementation crate may depend on another"
-                for edge in sorted(edges & implementations - {name})
+                f"`{name}` depends on `{edge}` outside `{TEST_TABLE}`, and the dependency "
+                f"table admits that edge for its tests alone"
+                for edge in sorted((shipped_edges & in_tests_only) - shipped)
             )
         if name == crates.get("cli"):
             findings.extend(_cli_edges(crates, name, edges))
     return findings
+
+
+def _named(entries: Iterable[str]) -> str:
+    """A row's admitted crates, rendered for a finding."""
+    named = sorted(entries)
+    return ", ".join(f"`{entry}`" for entry in named) if named else "no crate at all"
 
 
 def _cli_edges(crates: dict[str, Any], name: str, edges: set[str]) -> list[str]:

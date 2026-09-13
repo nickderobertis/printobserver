@@ -16,7 +16,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use printobserver_store_api::StoreError;
+use printobserver_core::store::StoreError;
 use rusqlite::Connection;
 
 use crate::values::{database_error, io_error};
@@ -127,7 +127,8 @@ CREATE TABLE sessions (
 ///
 /// A step of its own rather than part of the tables, because it is derived from
 /// the *reads* rather than from the records: the history read's ordering and
-/// its two filters, the expiry sweep, and the lookup by Obico's own identifier.
+/// its two filters, the expiry sweep, and the lookup by the provider's own
+/// identifier — spelled here as the first version named the column.
 const V2_READ_INDEXES: &str = "\
 CREATE INDEX events_by_print_and_instant ON events(print_id, received_at, id);
 CREATE INDEX events_by_print_kind_and_instant ON events(print_id, kind, received_at, id);
@@ -138,11 +139,26 @@ CREATE INDEX interventions_by_print ON interventions(print_id, outcome);
 CREATE INDEX prints_by_obico_id ON prints(obico_print_id);
 ";
 
+/// The print's external correlation under a provider-neutral name.
+///
+/// The column the first version created as `obico_print_id` holds the
+/// provider's own identifier for the print, whichever provider reported it,
+/// and the record it is read into names it so. Renaming a column renames
+/// nothing in an index of its own accord, so the index the second version
+/// created over it is re-created under its new name here.
+const V3_PROVIDER_PRINT_ID: &str = "\
+ALTER TABLE prints RENAME COLUMN obico_print_id TO provider_print_id;
+DROP INDEX prints_by_obico_id;
+CREATE INDEX prints_by_provider_id ON prints(provider_print_id);
+";
+
 /// Every migration, in the order they are applied.
 ///
 /// Forward-only: a step is never rewritten once it has run anywhere, because a
-/// database in the field was created by the text as it stood.
-pub const MIGRATIONS: [Migration; 2] = [
+/// database in the field was created by the text as it stood — which is why
+/// the first two steps still spell the column the first version created it
+/// as, and the third renames it.
+pub const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 1,
         sql: V1_TABLES,
@@ -150,6 +166,10 @@ pub const MIGRATIONS: [Migration; 2] = [
     Migration {
         version: 2,
         sql: V2_READ_INDEXES,
+    },
+    Migration {
+        version: 3,
+        sql: V3_PROVIDER_PRINT_ID,
     },
 ];
 

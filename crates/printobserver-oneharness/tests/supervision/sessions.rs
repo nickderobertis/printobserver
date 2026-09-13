@@ -10,38 +10,23 @@
 
 use std::sync::Arc;
 
+use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{
-    EventPayload, ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload,
-    PrintId, SessionPhase,
-};
+use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn,
+    Fixture, HARNESS, Watch, always, assessment, block_on, config, event, failure_alert,
+    generated_assessment_schema, notification, port, schema_read_lock, turn,
 };
 
 /// An alert about a print.
-fn alert() -> EventPayload {
-    EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-        is_warning: false,
-        print_paused: true,
-        obico_print_id: Some(4_411),
-        file_name: Some("bracket.gcode".to_owned()),
-        started_at: None,
-        ended_at: None,
-    })
+fn alert() -> EventBody {
+    failure_alert(4_411, Some("bracket.gcode"))
 }
 
 /// A notification about a print.
-fn notification() -> EventPayload {
-    EventPayload::ObicoPrinterNotification(ObicoPrinterNotificationPayload {
-        notification_type: ObicoNotificationType::Paused,
-        obico_print_id: Some(4_411),
-        file_name: Some("bracket.gcode".to_owned()),
-        started_at: None,
-        ended_at: None,
-    })
+fn notification_body() -> EventBody {
+    notification("paused", 4_411, Some("bracket.gcode"))
 }
 
 /// Each print keeps a session of its own, named for its own identifier, and
@@ -76,9 +61,12 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
 
     // A later event of each print continues the session it opened.
     for (index, print_id) in [first, second].into_iter().enumerate() {
-        let outcome =
-            block_on(supervisor.run_turn(turn(print_id, event(print_id, notification()), None)))
-                .expect("a later turn of a print runs");
+        let outcome = block_on(supervisor.run_turn(turn(
+            print_id,
+            event(print_id, notification_body()),
+            None,
+        )))
+        .expect("a later turn of a print runs");
         assert_eq!(outcome.phase, SessionPhase::Continued);
         assert_eq!(outcome.session.session_name, opened[index]);
     }
@@ -95,7 +83,7 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
 
     for (index, print_id) in [first, second].into_iter().enumerate() {
         let outcome =
-            block_on(rebuilt.run_turn(turn(print_id, event(print_id, notification()), None)))
+            block_on(rebuilt.run_turn(turn(print_id, event(print_id, notification_body()), None)))
                 .expect("a turn after the rebuild runs");
         assert_eq!(
             outcome.phase,

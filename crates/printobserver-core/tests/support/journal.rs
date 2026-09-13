@@ -14,9 +14,9 @@
 
 use std::sync::Mutex;
 
-use printobserver_types::{
-    ActionId, Adjustable, EventKind, ExecutionOutcome, InterventionOutcome, PolicyDecision, PrintId,
-};
+use printobserver_core::{ActionId, ExecutionOutcome, InterventionOutcome, PolicyDecision};
+use printobserver_printer_api::Adjustable;
+use printobserver_types::{EventKind, PrintId};
 
 /// One call a fake port received.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,8 +25,8 @@ pub enum Call {
     OpenPrint,
     /// A print was read.
     ReadPrint,
-    /// A print was read by Obico's own identifier.
-    ReadPrintByObicoId,
+    /// A print was read by the provider's own identifier.
+    ReadPrintByProviderId,
     /// Every print with no end recorded was read.
     ReadOpenPrints,
     /// A print was ended, in a state.
@@ -113,7 +113,7 @@ impl Call {
         match self {
             Self::OpenPrint
             | Self::ReadPrint
-            | Self::ReadPrintByObicoId
+            | Self::ReadPrintByProviderId
             | Self::ReadOpenPrints
             | Self::EndPrint(_)
             | Self::RecordNarrowing(_)

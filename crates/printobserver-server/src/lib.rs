@@ -2,10 +2,11 @@
 //!
 //! Owns: the long-running service: the HTTP surface the clients call, the
 //! `Obico` ingress the failure detector posts to, the supervision loop's
-//! lifecycle, and the composition root that chooses which implementation backs
-//! each port.
+//! lifecycle, the composition root that chooses which implementation backs
+//! each port, and the one event kind a restart writes — the startup
+//! reconciliation [`reconcile`] alone records.
 //!
-//! May depend on: `printobserver-types`, the four port crates,
+//! May depend on: `printobserver-types`, the three port crates,
 //! `printobserver-core`, and the implementation crates — it is a composition
 //! root, so naming an implementation is its job rather than a violation.
 //!
@@ -51,7 +52,10 @@ pub use operations::{
     INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter, VERSION_PREFIX,
     ValueKind, operation,
 };
-pub use reconcile::{Reconciliation, overdue, reconcile};
+pub use reconcile::{
+    ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue,
+    reconcile,
+};
 pub use server::{
     CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE,
     Server, StartError, TURN_PROMPT, context_command,

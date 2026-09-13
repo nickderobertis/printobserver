@@ -14,18 +14,16 @@ use printobserver_oneharness::{
     AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, TurnTimeout,
 };
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{EventPayload, MalformedExternalEventPayload, PrintId};
+use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn,
+    generated_assessment_schema, port, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
-fn payload() -> EventPayload {
-    EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-        detail: "the body was not JSON".to_owned(),
-    })
+fn payload() -> EventBody {
+    unreadable("the body was not JSON")
 }
 
 /// A harness identity is something `OneHarness` could select.

@@ -9,7 +9,16 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-printobserver-types = { path = "../printobserver-types", version = "0.2.0" }
+printobserver-types = { workspace = true }
+
+# Test-only readers of this port's own source. The surface this port is held
+# to — which methods the trait declares, which variants its error carries — is
+# a claim about declarations, so the tests read the declarations rather than a
+# table maintained beside them. Neither is a crate of this workspace, so the
+# type crate stays this port's only workspace dependency.
+[dev-dependencies]
+quote = "1"
+syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
 
 [lints]
 workspace = true

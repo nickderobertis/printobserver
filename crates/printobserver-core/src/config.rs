@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use printobserver_types::{PrintId, SafetyEnvelope};
+use crate::records::SafetyEnvelope;
+use printobserver_types::PrintId;
 
 /// The placeholder [`CoreConfig::context_command`] substitutes the print for.
 pub const PRINT_ID_PLACEHOLDER: &str = "{print_id}";

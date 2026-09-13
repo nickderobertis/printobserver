@@ -57,8 +57,8 @@ job.state: printing
 print.file_name: FILE
 print.id: PRINT_ID
 print.narrowings: []
-print.obico_print_id: 4211
 print.opened_at: TIMESTAMP
+print.provider_print_id: 4211
 print.state: printing
 printer.bed.actual_c.out_of_range: false
 printer.bed.actual_c.value: 59.5
@@ -105,8 +105,8 @@ context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d67
 context.print.file_name: FILE
 context.print.id: PRINT_ID
 context.print.narrowings: []
-context.print.obico_print_id: 4211
 context.print.opened_at: TIMESTAMP
+context.print.provider_print_id: 4211
 context.print.state: printing
 context.printer.bed.actual_c.out_of_range: false
 context.printer.bed.actual_c.value: 59.5

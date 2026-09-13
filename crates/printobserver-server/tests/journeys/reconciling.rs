@@ -14,14 +14,17 @@
 
 use std::sync::Arc;
 
-use printobserver_obico::{ObicoVision, ObicoVisionConfig};
-use printobserver_server::{Ports, Server, ServerConfig};
-use printobserver_store_api::{HistoryQuery, StorePort};
-use printobserver_store_sqlite::SqliteStore;
-use printobserver_types::{
-    ActionRequest, Actor, Adjustable, EventKind, EventPayload, PolicyDecision, PrintAction,
-    PrintId, StartupOutcome, Timestamp,
+use printobserver_core::store::{
+    ActionStore as _, HistoryQuery, PrintStore as _, SessionStore as _, Stores,
 };
+use printobserver_core::{ActionRequest, Actor, PolicyDecision, PrintAction};
+use printobserver_obico::{ObicoVision, ObicoVisionConfig};
+use printobserver_printer_api::Adjustable;
+use printobserver_server::{
+    Ports, Server, ServerConfig, StartupOutcome, StartupReconciliationPayload,
+};
+use printobserver_store_sqlite::SqliteStore;
+use printobserver_types::{EventPayload as _, PrintId, Timestamp};
 use tempfile::TempDir;
 
 use crate::agent::StandInAgent;
@@ -44,7 +47,7 @@ async fn left_behind(state_dir: &std::path::Path) -> PrintId {
         .expect("a print opens");
 
     store
-        .put_session(printobserver_types::SupervisionSession {
+        .put_session(printobserver_supervisor_api::SupervisionSession {
             print_id: print.id,
             session_name: "watch-4211".to_owned(),
             harness_identity: "claude-code".to_owned(),
@@ -99,13 +102,14 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
     let print_id = left_behind(&config.state_dir).await;
 
     let printer = RecordingPrinter::printing();
-    let store: Arc<dyn StorePort> =
-        Arc::new(SqliteStore::open(&config.state_dir).expect("the store reopens"));
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store reopens"),
+    ));
     let running = Server::start_with(
         config,
         Ports {
             printer: Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: Arc::clone(&store),
+            stores: stores.clone(),
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),
@@ -146,7 +150,8 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
         "the machine is not holding the value the intervention should have restored"
     );
     assert!(
-        store
+        stores
+            .actions
             .active_interventions(print_id)
             .await
             .expect("the interventions read")
@@ -155,10 +160,11 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
     );
 
     // Each of the three is recorded as having happened at startup.
-    let recorded: Vec<StartupOutcome> = store
+    let recorded: Vec<StartupOutcome> = stores
+        .events
         .history(HistoryQuery {
             print_id,
-            kinds: vec![EventKind::StartupReconciliation],
+            kinds: vec![StartupReconciliationPayload::kind()],
             since: None,
             until: None,
             limit: None,
@@ -166,10 +172,8 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
         .await
         .expect("the history reads")
         .into_iter()
-        .filter_map(|event| match event.payload {
-            EventPayload::StartupReconciliation(payload) => Some(payload.outcome),
-            _ => None,
-        })
+        .filter_map(|event| event.payload_as::<StartupReconciliationPayload>())
+        .map(|read| read.expect("a reconciliation is of its own type").outcome)
         .collect();
 
     assert!(
@@ -188,7 +192,7 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
             outcome,
             StartupOutcome::InterventionExpired { adjustable, outcome, .. }
                 if *adjustable == Adjustable::Feedrate
-                    && *outcome == printobserver_types::InterventionOutcome::Restored
+                    && *outcome == printobserver_core::InterventionOutcome::Restored
         )),
         "expiring the intervention and restoring its value was not recorded: {recorded:?}"
     );
@@ -202,15 +206,16 @@ async fn a_start_over_an_empty_store_adopts_nothing() {
     let root = TempDir::new().expect("a journey's own root");
     let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
     let config = ServerConfig::load(&path).expect("the configuration is accepted");
-    let store: Arc<dyn StorePort> =
-        Arc::new(SqliteStore::open(&config.state_dir).expect("the store opens"));
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store opens"),
+    ));
 
     let running = Server::start_with(
         config,
         Ports {
             printer: RecordingPrinter::printing()
                 as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store,
+            stores,
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),
@@ -254,7 +259,7 @@ async fn a_print_with_no_open_session_is_adopted_without_being_resumed() {
             .expect("a second print opens")
             .id;
         store
-            .put_session(printobserver_types::SupervisionSession {
+            .put_session(printobserver_supervisor_api::SupervisionSession {
                 print_id: closed,
                 session_name: "watch-2".to_owned(),
                 harness_identity: "claude-code".to_owned(),
@@ -268,14 +273,15 @@ async fn a_print_with_no_open_session_is_adopted_without_being_resumed() {
         (silent, closed)
     };
 
-    let store: Arc<dyn StorePort> =
-        Arc::new(SqliteStore::open(&config.state_dir).expect("the store reopens"));
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store reopens"),
+    ));
     let running = Server::start_with(
         config,
         Ports {
             printer: RecordingPrinter::printing()
                 as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store,
+            stores,
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),
@@ -352,13 +358,14 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
     };
 
     let printer = RecordingPrinter::printing();
-    let store: Arc<dyn StorePort> =
-        Arc::new(SqliteStore::open(&config.state_dir).expect("the store reopens"));
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store reopens"),
+    ));
     let running = Server::start_with(
         config,
         Ports {
             printer: Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
-            store: Arc::clone(&store),
+            stores: stores.clone(),
             vision: Arc::new(
                 ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
             ),
@@ -388,10 +395,11 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
         printer.calls()
     );
 
-    let outcomes: Vec<StartupOutcome> = store
+    let outcomes: Vec<StartupOutcome> = stores
+        .events
         .history(HistoryQuery {
             print_id,
-            kinds: vec![EventKind::StartupReconciliation],
+            kinds: vec![StartupReconciliationPayload::kind()],
             since: None,
             until: None,
             limit: None,
@@ -399,16 +407,14 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
         .await
         .expect("the history reads")
         .into_iter()
-        .filter_map(|event| match event.payload {
-            EventPayload::StartupReconciliation(payload) => Some(payload.outcome),
-            _ => None,
-        })
+        .filter_map(|event| event.payload_as::<StartupReconciliationPayload>())
+        .map(|read| read.expect("a reconciliation is of its own type").outcome)
         .collect();
     assert!(
         outcomes.iter().any(|outcome| matches!(
             outcome,
             StartupOutcome::InterventionExpired { outcome, .. }
-                if matches!(outcome, printobserver_types::InterventionOutcome::RestoreFailed { .. })
+                if matches!(outcome, printobserver_core::InterventionOutcome::RestoreFailed { .. })
         )),
         "the refused restoration was not recorded as one: {outcomes:?}"
     );

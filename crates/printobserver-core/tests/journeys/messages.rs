@@ -6,13 +6,14 @@
 
 use std::collections::BTreeMap;
 
-use printobserver_printer_api::PrinterError;
-use printobserver_store_api::StoreError;
-use printobserver_supervisor_api::SupervisorError;
-use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, PrintAction, PrintId, PrinterState, Range,
-    RejectionReason, SafetyEnvelope,
+use printobserver_core::store::StoreError;
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, PrintAction, RejectionReason, SafetyEnvelope,
 };
+use printobserver_printer_api::PrinterError;
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisorError;
+use printobserver_types::{PrintId, Range};
 use printobserver_vision_api::VisionError;
 
 use printobserver_core::{
@@ -74,6 +75,23 @@ fn every_core_error_says_what_failed_and_says_it_distinctly() {
     said.sort();
     said.dedup();
     assert_eq!(said.len(), errors.len(), "two errors read the same");
+}
+
+/// A payload that will not render is a core error naming the payload.
+///
+/// The one way an event this crate writes could fail to become a body is its
+/// rendering, and that arrives as the unrepresentable error rather than as a
+/// panic in the loop — carrying the renderer's own words.
+#[test]
+fn a_payload_that_will_not_render_is_an_unrepresentable_error() {
+    let refused = printobserver_types::serde_json::from_str::<i64>("not a number")
+        .expect_err("a word is not a number");
+    let error = CoreError::from(refused);
+    assert!(
+        matches!(&error, CoreError::Unrepresentable { detail } if detail.contains("payload")),
+        "{error:?}"
+    );
+    assert!(error.to_string().contains("not representable"), "{error}");
 }
 
 /// Every rejection reads back in words a caller can act on, and distinctly.
@@ -206,7 +224,7 @@ fn acknowledging_a_failure_without_a_stop_reaches_no_printer_method() {
             print.id,
             PrintAction::AcknowledgeFailure {
                 event_id: printobserver_types::EventId::new(),
-                disposition: printobserver_types::AcknowledgementDisposition::Watch,
+                disposition: printobserver_core::AcknowledgementDisposition::Watch,
                 reason: "watching it more closely".to_owned(),
                 actor: Actor::Operator,
             },
@@ -215,11 +233,11 @@ fn acknowledging_a_failure_without_a_stop_reaches_no_printer_method() {
 
     assert_eq!(
         outcome.record.decision,
-        printobserver_types::PolicyDecision::Accepted
+        printobserver_core::PolicyDecision::Accepted
     );
     assert_eq!(
         outcome.record.outcome,
-        Some(printobserver_types::ExecutionOutcome::Succeeded)
+        Some(printobserver_core::ExecutionOutcome::Succeeded)
     );
     assert_eq!(world.journal.printer_actions(), Vec::new());
     world.journal.assert_no_violations();

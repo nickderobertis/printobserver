@@ -266,10 +266,12 @@ def schema_members(repo: Repo, directory: str) -> list[SchemaMember]:
     """Every member of the declared schema set: its crate, its name and its file.
 
     The set is read off the tree the contracts' own generation target writes and
-    prunes — every type the contracts crate declares as its own, together with
-    the request and answer shapes the port crates own. Reading it off that tree
-    rather than off a list here is what makes a type entering or leaving the set
-    move what the schema document owes, with nothing to update by hand.
+    prunes — every type any crate declares under `schemas/<crate>/`: the
+    contract crate's shared vocabulary, each port's shapes, each domain's event
+    payloads marked with the kind they are written under, and the server's
+    answer shapes. Reading it off that tree rather than off a list here is what
+    makes a type entering or leaving the set move what the schema document
+    owes, with nothing to update by hand.
     """
     root = repo.path(directory)
     if not root.is_dir():
@@ -296,11 +298,13 @@ def schema_document_text(repo: Repo, policy: DocsPolicy) -> str:
         "",
         "## The schema set",
         "",
-        f"{len(members)} types. The set is every type `printobserver-types` declares as its",
-        "own, together with the six request and answer shapes the four port crates own —",
-        "the shapes their methods carry across a process boundary. A port's own error",
-        "vocabulary is deliberately not in it: it reaches no process boundary, so it emits",
-        "no schema.",
+        f"{len(members)} types. The set is every type any crate declares under",
+        "`schemas/<crate>/`, keyed by type name across every declaring crate: the",
+        "contract crate's shared vocabulary, the request and answer shapes the port",
+        "crates own, each domain's event payloads — marked with `x-event-kind`, the",
+        "kind each is written under — and the shapes the server answers. A port's own",
+        "error vocabulary is deliberately not in it: it reaches no process boundary, so",
+        "it emits no schema.",
         "",
         "The set is read off the tree the contracts' generation target writes and prunes,",
         "so a type entering or leaving it moves this document with it.",

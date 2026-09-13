@@ -11,12 +11,15 @@ use core::time::Duration;
 
 use chrono::DateTime;
 use printobserver_types::serde_json::{self, Value};
-use printobserver_types::{
-    EventPayload, EventSource, ObicoEventType, ObicoFailureAlert, ObicoFailureAlertPayload,
-    ObicoNotificationType, ObicoPrintInfo, ObicoPrinterNotification,
-    ObicoPrinterNotificationPayload, ObicoTimestamp, RawBytes, Timestamp,
+use printobserver_types::{EventBody, RawBytes, Timestamp};
+use printobserver_vision_api::{NormalizedAlert, ProviderPrint, VisionError};
+
+use crate::events::{
+    ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload, obico_source,
 };
-use printobserver_vision_api::{NormalizedAlert, VisionError};
+use crate::wire::{
+    ObicoEventType, ObicoFailureAlert, ObicoPrintInfo, ObicoPrinterNotification, ObicoTimestamp,
+};
 
 /// The producer's own spelling of the `type` a failure alert's event carries.
 ///
@@ -87,6 +90,14 @@ struct Correlation {
 }
 
 impl Correlation {
+    /// The print this body is about, as the supervision domain correlates on it.
+    fn provider_print(&self) -> Option<ProviderPrint> {
+        self.obico_print_id.map(|id| ProviderPrint {
+            id,
+            file_name: self.file_name.clone(),
+        })
+    }
+
     /// What a body carrying no print says: nothing, in all four.
     const fn about_no_print() -> Self {
         Self {
@@ -122,33 +133,49 @@ const fn notification_type_of(reported: ObicoEventType) -> ObicoNotificationType
     }
 }
 
-/// Read one failure alert.
-fn read_failure_alert(
-    parsed: Value,
+/// What one body was read into: its event, the image it names, and its print.
+struct Read {
+    /// The event, under this adapter's own kind.
+    body: EventBody,
+    /// The image the body names, when it names one.
+    image_url: Option<String>,
+    /// The print the body is about, when it is about one.
+    print: Option<ProviderPrint>,
+}
+
+/// Render one payload as a body, which a payload this adapter declares never
+/// refuses.
+fn body_of<P: printobserver_types::EventPayload>(
+    payload: &P,
     body: &RawBytes,
-) -> Result<(EventPayload, Option<String>), VisionError> {
+) -> Result<EventBody, VisionError> {
+    EventBody::of(payload)
+        .map_err(|error| malformed(format!("the payload would not render: {error}"), body))
+}
+
+/// Read one failure alert.
+fn read_failure_alert(parsed: Value, body: &RawBytes) -> Result<Read, VisionError> {
     let alert: ObicoFailureAlert = serde_json::from_value(parsed)
         .map_err(|error| malformed(format!("the body is not a failure alert: {error}"), body))?;
     let image_url = alert.img_url;
     let correlation = Correlation::of(alert.print, body)?;
-    Ok((
-        EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-            is_warning: alert.event.is_warning,
-            print_paused: alert.event.print_paused,
-            obico_print_id: correlation.obico_print_id,
-            file_name: correlation.file_name,
-            started_at: correlation.started_at,
-            ended_at: correlation.ended_at,
-        }),
-        Some(image_url),
-    ))
+    let payload = ObicoFailureAlertPayload {
+        is_warning: alert.event.is_warning,
+        print_paused: alert.event.print_paused,
+        obico_print_id: correlation.obico_print_id,
+        file_name: correlation.file_name.clone(),
+        started_at: correlation.started_at,
+        ended_at: correlation.ended_at,
+    };
+    Ok(Read {
+        body: body_of(&payload, body)?,
+        image_url: Some(image_url),
+        print: correlation.provider_print(),
+    })
 }
 
 /// Read one printer notification, in either of the two forms it is sent in.
-fn read_printer_notification(
-    parsed: Value,
-    body: &RawBytes,
-) -> Result<(EventPayload, Option<String>), VisionError> {
+fn read_printer_notification(parsed: Value, body: &RawBytes) -> Result<Read, VisionError> {
     let notification: ObicoPrinterNotification =
         serde_json::from_value(parsed).map_err(|error| {
             malformed(
@@ -160,19 +187,21 @@ fn read_printer_notification(
         Some(print) => Correlation::of(print, body)?,
         None => Correlation::about_no_print(),
     };
-    Ok((
-        EventPayload::ObicoPrinterNotification(ObicoPrinterNotificationPayload {
-            notification_type: notification_type_of(notification.event.event_type),
-            obico_print_id: correlation.obico_print_id,
-            file_name: correlation.file_name,
-            started_at: correlation.started_at,
-            ended_at: correlation.ended_at,
-        }),
-        notification.img_url,
-    ))
+    let payload = ObicoPrinterNotificationPayload {
+        notification_type: notification_type_of(notification.event.event_type),
+        obico_print_id: correlation.obico_print_id,
+        file_name: correlation.file_name.clone(),
+        started_at: correlation.started_at,
+        ended_at: correlation.ended_at,
+    };
+    Ok(Read {
+        body: body_of(&payload, body)?,
+        image_url: notification.img_url,
+        print: correlation.provider_print(),
+    })
 }
 
-/// Read one received body into this system's own event vocabulary.
+/// Read one received body into an event under this adapter's own kind.
 ///
 /// `content_type` is what the caller was told the body is, and it appears in
 /// the refusal when the body does not parse — the one thing it is good for
@@ -198,25 +227,25 @@ pub(crate) fn read(
                 body,
             )
         })?;
-    let (payload, image_url) = if shape == FAILURE_EVENT_TYPE {
+    let read = if shape == FAILURE_EVENT_TYPE {
         read_failure_alert(parsed, body)?
     } else {
         read_printer_notification(parsed, body)?
     };
     Ok(NormalizedAlert {
-        source: EventSource::Obico,
+        source: obico_source(),
         received_at,
-        payload,
+        body: read.body,
         raw: body.clone(),
-        image_url,
+        image_url: read.image_url,
+        print: read.print,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use printobserver_types::ObicoFailureEventType;
-
     use super::{FAILURE_EVENT_TYPE, instant_named_by};
+    use crate::wire::ObicoFailureEventType;
 
     /// The spelling this module dispatches on is the contract's own.
     #[test]

@@ -24,13 +24,15 @@
 //! forbids it, and absorbing a transient store failure belongs behind the store
 //! port rather than here.
 
-use printobserver_types::{
-    Actor, Adjustable, Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId,
-    RejectionReason,
+use crate::records::{
+    Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
 };
+use printobserver_printer_api::Adjustable;
+use printobserver_types::PrintId;
 
 use crate::decision::{DecisionInput, decide};
 use crate::error::CoreError;
+use crate::store::{EventDraft, SettleOutcome};
 use crate::supervisor::Supervisor;
 
 /// The reason a restoring request carries, so the record says why it was made.
@@ -125,7 +127,7 @@ impl Supervisor {
     /// rather than answered here.
     pub async fn sweep_expired(&self) -> Result<(), CoreError> {
         let at = self.clock().now();
-        for intervention in self.store().due_interventions(at).await? {
+        for intervention in self.stores().actions.due_interventions(at).await? {
             let _ = self.expire_intervention(&intervention).await;
         }
         Ok(())
@@ -141,7 +143,7 @@ impl Supervisor {
     /// Returns the store's own error when the print's active interventions
     /// could not be read.
     pub(crate) async fn expire_all_active(&self, print_id: PrintId) -> Result<(), CoreError> {
-        for intervention in self.store().active_interventions(print_id).await? {
+        for intervention in self.stores().actions.active_interventions(print_id).await? {
             let _ = self.expire_intervention(&intervention).await;
         }
         Ok(())
@@ -184,7 +186,7 @@ impl Supervisor {
         let requested_at = self.clock().now();
         let action = restoring_action(intervention.adjustable, prior_value);
         let actor = action.actor().clone();
-        let print = self.store().print(intervention.print_id).await?;
+        let print = self.stores().prints.print(intervention.print_id).await?;
         let bounds = self
             .bounds_for(print.as_ref(), intervention.print_id)
             .await?;
@@ -199,7 +201,7 @@ impl Supervisor {
             envelope: &self.config().envelope,
             last_agent_action: None,
         });
-        let request = printobserver_types::ActionRequest {
+        let request = crate::records::ActionRequest {
             action,
             actor,
             requested_at,
@@ -225,7 +227,8 @@ impl Supervisor {
         outcome: InterventionOutcome,
     ) -> Result<InterventionOutcome, CoreError> {
         let settled = self
-            .store()
+            .stores()
+            .actions
             .settle_intervention(intervention.id, outcome)
             .await?;
         Ok(match settled {
@@ -233,14 +236,14 @@ impl Supervisor {
             // bounded change is the whole point of it having been bounded: an
             // outcome that reached the intervention row and went no further
             // would be one no read of this system could answer.
-            printobserver_store_api::SettleOutcome::Settled {
+            SettleOutcome::Settled {
                 intervention: settled,
             } => {
                 self.append_expiry_event(intervention, settled.outcome.clone())
                     .await?;
                 settled.outcome
             }
-            printobserver_store_api::SettleOutcome::AlreadySettled { outcome } => outcome,
+            SettleOutcome::AlreadySettled { outcome } => outcome,
         })
     }
 
@@ -250,18 +253,19 @@ impl Supervisor {
         intervention: &Intervention,
         outcome: InterventionOutcome,
     ) -> Result<(), CoreError> {
-        self.store()
-            .append_event(printobserver_store_api::EventDraft {
+        self.stores()
+            .events
+            .append_event(EventDraft {
                 print_id: Some(intervention.print_id),
-                source: printobserver_types::EventSource::System,
+                source: crate::kinds::system_source(),
                 received_at: self.clock().now(),
-                payload: printobserver_types::EventPayload::InterventionExpired(
-                    printobserver_types::InterventionExpiredPayload {
+                body: printobserver_types::EventBody::of(
+                    &crate::kinds::InterventionExpiredPayload {
                         intervention_id: intervention.id,
                         adjustable: intervention.adjustable,
                         outcome,
                     },
-                ),
+                )?,
                 raw: None,
             })
             .await?;

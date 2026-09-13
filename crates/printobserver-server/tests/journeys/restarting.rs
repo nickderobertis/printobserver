@@ -13,10 +13,21 @@
 
 use core::time::Duration;
 
-use printobserver_store_api::{EventDraft, HistoryQuery};
+use printobserver_core::store::{EventDraft, HistoryQuery};
+use printobserver_core::{
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
+    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload, system_source,
+};
+use printobserver_obico::{ObicoFailureAlertPayload, ObicoPrinterNotificationPayload};
+use printobserver_printer_api::Adjustable;
+use printobserver_server::StartupReconciliationPayload;
+use printobserver_supervisor_api::{
+    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+};
 use printobserver_types::contract::Sample as _;
 use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{Adjustable, EventKind, EventPayload, EventSource, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventKind, PrintId, Timestamp};
+use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::http_host::image_host;
 use crate::ingress::snapshot_bytes;
@@ -32,28 +43,58 @@ fn path(name: &str) -> String {
         .full_path()
 }
 
-/// Every kind the contracts declare, written against one print.
+/// One canonical body of every kind this workspace declares.
 ///
-/// The payloads are the contracts' own canonical values, so a kind added to
-/// the vocabulary is one this journey writes without anybody adding it here.
+/// The server is the composition root, so it is the one place every domain's
+/// kinds are in scope at once; each body is the owning type's own canonical
+/// value, rendered through the envelope. The thirteen are listed rather than
+/// walked off a vocabulary because there is no vocabulary any more: the log is
+/// open, and this list is the server's own claim about what it links.
+fn every_kind() -> Vec<EventBody> {
+    vec![
+        EventBody::of(&ObicoFailureAlertPayload::sample_full()),
+        EventBody::of(&ObicoPrinterNotificationPayload::sample_full()),
+        EventBody::of(&MalformedExternalEventPayload::sample_full()),
+        EventBody::of(&ActionRequestedPayload::sample_full()),
+        EventBody::of(&ActionExecutedPayload::sample_full()),
+        EventBody::of(&ActionRejectedPayload::sample_full()),
+        EventBody::of(&InterventionExpiredPayload::sample_full()),
+        EventBody::of(&SupervisionSessionOpenedPayload::sample_full()),
+        EventBody::of(&SupervisionSessionClosedPayload::sample_full()),
+        EventBody::of(&AgentAssessmentPayload::sample_full()),
+        EventBody::of(&OperatorAcknowledgementPayload::sample_full()),
+        EventBody::of(&PortFailurePayload::sample_full()),
+        EventBody::of(&StartupReconciliationPayload::sample_full()),
+    ]
+    .into_iter()
+    .map(|body| body.expect("a canonical payload renders"))
+    .collect()
+}
+
+/// How many kinds this workspace declares.
+const DECLARED_KINDS: usize = 13;
+
+/// Every kind this workspace declares, written against one print.
 async fn write_every_kind(world: &World, print_id: PrintId) {
-    let mut payloads = vec![EventPayload::sample_full()];
-    payloads.extend(EventPayload::sample_alternates());
+    let bodies = every_kind();
     assert_eq!(
-        payloads.len(),
-        EventKind::ALL.len(),
-        "the contracts declare {} kinds and this journey writes {}",
-        EventKind::ALL.len(),
-        payloads.len()
+        bodies.len(),
+        DECLARED_KINDS,
+        "the workspace declares {DECLARED_KINDS} kinds and this journey writes {}",
+        bodies.len()
     );
-    for payload in payloads {
+    let distinct: std::collections::BTreeSet<&EventKind> =
+        bodies.iter().map(|body| &body.kind).collect();
+    assert_eq!(distinct.len(), DECLARED_KINDS, "two kinds share a name");
+    for body in bodies {
         world
-            .store
+            .stores
+            .events
             .append_event(EventDraft {
                 print_id: Some(print_id),
-                source: EventSource::System,
+                source: system_source(),
                 received_at: Timestamp::now(),
-                payload,
+                body,
                 raw: None,
             })
             .await
@@ -67,7 +108,7 @@ fn kinds(
 ) -> std::collections::BTreeMap<EventKind, usize> {
     let mut found = std::collections::BTreeMap::new();
     for event in events {
-        *found.entry(event.kind()).or_insert(0) += 1;
+        *found.entry(event.kind().clone()).or_insert(0) += 1;
     }
     found
 }
@@ -106,15 +147,16 @@ struct Written {
 async fn write_everything(world: &World, image_url: &str) -> Written {
     alert(world, image_url).await;
     let print_id = world
-        .store
-        .print_by_obico_id(4211)
+        .stores
+        .prints
+        .print_by_provider_id(4211)
         .await
         .expect("the print reads")
         .expect("the alert opened a print")
         .id;
 
     let manifest =
-        printobserver_types::serde_json::to_value(printobserver_types::JobManifest::sample_full())
+        printobserver_types::serde_json::to_value(printobserver_core::JobManifest::sample_full())
             .expect("a manifest renders");
     let (status, _) = world
         .put(
@@ -178,7 +220,7 @@ async fn every_record_survives_a_restart_and_still_acts() {
     let events_after = read_history(&world, print_id).await;
     assert_eq!(
         kinds(&events_after).len(),
-        EventKind::ALL.len(),
+        DECLARED_KINDS,
         "a restart lost a kind of event: {:?}",
         kinds(&events_after)
     );
@@ -277,7 +319,8 @@ async fn still_acts(world: &World, print_id: PrintId, status_before: &Value, ima
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let active = world
-            .store
+            .stores
+            .actions
             .active_interventions(print_id)
             .await
             .expect("the interventions read");
@@ -300,13 +343,14 @@ async fn still_acts(world: &World, print_id: PrintId, status_before: &Value, ima
 /// One print's whole history, newest first.
 async fn read_history(world: &World, print_id: PrintId) -> Vec<printobserver_types::EventRecord> {
     world
-        .store
+        .stores
+        .events
         .history(HistoryQuery {
             print_id,
             kinds: Vec::new(),
             since: None,
             until: None,
-            limit: Some(printobserver_store_api::MAX_HISTORY_LIMIT),
+            limit: Some(printobserver_core::store::MAX_HISTORY_LIMIT),
         })
         .await
         .expect("the history reads")

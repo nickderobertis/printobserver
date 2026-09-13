@@ -6,16 +6,27 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use printobserver_store_api::{EventDraft, StorePort};
-use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
-use printobserver_types::contract::Sample;
-use printobserver_types::{
-    AcknowledgementDisposition, ActionRequest, Actor, EventId, EventPayload, EventSource,
-    JobManifest, MalformedExternalEventPayload, ObicoFailureAlertPayload,
-    OperatorAcknowledgementPayload, PrintAction, PrintId, SupervisionSession,
-    SupervisionSessionOpenedPayload, Timestamp,
+use printobserver_core::store::{
+    ActionStore, EventDraft, EventStore, ImageStore, PrintStore, SessionStore,
 };
+use printobserver_core::{ActionRequest, Actor, JobManifest, PrintAction};
+use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::contract::Sample;
+use printobserver_types::serde_json::json;
+use printobserver_types::{EventBody, EventId, EventKind, EventSource, PrintId, Timestamp};
 use tempfile::TempDir;
+
+/// Every store trait at once: one handle a journey drives more than one
+/// aggregate over.
+///
+/// The domain declares one trait per aggregate so that a consumer names only
+/// the aggregates it touches; a conformance journey is the one consumer that
+/// touches all of them, and this is how it holds an implementation of all five
+/// behind one trait object. Every type implementing the five implements this.
+pub trait Store: PrintStore + EventStore + ImageStore + ActionStore + SessionStore {}
+
+impl<S: PrintStore + EventStore + ImageStore + ActionStore + SessionStore + ?Sized> Store for S {}
 
 /// Which implementation a fixture is holding.
 enum Backing {
@@ -75,11 +86,11 @@ impl Fixture {
         }
     }
 
-    /// The store, behind the trait object the supervision core holds it behind.
-    pub fn port(&self) -> Arc<dyn StorePort> {
+    /// The store, behind one trait object carrying every aggregate's trait.
+    pub fn port(&self) -> Arc<dyn Store> {
         match &self.backing {
-            Backing::Sqlite(store) => Arc::clone(store) as Arc<dyn StorePort>,
-            Backing::Memory(store) => Arc::clone(store) as Arc<dyn StorePort>,
+            Backing::Sqlite(store) => Arc::clone(store) as Arc<dyn Store>,
+            Backing::Memory(store) => Arc::clone(store) as Arc<dyn Store>,
         }
     }
 
@@ -106,45 +117,49 @@ pub fn instant(text: &str) -> Timestamp {
     text.parse().expect("a fixed RFC 3339 instant")
 }
 
-/// One payload of each kind these journeys drive the history with.
-pub fn payload(kind: &str) -> EventPayload {
-    match kind {
-        "obico_failure_alert" => EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-            is_warning: false,
-            print_paused: true,
-            obico_print_id: Some(7),
-            file_name: Some("bracket.gcode".to_owned()),
-            started_at: None,
-            ended_at: None,
+/// One body of each kind these journeys drive the history with.
+///
+/// The store is a reader of the log that knows no kind: these are the pair as
+/// the domains write it, spelled here as the JSON the store persists rather
+/// than through the types that own them, because a store that could only hold
+/// a kind it had linked would be a closed log again.
+pub fn body(kind: &str) -> EventBody {
+    let payload = match kind {
+        "obico_failure_alert" => json!({
+            "is_warning": false,
+            "print_paused": true,
+            "obico_print_id": 7,
+            "file_name": "bracket.gcode",
         }),
-        "malformed_external_event" => {
-            EventPayload::MalformedExternalEvent(MalformedExternalEventPayload {
-                detail: "the body was not JSON".to_owned(),
-            })
-        }
-        "supervision_session_opened" => {
-            EventPayload::SupervisionSessionOpened(SupervisionSessionOpenedPayload {
-                session_name: "watch-7".to_owned(),
-                harness_identity: "oneharness".to_owned(),
-            })
-        }
-        "operator_acknowledgement" => {
-            EventPayload::OperatorAcknowledgement(OperatorAcknowledgementPayload {
-                acknowledged_event_id: EventId::sample_full(),
-                disposition: AcknowledgementDisposition::Watch,
-            })
-        }
+        "malformed_external_event" => json!({ "detail": "the body was not JSON" }),
+        "supervision_session_opened" => json!({
+            "session_name": "watch-7",
+            "harness_identity": "oneharness",
+        }),
+        "operator_acknowledgement" => json!({
+            "acknowledged_event_id": EventId::sample_full(),
+            "disposition": "watch",
+        }),
         other => panic!("no fixture payload for {other}"),
+    };
+    EventBody {
+        kind: EventKind::new(kind).expect("a kind name"),
+        payload,
     }
+}
+
+/// The source every externally sourced fixture event carries.
+pub fn obico() -> EventSource {
+    EventSource::new("obico")
 }
 
 /// One event on its way into a store.
 pub fn draft(print_id: Option<PrintId>, kind: &str, received_at: Timestamp) -> EventDraft {
     EventDraft {
         print_id,
-        source: EventSource::Obico,
+        source: obico(),
         received_at,
-        payload: payload(kind),
+        body: body(kind),
         raw: None,
     }
 }

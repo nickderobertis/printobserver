@@ -33,9 +33,9 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+use printobserver_core::SafetyEnvelope;
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
-use printobserver_types::SafetyEnvelope;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 

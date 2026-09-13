@@ -9,10 +9,11 @@ use std::path::{Path, PathBuf};
 
 use crate::block_on::block_on;
 use crate::child;
-use crate::fixture::{draft, instant};
-use printobserver_store_api::{ImageLookup, StorePort};
+use crate::fixture::{Store, draft, instant};
+use printobserver_core::PrintRecord;
+use printobserver_core::store::ImageLookup;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
-use printobserver_types::{EventRecord, PrintRecord, RawBytes};
+use printobserver_types::{EventRecord, RawBytes};
 use tempfile::TempDir;
 
 /// One byte sequence, and the SHA-256 of it taken outside this crate.
@@ -28,7 +29,7 @@ const INTERRUPTED: i32 = 70;
 
 /// A print and an event to hang an image on.
 fn subject(store: &SqliteStore) -> (PrintRecord, EventRecord) {
-    let port: &dyn StorePort = store;
+    let port: &dyn Store = store;
     let print = block_on(port.open_print(None, None)).expect("a print opens");
     let event = block_on(port.append_event(draft(
         Some(print.id),
@@ -70,7 +71,7 @@ fn image_rows(state_dir: &Path) -> i64 {
 fn the_same_bytes_twice_are_stored_once_under_two_rows() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let (print, event) = subject(&store);
 
     let first = block_on(port.put_image(
@@ -111,7 +112,7 @@ fn the_same_bytes_twice_are_stored_once_under_two_rows() {
 fn distinct_content_takes_a_distinct_address() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let (print, event) = subject(&store);
 
     let stored: Vec<_> = [(FIRST, FIRST_DIGEST), (SECOND, SECOND_DIGEST)]
@@ -166,7 +167,7 @@ fn the_same_content_takes_the_same_address_by_a_different_route() {
     let dir = TempDir::new().expect("a temporary state directory");
     let first = {
         let store = SqliteStore::open(dir.path()).expect("the store opens");
-        let port: &dyn StorePort = &store;
+        let port: &dyn Store = &store;
         let (print, event) = subject(&store);
         block_on(port.put_image(
             print.id,
@@ -179,7 +180,7 @@ fn the_same_content_takes_the_same_address_by_a_different_route() {
     };
 
     let store = SqliteStore::open(dir.path()).expect("the store opens again");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let (print, event) = subject(&store);
     let again = block_on(port.put_image(
         print.id,
@@ -208,7 +209,7 @@ fn the_same_content_takes_the_same_address_by_a_different_route() {
 fn a_row_whose_file_is_gone_is_answered_as_missing() {
     let dir = TempDir::new().expect("a temporary state directory");
     let store = SqliteStore::open(dir.path()).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let (print, event) = subject(&store);
     let record = block_on(port.put_image(
         print.id,
@@ -274,7 +275,7 @@ fn an_interrupted_write_leaves_no_row_and_no_file() {
 fn the_child_interrupts_an_image_write() {
     let dir = child::state_dir();
     let store = SqliteStore::open(&dir).expect("the store opens");
-    let port: &dyn StorePort = &store;
+    let port: &dyn Store = &store;
     let (print, event) = subject(&store);
     let interruption = store.hold_points().image_write();
     interruption.arm();

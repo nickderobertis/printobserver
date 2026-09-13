@@ -1,10 +1,14 @@
 //! The composition root: the one place an implementation crate is named.
 //!
-//! Everything below this file is written against the four ports. This is where
-//! one implementation is chosen for each — `OctoPrint` behind the printer port,
-//! `Obico` behind the vision port, `OneHarness` behind the supervisor port, and
-//! `SQLite` behind the store port — and `just check-repo` refuses any other
-//! crate that names one.
+//! Everything below this file is written against the three ports and the
+//! supervision domain's store traits. This is where one implementation is
+//! chosen for each — `OctoPrint` behind the printer port, `Obico` behind the
+//! vision port, `OneHarness` behind the supervisor port, and `SQLite` behind
+//! the store traits — and `just check-repo` refuses any other crate that names
+//! one. The store is one implementation held once per aggregate: [`Stores::of`]
+//! coerces the one `SQLite` store to each of the five trait objects, and every
+//! consumer below is handed the handle for the aggregate it names and no
+//! other.
 //!
 //! [`Server::start`] is that root. [`Server::start_with`] takes ports a caller
 //! composed, which is how the tiers that stand in for a machine drive the real
@@ -17,12 +21,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::post;
+use printobserver_core::store::Stores;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_oneharness::{AssessmentSchema, OneharnessSupervisor, SupervisorConfig};
 use printobserver_printer_api::{PrinterError, PrinterPort};
-use printobserver_store_api::StorePort;
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_supervisor_api::SupervisorPort;
 use tokio::net::TcpListener;
@@ -33,7 +37,7 @@ use crate::api::{ApiState, router};
 use crate::config::{ConfigError, ConfigField, ServerConfig};
 use crate::ingress::{IngressState, receive};
 use crate::operations::INGRESS_PATH;
-use crate::reconcile::{Reconciliation, overdue, reconcile};
+use crate::reconcile::{ReconcileStores, Reconciliation, overdue, reconcile};
 
 /// The program a supervision turn runs to read its print's context.
 pub const CONTEXT_PROGRAM: &str = "printobserver";
@@ -102,8 +106,8 @@ pub const TURN_PROMPT: &str = printobserver_oneharness::DEFAULT_TURN_PROMPT;
 pub struct Ports {
     /// The printer.
     pub printer: Arc<dyn PrinterPort>,
-    /// Durable state.
-    pub store: Arc<dyn StorePort>,
+    /// Durable state, one handle per aggregate onto one store.
+    pub stores: Stores,
     /// External observations, and the snapshot fetch.
     pub vision: Arc<ObicoVision>,
     /// The supervising agent's harness.
@@ -210,12 +214,11 @@ impl Server {
     /// variants for a host that will not let this server come up.
     pub async fn start(config_path: impl AsRef<Path>) -> Result<Running, StartError> {
         let config = ServerConfig::load(config_path)?;
-        let store =
-            Arc::new(
-                SqliteStore::open(&config.state_dir).map_err(|error| StartError::Store {
-                    detail: error.to_string(),
-                })?,
-            );
+        let stores = Stores::of(Arc::new(SqliteStore::open(&config.state_dir).map_err(
+            |error| StartError::Store {
+                detail: error.to_string(),
+            },
+        )?));
         let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
@@ -228,7 +231,7 @@ impl Server {
             config,
             Ports {
                 printer,
-                store,
+                stores,
                 vision,
                 agent,
             },
@@ -259,28 +262,36 @@ impl Server {
         })?;
         let client_config = write_client_config(&config.state_dir, address)?;
         let clock = Arc::new(SystemClock);
-        let due = overdue(&ports.store, clock.now()).await.map_err(|error| {
-            StartError::Reconciliation {
-                detail: error.to_string(),
-            }
-        })?;
-        let supervisor = Supervisor::new(
-            CoreConfig::new(config.safety.clone(), context_command(&client_config)),
-            Arc::clone(&ports.printer),
-            Arc::clone(&ports.store),
-            Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
-            Arc::clone(&ports.agent),
-            clock,
-        );
-        let reconciliation = reconcile(&supervisor, &ports.store, due)
+        let due = overdue(&ports.stores.actions, clock.now())
             .await
             .map_err(|error| StartError::Reconciliation {
                 detail: error.to_string(),
             })?;
+        let supervisor = Supervisor::new(
+            CoreConfig::new(config.safety.clone(), context_command(&client_config)),
+            Arc::clone(&ports.printer),
+            ports.stores.clone(),
+            Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
+            Arc::clone(&ports.agent),
+            clock,
+        );
+        let reconciliation = reconcile(
+            &supervisor,
+            &ReconcileStores {
+                prints: Arc::clone(&ports.stores.prints),
+                sessions: Arc::clone(&ports.stores.sessions),
+                events: Arc::clone(&ports.stores.events),
+            },
+            due,
+        )
+        .await
+        .map_err(|error| StartError::Reconciliation {
+            detail: error.to_string(),
+        })?;
 
         let ingress = IngressState::start(
             Arc::clone(&supervisor),
-            Arc::clone(&ports.store),
+            Arc::clone(&ports.stores.events),
             Arc::clone(&ports.vision),
             config.ingress_shared_secret.clone(),
             config.ingress_answer_bound,
@@ -288,7 +299,10 @@ impl Server {
         let completions = ingress.completions();
         let application = router(ApiState {
             supervisor: Arc::clone(&supervisor),
-            store: Arc::clone(&ports.store),
+            prints: Arc::clone(&ports.stores.prints),
+            events: Arc::clone(&ports.stores.events),
+            images: Arc::clone(&ports.stores.images),
+            sessions: Arc::clone(&ports.stores.sessions),
         })
         .merge(
             Router::new()
@@ -308,7 +322,7 @@ impl Server {
             address,
             config,
             supervisor,
-            store: ports.store,
+            stores: ports.stores,
             reconciliation,
             completions,
             stop: Some(stop),
@@ -405,7 +419,9 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         &assets,
         SCHEMA_FILE,
         &printobserver_types::serde_json::to_string_pretty(
-            &printobserver_types::contract::schema_of::<printobserver_types::AgentAssessment>(),
+            &printobserver_types::contract::schema_of::<
+                printobserver_supervisor_api::AgentAssessment,
+            >(),
         )
         .map_err(|error| StartError::State {
             detail: error.to_string(),
@@ -447,8 +463,8 @@ pub struct Running {
     config: ServerConfig,
     /// The supervision core.
     supervisor: Arc<Supervisor>,
-    /// Durable state.
-    store: Arc<dyn StorePort>,
+    /// Durable state, one handle per aggregate.
+    stores: Stores,
     /// What this start adopted.
     reconciliation: Reconciliation,
     /// How many posts the ingress worker has finished handling.
@@ -512,8 +528,8 @@ impl Running {
 
     /// Durable state, as it is serving over it.
     #[must_use]
-    pub const fn store(&self) -> &Arc<dyn StorePort> {
-        &self.store
+    pub const fn stores(&self) -> &Stores {
+        &self.stores
     }
 
     /// How many posts the ingress worker has finished handling, watchable while

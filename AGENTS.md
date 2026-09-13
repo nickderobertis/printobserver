@@ -492,7 +492,7 @@ verdict:
 3. it captures the body that stack posts,
 4. it fetches the image *that captured body* points at and reads its bytes,
 5. it compares *that captured body* against the sample committed at
-   `crates/printobserver-types/samples/obico/failure-alert.json`,
+   `crates/printobserver-obico/samples/obico/failure-alert.json`,
 6. and it reports a verdict naming every field that moved.
 
 Nothing in it compares a body the capture did not produce — the alteration
@@ -823,7 +823,7 @@ version, which is the state to fix instead.
 workspace version, both named `v<version>`, and both created by the
 `printobserver` package after its own `cargo publish` — which release ordering
 places after every other publishable crate's, because that crate depends on all
-of them. One package rather than thirteen because release-plz tags and releases
+of them. One package rather than twelve because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
@@ -843,12 +843,14 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 ## The dependency rule
 
-`printobserver-core` may depend on `printobserver-types` and the four `*-api`
-port crates, and on **no implementation crate**. **No implementation crate may
-depend on another.** `printobserver-server` and the `printobserver` binary are
-the composition roots and are the only crates allowed to name an implementation.
-The roles are declared in `repo-policy.toml` and enforced by `just check-repo` —
-the boundary is not a convention, it is a check.
+The rule is an edge table, not a set of layers. `repo-policy.toml`'s
+`crates.may_depend_on` is the source (`crates.may_depend_on_in_tests` for the
+edges a crate's tests alone may add), `just check-repo` holds every manifest to
+it, and `docs/reference/architecture.md` says why — why the crates are cut by
+domain, and why core names no implementation crate. The step that draws an edge
+is the step that admits it in the table. Do not bring `printobserver-store-api`
+back, yank it or republish it: it is no crate of this workspace and stays on
+crates.io at `0.2.0`.
 
 The same rule holds one level down, over vocabulary rather than over edges:
 **`printobserver-octoprint` is the only crate that may construct an `OctoPrint`

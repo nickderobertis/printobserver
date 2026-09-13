@@ -27,10 +27,13 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Router, routing::MethodRouter};
+use printobserver_core::store::{
+    EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
+};
+use printobserver_core::{ActionKind, ExecutionOutcome, PolicyDecision};
 use printobserver_core::{CoreError, Supervisor, effective_bounds};
-use printobserver_store_api::{HistoryQuery, StoreError, StorePort};
 use printobserver_types::serde::Deserialize;
-use printobserver_types::{ActionKind, ExecutionOutcome, ImageId, PolicyDecision, PrintId};
+use printobserver_types::{ImageId, PrintId};
 
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::wire::{
@@ -38,13 +41,21 @@ use crate::wire::{
     ManifestAnswer, ManifestBody, StatusAnswer,
 };
 
-/// What every handler is given: the supervisor, and the store beside it.
+/// What every handler is given: the supervisor, and the stores the reads
+/// answer out of — the four aggregates a route reads, and not the actions,
+/// which reach the store through the supervisor alone.
 #[derive(Clone)]
 pub struct ApiState {
     /// The supervision core, which every action passes through.
     pub supervisor: Arc<Supervisor>,
-    /// Durable state, which the reads answer out of.
-    pub store: Arc<dyn StorePort>,
+    /// The print records, their manifests and their narrowings.
+    pub prints: Arc<dyn PrintStore>,
+    /// The event log.
+    pub events: Arc<dyn EventStore>,
+    /// The images stored beside the events.
+    pub images: Arc<dyn ImageStore>,
+    /// The supervision sessions.
+    pub sessions: Arc<dyn SessionStore>,
 }
 
 impl core::fmt::Debug for ApiState {
@@ -186,7 +197,7 @@ async fn act(
 
 /// Read one print's status.
 async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
-    let print = match state.store.print(print_id).await {
+    let print = match state.prints.print(print_id).await {
         Ok(Some(print)) => print,
         Ok(None) => {
             return refusal(
@@ -200,7 +211,7 @@ async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) ->
         Ok(context) => context,
         Err(error) => return refusal(core_status(&error), error),
     };
-    let session = match state.store.session(print_id).await {
+    let session = match state.sessions.session(print_id).await {
         Ok(session) => session,
         Err(error) => return refusal(store_status(&error), error),
     };
@@ -230,7 +241,7 @@ async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -
     };
     let mut image_path = None;
     if let Some(latest) = context.latest_image.as_ref() {
-        match state.store.image(latest.id).await {
+        match state.images.image(latest.id).await {
             Ok(lookup) => image_path = ImageAnswer::from(lookup).path,
             Err(error) => return refusal(store_status(&error), error),
         }
@@ -246,7 +257,7 @@ async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -
 
 /// Materialize one image: its record, and the absolute path its bytes are at.
 async fn image(State(state): State<ApiState>, Path(image_id): Path<ImageId>) -> Response {
-    match state.store.image(image_id).await {
+    match state.images.image(image_id).await {
         Ok(lookup) => answer(StatusCode::OK, &ImageAnswer::from(lookup)),
         Err(error) => refusal(store_status(&error), error),
     }
@@ -265,7 +276,7 @@ async fn history(
         until: None,
         limit: params.limit,
     };
-    match state.store.history(query).await {
+    match state.events.history(query).await {
         Ok(events) => answer(StatusCode::OK, &HistoryAnswer { events }),
         Err(error) => refusal(store_status(&error), error),
     }
@@ -273,11 +284,11 @@ async fn history(
 
 /// Read one print's manifest.
 async fn manifest_get(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
-    let manifest = match state.store.manifest(print_id).await {
+    let manifest = match state.prints.manifest(print_id).await {
         Ok(manifest) => manifest,
         Err(error) => return refusal(store_status(&error), error),
     };
-    let narrowings = match state.store.print(print_id).await {
+    let narrowings = match state.prints.print(print_id).await {
         Ok(print) => print.map(|record| record.narrowings).unwrap_or_default(),
         Err(error) => return refusal(store_status(&error), error),
     };
@@ -308,14 +319,14 @@ async fn manifest_set(
     }
     let narrowed = effective_bounds(&state.supervisor.config().envelope, Some(&body.manifest));
     if let Err(error) = state
-        .store
+        .prints
         .put_manifest(print_id, body.manifest.clone())
         .await
     {
         return refusal(store_status(&error), error);
     }
     for narrowing in narrowed.narrowings.clone() {
-        if let Err(error) = state.store.record_narrowing(print_id, narrowing).await {
+        if let Err(error) = state.prints.record_narrowing(print_id, narrowing).await {
             return refusal(store_status(&error), error);
         }
     }
@@ -332,7 +343,7 @@ async fn manifest_set(
 mod tests {
     use axum::http::StatusCode;
     use printobserver_core::CoreError;
-    use printobserver_store_api::StoreError;
+    use printobserver_core::store::StoreError;
 
     use super::{core_status, store_status};
 

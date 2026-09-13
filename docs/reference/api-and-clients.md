@@ -296,6 +296,20 @@ the generated methods above for their typed arguments and reason validation.
 `Rejection::of(answer)` extracts a typed rejection from an `ActionAnswer`, or
 returns `None` when its decision is not a rejection.
 
+#### payload_as
+
+`event.payload_as::<P>()` reads an `EventRecord`'s payload as the type `P` its
+kind declares — `Some(Ok(P))` when the event is under `P::KIND`, `Some(Err(_))`
+when it is under that kind and the payload is not of the type, and `None` for an
+event of any other kind, one this client knows or one it does not. `P` is any
+type implementing the generated `EventPayloadKind` trait, which is the table
+from kind name to payload type; `EVENT_KINDS` lists every kind it covers. A
+kind a newer server writes flows through `EventRecord` untouched, with its
+`kind` and its opaque `payload` preserved. The Python client's `payload_of(event,
+kind)` and `EVENT_PAYLOAD_TYPES`, and the Node client's `payloadOf(event, kind)`,
+`EventPayloads` and `EVENT_KINDS`, are the same table and accessor in those
+languages.
+
 #### reason_given
 
 `reason_given(reason)` validates a reason locally, returning

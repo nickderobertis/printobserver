@@ -18,7 +18,7 @@
 //! fails on it, which the generation alone cannot ask.
 
 use printobserver_types::contract::Sample;
-use printobserver_types::{FileName, FileNameRefusal, PrintAction, SEPARATORS};
+use printobserver_types::{FileName, FileNameRefusal, SEPARATORS};
 use proptest::prelude::*;
 use proptest::test_runner::{Config, FileFailurePersistence, TestCaseError, TestRng, TestRunner};
 use serde_json::Value;
@@ -67,22 +67,16 @@ fn insert_at(value: &str, index: usize, inserted: char) -> String {
     characters.into_iter().collect()
 }
 
-/// The action a candidate file name is carried into on the wire.
-fn start_print_action(file_name: &str) -> Value {
-    let mut action = serde_json::to_value(
-        PrintAction::sample_alternates()
-            .into_iter()
-            .find(|action| matches!(action, PrintAction::StartPrint { .. }))
-            .expect("the vocabulary declares start_print"),
-    )
-    .expect("the action serializes");
-    action["file_name"] = Value::String(file_name.to_owned());
-    action
+/// A candidate file name as it arrives on the wire: the bare string the
+/// supervision domain's start-a-print action carries under `file_name`, which
+/// this type's own parse is what refuses.
+fn on_the_wire(file_name: &str) -> Value {
+    Value::String(file_name.to_owned())
 }
 
-/// Whether the wire refuses a start-a-print action naming this file name.
+/// Whether the wire refuses this file name.
 fn wire_refuses(candidate: &str) -> bool {
-    serde_json::from_value::<PrintAction>(start_print_action(candidate)).is_err()
+    serde_json::from_value::<FileName>(on_the_wire(candidate)).is_err()
 }
 
 /// Assert one candidate is refused at construction and on the wire alike.
@@ -109,13 +103,8 @@ fn assert_accepted(candidate: &str) -> Result<(), TestCaseError> {
             "{candidate:?} came back as {name}"
         )));
     }
-    let parsed: PrintAction = serde_json::from_value(start_print_action(candidate))
+    let file_name: FileName = serde_json::from_value(on_the_wire(candidate))
         .map_err(|error| TestCaseError::fail(format!("the wire refused {candidate:?}: {error}")))?;
-    let PrintAction::StartPrint { file_name, .. } = &parsed else {
-        return Err(TestCaseError::fail(
-            "the action is not a start_print".to_owned(),
-        ));
-    };
     if file_name.as_str() != candidate {
         return Err(TestCaseError::fail(format!(
             "the wire returned {file_name}"

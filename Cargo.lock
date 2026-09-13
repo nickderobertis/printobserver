@@ -1391,9 +1391,9 @@ name = "printobserver"
 version = "0.2.0"
 dependencies = [
  "jsonschema 0.34.0",
+ "printobserver-core",
  "printobserver-sdk",
  "printobserver-server",
- "printobserver-store-api",
  "printobserver-store-sqlite",
  "printobserver-types",
  "sha2",
@@ -1406,8 +1406,8 @@ dependencies = [
 name = "printobserver-core"
 version = "0.2.0"
 dependencies = [
+ "jsonschema 0.34.0",
  "printobserver-printer-api",
- "printobserver-store-api",
  "printobserver-supervisor-api",
  "printobserver-types",
  "printobserver-vision-api",
@@ -1420,7 +1420,8 @@ name = "printobserver-obico"
 version = "0.2.0"
 dependencies = [
  "chrono",
- "printobserver-store-api",
+ "jsonschema 0.34.0",
+ "printobserver-core",
  "printobserver-types",
  "printobserver-vision-api",
  "reqwest",
@@ -1460,6 +1461,8 @@ name = "printobserver-printer-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -1484,7 +1487,6 @@ dependencies = [
  "printobserver-octoprint",
  "printobserver-oneharness",
  "printobserver-printer-api",
- "printobserver-store-api",
  "printobserver-store-sqlite",
  "printobserver-supervisor-api",
  "printobserver-types",
@@ -1500,18 +1502,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "printobserver-store-api"
-version = "0.2.0"
-dependencies = [
- "printobserver-types",
-]
-
-[[package]]
 name = "printobserver-store-sqlite"
 version = "0.2.0"
 dependencies = [
  "chrono",
- "printobserver-store-api",
+ "printobserver-core",
+ "printobserver-printer-api",
+ "printobserver-supervisor-api",
  "printobserver-types",
  "quote",
  "rusqlite",
@@ -1526,6 +1523,8 @@ name = "printobserver-supervisor-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -1549,6 +1548,8 @@ name = "printobserver-vision-api"
 version = "0.2.0"
 dependencies = [
  "printobserver-types",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]

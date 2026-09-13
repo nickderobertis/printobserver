@@ -15,7 +15,8 @@
 use std::time::Duration;
 
 use printobserver_printer_api::PrinterPort as _;
-use printobserver_types::{PrinterState, Timestamp};
+use printobserver_printer_api::PrinterState;
+use printobserver_types::Timestamp;
 
 use crate::block_on::block_on;
 use crate::env::Scripted;

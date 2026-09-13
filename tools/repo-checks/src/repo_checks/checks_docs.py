@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -597,7 +598,75 @@ def _architecture(repo: Repo, where: str, text: str, surface: Surface) -> list[s
         f"`{where}` omits `{crate}` from what `{core}` depends on, and its manifest names it"
         for crate in sorted(actual - stated)
     )
+    findings.extend(_dependency_table(repo, where, section))
     return findings
+
+
+def _table_rows(section: str) -> dict[str, set[str]]:
+    """The crate rows of the one Markdown table a section carries.
+
+    A row is a first cell naming one crate in backticks and a second cell
+    naming, in backticks, the crates it may depend on; a second cell of `—`
+    admits no crate. The header and the rule beneath it carry no backticked
+    first cell, so they read as no row.
+    """
+    rows: dict[str, set[str]] = {}
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 2:
+            continue
+        named = BACKTICKED.findall(cells[0])
+        if len(named) != 1:
+            continue
+        rows[named[0]] = set(BACKTICKED.findall(cells[1]))
+    return rows
+
+
+def _dependency_table(repo: Repo, where: str, section: str) -> list[str]:
+    """The document's dependency table is `repo-policy.toml`'s, row for row.
+
+    The table is restated in prose so that a reader has it beside the reason
+    for it; what keeps the restatement honest is this read, which holds every
+    row — not only the supervision domain's — to `crates.may_depend_on`.
+    """
+    declared = policy_table(repo, "crates").get("may_depend_on")
+    if not isinstance(declared, dict):
+        return ["`repo-policy.toml` declares no `crates.may_depend_on` table"]
+    rows = _table_rows(section)
+    if not rows:
+        return [
+            f"`{where}` carries no dependency table in the section that says why core "
+            f"names no implementation crate, and `repo-policy.toml` declares one"
+        ]
+    findings = [
+        f"`{where}`'s dependency table has no row for `{crate}`, and `repo-policy.toml` "
+        f"declares one"
+        for crate in sorted(set(declared) - set(rows))
+    ]
+    findings.extend(
+        f"`{where}`'s dependency table carries a row for `{crate}`, and `repo-policy.toml` "
+        f"declares none"
+        for crate in sorted(set(rows) - set(declared))
+    )
+    for crate in sorted(set(rows) & set(declared)):
+        admitted = declared[crate]
+        if not isinstance(admitted, list):
+            continue
+        if rows[crate] != {str(edge) for edge in admitted}:
+            findings.append(
+                f"`{where}`'s dependency table says `{crate}` may depend on "
+                f"{_rendered(rows[crate])}, and `repo-policy.toml` admits "
+                f"{_rendered(str(edge) for edge in admitted)}"
+            )
+    return findings
+
+
+def _rendered(crates: Iterable[str]) -> str:
+    """A set of crate names, as a finding spells them."""
+    named = sorted(crates)
+    return ", ".join(f"`{crate}`" for crate in named) if named else "no crate at all"
 
 
 def _common_operations(repo: Repo, where: str, text: str, surface: Surface) -> list[str]:
@@ -659,10 +728,18 @@ def _testing(repo: Repo, where: str, text: str, surface: Surface) -> list[str]:
 
 
 def _rejection_vocabulary(repo: Repo, policy: DocsPolicy) -> set[str] | str:
-    """Every variant and field the contracts' rejection type declares."""
-    path = repo.path(policy.schema_directory) / "printobserver-types" / "RejectionReason.json"
-    if not path.is_file():
+    """Every variant and field the contracts' rejection type declares.
+
+    The schema set is keyed by type name across every declaring crate, so the
+    file is looked for under whichever `schemas/<crate>/` the crate that
+    declares the rejection checks it in under, rather than under one crate's
+    directory named here: a type that moves to the domain that owns it moves
+    its file, and this read follows it.
+    """
+    found = sorted(repo.path(policy.schema_directory).glob("*/RejectionReason.json"))
+    if not found:
         return "the contracts generate no `RejectionReason` schema to read a rejection off"
+    path = found[0]
     invalid = f"`{path.relative_to(repo.root)}` is not a readable rejection schema"
     try:
         schema = json.loads(path.read_text(encoding="utf-8"))

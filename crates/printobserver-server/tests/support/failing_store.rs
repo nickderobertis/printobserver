@@ -13,16 +13,18 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use printobserver_store_api::{
-    AuditPage, BoxFuture, EventDraft, HistoryQuery, ImageLookup, SettleOutcome, StoreError,
-    StorePort,
+use printobserver_core::store::{
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, Stores,
 };
-use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
-    ImageId, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    ManifestNarrowing, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    SupervisionSession, Timestamp,
+use printobserver_core::{
+    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
+    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
+    PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// What the store says when it has failed.
 pub const DETAIL: &str = "the disk is full";
@@ -37,18 +39,18 @@ pub struct FailingStore {
 impl FailingStore {
     /// A store that lets a server start, and fails everything afterwards.
     #[must_use]
-    pub fn after_starting() -> std::sync::Arc<Self> {
-        std::sync::Arc::new(Self {
+    pub fn after_starting() -> Stores {
+        Stores::of(std::sync::Arc::new(Self {
             starts: AtomicBool::new(true),
-        })
+        }))
     }
 
     /// A store that has already failed when the server tries to start.
     #[must_use]
-    pub fn from_the_start() -> std::sync::Arc<Self> {
-        std::sync::Arc::new(Self {
+    pub fn from_the_start() -> Stores {
+        Stores::of(std::sync::Arc::new(Self {
             starts: AtomicBool::new(false),
-        })
+        }))
     }
 }
 
@@ -64,10 +66,10 @@ where
     })
 }
 
-impl StorePort for FailingStore {
+impl PrintStore for FailingStore {
     fn open_print(
         &self,
-        _obico_print_id: Option<i64>,
+        _provider_print_id: Option<i64>,
         _file_name: Option<String>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         failed()
@@ -84,9 +86,9 @@ impl StorePort for FailingStore {
         failed()
     }
 
-    fn print_by_obico_id(
+    fn print_by_provider_id(
         &self,
-        _obico_print_id: i64,
+        _provider_print_id: i64,
     ) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
         failed()
     }
@@ -109,10 +111,42 @@ impl StorePort for FailingStore {
         failed()
     }
 
+    fn put_manifest(
+        &self,
+        _print_id: PrintId,
+        _manifest: JobManifest,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        failed()
+    }
+
+    fn manifest(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
+        failed()
+    }
+}
+
+impl EventStore for FailingStore {
     fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         failed()
     }
 
+    fn history(&self, _query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        failed()
+    }
+
+    fn audit_page(
+        &self,
+        _print_id: PrintId,
+        _after: Option<EventId>,
+        _page_size: u32,
+    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
+        failed()
+    }
+}
+
+impl ImageStore for FailingStore {
     fn put_image(
         &self,
         _print_id: PrintId,
@@ -127,7 +161,9 @@ impl StorePort for FailingStore {
     fn image(&self, _image_id: ImageId) -> BoxFuture<'_, Result<ImageLookup, StoreError>> {
         failed()
     }
+}
 
+impl ActionStore for FailingStore {
     fn record_action(
         &self,
         _request: ActionRequest,
@@ -180,35 +216,9 @@ impl StorePort for FailingStore {
     ) -> BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
         failed()
     }
+}
 
-    fn put_manifest(
-        &self,
-        _print_id: PrintId,
-        _manifest: JobManifest,
-    ) -> BoxFuture<'_, Result<(), StoreError>> {
-        failed()
-    }
-
-    fn manifest(
-        &self,
-        _print_id: PrintId,
-    ) -> BoxFuture<'_, Result<Option<JobManifest>, StoreError>> {
-        failed()
-    }
-
-    fn history(&self, _query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        failed()
-    }
-
-    fn audit_page(
-        &self,
-        _print_id: PrintId,
-        _after: Option<EventId>,
-        _page_size: u32,
-    ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
-        failed()
-    }
-
+impl SessionStore for FailingStore {
     fn put_session(&self, _session: SupervisionSession) -> BoxFuture<'_, Result<(), StoreError>> {
         failed()
     }

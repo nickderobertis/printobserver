@@ -7,8 +7,8 @@
 //! real server on the loopback address, so the bounds it runs under are the
 //! ones under test rather than ones a stub agreed to.
 //!
-//! The committed samples under `printobserver-types` are what the producer
-//! sends, and this tier is what holds this crate to them. Where a journey needs
+//! The committed samples under this crate's own `samples/obico/` are what the
+//! producer sends, and this tier is what holds this crate to them. Where a journey needs
 //! the snapshot actually fetched it re-points `img_url` at the host the test
 //! controls — that one field, and nothing else, because no test can reach the
 //! address the committed sample names.
@@ -23,18 +23,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use image_host::{Answer, ImageHost, unreachable_url};
+use printobserver_core::records::PrinterState;
+use printobserver_core::store::{EventStore, HistoryQuery, ImageLookup, ImageStore, PrintStore};
+use printobserver_core::{ImageRecord, PrintRecord};
+use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
-    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, IngressError, ObicoIngress, ObicoVisionConfig,
-    Receipt,
+    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, IngressError, ObicoFailureAlertPayload,
+    ObicoIngress, ObicoNotificationType, ObicoPrinterNotificationPayload, ObicoVisionConfig,
+    Receipt, obico_source,
 };
-use printobserver_store_api::{HistoryQuery, ImageLookup, StorePort};
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{
-    EventKind, EventPayload, EventRecord, EventSource, ImageRecord, ObicoFailureAlertPayload,
-    ObicoNotificationType, ObicoPrinterNotificationPayload, PortFailurePayload, PortFailureSite,
-    PrintRecord, PrinterState, RawBytes, Timestamp,
+use printobserver_types::{EventPayload, EventRecord, RawBytes, Timestamp};
+use printobserver_vision_api::{
+    MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
 };
-use printobserver_vision_api::VisionError;
 use store::{MemoryStore, RefusingStore};
 
 /// Obico's own identifier for the print every committed sample is about.
@@ -43,8 +45,6 @@ const SAMPLE_OBICO_PRINT_ID: i64 = 4211;
 /// The bytes of a committed sample, exactly as they are on disk.
 fn sample_bytes(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("printobserver-types")
         .join("samples")
         .join("obico")
         .join(name);
@@ -76,23 +76,29 @@ fn prompt_bounds() -> ObicoVisionConfig {
 
 /// The ingress, over one store, under one set of bounds.
 fn ingress(store: &Arc<MemoryStore>, config: ObicoVisionConfig) -> ObicoIngress {
-    ObicoIngress::new(Arc::clone(store) as Arc<dyn StorePort>, config).expect("the ingress builds")
+    ObicoIngress::new(
+        Arc::clone(store) as Arc<dyn PrintStore>,
+        Arc::clone(store) as Arc<dyn EventStore>,
+        Arc::clone(store) as Arc<dyn ImageStore>,
+        config,
+    )
+    .expect("the ingress builds")
 }
 
 /// The failure payload one event carries.
-fn failure_payload(event: &EventRecord) -> &ObicoFailureAlertPayload {
-    match &event.payload {
-        EventPayload::ObicoFailureAlert(payload) => payload,
-        other => panic!("expected a failure alert, found {other:?}"),
-    }
+fn failure_payload(event: &EventRecord) -> ObicoFailureAlertPayload {
+    event
+        .payload_as::<ObicoFailureAlertPayload>()
+        .unwrap_or_else(|| panic!("expected a failure alert, found {:?}", event.body))
+        .expect("a failure alert is of its own type")
 }
 
 /// The notification payload one event carries.
-fn notification_payload(event: &EventRecord) -> &ObicoPrinterNotificationPayload {
-    match &event.payload {
-        EventPayload::ObicoPrinterNotification(payload) => payload,
-        other => panic!("expected a printer notification, found {other:?}"),
-    }
+fn notification_payload(event: &EventRecord) -> ObicoPrinterNotificationPayload {
+    event
+        .payload_as::<ObicoPrinterNotificationPayload>()
+        .unwrap_or_else(|| panic!("expected a printer notification, found {:?}", event.body))
+        .expect("a printer notification is of its own type")
 }
 
 /// Read one print's events back out of the store, newest first.
@@ -148,19 +154,19 @@ async fn recorded_failure(store: &MemoryStore, receipt: &Receipt) -> PortFailure
     assert!(
         !history
             .iter()
-            .any(|record| record.kind() == EventKind::MalformedExternalEvent),
+            .any(|record| record.body.is::<MalformedExternalEventPayload>()),
         "a fetch failure was recorded as a malformed external event"
     );
     let mut failures: Vec<PortFailurePayload> = history
         .into_iter()
-        .filter_map(|record| match record.payload {
-            EventPayload::PortFailure(payload) => {
-                assert_eq!(record.source, EventSource::System);
-                assert_eq!(record.print_id, Some(print.id));
-                assert_eq!(record.raw, None, "the failure invented bytes of its own");
-                Some(payload)
-            }
-            _ => None,
+        .filter_map(|record| {
+            let payload = record
+                .payload_as::<PortFailurePayload>()?
+                .expect("a port failure is of its own type");
+            assert_eq!(record.source, system_source());
+            assert_eq!(record.print_id, Some(print.id));
+            assert_eq!(record.raw, None, "the failure invented bytes of its own");
+            Some(payload)
         })
         .collect();
     assert_eq!(
@@ -209,8 +215,8 @@ async fn each_of_the_four_flag_combinations_is_carried_from_the_body() {
             .expect("the alert is accepted");
 
         let held = stored_event(&store, &receipt);
-        assert_eq!(held.kind(), EventKind::ObicoFailureAlert);
-        assert_eq!(held.source, EventSource::Obico);
+        assert_eq!(held.kind(), &ObicoFailureAlertPayload::kind());
+        assert_eq!(held.source, obico_source());
         assert_eq!(
             held.raw.as_ref().map(RawBytes::as_slice),
             Some(body.as_slice())
@@ -220,6 +226,56 @@ async fn each_of_the_four_flag_combinations_is_carried_from_the_body() {
             (payload.is_warning, payload.print_paused),
             (is_warning, print_paused),
             "the flags were not read off the body"
+        );
+    }
+}
+
+/// Each committed sample normalizes to an alert under this adapter's own kind,
+/// carrying the provider's print beside the body where the body names one.
+///
+/// The print is what the supervision domain correlates on, and it is read here
+/// off the port's own answer rather than inferred from what the ingress did
+/// with it: an adapter that filled the payload and not the correlation would
+/// pass every ingress journey while the core opened no print.
+#[tokio::test]
+async fn each_sample_normalizes_to_its_own_kind_carrying_the_provider_print() {
+    let store = Arc::new(MemoryStore::new());
+    let vision = ingress(&store, prompt_bounds()).vision().clone();
+    let about_a_print = Some(ProviderPrint {
+        id: SAMPLE_OBICO_PRINT_ID,
+        file_name: Some("benchy.gcode".to_owned()),
+    });
+    for (name, kind, print) in [
+        (
+            "failure-alert.json",
+            ObicoFailureAlertPayload::kind(),
+            about_a_print.clone(),
+        ),
+        (
+            "printer-notification-about-a-print.json",
+            ObicoPrinterNotificationPayload::kind(),
+            about_a_print,
+        ),
+        (
+            "printer-notification-not-about-a-print.json",
+            ObicoPrinterNotificationPayload::kind(),
+            None,
+        ),
+    ] {
+        let alert = vision
+            .normalize(
+                RawBytes::new(sample_bytes(name)),
+                Some("application/json".to_owned()),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("{name} normalizes: {error}"));
+        assert_eq!(alert.kind(), &kind, "{name}");
+        assert_eq!(alert.source, obico_source(), "{name}");
+        assert_eq!(alert.print, print, "{name}");
+        assert_eq!(
+            alert.body.payload["obico_print_id"].as_i64(),
+            alert.print.as_ref().map(|held| held.id),
+            "{name}: the payload and the correlation disagree about the print"
         );
     }
 }
@@ -240,7 +296,7 @@ async fn the_notification_about_a_print_names_it_and_stores_its_snapshot() {
         .expect("the notification is accepted");
 
     let held = stored_event(&store, &receipt);
-    assert_eq!(held.kind(), EventKind::ObicoPrinterNotification);
+    assert_eq!(held.kind(), &ObicoPrinterNotificationPayload::kind());
     assert_eq!(
         notification_payload(&held).notification_type,
         ObicoNotificationType::Started
@@ -264,7 +320,7 @@ async fn the_notification_about_no_print_names_none_and_stores_no_snapshot() {
         .expect("the notification is accepted");
 
     let held = stored_event(&store, &receipt);
-    assert_eq!(held.kind(), EventKind::ObicoPrinterNotification);
+    assert_eq!(held.kind(), &ObicoPrinterNotificationPayload::kind());
     assert_eq!(
         notification_payload(&held).notification_type,
         ObicoNotificationType::HeaterCooled
@@ -412,8 +468,8 @@ async fn a_body_that_cannot_be_read_is_recorded_and_then_refused() {
         let held = store.events();
         assert_eq!(held.len(), 1, "{what} left no single record");
         assert_eq!(held[0].id, recorded.id);
-        assert_eq!(held[0].kind(), EventKind::MalformedExternalEvent);
-        assert_eq!(held[0].source, EventSource::Obico);
+        assert_eq!(held[0].kind(), &MalformedExternalEventPayload::kind());
+        assert_eq!(held[0].source, obico_source());
         assert_eq!(held[0].print_id, None);
         assert_eq!(
             held[0].raw.as_ref().map(RawBytes::as_slice),
@@ -459,7 +515,7 @@ async fn an_alert_for_an_unknown_id_opens_a_print_carrying_it() {
 
     let prints = store.prints();
     assert_eq!(prints.len(), 1, "no single print record was opened");
-    assert_eq!(prints[0].obico_print_id, Some(SAMPLE_OBICO_PRINT_ID));
+    assert_eq!(prints[0].provider_print_id, Some(SAMPLE_OBICO_PRINT_ID));
     assert_eq!(stored_event(&store, &receipt).print_id, Some(prints[0].id));
 }
 
@@ -487,7 +543,7 @@ async fn an_alert_for_an_ended_print_does_not_reopen_it() {
     let carrying: Vec<PrintRecord> = store
         .prints()
         .into_iter()
-        .filter(|record| record.obico_print_id == Some(SAMPLE_OBICO_PRINT_ID))
+        .filter(|record| record.provider_print_id == Some(SAMPLE_OBICO_PRINT_ID))
         .collect();
     assert_eq!(carrying.len(), 1, "a replacement print record was opened");
     assert_eq!(carrying[0].id, ended.id);
@@ -565,8 +621,8 @@ async fn assert_refused(
     assert!(receipt.image.is_none(), "a snapshot was stored anyway");
 
     let held = stored_event(store, receipt);
-    assert_eq!(held.kind(), EventKind::ObicoFailureAlert);
-    assert_eq!(held.source, EventSource::Obico);
+    assert_eq!(held.kind(), &ObicoFailureAlertPayload::kind());
+    assert_eq!(held.source, obico_source());
     assert_eq!(held.image, None, "the event names an image");
     assert_eq!(
         held.raw.as_ref().map(RawBytes::as_slice),
@@ -751,8 +807,11 @@ async fn every_notification_type_normalizes_to_its_own_spelling() {
 /// accepted, which is what a caller needs in order to retry it.
 #[tokio::test]
 async fn a_store_that_refuses_the_write_says_nothing_was_written_down() {
+    let refusing = Arc::new(RefusingStore);
     let ingress = ObicoIngress::new(
-        Arc::new(RefusingStore) as Arc<dyn StorePort>,
+        Arc::clone(&refusing) as Arc<dyn PrintStore>,
+        Arc::clone(&refusing) as Arc<dyn EventStore>,
+        refusing as Arc<dyn ImageStore>,
         prompt_bounds(),
     )
     .expect("the ingress builds");

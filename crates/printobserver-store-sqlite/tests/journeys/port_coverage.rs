@@ -1,15 +1,16 @@
-//! The conformance suite exercises every method the port declares.
+//! The conformance suite exercises every method the store traits declare.
 //!
-//! A suite that covers most of a port is a suite whose gaps nobody can name, so
-//! this reads the port's own declarations and the suite's own calls rather than
-//! a list maintained beside either — and it is driven against a fixture port
-//! carrying a method the suite does not reach, so that what refuses the fixture
-//! is what reads the committed pair.
+//! A suite that covers most of the traits is a suite whose gaps nobody can
+//! name, so this reads the traits' own declarations and the suite's own calls
+//! rather than a list maintained beside either — and it is driven against a
+//! fixture trait carrying a method the suite does not reach, so that what
+//! refuses the fixture is what reads the committed pair.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use crate::surface::{crate_dir, method_calls, parse, read, trait_methods};
+use crate::contracts::{store_source, store_trait_methods};
+use crate::surface::{method_calls, parse, read, trait_methods};
 
 /// The files the conformance suite is written across.
 const SUITE_FILES: [&str; 2] = ["tests/journeys/conformance.rs", "tests/support/fixture.rs"];
@@ -25,56 +26,53 @@ fn suite() -> Vec<syn::File> {
         .collect()
 }
 
-/// The store port, as this repository's port crate declares it.
-fn port() -> syn::File {
-    parse(&read(
-        &crate_dir("printobserver-store-api")
-            .join("src")
-            .join("lib.rs"),
-    ))
-}
-
-/// Every method the port declares that the suite never calls.
-fn unexercised(port: &syn::File, suite: &[syn::File]) -> Vec<String> {
+/// Every method the traits declare that the suite never calls.
+fn unexercised(traits: &[String], suite: &[syn::File]) -> Vec<String> {
     let called: BTreeSet<String> = suite.iter().flat_map(method_calls).collect();
-    trait_methods(port, "StorePort")
-        .into_iter()
-        .map(|method| method.name)
-        .filter(|name| !called.contains(name))
+    traits
+        .iter()
+        .filter(|name| !called.contains(*name))
+        .cloned()
         .collect()
 }
 
-/// The suite exercises every method the store port declares.
+/// The suite exercises every method every store trait declares.
 #[test]
-fn the_conformance_suite_exercises_every_method_the_port_declares() {
-    let port = port();
-    let declared = trait_methods(&port, "StorePort");
+fn the_conformance_suite_exercises_every_method_the_traits_declare() {
+    let declared: Vec<String> = store_trait_methods(&store_source())
+        .into_iter()
+        .map(|method| method.name)
+        .collect();
     assert!(
         declared.len() >= 20,
-        "the reader found only {} port methods, which is not the port",
+        "the reader found only {} store methods, which is not the store",
         declared.len()
     );
     assert_eq!(
-        unexercised(&port, &suite()),
+        unexercised(&declared, &suite()),
         Vec::<String>::new(),
-        "the conformance suite does not exercise every method the port declares"
+        "the conformance suite does not exercise every method the traits declare"
     );
 }
 
-/// A port carrying a method the suite does not reach.
-const FIXTURE_UNEXERCISED_PORT: &str = r"
-pub trait StorePort: Send + Sync {
+/// A trait carrying a method the suite does not reach.
+const FIXTURE_UNEXERCISED_TRAIT: &str = r"
+pub trait EventStore: Send + Sync {
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>>;
     fn whole_history(&self, print_id: PrintId) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
 }
 ";
 
-/// The check refuses a port method the suite does not reach.
+/// The check refuses a trait method the suite does not reach.
 #[test]
-fn the_check_refuses_a_port_method_the_suite_does_not_reach() {
-    let fixture = parse(FIXTURE_UNEXERCISED_PORT);
+fn the_check_refuses_a_trait_method_the_suite_does_not_reach() {
+    let fixture = parse(FIXTURE_UNEXERCISED_TRAIT);
+    let declared: Vec<String> = trait_methods(&fixture, "EventStore")
+        .into_iter()
+        .map(|method| method.name)
+        .collect();
     assert_eq!(
-        unexercised(&fixture, &suite()),
+        unexercised(&declared, &suite()),
         vec!["whole_history".to_owned()],
         "the check did not name the method the suite never calls"
     );

@@ -21,11 +21,14 @@ from typing import cast
 from host import Host
 from printobserver_sdk import Client, NoReasonError, RejectedError
 from printobserver_sdk.contract import (
+    EVENT_PAYLOAD_TYPES,
     AcknowledgementDisposition,
+    ActionExecutedPayload,
     Actor,
     EventId,
     FileName,
     JobManifest,
+    payload_of,
 )
 from repo_checks.expect import equal, truth
 
@@ -57,27 +60,28 @@ def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
         'id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": ['
         '{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "appl'
         'ied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "m'
-        'in": 1.5}}], "obico_print_id": 7, "opened_at": "0198f0a1-2b3'
-        'c-7d4e-8f90-123456789abc", "state": "operational"}, "printer'
-        '": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}'
-        ', "offset_c": {"out_of_range": true, "value": 1.5}, "target_'
-        'c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actu'
-        'al_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"o'
-        'ut_of_range": true, "value": 1.5}, "target_c": {"out_of_rang'
-        'e": true, "value": 1.5}}, "connection": "operational", "fan_'
-        'percent": {"out_of_range": true, "value": 1.5}, "feedrate_fa'
-        'ctor": {"out_of_range": true, "value": 1.5}, "flowrate_facto'
-        'r": {"out_of_range": true, "value": 1.5}, "observed_at": "01'
-        '98f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": '
-        '{"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_r'
-        'ange": true, "value": 1.5}, "target_c": {"out_of_range": tru'
-        'e, "value": 1.5}}]}, "session": {"close_reason": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc", "closed_at": "0198f0a1-2b3c-7d4'
-        'e-8f90-123456789abc", "created_at": "0198f0a1-2b3c-7d4e-8f90'
-        '-123456789abc", "harness_identity": "0198f0a1-2b3c-7d4e-8f90'
-        '-123456789abc", "last_turn_at": "0198f0a1-2b3c-7d4e-8f90-123'
-        '456789abc", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
-        'c", "session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+        'in": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "provider_print_id": 7, "state": "operational"}, "prin'
+        'ter": {"bed": {"actual_c": {"out_of_range": true, "value": 1'
+        '.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "targ'
+        'et_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"a'
+        'ctual_c": {"out_of_range": true, "value": 1.5}, "offset_c": '
+        '{"out_of_range": true, "value": 1.5}, "target_c": {"out_of_r'
+        'ange": true, "value": 1.5}}, "connection": "operational", "f'
+        'an_percent": {"out_of_range": true, "value": 1.5}, "feedrate'
+        '_factor": {"out_of_range": true, "value": 1.5}, "flowrate_fa'
+        'ctor": {"out_of_range": true, "value": 1.5}, "observed_at": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c'
+        '": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_o'
+        'f_range": true, "value": 1.5}, "target_c": {"out_of_range": '
+        'true, "value": 1.5}}]}, "session": {"close_reason": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "closed_at": "0198f0a1-2b3c-'
+        '7d4e-8f90-123456789abc", "created_at": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "harness_identity": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "last_turn_at": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "print_id": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}}'
     )
 
     with Host(200, answer) as host:
@@ -121,32 +125,31 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         'b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-'
         '123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-'
         '7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}'
-        ', "requested": {"max": 1.5, "min": 1.5}}], "obico_print_id":'
-        ' 7, "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "st'
-        'ate": "operational"}, "printer": {"bed": {"actual_c": {"out_'
-        'of_range": true, "value": 1.5}, "offset_c": {"out_of_range":'
-        ' true, "value": 1.5}, "target_c": {"out_of_range": true, "va'
-        'lue": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, '
-        '"value": 1.5}, "offset_c": {"out_of_range": true, "value": 1'
-        '.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "con'
-        'nection": "operational", "fan_percent": {"out_of_range": tru'
-        'e, "value": 1.5}, "feedrate_factor": {"out_of_range": true, '
-        '"value": 1.5}, "flowrate_factor": {"out_of_range": true, "va'
-        'lue": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-12345678'
-        '9abc", "tools": [{"actual_c": {"out_of_range": true, "value"'
-        ': 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "t'
-        'arget_c": {"out_of_range": true, "value": 1.5}}]}, "recent_e'
-        'vents": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ima'
-        'ge": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256"'
-        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico_fa'
-        'ilure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc", "is_warning": true, "obico_print_id": 7, "print_p'
-        'aused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-1234567'
-        '89abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
-        ' "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at'
-        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obico"'
-        '}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        ', "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, '
+        '"state": "operational"}, "printer": {"bed": {"actual_c": {"o'
+        'ut_of_range": true, "value": 1.5}, "offset_c": {"out_of_rang'
+        'e": true, "value": 1.5}, "target_c": {"out_of_range": true, '
+        '"value": 1.5}}, "chamber": {"actual_c": {"out_of_range": tru'
+        'e, "value": 1.5}, "offset_c": {"out_of_range": true, "value"'
+        ': 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "'
+        'connection": "operational", "fan_percent": {"out_of_range": '
+        'true, "value": 1.5}, "feedrate_factor": {"out_of_range": tru'
+        'e, "value": 1.5}, "flowrate_factor": {"out_of_range": true, '
+        '"value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "tools": [{"actual_c": {"out_of_range": true, "val'
+        'ue": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5},'
+        ' "target_c": {"out_of_range": true, "value": 1.5}}]}, "recen'
+        't_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "'
+        '0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:
@@ -190,15 +193,13 @@ def test_history_sends_what_it_declares_and_answers_what_was_sent() -> None:
     answer = json.loads(
         '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
         'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
-        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "obico'
-        '_failure_alert", "payload": {"ended_at": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc", "is_warning": true, "obico_print_id": 7, "prin'
-        't_paused": true, "started_at": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
-        'c", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received'
-        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "obi'
-        'co"}]}'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}'
     )
 
     with Host(200, answer) as host:
@@ -1521,3 +1522,61 @@ def test_acknowledge_failure_makes_no_request_when_the_reason_is_empty() -> None
             truth(False, describing="a blank reason to be refused")
 
         equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_history_carries_a_known_and_an_unknown_kind_through_the_kind_table() -> None:
+    """`history` drives the kind table over a known and an unknown kind.
+
+    Both events come back with their kind and payload preserved; the known
+    one's payload reads as its type through the table, and the unknown
+    one's accessor answers nothing while its opaque payload is still
+    there.
+    """
+    answer = json.loads(
+        '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc"}, "kind": "kind_from_a_newer_server", "payloa'
+        'd": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "p'
+        'rint_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}]}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        answered = client.history("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7)
+
+    equal(answered, answer, describing="the two events, carried through untouched")
+    known, unknown = answered["events"]
+    equal(known["kind"], "action_executed")
+    read = payload_of(known, "action_executed")
+    equal(
+        read,
+        json.loads(
+            '{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inter'
+            'vention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        ),
+        describing="the known kind's payload, read through the table",
+    )
+    equal(unknown["kind"], "kind_from_a_newer_server")
+    equal(payload_of(unknown, "action_executed"), None)
+    equal(
+        unknown["payload"],
+        json.loads('{"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'),
+        describing="the opaque payload of a kind this client does not know",
+    )
+    equal(EVENT_PAYLOAD_TYPES["action_executed"], ActionExecutedPayload)
+    truth(
+        "kind_from_a_newer_server" not in EVENT_PAYLOAD_TYPES,
+        describing="a kind no client knows to be in no table",
+    )

@@ -2,7 +2,13 @@
 //!
 //! Owns: the port the physical printer speaks through — the trait for reading
 //! printer and job state and for asking the machine to do one of the bounded
-//! things the action vocabulary names, plus that port's own error type.
+//! things the action vocabulary names, plus that port's own error type — and
+//! the printer domain's vocabulary: the state a printer reports ([`state`]),
+//! the closed set of things an adjustment may change ([`adjustable`]), the
+//! snapshots those reads answer ([`snapshot`]) and the plausibility ranges
+//! their reported numbers are read against ([`ranges`]). A change to what a
+//! printer reports edits this crate and the adapters behind it, and nothing
+//! central.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -19,15 +25,29 @@
 //! # Why the methods answer a boxed future
 //!
 //! Every method is asynchronous, and the trait is dyn-compatible and shareable
-//! across threads, because the supervision core holds all four ports behind
+//! across threads, because the supervision core holds every port behind
 //! `Arc<dyn Port>`. An `async fn` in a trait is not dyn-compatible, so each
 //! method answers a [`BoxFuture`] instead: the same asynchrony, in the one
 //! shape a trait object can carry.
 
+pub mod adjustable;
+pub mod ranges;
+pub mod snapshot;
+pub mod state;
+
 use core::future::Future;
 use core::pin::Pin;
 
-use printobserver_types::{Adjustable, FileName, JobSnapshot, PrinterSnapshot};
+use printobserver_types::FileName;
+
+pub use adjustable::{Adjustable, AdjustableError};
+pub use ranges::{
+    COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
+    HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
+    RangedField,
+};
+pub use snapshot::{HeaterSnapshot, JobSnapshot, PrinterSnapshot};
+pub use state::PrinterState;
 
 /// A future this port's methods answer with, in the one shape a trait object
 /// can carry.

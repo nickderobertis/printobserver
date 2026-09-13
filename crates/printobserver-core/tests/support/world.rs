@@ -4,13 +4,18 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, JobManifest, PrintAction, PrintRecord, SafetyEnvelope,
+};
 use printobserver_core::{ActionOutcome, CoreConfig, CoreError, Supervisor, block_on};
+use printobserver_printer_api::Adjustable;
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, EventPayload, EventRecord, JobManifest,
-    ObicoFailureAlertPayload, PrintAction, PrintId, PrintRecord, Range, RawBytes, SafetyEnvelope,
+    EventBody, EventKind, EventPayload, EventRecord, EventSource, PrintId, Range, RawBytes,
     Timestamp,
 };
-use printobserver_vision_api::NormalizedAlert;
+use printobserver_vision_api::{MalformedExternalEventPayload, NormalizedAlert, ProviderPrint};
 
 use crate::fakes::{FakeClock, FakePrinter, FakeStore, FakeSupervisor, FakeVision};
 use crate::journal::Journal;
@@ -107,7 +112,7 @@ impl World {
         let core = Supervisor::new(
             config,
             Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
-            Arc::clone(&store) as Arc<dyn printobserver_store_api::StorePort>,
+            printobserver_core::store::Stores::of(Arc::clone(&store)),
             Arc::clone(&vision) as Arc<dyn printobserver_vision_api::VisionPort>,
             Arc::clone(&agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
             Arc::clone(&clock) as Arc<dyn printobserver_core::Clock>,
@@ -129,10 +134,10 @@ impl World {
     /// # Panics
     ///
     /// Panics when the store refuses to open it.
-    pub fn open_print(&self, obico_print_id: i64) -> PrintRecord {
-        block_on(printobserver_store_api::StorePort::open_print(
+    pub fn open_print(&self, provider_print_id: i64) -> PrintRecord {
+        block_on(printobserver_core::store::PrintStore::open_print(
             self.store.as_ref(),
-            Some(obico_print_id),
+            Some(provider_print_id),
             Some("benchy.gcode".to_owned()),
         ))
         .expect("the store opens a print")
@@ -156,7 +161,7 @@ impl World {
     pub fn context(
         &self,
         print_id: PrintId,
-    ) -> Result<printobserver_types::PrintContext, CoreError> {
+    ) -> Result<printobserver_core::PrintContext, CoreError> {
         block_on(self.core.context(print_id))
     }
 
@@ -225,48 +230,94 @@ pub fn agent_actor(print_id: PrintId) -> Actor {
     }
 }
 
-/// One Obico failure alert about a print, carrying no image.
+/// The source name of the provider these journeys stand in for.
+///
+/// No crate of this workspace declares it: what the loop is proven against is
+/// an adapter it has never heard of, which is what makes it provider-neutral.
+pub const TEST_PROVIDER_SOURCE: &str = "test_provider";
+
+/// A failure alert from the provider these journeys stand in for.
+///
+/// Declared here, under a kind no crate ships, because the supervision loop
+/// reads nothing an adapter declares: it correlates on the
+/// [`ProviderPrint`] beside the body and carries the body through untouched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct TestProviderAlert {
+    /// How sure the provider was.
+    pub severity: String,
+    /// Whether the provider paused the print itself.
+    pub paused: bool,
+}
+
+impl EventPayload for TestProviderAlert {
+    const KIND: &'static str = "test_provider_alert";
+}
+
+/// A printer notification from the provider these journeys stand in for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct TestProviderNotification {
+    /// What the provider said happened.
+    pub what: String,
+}
+
+impl EventPayload for TestProviderNotification {
+    const KIND: &'static str = "test_provider_notification";
+}
+
+/// The kind the test provider's failure alerts are written under.
 #[must_use]
-pub fn failure_alert(obico_print_id: i64) -> NormalizedAlert {
+pub fn alert_kind() -> EventKind {
+    TestProviderAlert::kind()
+}
+
+/// The kind the test provider's notifications are written under.
+#[must_use]
+pub fn notification_kind() -> EventKind {
+    TestProviderNotification::kind()
+}
+
+/// One failure alert about a print, carrying no image.
+#[must_use]
+pub fn failure_alert(provider_print_id: i64) -> NormalizedAlert {
     NormalizedAlert {
-        source: printobserver_types::EventSource::Obico,
+        source: EventSource::new(TEST_PROVIDER_SOURCE),
         received_at: at(0),
-        payload: EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-            is_warning: false,
-            print_paused: false,
-            obico_print_id: Some(obico_print_id),
-            file_name: Some("benchy.gcode".to_owned()),
-            started_at: None,
-            ended_at: None,
-        }),
+        body: EventBody::of(&TestProviderAlert {
+            severity: "failure".to_owned(),
+            paused: false,
+        })
+        .expect("a payload renders"),
         raw: RawBytes::new(br#"{"event":"print_failure"}"#.to_vec()),
         image_url: None,
+        print: Some(ProviderPrint {
+            id: provider_print_id,
+            file_name: Some("benchy.gcode".to_owned()),
+        }),
     }
 }
 
 /// The same alert, naming an image for the loop to fetch and store.
 #[must_use]
-pub fn failure_alert_with_image(obico_print_id: i64) -> NormalizedAlert {
+pub fn failure_alert_with_image(provider_print_id: i64) -> NormalizedAlert {
     NormalizedAlert {
-        image_url: Some("https://obico.example/snapshot.png".to_owned()),
-        ..failure_alert(obico_print_id)
+        image_url: Some("https://provider.example/snapshot.png".to_owned()),
+        ..failure_alert(provider_print_id)
     }
 }
 
-/// One Obico printer notification about a print, carrying no image.
+/// One printer notification about a print, carrying no image.
 #[must_use]
-pub fn notification_alert(obico_print_id: i64) -> NormalizedAlert {
+pub fn notification_alert(provider_print_id: i64) -> NormalizedAlert {
     NormalizedAlert {
-        payload: EventPayload::ObicoPrinterNotification(
-            printobserver_types::ObicoPrinterNotificationPayload {
-                notification_type: printobserver_types::ObicoNotificationType::Paused,
-                obico_print_id: Some(obico_print_id),
-                file_name: Some("benchy.gcode".to_owned()),
-                started_at: None,
-                ended_at: None,
-            },
-        ),
-        ..failure_alert(obico_print_id)
+        body: EventBody::of(&TestProviderNotification {
+            what: "paused".to_owned(),
+        })
+        .expect("a payload renders"),
+        ..failure_alert(provider_print_id)
     }
 }
 
@@ -277,11 +328,11 @@ pub fn notification_alert(obico_print_id: i64) -> NormalizedAlert {
 #[must_use]
 pub fn unattributed_alert() -> NormalizedAlert {
     NormalizedAlert {
-        payload: EventPayload::MalformedExternalEvent(
-            printobserver_types::MalformedExternalEventPayload {
-                detail: "the body is not JSON: expected value at line 1 column 1".to_owned(),
-            },
-        ),
+        body: EventBody::of(&MalformedExternalEventPayload {
+            detail: "the body is not JSON: expected value at line 1 column 1".to_owned(),
+        })
+        .expect("a payload renders"),
+        print: None,
         ..failure_alert(7)
     }
 }

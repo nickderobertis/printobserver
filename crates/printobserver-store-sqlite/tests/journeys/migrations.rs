@@ -2,24 +2,29 @@
 //!
 //! A database created under each prior version is opened and read back through
 //! the port, so a step is proven over rows that were written before it ran
-//! rather than over an empty database. The rows are seeded with the column
-//! order that version declares — a step that changed a table's columns would
-//! need its own seeding here, which is the point: the version a database was
-//! written at is a fact about the database, not about this build.
+//! rather than over an empty database. The rows are seeded with the columns
+//! that version declares — the print's external correlation under the name
+//! the first version created it as, until the step that renamed it — which is
+//! the point: the version a database was written at is a fact about the
+//! database, not about this build, and the read-back below asks for the
+//! print's correlation under the name the record carries today.
 
 use std::path::Path;
 
 use crate::block_on::block_on;
 use crate::fixture::manifest;
-use printobserver_store_api::{HistoryQuery, ImageLookup, StoreError, StorePort};
+use printobserver_core::store::{HistoryQuery, ImageLookup, StoreError};
+
+use crate::fixture::Store;
+use printobserver_core::{
+    ActionId, Actor, ExecutionOutcome, InterventionOutcome, PolicyDecision, PrintAction,
+};
+use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::{
     CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, MIGRATIONS, SqliteStore,
 };
-use printobserver_types::serde_json;
-use printobserver_types::{
-    ActionId, Actor, Adjustable, EventId, EventPayload, ExecutionOutcome, ImageId,
-    InterventionOutcome, ObicoFailureAlertPayload, PolicyDecision, PrintAction, PrintId, Timestamp,
-};
+use printobserver_types::serde_json::{self, json};
+use printobserver_types::{EventBody, EventId, EventKind, ImageId, PrintId, Timestamp};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -33,21 +38,35 @@ const IMAGE: &str = "0191f0a0-0000-7000-8000-0000000000a3";
 const ACTION: &str = "0191f0a0-0000-7000-8000-0000000000a4";
 /// The seeded intervention.
 const INTERVENTION: &str = "0191f0a0-0000-7000-8000-0000000000a5";
+/// The seeded event under a kind no crate of this workspace declares.
+const UNDECLARED_EVENT: &str = "0191f0a0-0000-7000-8000-0000000000a6";
 
 /// The instant every seeded record carries, in the store's own spelling.
 const SEEDED_AT: &str = "2026-03-01T12:00:00.000000000Z";
 
-/// The payload the seeded event carries.
-fn seeded_payload() -> EventPayload {
-    EventPayload::ObicoFailureAlert(ObicoFailureAlertPayload {
-        is_warning: false,
-        print_paused: true,
-        obico_print_id: Some(7),
-        file_name: Some("bracket.gcode".to_owned()),
-        started_at: None,
-        ended_at: None,
-    })
-}
+/// A later instant, so the two seeded events order.
+const SEEDED_LATER: &str = "2026-03-01T12:00:01.000000000Z";
+
+/// The version that renamed the print's external correlation column.
+const PROVIDER_PRINT_ID_VERSION: u32 = 3;
+
+/// The `kind` column of the seeded event, as 0.2.0 wrote it.
+const SEEDED_KIND: &str = "obico_failure_alert";
+
+/// The `payload` column of the seeded event, **as the literal text 0.2.0
+/// wrote it**: the closed vocabulary's tagged form, `kind` beside `payload`.
+///
+/// A literal rather than a value serialized from a type, because what this
+/// journey proves is that a row written before the log was opened reads back
+/// under the open store — and a text serialized by this build would prove only
+/// that this build reads what this build writes.
+const SEEDED_PAYLOAD: &str = r#"{"kind":"obico_failure_alert","payload":{"is_warning":false,"print_paused":true,"obico_print_id":7,"file_name":"bracket.gcode"}}"#;
+
+/// The kind of the seeded event no crate declares.
+const UNDECLARED_KIND: &str = "kind_from_a_newer_server";
+
+/// The `payload` column of the event no crate declares, in the same pair.
+const UNDECLARED_PAYLOAD: &str = r#"{"kind":"kind_from_a_newer_server","payload":{"anything":[1,2,3],"nested":{"deeply":true}}}"#;
 
 /// One value, as the JSON text a column holds it as.
 fn json(value: &impl printobserver_types::serde::Serialize) -> String {
@@ -74,26 +93,16 @@ fn database_at(path: &Path, version: u32) -> Connection {
         .pragma_update(None, "user_version", i64::from(version))
         .expect("the version is recorded");
     if version >= 1 {
-        seed(&connection);
+        seed(&connection, version);
     }
     connection
 }
 
-/// One row in every table the first version declares.
-fn seed(connection: &Connection) {
-    let statements: Vec<(&str, Vec<rusqlite::types::Value>)> = vec![
-        (
-            "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
-             end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)",
-            vec![
-                text(PRINT),
-                7_i64.into(),
-                text("bracket.gcode"),
-                text(&json(&printobserver_types::PrinterState::Printing)),
-                text(SEEDED_AT),
-                text("[]"),
-            ],
-        ),
+/// The two event rows the first version can hold: one under a kind a crate of
+/// this workspace declares, written as 0.2.0 wrote it, and one under a kind
+/// none declares.
+fn seeded_events() -> Vec<(&'static str, Vec<rusqlite::types::Value>)> {
+    vec![
         (
             "INSERT INTO events (id, print_id, source, received_at, kind, payload, raw) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
@@ -102,8 +111,45 @@ fn seed(connection: &Connection) {
                 text(PRINT),
                 text("obico"),
                 text(SEEDED_AT),
-                text("obico_failure_alert"),
-                text(&json(&seeded_payload())),
+                text(SEEDED_KIND),
+                text(SEEDED_PAYLOAD),
+            ],
+        ),
+        (
+            "INSERT INTO events (id, print_id, source, received_at, kind, payload, raw) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            vec![
+                text(UNDECLARED_EVENT),
+                text(PRINT),
+                text("a_newer_server"),
+                text(SEEDED_LATER),
+                text(UNDECLARED_KIND),
+                text(UNDECLARED_PAYLOAD),
+            ],
+        ),
+    ]
+}
+
+/// One row in every table the first version declares, under the columns the
+/// given version names them by.
+fn seed(connection: &Connection, version: u32) {
+    let prints_insert = if version >= PROVIDER_PRINT_ID_VERSION {
+        "INSERT INTO prints (id, provider_print_id, file_name, state, opened_at, ended_at, \
+         end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)"
+    } else {
+        "INSERT INTO prints (id, obico_print_id, file_name, state, opened_at, ended_at, \
+         end_reason, narrowings) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6)"
+    };
+    let mut statements: Vec<(&str, Vec<rusqlite::types::Value>)> = vec![
+        (
+            prints_insert,
+            vec![
+                text(PRINT),
+                7_i64.into(),
+                text("bracket.gcode"),
+                text(&json(&printobserver_printer_api::PrinterState::Printing)),
+                text(SEEDED_AT),
+                text("[]"),
             ],
         ),
         (
@@ -167,6 +213,13 @@ fn seed(connection: &Connection) {
             ],
         ),
     ];
+    // The events reference the print, so they follow it and precede the image
+    // that references one of them.
+    let image_index = statements
+        .iter()
+        .position(|(statement, _)| statement.starts_with("INSERT INTO images"))
+        .expect("an image row is seeded");
+    statements.splice(image_index..image_index, seeded_events());
     for (statement, values) in statements {
         connection
             .execute(statement, rusqlite::params_from_iter(values.iter()))
@@ -182,18 +235,36 @@ where
     text.parse().expect("a fixed version 7 identifier")
 }
 
-/// Read every seeded record back through the port.
-fn read_every_seeded_record_back(store: &SqliteStore) {
-    let port: &dyn StorePort = store;
+/// Read the seeded print back, by its own identifier and by the provider's.
+fn read_the_seeded_print_back(port: &dyn Store) {
     let print_id: PrintId = identifier(PRINT);
     let at: Timestamp = identifier(SEEDED_AT);
-
     let print = block_on(port.print(print_id))
         .expect("the print reads")
         .expect("the seeded print survived the migration");
     assert_eq!(print.id, print_id);
     assert_eq!(print.opened_at, at);
-    assert_eq!(print.obico_print_id, Some(7));
+    assert_eq!(
+        print.provider_print_id,
+        Some(7),
+        "the correlation the first version wrote as obico_print_id did not read back \
+         under the record's own name"
+    );
+    assert_eq!(
+        block_on(port.print_by_provider_id(7))
+            .expect("the lookup reads")
+            .map(|found| found.id),
+        Some(print_id),
+        "the renamed column is not what the lookup by the provider's identifier reads"
+    );
+}
+
+/// Read every seeded record back through the port.
+fn read_every_seeded_record_back(store: &SqliteStore) {
+    let port: &dyn Store = store;
+    let print_id: PrintId = identifier(PRINT);
+    let at: Timestamp = identifier(SEEDED_AT);
+    read_the_seeded_print_back(port);
 
     let history = block_on(port.history(HistoryQuery {
         print_id,
@@ -203,10 +274,56 @@ fn read_every_seeded_record_back(store: &SqliteStore) {
         limit: None,
     }))
     .expect("the history reads");
-    assert_eq!(history.len(), 1, "the seeded event survived the migration");
-    assert_eq!(history[0].id, identifier::<EventId>(EVENT));
-    assert_eq!(history[0].received_at, at);
-    assert_eq!(history[0].payload, seeded_payload());
+    assert_eq!(history.len(), 2, "the seeded events survived the migration");
+    // Newest first: the event under the undeclared kind was seeded a second later.
+    let undeclared = &history[0];
+    assert_eq!(undeclared.id, identifier::<EventId>(UNDECLARED_EVENT));
+    assert_eq!(undeclared.source.as_str(), "a_newer_server");
+    assert_eq!(
+        undeclared.kind(),
+        &EventKind::new(UNDECLARED_KIND).expect("a kind name")
+    );
+    assert_eq!(
+        undeclared.body,
+        EventBody {
+            kind: EventKind::new(UNDECLARED_KIND).expect("a kind name"),
+            payload: json!({ "anything": [1, 2, 3], "nested": { "deeply": true } }),
+        },
+        "a kind no crate declares did not read back as it was written"
+    );
+    let seeded = &history[1];
+    assert_eq!(seeded.id, identifier::<EventId>(EVENT));
+    assert_eq!(seeded.received_at, at);
+    assert_eq!(
+        seeded.kind(),
+        &EventKind::new(SEEDED_KIND).expect("a kind name")
+    );
+    assert_eq!(
+        seeded.body,
+        EventBody {
+            kind: EventKind::new(SEEDED_KIND).expect("a kind name"),
+            payload: json!({
+                "is_warning": false,
+                "print_paused": true,
+                "obico_print_id": 7,
+                "file_name": "bracket.gcode",
+            }),
+        },
+        "the row 0.2.0 wrote did not read back as the same kind and payload"
+    );
+    let by_kind = block_on(port.history(HistoryQuery {
+        print_id,
+        kinds: vec![EventKind::new(UNDECLARED_KIND).expect("a kind name")],
+        since: None,
+        until: None,
+        limit: None,
+    }))
+    .expect("the filtered history reads");
+    assert_eq!(
+        by_kind.iter().map(|record| record.id).collect::<Vec<_>>(),
+        vec![identifier::<EventId>(UNDECLARED_EVENT)],
+        "the kind filter does not reach a kind no crate declares"
+    );
 
     let image = match block_on(port.image(identifier::<ImageId>(IMAGE))).expect("the image reads") {
         ImageLookup::Found { record, .. } | ImageLookup::FileMissing { record } => record,

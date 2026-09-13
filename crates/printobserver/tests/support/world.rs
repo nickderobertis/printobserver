@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use printobserver_store_api::StorePort as _;
+use printobserver_core::store::{EventStore as _, ImageStore as _, PrintStore as _};
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -359,13 +359,11 @@ impl World {
             runtime.block_on(async {
                 let print = self.print_id.parse().expect("a print identifier");
                 let event = store
-                    .append_event(printobserver_store_api::EventDraft {
+                    .append_event(printobserver_core::store::EventDraft {
                         print_id: Some(print),
-                        source: printobserver_types::EventSource::Obico,
+                        source: printobserver_types::EventSource::new("obico"),
                         received_at: printobserver_types::Timestamp::now(),
-                        payload: printobserver_types::EventPayload::ObicoFailureAlert(
-                            printobserver_types::contract::Sample::sample_full(),
-                        ),
+                        body: failure_alert_body(),
                         raw: None,
                     })
                     .await
@@ -406,8 +404,8 @@ impl World {
                 .block_on(store.image(self.image_id.parse().expect("an image identifier")))
                 .expect("the image is there");
             match lookup {
-                printobserver_store_api::ImageLookup::Found { record, .. }
-                | printobserver_store_api::ImageLookup::FileMissing { record } => {
+                printobserver_core::store::ImageLookup::Found { record, .. }
+                | printobserver_core::store::ImageLookup::FileMissing { record } => {
                     record.relative_path
                 }
             }
@@ -561,6 +559,25 @@ impl World {
     }
 }
 
+/// The body of one failure alert, as the vision adapter writes one down.
+///
+/// Spelled as the pair the log holds rather than through the adapter's own
+/// payload type: this program is a client of the log and may not name the
+/// adapter, and what the journeys read back through it is the record.
+fn failure_alert_body() -> printobserver_types::EventBody {
+    printobserver_types::EventBody {
+        kind: printobserver_types::EventKind::new("obico_failure_alert").expect("a kind name"),
+        payload: printobserver_types::serde_json::json!({
+            "is_warning": true,
+            "print_paused": false,
+            "obico_print_id": 4211,
+            "file_name": "benchy.gcode",
+            "started_at": "2026-03-01T12:00:00Z",
+            "ended_at": "2026-03-01T12:30:00Z",
+        }),
+    }
+}
+
 /// Do one thing with the store the running supervisor also holds.
 ///
 /// A second connection rather than a second store: the schema is written under
@@ -597,13 +614,11 @@ fn seed(state: &Path, file: &str) -> (String, String, String) {
             .await
             .expect("a print opens");
         let event = store
-            .append_event(printobserver_store_api::EventDraft {
+            .append_event(printobserver_core::store::EventDraft {
                 print_id: Some(print.id),
-                source: printobserver_types::EventSource::Obico,
+                source: printobserver_types::EventSource::new("obico"),
                 received_at: printobserver_types::Timestamp::now(),
-                payload: printobserver_types::EventPayload::ObicoFailureAlert(
-                    printobserver_types::contract::Sample::sample_full(),
-                ),
+                body: failure_alert_body(),
                 raw: None,
             })
             .await

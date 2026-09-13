@@ -16,15 +16,18 @@
 
 use std::collections::BTreeMap;
 
-use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, PolicyDecision, PrintAction, PrintId, PrinterState,
-    Range, RejectionReason,
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, PolicyDecision, PrintAction, RejectionReason,
 };
+use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
+use printobserver_types::{EventPayload as _, PrintId, Range};
 
 use crate::journal::{Call, Port};
 use crate::source::{crate_dir, enum_variant_names, parse, read};
 use crate::world::{
-    ACTION_KINDS, World, agent_actor, failure_alert_with_image, permissive_envelope,
+    ACTION_KINDS, World, agent_actor, alert_kind, failure_alert_with_image, permissive_envelope,
 };
 
 /// One rejection driven by a direct action request.
@@ -157,8 +160,9 @@ fn stated_rejections() -> Vec<RejectionReason> {
 /// The walk produces every rejected variant the contracts declare.
 #[test]
 fn the_walk_produces_every_rejected_variant_the_contracts_declare() {
-    let path = crate_dir("printobserver-types")
+    let path = crate_dir("printobserver-core")
         .join("src")
+        .join("records")
         .join("policy.rs");
     let declared = enum_variant_names(&parse(&read(&path)), "RejectionReason");
     let produced: Vec<String> = stated_rejections()
@@ -212,8 +216,8 @@ fn every_rejection_is_reached_and_changes_nothing_at_the_printer() {
             refused.writes,
             vec![
                 Call::RecordAction(PolicyDecision::Rejected(expected.clone())),
-                Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
-                Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
+                Call::AppendEvent(ActionRequestedPayload::kind()),
+                Call::AppendEvent(ActionRejectedPayload::kind()),
             ],
             "{expected:?} wrote something beside the record of its own rejection and the \
              two events that put that rejection in the print's own history"
@@ -287,14 +291,14 @@ fn a_rejection_while_an_event_is_handled_leaves_the_loops_own_writes_standing() 
     assert_eq!(
         world.journal.store_writes(),
         vec![
-            Call::AppendEvent(printobserver_types::EventKind::ObicoFailureAlert),
+            Call::AppendEvent(alert_kind()),
             Call::PutImage,
             Call::RecordAction(rejection.clone()),
-            Call::AppendEvent(printobserver_types::EventKind::ActionRequested),
-            Call::AppendEvent(printobserver_types::EventKind::ActionRejected),
-            Call::AppendEvent(printobserver_types::EventKind::SupervisionSessionOpened),
+            Call::AppendEvent(ActionRequestedPayload::kind()),
+            Call::AppendEvent(ActionRejectedPayload::kind()),
+            Call::AppendEvent(SupervisionSessionOpenedPayload::kind()),
             Call::PutSession,
-            Call::AppendEvent(printobserver_types::EventKind::AgentAssessment),
+            Call::AppendEvent(AgentAssessmentPayload::kind()),
         ],
         "the loop's own writes for the event, plus the record of the rejection, and nothing else"
     );

@@ -16,8 +16,13 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT
 from contract_codegen.generate import OUTPUTS, Output, drifted, write
-from contract_codegen.schemas import TYPES_DIR, ContractError, load
+from contract_codegen.schemas import SCHEMAS_DIR, ContractError, load
 from repo_checks.expect import accepted, contains, equal, truth
+
+#: Where the supervision domain's own schemas are checked in, one of the
+#: directories the generator reads and the one the type these journeys alter
+#: is declared under.
+CORE_DIR = f"{SCHEMAS_DIR}/printobserver-core"
 
 #: The type whose schema the alteration journeys move, and a field of it that
 #: every one of the three clients carries.
@@ -65,7 +70,7 @@ def _schema(root: Path, name: str) -> tuple[dict[str, object], dict[str, object]
         AssertionError: If the schema is not the object shape these journeys
             alter, which is a fixture that has gone stale.
     """
-    schema = json.loads((root / TYPES_DIR / f"{name}.json").read_text(encoding="utf-8"))
+    schema = json.loads((root / CORE_DIR / f"{name}.json").read_text(encoding="utf-8"))
     properties = schema.get("properties") if isinstance(schema, dict) else None
     required = schema.get("required") if isinstance(schema, dict) else None
     if (
@@ -80,7 +85,7 @@ def _schema(root: Path, name: str) -> tuple[dict[str, object], dict[str, object]
 
 def _write_schema(root: Path, name: str, schema: dict[str, object]) -> None:
     """Put one altered schema back where the generator reads it."""
-    (root / TYPES_DIR / f"{name}.json").write_text(
+    (root / CORE_DIR / f"{name}.json").write_text(
         json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 

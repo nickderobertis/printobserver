@@ -29,7 +29,7 @@ SNAPSHOT = TOOL / "snapshot" / "spaghetti.jpg"
 
 # The sample the `contracts` node committed, which the tier reconciles against.
 SAMPLE = (
-    TOOL.parents[1] / "crates" / "printobserver-types" / "samples" / "obico" / "failure-alert.json"
+    TOOL.parents[1] / "crates" / "printobserver-obico" / "samples" / "obico" / "failure-alert.json"
 )
 
 

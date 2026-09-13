@@ -2,21 +2,24 @@
 //!
 //! Owns: the `Obico` adapter — the one implementation of
 //! `printobserver-vision-api`, which reads the body the self-hosted `Obico`
-//! webhook notification plugin posts into this system's own event vocabulary
-//! and fetches the snapshot that body names, and the ingress that writes both
-//! down.
+//! webhook notification plugin posts into an event under this adapter's own
+//! kind and fetches the snapshot that body names; the nine wire shapes that
+//! producer sends and the sample bodies committed beside them ([`wire`]); the
+//! two event kinds and the source name it writes ([`events`]); and the ingress
+//! that writes both down.
 //!
 //! May depend on: `printobserver-types`, `printobserver-vision-api` and
-//! `printobserver-store-api` — the type crate and two ports — plus whatever it
-//! needs to reach `Obico`. Never another implementation crate, and never
-//! `printobserver-core`.
+//! `printobserver-core` — the type crate, the port it implements, and the
+//! supervision domain whose store traits the ingress writes through and whose
+//! port-failure kind a failed fetch is recorded under — plus whatever it needs
+//! to reach `Obico`. Never another implementation crate.
 //!
 //! # The three shapes, and the fourth thing that arrives
 //!
 //! The producer sends three bodies — a failure alert, a printer notification
 //! about a print, and a printer notification about no print — and
-//! [`normalize`](printobserver_vision_api::VisionPort::normalize) reads each into the kind the contracts
-//! declare for it. The fourth thing that arrives is a body this system cannot
+//! [`normalize`](printobserver_vision_api::VisionPort::normalize) reads each into the kind this adapter
+//! declares for it. The fourth thing that arrives is a body this system cannot
 //! read, and it is **recorded** rather than dropped: [`ObicoIngress::receive`]
 //! writes it down under the malformed-external-event kind carrying its bytes
 //! and *then* refuses it to the caller, because an alert this system cannot
@@ -39,13 +42,24 @@
 //! fails leaves the event recorded with no image and the failure recorded
 //! beside it rather than losing the event.
 
+pub mod events;
 mod fetch;
 mod ingress;
 mod normalize;
 mod vision;
+pub mod wire;
 
+pub use events::{
+    OBICO_SOURCE, ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload,
+    obico_source,
+};
 pub use ingress::{IngressError, ObicoIngress, Receipt};
 pub use vision::{
     DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, ObicoVision, ObicoVisionConfig,
     ObicoVisionError,
+};
+pub use wire::{
+    ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,
+    ObicoNotificationEvent, ObicoPrintInfo, ObicoPrinterInfo, ObicoPrinterNotification,
+    ObicoTimestamp,
 };

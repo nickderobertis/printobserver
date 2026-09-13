@@ -11,8 +11,8 @@
 use std::collections::BTreeSet;
 
 use crate::surface::{
-    enum_variants, field_reads, method_calls, parse, port, struct_fields, test_source,
-    trait_methods, types_source, variants_named,
+    enum_variants, field_reads, method_calls, parse, port, port_source, struct_fields, test_source,
+    trait_methods, variants_named,
 };
 
 /// The two methods of the printer port that read rather than act.
@@ -114,7 +114,7 @@ fn the_check_refuses_an_error_variant_the_redaction_universe_does_not_render() {
 
 /// Every field the two snapshot contracts declare.
 fn snapshot_fields() -> Vec<String> {
-    let printer = types_source("printer.rs");
+    let printer = port_source("snapshot.rs");
     let mut fields = struct_fields(&printer, "PrinterSnapshot");
     fields.extend(struct_fields(&printer, "JobSnapshot"));
     fields.extend(struct_fields(&printer, "HeaterSnapshot"));

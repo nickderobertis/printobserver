@@ -2,7 +2,7 @@
 //!
 //! # An action is written into the history as it happens
 //!
-//! Every request appends [`EventKind::ActionRequested`], carrying the whole
+//! Every request appends an [`ActionRequestedPayload`], carrying the whole
 //! action — its own values and the reason the actor gave for it. A rejection
 //! appends the decision beside it and an execution appends what it opened. The
 //! reason a mutating request is required to carry is what makes the history
@@ -15,17 +15,23 @@
 //! [`Supervisor::issue_decided_action`], which is the only function of this
 //! crate that reaches an action method of the printer port.
 
-use printobserver_types::{
-    ActionExecutedPayload, ActionRecord, ActionRejectedPayload, ActionRequest,
-    ActionRequestedPayload, Actor, ActorClass, Adjustable, EventPayload, EventSource, Intervention,
-    InterventionOutcome, PolicyDecision, PrintAction, PrintId, PrintRecord, PrinterSnapshot,
-    Timestamp,
+use crate::records::{
+    ActionRecord, ActionRequest, Actor, ActorClass, Intervention, InterventionOutcome,
+    PolicyDecision, PrintAction, PrintRecord,
 };
+use printobserver_printer_api::Adjustable;
+use printobserver_printer_api::PrinterSnapshot;
+use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
 use crate::clock::plus_seconds;
 use crate::decision::{DecisionInput, adjustment, decide};
 use crate::error::CoreError;
+use crate::kinds::{
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, agent_source,
+    operator_source, system_source,
+};
+use crate::store::EventDraft;
 use crate::supervisor::{Issued, Supervisor};
 
 /// What became of one request, from the decision through to its intervention.
@@ -48,11 +54,11 @@ impl ActionOutcome {
 }
 
 /// Where an event about one actor's action came from.
-const fn source_of(actor: &Actor) -> EventSource {
+fn source_of(actor: &Actor) -> EventSource {
     match actor.class() {
-        ActorClass::Agent => EventSource::Agent,
-        ActorClass::Operator => EventSource::Operator,
-        ActorClass::System => EventSource::System,
+        ActorClass::Agent => agent_source(),
+        ActorClass::Operator => operator_source(),
+        ActorClass::System => system_source(),
     }
 }
 
@@ -112,7 +118,7 @@ impl Supervisor {
     ) -> Result<ActionOutcome, CoreError> {
         let requested_at = self.clock().now();
         let actor = action.actor().clone();
-        let print = self.store().print(print_id).await?;
+        let print = self.stores().prints.print(print_id).await?;
         let bounds = self.bounds_for(print.as_ref(), print_id).await?;
         let snapshot = self.read_snapshot().await.ok();
         let decision = decide(&DecisionInput {
@@ -134,22 +140,22 @@ impl Supervisor {
         let source = source_of(&actor);
         self.append_action_event(
             print_id,
-            source,
-            EventPayload::ActionRequested(ActionRequestedPayload {
+            source.clone(),
+            EventBody::of(&ActionRequestedPayload {
                 action_id: issued.record.id,
                 action: action.clone(),
                 actor: actor.clone(),
-            }),
+            })?,
         )
         .await?;
         if let PolicyDecision::Rejected(_) = &issued.record.decision {
             self.append_action_event(
                 print_id,
-                source,
-                EventPayload::ActionRejected(ActionRejectedPayload {
+                source.clone(),
+                EventBody::of(&ActionRejectedPayload {
                     action_id: issued.record.id,
                     decision: issued.record.decision.clone(),
-                }),
+                })?,
             )
             .await?;
         }
@@ -172,10 +178,10 @@ impl Supervisor {
         self.append_action_event(
             print_id,
             source,
-            EventPayload::ActionExecuted(ActionExecutedPayload {
+            EventBody::of(&ActionExecutedPayload {
                 action_id: issued.record.id,
                 intervention_id: intervention.as_ref().map(|opened| opened.id),
-            }),
+            })?,
         )
         .await?;
         Ok(ActionOutcome {
@@ -190,14 +196,15 @@ impl Supervisor {
         &self,
         print_id: PrintId,
         source: EventSource,
-        payload: EventPayload,
+        body: EventBody,
     ) -> Result<(), CoreError> {
-        self.store()
-            .append_event(printobserver_store_api::EventDraft {
+        self.stores()
+            .events
+            .append_event(EventDraft {
                 print_id: Some(print_id),
                 source,
                 received_at: self.clock().now(),
-                payload,
+                body,
                 raw: None,
             })
             .await?;
@@ -211,7 +218,7 @@ impl Supervisor {
         print_id: PrintId,
     ) -> Result<Bounds, CoreError> {
         let manifest = if print.is_some() {
-            self.store().manifest(print_id).await?
+            self.stores().prints.manifest(print_id).await?
         } else {
             None
         };
@@ -223,12 +230,18 @@ impl Supervisor {
     async fn attach_manifest(
         &self,
         print_id: PrintId,
-        manifest: printobserver_types::JobManifest,
+        manifest: crate::records::JobManifest,
     ) -> Result<(), CoreError> {
         let narrowed = effective_bounds(&self.config().envelope, Some(&manifest));
-        self.store().put_manifest(print_id, manifest).await?;
+        self.stores()
+            .prints
+            .put_manifest(print_id, manifest)
+            .await?;
         for narrowing in narrowed.narrowings {
-            self.store().record_narrowing(print_id, narrowing).await?;
+            self.stores()
+                .prints
+                .record_narrowing(print_id, narrowing)
+                .await?;
         }
         Ok(())
     }
@@ -252,7 +265,7 @@ impl Supervisor {
         else {
             return Ok(None);
         };
-        let mut superseded = self.store().active_interventions(print_id).await?;
+        let mut superseded = self.stores().actions.active_interventions(print_id).await?;
         superseded.retain(|held| held.adjustable == adjustable);
         superseded.sort_by_key(|held| held.applied_at);
         let prior_value = superseded.first().map_or_else(
@@ -264,7 +277,8 @@ impl Supervisor {
                 detail: error.to_string(),
             })?;
         let opened = self
-            .store()
+            .stores()
+            .actions
             .open_intervention(
                 issued.record.id,
                 adjustable,
@@ -275,7 +289,8 @@ impl Supervisor {
             )
             .await?;
         for earlier in superseded {
-            self.store()
+            self.stores()
+                .actions
                 .settle_intervention(
                     earlier.id,
                     InterventionOutcome::Superseded { by: opened.id },

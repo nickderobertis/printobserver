@@ -221,9 +221,13 @@ export interface ErrorAnswer {
 export type EventId = string;
 
 /**
- * What every arm of `EventRecord` carries beside its own payload.
- *
- * One event, as the store holds it.
+ * The name one kind of event is written down under: lowercase `snake_case`,
+ * declared by the domain that owns the event.
+ */
+export type EventKind = string;
+
+/**
+ * One event, as the store holds it and the server serves it.
  *
  * `raw` holds the bytes exactly as received for an externally sourced event
  * and is absent for an internally raised one — it is what makes the history
@@ -232,11 +236,15 @@ export type EventId = string;
  * system
  * knows.
  */
-export interface EventRecordCommon {
+export interface EventRecord {
   /** This event's identifier, minted by the store. */
   id: EventId;
   /** The image it arrived with, when it arrived with one. */
   image?: ImageRef | null;
+  /** Which event this is. */
+  kind: EventKind;
+  /** What it carries, in the form its kind declares. */
+  payload: unknown;
   /** The print it belongs to, when it belongs to one. */
   print_id?: PrintId | null;
   /** The bytes exactly as received, for an externally sourced event. */
@@ -248,47 +256,10 @@ export interface EventRecordCommon {
 }
 
 /**
- * One event, as the store holds it.
- *
- * `raw` holds the bytes exactly as received for an externally sourced event
- * and is absent for an internally raised one — it is what makes the history
- * auditable when a normalization turns out to be wrong. `print_id` is
- * optional, because an externally sourced event may name no print this
- * system
- * knows.
+ * Where an event came from, as the bare string the domain that raised it
+ * declares for itself.
  */
-export type EventRecord =
-  | (EventRecordCommon & { kind: "obico_failure_alert"; payload: ObicoFailureAlertPayload })
-  | (EventRecordCommon & {
-      kind: "obico_printer_notification";
-      payload: ObicoPrinterNotificationPayload;
-    })
-  | (EventRecordCommon & {
-      kind: "malformed_external_event";
-      payload: MalformedExternalEventPayload;
-    })
-  | (EventRecordCommon & { kind: "action_requested"; payload: ActionRequestedPayload })
-  | (EventRecordCommon & { kind: "action_executed"; payload: ActionExecutedPayload })
-  | (EventRecordCommon & { kind: "action_rejected"; payload: ActionRejectedPayload })
-  | (EventRecordCommon & { kind: "intervention_expired"; payload: InterventionExpiredPayload })
-  | (EventRecordCommon & {
-      kind: "supervision_session_opened";
-      payload: SupervisionSessionOpenedPayload;
-    })
-  | (EventRecordCommon & {
-      kind: "supervision_session_closed";
-      payload: SupervisionSessionClosedPayload;
-    })
-  | (EventRecordCommon & { kind: "agent_assessment"; payload: AgentAssessmentPayload })
-  | (EventRecordCommon & {
-      kind: "operator_acknowledgement";
-      payload: OperatorAcknowledgementPayload;
-    })
-  | (EventRecordCommon & { kind: "port_failure"; payload: PortFailurePayload })
-  | (EventRecordCommon & { kind: "startup_reconciliation"; payload: StartupReconciliationPayload });
-
-/** Where an event came from. */
-export type EventSource = "obico" | "operator" | "agent" | "system";
+export type EventSource = string;
 
 /** What happened when an accepted action reached the printer. */
 export type ExecutionOutcome = "succeeded" | { failed: { reason: string } };
@@ -706,9 +677,9 @@ export type PrintId = string;
 /**
  * One print, and the record supervision keys from.
  *
- * Obico's own print id is carried beside this record's identifier rather
- * than
- * as it, because a print may be observed before Obico has one.
+ * The provider's own print id is carried beside this record's identifier
+ * rather than as it, because a print may be observed before the provider
+ * that reports it has one.
  */
 export interface PrintRecord {
   /** Why it ended, if it has. */
@@ -721,10 +692,13 @@ export interface PrintRecord {
   id: PrintId;
   /** Every manifest range this print narrowed to the envelope's. */
   narrowings: Array<ManifestNarrowing>;
-  /** Obico's own identifier for the print, when Obico has one. */
-  obico_print_id?: number | null;
   /** When the print was opened. */
   opened_at: Timestamp;
+  /**
+   * The provider's own identifier for the print, whichever provider
+   * reported it, when one has.
+   */
+  provider_print_id?: number | null;
   /** The state the print is in. */
   state: PrinterState;
 }
@@ -880,6 +854,60 @@ export interface SupervisionSessionOpenedPayload {
 
 /** An instant in UTC, as an RFC 3339 string with a zero offset. */
 export type Timestamp = string;
+
+/**
+ * Every kind the server declares a payload type for, keyed by the kind's
+ * name, and the type each payload has. A kind this client does not know
+ * flows through `EventRecord` untouched, and is in no table.
+ */
+export interface EventPayloads {
+  action_executed: ActionExecutedPayload;
+  action_rejected: ActionRejectedPayload;
+  action_requested: ActionRequestedPayload;
+  agent_assessment: AgentAssessmentPayload;
+  intervention_expired: InterventionExpiredPayload;
+  malformed_external_event: MalformedExternalEventPayload;
+  obico_failure_alert: ObicoFailureAlertPayload;
+  obico_printer_notification: ObicoPrinterNotificationPayload;
+  operator_acknowledgement: OperatorAcknowledgementPayload;
+  port_failure: PortFailurePayload;
+  startup_reconciliation: StartupReconciliationPayload;
+  supervision_session_closed: SupervisionSessionClosedPayload;
+  supervision_session_opened: SupervisionSessionOpenedPayload;
+}
+
+/** Every kind the server declares a payload type for, in name order. */
+export const EVENT_KINDS = [
+  "action_executed",
+  "action_rejected",
+  "action_requested",
+  "agent_assessment",
+  "intervention_expired",
+  "malformed_external_event",
+  "obico_failure_alert",
+  "obico_printer_notification",
+  "operator_acknowledgement",
+  "port_failure",
+  "startup_reconciliation",
+  "supervision_session_closed",
+  "supervision_session_opened",
+] as const satisfies ReadonlyArray<keyof EventPayloads>;
+
+/**
+ * The payload of one event as the type its kind declares, or `undefined` for
+ * an event of any other kind — one this client knows or one it does not. No
+ * validation beyond the kind's name: the payload is the document the server
+ * sent, handed on as the type the table says it is.
+ */
+export function payloadOf<K extends keyof EventPayloads>(
+  event: EventRecord,
+  kind: K,
+): EventPayloads[K] | undefined {
+  if (event.kind !== kind) {
+    return undefined;
+  }
+  return event.payload as EventPayloads[K];
+}
 
 /**
  * One method per operation the server declares.

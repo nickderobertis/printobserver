@@ -20,8 +20,9 @@
 use std::time::Duration;
 
 use printobserver_octoprint::{COMMAND_SET, FAN_PWM_PARAMETER};
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{PrinterError, PrinterPort};
-use printobserver_types::{Adjustable, FileName, PrinterState};
+use printobserver_types::FileName;
 
 use crate::block_on::block_on;
 use crate::env::Scripted;

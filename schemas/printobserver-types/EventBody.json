@@ -1,0 +1,27 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The kind and the payload, as the log holds them.\n\nThe pair `{\"kind\": .., \"payload\": ..}`: the kind is the name a payload type\ndeclares, and the payload is that type's value, held as JSON so that a body\nunder a kind this crate has never heard of is carried rather than refused.",
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/EventKind",
+      "description": "Which event this is."
+    },
+    "payload": {
+      "description": "What it carries, in the form its kind declares."
+    }
+  },
+  "required": [
+    "kind",
+    "payload"
+  ],
+  "title": "EventBody",
+  "type": "object"
+}

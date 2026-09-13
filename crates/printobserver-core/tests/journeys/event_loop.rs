@@ -7,18 +7,21 @@
 //! fresh session for every event satisfies a one-turn assertion exactly as a
 //! continuing one does.
 
-use printobserver_types::{
-    Actor, EventKind, EventPayload, FileName, PolicyDecision, PrintAction, PrinterState,
-};
+use printobserver_core::AgentAssessmentPayload;
+use printobserver_core::{Actor, PolicyDecision, PrintAction};
+use printobserver_printer_api::PrinterState;
+use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
+use printobserver_types::{EventPayload as _, FileName};
+use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::journal::{Call, Port};
 use crate::world::{
-    World, agent_actor, failure_alert, failure_alert_with_image, manifest, notification_alert,
-    unattributed_alert,
+    World, agent_actor, alert_kind, failure_alert, failure_alert_with_image, manifest,
+    notification_alert, notification_kind, unattributed_alert,
 };
 
 /// A print carrying a manifest and one active intervention, ready for an event.
-fn prepared() -> (World, printobserver_types::PrintRecord) {
+fn prepared() -> (World, printobserver_core::PrintRecord) {
     let world = World::new();
     let print = world.open_print(7);
 
@@ -29,7 +32,7 @@ fn prepared() -> (World, printobserver_types::PrintRecord) {
             PrintAction::StartPrint {
                 file_name: FileName::new("benchy.gcode").expect("a name"),
                 manifest: manifest(&[(
-                    printobserver_types::Adjustable::Feedrate,
+                    printobserver_printer_api::Adjustable::Feedrate,
                     printobserver_types::Range::new(0.9, 1.6),
                 )]),
                 reason: "the operator started it".to_owned(),
@@ -60,7 +63,7 @@ fn assert_the_append_came_first(world: &World) {
     let calls = world.journal.calls();
     let appended = calls
         .iter()
-        .position(|call| *call == Call::AppendEvent(EventKind::ObicoFailureAlert))
+        .position(|call| *call == Call::AppendEvent(alert_kind()))
         .expect("the event was appended");
     for (index, call) in calls.iter().enumerate() {
         // A decision is in this set too, and deliberately: the append is the
@@ -106,14 +109,14 @@ fn assert_the_context_carries_everything(
         context
             .bounds
             .allowed
-            .get(&printobserver_types::Adjustable::Feedrate),
+            .get(&printobserver_printer_api::Adjustable::Feedrate),
         Some(&printobserver_types::Range::new(0.9, 1.6)),
         "the bounds are the envelope narrowed by the manifest"
     );
     assert_eq!(context.interventions.len(), 1);
     assert_eq!(
         context.interventions[0].adjustable,
-        printobserver_types::Adjustable::Feedrate
+        printobserver_printer_api::Adjustable::Feedrate
     );
     assert!(
         context
@@ -143,7 +146,7 @@ fn assert_the_agents_action_took_the_ordinary_path(world: &World) {
     assert_eq!(outcome.record.decision, PolicyDecision::Accepted);
     assert_eq!(
         outcome.record.request.actor.class(),
-        printobserver_types::ActorClass::Agent,
+        printobserver_core::ActorClass::Agent,
         "the agent's action was not recorded with the agent as its actor"
     );
 }
@@ -192,11 +195,9 @@ fn the_loop_performs_the_whole_of_the_handling_for_one_event() {
 
     let assessment = held
         .iter()
-        .find_map(|record| match &record.payload {
-            EventPayload::AgentAssessment(payload) => Some(payload.clone()),
-            _ => None,
-        })
-        .expect("the assessment was persisted");
+        .find_map(printobserver_types::EventRecord::payload_as::<AgentAssessmentPayload>)
+        .expect("the assessment was persisted")
+        .expect("the assessment is of its own type");
     assert_eq!(assessment.assessment.summary, "the print is running");
     world.journal.assert_no_violations();
 }
@@ -241,7 +242,7 @@ fn a_second_event_of_one_print_continues_its_session() {
         .store
         .events_of(print_id)
         .into_iter()
-        .filter(|record| record.kind() == EventKind::SupervisionSessionOpened)
+        .filter(|record| record.body.is::<SupervisionSessionOpenedPayload>())
         .count();
     assert_eq!(opened, 1, "a fresh session was opened for the second event");
     world.journal.assert_no_violations();
@@ -274,7 +275,7 @@ fn an_event_of_another_print_drives_a_turn_under_that_prints_identifier() {
             .store
             .events_of(print_id)
             .into_iter()
-            .filter(|record| record.kind() == EventKind::SupervisionSessionOpened)
+            .filter(|record| record.body.is::<SupervisionSessionOpenedPayload>())
             .count();
         assert_eq!(opened, 1);
     }
@@ -292,11 +293,19 @@ fn a_printer_notification_opens_the_print_it_names() {
         .expect("the notification is handled");
 
     let print_id = event.print_id.expect("the notification names its print");
+    // The body is carried through under the adapter's own kind, which no crate
+    // of this workspace declares: the loop read the correlation beside it and
+    // nothing in the payload.
+    assert_eq!(event.kind(), &notification_kind());
+    assert_eq!(
+        event.body.payload,
+        printobserver_types::serde_json::json!({ "what": "paused" })
+    );
     let opened = world
         .store
         .print_now(print_id)
         .expect("the print was opened");
-    assert_eq!(opened.obico_print_id, Some(9));
+    assert_eq!(opened.provider_print_id, Some(9));
     assert_eq!(opened.file_name, Some("benchy.gcode".to_owned()));
     assert_eq!(world.agent.turns().len(), 1);
     assert_eq!(world.agent.turns()[0].print_id, print_id);
@@ -322,7 +331,7 @@ fn an_alert_naming_no_print_is_recorded_and_reaches_no_other_port() {
     assert_eq!(world.journal.at(Port::Vision), Vec::new());
     assert_eq!(
         world.journal.store_writes(),
-        vec![Call::AppendEvent(EventKind::MalformedExternalEvent)]
+        vec![Call::AppendEvent(MalformedExternalEventPayload::kind())]
     );
     world.journal.assert_no_violations();
 }

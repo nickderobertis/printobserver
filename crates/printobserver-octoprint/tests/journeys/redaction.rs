@@ -20,8 +20,9 @@
 //! not drive, or the error vocabulary a variant this file does not name.
 
 use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter, REDACTED};
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
-use printobserver_types::{Adjustable, FileName};
+use printobserver_types::FileName;
 
 use crate::block_on::block_on;
 use crate::received::Recorded;
