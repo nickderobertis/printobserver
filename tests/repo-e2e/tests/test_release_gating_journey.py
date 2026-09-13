@@ -97,7 +97,7 @@ def read_file(written: Path) -> tuple[int, str]:
 @pytest.mark.parametrize(
     ("versions", "answered"),
     [
-        # Thirteen crates under one version name one tag, answered once.
+        # Twelve crates under one version name one tag, answered once.
         (("0.4.0", "0.4.0"), "v0.4.0"),
         # Two packages released at two versions name two, in the order released.
         (("0.4.0", "0.5.0"), "v0.4.0 v0.5.0"),

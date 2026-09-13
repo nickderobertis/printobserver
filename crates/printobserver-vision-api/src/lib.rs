@@ -29,7 +29,7 @@
 //! # Why the methods answer a boxed future
 //!
 //! Every method is asynchronous, and the trait is dyn-compatible and shareable
-//! across threads, because the supervision core holds all four ports behind
+//! across threads, because the supervision core holds every port behind
 //! `Arc<dyn Port>`. An `async fn` in a trait is not dyn-compatible, so each
 //! method answers a [`BoxFuture`] instead.
 

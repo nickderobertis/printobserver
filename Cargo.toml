@@ -1,19 +1,29 @@
-# The printobserver Rust workspace.
+# The printobserver Rust workspace: twelve crates, cut by domain.
 #
-# The dependency rule this design rests on is declared here and enforced by
-# `just check-repo` (see `repo-policy.toml` for the crate roles it reads):
+# The dependency rule this design rests on is the edge table `repo-policy.toml`'s
+# `crates.may_depend_on` declares — for every crate, the workspace crates it may
+# depend on, across every dependency table — and `just check-repo` refuses an
+# edge the table does not admit. Read together, the rows say:
 #
-#   * `printobserver-core` may depend on `printobserver-types` and the four
-#     `*-api` port crates, and on NO implementation crate. Core is the layer the
-#     product's correctness lives in; the moment it can name an implementation,
-#     swapping one becomes a change to core.
-#   * No implementation crate may depend on another. Each one adapts exactly one
-#     external system to exactly one port; an edge between two of them is a
-#     hidden coupling between two vendors.
+#   * `printobserver-types` is the cross-domain contract, under every crate and
+#     depending on nothing; the three `*-api` ports depend on it alone.
+#   * `printobserver-core`, the supervision domain, depends on the contract and
+#     the three ports and on NO adapter and NO store. Its records, its
+#     identifiers and its one-trait-per-aggregate store interfaces live with
+#     it; `printobserver-store-sqlite` implements those traits and so depends
+#     on core rather than the other way round. Core is the layer the product's
+#     correctness lives in; the moment it can name an implementation, swapping
+#     one becomes a change to core.
+#   * The four implementation crates are named by `printobserver-server`, the
+#     composition root, and reached by `printobserver` through it, and by
+#     nothing else — so a change to one provider rebuilds that provider's crate
+#     and the composition roots, and no implementation crate depends on
+#     another, because an edge between two of them is a hidden coupling
+#     between two vendors.
 #
-# `printobserver-server` and the `printobserver` binary are the composition
-# roots: they are the only crates permitted to name an implementation, because
-# something has to choose which one runs.
+# The event log is open: the contract crate declares the envelope and no kind,
+# each domain declares its own kinds, and a reader of the log carries a kind it
+# does not know through rather than matching the log exhaustively.
 
 [workspace]
 resolver = "3"

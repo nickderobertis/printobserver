@@ -823,7 +823,7 @@ version, which is the state to fix instead.
 workspace version, both named `v<version>`, and both created by the
 `printobserver` package after its own `cargo publish` — which release ordering
 places after every other publishable crate's, because that crate depends on all
-of them. One package rather than thirteen because release-plz tags and releases
+of them. One package rather than twelve because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
@@ -843,12 +843,32 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 ## The dependency rule
 
-`printobserver-core` may depend on `printobserver-types` and the four `*-api`
-port crates, and on **no implementation crate**. **No implementation crate may
-depend on another.** `printobserver-server` and the `printobserver` binary are
-the composition roots and are the only crates allowed to name an implementation.
-The roles are declared in `repo-policy.toml` and enforced by `just check-repo` —
-the boundary is not a convention, it is a check.
+The rule is an edge table, not a set of layers. `repo-policy.toml`'s
+`crates.may_depend_on` names, for every one of the twelve workspace crates, the
+workspace crates it may depend on across `dependencies`, `dev-dependencies` and
+`build-dependencies`; `docs/reference/architecture.md`'s "Why core names no
+implementation crate" carries the same table in prose. `just check-repo`
+refuses a manifest edge the row does not admit, a row naming a crate the
+workspace lacks, and a workspace crate the table omits — the step that draws an
+edge is the step that admits it, so the boundary is not a convention, it is a
+check.
+
+What the rows say, read together: `printobserver-types` is the cross-domain
+contract, sits under every crate and depends on nothing; each of the three
+ports depends on it alone; `printobserver-core`, the supervision domain,
+depends on the contract and the three ports and on **no adapter and no store**
+— its own records, identifiers and one-trait-per-aggregate persistence
+interfaces live with it, and `printobserver-store-sqlite` implements those
+traits and so depends on core rather than the other way round; and the four
+implementation crates are named by `printobserver-server`, the composition
+root, and reached by `printobserver` through it, and by nothing else. So a
+change to one provider's wire format or event payload edits that provider's
+crate and rebuilds it and the composition roots, nothing in the contract crate
+names a domain, and a reader of the open event log may assume nothing about a
+kind it does not know beyond the envelope it arrived in.
+
+`printobserver-store-api` is the crate this refactor retired: it stays on
+crates.io at `0.2.0`, is never yanked, and is never published again.
 
 The same rule holds one level down, over vocabulary rather than over edges:
 **`printobserver-octoprint` is the only crate that may construct an `OctoPrint`

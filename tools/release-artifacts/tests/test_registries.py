@@ -1235,7 +1235,7 @@ def test_the_recorded_answer_is_read_as_the_release_it_records(
 def test_a_run_that_released_the_workspace_answers_its_one_tag_once(
     repo: Repo, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Thirteen crates released under one version name one tag, and it is answered once.
+    """Twelve crates released under one version name one tag, and it is answered once.
 
     The non-empty field is what the artifact build and the artifact publish are
     gated on, so a run that cut a release is followed by the artifacts of it.

@@ -61,7 +61,7 @@
 //!
 //! # Why `serde`, `schemars` and `serde_json` are re-exported
 //!
-//! The four port crates depend on this crate and on nothing else, and each of
+//! The three port crates depend on this crate and on nothing else, and each of
 //! them declares request and answer shapes that cross a process boundary and so
 //! must derive the same traits these types derive. They reach the derive macros
 //! through [`serde`], [`schemars`] and [`serde_json`] here rather than by
