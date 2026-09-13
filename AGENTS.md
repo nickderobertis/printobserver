@@ -845,21 +845,12 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 The rule is an edge table, not a set of layers. `repo-policy.toml`'s
 `crates.may_depend_on` is the source (`crates.may_depend_on_in_tests` for the
-edges a crate's tests alone may add), `docs/reference/architecture.md`'s "Why
-core names no implementation crate" carries it in prose beside the reason for
-it, and `just check-repo` holds every manifest to it. The step that draws an
-edge is the step that admits it in the table — the boundary is a check, not a
-convention.
-
-Two things the table does not say in so many words. The supervision domain
-(`printobserver-core`) owns its records, its identifiers and its
-one-trait-per-aggregate store interfaces, and the SQLite store implements
-those traits and so depends on core, never the reverse; that direction is what
-keeps a column one aggregate gains from rebuilding every consumer. And the
-event log is open: `printobserver-types` declares the envelope and no kind, so
-a reader of the log carries a kind it does not know through rather than
-matching exhaustively. `printobserver-store-api` is no crate of this
-workspace: it stays on crates.io at `0.2.0`, never yanked and never republished.
+edges a crate's tests alone may add), `just check-repo` holds every manifest to
+it, and `docs/reference/architecture.md` says why — why the crates are cut by
+domain, and why core names no implementation crate. The step that draws an edge
+is the step that admits it in the table. Do not bring `printobserver-store-api`
+back, yank it or republish it: it is no crate of this workspace and stays on
+crates.io at `0.2.0`.
 
 The same rule holds one level down, over vocabulary rather than over edges:
 **`printobserver-octoprint` is the only crate that may construct an `OctoPrint`

@@ -185,8 +185,10 @@ envelope: `kind` as the bare name and `payload` as the JSON of
 What the cut buys is measured rather than promised. The same two edits — one
 doc-comment line on the Obico **wire** type `ObicoFailureAlert`, one on the
 Obico **event payload** `ObicoFailureAlertPayload` — were made after a full
-build on the tree before the refactor and on the tree after it, each followed
-by `cargo check --workspace`, reading which crates recompiled:
+build on the tree before the refactor and on the tree after it, reading off
+cargo's own `Checking` lines which crates a workspace-wide check recompiled —
+the one output that says it, which is why the reading is cargo's rather than a
+recipe's:
 
 | Edit | Tree | Crates that recompiled |
 | --- | --- | --- |
