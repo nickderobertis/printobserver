@@ -17,9 +17,10 @@ use printobserver_core::{
     JobManifest, ManifestNarrowing, PrintRecord,
 };
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
+use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventId, EventRecord, FileName, SupervisionSession};
+use printobserver_types::{EventId, EventRecord, FileName};
 
 /// Why a request could not be turned into one action of the vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -13,8 +13,9 @@ use printobserver_supervisor_api::AgentAssessment;
 use printobserver_supervisor_api::{
     BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
-use printobserver_types::{PrintId, SessionPhase, SupervisionSession, Timestamp};
+use printobserver_types::{PrintId, Timestamp};
 
 use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{PrintLedger, RecordedTurn, SessionName};

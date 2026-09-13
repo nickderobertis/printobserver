@@ -7,8 +7,7 @@
 //! [`Reported`] and [`Range`]), the event log's envelope ([`event`], with the
 //! image handle [`ImageRef`] it carries), and the schema toolkit
 //! ([`contract`]). It holds data and total functions over that data, never
-//! I/O, and (until the next step of the domain cut moves them with the
-//! supervisor port) the session types.
+//! I/O.
 //!
 //! A type belongs here only if adding or changing one domain's concept does
 //! not require editing it. The event log is the case in point: [`event`]
@@ -75,7 +74,6 @@ pub mod ids;
 pub mod image;
 pub mod raw;
 pub mod reported;
-pub mod session;
 pub mod timestamp;
 
 pub use contract::{
@@ -90,7 +88,6 @@ pub use ids::{EventId, IdentifierError, ImageId, PrintId};
 pub use image::ImageRef;
 pub use raw::RawBytes;
 pub use reported::{Range, Reported};
-pub use session::{SessionPhase, SupervisionSession};
 pub use timestamp::{Timestamp, TimestampError};
 
 pub use schemars;

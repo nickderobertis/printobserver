@@ -59,19 +59,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
         "Reported",
         &[("out_of_range", "boolean", true), ("value", "number", true)],
     ),
-    ("SessionPhase", &[]),
-    (
-        "SupervisionSession",
-        &[
-            ("close_reason", "string", false),
-            ("closed_at", "Timestamp", false),
-            ("created_at", "Timestamp", true),
-            ("harness_identity", "string", true),
-            ("last_turn_at", "Timestamp", true),
-            ("print_id", "PrintId", true),
-            ("session_name", "string", true),
-        ],
-    ),
     ("Timestamp", &[]),
 ];
 

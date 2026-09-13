@@ -25,10 +25,11 @@
 use crate::records::PrintRecord;
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::PrinterState;
+use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
 };
-use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, SessionPhase};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::context::PrintContext;

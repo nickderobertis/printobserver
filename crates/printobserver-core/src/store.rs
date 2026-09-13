@@ -74,11 +74,11 @@ use crate::records::{
     PrintRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    EventBody, EventId, EventKind, EventRecord, EventSource, ImageId, PrintId, RawBytes,
-    SupervisionSession, Timestamp,
+    EventBody, EventId, EventKind, EventRecord, EventSource, ImageId, PrintId, RawBytes, Timestamp,
 };
 
 /// A future these traits' methods answer with, in the one shape a trait object

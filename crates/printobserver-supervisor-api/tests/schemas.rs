@@ -1,5 +1,5 @@
-//! This port's shapes, its assessment vocabulary and its two event kinds carry
-//! the stated fields and emit their schemas.
+//! This port's shapes, its assessment vocabulary, its session and its two
+//! event kinds carry the stated fields and emit their schemas.
 //!
 //! The `printobserver-types:schemas` graph target runs this beside the other
 //! declaring crates' `schemas` tests: with `PRINTOBSERVER_SCHEMAS=write` it
@@ -18,8 +18,8 @@
 mod schema_files;
 
 use printobserver_supervisor_api::{
-    AgentAssessment, Confidence, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
-    TurnOutcome, TurnRequest,
+    AgentAssessment, Confidence, SessionPhase, SupervisionSession, SupervisionSessionClosedPayload,
+    SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest,
 };
 use printobserver_types::contract::{Sample as _, TypeContract, schema_of};
 use printobserver_types::serde_json::{Value, json};
@@ -65,6 +65,14 @@ fn assessment_vocabulary() -> Vec<TypeContract> {
     ]
 }
 
+/// The session vocabulary this port declares, each with its canonical values.
+fn session_vocabulary() -> Vec<TypeContract> {
+    vec![
+        TypeContract::of::<SessionPhase>("SessionPhase"),
+        TypeContract::of::<SupervisionSession>("SupervisionSession"),
+    ]
+}
+
 /// The field the contract states, as a name, what it is, and whether it is
 /// required.
 fn field(name: &str, descriptor: &str, required: bool) -> WireField {
@@ -92,6 +100,7 @@ fn generated() -> Vec<(String, Value)> {
     entries.extend(
         assessment_vocabulary()
             .into_iter()
+            .chain(session_vocabulary())
             .map(|entry| (format!("{}.json", entry.name), entry.schema())),
     );
     entries
@@ -255,4 +264,104 @@ fn the_assessment_vocabulary_round_trips_and_refuses_what_it_does_not_declare() 
             .is_err(),
         "an assessment missing a required field was accepted"
     );
+}
+
+/// The session vocabulary carries exactly the fields the contract states.
+#[test]
+fn the_session_vocabulary_carries_exactly_the_stated_fields() {
+    let expected: [(&str, Vec<WireField>); 2] = [
+        ("SessionPhase", vec![]),
+        (
+            "SupervisionSession",
+            vec![
+                field("close_reason", "string", false),
+                field("closed_at", "Timestamp", false),
+                field("created_at", "Timestamp", true),
+                field("harness_identity", "string", true),
+                field("last_turn_at", "Timestamp", true),
+                field("print_id", "PrintId", true),
+                field("session_name", "string", true),
+            ],
+        ),
+    ];
+    let declared = session_vocabulary();
+    assert_eq!(declared.len(), expected.len());
+    for (entry, (name, fields)) in declared.iter().zip(expected) {
+        assert_eq!(entry.name, name);
+        assert_eq!(wire_fields(&entry.schema()), fields, "{name}");
+        assert_eq!(
+            entry.schema().get("title").and_then(Value::as_str),
+            Some(name),
+            "{name} generates a schema titled otherwise"
+        );
+    }
+}
+
+/// The session round-trips its canonical values, omits an optional it does
+/// not carry rather than writing `null`, and holds the wire rules every
+/// declared type is held to: its instants are RFC 3339 at a zero offset —
+/// normalized from an offset on parse, refused when not RFC 3339 at all —
+/// and its print identifier is refused in any spelling this system does not
+/// mint.
+#[test]
+fn the_session_round_trips_and_holds_the_wire_rules() {
+    for entry in session_vocabulary() {
+        for value in entry.samples() {
+            let round = entry
+                .round_trip(value.clone())
+                .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+            assert_eq!(round, value, "{} does not survive a round trip", entry.name);
+        }
+        assert!(
+            entry
+                .round_trip(json!({ "printobserver": "no type declares this field" }))
+                .is_err(),
+            "{} accepted a value of no declared type",
+            entry.name
+        );
+    }
+
+    let session = TypeContract::of::<SupervisionSession>("SupervisionSession");
+    let minimal = session.minimal();
+    let object = minimal.as_object().expect("a session is an object");
+    for name in ["closed_at", "close_reason"] {
+        assert!(
+            !object.contains_key(name),
+            "the minimal session carries {name} as {:?}",
+            object.get(name)
+        );
+    }
+
+    let full = session.full();
+    for name in ["created_at", "last_turn_at", "closed_at"] {
+        let text = full[name].as_str().expect("an instant is a string");
+        assert!(text.ends_with('Z'), "{name} is {text}");
+        let mut offset = full.clone();
+        offset[name] = json!("2026-03-01T13:00:00+01:00");
+        let round = session
+            .round_trip(offset)
+            .unwrap_or_else(|error| panic!("{name} refused an offset: {error}"));
+        assert_eq!(round[name].as_str(), Some("2026-03-01T12:00:00Z"));
+        for refused in ["2026-03-01T12:00:00", "the first of March"] {
+            let mut value = full.clone();
+            value[name] = json!(refused);
+            assert!(
+                session.round_trip(value).is_err(),
+                "{name} accepted {refused}"
+            );
+        }
+    }
+    for refused in [
+        "0191f0a0-0000-4000-8000-000000000001",
+        "0191F0A0-0000-7000-8000-000000000001",
+        "{0191f0a0-0000-7000-8000-000000000001}",
+        "not-a-uuid",
+    ] {
+        let mut value = full.clone();
+        value["print_id"] = json!(refused);
+        assert!(
+            session.round_trip(value).is_err(),
+            "print_id accepted {refused}"
+        );
+    }
 }

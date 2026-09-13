@@ -16,8 +16,9 @@ use block_on::block_on;
 use printobserver_supervisor_api::{
     AgentAssessment, BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_types::PrintId;
 use printobserver_types::contract::Sample;
-use printobserver_types::{PrintId, SessionPhase, SupervisionSession};
 
 /// The outcome the trivial implementation answers with.
 fn trivial_outcome() -> TurnOutcome {

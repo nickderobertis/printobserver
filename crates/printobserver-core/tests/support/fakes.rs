@@ -32,10 +32,8 @@ use printobserver_printer_api::{
 use printobserver_supervisor_api::{
     AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
-use printobserver_types::{
-    EventId, EventRecord, FileName, ImageId, PrintId, RawBytes, SessionPhase, SupervisionSession,
-    Timestamp,
-};
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_types::{EventId, EventRecord, FileName, ImageId, PrintId, RawBytes, Timestamp};
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
 use crate::journal::{Call, Journal};

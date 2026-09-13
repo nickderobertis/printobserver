@@ -54,15 +54,17 @@ pub struct Reference {
 
 /// The sources the records this store persists are declared in, parsed.
 ///
-/// The type crate's, for the event record every domain agrees on; and the
-/// supervision domain's `records` module, for the records that are its own.
-/// The set is what the store is held to, so a record a domain adds to either
-/// is one this crate is held to without anybody remembering to add it here.
+/// The type crate's, for the event record every domain agrees on; the
+/// supervision domain's `records` module, for the records that are its own;
+/// and the supervisor port's, for the session a turn runs in. The set is what
+/// the store is held to, so a record a domain adds to any of them is one this
+/// crate is held to without anybody remembering to add it here.
 pub fn record_sources() -> Vec<syn::File> {
     let mut sources = crate_sources("printobserver-types");
     sources.extend(sources_under(
         &crate_dir("printobserver-core").join("src").join("records"),
     ));
+    sources.extend(crate_sources("printobserver-supervisor-api"));
     sources
 }
 

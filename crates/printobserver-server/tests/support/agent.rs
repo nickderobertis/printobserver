@@ -16,7 +16,8 @@ use printobserver_supervisor_api::{
     AgentAssessment, BoxFuture, Confidence, SupervisorError, SupervisorPort, TurnOutcome,
     TurnRequest,
 };
-use printobserver_types::{PrintId, SessionPhase, SupervisionSession, Timestamp};
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_types::{PrintId, Timestamp};
 
 /// The harness identity this stands in for.
 pub const IDENTITY: &str = "claude-code";

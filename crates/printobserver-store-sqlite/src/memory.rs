@@ -20,9 +20,8 @@ use printobserver_core::{
     PrintRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
-use printobserver_types::{
-    EventId, EventRecord, ImageId, ImageRef, PrintId, RawBytes, SupervisionSession, Timestamp,
-};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::{EventId, EventRecord, ImageId, ImageRef, PrintId, RawBytes, Timestamp};
 
 use crate::hold::{HoldPoints, settle_label};
 use crate::images::{resolve, store_bytes};

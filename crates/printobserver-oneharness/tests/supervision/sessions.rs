@@ -10,8 +10,9 @@
 
 use std::sync::Arc;
 
+use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{EventBody, PrintId, SessionPhase};
+use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, block_on, config, event, failure_alert,

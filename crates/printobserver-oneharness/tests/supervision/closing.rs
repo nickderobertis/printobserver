@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use printobserver_oneharness::EnvAssignment;
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{EventBody, PrintId, SessionPhase, SupervisionSession};
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,

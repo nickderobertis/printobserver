@@ -47,7 +47,7 @@ async fn left_behind(state_dir: &std::path::Path) -> PrintId {
         .expect("a print opens");
 
     store
-        .put_session(printobserver_types::SupervisionSession {
+        .put_session(printobserver_supervisor_api::SupervisionSession {
             print_id: print.id,
             session_name: "watch-4211".to_owned(),
             harness_identity: "claude-code".to_owned(),
@@ -259,7 +259,7 @@ async fn a_print_with_no_open_session_is_adopted_without_being_resumed() {
             .expect("a second print opens")
             .id;
         store
-            .put_session(printobserver_types::SupervisionSession {
+            .put_session(printobserver_supervisor_api::SupervisionSession {
                 print_id: closed,
                 session_name: "watch-2".to_owned(),
                 harness_identity: "claude-code".to_owned(),

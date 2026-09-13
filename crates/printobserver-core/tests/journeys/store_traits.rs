@@ -23,10 +23,9 @@ use printobserver_core::{
     PrintRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::contract::Sample;
-use printobserver_types::{
-    EventId, EventRecord, ImageId, PrintId, RawBytes, SupervisionSession, Timestamp,
-};
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// A store that answers every method with the success type it declares.
 struct TrivialStore;

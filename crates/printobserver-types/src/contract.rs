@@ -25,7 +25,6 @@ use crate::ids::{EventId, ImageId, PrintId};
 use crate::image::ImageRef;
 use crate::raw::RawBytes;
 use crate::reported::{Range, Reported};
-use crate::session::{SessionPhase, SupervisionSession};
 use crate::timestamp::Timestamp;
 
 /// A canonical value of one type, for the schema set and the round-trip corpus.
@@ -213,8 +212,6 @@ pub fn declared() -> Vec<TypeContract> {
         Range,
         RawBytes,
         Reported<f64> => "Reported",
-        SessionPhase,
-        SupervisionSession,
         Timestamp,
     ]
 }
@@ -243,13 +240,6 @@ fn image_id() -> ImageId {
 /// A fixed instant, so that a sample is the same on every run.
 fn instant() -> Timestamp {
     "2026-03-01T12:00:00Z"
-        .parse()
-        .expect("a fixed RFC 3339 instant")
-}
-
-/// A later fixed instant.
-fn later_instant() -> Timestamp {
-    "2026-03-01T12:30:00Z"
         .parse()
         .expect("a fixed RFC 3339 instant")
 }
@@ -307,34 +297,6 @@ impl Sample for ImageRef {
         Self {
             id: image_id(),
             sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned(),
-        }
-    }
-}
-
-impl Sample for SessionPhase {
-    fn sample_full() -> Self {
-        Self::Created
-    }
-}
-
-impl Sample for SupervisionSession {
-    fn sample_full() -> Self {
-        Self {
-            print_id: print_id(),
-            session_name: "print-0191f0a0".to_owned(),
-            harness_identity: "printobserver-supervisor".to_owned(),
-            created_at: instant(),
-            last_turn_at: later_instant(),
-            closed_at: Some(later_instant()),
-            close_reason: Some("the print ended".to_owned()),
-        }
-    }
-
-    fn sample_minimal() -> Self {
-        Self {
-            closed_at: None,
-            close_reason: None,
-            ..Self::sample_full()
         }
     }
 }

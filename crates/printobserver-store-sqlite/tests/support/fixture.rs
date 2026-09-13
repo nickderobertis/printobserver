@@ -11,11 +11,10 @@ use printobserver_core::store::{
 };
 use printobserver_core::{ActionRequest, Actor, JobManifest, PrintAction};
 use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
+use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::contract::Sample;
 use printobserver_types::serde_json::json;
-use printobserver_types::{
-    EventBody, EventId, EventKind, EventSource, PrintId, SupervisionSession, Timestamp,
-};
+use printobserver_types::{EventBody, EventId, EventKind, EventSource, PrintId, Timestamp};
 use tempfile::TempDir;
 
 /// Every store trait at once: one handle a journey drives more than one

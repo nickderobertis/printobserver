@@ -3,8 +3,9 @@
 //! Owns: the port the supervising agent is reached through — the trait for
 //! running one supervision turn and for closing a session, the two shapes those
 //! methods carry, that port's own error type, the assessment vocabulary a turn
-//! answers with ([`assessment`]), and the two event kinds a session's opening
-//! and closing are written down under.
+//! answers with ([`assessment`]), the session a turn opens or continues
+//! ([`session`]), and the two event kinds a session's opening and closing are
+//! written down under.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -23,6 +24,7 @@
 //! method answers a [`BoxFuture`] instead.
 
 pub mod assessment;
+pub mod session;
 
 use core::future::Future;
 use core::pin::Pin;
@@ -31,9 +33,10 @@ use std::path::PathBuf;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventPayload, EventRecord, PrintId, SessionPhase, SupervisionSession};
+use printobserver_types::{EventPayload, EventRecord, PrintId};
 
 pub use assessment::{AgentAssessment, Confidence};
+pub use session::{SessionPhase, SupervisionSession};
 
 /// A future this port's methods answer with, in the one shape a trait object
 /// can carry.

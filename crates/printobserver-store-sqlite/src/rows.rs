@@ -5,7 +5,8 @@
 //! no longer matches rather than as a value silently dropped.
 
 use printobserver_core::{ActionRecord, ActionRequest, ImageRecord, Intervention, PrintRecord};
-use printobserver_types::{EventRecord, ImageRef, SupervisionSession};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::{EventRecord, ImageRef};
 use rusqlite::Row;
 
 use crate::values::{from_json, from_json_option, from_tag, parsed, parsed_option};

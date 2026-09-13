@@ -16,8 +16,9 @@ use printobserver_oneharness::{
     HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, SESSIONS_DIRECTORY, SessionName,
     SupervisorConfig, TurnSeam, TurnTimeout,
 };
+use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
-use printobserver_types::{EventBody, PrintId, SessionPhase, serde_json};
+use printobserver_types::{EventBody, PrintId, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,

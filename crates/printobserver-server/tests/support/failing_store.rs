@@ -23,9 +23,8 @@ use printobserver_core::{
     PrintRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
-use printobserver_types::{
-    EventId, EventRecord, ImageId, PrintId, RawBytes, SupervisionSession, Timestamp,
-};
+use printobserver_supervisor_api::SupervisionSession;
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// What the store says when it has failed.
 pub const DETAIL: &str = "the disk is full";
