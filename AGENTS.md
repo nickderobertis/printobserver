@@ -843,32 +843,23 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 ## The dependency rule
 
-The rule is an edge table, not a set of layers. `repo-policy.toml`'s
-`crates.may_depend_on` names, for every one of the twelve workspace crates, the
-workspace crates it may depend on across `dependencies`, `dev-dependencies` and
-`build-dependencies`; `docs/reference/architecture.md`'s "Why core names no
-implementation crate" carries the same table in prose. `just check-repo`
-refuses a manifest edge the row does not admit, a row naming a crate the
-workspace lacks, and a workspace crate the table omits — the step that draws an
-edge is the step that admits it, so the boundary is not a convention, it is a
-check.
+The rule is an edge table, not a set of layers: `repo-policy.toml`'s
+`crates.may_depend_on` names, per crate, the workspace crates it may depend on
+across every dependency table, `docs/reference/architecture.md`'s "Why core
+names no implementation crate" carries the same table in prose, and `just
+check-repo` refuses an edge the row does not admit, a row naming a crate the
+workspace lacks, and a crate the table omits. The step that draws an edge is
+the step that admits it — the boundary is a check, not a convention.
 
-What the rows say, read together: `printobserver-types` is the cross-domain
-contract, sits under every crate and depends on nothing; each of the three
-ports depends on it alone; `printobserver-core`, the supervision domain,
-depends on the contract and the three ports and on **no adapter and no store**
-— its own records, identifiers and one-trait-per-aggregate persistence
-interfaces live with it, and `printobserver-store-sqlite` implements those
-traits and so depends on core rather than the other way round; and the four
-implementation crates are named by `printobserver-server`, the composition
-root, and reached by `printobserver` through it, and by nothing else. So a
-change to one provider's wire format or event payload edits that provider's
-crate and rebuilds it and the composition roots, nothing in the contract crate
-names a domain, and a reader of the open event log may assume nothing about a
-kind it does not know beyond the envelope it arrived in.
-
-`printobserver-store-api` is the crate this refactor retired: it stays on
-crates.io at `0.2.0`, is never yanked, and is never published again.
+Two things the table does not say in so many words. The supervision domain
+(`printobserver-core`) owns its records, its identifiers and its
+one-trait-per-aggregate store interfaces, and the SQLite store implements
+those traits and so depends on core, never the reverse; that direction is what
+keeps a column one aggregate gains from rebuilding every consumer. And the
+event log is open: `printobserver-types` declares the envelope and no kind, so
+a reader of the log carries a kind it does not know through rather than
+matching exhaustively. `printobserver-store-api` is the crate this refactor
+retired; it stays on crates.io at `0.2.0`, never yanked, never republished.
 
 The same rule holds one level down, over vocabulary rather than over edges:
 **`printobserver-octoprint` is the only crate that may construct an `OctoPrint`

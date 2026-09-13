@@ -10,8 +10,8 @@ authors.workspace = true
 
 [dependencies]
 printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.2.0" }
-printobserver-supervisor-api = { path = "../printobserver-supervisor-api", version = "0.2.0" }
-printobserver-types = { path = "../printobserver-types", version = "0.2.0" }
+printobserver-supervisor-api = { workspace = true }
+printobserver-types = { workspace = true }
 printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
 
 # Test-only readers of this crate's own sources. The structural checks this
