@@ -26,9 +26,11 @@
 //! # The separator set is a claim about the world
 //!
 //! [`SEPARATORS`] is exactly `/` and `\`, and that is a claim about the file
-//! APIs this name crosses to rather than a fact about this crate: `OctoPrint`'s
-//! file API is served from POSIX hosts, whose separator is `/`, and its own
-//! path handling additionally treats `\` as a separator on Windows hosts. A
+//! APIs this name crosses to rather than a fact about this crate: the printer
+//! file APIs this workspace's adapters reach are served from POSIX hosts, whose
+//! separator is `/`, and their own path handling additionally treats `\` as a
+//! separator on Windows hosts. Which API that is, is the adapter's to say; the
+//! set is here because every domain and every client has to agree on it. A
 //! reader who believes another character reaches a separator on some host this
 //! system runs against should argue with this set, here, rather than discover
 //! its absence as a gap in a corpus.

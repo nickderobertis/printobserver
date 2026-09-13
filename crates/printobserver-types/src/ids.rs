@@ -16,8 +16,8 @@
 //! keys its own records by is that domain's to declare.
 //!
 //! An identifier belonging to an external system — a provider's own print id,
-//! an `OctoPrint` tool number — is held in that system's own representation
-//! and named for it, and is never one of these.
+//! a firmware's tool number — is held in that system's own representation and
+//! named for it, and is never one of these.
 
 use core::fmt;
 
