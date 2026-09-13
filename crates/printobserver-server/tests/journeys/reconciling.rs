@@ -17,15 +17,13 @@ use std::sync::Arc;
 use printobserver_core::store::{
     ActionStore as _, HistoryQuery, PrintStore as _, SessionStore as _, Stores,
 };
+use printobserver_core::{ActionRequest, Actor, PolicyDecision, PrintAction};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{
     Ports, Server, ServerConfig, StartupOutcome, StartupReconciliationPayload,
 };
 use printobserver_store_sqlite::SqliteStore;
-use printobserver_types::{
-    ActionRequest, Actor, Adjustable, EventPayload as _, PolicyDecision, PrintAction, PrintId,
-    Timestamp,
-};
+use printobserver_types::{Adjustable, EventPayload as _, PrintId, Timestamp};
 use tempfile::TempDir;
 
 use crate::agent::StandInAgent;
@@ -193,7 +191,7 @@ async fn a_start_adopts_what_the_store_holds_and_records_each_adoption() {
             outcome,
             StartupOutcome::InterventionExpired { adjustable, outcome, .. }
                 if *adjustable == Adjustable::Feedrate
-                    && *outcome == printobserver_types::InterventionOutcome::Restored
+                    && *outcome == printobserver_core::InterventionOutcome::Restored
         )),
         "expiring the intervention and restoring its value was not recorded: {recorded:?}"
     );
@@ -415,7 +413,7 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
         outcomes.iter().any(|outcome| matches!(
             outcome,
             StartupOutcome::InterventionExpired { outcome, .. }
-                if matches!(outcome, printobserver_types::InterventionOutcome::RestoreFailed { .. })
+                if matches!(outcome, printobserver_core::InterventionOutcome::RestoreFailed { .. })
         )),
         "the refused restoration was not recorded as one: {outcomes:?}"
     );

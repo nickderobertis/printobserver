@@ -14,11 +14,13 @@ use crate::fixture::{Fixture, Store, draft, instant, manifest, request, session}
 use printobserver_core::store::{
     DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome, StoreError,
 };
+use printobserver_core::{
+    ExecutionOutcome, InterventionId, InterventionOutcome, PolicyDecision, PrintRecord,
+    RejectionReason,
+};
 use printobserver_store_sqlite::settle_label;
 use printobserver_types::{
-    Adjustable, EventKind, EventRecord, ExecutionOutcome, ImageId, InterventionId,
-    InterventionOutcome, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    RejectionReason, Timestamp,
+    Adjustable, EventKind, EventRecord, ImageId, PrintId, PrinterState, RawBytes, Timestamp,
 };
 
 /// A history read of one print, with no filter and no limit.
@@ -147,7 +149,7 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
 
         let narrowed = block_on(port.record_narrowing(
             print.id,
-            printobserver_types::ManifestNarrowing {
+            printobserver_core::ManifestNarrowing {
                 adjustable: Adjustable::Fan,
                 requested: printobserver_types::Range {
                     min: 0.0,
@@ -163,7 +165,7 @@ fn a_print_is_read_by_either_identifier_and_ends_with_its_reason() {
         assert_eq!(narrowed.narrowings.len(), 1, "{name}");
         let narrowed = block_on(port.record_narrowing(
             print.id,
-            printobserver_types::ManifestNarrowing {
+            printobserver_core::ManifestNarrowing {
                 adjustable: Adjustable::Feedrate,
                 requested: printobserver_types::Range { min: 0.5, max: 2.0 },
                 applied: printobserver_types::Range { min: 0.8, max: 1.2 },
@@ -506,7 +508,7 @@ fn every_reference_the_port_can_name_is_refused() {
         let (print, event) = print_and_event(&port);
         let absent_print = PrintId::new();
         let absent_event = printobserver_types::EventId::new();
-        let absent_action = printobserver_types::ActionId::new();
+        let absent_action = printobserver_core::ActionId::new();
 
         assert_eq!(
             block_on(port.append_event(draft(
@@ -582,7 +584,7 @@ fn an_execution_against_no_action_is_refused_for_the_constraint() {
     for store in Fixture::both() {
         let name = store.name();
         let port = store.port();
-        let absent_action = printobserver_types::ActionId::new();
+        let absent_action = printobserver_core::ActionId::new();
 
         assert_eq!(
             block_on(port.record_execution(absent_action, ExecutionOutcome::Succeeded)),

@@ -75,7 +75,7 @@ fn the_type_crate_declares_no_type_another_crate_checks_in() {
         .flat_map(declared_type_names)
         .collect();
     assert!(
-        declared.iter().any(|name| name == "PrintRecord"),
+        declared.iter().any(|name| name == "EventRecord"),
         "the reader found no declarations"
     );
     let elsewhere = types_other_crates_check_in();

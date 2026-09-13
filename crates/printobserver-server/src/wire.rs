@@ -12,13 +12,14 @@ use std::path::PathBuf;
 
 use printobserver_core::PrintContext;
 use printobserver_core::store::ImageLookup;
+use printobserver_core::{
+    AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
+    JobManifest, ManifestNarrowing, PrintRecord,
+};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{
-    AcknowledgementDisposition, ActionKind, ActionRecord, Actor, EventId, EventRecord, FileName,
-    ImageRecord, Intervention, JobManifest, ManifestNarrowing, PrintRecord, SupervisionSession,
-};
+use printobserver_types::{EventId, EventRecord, FileName, SupervisionSession};
 
 /// Why a request could not be turned into one action of the vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,8 +159,8 @@ impl ActionBody {
     pub fn into_action(
         self,
         kind: ActionKind,
-    ) -> Result<printobserver_types::PrintAction, BodyRefusal> {
-        use printobserver_types::PrintAction as Action;
+    ) -> Result<printobserver_core::PrintAction, BodyRefusal> {
+        use printobserver_core::PrintAction as Action;
 
         let reason = self.reason()?;
         let actor = self.actor.clone();
@@ -393,8 +394,8 @@ impl Serialize for IngressAnswer {
 
 #[cfg(test)]
 mod tests {
+    use printobserver_core::{ActionKind, Actor, ImageRecord};
     use printobserver_types::contract::Sample as _;
-    use printobserver_types::{ActionKind, Actor, ImageRecord};
 
     use super::{ActionBody, ErrorAnswer, ImageAnswer, ImageLookup};
 

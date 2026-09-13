@@ -22,13 +22,12 @@
 //! about is the state the event was handled at, not whatever the machine has
 //! drifted to since.
 
+use crate::records::PrintRecord;
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
 };
-use printobserver_types::{
-    EventBody, EventRecord, ImageRef, PrintId, PrintRecord, PrinterState, SessionPhase,
-};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, PrinterState, SessionPhase};
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::context::PrintContext;

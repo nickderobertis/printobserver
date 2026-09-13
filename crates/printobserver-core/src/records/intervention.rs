@@ -1,15 +1,19 @@
 //! A bounded change, and what became of it when it expired.
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{Adjustable, PrintId, Timestamp};
 
-use crate::adjustable::Adjustable;
-use crate::ids::{ActionId, InterventionId, PrintId};
-use crate::timestamp::Timestamp;
+use super::ids::{ActionId, InterventionId};
 
 /// What became of a bounded change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum InterventionOutcome {
     /// It is still in force.
     StillActive,
@@ -35,7 +39,8 @@ pub enum InterventionOutcome {
 /// is absent when the printer reported none — in which case expiry restores
 /// nothing and the outcome says so rather than guessing a default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct Intervention {
     /// This intervention's identifier, minted by the store.
     pub id: InterventionId,

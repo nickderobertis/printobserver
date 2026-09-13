@@ -1404,6 +1404,7 @@ dependencies = [
 name = "printobserver-core"
 version = "0.2.0"
 dependencies = [
+ "jsonschema 0.34.0",
  "printobserver-printer-api",
  "printobserver-supervisor-api",
  "printobserver-types",

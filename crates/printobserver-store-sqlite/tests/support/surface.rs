@@ -71,8 +71,16 @@ pub fn read(path: &std::path::Path) -> String {
 ///
 /// Panics when a source cannot be read or does not parse.
 pub fn crate_sources(crate_name: &str) -> Vec<syn::File> {
-    let dir = crate_dir(crate_name).join("src");
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
+    sources_under(&crate_dir(crate_name).join("src"))
+}
+
+/// Every `.rs` source directly under one directory, parsed.
+///
+/// # Panics
+///
+/// Panics when a source cannot be read or does not parse.
+pub fn sources_under(dir: &std::path::Path) -> Vec<syn::File> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .unwrap_or_else(|error| panic!("read {}: {error}", dir.display()))
         .map(|entry| entry.expect("a readable directory entry").path())
         .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))

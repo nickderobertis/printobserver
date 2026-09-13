@@ -9,11 +9,10 @@ use crate::block_on::block_on;
 use crate::contracts::{Reference, record_kinds, references};
 use crate::fixture::{Store, draft, instant, manifest, request, session};
 use printobserver_core::store::StoreError;
+use printobserver_core::{ActionId, ExecutionOutcome, PolicyDecision};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MIGRATIONS, SqliteStore, connect};
 use printobserver_types::serde_json::{self, json};
-use printobserver_types::{
-    ActionId, Adjustable, ExecutionOutcome, PolicyDecision, PrintId, PrinterState, RawBytes,
-};
+use printobserver_types::{Adjustable, PrintId, PrinterState, RawBytes};
 use rusqlite::Connection;
 use rusqlite::types::Value;
 use tempfile::TempDir;

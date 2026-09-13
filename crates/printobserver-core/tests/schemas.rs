@@ -11,9 +11,13 @@
 //!
 //! The print's context is this crate's declaration too, so the fields it
 //! carries, the round trip of its canonical values and the absent-optional
-//! rule are walked here over it; and so are the two shapes the store traits
-//! carry across a process boundary, the event draft and the history query.
+//! rule are walked here over it; so are the two shapes the store traits carry
+//! across a process boundary, the event draft and the history query; and so
+//! are this domain's own records and identifiers, whose fields and wire forms
+//! the `records` test walks over the same list.
 
+#[path = "support/records.rs"]
+mod records;
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
@@ -96,6 +100,11 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((format!("{}.json", context.name), context.schema()));
     entries.push(("EventDraft.json".to_owned(), schema_of::<EventDraft>()));
     entries.push(("HistoryQuery.json".to_owned(), schema_of::<HistoryQuery>()));
+    entries.extend(
+        records::declared()
+            .into_iter()
+            .map(|entry| (format!("{}.json", entry.name), entry.schema())),
+    );
     entries
 }
 

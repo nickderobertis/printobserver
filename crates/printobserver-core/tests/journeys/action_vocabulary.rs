@@ -9,10 +9,11 @@
 
 use std::collections::BTreeMap;
 
-use printobserver_types::{
-    AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventId, FileName,
-    PolicyDecision, PrintAction, PrinterState, RejectionReason, SafetyEnvelope,
+use printobserver_core::{
+    AcknowledgementDisposition, ActionKind, Actor, ActorClass, PolicyDecision, PrintAction,
+    RejectionReason, SafetyEnvelope,
 };
+use printobserver_types::{Adjustable, EventId, FileName, PrinterState};
 
 use crate::journal::Call;
 use crate::source::{crate_dir, enum_variant_names, parse, read};
@@ -150,8 +151,9 @@ fn drive(kind: ActionKind, actor: Actor, envelope: SafetyEnvelope) -> Driven {
 /// The walk drives exactly the vocabulary the contracts declare.
 #[test]
 fn the_walk_covers_every_variant_the_vocabulary_declares() {
-    let path = crate_dir("printobserver-types")
+    let path = crate_dir("printobserver-core")
         .join("src")
+        .join("records")
         .join("action.rs");
     let declared = enum_variant_names(&parse(&read(&path)), "PrintAction");
     let driven: Vec<String> = ACTION_KINDS

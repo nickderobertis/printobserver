@@ -19,9 +19,10 @@ from contract_codegen.generate import OUTPUTS, Output, drifted, write
 from contract_codegen.schemas import SCHEMAS_DIR, ContractError, load
 from repo_checks.expect import accepted, contains, equal, truth
 
-#: Where the contract crate's own schemas are checked in, one of the directories
-#: the generator reads.
-TYPES_DIR = f"{SCHEMAS_DIR}/printobserver-types"
+#: Where the supervision domain's own schemas are checked in, one of the
+#: directories the generator reads and the one the type these journeys alter
+#: is declared under.
+TYPES_DIR = f"{SCHEMAS_DIR}/printobserver-core"
 
 #: The type whose schema the alteration journeys move, and a field of it that
 #: every one of the three clients carries.

@@ -3,7 +3,7 @@
 //! # Why this server checks a description in beside the contracts' schemas
 //!
 //! The three clients are generated rather than written, and a generator needs
-//! two things: the shapes, which `printobserver-types` already checks in, and
+//! two things: the shapes, which the declaring crates already check in, and
 //! **which operations there are, what each takes and what each answers**, which
 //! until now existed only as [`OPERATIONS`] inside this crate. A generator that
 //! read that array would have to link this crate, and a client that linked this
@@ -18,9 +18,9 @@
 //! One file per shape a route can answer, generated through
 //! [`schema_of`](printobserver_types::contract::schema_of) — the contracts'
 //! own generator settings — so that a `$defs` entry here is byte-for-byte the
-//! type file `schemas/printobserver-types/` carries for it. That is what lets
-//! the client generator resolve a reference to the contracts' own file rather
-//! than to a second copy of it.
+//! type file the declaring crate's `schemas/<crate>/` carries for it. That is
+//! what lets the client generator resolve a reference to the contracts' own
+//! file rather than to a second copy of it.
 //!
 //! # And the one event kind this crate declares
 //!
@@ -240,9 +240,7 @@ fn every_value_a_request_carries_is_described_with_a_shape() {
                     .strip_prefix("#/$defs/")
                     .expect("a reference names one of the contracts' own types");
                 assert!(
-                    schema_files::schema_dir("printobserver-types")
-                        .join(format!("{name}.json"))
-                        .is_file(),
+                    schema_files::checked_in(name),
                     "`{}` describes `{}` as `{name}`, which the contracts check in no \
                      schema for",
                     operation.name,

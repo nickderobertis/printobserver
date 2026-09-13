@@ -15,12 +15,12 @@
 //! [`Supervisor::issue_decided_action`], which is the only function of this
 //! crate that reaches an action method of the printer port.
 
-use printobserver_printer_api::PrinterSnapshot;
-use printobserver_types::{
-    ActionRecord, ActionRequest, Actor, ActorClass, Adjustable, EventBody, EventSource,
-    Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId, PrintRecord,
-    Timestamp,
+use crate::records::{
+    ActionRecord, ActionRequest, Actor, ActorClass, Intervention, InterventionOutcome,
+    PolicyDecision, PrintAction, PrintRecord,
 };
+use printobserver_printer_api::PrinterSnapshot;
+use printobserver_types::{Adjustable, EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
 use crate::clock::plus_seconds;
@@ -229,7 +229,7 @@ impl Supervisor {
     async fn attach_manifest(
         &self,
         print_id: PrintId,
-        manifest: printobserver_types::JobManifest,
+        manifest: crate::records::JobManifest,
     ) -> Result<(), CoreError> {
         let narrowed = effective_bounds(&self.config().envelope, Some(&manifest));
         self.stores()

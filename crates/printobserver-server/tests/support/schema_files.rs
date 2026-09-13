@@ -18,6 +18,24 @@ pub fn schema_dir(crate_name: &str) -> PathBuf {
         .join(crate_name)
 }
 
+/// Whether some crate of the schema set checks a schema in for one type.
+///
+/// The set is keyed by type name across every declaring crate, so a type is
+/// looked for under every `schemas/<crate>/` directory rather than under one
+/// crate's: a type that moves to the domain that owns it moves its file
+/// between directories and changes nothing a reference to it says.
+pub fn checked_in(type_name: &str) -> bool {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("schemas");
+    std::fs::read_dir(root)
+        .expect("the schema tree is readable")
+        .map(|entry| entry.expect("a readable directory entry").path())
+        .filter(|path| path.is_dir())
+        .any(|directory| directory.join(format!("{type_name}.json")).is_file())
+}
+
 /// One schema's text, as it is written and as it is compared.
 fn text_of(schema: &Value) -> String {
     let mut text = serde_json::to_string_pretty(schema).expect("a schema serializes");

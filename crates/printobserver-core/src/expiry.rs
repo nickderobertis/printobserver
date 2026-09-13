@@ -24,10 +24,10 @@
 //! forbids it, and absorbing a transient store failure belongs behind the store
 //! port rather than here.
 
-use printobserver_types::{
-    Actor, Adjustable, Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId,
-    RejectionReason,
+use crate::records::{
+    Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
 };
+use printobserver_types::{Adjustable, PrintId};
 
 use crate::decision::{DecisionInput, decide};
 use crate::error::CoreError;
@@ -200,7 +200,7 @@ impl Supervisor {
             envelope: &self.config().envelope,
             last_agent_action: None,
         });
-        let request = printobserver_types::ActionRequest {
+        let request = crate::records::ActionRequest {
             action,
             actor,
             requested_at,

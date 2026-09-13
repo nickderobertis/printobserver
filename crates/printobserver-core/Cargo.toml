@@ -22,6 +22,7 @@ printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.
 # of this workspace, so no implementation crate reaches core through its tests
 # either.
 [dev-dependencies]
+jsonschema.workspace = true
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits", "visit"] }
 

@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use image_host::{Answer, ImageHost, unreachable_url};
 use printobserver_core::store::{EventStore, HistoryQuery, ImageLookup, ImageStore, PrintStore};
+use printobserver_core::{ImageRecord, PrintRecord};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
     DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, IngressError, ObicoFailureAlertPayload,
@@ -31,9 +32,7 @@ use printobserver_obico::{
     Receipt, obico_source,
 };
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{
-    EventPayload, EventRecord, ImageRecord, PrintRecord, PrinterState, RawBytes, Timestamp,
-};
+use printobserver_types::{EventPayload, EventRecord, PrinterState, RawBytes, Timestamp};
 use printobserver_vision_api::{
     MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
 };

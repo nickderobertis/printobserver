@@ -79,7 +79,7 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Server configuration: what any actor may ask for at all.\n\nThis is the operator's safety envelope. It is a different contract from the\nplausibility ranges [`Reported`](crate::Reported) fields carry, is narrower\nby orders of magnitude, and the two are never intersected, compared or\nsubstituted for one another.",
+  "description": "Server configuration: what any actor may ask for at all.\n\nThis is the operator's safety envelope. It is a different contract from the\nplausibility ranges [`Reported`](printobserver_types::Reported) fields carry, is narrower\nby orders of magnitude, and the two are never intersected, compared or\nsubstituted for one another.",
   "properties": {
     "actions": {
       "additionalProperties": {

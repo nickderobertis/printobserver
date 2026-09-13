@@ -2,11 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use crate::adjustable::Adjustable;
-use crate::reported::Range;
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{Adjustable, Range};
 
 /// What a sliced job declares about itself and about what may be adjusted.
 ///
@@ -14,7 +12,8 @@ use crate::reported::Range;
 /// manifest range wider than the envelope's is narrowed to the envelope's and
 /// the narrowing is recorded on the print. A manifest may only narrow.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct JobManifest {
     /// The file this manifest is about, as the slicer named it.
     pub file_name: String,

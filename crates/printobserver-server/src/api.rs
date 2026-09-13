@@ -30,9 +30,10 @@ use axum::{Router, routing::MethodRouter};
 use printobserver_core::store::{
     EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
 };
+use printobserver_core::{ActionKind, ExecutionOutcome, PolicyDecision};
 use printobserver_core::{CoreError, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
-use printobserver_types::{ActionKind, ExecutionOutcome, ImageId, PolicyDecision, PrintId};
+use printobserver_types::{ImageId, PrintId};
 
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::wire::{

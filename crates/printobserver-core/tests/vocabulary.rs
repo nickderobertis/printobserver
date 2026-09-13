@@ -15,9 +15,13 @@
 //! commented-out arm is not a variant at all, changing neither the declared
 //! type nor a byte on the wire.
 
-use printobserver_types::contract::{TypeContract, declared, schema_of};
-use printobserver_types::{ActionKind, PrintAction};
-use serde_json::{Value, json};
+#[path = "support/records.rs"]
+mod records;
+
+use printobserver_core::{ActionKind, PrintAction};
+use printobserver_types::contract::{TypeContract, schema_of};
+use printobserver_types::serde_json::{Value, json};
+use records::declared;
 
 /// Every variant the contract names, in the spelling the wire carries.
 const STATED_VARIANTS: [&str; 10] = [
@@ -291,26 +295,5 @@ fn the_generated_schema_admits_the_vocabulary_and_nothing_else() {
     }
     for value in refused_corpus(&schema, &admitted) {
         assert!(!validator.is_valid(&value), "the schema admitted {value}");
-    }
-}
-
-/// Every declared type's schema admits its own canonical values.
-///
-/// The schemas are generated from the types, so a value one type emits is a
-/// value its own schema admits; a schema that refused it would be a schema
-/// transcribed rather than generated.
-#[test]
-fn every_generated_schema_admits_its_own_canonical_values() {
-    for entry in declared() {
-        let schema = entry.schema();
-        let validator = jsonschema::validator_for(&schema)
-            .unwrap_or_else(|error| panic!("{}'s schema does not compile: {error}", entry.name));
-        for value in entry.samples() {
-            assert!(
-                validator.is_valid(&value),
-                "{}'s schema refused {value}",
-                entry.name
-            );
-        }
     }
 }

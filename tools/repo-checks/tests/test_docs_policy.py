@@ -226,7 +226,7 @@ def test_an_unreadable_rejection_schema_is_a_finding(
 ) -> None:
     """The policy check diagnoses its input instead of raising or skipping variants."""
     repo = _declaring(tmp_path)
-    _write(tmp_path, "schemas/printobserver-types/RejectionReason.json", schema)
+    _write(tmp_path, "schemas/printobserver-core/RejectionReason.json", schema)
 
     findings = _intervention_policy(repo, "guide.md", "# A guide\n", EMPTY)
 
@@ -239,7 +239,7 @@ def test_rejection_vocabulary_reads_unit_and_payload_variants(tmp_path: Path) ->
     repo = _declaring(tmp_path)
     _write(
         tmp_path,
-        "schemas/printobserver-types/RejectionReason.json",
+        "schemas/printobserver-core/RejectionReason.json",
         json.dumps(
             {
                 "oneOf": [

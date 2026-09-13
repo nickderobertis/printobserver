@@ -342,7 +342,7 @@ assessment_schema = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 # not name is DERIVED from this file rather than restated here, so a variant
 # `PrintAction` gains enters that set the moment the generation target writes
 # it and the walk cannot fall behind the type.
-action_schema = "schemas/printobserver-types/PrintAction.json"
+action_schema = "schemas/printobserver-core/PrintAction.json"
 # The program whose operations the template may not name, and the reads this
 # system exposes beside the action vocabulary. `context_read` is the one
 # operation the template may name, because it is a read.

@@ -155,7 +155,7 @@ async fn write_everything(world: &World, image_url: &str) -> Written {
         .id;
 
     let manifest =
-        printobserver_types::serde_json::to_value(printobserver_types::JobManifest::sample_full())
+        printobserver_types::serde_json::to_value(printobserver_core::JobManifest::sample_full())
             .expect("a manifest renders");
     let (status, _) = world
         .put(

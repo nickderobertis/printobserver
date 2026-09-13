@@ -17,11 +17,14 @@ use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
     ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, Stores,
 };
+use printobserver_core::{
+    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
+    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
+    PrintRecord,
+};
 use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventId, EventRecord, ExecutionOutcome,
-    ImageId, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    ManifestNarrowing, PolicyDecision, PrintId, PrintRecord, PrinterState, RawBytes,
-    SupervisionSession, Timestamp,
+    Adjustable, EventId, EventRecord, ImageId, PrintId, PrinterState, RawBytes, SupervisionSession,
+    Timestamp,
 };
 
 /// What the store says when it has failed.

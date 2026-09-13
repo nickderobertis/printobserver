@@ -3,7 +3,7 @@
 //! # One operation per public operation, and no more
 //!
 //! The list here is the whole API. It is exactly one operation per variant of
-//! [`PrintAction`](printobserver_types::PrintAction) the contracts declare,
+//! [`PrintAction`](printobserver_core::PrintAction) the contracts declare,
 //! plus six reads — status, context, image materialization, history, and the
 //! manifest's read and write — and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
@@ -21,7 +21,7 @@
 //! [`Operation::response_schema`] is the schema of each answer that route can
 //! produce. Neither is written out for the ten mutating operations: their body
 //! is derived from the contracts' own
-//! [`PrintAction`](printobserver_types::PrintAction) at run time, so a variant
+//! [`PrintAction`](printobserver_core::PrintAction) at run time, so a variant
 //! that gains a field gains it here the moment the type does. The
 //! command-line program builds its own parser from these declarations rather
 //! than from a list of its own, which is what stops the two surfaces drifting.
@@ -36,7 +36,12 @@
 //! versioned prefix, where no client can mistake one surface for the other.
 
 use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{ActionKind, PrintAction};
+
+// The vocabulary the mutating operations are folded from, re-exported beside
+// them: a client of this surface that derives its own commands from these
+// operations — the command-line program — reads which action each is and what
+// that action carries from here, without naming the supervision domain itself.
+pub use printobserver_core::{ActionKind, PrintAction};
 
 /// The one versioned prefix every public operation is served beneath.
 pub const VERSION_PREFIX: &str = "/v1";
@@ -716,7 +721,7 @@ pub fn operation(name: &str) -> Option<&'static Operation> {
 
 #[cfg(test)]
 mod tests {
-    use printobserver_types::ActionKind;
+    use printobserver_core::ActionKind;
 
     use super::{Effect, MEDIA_TYPE, Method, OPERATIONS, VERSION_PREFIX, operation};
 

@@ -31,9 +31,9 @@ use std::process::Command as Process;
 use printobserver::surface::{
     Field, Form, GLOBAL_OPTIONS, SERVE_COMMAND, Supply, command_for, option_for, surface,
 };
+use printobserver_server::operations::{ActionKind, PrintAction};
 use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
 use printobserver_types::serde_json::Value;
-use printobserver_types::{ActionKind, PrintAction};
 
 /// The reads this program has beside the action vocabulary, as its own task
 /// names them: status, context, the image read and materialization, history,

@@ -44,10 +44,9 @@
 use std::sync::Arc;
 
 use printobserver_core::store::{EventDraft, EventStore, ImageStore, PrintStore, StoreError};
+use printobserver_core::{ImageRecord, PrintRecord};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
-use printobserver_types::{
-    EventBody, EventId, EventRecord, ImageRecord, PrintId, PrintRecord, RawBytes, Timestamp,
-};
+use printobserver_types::{EventBody, EventId, EventRecord, PrintId, RawBytes, Timestamp};
 use printobserver_vision_api::{
     MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort,
 };

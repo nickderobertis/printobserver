@@ -5,26 +5,29 @@
 //! the reason an agent is allowed near a machine that can destroy itself. The
 //! only free-form text any variant carries is the `reason` every action
 //! carries, and the only caller-supplied text that reaches the printer's own
-//! file API is a [`FileName`](crate::FileName), which validates itself.
+//! file API is a [`FileName`](printobserver_types::FileName), which validates itself.
 //!
 //! Filtration is deliberately not a variant: nobody has yet confirmed that the
 //! target printer exposes filtration through `OctoPrint` at all, and an action
 //! the machine cannot perform is one an agent can call that silently does
 //! nothing.
 
-use serde::{Deserialize, Serialize};
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{EventId, FileName, PrintId, Timestamp};
 
-use schemars::JsonSchema;
-
-use crate::file_name::FileName;
-use crate::ids::{ActionId, EventId, PrintId};
-use crate::manifest::JobManifest;
-use crate::policy::PolicyDecision;
-use crate::timestamp::Timestamp;
+use super::ids::ActionId;
+use super::manifest::JobManifest;
+use super::policy::PolicyDecision;
 
 /// Who asked for something.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum Actor {
     /// The supervising agent, naming its session.
     Agent {
@@ -53,7 +56,12 @@ impl Actor {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum ActorClass {
     /// The supervising agent.
     Agent,
@@ -65,7 +73,12 @@ pub enum ActorClass {
 
 /// What an operator's acknowledgement of a failure event asks for next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum AcknowledgementDisposition {
     /// Carry on printing.
     Continue,
@@ -82,7 +95,12 @@ pub enum AcknowledgementDisposition {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum ActionKind {
     /// Pause the print.
     Pause,
@@ -108,7 +126,13 @@ pub enum ActionKind {
 
 /// The whole vocabulary an actor may ask for, and there is no other.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    tag = "action",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum PrintAction {
     /// Pause the print.
     Pause {
@@ -272,7 +296,12 @@ impl PrintAction {
 
 /// What happened when an accepted action reached the printer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum ExecutionOutcome {
     /// The printer took it.
     Succeeded,
@@ -285,7 +314,8 @@ pub enum ExecutionOutcome {
 
 /// One request an actor made, at the instant it made it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ActionRequest {
     /// What was asked for.
     pub action: PrintAction,
@@ -301,7 +331,8 @@ pub struct ActionRequest {
 /// record is written when the decision is taken, which is before — and, for a
 /// rejected request, instead of — anything reaching the printer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ActionRecord {
     /// This record's identifier, minted by the store.
     pub id: ActionId,

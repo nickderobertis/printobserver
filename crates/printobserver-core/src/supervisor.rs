@@ -23,7 +23,7 @@
 //! anyone requested, and none of them takes a decision — the event append in
 //! particular is the *first* thing the loop does, before any decision could
 //! exist. What the policy stands between is a requested
-//! [`PrintAction`](printobserver_types::PrintAction) and the printer.
+//! [`PrintAction`](crate::records::PrintAction) and the printer.
 //!
 //! The port's two reads, `snapshot` and `job`, are outside the rule for that
 //! same reason, and are reached through [`Supervisor::read_snapshot`] and
@@ -39,11 +39,10 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, Weak};
 
+use crate::records::{ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction};
 use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{
-    ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction, PrintId, Timestamp,
-};
+use printobserver_types::{PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
 
 use crate::context::PrintContext;
@@ -313,7 +312,7 @@ impl Supervisor {
             PrintAction::AcknowledgeFailure { disposition, .. } => {
                 if matches!(
                     disposition,
-                    printobserver_types::AcknowledgementDisposition::Stop
+                    crate::records::AcknowledgementDisposition::Stop
                 ) {
                     self.printer.cancel().await
                 } else {

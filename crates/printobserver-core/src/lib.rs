@@ -25,7 +25,7 @@
 //! agent's are.
 //!
 //! * **Effective bounds** are the configured [safety
-//!   envelope](printobserver_types::SafetyEnvelope) intersected with the active
+//!   envelope](crate::records::SafetyEnvelope) intersected with the active
 //!   print's manifest. A manifest may only narrow; a range wider than the
 //!   envelope's is narrowed to the envelope's and the narrowing is recorded on
 //!   the print. See [`bounds`].
@@ -58,6 +58,7 @@ pub mod error;
 pub mod events;
 pub mod expiry;
 pub mod kinds;
+pub mod records;
 pub mod store;
 pub mod supervisor;
 pub mod turn_lock;
@@ -76,6 +77,12 @@ pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
     PortFailureSite, agent_source, operator_source, system_source,
+};
+pub use records::{
+    AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
+    ActorClass, EffectiveBounds, ExecutionOutcome, ImageRecord, Intervention, InterventionId,
+    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintAction, PrintRecord,
+    RejectionReason, SafetyEnvelope,
 };
 pub use store::{
     ActionStore, AuditPage, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore, HistoryQuery,

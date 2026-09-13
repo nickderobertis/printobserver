@@ -659,10 +659,18 @@ def _testing(repo: Repo, where: str, text: str, surface: Surface) -> list[str]:
 
 
 def _rejection_vocabulary(repo: Repo, policy: DocsPolicy) -> set[str] | str:
-    """Every variant and field the contracts' rejection type declares."""
-    path = repo.path(policy.schema_directory) / "printobserver-types" / "RejectionReason.json"
-    if not path.is_file():
+    """Every variant and field the contracts' rejection type declares.
+
+    The schema set is keyed by type name across every declaring crate, so the
+    file is looked for under whichever `schemas/<crate>/` the crate that
+    declares the rejection checks it in under, rather than under one crate's
+    directory named here: a type that moves to the domain that owns it moves
+    its file, and this read follows it.
+    """
+    found = sorted(repo.path(policy.schema_directory).glob("*/RejectionReason.json"))
+    if not found:
         return "the contracts generate no `RejectionReason` schema to read a rejection off"
+    path = found[0]
     invalid = f"`{path.relative_to(repo.root)}` is not a readable rejection schema"
     try:
         schema = json.loads(path.read_text(encoding="utf-8"))

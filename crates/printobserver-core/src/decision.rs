@@ -10,10 +10,11 @@
 //! leave the operator's own record saying it asked for a value it never asked
 //! for.
 
-use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, EffectiveBounds, PolicyDecision, PrintAction,
-    PrintRecord, PrinterState, RejectionReason, SafetyEnvelope, Timestamp,
+use crate::records::{
+    ActionKind, Actor, ActorClass, EffectiveBounds, PolicyDecision, PrintAction, PrintRecord,
+    RejectionReason, SafetyEnvelope,
 };
+use printobserver_types::{Adjustable, PrinterState, Timestamp};
 
 use crate::clock::seconds_between;
 

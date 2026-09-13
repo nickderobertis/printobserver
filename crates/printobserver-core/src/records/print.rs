@@ -1,17 +1,13 @@
 //! The print itself: `PrintObserver`'s own record of one job being watched.
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-use crate::adjustable::Adjustable;
-use crate::ids::PrintId;
-use crate::printer::PrinterState;
-use crate::reported::Range;
-use crate::timestamp::Timestamp;
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{Adjustable, PrintId, PrinterState, Range, Timestamp};
 
 /// One adjustable whose manifest range was wider than the envelope's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct ManifestNarrowing {
     /// The adjustable that was narrowed.
     pub adjustable: Adjustable,
@@ -26,7 +22,8 @@ pub struct ManifestNarrowing {
 /// Obico's own print id is carried beside this record's identifier rather than
 /// as it, because a print may be observed before Obico has one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct PrintRecord {
     /// This print's identifier, minted by the store.
     pub id: PrintId,

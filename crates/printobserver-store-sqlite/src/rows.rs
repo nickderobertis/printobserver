@@ -4,10 +4,8 @@
 //! so a column added to the schema without being read shows up as a mapper that
 //! no longer matches rather than as a value silently dropped.
 
-use printobserver_types::{
-    ActionRecord, ActionRequest, EventRecord, ImageRecord, ImageRef, Intervention, PrintRecord,
-    SupervisionSession,
-};
+use printobserver_core::{ActionRecord, ActionRequest, ImageRecord, Intervention, PrintRecord};
+use printobserver_types::{EventRecord, ImageRef, SupervisionSession};
 use rusqlite::Row;
 
 use crate::values::{from_json, from_json_option, from_tag, parsed, parsed_option};

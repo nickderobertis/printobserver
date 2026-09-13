@@ -68,12 +68,15 @@ use core::pin::Pin;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::records::{
+    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
+    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
+    PrintRecord,
+};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    ActionId, ActionRecord, ActionRequest, Adjustable, EventBody, EventId, EventKind, EventRecord,
-    EventSource, ExecutionOutcome, ImageId, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintId, PrintRecord,
+    Adjustable, EventBody, EventId, EventKind, EventRecord, EventSource, ImageId, PrintId,
     PrinterState, RawBytes, SupervisionSession, Timestamp,
 };
 

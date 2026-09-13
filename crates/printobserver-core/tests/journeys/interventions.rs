@@ -5,11 +5,11 @@
 //! calling no expiry method and issuing no action — because a bounded
 //! intervention expires on its own and nothing has to ask it to.
 
-use printobserver_printer_api::{FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE};
-use printobserver_types::{
-    Actor, Adjustable, Intervention, InterventionOutcome, PolicyDecision, PrintAction, PrintId,
-    PrinterState, Range, RejectionReason, Reported,
+use printobserver_core::{
+    Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
 };
+use printobserver_printer_api::{FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE};
+use printobserver_types::{Adjustable, PrintId, PrinterState, Range, Reported};
 
 use crate::journal::Call;
 use crate::world::{World, assert_same};

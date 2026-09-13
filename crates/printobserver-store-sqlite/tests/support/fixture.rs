@@ -9,12 +9,12 @@ use std::sync::Arc;
 use printobserver_core::store::{
     ActionStore, EventDraft, EventStore, ImageStore, PrintStore, SessionStore,
 };
+use printobserver_core::{ActionRequest, Actor, JobManifest, PrintAction};
 use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
 use printobserver_types::contract::Sample;
 use printobserver_types::serde_json::json;
 use printobserver_types::{
-    ActionRequest, Actor, EventBody, EventId, EventKind, EventSource, JobManifest, PrintAction,
-    PrintId, SupervisionSession, Timestamp,
+    EventBody, EventId, EventKind, EventSource, PrintId, SupervisionSession, Timestamp,
 };
 use tempfile::TempDir;
 

@@ -14,12 +14,10 @@ use crate::child;
 use crate::contracts::record_kinds;
 use crate::fixture::{Store, draft, instant, manifest, request, session};
 use printobserver_core::store::{HistoryQuery, ImageLookup};
+use printobserver_core::{ActionId, ExecutionOutcome, InterventionId, PolicyDecision};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{
-    ActionId, Adjustable, EventId, ExecutionOutcome, ImageId, InterventionId, PolicyDecision,
-    PrintId, RawBytes, Timestamp,
-};
+use printobserver_types::{Adjustable, EventId, ImageId, PrintId, RawBytes, Timestamp};
 
 /// The line the child writes what it wrote on.
 const MARKER: &str = "PRINTOBSERVER-RECORDS ";

@@ -4,13 +4,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, JobManifest, PrintAction, PrintRecord, SafetyEnvelope,
+};
 use printobserver_core::{ActionOutcome, CoreConfig, CoreError, Supervisor, block_on};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, EventBody, EventKind, EventPayload, EventRecord,
-    EventSource, JobManifest, PrintAction, PrintId, PrintRecord, Range, RawBytes, SafetyEnvelope,
-    Timestamp,
+    Adjustable, EventBody, EventKind, EventPayload, EventRecord, EventSource, PrintId, Range,
+    RawBytes, Timestamp,
 };
 use printobserver_vision_api::{MalformedExternalEventPayload, NormalizedAlert, ProviderPrint};
 

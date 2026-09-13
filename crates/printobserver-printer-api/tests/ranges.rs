@@ -25,9 +25,7 @@ use printobserver_printer_api::{
 };
 use printobserver_types::contract::{TypeContract, schema_of};
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{
-    ActionKind, ActorClass, Adjustable, EffectiveBounds, Range, Reported, SafetyEnvelope,
-};
+use printobserver_types::{Adjustable, Range, Reported};
 
 /// Each of the seven fields declares exactly the range the contract states.
 #[test]
@@ -264,85 +262,6 @@ fn adjustable_pattern() -> String {
         .to_owned()
 }
 
-/// An envelope granting one member one range, and every other a distant one.
-fn envelope(member: Adjustable, range: Range) -> SafetyEnvelope {
-    let mut allowed = BTreeMap::from([
-        (Adjustable::Feedrate, Range::new(-1_000.0, -999.0)),
-        (Adjustable::Flowrate, Range::new(-1_000.0, -999.0)),
-        (Adjustable::Fan, Range::new(-1_000.0, -999.0)),
-        (Adjustable::BedTarget, Range::new(-1_000.0, -999.0)),
-        (
-            Adjustable::ToolTarget { tool: 0 },
-            Range::new(-1_000.0, -999.0),
-        ),
-    ]);
-    allowed.insert(member, range);
-    SafetyEnvelope {
-        allowed,
-        actions: BTreeMap::from([(ActorClass::Agent, vec![ActionKind::Pause])]),
-        agent_min_interval_s: 60,
-    }
-}
-
-/// Four of the seven have a corresponding member, and it stays a separate
-/// contract: an envelope inside the plausibility range and one outside it are
-/// both representable and both survive a round trip exactly as given.
-#[test]
-fn an_envelope_inside_or_outside_a_plausibility_range_is_carried_exactly() {
-    let inside_and_outside: [(Adjustable, Range, Range); 5] = [
-        (
-            Adjustable::Feedrate,
-            Range::new(0.5, 1.5),
-            Range::new(20.0, 40.0),
-        ),
-        (
-            Adjustable::Flowrate,
-            Range::new(0.9, 1.1),
-            Range::new(-5.0, -1.0),
-        ),
-        (
-            Adjustable::Fan,
-            Range::new(20.0, 80.0),
-            Range::new(200.0, 400.0),
-        ),
-        (
-            Adjustable::ToolTarget { tool: 0 },
-            Range::new(190.0, 230.0),
-            Range::new(900.0, 1_200.0),
-        ),
-        (
-            Adjustable::BedTarget,
-            Range::new(40.0, 70.0),
-            Range::new(900.0, 1_200.0),
-        ),
-    ];
-    for (member, inside, outside) in inside_and_outside {
-        for range in [inside, outside] {
-            let held = envelope(member, range);
-            let round: SafetyEnvelope =
-                serde_json::from_value(serde_json::to_value(&held).expect("an envelope emits"))
-                    .expect("an envelope parses");
-            assert_eq!(
-                round.allowed.get(&member),
-                Some(&range),
-                "{member} was not carried exactly"
-            );
-
-            let bounds = EffectiveBounds {
-                allowed: BTreeMap::from([(member, range)]),
-            };
-            let round: EffectiveBounds =
-                serde_json::from_value(serde_json::to_value(&bounds).expect("bounds emit"))
-                    .expect("bounds parse");
-            assert_eq!(
-                round.allowed.get(&member),
-                Some(&range),
-                "{member} was not carried exactly"
-            );
-        }
-    }
-}
-
 /// The other three, and the chamber's target, have no member to keep apart from.
 #[test]
 fn the_fields_with_no_corresponding_member_have_none_to_be_confused_with() {
@@ -390,18 +309,19 @@ fn the_vocabulary_reading_refuses_a_fixture_that_gains_a_member() {
     );
 }
 
-/// An envelope granting every member the same range.
-fn envelope_of(range: Range) -> SafetyEnvelope {
-    let mut held = envelope(Adjustable::Feedrate, range);
-    for member in [
-        Adjustable::Flowrate,
-        Adjustable::Fan,
-        Adjustable::BedTarget,
-        Adjustable::ToolTarget { tool: 0 },
-    ] {
-        held.allowed.insert(member, range);
-    }
-    held
+/// The allowed ranges of an envelope granting every member the same range.
+///
+/// The safety envelope is the supervision domain's own record; what this
+/// port's ranges must stay separate from is the map of allowed ranges it
+/// carries, which is what this builds.
+fn envelope_of(range: Range) -> BTreeMap<Adjustable, Range> {
+    BTreeMap::from([
+        (Adjustable::Feedrate, range),
+        (Adjustable::Flowrate, range),
+        (Adjustable::Fan, range),
+        (Adjustable::BedTarget, range),
+        (Adjustable::ToolTarget { tool: 0 }, range),
+    ])
 }
 
 /// The flag a value reports is the same under two envelopes that differ in
@@ -415,21 +335,15 @@ fn envelope_of(range: Range) -> SafetyEnvelope {
 fn the_flag_is_the_same_under_two_envelopes_that_differ_everywhere() {
     let narrow = envelope_of(Range::new(-1_000.0, -999.0));
     let wide = envelope_of(Range::new(-1e9, 1e9));
-    assert_ne!(
-        narrow.allowed, wide.allowed,
-        "the two envelopes do not differ"
-    );
+    assert_ne!(narrow, wide, "the two envelopes do not differ");
 
     for ranged in RANGED_FIELDS {
         let plausible = f64::midpoint(ranged.range.min, ranged.range.max);
         assert!(
-            narrow
-                .allowed
-                .values()
-                .all(|range| !range.contains(plausible)),
+            narrow.values().all(|range| !range.contains(plausible)),
             "the narrow envelope admits {plausible}, so this proves nothing"
         );
-        assert!(wide.allowed.values().all(|range| range.contains(plausible)));
+        assert!(wide.values().all(|range| range.contains(plausible)));
         assert!(
             !Reported::new(plausible, ranged.range).out_of_range(),
             "{}.{} reads {plausible} as implausible under an envelope that excludes it",
@@ -439,9 +353,7 @@ fn the_flag_is_the_same_under_two_envelopes_that_differ_everywhere() {
 
         let implausible = ranged.range.max + 1_000.0;
         assert!(
-            wide.allowed
-                .values()
-                .all(|range| range.contains(implausible)),
+            wide.values().all(|range| range.contains(implausible)),
             "the wide envelope excludes {implausible}, so this proves nothing"
         );
         assert!(

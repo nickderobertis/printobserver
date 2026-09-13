@@ -16,12 +16,12 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, PolicyDecision, PrintAction, RejectionReason,
+};
 use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, EventPayload as _, PolicyDecision, PrintAction,
-    PrintId, PrinterState, Range, RejectionReason,
-};
+use printobserver_types::{Adjustable, EventPayload as _, PrintId, PrinterState, Range};
 
 use crate::journal::{Call, Port};
 use crate::source::{crate_dir, enum_variant_names, parse, read};
@@ -159,8 +159,9 @@ fn stated_rejections() -> Vec<RejectionReason> {
 /// The walk produces every rejected variant the contracts declare.
 #[test]
 fn the_walk_produces_every_rejected_variant_the_contracts_declare() {
-    let path = crate_dir("printobserver-types")
+    let path = crate_dir("printobserver-core")
         .join("src")
+        .join("records")
         .join("policy.rs");
     let declared = enum_variant_names(&parse(&read(&path)), "RejectionReason");
     let produced: Vec<String> = stated_rejections()

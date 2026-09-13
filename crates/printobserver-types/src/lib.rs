@@ -1,11 +1,14 @@
 //! `printobserver-types`.
 //!
-//! Owns: the vocabulary every domain and every client must agree on — the
-//! identity and representation rules, the event log's envelope, the schema
-//! toolkit, and (until the next step of the domain cut moves them with the
-//! store) the policy and supervision records, `PrinterState`, `Adjustable`
-//! and the session types. It holds data and total functions over that data,
-//! never I/O.
+//! Owns: the vocabulary every domain and every client must agree on, and only
+//! that — the identity rule ([`ids`]: the exported [`identifier!`] macro, its
+//! error, the UUID-v7 rule, and the three identifiers the envelope reaches),
+//! the representation rules ([`Timestamp`], [`RawBytes`], [`FileName`],
+//! [`Reported`] and [`Range`]), the event log's envelope ([`event`], with the
+//! image handle [`ImageRef`] it carries), and the schema toolkit
+//! ([`contract`]). It holds data and total functions over that data, never
+//! I/O, and (until the next step of the domain cut moves them with the printer
+//! and supervisor ports) `PrinterState`, `Adjustable` and the session types.
 //!
 //! A type belongs here only if adding or changing one domain's concept does
 //! not require editing it. The event log is the case in point: [`event`]
@@ -14,9 +17,11 @@
 //! a payload type implementing [`EventPayload`] under a `KIND` of its own, so
 //! that a domain adding an event edits its own crate and nothing central. The
 //! same holds for a domain's own shapes: a provider's wire format lives in its
-//! adapter, a port's vocabulary in the port, and the print's context in the
-//! supervision domain, each declared into the schema set through
-//! [`TypeContract::of`] rather than through a list here.
+//! adapter, a port's vocabulary in the port, and the supervision domain's
+//! records — the print, the action, the intervention, the policy, the image —
+//! and the identifiers it mints live in the supervision domain, each declared
+//! into the schema set through [`TypeContract::of`] rather than through a
+//! list here.
 //!
 //! May depend on: no crate of this workspace. It is the root of the graph, so a
 //! type it does not hold is a type the rest of the workspace cannot agree on.
@@ -39,7 +44,8 @@
 //!
 //! * **Identifiers.** Every identifier this system mints is a UUID version 7,
 //!   minted by the store, held as a distinct newtype per record, and serialized
-//!   as its lowercase hyphenated string. See [`ids`].
+//!   as its lowercase hyphenated string. See [`ids`]; a domain declares its own
+//!   through the [`identifier!`] macro.
 //! * **Numbers.** Every temperature, factor, multiplier, percentage and
 //!   fraction is a 64-bit float. Every byte count and every integer identifier
 //!   an external system supplies is a 64-bit signed integer. Every duration is
@@ -62,27 +68,18 @@
 //! through [`serde`], [`schemars`] and [`serde_json`] here rather than by
 //! declaring a dependency of their own.
 
-pub mod action;
 pub mod adjustable;
 pub mod contract;
 pub mod event;
 pub mod file_name;
 pub mod ids;
 pub mod image;
-pub mod intervention;
-pub mod manifest;
-pub mod policy;
-pub mod print;
 pub mod printer;
 pub mod raw;
 pub mod reported;
 pub mod session;
 pub mod timestamp;
 
-pub use action::{
-    AcknowledgementDisposition, ActionKind, ActionRecord, ActionRequest, Actor, ActorClass,
-    ExecutionOutcome, PrintAction,
-};
 pub use adjustable::{Adjustable, AdjustableError};
 pub use contract::{
     EVENT_KIND_MARKER, Sample, TypeContract, WireField, declared, event_schema_of, schema_of,
@@ -92,12 +89,8 @@ pub use event::{
     EventBody, EventKind, EventKindError, EventPayload, EventRecord, EventSource, KIND_PATTERN,
 };
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
-pub use ids::{ActionId, EventId, IdentifierError, ImageId, InterventionId, PrintId};
-pub use image::{ImageRecord, ImageRef};
-pub use intervention::{Intervention, InterventionOutcome};
-pub use manifest::JobManifest;
-pub use policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
-pub use print::{ManifestNarrowing, PrintRecord};
+pub use ids::{EventId, IdentifierError, ImageId, PrintId};
+pub use image::ImageRef;
 pub use printer::PrinterState;
 pub use raw::RawBytes;
 pub use reported::{Range, Reported};

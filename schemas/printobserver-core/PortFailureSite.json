@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](printobserver_types::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](printobserver_types::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
+  "description": "Where a port failed while an event was being handled.\n\nA closed set of exactly the sites at which a failure has nowhere else to be\nrecorded. The printer's action methods record theirs on the\n[`ActionRecord`](crate::records::ActionRecord) the request minted, and a restoring\ncall records its own on the [`Intervention`](crate::records::Intervention) it was\nexpiring; those are not sites here, because a second record of them would be\na second version of one fact.",
   "oneOf": [
     {
       "const": "printer_snapshot",

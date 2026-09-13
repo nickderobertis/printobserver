@@ -34,7 +34,7 @@ pub enum Confidence {
 /// The agent's written record of one supervision turn.
 ///
 /// This is deliberately not how the agent acts: acting is a
-/// [`PrintAction`](printobserver_types::PrintAction) that policy rules on.
+/// `PrintAction` that policy rules on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]

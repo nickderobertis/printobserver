@@ -24,7 +24,7 @@ from treecopy import REPO_ROOT, Tree, copy_tree
 RUST = "crates/printobserver-sdk/src/contract.rs"
 PYTHON = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
 NODE = "npm/printobserver-sdk/src/contract.ts"
-IMAGE_RECORD = "schemas/printobserver-types/ImageRecord.json"
+IMAGE_RECORD = "schemas/printobserver-core/ImageRecord.json"
 #: A payload marked with a kind, which no answer shape reaches by reference.
 PORT_FAILURE_PAYLOAD = "schemas/printobserver-core/PortFailurePayload.json"
 

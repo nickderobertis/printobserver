@@ -22,9 +22,8 @@
 //! particular — and a walk whose order was load-bearing would be proving the
 //! order rather than the operations.
 
-use printobserver_types::{
-    ActionKind, Adjustable, PrinterState, serde_json::Value, serde_json::json,
-};
+use printobserver_core::ActionKind;
+use printobserver_types::{Adjustable, PrinterState, serde_json::Value, serde_json::json};
 
 use printobserver_server::{Effect, OPERATIONS, Operation};
 
@@ -61,7 +60,7 @@ fn body(actor: &Value, extra: &[(&str, Value)]) -> Value {
 /// A manifest a start is bounded by.
 fn manifest() -> Value {
     printobserver_types::serde_json::to_value(
-        <printobserver_types::JobManifest as printobserver_types::contract::Sample>::sample_full(),
+        <printobserver_core::JobManifest as printobserver_types::contract::Sample>::sample_full(),
     )
     .expect("a manifest renders")
 }

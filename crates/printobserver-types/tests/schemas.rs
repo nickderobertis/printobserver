@@ -264,14 +264,14 @@ fn the_drift_check_refuses_an_altered_schema_in_either_crate() {
         drift(&schema_dir(&scratch.root, "printobserver-types"), &entries).is_empty(),
         "the matching tree was refused"
     );
-    scratch.alter("printobserver-types", "PrintRecord");
+    scratch.alter("printobserver-types", "EventRecord");
     let findings = drift(&schema_dir(&scratch.root, "printobserver-types"), &entries);
     assert_eq!(
         findings.len(),
         1,
         "the altered type-crate schema was not refused: {findings:?}"
     );
-    assert!(findings[0].contains("PrintRecord.json"));
+    assert!(findings[0].contains("EventRecord.json"));
 
     let port = ScratchTree::new("vision");
     let committed =

@@ -14,14 +14,14 @@ use crate::fixture::manifest;
 use printobserver_core::store::{HistoryQuery, ImageLookup, StoreError};
 
 use crate::fixture::Store;
+use printobserver_core::{
+    ActionId, Actor, ExecutionOutcome, InterventionOutcome, PolicyDecision, PrintAction,
+};
 use printobserver_store_sqlite::{
     CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, MIGRATIONS, SqliteStore,
 };
 use printobserver_types::serde_json::{self, json};
-use printobserver_types::{
-    ActionId, Actor, Adjustable, EventBody, EventId, EventKind, ExecutionOutcome, ImageId,
-    InterventionOutcome, PolicyDecision, PrintAction, PrintId, Timestamp,
-};
+use printobserver_types::{Adjustable, EventBody, EventId, EventKind, ImageId, PrintId, Timestamp};
 use rusqlite::Connection;
 use tempfile::TempDir;
 

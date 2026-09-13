@@ -10,9 +10,10 @@ use std::path::{Path, PathBuf};
 use crate::block_on::block_on;
 use crate::child;
 use crate::fixture::{Store, draft, instant};
+use printobserver_core::PrintRecord;
 use printobserver_core::store::ImageLookup;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
-use printobserver_types::{EventRecord, PrintRecord, RawBytes};
+use printobserver_types::{EventRecord, RawBytes};
 use tempfile::TempDir;
 
 /// One byte sequence, and the SHA-256 of it taken outside this crate.

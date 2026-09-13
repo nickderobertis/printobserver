@@ -171,7 +171,7 @@ fn path(name: &str) -> String {
 /// A manifest a write can carry.
 fn manifest() -> Value {
     printobserver_types::serde_json::to_value(
-        <printobserver_types::JobManifest as printobserver_types::contract::Sample>::sample_full(),
+        <printobserver_core::JobManifest as printobserver_types::contract::Sample>::sample_full(),
     )
     .expect("a manifest renders")
 }
@@ -184,25 +184,25 @@ fn accepted_body(operation: &Operation) -> Value {
     };
     let object = body.as_object_mut().expect("the body is an object");
     match kind {
-        printobserver_types::ActionKind::StartPrint => {
+        printobserver_core::ActionKind::StartPrint => {
             object.insert("file_name".to_owned(), json!("benchy.gcode"));
             object.insert("manifest".to_owned(), manifest());
         }
-        printobserver_types::ActionKind::SetFeedrateFactor
-        | printobserver_types::ActionKind::SetFlowrateFactor => {
+        printobserver_core::ActionKind::SetFeedrateFactor
+        | printobserver_core::ActionKind::SetFlowrateFactor => {
             object.insert("factor".to_owned(), json!(1.0));
         }
-        printobserver_types::ActionKind::SetToolTargetC => {
+        printobserver_core::ActionKind::SetToolTargetC => {
             object.insert("tool".to_owned(), json!(0));
             object.insert("target_c".to_owned(), json!(215.0));
         }
-        printobserver_types::ActionKind::SetBedTargetC => {
+        printobserver_core::ActionKind::SetBedTargetC => {
             object.insert("target_c".to_owned(), json!(60.0));
         }
-        printobserver_types::ActionKind::SetFanPercent => {
+        printobserver_core::ActionKind::SetFanPercent => {
             object.insert("percent".to_owned(), json!(40.0));
         }
-        printobserver_types::ActionKind::AcknowledgeFailure => {
+        printobserver_core::ActionKind::AcknowledgeFailure => {
             object.insert(
                 "event_id".to_owned(),
                 json!(printobserver_types::EventId::new()),

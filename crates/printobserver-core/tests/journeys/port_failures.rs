@@ -16,12 +16,11 @@
 //! printer was left holding, which is the whole point of recording it.
 
 use printobserver_core::store::StoreError;
+use printobserver_core::{ActionKind, Actor, ExecutionOutcome, InterventionOutcome, PrintAction};
 use printobserver_core::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite};
 use printobserver_printer_api::PrinterError;
 use printobserver_supervisor_api::SupervisorError;
-use printobserver_types::{
-    ActionKind, Actor, ExecutionOutcome, InterventionOutcome, PrintAction, PrintId, PrinterState,
-};
+use printobserver_types::{PrintId, PrinterState};
 use printobserver_vision_api::VisionError;
 
 use crate::action_vocabulary::{action_for, state_for};

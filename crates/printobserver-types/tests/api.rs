@@ -1,58 +1,22 @@
 //! What a consumer reads off these types, beyond their wire forms.
 //!
-//! The accessors here are how core matches on a value without destructuring it,
-//! so each is held to agreeing with the data it reads: an action's kind is the
-//! variant it is, an actor's class is the actor it is, and a reported value's
-//! flag is what its range says.
+//! The accessors here are how a consumer reads a value without destructuring
+//! it, so each is held to agreeing with the data it reads: an adjustable is the
+//! member its string names, and a reported value's flag is what its range says.
+//! The supervision domain's own accessors — an action's kind, an actor's class
+//! — are held the same way where those records are declared.
 
 use std::str::FromStr as _;
 
 use chrono::{DateTime, TimeZone as _, Utc};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
-    AcknowledgementDisposition, ActionKind, Actor, ActorClass, Adjustable, EventKind, EventRecord,
-    FileName, FileNameRefusal, PrintAction, PrintId, Range, RawBytes, Reported, Timestamp,
+    Adjustable, EventKind, EventRecord, FileName, FileNameRefusal, PrintId, Range, RawBytes,
+    Reported, Timestamp,
 };
 
 /// A range to flag against, in the shape the printer port declares its own.
 const FACTOR_RANGE: Range = Range::new(0.1, 10.0);
-
-/// Every action reads back the kind, the reason and the actor it carries.
-#[test]
-fn every_action_reads_back_what_it_carries() {
-    let mut kinds = Vec::new();
-    for action in
-        std::iter::once(PrintAction::sample_full()).chain(PrintAction::sample_alternates())
-    {
-        assert!(
-            !action.reason().is_empty(),
-            "{action:?} carries an empty reason"
-        );
-        assert_eq!(action.actor().class(), action.actor().class());
-        kinds.push(action.kind());
-    }
-    kinds.sort();
-    kinds.dedup();
-    assert_eq!(kinds.len(), 10, "the corpus does not carry every kind");
-    assert_eq!(
-        PrintAction::sample_full().kind(),
-        ActionKind::SetFeedrateFactor
-    );
-}
-
-/// Every actor reports the class a safety envelope grants actions to.
-#[test]
-fn every_actor_reports_its_class() {
-    assert_eq!(
-        Actor::Agent {
-            session_name: "print-1".to_owned()
-        }
-        .class(),
-        ActorClass::Agent
-    );
-    assert_eq!(Actor::Operator.class(), ActorClass::Operator);
-    assert_eq!(Actor::System.class(), ActorClass::System);
-}
 
 /// A minted identifier is a version 7 UUID, displayed in the one spelling.
 #[test]
@@ -223,13 +187,9 @@ fn a_file_name_is_the_characters_it_was_given() {
     }
 }
 
-/// The envelope's sample is under a kind of its own, and a disposition samples.
+/// The envelope's sample is under a kind of its own.
 #[test]
 fn the_envelope_sample_is_under_a_kind_of_its_own() {
     assert_eq!(EventRecord::sample_full().kind(), &EventKind::sample_full());
     assert_eq!(EventKind::sample_full().as_str(), "sample_event");
-    assert_eq!(
-        AcknowledgementDisposition::sample_full(),
-        AcknowledgementDisposition::Watch
-    );
 }

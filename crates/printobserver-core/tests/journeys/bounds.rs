@@ -7,10 +7,10 @@
 //! context a supervision turn is given and off the print itself.
 
 use printobserver_core::PrintContext;
-use printobserver_types::{
-    Actor, Adjustable, FileName, JobManifest, PolicyDecision, PrintAction, PrintRecord,
-    PrinterState, Range, RejectionReason,
+use printobserver_core::{
+    Actor, JobManifest, PolicyDecision, PrintAction, PrintRecord, RejectionReason,
 };
+use printobserver_types::{Adjustable, FileName, PrinterState, Range};
 
 use crate::world::{World, manifest};
 

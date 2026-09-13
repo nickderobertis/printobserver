@@ -8,10 +8,9 @@
 //! continuing one does.
 
 use printobserver_core::AgentAssessmentPayload;
+use printobserver_core::{Actor, PolicyDecision, PrintAction};
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::{
-    Actor, EventPayload as _, FileName, PolicyDecision, PrintAction, PrinterState,
-};
+use printobserver_types::{EventPayload as _, FileName, PrinterState};
 use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::journal::{Call, Port};
@@ -21,7 +20,7 @@ use crate::world::{
 };
 
 /// A print carrying a manifest and one active intervention, ready for an event.
-fn prepared() -> (World, printobserver_types::PrintRecord) {
+fn prepared() -> (World, printobserver_core::PrintRecord) {
     let world = World::new();
     let print = world.open_print(7);
 
@@ -146,7 +145,7 @@ fn assert_the_agents_action_took_the_ordinary_path(world: &World) {
     assert_eq!(outcome.record.decision, PolicyDecision::Accepted);
     assert_eq!(
         outcome.record.request.actor.class(),
-        printobserver_types::ActorClass::Agent,
+        printobserver_core::ActorClass::Agent,
         "the agent's action was not recorded with the agent as its actor"
     );
 }

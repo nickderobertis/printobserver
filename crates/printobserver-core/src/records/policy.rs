@@ -2,22 +2,21 @@
 
 use std::collections::BTreeMap;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use printobserver_types::schemars::JsonSchema;
+use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{Adjustable, PrinterState, Range};
 
-use crate::action::{ActionKind, ActorClass};
-use crate::adjustable::Adjustable;
-use crate::printer::PrinterState;
-use crate::reported::Range;
+use super::action::{ActionKind, ActorClass};
 
 /// Server configuration: what any actor may ask for at all.
 ///
 /// This is the operator's safety envelope. It is a different contract from the
-/// plausibility ranges [`Reported`](crate::Reported) fields carry, is narrower
+/// plausibility ranges [`Reported`](printobserver_types::Reported) fields carry, is narrower
 /// by orders of magnitude, and the two are never intersected, compared or
 /// substituted for one another.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct SafetyEnvelope {
     /// The range each adjustable may be set to, inclusive.
     pub allowed: BTreeMap<Adjustable, Range>,
@@ -33,7 +32,8 @@ pub struct SafetyEnvelope {
 /// before it asks. Computing one is the supervision core's; this crate declares
 /// the shape and nothing that produces it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub struct EffectiveBounds {
     /// The range each adjustable may be set to, inclusive.
     pub allowed: BTreeMap<Adjustable, Range>,
@@ -44,7 +44,12 @@ pub struct EffectiveBounds {
 /// Each rejection is a distinct variant, so a consumer distinguishes them by
 /// matching rather than by reading a message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum RejectionReason {
     /// The value asked for is outside the range allowed for that adjustable.
     OutOfBounds {
@@ -85,7 +90,12 @@ pub enum RejectionReason {
 
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum PolicyDecision {
     /// The request may proceed.
     Accepted,

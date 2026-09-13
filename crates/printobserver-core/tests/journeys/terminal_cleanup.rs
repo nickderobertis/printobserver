@@ -8,13 +8,12 @@
 //! the printer holding the intervention's applied value with nothing in the
 //! record saying so.
 
+use printobserver_core::{Actor, Intervention, InterventionOutcome, PrintAction};
 use printobserver_printer_api::{
     FAN_PERCENT_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot, PrinterError,
     PrinterSnapshot,
 };
-use printobserver_types::{
-    Actor, Intervention, InterventionOutcome, PrintAction, PrintId, PrinterState, Reported,
-};
+use printobserver_types::{PrintId, PrinterState, Reported};
 
 use crate::fakes::{PrinterMethod, printer_snapshot};
 use crate::journal::Call;

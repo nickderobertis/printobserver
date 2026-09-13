@@ -7,12 +7,12 @@
 use std::collections::BTreeMap;
 
 use printobserver_core::store::StoreError;
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, PrintAction, RejectionReason, SafetyEnvelope,
+};
 use printobserver_printer_api::PrinterError;
 use printobserver_supervisor_api::SupervisorError;
-use printobserver_types::{
-    ActionKind, Actor, ActorClass, Adjustable, PrintAction, PrintId, PrinterState, Range,
-    RejectionReason, SafetyEnvelope,
-};
+use printobserver_types::{Adjustable, PrintId, PrinterState, Range};
 use printobserver_vision_api::VisionError;
 
 use printobserver_core::{
@@ -223,7 +223,7 @@ fn acknowledging_a_failure_without_a_stop_reaches_no_printer_method() {
             print.id,
             PrintAction::AcknowledgeFailure {
                 event_id: printobserver_types::EventId::new(),
-                disposition: printobserver_types::AcknowledgementDisposition::Watch,
+                disposition: printobserver_core::AcknowledgementDisposition::Watch,
                 reason: "watching it more closely".to_owned(),
                 actor: Actor::Operator,
             },
@@ -232,11 +232,11 @@ fn acknowledging_a_failure_without_a_stop_reaches_no_printer_method() {
 
     assert_eq!(
         outcome.record.decision,
-        printobserver_types::PolicyDecision::Accepted
+        printobserver_core::PolicyDecision::Accepted
     );
     assert_eq!(
         outcome.record.outcome,
-        Some(printobserver_types::ExecutionOutcome::Succeeded)
+        Some(printobserver_core::ExecutionOutcome::Succeeded)
     );
     assert_eq!(world.journal.printer_actions(), Vec::new());
     world.journal.assert_no_violations();

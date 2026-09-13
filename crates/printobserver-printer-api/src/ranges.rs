@@ -7,7 +7,7 @@
 //! envelope.** A reading outside one of them says the source reported something
 //! implausible — a disconnected thermistor, a firmware that answers in another
 //! unit. What an actor is *allowed to ask for* is
-//! [`SafetyEnvelope`](printobserver_types::SafetyEnvelope), which is server
+//! the supervision domain's `SafetyEnvelope`, which is server
 //! configuration and is narrower by orders of magnitude; nothing reads these
 //! ranges as a bound on an action, and the two are never intersected, compared
 //! or substituted for one another.

@@ -11,14 +11,15 @@
 //! The three source names are the actors this domain writes events on behalf
 //! of: the supervisor itself, a person, and the supervising agent.
 
+use crate::records::{
+    AcknowledgementDisposition, ActionId, Actor, InterventionId, InterventionOutcome,
+    PolicyDecision, PrintAction,
+};
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{
-    AcknowledgementDisposition, ActionId, Actor, Adjustable, EventId, EventPayload, EventSource,
-    InterventionId, InterventionOutcome, PolicyDecision, PrintAction,
-};
+use printobserver_types::{Adjustable, EventId, EventPayload, EventSource};
 
 /// The source name of an event the supervisor raised itself.
 pub const SYSTEM_SOURCE: &str = "system";
@@ -216,8 +217,8 @@ impl Sample for OperatorAcknowledgementPayload {
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
 /// recorded. The printer's action methods record theirs on the
-/// [`ActionRecord`](printobserver_types::ActionRecord) the request minted, and a restoring
-/// call records its own on the [`Intervention`](printobserver_types::Intervention) it was
+/// [`ActionRecord`](crate::records::ActionRecord) the request minted, and a restoring
+/// call records its own on the [`Intervention`](crate::records::Intervention) it was
 /// expiring; those are not sites here, because a second record of them would be
 /// a second version of one fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

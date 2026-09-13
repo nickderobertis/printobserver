@@ -12,13 +12,12 @@
 //! this domain's to collect: a domain that adds a fact a turn should see edits
 //! this crate and regenerates the clients, and nothing central.
 
+use crate::records::{EffectiveBounds, Intervention, JobManifest, PrintRecord};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{
-    EffectiveBounds, EventRecord, ImageRef, Intervention, JobManifest, PrintRecord,
-};
+use printobserver_types::{EventRecord, ImageRef};
 
 /// Everything a supervision turn is given about one print.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
