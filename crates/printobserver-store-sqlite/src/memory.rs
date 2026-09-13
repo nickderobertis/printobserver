@@ -19,9 +19,9 @@ use printobserver_core::{
     InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
     PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::{
-    Adjustable, EventId, EventRecord, ImageId, ImageRef, PrintId, PrinterState, RawBytes,
-    SupervisionSession, Timestamp,
+    EventId, EventRecord, ImageId, ImageRef, PrintId, RawBytes, SupervisionSession, Timestamp,
 };
 
 use crate::hold::{HoldPoints, settle_label};

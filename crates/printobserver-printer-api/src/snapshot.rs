@@ -12,7 +12,9 @@ use printobserver_types::contract::Sample;
 use printobserver_types::reported::deserialize_ranged;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Deserializer, Serialize};
-use printobserver_types::{PrinterState, Reported, Timestamp};
+use printobserver_types::{Reported, Timestamp};
+
+use crate::state::PrinterState;
 
 use crate::ranges::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,

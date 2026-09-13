@@ -19,12 +19,10 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::adjustable::Adjustable;
 use crate::event::{EventBody, EventKind, EventPayload, EventRecord, EventSource};
 use crate::file_name::FileName;
 use crate::ids::{EventId, ImageId, PrintId};
 use crate::image::ImageRef;
-use crate::printer::PrinterState;
 use crate::raw::RawBytes;
 use crate::reported::{Range, Reported};
 use crate::session::{SessionPhase, SupervisionSession};
@@ -203,7 +201,6 @@ macro_rules! declare {
 #[must_use]
 pub fn declared() -> Vec<TypeContract> {
     declare![
-        Adjustable,
         EventId,
         EventBody,
         EventKind,
@@ -213,7 +210,6 @@ pub fn declared() -> Vec<TypeContract> {
         ImageId,
         ImageRef,
         PrintId,
-        PrinterState,
         Range,
         RawBytes,
         Reported<f64> => "Reported",
@@ -303,18 +299,6 @@ impl Sample for Range {
 impl Sample for Reported<f64> {
     fn sample_full() -> Self {
         Self::new(1.0, Range::sample_full())
-    }
-}
-
-impl Sample for Adjustable {
-    fn sample_full() -> Self {
-        Self::ToolTarget { tool: 0 }
-    }
-}
-
-impl Sample for PrinterState {
-    fn sample_full() -> Self {
-        Self::Printing
     }
 }
 

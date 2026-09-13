@@ -290,16 +290,20 @@ fn printer(instance: &Scripted) -> OctoPrintPrinter {
 pub async fn hold_the_print_running(instance: &Scripted) {
     let printer = printer(instance);
     let state = printer.job().await.expect("a job snapshot").state;
-    if state != printobserver_types::PrinterState::Printing {
-        if state == printobserver_types::PrinterState::Paused {
+    if state != printobserver_printer_api::PrinterState::Printing {
+        if state == printobserver_printer_api::PrinterState::Paused {
             printer
                 .cancel()
                 .await
                 .expect("the paused print is cancelled");
-            until_job(&printer, &printobserver_types::PrinterState::Operational).await;
+            until_job(
+                &printer,
+                &printobserver_printer_api::PrinterState::Operational,
+            )
+            .await;
         }
         if printer.job().await.expect("a job snapshot").state
-            != printobserver_types::PrinterState::Printing
+            != printobserver_printer_api::PrinterState::Printing
         {
             printer
                 .start(printobserver_types::FileName::new(HOLD_FILE).expect("a file name"))
@@ -307,11 +311,11 @@ pub async fn hold_the_print_running(instance: &Scripted) {
                 .expect("the hold print starts");
         }
     }
-    until_job(&printer, &printobserver_types::PrinterState::Printing).await;
+    until_job(&printer, &printobserver_printer_api::PrinterState::Printing).await;
 }
 
 /// Wait until the machine reports one job state.
-async fn until_job(printer: &OctoPrintPrinter, wanted: &printobserver_types::PrinterState) {
+async fn until_job(printer: &OctoPrintPrinter, wanted: &printobserver_printer_api::PrinterState) {
     let deadline = std::time::Instant::now() + REACHED;
     let mut last = None;
     while std::time::Instant::now() < deadline {

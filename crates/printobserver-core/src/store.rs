@@ -73,11 +73,12 @@ use crate::records::{
     InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
     PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    Adjustable, EventBody, EventId, EventKind, EventRecord, EventSource, ImageId, PrintId,
-    PrinterState, RawBytes, SupervisionSession, Timestamp,
+    EventBody, EventId, EventKind, EventRecord, EventSource, ImageId, PrintId, RawBytes,
+    SupervisionSession, Timestamp,
 };
 
 /// A future these traits' methods answer with, in the one shape a trait object

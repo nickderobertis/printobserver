@@ -14,7 +14,8 @@ use crate::records::{
     ActionKind, Actor, ActorClass, EffectiveBounds, PolicyDecision, PrintAction, PrintRecord,
     RejectionReason, SafetyEnvelope,
 };
-use printobserver_types::{Adjustable, PrinterState, Timestamp};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::Timestamp;
 
 use crate::clock::seconds_between;
 

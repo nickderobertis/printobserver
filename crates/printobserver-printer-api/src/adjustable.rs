@@ -1,11 +1,23 @@
 //! The closed set of things an adjustment may change.
+//!
+//! This is the printer domain's vocabulary: each member names what one of
+//! the port's setters — [`set_feedrate_factor`] and the four beside it —
+//! changes on the machine, and it is what a manifest, an envelope and a
+//! bounded intervention name a bound by. It is declared beside the port whose
+//! methods it is the vocabulary of, so that a printer that gains an adjustable
+//! edits this crate and the adapters behind it, and nothing central.
+//!
+//! [`set_feedrate_factor`]: crate::PrinterPort::set_feedrate_factor
 
 use core::fmt;
 use core::str::FromStr;
 use std::borrow::Cow;
 
-use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+use printobserver_types::contract::Sample;
+use printobserver_types::schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use printobserver_types::serde::{
+    Deserialize, Deserializer, Serialize, Serializer, de::Error as _,
+};
 
 /// The prefix the tool-target adjustable spells its tool number after.
 const TOOL_TARGET: &str = "tool_target";
@@ -118,5 +130,11 @@ impl JsonSchema for Adjustable {
             "description": "One thing an adjustment may change.",
             "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$"
         })
+    }
+}
+
+impl Sample for Adjustable {
+    fn sample_full() -> Self {
+        Self::ToolTarget { tool: 0 }
     }
 }

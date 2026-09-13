@@ -14,10 +14,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{
     BoxFuture, HeaterSnapshot, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
 };
-use printobserver_types::{Adjustable, FileName, PrinterState, Reported, Timestamp};
+use printobserver_types::{FileName, Reported, Timestamp};
 
 /// One thing the machine was asked to do.
 #[derive(Debug, Clone, PartialEq)]

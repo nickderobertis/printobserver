@@ -19,11 +19,12 @@ use printobserver_core::store::{
 };
 use printobserver_core::{ActionRequest, Actor, PolicyDecision, PrintAction};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
+use printobserver_printer_api::Adjustable;
 use printobserver_server::{
     Ports, Server, ServerConfig, StartupOutcome, StartupReconciliationPayload,
 };
 use printobserver_store_sqlite::SqliteStore;
-use printobserver_types::{Adjustable, EventPayload as _, PrintId, Timestamp};
+use printobserver_types::{EventPayload as _, PrintId, Timestamp};
 use tempfile::TempDir;
 
 use crate::agent::StandInAgent;

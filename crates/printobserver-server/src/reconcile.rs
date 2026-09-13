@@ -27,10 +27,11 @@ use std::sync::Arc;
 use printobserver_core::store::{ActionStore, EventDraft, EventStore, PrintStore, SessionStore};
 use printobserver_core::{CoreError, Supervisor, system_source};
 use printobserver_core::{Intervention, InterventionId, InterventionOutcome};
+use printobserver_printer_api::Adjustable;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{Adjustable, EventBody, EventPayload, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventPayload, PrintId, Timestamp};
 
 /// What one restart put back the way it found it.
 ///

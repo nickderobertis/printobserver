@@ -27,7 +27,8 @@
 use crate::records::{
     Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
 };
-use printobserver_types::{Adjustable, PrintId};
+use printobserver_printer_api::Adjustable;
+use printobserver_types::PrintId;
 
 use crate::decision::{DecisionInput, decide};
 use crate::error::CoreError;

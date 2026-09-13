@@ -2,9 +2,10 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::Range;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{Adjustable, PrinterState, Range};
 
 use super::action::{ActionKind, ActorClass};
 

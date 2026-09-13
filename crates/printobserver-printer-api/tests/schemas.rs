@@ -1,5 +1,6 @@
-//! The three snapshots this port declares carry the stated fields, emit their
-//! schemas, and hold the wire rules the contracts state.
+//! The types this port declares — the three snapshots, the printer's state
+//! and the adjustables — carry the stated fields, emit their schemas, and hold
+//! the wire rules the contracts state.
 //!
 //! The `printobserver-types:schemas` graph target runs this beside the other
 //! declaring crates' `schemas` tests: with `PRINTOBSERVER_SCHEMAS=write` it
@@ -58,8 +59,11 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
 /// instance must carry it.
 type StatedField = (&'static str, &'static str, bool);
 
-/// The fields the three snapshots carry, type by type.
+/// The fields the declared types carry, type by type. A type whose whole wire
+/// form is a scalar — an adjustable is its spelling — declares no field at
+/// all, and its wire form is asserted where the accessors are.
 const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
+    ("Adjustable", &[]),
     (
         "HeaterSnapshot",
         &[
@@ -95,6 +99,7 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
             ("tools", "array:HeaterSnapshot", true),
         ],
     ),
+    ("PrinterState", &[("unknown", "string", true)]),
 ];
 
 /// Every declared type carries exactly the fields the contract states, under
@@ -156,7 +161,9 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
             .map(|field| field.name)
             .collect();
         let minimal = entry.minimal();
-        let object = minimal.as_object().expect("a snapshot is an object");
+        let Some(object) = minimal.as_object() else {
+            continue;
+        };
         for name in optional {
             assert!(
                 !object.contains_key(&name),

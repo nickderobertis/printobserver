@@ -15,11 +15,12 @@ use crate::records::{
     AcknowledgementDisposition, ActionId, Actor, InterventionId, InterventionOutcome,
     PolicyDecision, PrintAction,
 };
+use printobserver_printer_api::Adjustable;
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{Adjustable, EventId, EventPayload, EventSource};
+use printobserver_types::{EventId, EventPayload, EventSource};
 
 /// The source name of an event the supervisor raised itself.
 pub const SYSTEM_SOURCE: &str = "system";

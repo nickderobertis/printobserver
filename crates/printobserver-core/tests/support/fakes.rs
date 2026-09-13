@@ -25,6 +25,7 @@ use printobserver_core::{
     PrintAction, PrintRecord,
 };
 use printobserver_core::{Clock, PrintContext, Supervisor};
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{
     BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
 };
@@ -32,8 +33,8 @@ use printobserver_supervisor_api::{
     AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
 use printobserver_types::{
-    Adjustable, EventId, EventRecord, FileName, ImageId, PrintId, PrinterState, RawBytes,
-    SessionPhase, SupervisionSession, Timestamp,
+    EventId, EventRecord, FileName, ImageId, PrintId, RawBytes, SessionPhase, SupervisionSession,
+    Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 

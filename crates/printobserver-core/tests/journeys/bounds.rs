@@ -10,7 +10,8 @@ use printobserver_core::PrintContext;
 use printobserver_core::{
     Actor, JobManifest, PolicyDecision, PrintAction, PrintRecord, RejectionReason,
 };
-use printobserver_types::{Adjustable, FileName, PrinterState, Range};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::{FileName, Range};
 
 use crate::world::{World, manifest};
 

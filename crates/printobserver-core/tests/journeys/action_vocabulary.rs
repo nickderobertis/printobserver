@@ -13,7 +13,8 @@ use printobserver_core::{
     AcknowledgementDisposition, ActionKind, Actor, ActorClass, PolicyDecision, PrintAction,
     RejectionReason, SafetyEnvelope,
 };
-use printobserver_types::{Adjustable, EventId, FileName, PrinterState};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::{EventId, FileName};
 
 use crate::journal::Call;
 use crate::source::{crate_dir, enum_variant_names, parse, read};

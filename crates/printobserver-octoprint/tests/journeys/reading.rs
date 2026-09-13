@@ -8,8 +8,8 @@
 //! printer does not have, a body that is not JSON — reachable on demand.
 
 use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter};
+use printobserver_printer_api::PrinterState;
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
-use printobserver_types::PrinterState;
 
 use crate::block_on::block_on;
 use crate::numbers::exactly;

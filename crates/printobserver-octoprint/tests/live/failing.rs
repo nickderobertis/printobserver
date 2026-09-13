@@ -13,8 +13,9 @@
 //! answers something else, in the deterministic tier's `failing` journey, which
 //! drives the same client over the same socket.
 
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
-use printobserver_types::{Adjustable, FileName};
+use printobserver_types::FileName;
 
 use crate::block_on::block_on;
 use crate::env::Scripted;

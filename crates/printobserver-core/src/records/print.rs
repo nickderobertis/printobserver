@@ -1,8 +1,9 @@
 //! The print itself: `PrintObserver`'s own record of one job being watched.
 
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{Adjustable, PrintId, PrinterState, Range, Timestamp};
+use printobserver_types::{PrintId, Range, Timestamp};
 
 /// One adjustable whose manifest range was wider than the envelope's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

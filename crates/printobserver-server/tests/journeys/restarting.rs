@@ -19,13 +19,14 @@ use printobserver_core::{
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload, system_source,
 };
 use printobserver_obico::{ObicoFailureAlertPayload, ObicoPrinterNotificationPayload};
+use printobserver_printer_api::Adjustable;
 use printobserver_server::StartupReconciliationPayload;
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
 };
 use printobserver_types::contract::Sample as _;
 use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{Adjustable, EventBody, EventKind, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventKind, PrintId, Timestamp};
 use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::http_host::image_host;

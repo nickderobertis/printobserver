@@ -7,8 +7,8 @@
 //! [`Reported`] and [`Range`]), the event log's envelope ([`event`], with the
 //! image handle [`ImageRef`] it carries), and the schema toolkit
 //! ([`contract`]). It holds data and total functions over that data, never
-//! I/O, and (until the next step of the domain cut moves them with the printer
-//! and supervisor ports) `PrinterState`, `Adjustable` and the session types.
+//! I/O, and (until the next step of the domain cut moves them with the
+//! supervisor port) the session types.
 //!
 //! A type belongs here only if adding or changing one domain's concept does
 //! not require editing it. The event log is the case in point: [`event`]
@@ -68,19 +68,16 @@
 //! through [`serde`], [`schemars`] and [`serde_json`] here rather than by
 //! declaring a dependency of their own.
 
-pub mod adjustable;
 pub mod contract;
 pub mod event;
 pub mod file_name;
 pub mod ids;
 pub mod image;
-pub mod printer;
 pub mod raw;
 pub mod reported;
 pub mod session;
 pub mod timestamp;
 
-pub use adjustable::{Adjustable, AdjustableError};
 pub use contract::{
     EVENT_KIND_MARKER, Sample, TypeContract, WireField, declared, event_schema_of, schema_of,
     wire_fields,
@@ -91,7 +88,6 @@ pub use event::{
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
 pub use ids::{EventId, IdentifierError, ImageId, PrintId};
 pub use image::ImageRef;
-pub use printer::PrinterState;
 pub use raw::RawBytes;
 pub use reported::{Range, Reported};
 pub use session::{SessionPhase, SupervisionSession};

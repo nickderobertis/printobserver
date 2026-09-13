@@ -8,11 +8,12 @@ use printobserver_core::{
     ActionKind, Actor, ActorClass, JobManifest, PrintAction, PrintRecord, SafetyEnvelope,
 };
 use printobserver_core::{ActionOutcome, CoreConfig, CoreError, Supervisor, block_on};
+use printobserver_printer_api::Adjustable;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{
-    Adjustable, EventBody, EventKind, EventPayload, EventRecord, EventSource, PrintId, Range,
-    RawBytes, Timestamp,
+    EventBody, EventKind, EventPayload, EventRecord, EventSource, PrintId, Range, RawBytes,
+    Timestamp,
 };
 use printobserver_vision_api::{MalformedExternalEventPayload, NormalizedAlert, ProviderPrint};
 

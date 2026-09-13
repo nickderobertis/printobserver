@@ -140,7 +140,7 @@ fn every_error_variant_says_what_it_is() {
             detail: "already paused".to_owned(),
         },
         PrinterError::Unsupported {
-            adjustable: printobserver_types::Adjustable::ToolTarget { tool: 3 },
+            adjustable: printobserver_printer_api::Adjustable::ToolTarget { tool: 3 },
         },
         PrinterError::Malformed {
             detail: "not JSON".to_owned(),

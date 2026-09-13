@@ -26,7 +26,6 @@ type StatedType = (&'static str, &'static [StatedField]);
 
 /// The fields this crate declares, type by type.
 const DECLARED_FIELDS: &[StatedType] = &[
-    ("Adjustable", &[]),
     ("EventId", &[]),
     ("EventKind", &[]),
     (
@@ -54,7 +53,6 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[("id", "ImageId", true), ("sha256", "string", true)],
     ),
     ("PrintId", &[]),
-    ("PrinterState", &[("unknown", "string", true)]),
     ("Range", &[("max", "number", true), ("min", "number", true)]),
     ("RawBytes", &[]),
     (

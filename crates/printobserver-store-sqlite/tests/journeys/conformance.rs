@@ -18,10 +18,9 @@ use printobserver_core::{
     ExecutionOutcome, InterventionId, InterventionOutcome, PolicyDecision, PrintRecord,
     RejectionReason,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_store_sqlite::settle_label;
-use printobserver_types::{
-    Adjustable, EventKind, EventRecord, ImageId, PrintId, PrinterState, RawBytes, Timestamp,
-};
+use printobserver_types::{EventKind, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// A history read of one print, with no filter and no limit.
 fn whole_window(print_id: PrintId) -> HistoryQuery {

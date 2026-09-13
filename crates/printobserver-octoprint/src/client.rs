@@ -32,10 +32,11 @@
 
 use core::fmt::Write as _;
 
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{
     BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
 };
-use printobserver_types::{Adjustable, FileName, Timestamp};
+use printobserver_types::{FileName, Timestamp};
 use serde_json::json;
 
 use crate::config::{FanSupport, OctoPrintConfig};

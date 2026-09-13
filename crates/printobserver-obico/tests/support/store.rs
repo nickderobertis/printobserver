@@ -18,14 +18,13 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use printobserver_core::records::PrinterState;
 use printobserver_core::store::{
     AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
     PrintStore, StoreError,
 };
 use printobserver_core::{ImageRecord, JobManifest, ManifestNarrowing, PrintRecord};
-use printobserver_types::{
-    EventId, EventRecord, ImageId, PrintId, PrinterState, RawBytes, Timestamp,
-};
+use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 use sha2::{Digest as _, Sha256};
 
 /// Everything this store holds.

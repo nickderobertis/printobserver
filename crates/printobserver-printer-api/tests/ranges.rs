@@ -18,6 +18,7 @@ mod contracts;
 use std::collections::BTreeMap;
 
 use contracts::contract;
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
     HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, HeaterSnapshot,
@@ -25,7 +26,7 @@ use printobserver_printer_api::{
 };
 use printobserver_types::contract::{TypeContract, schema_of};
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{Adjustable, Range, Reported};
+use printobserver_types::{Range, Reported};
 
 /// Each of the seven fields declares exactly the range the contract states.
 #[test]

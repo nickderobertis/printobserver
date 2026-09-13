@@ -67,7 +67,7 @@
 //!   walk a history to exhaustion.
 //! * **The state a print opens in.** `open_print` is called when a job starts
 //!   being watched, so the print opens in
-//!   [`PrinterState::Printing`](printobserver_types::PrinterState::Printing);
+//!   [`PrinterState::Printing`](printobserver_printer_api::PrinterState::Printing);
 //!   `end_print` is what puts it in a terminal state.
 //! * **Which print an Obico identifier names.** Obico reuses nothing, but this
 //!   system may have opened a print for one identifier more than once, so

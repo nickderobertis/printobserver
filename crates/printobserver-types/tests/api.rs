@@ -1,18 +1,19 @@
 //! What a consumer reads off these types, beyond their wire forms.
 //!
 //! The accessors here are how a consumer reads a value without destructuring
-//! it, so each is held to agreeing with the data it reads: an adjustable is the
-//! member its string names, and a reported value's flag is what its range says.
-//! The supervision domain's own accessors — an action's kind, an actor's class
-//! — are held the same way where those records are declared.
+//! it, so each is held to agreeing with the data it reads: a reported value's
+//! flag is what its range says, and an identifier or an instant is the one it
+//! was built from. The domains' own accessors — an action's kind, an actor's
+//! class, the adjustable a string names — are held the same way where those
+//! types are declared.
 
 use std::str::FromStr as _;
 
 use chrono::{DateTime, TimeZone as _, Utc};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
-    Adjustable, EventKind, EventRecord, FileName, FileNameRefusal, PrintId, Range, RawBytes,
-    Reported, Timestamp,
+    EventKind, EventRecord, FileName, FileNameRefusal, PrintId, Range, RawBytes, Reported,
+    Timestamp,
 };
 
 /// A range to flag against, in the shape the printer port declares its own.
@@ -88,38 +89,6 @@ fn a_refused_instant_says_what_was_wrong() {
         Timestamp::from_str("2026-03-01T12:00:00").is_err(),
         "an offsetless instant parsed"
     );
-}
-
-/// Every adjustable displays and parses back as itself.
-#[test]
-fn every_adjustable_round_trips_through_its_string() {
-    let members = [
-        (Adjustable::Feedrate, "feedrate"),
-        (Adjustable::Flowrate, "flowrate"),
-        (Adjustable::BedTarget, "bed_target"),
-        (Adjustable::Fan, "fan"),
-        (Adjustable::ToolTarget { tool: 0 }, "tool_target:0"),
-        (Adjustable::ToolTarget { tool: -1 }, "tool_target:-1"),
-    ];
-    for (member, spelling) in members {
-        assert_eq!(member.to_string(), spelling);
-        assert_eq!(Adjustable::from_str(spelling), Ok(member));
-    }
-}
-
-/// A string that names no adjustable is refused, saying why.
-#[test]
-fn a_string_that_names_no_adjustable_is_refused() {
-    let error = Adjustable::from_str("chamber_target").expect_err("no such member");
-    assert!(
-        error.detail().contains("chamber_target"),
-        "{}",
-        error.detail()
-    );
-    assert!(error.to_string().contains("adjustable"));
-
-    let error = Adjustable::from_str("tool_target:left").expect_err("no such tool");
-    assert!(error.detail().contains("tool number"), "{}", error.detail());
 }
 
 /// Whether two values are the same one bit for bit.

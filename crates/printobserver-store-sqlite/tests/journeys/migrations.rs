@@ -17,11 +17,12 @@ use crate::fixture::Store;
 use printobserver_core::{
     ActionId, Actor, ExecutionOutcome, InterventionOutcome, PolicyDecision, PrintAction,
 };
+use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::{
     CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, MIGRATIONS, SqliteStore,
 };
 use printobserver_types::serde_json::{self, json};
-use printobserver_types::{Adjustable, EventBody, EventId, EventKind, ImageId, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventId, EventKind, ImageId, PrintId, Timestamp};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -134,7 +135,7 @@ fn seed(connection: &Connection) {
                 text(PRINT),
                 7_i64.into(),
                 text("bracket.gcode"),
-                text(&json(&printobserver_types::PrinterState::Printing)),
+                text(&json(&printobserver_printer_api::PrinterState::Printing)),
                 text(SEEDED_AT),
                 text("[]"),
             ],

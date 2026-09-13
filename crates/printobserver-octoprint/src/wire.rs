@@ -9,11 +9,12 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_printer_api::PrinterState;
 use printobserver_printer_api::{
     COMPLETION_RANGE, HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE,
     HeaterSnapshot, JobSnapshot, PrinterSnapshot,
 };
-use printobserver_types::{PrinterState, Reported, Timestamp};
+use printobserver_types::{Reported, Timestamp};
 use serde::Deserialize;
 
 use crate::convert::{fraction_of_completion, whole_seconds};

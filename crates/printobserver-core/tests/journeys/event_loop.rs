@@ -9,8 +9,9 @@
 
 use printobserver_core::AgentAssessmentPayload;
 use printobserver_core::{Actor, PolicyDecision, PrintAction};
+use printobserver_printer_api::PrinterState;
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::{EventPayload as _, FileName, PrinterState};
+use printobserver_types::{EventPayload as _, FileName};
 use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::journal::{Call, Port};
@@ -31,7 +32,7 @@ fn prepared() -> (World, printobserver_core::PrintRecord) {
             PrintAction::StartPrint {
                 file_name: FileName::new("benchy.gcode").expect("a name"),
                 manifest: manifest(&[(
-                    printobserver_types::Adjustable::Feedrate,
+                    printobserver_printer_api::Adjustable::Feedrate,
                     printobserver_types::Range::new(0.9, 1.6),
                 )]),
                 reason: "the operator started it".to_owned(),
@@ -108,14 +109,14 @@ fn assert_the_context_carries_everything(
         context
             .bounds
             .allowed
-            .get(&printobserver_types::Adjustable::Feedrate),
+            .get(&printobserver_printer_api::Adjustable::Feedrate),
         Some(&printobserver_types::Range::new(0.9, 1.6)),
         "the bounds are the envelope narrowed by the manifest"
     );
     assert_eq!(context.interventions.len(), 1);
     assert_eq!(
         context.interventions[0].adjustable,
-        printobserver_types::Adjustable::Feedrate
+        printobserver_printer_api::Adjustable::Feedrate
     );
     assert!(
         context

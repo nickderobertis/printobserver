@@ -13,9 +13,9 @@ use printobserver_core::{
     InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
     PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::{
-    Adjustable, EventId, EventRecord, ImageId, PrintId, PrinterState, RawBytes, SupervisionSession,
-    Timestamp,
+    EventId, EventRecord, ImageId, PrintId, RawBytes, SupervisionSession, Timestamp,
 };
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params, params_from_iter};

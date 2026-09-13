@@ -19,8 +19,9 @@ use printobserver_core::store::StoreError;
 use printobserver_core::{ActionKind, Actor, ExecutionOutcome, InterventionOutcome, PrintAction};
 use printobserver_core::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite};
 use printobserver_printer_api::PrinterError;
+use printobserver_printer_api::PrinterState;
 use printobserver_supervisor_api::SupervisorError;
-use printobserver_types::{PrintId, PrinterState};
+use printobserver_types::PrintId;
 use printobserver_vision_api::VisionError;
 
 use crate::action_vocabulary::{action_for, state_for};

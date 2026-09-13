@@ -8,8 +8,9 @@ use crate::block_on::block_on;
 use crate::fixture::{Store, draft, instant, request};
 use printobserver_core::store::{HistoryQuery, StoreError};
 use printobserver_core::{ActionId, ExecutionOutcome, PolicyDecision};
+use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MemoryStore, SqliteStore, connect};
-use printobserver_types::{Adjustable, PrintId};
+use printobserver_types::PrintId;
 use rusqlite::Connection;
 use tempfile::TempDir;
 

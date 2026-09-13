@@ -11,8 +11,9 @@ use printobserver_core::{
     ActionKind, Actor, ActorClass, PrintAction, RejectionReason, SafetyEnvelope,
 };
 use printobserver_printer_api::PrinterError;
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisorError;
-use printobserver_types::{Adjustable, PrintId, PrinterState, Range};
+use printobserver_types::{PrintId, Range};
 use printobserver_vision_api::VisionError;
 
 use printobserver_core::{

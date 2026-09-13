@@ -22,6 +22,12 @@ pub mod policy;
 pub mod print;
 mod samples;
 
+// The printer vocabulary these records carry — the state a print is in, and
+// the adjustable a narrowing, an envelope's bound and an intervention name —
+// re-exported beside them, so that a consumer of the records reaches what a
+// record's field holds without naming the printer port itself.
+pub use printobserver_printer_api::{Adjustable, PrinterState};
+
 pub use action::{
     AcknowledgementDisposition, ActionKind, ActionRecord, ActionRequest, Actor, ActorClass,
     ExecutionOutcome, PrintAction,

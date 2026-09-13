@@ -10,8 +10,9 @@ use printobserver_octoprint::{
     COMMAND_SET, FAN_PWM_PARAMETER, FAN_SET_COMMAND, FanSupport, OctoPrintConfig, OctoPrintPrinter,
     fan_pwm_of_percent, fraction_of_completion, percent_of_multiplier,
 };
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
-use printobserver_types::{Adjustable, FileName};
+use printobserver_types::FileName;
 use serde_json::json;
 
 use crate::block_on::block_on;

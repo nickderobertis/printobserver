@@ -19,8 +19,9 @@ use crate::records::{
     ActionRecord, ActionRequest, Actor, ActorClass, Intervention, InterventionOutcome,
     PolicyDecision, PrintAction, PrintRecord,
 };
+use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::PrinterSnapshot;
-use printobserver_types::{Adjustable, EventBody, EventSource, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
 use crate::clock::plus_seconds;

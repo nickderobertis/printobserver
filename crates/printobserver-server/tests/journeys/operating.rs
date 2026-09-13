@@ -23,7 +23,8 @@
 //! order rather than the operations.
 
 use printobserver_core::ActionKind;
-use printobserver_types::{Adjustable, PrinterState, serde_json::Value, serde_json::json};
+use printobserver_printer_api::{Adjustable, PrinterState};
+use printobserver_types::{serde_json::Value, serde_json::json};
 
 use printobserver_server::{Effect, OPERATIONS, Operation};
 

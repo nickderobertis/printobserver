@@ -16,8 +16,8 @@
 use std::sync::Arc;
 use std::thread;
 
+use printobserver_printer_api::PrinterState;
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::PrinterState;
 
 use crate::journal::Call;
 use crate::world::{World, alert_kind, failure_alert};

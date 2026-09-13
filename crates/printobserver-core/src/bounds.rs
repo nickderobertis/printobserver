@@ -17,7 +17,8 @@
 use std::collections::BTreeMap;
 
 use crate::records::{EffectiveBounds, JobManifest, ManifestNarrowing, SafetyEnvelope};
-use printobserver_types::{Adjustable, Range};
+use printobserver_printer_api::Adjustable;
+use printobserver_types::Range;
 
 /// The bounds in force for one print, and what the manifest asked for.
 #[derive(Debug, Clone, PartialEq)]

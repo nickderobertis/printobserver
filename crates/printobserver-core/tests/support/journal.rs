@@ -15,7 +15,8 @@
 use std::sync::Mutex;
 
 use printobserver_core::{ActionId, ExecutionOutcome, InterventionOutcome, PolicyDecision};
-use printobserver_types::{Adjustable, EventKind, PrintId};
+use printobserver_printer_api::Adjustable;
+use printobserver_types::{EventKind, PrintId};
 
 /// One call a fake port received.
 #[derive(Debug, Clone, PartialEq)]

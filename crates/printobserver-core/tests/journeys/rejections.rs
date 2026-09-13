@@ -20,8 +20,9 @@ use printobserver_core::{
     ActionKind, Actor, ActorClass, PolicyDecision, PrintAction, RejectionReason,
 };
 use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::{Adjustable, EventPayload as _, PrintId, PrinterState, Range};
+use printobserver_types::{EventPayload as _, PrintId, Range};
 
 use crate::journal::{Call, Port};
 use crate::source::{crate_dir, enum_variant_names, parse, read};

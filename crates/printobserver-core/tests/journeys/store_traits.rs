@@ -22,10 +22,10 @@ use printobserver_core::{
     InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
     PrintRecord,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::contract::Sample;
 use printobserver_types::{
-    Adjustable, EventId, EventRecord, ImageId, PrintId, PrinterState, RawBytes, SupervisionSession,
-    Timestamp,
+    EventId, EventRecord, ImageId, PrintId, RawBytes, SupervisionSession, Timestamp,
 };
 
 /// A store that answers every method with the success type it declares.

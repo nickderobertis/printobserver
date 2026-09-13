@@ -8,10 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::contract::Sample;
-use printobserver_types::{
-    Adjustable, EventId, FileName, ImageId, PrintId, PrinterState, Range, Timestamp,
-};
+use printobserver_types::{EventId, FileName, ImageId, PrintId, Range, Timestamp};
 
 use super::action::{
     AcknowledgementDisposition, ActionKind, ActionRecord, ActionRequest, Actor, ActorClass,

@@ -39,9 +39,10 @@ use printobserver_core::{
     AcknowledgementDisposition, ActionId, ActionKind, Actor, ActorClass, EffectiveBounds,
     InterventionId, PrintAction, SafetyEnvelope,
 };
+use printobserver_printer_api::Adjustable;
 use printobserver_types::contract::{Sample, TypeContract};
 use printobserver_types::serde_json::{self, Value};
-use printobserver_types::{Adjustable, Range, WireField, wire_fields};
+use printobserver_types::{Range, WireField, wire_fields};
 use records::declared;
 
 /// One field of the contract table: its name, what it is, and whether an

@@ -1,8 +1,9 @@
 //! A bounded change, and what became of it when it expired.
 
+use printobserver_printer_api::Adjustable;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{Adjustable, PrintId, Timestamp};
+use printobserver_types::{PrintId, Timestamp};
 
 use super::ids::{ActionId, InterventionId};
 

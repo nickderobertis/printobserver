@@ -8,8 +8,9 @@
 use printobserver_core::{
     Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
 };
+use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE};
-use printobserver_types::{Adjustable, PrintId, PrinterState, Range, Reported};
+use printobserver_types::{PrintId, Range, Reported};
 
 use crate::journal::Call;
 use crate::world::{World, assert_same};
