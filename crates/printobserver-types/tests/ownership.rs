@@ -80,8 +80,8 @@ fn the_type_crate_declares_no_type_another_crate_checks_in() {
     );
     let elsewhere = types_other_crates_check_in();
     assert!(
-        elsewhere.iter().any(|(name, _)| name == "PrinterSnapshot"),
-        "the reader found no other crate's schema"
+        elsewhere.len() > 1,
+        "the reader found no other crate's schemas"
     );
     let claimed = claimed_elsewhere(&declared, &elsewhere);
     assert!(
@@ -90,20 +90,19 @@ fn the_type_crate_declares_no_type_another_crate_checks_in() {
     );
 }
 
-/// A fixture crate declaring a type the printer port checks a schema in for.
-const FIXTURE_ANOTHER_CRATES_TYPE: &str = r"
-pub struct PrinterSnapshot {
-    pub connection: PrinterState,
-}
-";
-
 /// The ownership reading refuses a crate declaring another crate's type.
+///
+/// The fixture declares whichever type another crate checks in first, read
+/// off the tree rather than named here, so this test privileges no domain.
 #[test]
 fn the_ownership_reading_refuses_a_crate_declaring_another_crates_type() {
-    let declared = declared_type_names(&parse(FIXTURE_ANOTHER_CRATES_TYPE));
+    let elsewhere = types_other_crates_check_in();
+    let (name, crate_name) = elsewhere.first().expect("another crate checks a schema in");
+    let fixture = format!("pub struct {name} {{\n    pub field: String,\n}}\n");
+    let declared = declared_type_names(&parse(&fixture));
     assert_eq!(
-        claimed_elsewhere(&declared, &types_other_crates_check_in()),
-        vec!["PrinterSnapshot (checked in by printobserver-printer-api)".to_owned()],
+        claimed_elsewhere(&declared, &elsewhere),
+        vec![format!("{name} (checked in by {crate_name})")],
         "a declaration of another crate's type was not seen"
     );
 }
