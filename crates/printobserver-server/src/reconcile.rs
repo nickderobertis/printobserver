@@ -145,14 +145,6 @@ pub struct ReconcileStores {
     pub events: Arc<dyn EventStore>,
 }
 
-impl core::fmt::Debug for ReconcileStores {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter
-            .debug_struct("ReconcileStores")
-            .finish_non_exhaustive()
-    }
-}
-
 /// Adopt what the store holds, and record each adoption.
 ///
 /// # Errors

@@ -505,9 +505,3 @@ impl Stores {
         }
     }
 }
-
-impl core::fmt::Debug for Stores {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.debug_struct("Stores").finish_non_exhaustive()
-    }
-}
