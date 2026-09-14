@@ -16,16 +16,28 @@
 //! out over a socket, because the point is what the installed program answers
 //! rather than what a client library does with it.
 
+#[path = "support/harness.rs"]
+mod harness;
+
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use printobserver::config::{CREDENTIAL_ENV, DEFAULT_CONFIG_PATH, SERVER_ENV};
 use printobserver::failure::Exit;
 use printobserver_core::store::PrintStore as _;
-use printobserver_server::{API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE};
+use printobserver_server::{
+    API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, INGRESS_PATH,
+    SIGN_INS, TOKEN_PARAM,
+};
 use tempfile::TempDir;
+
+use harness::{
+    ANSWERED, SIGN_IN_SEEN, SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking,
+    recorded, stand_in,
+};
 
 /// The tracer the operator's own route is observed through: every file access
 /// the program makes to the paths it is watching, each of which it fails as a
@@ -173,30 +185,47 @@ fn owner(path: &Path) -> String {
     String::from_utf8_lossy(&listed.stdout).trim().to_owned()
 }
 
-/// The mode of one path, and whether it carries an access-control entry
-/// granting a principal other than its owner anything.
-fn permissions(path: &Path) -> (u32, Vec<String>) {
+/// The permission bits of one path.
+fn mode_of(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt as _;
-    let mode = std::fs::metadata(path)
+    std::fs::metadata(path)
         .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display()))
         .permissions()
         .mode()
-        & 0o777;
-    let listed = Command::new("getfacl")
-        .arg("--omit-header")
-        .arg("--absolute-names")
+        & 0o777
+}
+
+/// The mode of one path, and the long listing that says whether it carries an
+/// access-control list granting some principal more than its mode bits do.
+///
+/// Read off `ls -ld`, which marks a file carrying an access-control list with a
+/// `+` straight after its mode, so this needs nothing beyond the coreutils every
+/// supported host has — and not the `acl` package, which neither this
+/// repository's setup nor a stock host provides.
+fn permissions(path: &Path) -> (u32, String) {
+    let mode = mode_of(path);
+    let listed = Command::new("ls")
+        .arg("-ld")
+        .arg("--")
         .arg(path)
         .output()
-        .expect("getfacl runs");
-    let base = ["user::", "group::", "other::"];
-    let extra = String::from_utf8_lossy(&listed.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter(|line| !base.iter().any(|prefix| line.starts_with(prefix)))
-        .map(str::to_owned)
-        .collect();
-    (mode, extra)
+        .expect("ls runs");
+    assert!(
+        listed.status.success(),
+        "{} could not be listed: {}",
+        path.display(),
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    let listing = String::from_utf8_lossy(&listed.stdout).trim().to_owned();
+    (mode, listing)
+}
+
+/// Whether a long listing marks its file as carrying an access-control list.
+fn carries_an_access_control_list(listing: &str) -> bool {
+    listing
+        .split_whitespace()
+        .next()
+        .is_some_and(|mode| mode.ends_with('+'))
 }
 
 /// The installer places four things and starts nothing.
@@ -227,15 +256,15 @@ fn the_installer_places_four_things_and_starts_nothing() {
         unit_value(&unit, "User"),
         "the state directory is not owned by the user the unit runs the service as"
     );
-    let (mode, extra) = permissions(&installed.state());
+    let (mode, listing) = permissions(&installed.state());
     assert_eq!(
         mode, 0o700,
         "the state directory is mode {mode:o}, which does not deny group and other"
     );
     assert!(
-        extra.is_empty(),
-        "the state directory carries access-control entries granting another \
-         principal: {extra:?}"
+        !carries_an_access_control_list(&listing),
+        "the state directory carries an access-control list granting another \
+         principal: {listing}"
     );
 
     assert!(
@@ -530,16 +559,6 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         finished.success(),
         "the program did not exit cleanly when it was stopped: {finished:?}"
     );
-}
-
-/// The permission bits of one file the service wrote.
-fn mode_of(path: &Path) -> u32 {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(path)
-        .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display()))
-        .permissions()
-        .mode()
-        & 0o777
 }
 
 /// Neither file the installer wrote carries the credential in force.
@@ -855,7 +874,12 @@ fn silent_host() -> SocketAddr {
 }
 
 /// Read one request and answer an empty document.
-fn answer_nothing(mut stream: TcpStream) {
+fn answer_nothing(stream: TcpStream) {
+    answer_with(stream, "application/json", b"{}");
+}
+
+/// Read one request and answer one body of one type.
+fn answer_with(mut stream: TcpStream, content_type: &str, body: &[u8]) {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 1024];
     while !request.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -864,10 +888,715 @@ fn answer_nothing(mut stream: TcpStream) {
             Ok(read) => request.extend_from_slice(&buffer[..read]),
         }
     }
-    let _ = stream.write_all(
-        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\
-          Connection: close\r\n\r\n{}",
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
+         Connection: close\r\n\r\n",
+        body.len()
     );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+}
+
+/// A host serving one snapshot, where a failure alert says its image is.
+fn image_host() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut snapshot = vec![0xff, 0xd8, 0xff];
+                snapshot.extend(b"printobserver-service-snapshot".repeat(8));
+                answer_with(stream, "image/jpeg", &snapshot);
+            });
+        }
+    });
+    address
+}
+
+/// The shared secret [`fill_in`] gives the ingress.
+const SHARED_SECRET: &str = "a-shared-secret";
+
+/// Post the committed `Obico` failure alert to a running server's ingress, its
+/// image pointed at a host this journey serves, and answer the status line.
+fn post_a_failure_alert(address: &str) -> String {
+    let mut alert: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_str(include_str!(
+            "../../printobserver-obico/samples/obico/failure-alert.json"
+        ))
+        .expect("the committed sample is JSON");
+    alert["img_url"] =
+        printobserver_types::serde_json::json!(format!("http://{}/snapshot.jpg", image_host()));
+    let body = alert.to_string();
+    let mut stream = TcpStream::connect(address).expect("the ingress accepts a connection");
+    write!(
+        stream,
+        "POST {INGRESS_PATH}?{TOKEN_PARAM}={SHARED_SECRET} HTTP/1.1\r\nHost: {address}\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .expect("the alert is written");
+    let mut answer = String::new();
+    stream
+        .read_to_string(&mut answer)
+        .expect("the answer is read");
+    answer.lines().next().unwrap_or_default().to_owned()
+}
+
+/// The harness the installed configuration names, as the adapter's table
+/// declares it.
+fn configured_harness(configuration: &Path) -> &'static HarnessSignIn {
+    let document: toml::Value =
+        toml::from_str(&std::fs::read_to_string(configuration).expect("the configuration reads"))
+            .expect("the configuration is a document");
+    let named = document["supervisor"]["harness"]
+        .as_str()
+        .expect("the configuration names a harness");
+    SIGN_INS
+        .iter()
+        .find(|entry| entry.identity() == named)
+        .unwrap_or_else(|| panic!("the installed configuration names `{named}`, outside the table"))
+}
+
+/// A server this journey started, stopped and reaped however the journey ends.
+///
+/// A failed assertion unwinds past the journey's own graceful stop, and a
+/// server left running holds its port and its state directory long after the
+/// journey that started it is gone.
+struct Reaped(Child);
+
+impl Drop for Reaped {
+    fn drop(&mut self) {
+        if let Ok(None) = self.0.try_wait() {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+}
+
+/// Wait for one file to be there, for as long as a supervision turn is given.
+fn eventually(path: &Path, server: &mut Child) -> String {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            return text;
+        }
+        if let Ok(Some(exited)) = server.try_wait() {
+            panic!("the server exited before a turn ran: {exited:?}");
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    panic!("no supervision turn wrote {} in time", path.display());
+}
+
+/// A started server hands every supervision turn the harness directory it
+/// created, and the sign-in the sign-in command left there is what the turn
+/// reads.
+///
+/// Driven the way the README orders it on an installed root: the unit's own
+/// start command, a stand-in for the harness program on the path the service
+/// runs with, `printobserver sign-in` against the installed configuration, and
+/// then a real failure alert through the ingress.
+#[test]
+fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
+    let under = TempDir::new().expect("a journey's own root");
+    let installed = install(under.path());
+    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
+    let start: Vec<String> = unit_value(&unit, "ExecStart")
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let configuration = PathBuf::from(start.last().expect("a configuration"));
+    fill_in(&configuration);
+    let entry = configured_harness(&configuration);
+    let bin = under.path().join("harness-bin");
+    let invocations = under.path().join("invocations");
+    stand_in(&bin, entry, &invocations, 0, &assessment_answer());
+    let path = format!("{}:/usr/bin:/bin", bin.display());
+    let home = unit_value(&unit, "Environment")
+        .strip_prefix("HOME=")
+        .expect("the unit gives the service a home")
+        .to_owned();
+    let directory = installed
+        .state()
+        .canonicalize()
+        .expect("the state directory resolves")
+        .join(HARNESS_DIRECTORY)
+        .join(entry.identity());
+    assert!(
+        !directory.exists(),
+        "the harness directory was there before anything created it"
+    );
+
+    let mut server = Reaped({
+        let _held = forking();
+        Command::new(&start[0])
+            .args(&start[1..])
+            .current_dir(installed.state())
+            .env("PATH", &path)
+            .env("HOME", &home)
+            .env_remove(entry.config_env())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the unit's own start command runs")
+    });
+    let address = serving_on(&mut server.0);
+
+    let mode = mode_of(&directory);
+    assert_eq!(
+        mode, 0o700,
+        "the server created the directory mode {mode:o}"
+    );
+
+    let signed_in = {
+        let _held = forking();
+        Command::new(installed.binary())
+            .args(["sign-in", "--config"])
+            .arg(&configuration)
+            .env("PATH", &path)
+            .env("HOME", &home)
+            .env_remove(entry.config_env())
+            .stdin(Stdio::null())
+            .output()
+            .expect("the sign-in runs")
+    };
+    assert!(
+        signed_in.status.success(),
+        "the sign-in failed: {}",
+        String::from_utf8_lossy(&signed_in.stderr)
+    );
+
+    let answered = post_a_failure_alert(&address);
+    assert!(
+        answered.contains("202"),
+        "the ingress did not take the alert: {answered}"
+    );
+    let turn = eventually(&directory.join(TURN_SEEN), &mut server.0);
+
+    assert_eq!(
+        PathBuf::from(recorded(&turn, "directory")),
+        directory,
+        "the turn was pointed somewhere other than the directory the sign-in wrote"
+    );
+    assert_eq!(recorded(&turn, "state"), SIGN_IN_STATE);
+    assert_eq!(
+        std::fs::read_to_string(directory.join(SIGNED_IN)).expect("the sign-in is kept"),
+        format!("{SIGN_IN_STATE}\n")
+    );
+
+    let stopped = Command::new("kill")
+        .arg("-TERM")
+        .arg(server.0.id().to_string())
+        .status()
+        .expect("the signal is sent");
+    assert!(stopped.success(), "the signal was not sent");
+    server.0.wait().expect("the server exits");
+}
+
+/// Every `[Service]` directive of the installed unit the journey below knows
+/// what to do about: the ones it applies, and the ones that restrict nothing.
+///
+/// A directive the unit gains that is not here fails the journey, so a unit
+/// cannot grow a restriction this substitute silently does not apply.
+const UNIT_SERVICE_DIRECTIVES: [&str; 12] = [
+    "Type",
+    "User",
+    "Environment",
+    "ExecStart",
+    "WorkingDirectory",
+    "Restart",
+    "RestartSec",
+    "NoNewPrivileges",
+    "PrivateTmp",
+    "ProtectHome",
+    "ProtectSystem",
+    "ReadWritePaths",
+];
+
+/// What the operator types at the stand-in harness's prompt in the journey.
+const TYPED_IN_THE_JOURNEY: &str = "the-code-the-operator-typed";
+
+/// The whole journey, as `sh` runs it as root inside a mount namespace of its
+/// own.
+///
+/// It stands in for the service manager and for `sudo -u`, and for nothing
+/// else. It gives the journey a private `/etc` so the user the installer
+/// creates exists in this journey alone; runs the committed installer; puts the
+/// harness program where the service user's path finds it; and then applies
+/// the unit's restrictions to itself — every home hidden, every mount read-only,
+/// the state directory alone written — and audits them as the service user
+/// before it runs the documented sign-in and the unit's own start command under
+/// them. Everything it learns it prints as `key=value` lines for the journey to
+/// assert, because under those restrictions it may write nowhere else.
+const SERVICE_JOURNEY: &str = r#"
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+refuse() { echo "refused=$1"; exit 1; }
+ROOT="$JOURNEY_UNDER/target-root"
+
+# A private /etc, so that the user the installer creates is this journey's own.
+mount -t tmpfs tmpfs /mnt || refuse "a tmpfs could not be mounted"
+mkdir /mnt/etc
+cp -a /etc/. /mnt/etc/ 2>/dev/null
+[ -f /mnt/etc/shadow ] || : > /mnt/etc/shadow
+[ -f /mnt/etc/gshadow ] || : > /mnt/etc/gshadow
+mount --bind /mnt/etc /etc || refuse "a private /etc could not be mounted"
+
+# The install path's own installer, as root, exactly as it is committed.
+"$JOURNEY_INSTALLER" --root "$ROOT" --binary "$JOURNEY_BINARY" >&2 ||
+    refuse "the installer failed"
+UNIT="$ROOT/etc/systemd/system/printobserver.service"
+sed -n '/^\[Service\]/,/^\[/p' "$UNIT" | grep '=' | sed 's/^/unit_/'
+directive() { sed -n "s/^$1=//p" "$UNIT" | head -n 1; }
+SERVICE_USER=$(directive User)
+STATE=$(directive ReadWritePaths)
+START=$(directive ExecStart)
+CONFIG=${START##* }
+UNIT_HOME=$(directive Environment | sed -n 's/^HOME=//p')
+PASSWD_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
+echo "passwd=$(getent passwd "$SERVICE_USER")"
+echo "harness=$(sed -n 's/^harness = "\(.*\)"$/\1/p' "$CONFIG")"
+
+# The harness program, installed where the service user's path finds it.
+mkdir -p "$ROOT/usr/local/bin"
+install -m 0755 "$JOURNEY_STAND_INS"/* "$ROOT/usr/local/bin/"
+
+sed -i -e 's|^api_key = ""|api_key = "a-provisioned-key"|' \
+    -e 's|^shared_secret = ""|shared_secret = "a-shared-secret"|' \
+    -e "s|^url = \"http://127.0.0.1:5000\"|url = \"http://$JOURNEY_OCTOPRINT\"|" \
+    -e 's|^listen = "127.0.0.1:8420"|listen = "127.0.0.1:0"|' "$CONFIG"
+mkdir -p /etc/printobserver
+: > /etc/printobserver/config.toml
+mount --bind "$CONFIG" /etc/printobserver/config.toml || refuse "the configuration could not be bound"
+mkfifo /mnt/server-stderr
+
+# The unit's restrictions. ProtectHome: every home is a directory nobody may
+# enter. ProtectSystem=strict with ReadWritePaths, and PrivateTmp made stricter:
+# every mount but the kernel's own is read-only, and the state directory alone
+# is written.
+mount --bind "$STATE" "$STATE" || refuse "the state directory could not be bound"
+for hidden in /home /root /run/user; do
+    if [ -d "$hidden" ]; then
+        mount -t tmpfs -o mode=000 tmpfs "$hidden" || refuse "$hidden could not be hidden"
+    fi
+done
+awk '{print $5}' /proc/self/mountinfo | sort -u | while read -r point; do
+    case "$point" in
+        /proc | /proc/* | /sys | /sys/* | /dev | /dev/pts | "$STATE") ;;
+        *) mount -o remount,bind,ro "$point" 2>/dev/null ;;
+    esac
+done
+as_service() {
+    setpriv --reuid="$SERVICE_USER" --regid="$(id -g "$SERVICE_USER")" --init-groups \
+        --no-new-privs env -i "PATH=$ROOT/usr/local/bin:/usr/local/bin:/usr/bin:/bin" "$@"
+}
+
+# The audit, as the service user under those restrictions.
+CANDIDATES=$(
+    {
+        awk '{print $5}' /proc/self/mountinfo
+        printf '%s\n' / /tmp /var/tmp /etc /dev/shm "$JOURNEY_UNDER" "$ROOT" \
+            "$ROOT/etc/printobserver" "$ROOT/usr/local/bin" "$ROOT/usr/local/lib/printobserver" \
+            "$STATE" "$UNIT_HOME" "$PASSWD_HOME" "$JOURNEY_OPERATOR_HOME"
+    } | grep -v -e '^/proc' -e '^/sys' -e '^/dev$' -e '^/dev/pts' | sort -u
+)
+as_service "HOME=$UNIT_HOME" "CANDIDATES=$CANDIDATES" sh -c '
+    echo "audit_user=$(id -un)"
+    echo "audit_no_new_privs=$(sed -n "s/^NoNewPrivs:[[:space:]]*//p" /proc/self/status)"
+    echo "audit_home=${HOME:-}"
+    for hidden in /home /root /run/user; do
+        ls -a "$hidden" >/dev/null 2>&1 && echo "audit_readable=$hidden"
+        touch "$hidden/.printobserver-probe" 2>/dev/null && echo "audit_writable=$hidden"
+    done
+    printf "%s\n" "$CANDIDATES" | while read -r candidate; do
+        if touch "$candidate/.printobserver-probe" 2>/dev/null; then
+            rm -f "$candidate/.printobserver-probe"
+            echo "audit_writable=$candidate"
+        fi
+        case "$candidate" in
+            /home/* | /root/* | /run/user/*)
+                ls -a "$candidate" >/dev/null 2>&1 && echo "audit_readable=$candidate" ;;
+        esac
+    done
+'
+echo "state=$STATE"
+echo "state_owner=$(stat -c '%U %a' "$STATE")"
+echo "environment_home_owner=$(stat -c '%U %a' "$UNIT_HOME")"
+echo "passwd_home_owner=$(stat -c '%U %a' "$PASSWD_HOME" 2>/dev/null)"
+
+# `sudo -u` keeps the operator's working directory, which the service user cannot read.
+cd /home || refuse "the operator's working directory could not be entered"
+SAID=$(printf '%s\n' "$JOURNEY_TYPED" | as_service "HOME=$PASSWD_HOME" \
+    "$ROOT/usr/local/lib/printobserver/printobserver" sign-in 2>&1)
+echo "sign_in_status=$?"
+printf '%s\n' "$SAID" | sed 's/^/sign_in_said=/'
+HARNESS_DIR="$STATE/harness/$(sed -n 's/^harness = "\(.*\)"$/\1/p' "$CONFIG")"
+sed 's/^/sign_in_/' "$HARNESS_DIR/sign-in-seen" 2>/dev/null
+
+cd "$(directive WorkingDirectory)" || refuse "the unit's working directory could not be entered"
+# Started directly rather than through `as_service`, so that `$!` is the server
+# itself rather than a subshell around it, and stopped however this ends.
+setpriv --reuid="$SERVICE_USER" --regid="$(id -g "$SERVICE_USER")" --init-groups \
+    --no-new-privs env -i "PATH=$ROOT/usr/local/bin:/usr/local/bin:/usr/bin:/bin" \
+    "HOME=$UNIT_HOME" $START >/dev/null 2>/mnt/server-stderr &
+SERVER=$!
+trap 'kill "$SERVER" 2>/dev/null' EXIT
+exec 3</mnt/server-stderr
+while IFS= read -r line <&3; do
+    case "$line" in
+        "printobserver is serving on "*)
+            echo "serving=${line#printobserver is serving on }"
+            break
+            ;;
+        *"will not start"*) refuse "$line" ;;
+    esac
+done
+cat <&3 >&2 &
+waited=0
+while [ ! -f "$HARNESS_DIR/turn-seen" ] && [ "$waited" -lt 1200 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+done
+kill "$SERVER"
+wait "$SERVER"
+sed 's/^/turn_/' "$HARNESS_DIR/turn-seen" 2>/dev/null
+echo "harness_dir=$HARNESS_DIR"
+echo "harness_dir_owner=$(stat -c '%U %a' "$HARNESS_DIR")"
+echo "state_file_owner=$(stat -c '%U %a' "$HARNESS_DIR/signed-in")"
+echo "turn_file_owner=$(stat -c '%U %a' "$HARNESS_DIR/turn-seen" 2>/dev/null)"
+echo "finished=yes"
+"#;
+
+/// How this host lets the journey be root inside a mount namespace of its own.
+///
+/// A transient unit would apply the unit's restrictions for real, but its
+/// `User=` has to name a user in the host's own user database, and this journey
+/// does not create a system user on the machine it runs on — a developer's
+/// included. So the user the installer creates exists in the journey's private
+/// `/etc` alone, and the restrictions are applied by this journey and audited
+/// by it. An unprivileged user namespace does that where the host allows one;
+/// where it does not, a password-free `sudo` enters a private mount namespace
+/// instead. A host with neither cannot run this journey, and it says so.
+fn namespace_launcher() -> Vec<String> {
+    let owned = |words: &[&str]| {
+        words
+            .iter()
+            .map(|word| (*word).to_owned())
+            .collect::<Vec<_>>()
+    };
+    let unprivileged = owned(&[
+        "unshare",
+        "--user",
+        "--map-root-user",
+        "--map-auto",
+        "--mount",
+        "--propagation",
+        "private",
+        "--fork",
+    ]);
+    let privileged = owned(&[
+        "sudo",
+        "-n",
+        "unshare",
+        "--mount",
+        "--propagation",
+        "private",
+        "--fork",
+    ]);
+    for launcher in [unprivileged, privileged] {
+        let _held = forking();
+        let probed = Command::new(&launcher[0])
+            .args(&launcher[1..])
+            .args([
+                "sh",
+                "-c",
+                "mount -t tmpfs tmpfs /mnt && useradd --help >/dev/null",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if probed.is_ok_and(|status| status.success()) {
+            return launcher;
+        }
+    }
+    panic!(
+        "this host allows neither an unprivileged user namespace that can mount nor a \
+         password-free sudo, so this journey cannot apply the installed unit's \
+         restrictions to itself"
+    );
+}
+
+/// Every value one `key=value` report carries under one key.
+fn reported<'a>(report: &'a [(String, String)], key: &str) -> Vec<&'a str> {
+    report
+        .iter()
+        .filter(|(found, _)| found == key)
+        .map(|(_, value)| value.as_str())
+        .collect()
+}
+
+/// The one value one report carries under one key.
+fn reported_once<'a>(report: &'a [(String, String)], key: &str) -> &'a str {
+    match reported(report, key).as_slice() {
+        [value] => value,
+        other => panic!(
+            "the journey reported {key} {} times: {other:?}",
+            other.len()
+        ),
+    }
+}
+
+/// Whether one path is the state directory or inside it.
+fn inside(path: &str, state: &str) -> bool {
+    path == state || path.starts_with(&format!("{state}/"))
+}
+
+/// Run [`SERVICE_JOURNEY`] on a root this journey owns, post a real failure
+/// alert when the server it started says where it is serving, and answer
+/// everything it reported once it has finished and what it installed is gone.
+fn run_the_service_journey() -> Vec<(String, String)> {
+    let under = TempDir::new().expect("a journey's own root");
+    // The service's user has to be able to reach the root this journey installs
+    // beneath, as it can reach `/` on a real machine.
+    std::fs::set_permissions(
+        under.path(),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("the journey's root is traversable");
+    let stand_ins = under.path().join("stand-ins");
+    for entry in &SIGN_INS {
+        stand_in(
+            &stand_ins,
+            entry,
+            Path::new("/dev/null"),
+            0,
+            &assessment_answer(),
+        );
+    }
+    let launcher = namespace_launcher();
+    let installer = repo_root()
+        .join(INSTALLER)
+        .canonicalize()
+        .expect("the installer resolves");
+    let operator_home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_owned());
+
+    let mut journey = {
+        let _held = forking();
+        Command::new(&launcher[0])
+            .args(&launcher[1..])
+            .arg("env")
+            .arg(format!("JOURNEY_UNDER={}", under.path().display()))
+            .arg(format!("JOURNEY_INSTALLER={}", installer.display()))
+            .arg(format!(
+                "JOURNEY_BINARY={}",
+                env!("CARGO_BIN_EXE_printobserver")
+            ))
+            .arg(format!("JOURNEY_STAND_INS={}", stand_ins.display()))
+            .arg(format!("JOURNEY_OCTOPRINT={}", silent_host()))
+            .arg(format!("JOURNEY_TYPED={TYPED_IN_THE_JOURNEY}"))
+            .arg(format!("JOURNEY_OPERATOR_HOME={operator_home}"))
+            .args(["sh", "-c", SERVICE_JOURNEY])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the journey's namespace starts")
+    };
+    let stderr = journey.stderr.take().expect("the journey's own error");
+    let said = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = BufReader::new(stderr).read_to_string(&mut text);
+        text
+    });
+    let mut report: Vec<(String, String)> = Vec::new();
+    for line in BufReader::new(journey.stdout.take().expect("the journey's own output")).lines() {
+        let line = line.expect("the journey's output reads");
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key == "serving" {
+            let answered = post_a_failure_alert(value);
+            assert!(
+                answered.contains("202"),
+                "the ingress did not take the alert: {answered}"
+            );
+        }
+        report.push((key.to_owned(), value.to_owned()));
+    }
+    let finished = journey.wait().expect("the journey finishes");
+    let said = said.join().unwrap_or_default();
+    let cleaned = {
+        let _held = forking();
+        Command::new(&launcher[0])
+            .args(&launcher[1..])
+            .args(["rm", "-rf"])
+            .arg(under.path().join("target-root"))
+            .status()
+    };
+    assert!(
+        finished.success() && reported(&report, "finished") == ["yes"],
+        "the journey did not finish: {:?}\n{report:#?}\n{said}",
+        reported(&report, "refused")
+    );
+    assert!(
+        cleaned.is_ok_and(|status| status.success()),
+        "what the journey installed could not be removed"
+    );
+    report
+}
+
+/// What the journey reported about the installed unit and the user it runs
+/// as, held to what the installer writes; answers the state directory and that
+/// user.
+fn assert_the_unit_and_its_user(report: &[(String, String)]) -> (&str, &str) {
+    // The unit is the one the installer writes, and every restriction it
+    // carries is one this journey applied.
+    let unit: Vec<(&str, &str)> = report
+        .iter()
+        .filter_map(|(key, value)| key.strip_prefix("unit_").map(|name| (name, value.as_str())))
+        .collect();
+    for (name, _) in &unit {
+        assert!(
+            UNIT_SERVICE_DIRECTIVES.contains(name),
+            "the unit carries `{name}`, and this journey does not know what it restricts"
+        );
+    }
+    let directive = |name: &str| {
+        unit.iter()
+            .find(|(found, _)| *found == name)
+            .map_or_else(|| panic!("the unit carries no {name}"), |(_, value)| *value)
+    };
+    assert_eq!(directive("ProtectHome"), "true");
+    assert_eq!(directive("ProtectSystem"), "strict");
+    assert_eq!(directive("NoNewPrivileges"), "true");
+    assert_eq!(directive("PrivateTmp"), "true");
+    let state = reported_once(report, "state");
+    assert_eq!(directive("ReadWritePaths"), state);
+
+    // The user is the one the installer creates, and no home it is given is
+    // under /home.
+    let service_user = directive("User");
+    assert_eq!(service_user, "printobserver");
+    let passwd: Vec<&str> = reported_once(report, "passwd").split(':').collect();
+    assert_eq!(passwd[0], service_user);
+    let passwd_home = passwd[5];
+    let unit_home = directive("Environment")
+        .strip_prefix("HOME=")
+        .expect("the unit names the service's home");
+    for (what, home, owner) in [
+        (
+            "the user's own",
+            passwd_home,
+            reported_once(report, "passwd_home_owner"),
+        ),
+        (
+            "the unit's",
+            unit_home,
+            reported_once(report, "environment_home_owner"),
+        ),
+    ] {
+        assert!(
+            !home.starts_with("/home") && home != state && inside(home, state),
+            "{what} home {home} is not a directory under the state directory {state}"
+        );
+        assert_eq!(
+            owner,
+            format!("{service_user} 700"),
+            "{what} home is not the service user's alone"
+        );
+    }
+    (state, service_user)
+}
+
+/// What the journey reported about auditing its own restrictions as the
+/// service user: every one relevant to where a sign-in may be kept was applied.
+fn assert_the_audit(report: &[(String, String)], state: &str, service_user: &str) {
+    assert_eq!(reported_once(report, "audit_user"), service_user);
+    assert_eq!(reported_once(report, "audit_no_new_privs"), "1");
+    assert_eq!(
+        reported(report, "audit_readable"),
+        Vec::<&str>::new(),
+        "a home is readable to the service user"
+    );
+    let writable = reported(report, "audit_writable");
+    assert!(
+        writable.contains(&state),
+        "the state directory is not writable to the service user"
+    );
+    assert!(
+        writable.iter().all(|path| inside(path, state)),
+        "the service user can write outside the state directory: {writable:?}"
+    );
+}
+
+/// What the journey reported about the documented sign-in and the supervision
+/// turn the unit's own start command ran after it.
+fn assert_the_sign_in_and_the_turn(report: &[(String, String)], state: &str, service_user: &str) {
+    let entry = SIGN_INS
+        .iter()
+        .find(|entry| entry.identity() == reported_once(report, "harness"))
+        .expect("the installed configuration names a harness in the table");
+    let harness_dir = reported_once(report, "harness_dir");
+    assert_eq!(
+        harness_dir,
+        format!("{state}/{HARNESS_DIRECTORY}/{}", entry.identity())
+    );
+    assert_eq!(reported_once(report, "sign_in_status"), "0", "{report:#?}");
+    assert!(
+        reported(report, "sign_in_said")
+            .iter()
+            .any(|line| line.ends_with(&format!("{ANSWERED}{TYPED_IN_THE_JOURNEY}"))),
+        "the sign-in was not answered on its terminal: {report:#?}"
+    );
+    assert_eq!(reported_once(report, "sign_in_user"), service_user);
+    assert_eq!(reported_once(report, "sign_in_directory"), harness_dir);
+    assert_eq!(reported_once(report, "sign_in_cwd"), harness_dir);
+    assert!(inside(reported_once(report, "sign_in_home"), state));
+    // What the sign-in recorded was read out of the harness directory, beside
+    // the state file it wrote.
+    assert_eq!(
+        reported_once(report, "sign_in_argv"),
+        entry.arguments().join(" "),
+        "{SIGN_IN_SEEN} beside the state file does not record the harness's own sign-in"
+    );
+
+    // The supervision turn the unit's own start command ran.
+    assert_eq!(reported_once(report, "turn_user"), service_user);
+    assert_eq!(reported_once(report, "turn_directory"), harness_dir);
+    assert_eq!(reported_once(report, "turn_state"), SIGN_IN_STATE);
+    assert!(inside(reported_once(report, "turn_home"), state));
+    // The state file the sign-in left and the file the turn wrote beside it are
+    // both in the harness directory, and all three are the service user's alone.
+    for (what, key, mode) in [
+        ("the harness directory", "harness_dir_owner", "700"),
+        (SIGNED_IN, "state_file_owner", "600"),
+        (TURN_SEEN, "turn_file_owner", "600"),
+    ] {
+        assert_eq!(
+            reported_once(report, key),
+            format!("{service_user} {mode}"),
+            "{what} in {harness_dir} is not the service user's alone"
+        );
+    }
+}
+
+/// The procedure the README documents works on a fresh install, under the
+/// installed unit's own user and its restrictions.
+///
+/// On a root the committed installer installed into — as root, so that the
+/// user it creates is the one the service runs as — the harness program is put
+/// where that user's path finds it, `printobserver sign-in` is run as that user
+/// the way `sudo -u` runs it, and the unit's own start command then runs a
+/// supervision turn from a real failure alert. Both run with every home hidden,
+/// every mount read-only and the state directory alone writable, which the
+/// journey audits as that user before it relies on it.
+#[test]
+fn the_documented_sign_in_works_under_the_units_own_user_and_restrictions() {
+    let report = run_the_service_journey();
+
+    let (state, service_user) = assert_the_unit_and_its_user(&report);
+    assert_the_audit(&report, state, service_user);
+    assert_the_sign_in_and_the_turn(&report, state, service_user);
 }
 
 /// The installer takes the program the install path's routes left on PATH.

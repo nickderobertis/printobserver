@@ -46,7 +46,7 @@ pub use api::{ApiState, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,
-    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, ServerConfig, SharedSecret,
+    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, ServerConfig, SharedSecret, SignInConfig,
     SupervisorSection,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
@@ -55,6 +55,10 @@ pub use operations::{
     INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter, VERSION_PREFIX,
     ValueKind, operation,
 };
+/// The harness identities this program can sign in, as the adapter declares
+/// them: the command-line program reads the table through this crate, which is
+/// the one edge it has to the adapter.
+pub use printobserver_oneharness::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use reconcile::{
     ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue,
     reconcile,

@@ -193,7 +193,49 @@ both variables are set and you pass no `--config`, `printobserver` does not read
 the service's configuration file at all. A command the server refuses exits with
 status 4 and says where the credential is read from.
 
-### 6. Enable and start the service
+### 6. Install and sign in the agent's harness
+
+There is no separate agent endpoint: when an event arrives, the server runs the
+harness `supervisor.harness` selects, as the service's own user. That user has
+no home under `/home` and the unit hides every home directory, so the harness
+keeps its sign-in under the state directory instead, in
+`/var/lib/printobserver/harness/<harness>`. printobserver can sign in
+`claude-code` and `codex`.
+
+Install the harness program where the service user's path finds it, which a
+system-wide install does:
+
+```console
+sudo npm install -g @anthropic-ai/claude-code
+```
+
+For `codex`, install its program instead:
+
+```console
+sudo npm install -g @openai/codex
+```
+
+Then sign it in once, as the service user:
+
+```console
+sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
+```
+
+This reads `state_dir` and `supervisor.harness` from
+`/etc/printobserver/config.toml` and nothing else, so it works before or after
+you fill in the OctoPrint and Obico values. It creates the harness's directory,
+readable by the service user alone, and runs that harness's own interactive
+sign-in in your terminal: `claude auth login`, or `codex login --device-auth`.
+Follow its prompts. The command exits with the harness's own status. It starts
+no service and contacts neither OctoPrint nor Obico.
+
+Every supervision turn the service runs is pointed at the same directory, so
+it uses that sign-in: an Obico failure webhook causes a turn using the bundled
+skill, and every action the agent requests goes through the policy. Run the
+sign-in again if the harness's sign-in expires, or after changing
+`supervisor.harness`.
+
+### 7. Enable and start the service
 
 ```console
 sudo systemctl enable --now printobserver.service
@@ -202,7 +244,7 @@ sudo systemctl enable --now printobserver.service
 Starting is separate because this service commands a 3D printer. Installing
 software must not start a process that can move the machine.
 
-### 7. Verify the installation
+### 8. Verify the installation
 
 ```console
 printobserver --version
@@ -221,17 +263,6 @@ The command surface requires the internal print ID for print-specific reads but
 exposes no operation that lists print IDs. The tree does not provide an
 end-user procedure for discovering that ID, so this part of the first-read
 workflow remains unspecified by the implementation.
-
-### 8. Attach the agent
-
-There is no separate agent endpoint: when an event arrives, the server invokes
-the harness selected by `supervisor.harness`. The installer runs printobserver
-as a system user with no home directory, and its unit sets `ProtectHome=true`.
-This repository does not provide a production procedure for installing the
-selected harness or signing it in for that service user. Resolve that
-harness-specific service setup before relying on supervision turns. Once the
-harness is available, an Obico failure webhook causes a turn using the bundled
-skill, and every requested action goes through the policy.
 
 ## Using it
 

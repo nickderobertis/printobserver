@@ -142,7 +142,10 @@ fn main() -> ExitCode {
         connect_elsewhere();
     }
     let outcome = match parse(&arguments) {
-        Invocation::Usage | Invocation::Version | Invocation::Serve { .. } => {
+        Invocation::Usage
+        | Invocation::Version
+        | Invocation::Serve { .. }
+        | Invocation::SignIn { .. } => {
             eprintln!("this variant is a client command and nothing else");
             return ExitCode::from(Exit::Usage.status());
         }

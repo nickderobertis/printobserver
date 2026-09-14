@@ -25,7 +25,9 @@ use printobserver_core::store::Stores;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_oneharness::{AssessmentSchema, OneharnessSupervisor, SupervisorConfig};
+use printobserver_oneharness::{
+    AssessmentSchema, HarnessSignIn, OneharnessSupervisor, SupervisorConfig,
+};
 use printobserver_printer_api::{PrinterError, PrinterPort};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_supervisor_api::SupervisorPort;
@@ -569,6 +571,31 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         AssessmentSchema::at(&schema_path).map_err(|error| StartError::Supervisor {
             detail: error.to_string(),
         })?;
+    // A harness this program can sign in keeps that sign-in under the state
+    // directory — the one place the service's unit lets it write — and every
+    // turn is pointed at the directory `printobserver sign-in` wrote it to. A
+    // harness outside the table is handed nothing extra.
+    let harness_env = match HarnessSignIn::of(&config.harness) {
+        Some(sign_in) => {
+            let directory =
+                sign_in
+                    .prepare(&config.state_dir)
+                    .map_err(|error| StartError::State {
+                        detail: format!(
+                            "{} could not be created: {error}",
+                            sign_in.directory(&config.state_dir).display()
+                        ),
+                    })?;
+            vec![
+                sign_in
+                    .assignment(&directory)
+                    .map_err(|error| StartError::Supervisor {
+                        detail: error.to_string(),
+                    })?,
+            ]
+        }
+        None => Vec::new(),
+    };
     OneharnessSupervisor::open(SupervisorConfig {
         state_dir: config.state_dir.clone(),
         skill_path,
@@ -583,7 +610,7 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         working_dir: assets.clone(),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
         harness_bin: None,
-        harness_env: Vec::new(),
+        harness_env,
     })
     .map_err(|error| StartError::Supervisor {
         detail: error.to_string(),

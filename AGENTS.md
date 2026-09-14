@@ -178,9 +178,20 @@ out of what the server declares: one **client command** per operation
 that operation's own `Operation::request` — whose body, for an action, is read at
 run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
 a variant gains a command, a variant that gains a field gains an option, and
-growing a declaration beside the parser grows nothing. The **server command** is
-the one command beside them, and is the only one that is not a request to an
-already-running server.
+growing a declaration beside the parser grows nothing. Two commands sit beside
+them, and they are the only ones that are not requests to an already-running
+server: the **server command**, which runs the supervisor, and the **sign-in
+command**, which signs that supervisor's harness in as the user the service runs
+as.
+
+<!-- llmlint: ignore[instruction_layer_localized] The task that added the sign-in command requires this section to describe it beside the server command, and this section is the root's one statement of the program's whole surface, which spans the adapter, server and command-line crates; no one crate's subtree owns it. suppressions.toml has the full reason. -->
+The sign-in command exists because the service runs as a system user whose unit
+hides every home. `printobserver-oneharness`'s `SIGN_INS` is the one table of the
+harnesses it can sign in and of the variable selecting where each keeps its
+sign-in, and `<state_dir>/harness/<identity>` is the one directory both the
+sign-in and every supervision turn use; nothing else in the tree names those
+variables. It reads `state_dir` and `supervisor.harness` alone, so it never needs
+a reachable printer.
 
 Four options are common to every command and there is no fifth:
 `--json`, `--config <path>`, `--help` and `--version`. The configuration file's
@@ -592,7 +603,8 @@ integration jobs that exercise it — is derived from here, and `just check-repo
 refuses any that differs.
 
 The path is **one program obtained by any one of three alternative routes, and
-then two commands in order**.
+then two commands in order**, with the agent's harness installed and signed in
+as the service's own user between those two commands.
 
 ### The three routes
 
@@ -686,6 +698,29 @@ written above, or in which that installer enables or starts anything.
 
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
+
+### Between the two commands, sign in the agent's harness
+
+On every event the service runs the harness `supervisor.harness` names, as its
+own user, whose unit hides every home. So after the installer and before the
+command that enables the service, install that harness's program where the
+service user's path finds it — as root, one of these two — and sign it in once
+as that user with `printobserver sign-in`, which keeps the sign-in under the
+state directory, where every supervision turn reads it. It reads `state_dir` and
+`supervisor.harness` alone, starts nothing and reaches no printer. Made
+executable by the `printobserver` command's own `sign-in`.
+
+```console
+sudo npm install -g @anthropic-ai/claude-code
+```
+
+```console
+sudo npm install -g @openai/codex
+```
+
+```console
+sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
+```
 
 ## The registry install-path proof
 

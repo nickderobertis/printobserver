@@ -121,13 +121,6 @@ $SERVICE_USER" >&2
     user_name "$SERVICE_USER"
 fi
 
-if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
-    [ "$(id -u)" -eq 0 ] || die "there is no user $SERVICE_USER and this is not root"
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER" ||
-        die "the system user $SERVICE_USER could not be created. Create it yourself \
-(\`useradd --system $SERVICE_USER\`), or pass --user a user that already exists."
-fi
-
 # The four places, spelled once. Everything below writes into one of them.
 BIN_DIR="$ROOT/usr/local/lib/$PROGRAM"
 CONF_DIR="$ROOT/etc/$PROGRAM"
@@ -149,6 +142,21 @@ if [ -n "$ROOT" ]; then
     RUNTIME_BINARY="$INSTALLED_BINARY"
     RUNTIME_CONFIG="$INSTALLED_CONFIG"
     RUNTIME_STATE="$STATE_DIR"
+fi
+
+# The service user's home is inside the state directory, and so is every file
+# the supervising agent's harness keeps. The unit hides every home under /home,
+# /root and /run/user and lets the service write to the state directory alone,
+# so a harness pointed at a home anywhere else could neither sign in nor run.
+HOME_DIR="$STATE_DIR/home"
+RUNTIME_HOME="$RUNTIME_STATE/home"
+
+if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    [ "$(id -u)" -eq 0 ] || die "there is no user $SERVICE_USER and this is not root"
+    useradd --system --no-create-home --home-dir "$RUNTIME_HOME" \
+        --shell /usr/sbin/nologin "$SERVICE_USER" ||
+        die "the system user $SERVICE_USER could not be created. Create it yourself \
+(\`useradd --system $SERVICE_USER\`), or pass --user a user that already exists."
 fi
 
 # What every failed write here says, so that the two heredocs below can name it
@@ -177,10 +185,18 @@ chown "$SERVICE_USER" "$STATE_DIR" ||
 chmod 0700 "$STATE_DIR" ||
     die "$STATE_DIR could not be made private. Run this as root, or pass --root a \
 directory you own."
+mkdir -p "$HOME_DIR" ||
+    die "$HOME_DIR could not be created. Run this as root, or pass --root a directory \
+you own."
+chown "$SERVICE_USER" "$HOME_DIR" ||
+    die "$HOME_DIR could not be handed to $SERVICE_USER. Run this as root."
+chmod 0700 "$HOME_DIR" ||
+    die "$HOME_DIR could not be made private. Run this as root."
 
 # An existing configuration is left exactly as it is: a reinstall must not
 # overwrite the operator's own values with a template's.
 if [ -e "$INSTALLED_CONFIG" ]; then
+    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
 else
     cat >"$INSTALLED_CONFIG" <<CONFIG || die "$WRITE_REFUSED"
@@ -259,6 +275,7 @@ Wants=network-online.target
 [Service]
 Type=exec
 User=$SERVICE_USER
+Environment=HOME=$RUNTIME_HOME
 ExecStart=$RUNTIME_BINARY server --config $RUNTIME_CONFIG
 WorkingDirectory=$RUNTIME_STATE
 Restart=on-failure
