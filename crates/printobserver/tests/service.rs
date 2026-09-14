@@ -16,13 +16,20 @@
 //! out over a socket, because the point is what the installed program answers
 //! rather than what a client library does with it.
 
+#[path = "support/harness.rs"]
+mod harness;
+
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use printobserver_core::store::PrintStore as _;
+use printobserver_server::{HARNESS_DIRECTORY, HarnessSignIn, INGRESS_PATH, SIGN_INS, TOKEN_PARAM};
 use tempfile::TempDir;
+
+use harness::{SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking, recorded, stand_in};
 
 /// The unit's name, as the install-path section states it. `just check-repo`'s
 /// `service-install` holds the tree to that section; this drives what the tree
@@ -165,15 +172,20 @@ fn owner(path: &Path) -> String {
     String::from_utf8_lossy(&listed.stdout).trim().to_owned()
 }
 
-/// The mode of one path, and whether it carries an access-control entry
-/// granting a principal other than its owner anything.
-fn permissions(path: &Path) -> (u32, Vec<String>) {
+/// The permission bits of one path.
+fn mode_of(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt as _;
-    let mode = std::fs::metadata(path)
+    std::fs::metadata(path)
         .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display()))
         .permissions()
         .mode()
-        & 0o777;
+        & 0o777
+}
+
+/// The mode of one path, and whether it carries an access-control entry
+/// granting a principal other than its owner anything.
+fn permissions(path: &Path) -> (u32, Vec<String>) {
+    let mode = mode_of(path);
     let listed = Command::new("getfacl")
         .arg("--omit-header")
         .arg("--absolute-names")
@@ -500,7 +512,12 @@ fn silent_host() -> SocketAddr {
 }
 
 /// Read one request and answer an empty document.
-fn answer_nothing(mut stream: TcpStream) {
+fn answer_nothing(stream: TcpStream) {
+    answer_with(stream, "application/json", b"{}");
+}
+
+/// Read one request and answer one body of one type.
+fn answer_with(mut stream: TcpStream, content_type: &str, body: &[u8]) {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 1024];
     while !request.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -509,10 +526,193 @@ fn answer_nothing(mut stream: TcpStream) {
             Ok(read) => request.extend_from_slice(&buffer[..read]),
         }
     }
-    let _ = stream.write_all(
-        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\
-          Connection: close\r\n\r\n{}",
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
+         Connection: close\r\n\r\n",
+        body.len()
     );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+}
+
+/// A host serving one snapshot, where a failure alert says its image is.
+fn image_host() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut snapshot = vec![0xff, 0xd8, 0xff];
+                snapshot.extend(b"printobserver-service-snapshot".repeat(8));
+                answer_with(stream, "image/jpeg", &snapshot);
+            });
+        }
+    });
+    address
+}
+
+/// The shared secret [`fill_in`] gives the ingress.
+const SHARED_SECRET: &str = "a-shared-secret";
+
+/// Post the committed `Obico` failure alert to a running server's ingress, its
+/// image pointed at a host this journey serves, and answer the status line.
+fn post_a_failure_alert(address: &str) -> String {
+    let mut alert: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_str(include_str!(
+            "../../printobserver-obico/samples/obico/failure-alert.json"
+        ))
+        .expect("the committed sample is JSON");
+    alert["img_url"] = printobserver_types::serde_json::json!(format!(
+        "http://{}/snapshot.jpg",
+        image_host()
+    ));
+    let body = alert.to_string();
+    let mut stream = TcpStream::connect(address).expect("the ingress accepts a connection");
+    write!(
+        stream,
+        "POST {INGRESS_PATH}?{TOKEN_PARAM}={SHARED_SECRET} HTTP/1.1\r\nHost: {address}\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .expect("the alert is written");
+    let mut answer = String::new();
+    stream
+        .read_to_string(&mut answer)
+        .expect("the answer is read");
+    answer.lines().next().unwrap_or_default().to_owned()
+}
+
+/// The harness the installed configuration names, as the adapter's table
+/// declares it.
+fn configured_harness(configuration: &Path) -> &'static HarnessSignIn {
+    let document: toml::Value = toml::from_str(
+        &std::fs::read_to_string(configuration).expect("the configuration reads"),
+    )
+    .expect("the configuration is a document");
+    let named = document["supervisor"]["harness"]
+        .as_str()
+        .expect("the configuration names a harness");
+    SIGN_INS
+        .iter()
+        .find(|entry| entry.identity() == named)
+        .unwrap_or_else(|| panic!("the installed configuration names `{named}`, outside the table"))
+}
+
+/// Wait for one file to be there, for as long as a supervision turn is given.
+fn eventually(path: &Path, server: &mut Child) -> String {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            return text;
+        }
+        if let Ok(Some(exited)) = server.try_wait() {
+            panic!("the server exited before a turn ran: {exited:?}");
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    panic!("no supervision turn wrote {} in time", path.display());
+}
+
+/// A started server hands every supervision turn the harness directory it
+/// created, and the sign-in the sign-in command left there is what the turn
+/// reads.
+///
+/// Driven the way the README orders it on an installed root: the unit's own
+/// start command, a stand-in for the harness program on the path the service
+/// runs with, `printobserver sign-in` against the installed configuration, and
+/// then a real failure alert through the ingress.
+#[test]
+fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
+    let under = TempDir::new().expect("a journey's own root");
+    let installed = install(under.path());
+    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
+    let start: Vec<String> = unit_value(&unit, "ExecStart")
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let configuration = PathBuf::from(start.last().expect("a configuration"));
+    fill_in(&configuration);
+    let entry = configured_harness(&configuration);
+    let bin = under.path().join("harness-bin");
+    let invocations = under.path().join("invocations");
+    stand_in(&bin, entry, &invocations, 0, &assessment_answer());
+    let path = format!("{}:/usr/bin:/bin", bin.display());
+    let home = unit_value(&unit, "Environment")
+        .strip_prefix("HOME=")
+        .expect("the unit gives the service a home")
+        .to_owned();
+    let directory = installed
+        .state()
+        .canonicalize()
+        .expect("the state directory resolves")
+        .join(HARNESS_DIRECTORY)
+        .join(entry.identity());
+    assert!(
+        !directory.exists(),
+        "the harness directory was there before anything created it"
+    );
+
+    let mut server = {
+        let _held = forking();
+        Command::new(&start[0])
+            .args(&start[1..])
+            .current_dir(installed.state())
+            .env("PATH", &path)
+            .env("HOME", &home)
+            .env_remove(entry.config_env())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the unit's own start command runs")
+    };
+    let address = serving_on(&mut server);
+
+    // The server created the directory before anybody signed in.
+    let mode = mode_of(&directory);
+    assert_eq!(mode, 0o700, "the server created the directory mode {mode:o}");
+
+    let signed_in = {
+        let _held = forking();
+        Command::new(&installed.binary())
+            .args(["sign-in", "--config"])
+            .arg(&configuration)
+            .env("PATH", &path)
+            .env("HOME", &home)
+            .env_remove(entry.config_env())
+            .stdin(Stdio::null())
+            .output()
+            .expect("the sign-in runs")
+    };
+    assert!(
+        signed_in.status.success(),
+        "the sign-in failed: {}",
+        String::from_utf8_lossy(&signed_in.stderr)
+    );
+
+    let answered = post_a_failure_alert(&address);
+    assert!(
+        answered.contains("202"),
+        "the ingress did not take the alert: {answered}"
+    );
+    let turn = eventually(&directory.join(TURN_SEEN), &mut server);
+
+    assert_eq!(
+        PathBuf::from(recorded(&turn, "directory")),
+        directory,
+        "the turn was pointed somewhere other than the directory the sign-in wrote"
+    );
+    assert_eq!(recorded(&turn, "state"), SIGN_IN_STATE);
+    assert_eq!(
+        std::fs::read_to_string(directory.join(SIGNED_IN)).expect("the sign-in is kept"),
+        format!("{SIGN_IN_STATE}\n")
+    );
+
+    let stopped = Command::new("kill")
+        .arg("-TERM")
+        .arg(server.id().to_string())
+        .status()
+        .expect("the signal is sent");
+    assert!(stopped.success(), "the signal was not sent");
+    server.wait().expect("the server exits");
 }
 
 /// The installer takes the program the install path's routes left on PATH.
