@@ -29,7 +29,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command as Process;
 
 use printobserver::surface::{
-    Field, Form, GLOBAL_OPTIONS, SERVE_COMMAND, Supply, command_for, option_for, surface,
+    Field, Form, GLOBAL_OPTIONS, LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply,
+    command_for, option_for, surface,
 };
 use printobserver_server::operations::{ActionKind, PrintAction};
 use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
@@ -207,7 +208,11 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
 
     let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
     wanted.extend(READS.iter().map(|read| command_for(read)));
-    wanted.insert(SERVE_COMMAND.to_owned());
+    // The two commands that are not requests to a running server, as this
+    // program's own tasks name them: the one that runs the server, and the one
+    // that signs its harness in.
+    wanted.insert("server".to_owned());
+    wanted.insert("sign-in".to_owned());
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();
     found.extend(
         wanted
@@ -248,9 +253,12 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
                 ));
             }
         }
-        if command.name == SERVE_COMMAND {
+        if LOCAL_COMMANDS.contains(&command.name.as_str()) {
             found.extend(taken.iter().map(|option| {
-                format!("`{SERVE_COMMAND}` accepts `{option}`, and it takes no value of its own")
+                format!(
+                    "`{}` accepts `{option}`, and it takes no value of its own",
+                    command.name
+                )
             }));
             continue;
         }
@@ -516,16 +524,37 @@ fn the_parser_accepts_exactly_the_options_the_surface_declares() {
 }
 
 /// Every command of the surface names an operation, except the one that runs
-/// the server.
+/// the server and the one that signs its harness in.
 #[test]
-fn only_the_command_that_runs_the_server_names_no_operation() {
+fn only_the_commands_that_run_the_server_and_sign_it_in_name_no_operation() {
     let without: Vec<String> = surface()
         .into_iter()
         .filter(|command| !command.is_client())
         .map(|command| command.name)
         .collect();
 
-    assert_eq!(without, vec![SERVE_COMMAND.to_owned()]);
+    assert_eq!(
+        without,
+        vec![SERVE_COMMAND.to_owned(), SIGN_IN_COMMAND.to_owned()]
+    );
+}
+
+/// A third command that is not a request to a running server is refused.
+#[test]
+fn a_third_command_naming_no_operation_is_refused() {
+    let mut broken = surface();
+    broken.push(printobserver::surface::Command {
+        name: "reset".to_owned(),
+        operation: None,
+        fields: Vec::new(),
+    });
+
+    let found = findings(&broken, &GLOBAL_OPTIONS);
+
+    assert!(
+        found.iter().any(|finding| finding.contains("`reset`")),
+        "a command naming no operation beside the two local ones was accepted: {found:#?}"
+    );
 }
 
 /// Every action of the vocabulary is one this program has a command for.

@@ -13,6 +13,7 @@ use std::process::ExitCode;
 use printobserver::client::{perform, refusal};
 use printobserver::failure::{Exit, Failure};
 use printobserver::parse::{Invocation, parse};
+use printobserver::sign_in::sign_in;
 use printobserver::surface::{usage, version};
 use printobserver_server::Server;
 
@@ -61,6 +62,10 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Invocation::Serve { config } => return ExitCode::from(run_server(config).status()),
+        Invocation::SignIn { config } => match sign_in(&config) {
+            Ok(status) => return ExitCode::from(status),
+            Err(failure) => refusal(&failure),
+        },
         Invocation::Refused { detail } => refusal(&Failure::of(Exit::Usage, detail)),
         Invocation::Call(call) => perform(&call),
     };

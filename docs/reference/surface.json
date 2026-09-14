@@ -6,6 +6,11 @@
       "options": []
     },
     {
+      "command": "sign-in",
+      "operation": null,
+      "options": []
+    },
+    {
       "answers": [
         "success"
       ],

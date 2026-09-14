@@ -4,8 +4,9 @@
 //!
 //! [`surface`] folds over
 //! [`OPERATIONS`](printobserver_server::OPERATIONS) — one client command per
-//! public operation the server serves — and puts the one command that runs the
-//! server beside them. Each client command's options are built from that
+//! public operation the server serves — and puts the two commands that are not
+//! requests to a running server beside them: the one that runs the server, and
+//! the one that signs its harness in. Each client command's options are built from that
 //! operation's own [`request`](printobserver_server::Operation::request), whose
 //! body for an action is the fields the contracts' `PrintAction` declares for
 //! that variant. So the set of commands, the set of options each takes, and
@@ -39,8 +40,16 @@ pub const VERSION_OPTION: &str = "--version";
 /// other.
 pub const GLOBAL_OPTIONS: [&str; 4] = [JSON_OPTION, CONFIG_OPTION, HELP_OPTION, VERSION_OPTION];
 
-/// The one command that is not a request to a running server.
+/// The command that runs the server, which is not a request to a running one.
 pub const SERVE_COMMAND: &str = "server";
+
+/// The command that signs the supervising agent's harness in, which is not a
+/// request to a running server either.
+pub const SIGN_IN_COMMAND: &str = "sign-in";
+
+/// Every command that is not a request to a running server, and there is no
+/// other.
+pub const LOCAL_COMMANDS: [&str; 2] = [SERVE_COMMAND, SIGN_IN_COMMAND];
 
 /// The field a bounded intervention's duration travels in, as the contracts
 /// spell it.
@@ -199,16 +208,20 @@ pub fn command_for(operation: &str) -> String {
 
 /// Every command this program has, and there is no other.
 ///
-/// One per operation the server declares, plus the one that runs the server.
-/// That command takes no value of its own: the configuration file it runs
-/// under is the global option every command takes.
+/// One per operation the server declares, plus the one that runs the server and
+/// the one that signs its harness in. Neither of those two takes a value of its
+/// own: the configuration file each reads is the global option every command
+/// takes.
 #[must_use]
 pub fn surface() -> Vec<Command> {
-    let mut found = vec![Command {
-        name: SERVE_COMMAND.to_owned(),
-        operation: None,
-        fields: Vec::new(),
-    }];
+    let mut found: Vec<Command> = LOCAL_COMMANDS
+        .iter()
+        .map(|name| Command {
+            name: (*name).to_owned(),
+            operation: None,
+            fields: Vec::new(),
+        })
+        .collect();
     found.extend(OPERATIONS.iter().map(|operation| Command {
         name: command_for(operation.name),
         operation: Some(*operation),

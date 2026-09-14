@@ -178,9 +178,25 @@ out of what the server declares: one **client command** per operation
 that operation's own `Operation::request` — whose body, for an action, is read at
 run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
 a variant gains a command, a variant that gains a field gains an option, and
-growing a declaration beside the parser grows nothing. The **server command** is
-the one command beside them, and is the only one that is not a request to an
-already-running server.
+growing a declaration beside the parser grows nothing. Two commands sit beside
+them, and they are the only ones that are not requests to an already-running
+server: the **server command**, which runs the supervisor, and the **sign-in
+command**, which signs that supervisor's harness in as the user the service runs
+as.
+
+The sign-in command exists because the service runs as a system user with no home
+under a unit that hides every home, and a harness keeps its authentication in a
+directory one environment variable selects. `printobserver-oneharness`'s
+`SIGN_INS` is the one table of the harnesses this program can sign in, the
+variable each is pointed by (`OneHarness`'s own constant) and that harness's own
+sign-in invocation; the server and the command-line program read it, and nothing
+else in the tree names those variables. The directory is
+`<state_dir>/harness/<identity>`, created private by whichever of the sign-in
+command and a server start comes first, and every supervision turn is handed the
+variable naming it. The sign-in command reads `state_dir` and
+`supervisor.harness` from the server's own configuration and nothing else, runs
+the harness's sign-in on the terminal it was run from and exits with its status,
+and starts no server, reaches no printer and posts to no failure detector.
 
 Four options are common to every command and there is no fifth:
 `--json`, `--config <path>`, `--help` and `--version`. The configuration file's
