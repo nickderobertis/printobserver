@@ -185,25 +185,37 @@ fn mode_of(path: &Path) -> u32 {
         & 0o777
 }
 
-/// The mode of one path, and whether it carries an access-control entry
-/// granting a principal other than its owner anything.
-fn permissions(path: &Path) -> (u32, Vec<String>) {
+/// The mode of one path, and the long listing that says whether it carries an
+/// access-control list granting some principal more than its mode bits do.
+///
+/// Read off `ls -ld`, which marks a file carrying an access-control list with a
+/// `+` straight after its mode, so this needs nothing beyond the coreutils every
+/// supported host has — and not the `acl` package, which neither this
+/// repository's setup nor a stock host provides.
+fn permissions(path: &Path) -> (u32, String) {
     let mode = mode_of(path);
-    let listed = Command::new("getfacl")
-        .arg("--omit-header")
-        .arg("--absolute-names")
+    let listed = Command::new("ls")
+        .arg("-ld")
+        .arg("--")
         .arg(path)
         .output()
-        .expect("getfacl runs");
-    let base = ["user::", "group::", "other::"];
-    let extra = String::from_utf8_lossy(&listed.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter(|line| !base.iter().any(|prefix| line.starts_with(prefix)))
-        .map(str::to_owned)
-        .collect();
-    (mode, extra)
+        .expect("ls runs");
+    assert!(
+        listed.status.success(),
+        "{} could not be listed: {}",
+        path.display(),
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    let listing = String::from_utf8_lossy(&listed.stdout).trim().to_owned();
+    (mode, listing)
+}
+
+/// Whether a long listing marks its file as carrying an access-control list.
+fn carries_an_access_control_list(listing: &str) -> bool {
+    listing
+        .split_whitespace()
+        .next()
+        .is_some_and(|mode| mode.ends_with('+'))
 }
 
 /// The installer places four things and starts nothing.
@@ -234,15 +246,15 @@ fn the_installer_places_four_things_and_starts_nothing() {
         unit_value(&unit, "User"),
         "the state directory is not owned by the user the unit runs the service as"
     );
-    let (mode, extra) = permissions(&installed.state());
+    let (mode, listing) = permissions(&installed.state());
     assert_eq!(
         mode, 0o700,
         "the state directory is mode {mode:o}, which does not deny group and other"
     );
     assert!(
-        extra.is_empty(),
-        "the state directory carries access-control entries granting another \
-         principal: {extra:?}"
+        !carries_an_access_control_list(&listing),
+        "the state directory carries an access-control list granting another \
+         principal: {listing}"
     );
 
     assert!(

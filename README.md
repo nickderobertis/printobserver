@@ -171,7 +171,11 @@ system-wide install does:
 sudo npm install -g @anthropic-ai/claude-code
 ```
 
-For `codex`, install `@openai/codex` the same way instead.
+For `codex`, install its program instead:
+
+```console
+sudo npm install -g @openai/codex
+```
 
 Then sign it in once, as the service user:
 

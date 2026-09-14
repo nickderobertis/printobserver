@@ -456,6 +456,12 @@ def install_path_section(repo: Repo) -> list[str]:
             f"AGENTS.md's `{ip.SECTION_HEADING}` does not state why enabling and "
             f"starting is a command of its own"
         )
+    if not any(ip.SIGN_IN_COMMAND in command for command in path.sign_in):
+        findings.append(
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{ip.SIGN_IN_COMMAND}` under a "
+            f"`{ip.SIGN_IN_HEADING}...` subsection, so nothing states how the agent's "
+            f"harness is signed in as the service's own user"
+        )
 
     findings.extend(ip.drifted_statements(path, _restatements(repo)))
     return findings

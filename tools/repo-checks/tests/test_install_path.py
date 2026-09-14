@@ -272,6 +272,48 @@ def test_a_check_that_does_not_ask_which_version_it_is_is_refused(
     refused(findings, "does not ask the program which version it is")
 
 
+SIGN_IN = "sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in"
+
+
+def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> None:
+    """The harness installs and the service-user sign-in belong to the one source."""
+    path = ip.parse(committed.agents_md)
+
+    equal(
+        path.sign_in,
+        (
+            "sudo npm install -g @anthropic-ai/claude-code",
+            "sudo npm install -g @openai/codex",
+            SIGN_IN,
+        ),
+    )
+    for command in path.sign_in:
+        contains(path.canonical, command, describing="every command the section states")
+
+
+def test_a_section_stating_no_sign_in_is_refused(tree: Callable[[], Tree]) -> None:
+    """A path that installs the service and never signs its harness in supervises nothing."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    start = text.index("### Then, sign in the agent's harness")
+    end = text.index("## The registry install-path proof")
+    broken.write("AGENTS.md", text[:start] + text[end:])
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states no `printobserver sign-in`")
+
+
+def test_a_sign_in_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None:
+    """The README's sign-in is derived from the section like every other command."""
+    broken = tree()
+    broken.edit("README.md", SIGN_IN, SIGN_IN.replace("-u printobserver", "-u root"))
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states")
+
+
 def test_a_check_carrying_a_placeholder_is_refused(tree: Callable[[], Tree]) -> None:
     """Every command this section states is one a reader pastes."""
     broken = tree()
