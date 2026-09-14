@@ -759,23 +759,29 @@ fn assert_refused_naming(refusal: &StartError, file: &Path, what: &str) {
     );
 }
 
+/// Credentials no `Authorization` header carries intact, one for every clause
+/// of [`ApiCredential::new`]'s rule.
+///
+/// One list, because the SDK smoke checks each restate that rule where no copy
+/// of this crate is reachable: the installed-client tier holds each of them to
+/// every entry here, as this journey holds the server to them.
+const UNPRESENTABLE: &str = include_str!("../fixtures/unpresentable-credentials.json");
+
 /// A configured credential no header could present refuses the start, naming
 /// the field and never the value.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_configured_credential_no_caller_could_present_is_refused() {
-    for (what, value) in [
-        ("empty", ""),
-        ("only whitespace", " \t "),
-        (
-            "carrying a control character",
-            "qx-distinctive-set\u{1b}value",
-        ),
-        (
-            "carrying a character outside ASCII",
-            "qx-distinctive-set-v\u{e4}lue",
-        ),
-        ("beginning with a space", " qx-distinctive-set-value"),
-    ] {
+    let unpresentable: Vec<Value> = printobserver_types::serde_json::from_str(UNPRESENTABLE)
+        .expect("the unpresentable credentials are a JSON list");
+    assert!(
+        unpresentable.len() >= 8,
+        "the unpresentable credentials lost a clause"
+    );
+    for entry in &unpresentable {
+        let what = entry["what"].as_str().expect("each entry names itself");
+        let value = entry["credential"]
+            .as_str()
+            .expect("each entry carries a credential");
         let rooted = Rooted::with(|configured| {
             let mut api = toml::Table::new();
             api.insert(
@@ -803,7 +809,7 @@ async fn a_configured_credential_no_caller_could_present_is_refused() {
             "the refusal of a configured credential {what} does not name the field: {said}"
         );
         assert!(
-            !said.contains("qx-distinctive-set"),
+            !said.contains("qx-distinctive"),
             "the refusal of a configured credential {what} quotes it: {said}"
         );
         assert!(

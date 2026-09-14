@@ -17,6 +17,7 @@ carry it.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -50,15 +51,18 @@ def supervisor(request: pytest.FixtureRequest) -> Path:
     return built
 
 
-#: Credentials no `Authorization` header carries intact, each of which a smoke
-#: check refuses as a usage error before it makes any request. Every one that
-#: is not empty is spelled so that a search for it finds only a quotation of it.
-UNPRESENTABLE = [
-    ("empty", ""),
-    ("beginning with a space", " qx-distinctive-offered"),
-    ("carrying a tab", "qx-distinctive\toffered"),
-    ("carrying a character outside ASCII", "qx-distinctive-offered-ä"),
-]
+#: Credentials no `Authorization` header carries intact, one for every clause of
+#: the rule the server holds its own credential to. The server's own journey
+#: refuses every one of them as a configured credential, and each smoke check
+#: here refuses every one as a usage error before it makes any request — so the
+#: three smoke checks' copies of that rule and the server's are held to one list.
+#: Every one with any text is spelled so a search for it finds only a quotation.
+UNPRESENTABLE: list[dict[str, str]] = json.loads(
+    (
+        Path(__file__).resolve().parents[3]
+        / "crates/printobserver-server/tests/fixtures/unpresentable-credentials.json"
+    ).read_text(encoding="utf-8")
+)
 
 
 @pytest.mark.parametrize("identifier", CLIENTS)
@@ -81,7 +85,8 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
     taken = install(
         repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor
     )
-    for what, credential in UNPRESENTABLE:
+    for entry in UNPRESENTABLE:
+        what, credential = entry["what"], entry["credential"]
         stopped = run(
             [
                 *smoke_check(repo, taken),
