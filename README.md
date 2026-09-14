@@ -1,133 +1,230 @@
 # printobserver
 
-A thin, provably-correct supervision layer between a 3D printer and an agent
-that watches it. One installable artifact — the `printobserver` command —
-carries everything: `printobserver server` runs the supervisor, and the other
-subcommands are the operator's surface onto a running one.
+printobserver is for people who want an AI agent to help supervise a 3D print
+without giving that agent unrestricted control of the printer.
 
-## Install
+[OctoPrint](https://octoprint.org/download/) drives the printer, and
+[Obico](https://www.obico.io/docs/user-guides/octoprint-plugin-setup/) watches
+the camera and raises failure alerts. printobserver sits between those systems
+and the agent. It lets the agent inspect the print and make bounded, reversible,
+reasoned interventions through the same commands a person can audit.
 
-Three **alternative** routes put the `printobserver` program on your path. Take
-one of them, not all three — whichever suits the machine in front of you. Every
-one of them installs a program already built for your platform, so none needs a
-Rust toolchain on the target host.
+Every change requires a `--reason`. An adjustment can include `--duration-s`,
+after which printobserver tries to restore the prior value. The intervention
+policy refuses values outside the configured safety envelope and grants actions
+separately to the operator, agent, and system. You can therefore give an agent
+fewer permissions than a person. These limits matter because the service
+commands a physical machine that can be damaged.
 
-From the Python package registry:
+## How it fits together
+
+```text
+camera → Obico → failure webhook → printobserver → supervising agent
+printer ← OctoPrint ← allowed action ← policy ← agent decision
+```
+
+`printobserver server` is the supervisor. On an installed machine it runs as
+the `printobserver.service` systemd unit. It reads printer and job state through
+OctoPrint's API using the configured address and API key. It also exposes an
+ingress for alerts posted by Obico's webhook notification plugin; when an alert
+arrives, it immediately fetches the snapshot named by that alert.
+
+The server exposes an HTTP API. Every other `printobserver` subcommand, the
+Rust, Python, and Node clients, and the agent use that same API and command
+surface. The oneharness adapter in `crates/printobserver-oneharness` runs one
+supervision turn for each event on the harness identity configured under
+`[supervisor]`. It supplies
+[`printobserver-skill.md`](./crates/printobserver-oneharness/assets/printobserver-skill.md)
+as the turn's system prompt, and the agent acts through the same commands an
+operator uses.
+
+Every action request is recorded with its actor and reason, together with the
+policy decision and, when accepted, its outcome. The history lets a person
+audit what the agent requested, why, and what happened. See
+[the architecture](./docs/reference/architecture.md),
+[the intervention policy](./docs/reference/intervention-policy.md), and
+[the API and clients](./docs/reference/api-and-clients.md) for details.
+
+## Set it up on a real printer
+
+### 1. Set up OctoPrint
+
+Install [OctoPrint or OctoPi](https://octoprint.org/download/), connect it to
+the printer, and confirm that it can run a job. Generate an API key for
+printobserver. OctoPrint documents
+[access control and user API keys](https://docs.octoprint.org/en/main/features/accesscontrol.html),
+the [Application Keys plugin](https://docs.octoprint.org/en/main/bundledplugins/appkeys.html),
+and [REST API authorization](https://docs.octoprint.org/en/main/api/general.html).
+Keep the OctoPrint base URL and generated key for step 5.
+
+### 2. Set up self-hosted Obico
+
+This repository supports the webhook notification plugin of a **self-hosted
+Obico server**. The tree does not establish that Obico Cloud can send this
+webhook to printobserver. Follow Obico's
+[self-hosted server guides](https://www.obico.io/docs/server-guides/) and
+[server installation guide](https://www.obico.io/docs/server-guides/install/),
+then [connect the OctoPrint plugin](https://www.obico.io/docs/server-guides/configure-octoprint-plugin/).
+Obico also documents its general
+[plugin setup](https://www.obico.io/docs/user-guides/octoprint-plugin-setup/) and
+[manual linking flow](https://www.obico.io/docs/user-guides/octoprint-plugin-setup-manual-link/).
+
+In Obico's [notification settings](https://www.obico.io/docs/user-guides/notification-settings/),
+set the webhook plugin's custom URL to:
+
+```text
+http://PRINTOBSERVER_HOST:8420/obico/webhook?token=YOUR_SHARED_SECRET
+```
+
+Use an address and port the Obico server can reach. Choose a long random
+`YOUR_SHARED_SECRET` and put the identical value in `ingress.shared_secret` in
+step 5. Because the plugin configures only a URL, the `token` query parameter is
+how it carries the secret.
+
+The template's listen address accepts connections only from the same machine.
+If Obico runs elsewhere, set `listen` in step 5 to an address on the
+printobserver machine that Obico can reach and use it in the webhook URL.
+
+### 3. Install printobserver
+
+Choose one alternative. Each installs a prebuilt program and needs no Rust
+toolchain on the printer host.
+
+With Python:
 
 ```console
 pip install printobserver-cli
 ```
 
-From the JavaScript package registry:
+With Node:
 
 ```console
 npm install -g printobserver-cli
 ```
 
-Or with the bundled install script, which needs neither package manager:
+Or with the bundled installer:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
 ```
 
-It defaults to the newest release and a default directory, and also accepts a
-pinned release and an install directory:
+It also accepts a release and destination:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
-Whichever route you took, check what you installed. The program prints the
-version it is, which is the one thing the commands above cannot tell you:
+Check the program:
 
 ```console
 printobserver --version
 ```
 
-Then, in order, two commands. The first puts the binary, the state directory,
-the configuration and the systemd unit in place:
+### 4. Install the service files
+
+This installs the program, private state directory, configuration template,
+and systemd unit. It deliberately starts nothing.
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
 ```
 
-The second enables and starts the service:
+### 5. Configure the supervisor
+
+Edit `/etc/printobserver/config.toml`:
+
+- `state_dir` holds the database, images, sessions, and installed agent assets;
+  the template uses `/var/lib/printobserver`.
+- `listen` serves both the HTTP API and Obico ingress. The template uses
+  `127.0.0.1:8420`; change it if Obico is on another machine.
+- `octoprint.url` is the OctoPrint base URL from step 1.
+- `octoprint.api_key` is the API key generated in step 1.
+- `octoprint.fan` is `commandable` when printobserver may command the
+  part-cooling fan, or `absent` when the printer has none.
+- `supervisor.harness` selects the oneharness identity for supervision turns;
+  the template selects `claude-code`.
+- `ingress.shared_secret` is the private random value used in step 2. Anyone
+  who has it can submit an alert that may lead to a printer action.
+- `safety.agent_min_interval_s` is the minimum time between agent actions.
+  Under `safety.allowed`, set the allowed range for feedrate factor, flowrate
+  factor, fan percentage, bed target, and each tool target. Under
+  `safety.actions`, grant action names separately to `operator`, `agent`, and
+  `system`. Choose limits suitable for your printer and material. A print
+  manifest may narrow them but cannot widen them.
+
+The server validates these values at startup, including reaching OctoPrint and
+authenticating its API key, and identifies a field it cannot accept.
+
+### 6. Enable and start the service
 
 ```console
 sudo systemctl enable --now printobserver.service
 ```
 
-Between the two, edit `/etc/printobserver/config.toml`: the installer writes a
-template, and the OctoPrint address and key and the shared secret the Obico
-ingress requires are yours to fill in. Every value is validated when the service
-starts, and one that cannot work is refused naming the field it is about.
+Starting is separate because this service commands a 3D printer. Installing
+software must not start a process that can move the machine.
 
-Enabling and starting is a command of its own rather than something the
-installer does, **because this service commands a 3D printer**: installing a
-package must not, as a side effect, start a process that can move a machine.
+### 7. Verify the installation
 
-`AGENTS.md`'s "The end-user install path" is the authoritative source of all
-five commands above; this section is derived from it and a check holds the two
-together.
+```console
+printobserver --version
+```
+
+Start a print through OctoPrint. Once you have its printobserver ID, make a
+first read against the running supervisor:
+
+```console
+printobserver context --print-id PRINT_ID
+```
+
+The command surface requires the internal print ID for print-specific reads but
+exposes no operation that lists print IDs. The tree does not provide an
+end-user procedure for discovering that ID, so this part of the first-read
+workflow remains unspecified by the implementation.
+
+### 8. Attach the agent
+
+There is no separate agent endpoint: when an event arrives, the server invokes
+the harness selected by `supervisor.harness`. The installer runs printobserver
+as a system user with no home directory, and its unit sets `ProtectHome=true`.
+This repository does not provide a production procedure for installing the
+selected harness or signing it in for that service user. Resolve that
+harness-specific service setup before relying on supervision turns. Once the
+harness is available, an Obico failure webhook causes a turn using the bundled
+skill, and every requested action goes through the policy.
 
 ## Using it
-
-Everything the supervising agent does and everything an operator does goes
-through the one command, against a running server:
 
 ```console
 printobserver --help
 ```
 
-That surface is **closed and derived**: one command per action the contracts
-declare plus the reads the server serves, each taking exactly the values that
-operation's own request schema names. Nothing in the command-line program lists
-them, so nothing there can grow them.
-
-Four options are common to every command: `--json` for machine-readable output,
-`--config <path>`, `--help` and `--version`. Where the server is and what
-authenticates to it are **configuration** rather than arguments — read from that
-file, which may be the server's own `/etc/printobserver/config.toml`, and from
-`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`.
-
-Every mutating command takes a `--reason`, which is what makes the history worth
-reading; every adjustment may take a `--duration-s`, which makes it a bounded
-intervention that puts the prior value back when it expires. An image is an
-absolute path on the server's own host: this program transports no image bytes,
-and a path that names no file where it is running is a failure of its own rather
-than a file name that names nothing.
+Read a print's context before intervening, and give every change a
+`--reason`. See
+[common operations](./docs/reference/common-operations.md) for a worked example
+of every command, including a temporary adjustment with `--duration-s`, and
+its output.
 
 ## Reference documentation
 
-The supervising agent's own skill is
-[`crates/printobserver-oneharness/assets/printobserver-skill.md`](./crates/printobserver-oneharness/assets/printobserver-skill.md)
-— deliberately short, because it is the system prompt of every supervision turn.
-Everything it does not say is in these, and an operator reads the same ones:
-
-- [The command surface](./docs/reference/command-surface.md) — every command,
-  its arguments, its output and how it fails.
-- [Common operations](./docs/reference/common-operations.md) — a worked example
-  of each, every one of them run against a real server by a committed check.
-- [The intervention policy](./docs/reference/intervention-policy.md) — where the
-  bounds come from, what a rejection carries, and what expiry does.
-- [The API and the clients](./docs/reference/api-and-clients.md) — the same
-  surface over HTTP.
-- [The schemas](./docs/reference/schemas.md) — generated from the types.
-- [The architecture](./docs/reference/architecture.md) — what each crate owns,
-  and the two structural rules the design rests on.
-- [Testing](./docs/reference/testing.md) — each tier, what it proves, and which
-  ones do not run on every change.
+- [The agent skill](./crates/printobserver-oneharness/assets/printobserver-skill.md)
+- [The command surface](./docs/reference/command-surface.md)
+- [Common operations](./docs/reference/common-operations.md)
+- [The intervention policy](./docs/reference/intervention-policy.md)
+- [The API and clients](./docs/reference/api-and-clients.md)
+- [The schemas](./docs/reference/schemas.md)
+- [The architecture](./docs/reference/architecture.md)
+- [Testing](./docs/reference/testing.md)
 
 ## Development
 
 ```console
 just bootstrap   # from a clean clone
 just check       # the whole gate
-just --list      # the command surface
+just --list      # available recipes
 ```
 
-See [`AGENTS.md`](./AGENTS.md) for how this repository is built, governed and
-released.
+See [`AGENTS.md`](./AGENTS.md) for repository development and release rules.
 
 ## License
 
