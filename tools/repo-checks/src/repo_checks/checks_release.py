@@ -240,6 +240,56 @@ def _conventional_commit_findings(repo: Repo) -> list[str]:
     return findings
 
 
+#: The action a workflow installs a prebuilt tool with, and the `with:` input
+#: naming what it installs, comma-separated, each `<tool>` or `<tool>@<release>`.
+PREBUILT_INSTALLER = "taiki-e/install-action@"
+PREBUILT_TOOLS = "tool"
+
+
+def _held_release_findings(repo: Repo) -> list[str]:
+    """Every prebuilt install of a tool the toolchain holds takes that release from it.
+
+    A tool `repo-policy.toml` holds at a `version` is one release everywhere, and
+    that field is the one place it is written. So a workflow installing one
+    prebuilt must install `<tool>@${{ steps.<id>.outputs.version }}`, where
+    `<id>` is an earlier step of the same job running `just tool-version
+    <tool>` into `GITHUB_OUTPUT`: unpinned it is whatever the registry serves
+    newest, and pinned to a literal it is a second statement a bump misses.
+    """
+    held = {
+        str(tool["command"]): str(tool["version"])
+        for tool in repo.policy["toolchain"]["tool"]
+        if "version" in tool
+    }
+    findings: list[str] = []
+    for path in repo.workflow_paths:
+        for job_name, job in jobs_of(load_workflow(path)).items():
+            reading: dict[str, str] = {}
+            for step in steps_of(job):
+                run = str(step.get("run", "")).strip()
+                for command in held:
+                    if run == f'just tool-version {command} >> "$GITHUB_OUTPUT"' and step.get("id"):
+                        reading[command] = str(step["id"])
+                uses = str(step.get("uses", ""))
+                inputs = step.get("with")
+                if not uses.startswith(PREBUILT_INSTALLER) or not isinstance(inputs, dict):
+                    continue
+                for entry in str(inputs.get(PREBUILT_TOOLS, "")).split(","):
+                    name = entry.strip().split("@", 1)[0]
+                    if name not in held:
+                        continue
+                    wanted = f"{name}@${{{{ steps.{reading.get(name)}.outputs.version }}}}"
+                    if name not in reading or entry.strip() != wanted:
+                        findings.append(
+                            f"{path.name}: job `{job_name}` installs `{entry.strip()}` through "
+                            f"`{uses}` rather than the release `repo-policy.toml` holds "
+                            f"`{name}` at ({held[name]}): give an earlier step of that job an "
+                            f'`id` running `just tool-version {name} >> "$GITHUB_OUTPUT"` and '
+                            f"install `{name}@${{{{ steps.<id>.outputs.version }}}}`"
+                        )
+    return findings
+
+
 def release_automation(repo: Repo) -> list[str]:
     """The release path is executable and runs by itself."""
     installed = {tool["command"] for tool in repo.policy["toolchain"]["tool"]}
@@ -287,6 +337,7 @@ def release_automation(repo: Repo) -> list[str]:
             )
 
     findings.extend(_coverage_findings(repo))
+    findings.extend(_held_release_findings(repo))
 
     for file_name, job_name, job in found:
         if "environment" in job:
