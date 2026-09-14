@@ -9,9 +9,9 @@
 //!
 //! [`SIGN_INS`] is the whole of what that takes, as data. Each variable is
 //! `OneHarness`'s own constant rather than a spelling of it, and each program
-//! is the one `OneHarness`'s registry runs for that identity. Nothing here runs
-//! either: the command-line program runs the sign-in, and `OneHarness` runs the
-//! turns.
+//! is held by this crate's own tests to the one `OneHarness`'s registry runs
+//! for that identity. Nothing here runs either: the command-line program runs
+//! the sign-in, and `OneHarness` runs the turns.
 
 use std::path::{Path, PathBuf};
 
@@ -30,6 +30,8 @@ pub struct HarnessSignIn {
     identity: &'static str,
     /// The variable selecting the directory that harness keeps its sign-in in.
     config_env: &'static str,
+    /// The program `OneHarness` runs for that identity.
+    program: &'static str,
     /// The arguments of that harness's own interactive sign-in.
     arguments: &'static [&'static str],
 }
@@ -44,11 +46,15 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
     HarnessSignIn {
         identity: "claude-code",
         config_env: CLAUDE_IDENTITY_ENV,
+        program: "claude",
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A third-party CLI's login command has no machine-readable source: OneHarness declares each harness's program, which the tests hold `program` to, but not its sign-in. This is read from `claude auth login --help`, and a gate drift check would have to install and run the paid provider's CLI.
         arguments: &["auth", "login"],
     },
     HarnessSignIn {
         identity: "codex",
         config_env: CODEX_IDENTITY_ENV,
+        program: "codex",
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A third-party CLI's login command has no machine-readable source: OneHarness declares each harness's program, which the tests hold `program` to, but not its sign-in. This is read from `codex login --help`, and a gate drift check would have to install and run the paid provider's CLI.
         arguments: &["login", "--device-auth"],
     },
 ];
@@ -82,16 +88,9 @@ impl HarnessSignIn {
 
     /// The program `OneHarness` runs for this identity, which is the program
     /// the sign-in is made with.
-    ///
-    /// # Panics
-    ///
-    /// Panics when `OneHarness`'s registry holds no harness of this identity,
-    /// which this crate's own tests refuse for every entry of [`SIGN_INS`].
     #[must_use]
-    pub fn program(&self) -> &'static str {
-        oneharness_core::domain::harness::by_id(self.identity)
-            .map(|spec| spec.default_bin)
-            .expect("every identity this program signs in is one OneHarness runs")
+    pub const fn program(&self) -> &'static str {
+        self.program
     }
 
     /// The arguments of this harness's own interactive sign-in.
@@ -170,8 +169,8 @@ mod tests {
         );
     }
 
-    /// Every identity is one `OneHarness` runs, so the program is the one its
-    /// registry names and no spelling of this crate's own.
+    /// Every identity is one `OneHarness` runs, and the program is the one its
+    /// registry names for it — so a registry that renames a program fails here.
     #[test]
     fn every_identity_is_one_oneharness_runs() {
         for entry in &SIGN_INS {

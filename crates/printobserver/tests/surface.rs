@@ -208,9 +208,6 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
 
     let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
     wanted.extend(READS.iter().map(|read| command_for(read)));
-    // The two commands that are not requests to a running server, as this
-    // program's own tasks name them: the one that runs the server, and the one
-    // that signs its harness in.
     wanted.insert("server".to_owned());
     wanted.insert("sign-in".to_owned());
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();

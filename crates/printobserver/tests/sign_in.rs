@@ -532,6 +532,71 @@ fn a_configuration_without_the_values_signing_in_reads_is_refused() {
     assert_eq!(host.invoked(), Vec::<String>::new(), "a stand-in was run");
 }
 
+/// A harness directory the state directory cannot hold is refused naming it,
+/// before anything runs.
+#[test]
+fn a_harness_directory_that_cannot_be_created_is_refused_naming_it() {
+    let host = Host::with_stand_ins(0);
+    let entry = &SIGN_INS[0];
+    let config = host.only_what_signing_in_reads(entry.identity());
+    // A file where the directory every harness's own directory goes in has to be.
+    std::fs::write(host.state().join(HARNESS_DIRECTORY), "not a directory")
+        .expect("the state directory is writable");
+
+    let output = signing_in(&host, &config, TYPED, &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&output)
+    );
+    let named = host
+        .state()
+        .canonicalize()
+        .expect("the state directory resolves")
+        .join(HARNESS_DIRECTORY)
+        .join(entry.identity());
+    assert!(
+        said(&output).contains(&format!("{} could not be created", named.display())),
+        "the refusal does not name the directory: {}",
+        said(&output)
+    );
+    assert_eq!(host.invoked(), Vec::<String>::new(), "a stand-in was run");
+}
+
+/// A harness ended by a signal is reported the way a shell reports one: the
+/// signal's number above 128.
+#[test]
+fn a_harness_ended_by_a_signal_exits_as_a_shell_reports_it() {
+    /// The signal the stand-in ends itself with.
+    const TERMINATED: i32 = 15;
+
+    let host = Host::bare();
+    let entry = &SIGN_INS[0];
+    let config = host.only_what_signing_in_reads(entry.identity());
+    {
+        let _held = forking();
+        let program = host.bin().join(entry.program());
+        std::fs::write(&program, format!("#!/bin/sh\nkill -{TERMINATED} $$\n"))
+            .expect("the stand-in is writable");
+        std::fs::set_permissions(
+            &program,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .expect("the stand-in is executable");
+    }
+
+    let output = signing_in(&host, &config, TYPED, &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(128 + TERMINATED),
+        "a harness ended by a signal was not reported as one: {}",
+        said(&output)
+    );
+}
+
 /// A harness program nobody installed where the caller's path finds it is
 /// refused naming the program and the path.
 #[test]

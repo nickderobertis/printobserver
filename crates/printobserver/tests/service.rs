@@ -802,8 +802,6 @@ echo "harness=$(sed -n 's/^harness = "\(.*\)"$/\1/p' "$CONFIG")"
 mkdir -p "$ROOT/usr/local/bin"
 install -m 0755 "$JOURNEY_STAND_INS"/* "$ROOT/usr/local/bin/"
 
-# The configuration filled in as an operator would, and put where the sign-in
-# command reads it by default.
 sed -i -e 's|^api_key = ""|api_key = "a-provisioned-key"|' \
     -e 's|^shared_secret = ""|shared_secret = "a-shared-secret"|' \
     -e "s|^url = \"http://127.0.0.1:5000\"|url = \"http://$JOURNEY_OCTOPRINT\"|" \
@@ -867,8 +865,7 @@ echo "state_owner=$(stat -c '%U %a' "$STATE")"
 echo "environment_home_owner=$(stat -c '%U %a' "$UNIT_HOME")"
 echo "passwd_home_owner=$(stat -c '%U %a' "$PASSWD_HOME" 2>/dev/null)"
 
-# The documented sign-in, as `sudo -u` runs it: the service user, its own home,
-# a working directory it cannot read, and the default configuration.
+# `sudo -u` keeps the operator's working directory, which the service user cannot read.
 cd /home || refuse "the operator's working directory could not be entered"
 SAID=$(printf '%s\n' "$JOURNEY_TYPED" | as_service "HOME=$PASSWD_HOME" \
     "$ROOT/usr/local/lib/printobserver/printobserver" sign-in 2>&1)
@@ -877,7 +874,6 @@ printf '%s\n' "$SAID" | sed 's/^/sign_in_said=/'
 HARNESS_DIR="$STATE/harness/$(sed -n 's/^harness = "\(.*\)"$/\1/p' "$CONFIG")"
 sed 's/^/sign_in_/' "$HARNESS_DIR/sign-in-seen" 2>/dev/null
 
-# The unit's own start command, as the service manager runs it.
 cd "$(directive WorkingDirectory)" || refuse "the unit's working directory could not be entered"
 # Started directly rather than through `as_service`, so that `$!` is the server
 # itself rather than a subshell around it, and stopped however this ends.

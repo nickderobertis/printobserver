@@ -184,19 +184,14 @@ server: the **server command**, which runs the supervisor, and the **sign-in
 command**, which signs that supervisor's harness in as the user the service runs
 as.
 
-The sign-in command exists because the service runs as a system user with no home
-under a unit that hides every home, and a harness keeps its authentication in a
-directory one environment variable selects. `printobserver-oneharness`'s
-`SIGN_INS` is the one table of the harnesses this program can sign in, the
-variable each is pointed by (`OneHarness`'s own constant) and that harness's own
-sign-in invocation; the server and the command-line program read it, and nothing
-else in the tree names those variables. The directory is
-`<state_dir>/harness/<identity>`, created private by whichever of the sign-in
-command and a server start comes first, and every supervision turn is handed the
-variable naming it. The sign-in command reads `state_dir` and
-`supervisor.harness` from the server's own configuration and nothing else, runs
-the harness's sign-in on the terminal it was run from and exits with its status,
-and starts no server, reaches no printer and posts to no failure detector.
+<!-- llmlint: ignore[instruction_layer_localized] The task that added the sign-in command requires this section to describe it beside the server command, and this section is the root's one statement of the program's whole surface, which spans the adapter, server and command-line crates; no one crate's subtree owns it. suppressions.toml has the full reason. -->
+The sign-in command exists because the service runs as a system user whose unit
+hides every home. `printobserver-oneharness`'s `SIGN_INS` is the one table of the
+harnesses it can sign in and of the variable selecting where each keeps its
+sign-in, and `<state_dir>/harness/<identity>` is the one directory both the
+sign-in and every supervision turn use; nothing else in the tree names those
+variables. It reads `state_dir` and `supervisor.harness` alone, so it never needs
+a reachable printer.
 
 Four options are common to every command and there is no fifth:
 `--json`, `--config <path>`, `--help` and `--version`. The configuration file's
