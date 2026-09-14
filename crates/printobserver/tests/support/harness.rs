@@ -68,6 +68,12 @@ pub fn stand_in(
 ) -> PathBuf {
     let program = harness.program();
     let variable = harness.config_env();
+    // The answer is printed single-quoted, which is a quoting a document
+    // carrying a single quote would end early.
+    assert!(
+        !answer.contains('\''),
+        "a stand-in's answer carries a single quote"
+    );
     let script = format!(
         r#"#!/bin/sh
 umask 077
@@ -85,9 +91,7 @@ case "$1" in
             echo "home=${{HOME:-}}"
             echo "state=$(cat "$dir/{SIGNED_IN}")"
         }} > "$dir/{TURN_SEEN}"
-        cat <<'ANSWER'
-{answer}
-ANSWER
+        printf '%s\n' '{answer}'
         exit 0
         ;;
     --version)
@@ -99,6 +103,7 @@ esac
     echo "argv=$*"
     echo "user=$(id -un)"
     echo "directory=$dir"
+    echo "cwd=$(pwd)"
     echo "home=${{HOME:-}}"
     echo "stdin=$(readlink /proc/self/fd/0)"
     echo "parent_stdin=$(readlink /proc/$PPID/fd/0)"

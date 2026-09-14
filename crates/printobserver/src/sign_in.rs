@@ -85,9 +85,13 @@ pub fn sign_in(config: &Path) -> Result<u8, Failure> {
         harness.arguments().join(" "),
         directory.display()
     );
+    // Run inside its own directory rather than wherever this was run from: the
+    // documented invocation is `sudo -u` from an operator's own shell, whose
+    // working directory is somewhere the service's user cannot read.
     let status = Command::new(harness.program())
         .args(harness.arguments())
         .env(harness.config_env(), &directory)
+        .current_dir(&directory)
         .status()
         .map_err(|error| {
             Failure::of(

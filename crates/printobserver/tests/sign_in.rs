@@ -251,6 +251,11 @@ fn signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal() {
             directory,
             "the harness was pointed somewhere other than its directory"
         );
+        assert_eq!(
+            PathBuf::from(recorded(&recording, "cwd")),
+            directory,
+            "the harness ran somewhere other than inside its own directory"
+        );
         let stdin = recorded(&recording, "stdin");
         assert!(
             stdin.starts_with("pipe:") && stdin == recorded(&recording, "parent_stdin"),
