@@ -26,3 +26,15 @@ plugins:
   - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/languages/typescript.llmlint.yml@1"
   - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/ci.llmlint.yml@1"
   - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/releasing.llmlint.yml@1"
+rules:
+  # The end-user README is out of this rule's reach. It restates the user-facing
+  # contract by nature — the webhook URL, the configuration fields, the flags a
+  # change carries — because it is addressed to a person setting a printer up.
+  # Its install commands are already reconciled to AGENTS.md by the
+  # `install-path` check, and holding the rest of its prose to a drift gate
+  # would mean generating the README; the generated reference under
+  # docs/reference/ is where a restatement that must not drift belongs.
+  - name: contracts_have_one_source_or_a_drift_gate
+    override: true
+    files:
+      exclude: ["README.md"]
