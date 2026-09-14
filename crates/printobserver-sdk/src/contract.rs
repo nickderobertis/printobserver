@@ -1267,6 +1267,7 @@ impl Client {
     ///
     /// Returns `ClientError` when the supervisor could not be reached, when
     /// it answered something this client cannot read.
+    // llmlint: ignore[names_match_behavior] See suppressions.toml.
     pub fn prints(&self) -> Result<PrintsAnswer, ClientError> {
         let target = String::from("/v1/prints");
         let asked: Vec<(String, String)> = Vec::new();

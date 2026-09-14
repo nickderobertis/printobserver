@@ -20,12 +20,10 @@ use crate::world::{World, failure_alert};
 /// The file the printer reports it is running, unless a journey says otherwise.
 const RUNNING: &str = "benchy.gcode";
 
-/// One listing, read the way the operation reads it.
 fn listing(world: &World) -> PrintListing {
     block_on(world.core.list_and_adopt_prints()).expect("the prints are listed")
 }
 
-/// Every identifier a listing carries, in the order it carries them.
 fn ids(listing: &PrintListing) -> Vec<PrintId> {
     listing.prints.iter().map(|print| print.id).collect()
 }

@@ -170,7 +170,8 @@ impl FakePrinter {
         self.snapshot.lock().expect("the printer holds").connection = state;
     }
 
-    /// Report a job of this file, in this state, from now on.
+    /// Kept apart from `reports_state` because adoption reads the job alone, so
+    /// what a listing adopts is set here and nowhere else.
     pub fn reports_job(&self, file_name: Option<&str>, state: PrinterState) {
         let mut job = self.job.lock().expect("the printer holds");
         job.file_name = file_name.map(str::to_owned);

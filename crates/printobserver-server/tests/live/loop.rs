@@ -282,7 +282,6 @@ async fn print_of(world: &Composed) -> PrintId {
         .id
 }
 
-/// The prints read's own URL, which takes no identifier.
 fn prints_url(world: &Composed) -> String {
     format!(
         "http://{}{}",

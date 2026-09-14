@@ -54,6 +54,7 @@ def test_prints_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.prints()
         received = host.received()
 
@@ -111,6 +112,7 @@ def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.status("0198f0a1-2b3c-7d4e-8f90-123456789abc")
         received = host.received()
 
@@ -179,6 +181,7 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.context("0198f0a1-2b3c-7d4e-8f90-123456789abc")
         received = host.received()
 
@@ -204,6 +207,7 @@ def test_image_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.image("0198f0a1-2b3c-7d4e-8f90-123456789abc")
         received = host.received()
 
@@ -229,6 +233,7 @@ def test_history_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.history("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7)
         received = host.received()
 
@@ -253,6 +258,7 @@ def test_manifest_get_sends_what_it_declares_and_answers_what_was_sent() -> None
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.manifest_get("0198f0a1-2b3c-7d4e-8f90-123456789abc")
         received = host.received()
 
@@ -277,6 +283,7 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.manifest_set(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
             "a generated walk is asking",
@@ -389,6 +396,7 @@ def test_pause_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.pause(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
         )
@@ -496,6 +504,7 @@ def test_resume_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.resume(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
         )
@@ -603,6 +612,7 @@ def test_cancel_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.cancel(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
         )
@@ -710,6 +720,7 @@ def test_start_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.start_print(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
             cast(FileName, json.loads('"0198f0a1-2b3c-7d4e-8f90-123456789abc"')),
@@ -882,6 +893,7 @@ def test_set_feedrate_factor_sends_what_it_declares_and_answers_what_was_sent() 
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.set_feedrate_factor(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
         )
@@ -995,6 +1007,7 @@ def test_set_flowrate_factor_sends_what_it_declares_and_answers_what_was_sent() 
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.set_flowrate_factor(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
         )
@@ -1108,6 +1121,7 @@ def test_set_tool_target_c_sends_what_it_declares_and_answers_what_was_sent() ->
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.set_tool_target_c(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 7, 7
         )
@@ -1220,6 +1234,7 @@ def test_set_bed_target_c_sends_what_it_declares_and_answers_what_was_sent() -> 
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.set_bed_target_c(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 7
         )
@@ -1332,6 +1347,7 @@ def test_set_fan_percent_sends_what_it_declares_and_answers_what_was_sent() -> N
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.set_fan_percent(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
         )
@@ -1444,6 +1460,7 @@ def test_acknowledge_failure_sends_what_it_declares_and_answers_what_was_sent() 
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.acknowledge_failure(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
             cast(AcknowledgementDisposition, json.loads('"continue"')),

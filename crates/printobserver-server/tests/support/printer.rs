@@ -163,7 +163,8 @@ impl RecordingPrinter {
             .expect("the meeting is not poisoned");
     }
 
-    /// Make it answer no read at all, or answer them again.
+    /// A switched-off machine: while set, both its snapshot and its job are
+    /// refused as unreachable, which is how a listing is shown to answer anyway.
     pub fn unreadable(&self, unreadable: bool) {
         self.held
             .lock()

@@ -20,21 +20,18 @@ use crate::world::{SECRET, World, failure_alert};
 /// The file the machine these journeys drive reports it is running.
 const RUNNING: &str = "benchy.gcode";
 
-/// The prints read's own URL.
 fn prints_url(world: &World) -> String {
     world.at(&printobserver_server::operation("prints")
         .expect("the prints read is served")
         .full_path())
 }
 
-/// One prints read, which must be answered.
 async fn prints(world: &World) -> Value {
     let (status, answer) = world.get(&prints_url(world)).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
     answer
 }
 
-/// Every identifier a prints answer lists, in the order it lists them.
 fn listed(answer: &Value) -> Vec<String> {
     answer["prints"]
         .as_array()

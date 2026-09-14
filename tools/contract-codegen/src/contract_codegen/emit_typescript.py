@@ -34,6 +34,8 @@ from contract_codegen.model import (
     Variant,
 )
 from contract_codegen.naming import (
+    NAME_DIRECTIVE,
+    NAMED_FOR_WHAT_IS_ASKED,
     camel,
     method_name,
     pascal,
@@ -159,6 +161,15 @@ def _argument(parameter: Parameter) -> str:
     return f"{camel(parameter.name)}: {type_name(parameter.type)}"
 
 
+#: The directive every generated call's typed answer carries.
+#:
+#: `call` parses the document the server sent and checks no shape against the
+#: type it is handed on as — for every operation alike — so the judged rule
+#: asking for runtime validation at that boundary is answered once, in
+#: `suppressions.toml`, for every method the generator writes.
+BOUNDARY_DIRECTIVE = "// llmlint: ignore[boundary_inputs_validated] See suppressions.toml."
+
+
 def _target(operation: Operation) -> str:
     """The request target one call is made to, as TypeScript builds it."""
     path = operation.path
@@ -185,6 +196,8 @@ def _method(operation: Operation) -> list[str]:
             "the reason, the value asked for and the range allowed"
         )
     lines = doc_lines(f"{said}.", "  ")
+    if operation.name in NAMED_FOR_WHAT_IS_ASKED:
+        lines.append(f"  // {NAME_DIRECTIVE}")
     lines.append(
         f"  async {method_name(operation.name, 'typescript')}({arguments}): "
         f"Promise<{operation.answer}> {{"
@@ -216,6 +229,7 @@ def _method(operation: Operation) -> list[str]:
                 lines.append(f"    sending{typescript_member(parameter.name)} = {spelled};")
     else:
         lines.append("    const sending = undefined;")
+    lines.append(f"    {BOUNDARY_DIRECTIVE}")
     lines.append(
         f'    return await this.call<{operation.answer}>("{operation.method}", '
         f"target, asked, sending);"

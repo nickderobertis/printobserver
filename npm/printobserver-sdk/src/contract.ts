@@ -944,10 +944,12 @@ export class GeneratedClient extends GeneratedSurface {
    * the answer could not be read, and with `Refused` when the supervisor
    * said no.
    */
+  // llmlint: ignore[names_match_behavior] See suppressions.toml.
   async prints(): Promise<PrintsAnswer> {
     const target = `/v1/prints`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<PrintsAnswer>("GET", target, asked, sending);
   }
 
@@ -962,6 +964,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/status`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<StatusAnswer>("GET", target, asked, sending);
   }
 
@@ -976,6 +979,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/context`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ContextAnswer>("GET", target, asked, sending);
   }
 
@@ -990,6 +994,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/images/${imageId}`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ImageAnswer>("GET", target, asked, sending);
   }
 
@@ -1007,6 +1012,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["limit", String(limit)]);
     }
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<HistoryAnswer>("GET", target, asked, sending);
   }
 
@@ -1021,6 +1027,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/manifest`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ManifestAnswer>("GET", target, asked, sending);
   }
 
@@ -1044,6 +1051,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.reason = reason;
     sending.manifest = manifest;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ManifestAnswer>("PUT", target, asked, sending);
   }
 
@@ -1063,6 +1071,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1082,6 +1091,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1101,6 +1111,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1127,6 +1138,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.file_name = fileName;
     sending.manifest = manifest;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1155,6 +1167,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.factor = factor;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1183,6 +1196,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.factor = factor;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1213,6 +1227,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.reason = reason;
     sending.target_c = targetC;
     sending.tool = tool;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1241,6 +1256,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.reason = reason;
     sending.target_c = targetC;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1269,6 +1285,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.percent = percent;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 
@@ -1295,6 +1312,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.disposition = disposition;
     sending.event_id = eventId;
     sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
   }
 }

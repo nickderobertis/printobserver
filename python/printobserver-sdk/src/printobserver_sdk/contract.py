@@ -1481,6 +1481,7 @@ class GeneratedClient(GeneratedSurface):
     them.
     """
 
+    # llmlint: ignore[names_match_behavior] See suppressions.toml.
     def prints(self) -> PrintsAnswer:
         """Call `prints` on the configured supervisor.
 
@@ -1498,6 +1499,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(PrintsAnswer, answered)
 
     def status(self, print_id: str) -> StatusAnswer:
@@ -1517,6 +1519,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(StatusAnswer, answered)
 
     def context(self, print_id: str) -> ContextAnswer:
@@ -1536,6 +1539,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ContextAnswer, answered)
 
     def image(self, image_id: str) -> ImageAnswer:
@@ -1555,6 +1559,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ImageAnswer, answered)
 
     def history(self, print_id: str, limit: int | None = None) -> HistoryAnswer:
@@ -1576,6 +1581,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(HistoryAnswer, answered)
 
     def manifest_get(self, print_id: str) -> ManifestAnswer:
@@ -1595,6 +1601,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("GET", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ManifestAnswer, answered)
 
     def manifest_set(self, print_id: str, reason: str, manifest: JobManifest) -> ManifestAnswer:
@@ -1621,6 +1628,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("PUT", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ManifestAnswer, answered)
 
     def pause(self, print_id: str, reason: str) -> ActionAnswer:
@@ -1647,6 +1655,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def resume(self, print_id: str, reason: str) -> ActionAnswer:
@@ -1673,6 +1682,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def cancel(self, print_id: str, reason: str) -> ActionAnswer:
@@ -1699,6 +1709,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def start_print(
@@ -1729,6 +1740,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def set_feedrate_factor(
@@ -1760,6 +1772,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def set_flowrate_factor(
@@ -1791,6 +1804,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def set_tool_target_c(
@@ -1823,6 +1837,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def set_bed_target_c(
@@ -1854,6 +1869,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def set_fan_percent(
@@ -1885,6 +1901,7 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
     def acknowledge_failure(
@@ -1915,4 +1932,5 @@ class GeneratedClient(GeneratedSurface):
         answered = self.call("POST", target, asked, sending)
         # `call` checks no shape; the server serializes this answer from the
         # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)

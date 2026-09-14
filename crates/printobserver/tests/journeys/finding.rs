@@ -22,7 +22,6 @@ const OBICO_PRINT: i64 = 5150;
 /// How long the supervisor is given to handle one alert.
 const HANDLING: Duration = Duration::from_secs(60);
 
-/// One `printobserver prints` read, which must succeed.
 fn prints(world: &World) -> Value {
     running::read(world, &["prints"])
 }
@@ -146,8 +145,9 @@ pub fn a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(worl
     );
 
     let answered = post_a_failure_alert(world, OBICO_PRINT);
-    assert!(
-        answered.contains("202"),
+    assert_eq!(
+        answered.split_whitespace().nth(1),
+        Some("202"),
         "the ingress did not take the alert: {answered}"
     );
     let deadline = Instant::now() + HANDLING;
