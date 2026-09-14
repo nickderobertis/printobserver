@@ -295,7 +295,7 @@ def test_a_section_stating_no_sign_in_is_refused(tree: Callable[[], Tree]) -> No
     """A path that installs the service and never signs its harness in supervises nothing."""
     broken = tree()
     text = broken.read("AGENTS.md")
-    start = text.index("### Then, sign in the agent's harness")
+    start = text.index("### Between the two commands, sign in the agent's harness")
     end = text.index("## The registry install-path proof")
     broken.write("AGENTS.md", text[:start] + text[end:])
 

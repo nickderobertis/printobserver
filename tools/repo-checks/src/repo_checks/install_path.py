@@ -1,8 +1,9 @@
 """The end-user install path, read from its one authoritative source.
 
 `AGENTS.md`'s "The end-user install path" section states three alternative
-routes to the `printobserver` program, then two commands in order, and then how
-the agent's harness is installed and signed in as the service's own user. Every
+routes to the `printobserver` program, then two commands in order, and how the
+agent's harness is installed and signed in as the service's own user between
+those two. Every
 other statement of one of them in this repository is derived from it, and
 `drifted_statements` is what holds them together.
 """
@@ -30,9 +31,9 @@ VERIFICATION_PROGRAM = "printobserver"
 VERIFICATION_OPTION = "--version"
 
 # The subsection stating how the agent's harness is installed and signed in as
-# the service's own user, after the two commands. Its commands are part of the
+# the service's own user, between the two commands. Its commands are part of the
 # section's canonical set, so every restatement of them is held to it.
-SIGN_IN_HEADING = "then, sign in"
+SIGN_IN_HEADING = "between the two commands"
 
 # What the sign-in subsection has to run to sign the harness in at all.
 SIGN_IN_COMMAND = "printobserver sign-in"

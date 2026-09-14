@@ -64,6 +64,20 @@ file = "scripts/install-service.sh"
 site = "was left alone\" >&2"
 reason = "Pre-existing, deliberate output that the harness sign-in change only moved, by adding the service home above it. On a reinstall the operator's filled-in configuration is kept rather than overwritten by the template, and this one line on standard error is how they learn that their values survived; it names the file, and it is the one fact about a reinstall they need before enabling the service."
 
+# --- the sign-in command ------------------------------------------------------
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "crates/printobserver/src/sign_in.rs"
+site = "Ok(exited_with(status))"
+reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `docs/reference/command-surface.md` says so."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "crates/printobserver/src/parse.rs"
+site = "if command.name == SIGN_IN_COMMAND {"
+reason = "`--json` is one of the four global options every command takes, and `sign-in` has no answer document for it to select: what it produces is the harness's own interactive sign-in on the caller's terminal, which it hands its standard input, output and error, and its result is the exit status. A machine-readable rendering would have to be interleaved with a third-party program's prompts on the same stream, which no consumer could parse; refusing the flag instead would make `sign-in` the one command the global options do not apply to."
+
 # --- the harness sign-in table ------------------------------------------------
 
 [[suppression]]

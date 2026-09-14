@@ -104,6 +104,7 @@ pub fn sign_in(config: &Path) -> Result<u8, Failure> {
                 ),
             )
         })?;
+    // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     Ok(exited_with(status))
 }
 

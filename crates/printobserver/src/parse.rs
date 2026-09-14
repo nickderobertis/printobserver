@@ -216,6 +216,7 @@ pub fn parse(arguments: &[String]) -> Invocation {
             )),
         };
     }
+    // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     if command.name == SIGN_IN_COMMAND {
         return Invocation::SignIn {
             config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),

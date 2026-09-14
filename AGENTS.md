@@ -603,8 +603,8 @@ integration jobs that exercise it — is derived from here, and `just check-repo
 refuses any that differs.
 
 The path is **one program obtained by any one of three alternative routes, and
-then two commands in order**, after which the agent's harness is installed and
-signed in as the service's own user.
+then two commands in order**, with the agent's harness installed and signed in
+as the service's own user between those two commands.
 
 ### The three routes
 
@@ -699,15 +699,14 @@ written above, or in which that installer enables or starts anything.
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
 
-### Then, sign in the agent's harness
+### Between the two commands, sign in the agent's harness
 
 On every event the service runs the harness `supervisor.harness` names, as its
-own user, whose unit hides every home. So install that harness's program where
-the service user's path finds it — as root, one of these two — and sign it in
-once as that user with `printobserver sign-in`, which keeps the sign-in under
-the state directory, where every supervision turn reads it. Run it once the
-installer has created that user and its configuration, and before enabling the
-service, so the first turn is already signed in. It reads `state_dir` and
+own user, whose unit hides every home. So after the installer and before the
+command that enables the service, install that harness's program where the
+service user's path finds it — as root, one of these two — and sign it in once
+as that user with `printobserver sign-in`, which keeps the sign-in under the
+state directory, where every supervision turn reads it. It reads `state_dir` and
 `supervisor.harness` alone, starts nothing and reaches no printer. Made
 executable by the `printobserver` command's own `sign-in`.
 
