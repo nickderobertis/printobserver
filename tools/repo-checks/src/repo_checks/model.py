@@ -9,7 +9,9 @@ an attribute error out of whichever check happened to read it first.
 
 from __future__ import annotations
 
+import re
 import tomllib
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -162,3 +164,64 @@ def policy_string_list(table: dict[str, Any], key: str, where: str) -> tuple[str
             raise PolicyValueError(msg)
         entries.append(entry.strip())
     return tuple(entries)
+
+
+#: How `repo-policy.toml` writes the release a tool is held at, and how a tool's
+#: `--version` answer names one: a dotted triple, with any pre-release or build
+#: suffix.
+RELEASE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?")
+
+
+@dataclass(frozen=True, slots=True)
+class Tool:
+    """One `[[toolchain.tool]]`: the command it puts on PATH, how, and the release it holds."""
+
+    command: str
+    install: str
+    version: str | None
+
+    @property
+    def install_argv(self) -> list[str]:
+        """The install command as arguments, `{version}` substituted from the held release."""
+        if self.version is None:
+            return self.install.split()
+        return self.install.replace("{version}", self.version).split()
+
+
+def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
+    """Every tool `repo-policy.toml` declares, narrowed.
+
+    A held `version` reaches an installer's arguments and a workflow's
+    `GITHUB_OUTPUT`, so it is read as a release or not at all — and an `install`
+    that never substitutes it would install some other release than the held one.
+
+    Raises:
+        PolicyValueError: If an entry is not a table or lacks a `command` or
+            `install` string, holds a `version` that is not a release, or holds
+            one its `install` never substitutes.
+    """
+    entries = policy_table(repo, "toolchain").get("tool")
+    if not isinstance(entries, list):
+        msg = "`repo-policy.toml` declares no `toolchain.tool` entries"
+        raise PolicyValueError(msg)
+    tools: list[Tool] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            msg = f"`repo-policy.toml`'s `toolchain.tool` holds {entry!r}, which is not a table"
+            raise PolicyValueError(msg)
+        named = policy_strings(entry, ("command", "install"), "toolchain.tool")
+        version = entry.get("version")
+        if version is not None and (not isinstance(version, str) or not RELEASE.fullmatch(version)):
+            msg = (
+                f"`repo-policy.toml` holds `{named['command']}` at {version!r}, "
+                f"which is not a release"
+            )
+            raise PolicyValueError(msg)
+        if version is not None and "{version}" not in named["install"]:
+            msg = (
+                f"`repo-policy.toml`'s install for `{named['command']}`, `{named['install']}`, "
+                f"never substitutes `{{version}}`, so it installs a release other than {version}"
+            )
+            raise PolicyValueError(msg)
+        tools.append(Tool(named["command"], named["install"], version))
+    return tuple(tools)

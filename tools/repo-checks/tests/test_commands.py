@@ -33,9 +33,10 @@ STALE = "0.0.0-stale"
 # A stand-in for `cargo install`, which reaches crates.io and compiles for
 # minutes: it writes the program the install would have put in
 # CARGO_STANDIN_INTO, answering `--version` with the release it was asked for,
-# and records every invocation to CARGO_STANDIN_RECORD. Everything else the
-# install path does — reading the committed declaration, asking what is on PATH,
-# deciding — is the real command's.
+# — or with CARGO_STANDIN_ANSWERS where that is set, as a build naming no release
+# answers — and records every invocation to CARGO_STANDIN_RECORD. Everything else
+# the install path does — reading the committed declaration, asking what is on
+# PATH, deciding — is the real command's.
 CARGO_STANDIN = """
 import os
 import pathlib
@@ -45,6 +46,7 @@ arguments = sys.argv[1:]
 with open(os.environ["CARGO_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(" ".join(arguments) + "\\n")
 release = arguments[arguments.index("--version") + 1] if "--version" in arguments else "0.0.1"
+release = os.environ.get("CARGO_STANDIN_ANSWERS", release)
 program = pathlib.Path(os.environ["CARGO_STANDIN_INTO"]) / arguments[1]
 program.write_text(f"#!/bin/sh\\necho '{arguments[1]} {release}'\\n", encoding="utf-8")
 program.chmod(0o755)
@@ -184,6 +186,82 @@ def test_install_tools_replaces_a_held_tool_on_the_path_at_another_release(
         describing="what `cargo` was asked to install",
     )
     contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {HELD}")
+
+
+def test_install_tools_installs_a_held_tool_absent_from_the_path_at_its_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A host with no release-plz at all gets the held release, not the newest."""
+    root, _, record = toolchain(tmp_path, monkeypatch)
+
+    equal(main(["install-tools", "--root", str(root)]), 0)
+
+    contains(capsys.readouterr().err, "installing release-plz")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [f"install release-plz --locked --version {HELD}"],
+        describing="what `cargo` was asked to install",
+    )
+    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {HELD}")
+
+
+def test_install_tools_reports_a_replacement_it_could_not_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A stale copy the install could not replace fails naming the command to run by hand."""
+    root, installs, _ = toolchain(tmp_path, monkeypatch)
+    program(installs, "release-plz", answering(STALE))
+    program(installs, "cargo", "#!/bin/sh\nexit 101\n")
+
+    equal(main(["install-tools", "--root", str(root)]), 1)
+
+    contains(
+        capsys.readouterr().err,
+        f"failed to install release-plz. Run `cargo install release-plz --locked --version {HELD}`",
+    )
+    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {STALE}")
+
+
+def test_install_tools_refuses_an_install_whose_program_names_no_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A program that cannot say it is the held release is not accepted as it."""
+    root, _, _ = toolchain(tmp_path, monkeypatch)
+    monkeypatch.setenv("CARGO_STANDIN_ANSWERS", "(built from an unknown revision)")
+
+    equal(main(["install-tools", "--root", str(root)]), 1)
+
+    contains(capsys.readouterr().err, f"still answers no release after installing {HELD}")
+
+
+@pytest.mark.parametrize(
+    ("version", "install", "said"),
+    [
+        ("latest", "false {version}", "holds `release-plz` at 'latest', which is not a release"),
+        ("0.3.167\\nreleased=v9", "false {version}", "which is not a release"),
+        ("0.3.167", "false", "never substitutes `{version}`"),
+    ],
+)
+def test_a_held_release_the_installer_cannot_act_on_is_refused_before_anything_is_installed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], version: str, install: str, said: str
+) -> None:
+    """Neither the installer nor a workflow's output is handed a release it cannot act on."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        f'[[toolchain.tool]]\ncommand = "release-plz"\nversion = "{version}"\n'
+        f'install = "{install}"\n',
+        encoding="utf-8",
+    )
+
+    equal(install_tools(Repo(root)), 1)
+    installing = capsys.readouterr()
+    contains(installing.err, said)
+    absent(installing.err, "failed to install")
+    equal(main(["tool-version", "release-plz", "--root", str(root)]), 1)
+    answering_version = capsys.readouterr()
+    equal(answering_version.out, "", describing="what the workflow's output would be handed")
+    contains(answering_version.err, said)
 
 
 def test_install_tools_refuses_a_held_tool_a_copy_earlier_on_the_path_shadows(

@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from repo_checks import install_path as ip
-from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
+from repo_checks.model import (
+    UNCOMMITTED_DIRECTORIES,
+    PolicyValueError,
+    Repo,
+    Tool,
+    toolchain_tools,
+)
 from repo_checks.parsing import jobs_of, load_workflow, programs_in, run_commands, steps_of
 
 MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
@@ -240,59 +246,63 @@ def _conventional_commit_findings(repo: Repo) -> list[str]:
     return findings
 
 
-#: The action a workflow installs a prebuilt tool with, and the `with:` input
-#: naming what it installs, comma-separated, each `<tool>` or `<tool>@<release>`.
-PREBUILT_INSTALLER = "taiki-e/install-action@"
-PREBUILT_TOOLS = "tool"
+def _held_entries(step: dict[str, Any], held: dict[str, str]) -> list[tuple[str, str]]:
+    """Each `<tool>` or `<tool>@<release>` entry an action step's inputs name a held tool by.
+
+    Read off every input's comma-separated entries — which is how an action
+    installing prebuilt tools is told what to install — rather than off one
+    action's name and input key, so no action's contract is restated here: a
+    step is in scope for naming a held tool at all.
+    """
+    inputs = step.get("with")
+    if "uses" not in step or not isinstance(inputs, dict):
+        return []
+    entries = (part.strip() for value in inputs.values() for part in str(value).split(","))
+    return [(entry.split("@", 1)[0], entry) for entry in entries if entry.split("@", 1)[0] in held]
 
 
-def _held_release_findings(repo: Repo) -> list[str]:
-    """Every prebuilt install of a tool the toolchain holds takes that release from it.
+def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:
+    """Every action installing a tool the toolchain holds takes that release from it.
 
     A tool `repo-policy.toml` holds at a `version` is one release everywhere, and
-    that field is the one place it is written. So a workflow installing one
-    prebuilt must install `<tool>@${{ steps.<id>.outputs.version }}`, where
-    `<id>` is an earlier step of the same job running `just tool-version
-    <tool>` into `GITHUB_OUTPUT`: unpinned it is whatever the registry serves
-    newest, and pinned to a literal it is a second statement a bump misses.
+    that field is the one place it is written. So an action step naming one must
+    name `<tool>@${{ steps.<id>.outputs.version }}`, where `<id>` is an earlier
+    step of the same job running `just tool-version <tool>` into
+    `GITHUB_OUTPUT`: unpinned it is whatever a registry serves newest, and pinned
+    to a literal it is a second statement a bump misses.
     """
-    held = {
-        str(tool["command"]): str(tool["version"])
-        for tool in repo.policy["toolchain"]["tool"]
-        if "version" in tool
-    }
+    held = {tool.command: tool.version for tool in tools if tool.version is not None}
     findings: list[str] = []
     for path in repo.workflow_paths:
         for job_name, job in jobs_of(load_workflow(path)).items():
             reading: dict[str, str] = {}
             for step in steps_of(job):
                 run = str(step.get("run", "")).strip()
-                for command in held:
-                    if run == f'just tool-version {command} >> "$GITHUB_OUTPUT"' and step.get("id"):
-                        reading[command] = str(step["id"])
-                uses = str(step.get("uses", ""))
-                inputs = step.get("with")
-                if not uses.startswith(PREBUILT_INSTALLER) or not isinstance(inputs, dict):
-                    continue
-                for entry in str(inputs.get(PREBUILT_TOOLS, "")).split(","):
-                    name = entry.strip().split("@", 1)[0]
-                    if name not in held:
-                        continue
-                    wanted = f"{name}@${{{{ steps.{reading.get(name)}.outputs.version }}}}"
-                    if name not in reading or entry.strip() != wanted:
-                        findings.append(
-                            f"{path.name}: job `{job_name}` installs `{entry.strip()}` through "
-                            f"`{uses}` rather than the release `repo-policy.toml` holds "
-                            f"`{name}` at ({held[name]}): give an earlier step of that job an "
-                            f'`id` running `just tool-version {name} >> "$GITHUB_OUTPUT"` and '
-                            f"install `{name}@${{{{ steps.<id>.outputs.version }}}}`"
-                        )
+                reading.update(
+                    (command, str(step["id"]))
+                    for command in held
+                    if step.get("id") and run == f'just tool-version {command} >> "$GITHUB_OUTPUT"'
+                )
+                findings.extend(
+                    f"{path.name}: job `{job_name}` installs `{entry}` through "
+                    f"`{step['uses']}` rather than the release `repo-policy.toml` holds "
+                    f"`{name}` at ({held[name]}): give an earlier step of that job an "
+                    f'`id` running `just tool-version {name} >> "$GITHUB_OUTPUT"` and '
+                    f"install `{name}@${{{{ steps.<id>.outputs.version }}}}`"
+                    for name, entry in _held_entries(step, held)
+                    if name not in reading
+                    or entry != f"{name}@${{{{ steps.{reading[name]}.outputs.version }}}}"
+                )
     return findings
 
 
 def release_automation(repo: Repo) -> list[str]:
     """The release path is executable and runs by itself."""
-    installed = {tool["command"] for tool in repo.policy["toolchain"]["tool"]}
+    try:
+        tools = toolchain_tools(repo)
+    except PolicyValueError as malformed:
+        return [str(malformed)]
+    installed = {tool.command for tool in tools}
     release_programs = {program for program in installed if "release" in program}
 
     findings: list[str] = []
@@ -337,7 +347,7 @@ def release_automation(repo: Repo) -> list[str]:
             )
 
     findings.extend(_coverage_findings(repo))
-    findings.extend(_held_release_findings(repo))
+    findings.extend(_held_release_findings(repo, tools))
 
     for file_name, job_name, job in found:
         if "environment" in job:

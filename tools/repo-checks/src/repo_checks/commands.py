@@ -7,14 +7,10 @@ import shutil
 import sys
 from pathlib import Path
 
-from repo_checks.model import Repo
+from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
 from repo_checks.shell import run
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
-
-#: How a tool's `--version` answer names its release: the first dotted triple,
-#: with any pre-release or build suffix, whatever words surround it.
-RELEASE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?")
 
 
 def install_tools(repo: Repo) -> int:
@@ -25,36 +21,42 @@ def install_tools(repo: Repo) -> int:
     from before a bump, or an install that predates the pin — is replaced; and
     one still answering another once that install is done, because a copy
     earlier on PATH shadows it, is refused naming where it is rather than
-    accepted.
+    accepted. A declaration the installer cannot act on is refused before
+    anything is installed.
     """
-    for tool in repo.policy["toolchain"]["tool"]:
-        command = tool["command"]
-        held = tool.get("version")
-        present = shutil.which(command)
+    try:
+        tools = toolchain_tools(repo)
+    except PolicyValueError as malformed:
+        print(f"{malformed}. Correct it; nothing was installed.", file=sys.stderr)
+        return 1
+    for tool in tools:
+        present = shutil.which(tool.command)
         if present is None:
-            print(f"installing {command}", file=sys.stderr)
+            print(f"installing {tool.command}", file=sys.stderr)
         else:
-            answered = _release_of(present) if held is not None else None
-            if held is None or answered == held:
+            answered = _release_of(present) if tool.version is not None else None
+            if tool.version is None or answered == tool.version:
                 continue
             print(
-                f"{command} at {present} answers {answered or 'no release'}, not the held "
-                f"{held}: installing {held}",
+                f"{tool.command} at {present} answers {answered or 'no release'}, not the held "
+                f"{tool.version}: installing {tool.version}",
                 file=sys.stderr,
             )
-        install = tool["install"] if held is None else tool["install"].replace("{version}", held)
-        result = run(install.split(), cwd=repo.root, capture=False)
+        result = run(tool.install_argv, cwd=repo.root, capture=False)
         if result.returncode != 0:
-            print(f"failed to install {command}. Run `{install}` by hand.", file=sys.stderr)
-            return 1
-        if held is None:
-            continue
-        installed = shutil.which(command)
-        answered = _release_of(installed) if installed is not None else None
-        if answered != held:
             print(
-                f"{command} at {installed} still answers {answered or 'no release'} after "
-                f"installing {held}: a copy earlier on PATH shadows the one installed. "
+                f"failed to install {tool.command}. Run `{' '.join(tool.install_argv)}` by hand.",
+                file=sys.stderr,
+            )
+            return 1
+        if tool.version is None:
+            continue
+        installed = shutil.which(tool.command)
+        answered = _release_of(installed) if installed is not None else None
+        if answered != tool.version:
+            print(
+                f"{tool.command} at {installed} still answers {answered or 'no release'} after "
+                f"installing {tool.version}: a copy earlier on PATH shadows the one installed. "
                 f"Remove it, or put the installed one first on PATH.",
                 file=sys.stderr,
             )
@@ -78,7 +80,11 @@ def tool_version(repo: Repo, command: str) -> int:
     installing the tool prebuilt installs the release the toolchain holds rather
     than a second statement of it.
     """
-    declared = {tool["command"]: tool for tool in repo.policy["toolchain"]["tool"]}
+    try:
+        declared = {tool.command: tool for tool in toolchain_tools(repo)}
+    except PolicyValueError as malformed:
+        print(f"{malformed}.", file=sys.stderr)
+        return 1
     if command not in declared:
         print(
             f"`repo-policy.toml` declares no toolchain tool `{command}`. "
@@ -86,7 +92,7 @@ def tool_version(repo: Repo, command: str) -> int:
             file=sys.stderr,
         )
         return 1
-    held = declared[command].get("version")
+    held = declared[command].version
     if held is None:
         print(
             f"`repo-policy.toml` holds `{command}` at no release. Add `version` to its "

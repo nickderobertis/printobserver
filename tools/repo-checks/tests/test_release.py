@@ -186,6 +186,22 @@ def test_a_prebuilt_release_program_not_at_the_held_release_is_refused(
     refused(findings, "rather than the release `repo-policy.toml` holds `release-plz` at")
 
 
+def test_a_held_release_that_is_not_a_release_is_refused(tree: Callable[[], Tree]) -> None:
+    """A held release reaches a workflow's output, so one that is not a release is refused."""
+    broken = tree()
+    broken.write(
+        "repo-policy.toml",
+        broken.read("repo-policy.toml").replace(
+            'command = "release-plz"\nversion = "', 'command = "release-plz"\nversion = "newest-'
+        ),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "holds `release-plz` at 'newest-")
+    refused(findings, "which is not a release")
+
+
 def test_a_prebuilt_release_program_whose_release_no_step_reads_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
