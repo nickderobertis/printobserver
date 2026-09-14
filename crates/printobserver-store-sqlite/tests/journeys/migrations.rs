@@ -257,6 +257,11 @@ fn read_the_seeded_print_back(port: &dyn Store) {
         Some(print_id),
         "the renamed column is not what the lookup by the provider's identifier reads"
     );
+    assert_eq!(
+        block_on(port.prints()),
+        Ok(vec![print]),
+        "a database written before prints were listed does not list the print it holds"
+    );
 }
 
 /// Read every seeded record back through the port.

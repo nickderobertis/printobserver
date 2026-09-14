@@ -44,6 +44,9 @@ mod interventions;
 #[path = "journeys/event_loop.rs"]
 mod event_loop;
 
+#[path = "journeys/finding.rs"]
+mod finding;
+
 #[path = "journeys/port_failures.rs"]
 mod port_failures;
 

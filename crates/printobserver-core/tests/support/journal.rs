@@ -29,6 +29,10 @@ pub enum Call {
     ReadPrintByProviderId,
     /// Every print with no end recorded was read.
     ReadOpenPrints,
+    /// Every print was read.
+    ReadPrints,
+    /// A provider's identifier was recorded on a print.
+    AttachObicoPrint(i64),
     /// A print was ended, in a state.
     EndPrint(String),
     /// A manifest narrowing was recorded.
@@ -115,6 +119,8 @@ impl Call {
             | Self::ReadPrint
             | Self::ReadPrintByProviderId
             | Self::ReadOpenPrints
+            | Self::ReadPrints
+            | Self::AttachObicoPrint(_)
             | Self::EndPrint(_)
             | Self::RecordNarrowing(_)
             | Self::AppendEvent(_)

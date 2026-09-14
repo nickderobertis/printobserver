@@ -92,6 +92,16 @@ fn stated_print_methods() -> Vec<Method> {
             "BoxFuture<'_,Result<Vec<PrintRecord>,StoreError>>",
         ),
         method(
+            "prints",
+            &[],
+            "BoxFuture<'_,Result<Vec<PrintRecord>,StoreError>>",
+        ),
+        method(
+            "attach_obico_print",
+            &[("print_id", "PrintId"), ("obico_print_id", "i64")],
+            "BoxFuture<'_,Result<PrintRecord,StoreError>>",
+        ),
+        method(
             "print_by_provider_id",
             &[("provider_print_id", "i64")],
             "BoxFuture<'_,Result<Option<PrintRecord>,StoreError>>",

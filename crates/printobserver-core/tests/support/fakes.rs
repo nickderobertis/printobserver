@@ -170,6 +170,13 @@ impl FakePrinter {
         self.snapshot.lock().expect("the printer holds").connection = state;
     }
 
+    /// Report a job of this file, in this state, from now on.
+    pub fn reports_job(&self, file_name: Option<&str>, state: PrinterState) {
+        let mut job = self.job.lock().expect("the printer holds");
+        job.file_name = file_name.map(str::to_owned);
+        job.state = state;
+    }
+
     /// Fail one method with one error from now on.
     pub fn fails(&self, method: PrinterMethod, error: PrinterError) {
         self.failures
@@ -424,6 +431,19 @@ impl FakeStore {
             .get(&id)
             .cloned()
     }
+
+    /// Every print it holds, most recently opened first, as the port declares.
+    ///
+    /// The fake clock does not move between two opens, so the order they were
+    /// opened in is what says which is the more recent.
+    fn newest_first(&self) -> Vec<PrintRecord> {
+        let held = self.held.lock().expect("the store holds");
+        held.opened
+            .iter()
+            .rev()
+            .filter_map(|id| held.prints.get(id).cloned())
+            .collect()
+    }
 }
 
 impl Drop for FakeStore {
@@ -507,15 +527,48 @@ impl PrintStore for FakeStore {
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
         let found: Vec<PrintRecord> = self
-            .held
-            .lock()
-            .expect("the store holds")
-            .prints
-            .values()
+            .newest_first()
+            .into_iter()
             .filter(|print| print.ended_at.is_none())
-            .cloned()
             .collect();
         Box::pin(async move { Ok(found) })
+    }
+
+    fn prints(
+        &self,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        self.journal.record(Call::ReadPrints);
+        let found = self.newest_first();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn attach_obico_print(
+        &self,
+        print_id: PrintId,
+        obico_print_id: i64,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        self.journal.record(Call::AttachObicoPrint(obico_print_id));
+        let mut held = self.held.lock().expect("the store holds");
+        let answer = match held.prints.get_mut(&print_id) {
+            None => Err(StoreError::NotFound {
+                what: format!("print {print_id}"),
+            }),
+            Some(print)
+                if print
+                    .provider_print_id
+                    .is_some_and(|id| id != obico_print_id) =>
+            {
+                Err(StoreError::ConstraintRefused {
+                    constraint: "prints.provider_print_id".to_owned(),
+                })
+            }
+            Some(print) => {
+                print.provider_print_id = Some(obico_print_id);
+                Ok(print.clone())
+            }
+        };
+        drop(held);
+        Box::pin(async move { answer })
     }
 
     fn end_print(

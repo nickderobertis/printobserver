@@ -330,6 +330,37 @@ impl PrintStore for MemoryStore {
         })
     }
 
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async move {
+            let mut found = lock(&self.records).prints.clone();
+            found.sort_by_key(|print| (print.opened_at, print.id));
+            found.reverse();
+            Ok(found)
+        })
+    }
+
+    fn attach_obico_print(
+        &self,
+        print_id: PrintId,
+        obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move {
+            let mut records = lock(&self.records);
+            let found = records
+                .prints
+                .iter_mut()
+                .find(|print| print.id == print_id)
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            match found.provider_print_id {
+                Some(held) if held != obico_print_id => Err(refused("prints.provider_print_id")),
+                _ => {
+                    found.provider_print_id = Some(obico_print_id);
+                    Ok(found.clone())
+                }
+            }
+        })
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,

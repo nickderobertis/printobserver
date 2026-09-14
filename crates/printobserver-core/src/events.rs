@@ -91,6 +91,14 @@ impl Supervisor {
     /// Correlated on the provider's own identifier the alert carries beside its
     /// body, and never on the body by kind: which provider raised the alert is
     /// the adapter's business, and this loop reads nothing an adapter declares.
+    ///
+    /// In order: the print already carrying that identifier; otherwise the most
+    /// recently opened print with no end recorded, no provider identifier and
+    /// the alert's own file name, which is a job somebody found before the
+    /// provider reported on it and which takes the identifier here; otherwise a
+    /// print opened for it. The file name is the one key the two sides share —
+    /// the provider names the job by the file the printer reported, and the
+    /// printer names it by that same file.
     async fn resolve_print(
         &self,
         alert: &NormalizedAlert,
@@ -98,6 +106,7 @@ impl Supervisor {
         let Some(provider_print) = &alert.print else {
             return Ok(None);
         };
+        let _resolving = self.resolving().await;
         if let Some(found) = self
             .stores()
             .prints
@@ -105,6 +114,25 @@ impl Supervisor {
             .await?
         {
             return Ok(Some(found));
+        }
+        if let Some(file_name) = &provider_print.file_name {
+            let unattached = self
+                .stores()
+                .prints
+                .open_prints()
+                .await?
+                .into_iter()
+                .find(|open| {
+                    open.provider_print_id.is_none() && open.file_name.as_ref() == Some(file_name)
+                });
+            if let Some(found) = unattached {
+                let attached = self
+                    .stores()
+                    .prints
+                    .attach_obico_print(found.id, provider_print.id)
+                    .await?;
+                return Ok(Some(attached));
+            }
         }
         let opened = self
             .stores()

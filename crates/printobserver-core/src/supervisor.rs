@@ -99,6 +99,16 @@ pub struct Supervisor {
     config: CoreConfig,
     /// One supervision turn per print at a time.
     turns: TurnLocks,
+    /// One resolution of which print a job or an alert is at a time.
+    ///
+    /// Finding the print the printer's job belongs to and finding the print an
+    /// alert belongs to each read the open prints and may then write one, so
+    /// two of them interleaved could each find none and each open one. They
+    /// take this lock, under [`Supervisor::resolving_key`], for as long as that
+    /// read and write take.
+    resolving: TurnLocks,
+    /// The one key [`Supervisor::resolving`] is held under.
+    resolving_key: PrintId,
     /// When the agent last acted on each print.
     last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
     /// The context collected for the turn currently running on each print.
@@ -146,6 +156,8 @@ impl Supervisor {
             clock,
             config,
             turns: TurnLocks::default(),
+            resolving: TurnLocks::default(),
+            resolving_key: PrintId::new(),
             last_agent_action: Mutex::new(BTreeMap::new()),
             pending_context: Mutex::new(BTreeMap::new()),
         });
@@ -192,6 +204,11 @@ impl Supervisor {
     /// One supervision turn per print at a time.
     pub(crate) const fn turns(&self) -> &TurnLocks {
         &self.turns
+    }
+
+    /// Wait until no other resolution of a print is running, then hold it.
+    pub(crate) async fn resolving(&self) -> crate::turn_lock::TurnGuard<'_> {
+        self.resolving.acquire(self.resolving_key).await
     }
 
     /// Record that the agent acted on one print at an instant.

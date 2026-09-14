@@ -86,6 +86,18 @@ impl PrintStore for FailingStore {
         failed()
     }
 
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        failed()
+    }
+
+    fn attach_obico_print(
+        &self,
+        _print_id: PrintId,
+        _obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        failed()
+    }
+
     fn print_by_provider_id(
         &self,
         _provider_print_id: i64,
