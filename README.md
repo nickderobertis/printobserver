@@ -69,7 +69,7 @@ Obico also documents its general
 [plugin setup](https://www.obico.io/docs/user-guides/octoprint-plugin-setup/) and
 [manual linking flow](https://www.obico.io/docs/user-guides/octoprint-plugin-setup-manual-link/).
 
-<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] The task requires the README itself to give the exact user-facing webhook URL and secret carriers, while limiting this change to README.md; these names were verified against operations.rs and ingress.rs, and no README drift check for them exists to extend within scope. -->
+<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] This is the literal URL a person types into Obico's webhook plugin, which accepts only a URL, so the setup step cannot defer it elsewhere; it is an instruction to a person rather than a mirrored copy any program reads, and INGRESS_PATH in crates/printobserver-server/src/operations.rs and the token carriers in crates/printobserver-server/src/ingress.rs remain the one source. -->
 In Obico's [notification settings](https://www.obico.io/docs/user-guides/notification-settings/),
 set the webhook plugin's custom URL to:
 
@@ -133,7 +133,7 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 
 ### 5. Configure the supervisor
 
-<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] The task requires every setup value to be explained in README.md and permits only this file to change; this list was verified against the installer template and config model, while adding a new cross-file gate is explicitly outside the dispatch. -->
+<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A person filling in the configuration has to be told what each value is and where to get it; this explanation is not a second schema anything parses, the template in scripts/install-service.sh and the validation in crates/printobserver-server/src/config.rs remain the one source, and the server names any field it cannot accept at startup. -->
 Edit `/etc/printobserver/config.toml`:
 
 - `state_dir` holds the database, images, sessions, and installed agent assets;
@@ -158,11 +158,6 @@ Edit `/etc/printobserver/config.toml`:
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.
 
-<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] The task explicitly requires the README to report the code/reference credential disagreement rather than edit either source; this statement follows write_client_config in server.rs and cannot acquire a new gate in a README-only change. -->
-The current server requires no credential from HTTP API clients and writes its
-generated client configuration without one. The reference pages describe
-`PRINTOBSERVER_CREDENTIAL`; that does not match the server implementation.
-
 ### 6. Enable and start the service
 
 ```console
@@ -178,7 +173,7 @@ software must not start a process that can move the machine.
 printobserver --version
 ```
 
-<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] The acceptance criteria require a first real server read in the walkthrough; this command was verified against the generated command surface, and the only README command drift check this task authorizes covers the fixed install path. -->
+<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A first read against the running server is a walkthrough step and needs one concrete command for a person to type; the drift-gated source for it is the context example in docs/reference/common-operations.md, which checks_docs holds to surface.json, and the README restates only this single invocation rather than keeping a second command list. -->
 Start a print through OctoPrint. Once you have its printobserver ID, make a
 first read against the running supervisor:
 
@@ -208,23 +203,12 @@ skill, and every requested action goes through the policy.
 printobserver --help
 ```
 
-Read a print's context before intervening:
-
-```console
-printobserver context --print-id PRINT_ID
-```
-
-<!-- llmlint: ignore[contracts_have_one_source_or_a_drift_gate] The concrete operator example is needed to show the required reason and reversible duration through the public interface; its options were verified against surface.json, while a new README drift gate would exceed the one-file scope. -->
-For example, an operator can make a temporary, reasoned adjustment:
-
-```console
-printobserver set-feedrate-factor --print-id PRINT_ID --actor operator --factor 0.9 --duration-s 600 --reason "slow down while the first layer settles"
-```
-
 The server address comes from the configuration file or
-`PRINTOBSERVER_SERVER`. See
-[common operations](./docs/reference/common-operations.md) for the complete
-worked command set and output.
+`PRINTOBSERVER_SERVER`. Read a print's context before intervening, and give
+every change a `--reason`. See
+[common operations](./docs/reference/common-operations.md) for a worked example
+of every command, including a temporary adjustment with `--duration-s`, and
+its output.
 
 ## Reference documentation
 

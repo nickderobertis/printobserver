@@ -177,6 +177,26 @@ file = "crates/printobserver/tests/journeys/documenting.rs"
 site = "if writing() {"
 reason = "Proving replacement of stale committed examples requires a corrupted documentation copy, forbidden by this dispatch. The positive journey executes and compares every documented example against a real server; write mode uses those captured steps."
 
+# --- README.md: the real-printer walkthrough ----------------------------------
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "README.md"
+site = "In Obico's [notification settings]"
+reason = "This is the literal URL a person types into Obico's webhook plugin, which accepts only a URL, so the setup step cannot defer it elsewhere; it is an instruction to a person rather than a mirrored copy any program reads, and INGRESS_PATH in crates/printobserver-server/src/operations.rs and the token carriers in crates/printobserver-server/src/ingress.rs remain the one source."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "README.md"
+site = "Edit `/etc/printobserver/config.toml`:"
+reason = "A person filling in the configuration has to be told what each value is and where to get it; this explanation is not a second schema anything parses, the template in scripts/install-service.sh and the validation in crates/printobserver-server/src/config.rs remain the one source, and the server names any field it cannot accept at startup."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "README.md"
+site = "Start a print through OctoPrint."
+reason = "A first read against the running server is a walkthrough step and needs one concrete command for a person to type; the drift-gated source for it is the context example in docs/reference/common-operations.md, which checks_docs holds to surface.json, and the README restates only this single invocation rather than keeping a second command list."
+
 [[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "justfile"
