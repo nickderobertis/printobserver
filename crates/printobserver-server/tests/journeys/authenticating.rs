@@ -638,17 +638,68 @@ async fn a_configured_credential_is_in_force_and_the_file_is_left_alone() {
     again.stop().await;
 }
 
+/// A credential file a person wrote with a shell or an editor ends in one line
+/// terminator, and the credential in force is the text before it — while the
+/// file itself is left exactly as that person wrote it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_credential_file_ending_in_one_line_terminator_is_the_text_before_it() {
+    const HELD: &str = "an-operators-hand-written-credential-5Vn9";
+    for (what, terminator) in [
+        ("one line feed", "\n"),
+        ("a carriage return and line feed", "\r\n"),
+    ] {
+        let rooted = Rooted::with(|_| {}).await;
+        let file = rooted.credential_file();
+        let written = format!("{HELD}{terminator}");
+        std::fs::write(&file, &written).expect("the file is writable");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600))
+            .expect("the file's mode is settable");
+
+        let server = rooted
+            .start()
+            .await
+            .unwrap_or_else(|error| panic!("a credential file ending in {what} refused: {error}"));
+
+        assert!(
+            admits(&server, HELD).await,
+            "a credential file ending in {what} is not in force as the text before it"
+        );
+        assert_eq!(
+            client_configuration(&rooted.state())["client"]["credential"].as_str(),
+            Some(HELD),
+            "the client configuration does not carry the text before {what}"
+        );
+        server.stop().await;
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("the file is still there"),
+            written,
+            "a credential file ending in {what} was rewritten"
+        );
+    }
+}
+
 /// Every state of the credential file a server cannot use refuses the start,
 /// naming the file and never what it holds, and leaves the file as it was.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_credential_file_that_cannot_be_used_refuses_the_start() {
-    let held_values: [(&str, &[u8]); 5] = [
+    let held_values: [(&str, &[u8]); 10] = [
         ("empty", b""),
         ("only whitespace", b"  \t \n"),
         (
             "carrying a control character",
             b"qx-distinctive-held\x07value",
         ),
+        ("ending in two line feeds", b"qx-distinctive-held-value\n\n"),
+        (
+            "carrying a line feed mid-text",
+            b"qx-distinctive-held\nvalue\n",
+        ),
+        ("carrying a tab", b"qx-distinctive-held\tvalue"),
+        (
+            "ending in a carriage return not paired with a line feed",
+            b"qx-distinctive-held-value\r",
+        ),
+        ("carrying a NUL", b"qx-distinctive-held\0value\n"),
         (
             "carrying a character outside ASCII",
             "qx-distinctive-held-v\u{e4}lue".as_bytes(),

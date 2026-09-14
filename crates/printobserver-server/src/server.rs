@@ -177,9 +177,7 @@ fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartErro
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let held = std::fs::read(&path)
                 .map_err(|error| refusing(format!("it cannot be read: {error}")))?;
-            let text = core::str::from_utf8(&held)
-                .ok()
-                .map(|text| text.strip_suffix('\n').unwrap_or(text));
+            let text = core::str::from_utf8(&held).ok().map(without_terminator);
             text.ok_or("it is not text")
                 .and_then(ApiCredential::new)
                 .map_err(|why| {
@@ -191,6 +189,18 @@ fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartErro
         }
         Err(error) => Err(refusing(format!("it cannot be created: {error}"))),
     }
+}
+
+/// A credential file's text with the one line terminator a person's editor or
+/// shell ends it with set aside.
+///
+/// Exactly one, `\n` or `\r\n`: that terminator is not part of the credential,
+/// and anything else in the text — a second one included — is left for the
+/// character rule to refuse.
+fn without_terminator(text: &str) -> &str {
+    text.strip_suffix("\r\n")
+        .or_else(|| text.strip_suffix('\n'))
+        .unwrap_or(text)
 }
 
 /// The file name the agent's skill is materialized under.

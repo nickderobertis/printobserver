@@ -32,7 +32,9 @@ The credential in force is `api.credential` when the server's configuration sets
 one. Otherwise the server generates one before it first listens — at least 32
 bytes from the operating system's secure random source, written as unpadded
 URL-safe base64 — into `api-credential` in its state directory, readable by the
-service's user alone, and reuses it unchanged on every later start. Either way it
+service's user alone, and reuses it unchanged on every later start. A file a
+person writes there may end in one line terminator, `\n` or `\r\n`, which is not
+part of the credential; any other control character refuses the start. Either way it
 writes the address it bound and that credential into `client.toml` beside it, as
 a `[client]` table with `server` and `credential`, also readable by that user
 alone.
