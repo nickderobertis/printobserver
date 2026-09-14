@@ -18,12 +18,24 @@
 //! rejected request answers the rejection the policy made, carrying its reason,
 //! the value asked for and the range allowed, and reaches no action method of
 //! the printer port at all.
+//!
+//! # Nothing is served to a caller that did not present the credential
+//!
+//! Every route beneath the versioned prefix — and the prefix's own fallback, so
+//! that a path nothing serves is refused the same way — sits behind
+//! [`authenticate`], which runs before any extractor reads a path, a query or a
+//! body. A request whose `Authorization` header is not exactly
+//! `Bearer <the credential in force>` is answered `401` there, so it reaches no
+//! handler, no store, no printer port and no record. There is no route that
+//! skips it and no configuration that turns it off: [`ApiState`] cannot be
+//! built without the credential it is checked against.
 
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
+use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Router, routing::MethodRouter};
@@ -35,6 +47,7 @@ use printobserver_core::{CoreError, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::{ImageId, PrintId};
 
+use crate::config::ApiCredential;
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
@@ -56,6 +69,9 @@ pub struct ApiState {
     pub images: Arc<dyn ImageStore>,
     /// The supervision sessions.
     pub sessions: Arc<dyn SessionStore>,
+    /// The credential every request must present before anything above is
+    /// reached.
+    pub credential: Arc<ApiCredential>,
 }
 
 impl core::fmt::Debug for ApiState {
@@ -85,7 +101,62 @@ pub fn router(state: ApiState) -> Router {
     for operation in OPERATIONS {
         api = api.route(operation.path, route_for(&operation));
     }
-    Router::new().nest(VERSION_PREFIX, api.with_state(state))
+    // The layer is added after every route and the fallback, which is what
+    // puts all of them behind it.
+    let api = api
+        .fallback(nothing_here)
+        .layer(from_fn_with_state(
+            Arc::clone(&state.credential),
+            authenticate,
+        ))
+        .with_state(state);
+    Router::new().nest(VERSION_PREFIX, api)
+}
+
+/// The scheme the credential is presented under.
+const BEARER: &[u8] = b"Bearer ";
+
+/// Admit a request that presented the credential in force, and refuse every
+/// other before anything reads it.
+///
+/// Exactly one `Authorization` header, spelled `Bearer ` and then the
+/// credential. Two headers, another scheme, another spelling of this one, and a
+/// credential that is not the one in force are all the same refusal, which says
+/// what to present and nothing about what was presented.
+pub async fn authenticate(
+    State(credential): State<Arc<ApiCredential>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let mut presented = request.headers().get_all(header::AUTHORIZATION).iter();
+    let admitted = match (presented.next(), presented.next()) {
+        (Some(only), None) => only
+            .as_bytes()
+            .strip_prefix(BEARER)
+            .is_some_and(|offered| credential.admits(offered)),
+        _ => false,
+    };
+    if !admitted {
+        let mut refused = refusal(
+            StatusCode::UNAUTHORIZED,
+            "this server's API requires the credential it is configured with, presented as \
+             `Authorization: Bearer <credential>`",
+        );
+        refused.headers_mut().insert(
+            header::WWW_AUTHENTICATE,
+            header::HeaderValue::from_static("Bearer"),
+        );
+        return refused;
+    }
+    next.run(request).await
+}
+
+/// A path beneath the versioned prefix that no operation serves.
+async fn nothing_here() -> Response {
+    refusal(
+        StatusCode::NOT_FOUND,
+        "no operation of this server is served at that path",
+    )
 }
 
 /// The route one declared operation is served by.

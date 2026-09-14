@@ -666,9 +666,14 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        "// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         'test("every method is answered by a real supervisor", async () => {',
         "  await using proxy = new Recording(world.server);",
-        '  const client = new Client({ server: proxy.url, actor: "operator" });',
+        "  const client = new Client({",
+        "    server: proxy.url,",
+        '    actor: "operator",',
+        "    credential: world.credential,",
+        "  });",
         "",
         *(f"  await step{pascal(step.name)}(client, proxy);" for step in steps),
         "",
@@ -707,6 +712,7 @@ def emit_live(contract: Contract) -> str:
         "  const client = new Client({",
         "    server: proxy.url,",
         '    actor: { agent: { session_name: "an actor this envelope grants nothing" } },',
+        "    credential: world.credential,",
         "  });",
         "",
         *(

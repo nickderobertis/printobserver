@@ -21,10 +21,13 @@ import sqlite3
 import subprocess
 import threading
 import time
+import tomllib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import TracebackType
+from typing import NewType
+from urllib.parse import urlsplit
 
 from repo_checks.shell import start
 
@@ -34,9 +37,10 @@ INGRESS_WORD = "a-shared-word-for-a-smoke-check"
 #: The header that word travels in, as the ingress spells it.
 INGRESS_HEADER = "x-printobserver-token"
 
-#: The file the supervisor writes the address it bound into, for the clients
-#: beside it. Reading it is how this finds a server started on a port the
-#: operating system chose.
+#: The file the supervisor writes the address it bound and the credential in
+#: force into, for the clients beside it. Reading it is how this finds a server
+#: started on a port the operating system chose, and authenticates to one that
+#: generated its own credential.
 CLIENT_CONFIG = "client.toml"
 
 #: The store the supervisor keeps its record in.
@@ -63,12 +67,18 @@ STARTUP_TIMEOUT_SECONDS = 60.0
 INGRESS_TIMEOUT_SECONDS = 60.0
 
 
+#: The API credential a supervisor serves under, as a request presents it.
+Credential = NewType("Credential", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Running:
     """A supervisor a client can be pointed at."""
 
     #: Where it answers, as its own client configuration writes it.
     server: str
+    #: The credential it serves under, as that same configuration carries it.
+    credential: Credential
     #: The print every read of the smoke checks is about.
     print_id: str
     #: The image the materialization read is about.
@@ -83,6 +93,40 @@ class Running:
 
 class WorldError(RuntimeError):
     """A supervisor could not be brought up for a client to be proven against."""
+
+
+def _addressable(server: str) -> bool:
+    """Whether a server is an `http://host:port` address a client can connect to."""
+    split = urlsplit(server)
+    try:
+        port = split.port
+    except ValueError:
+        return False
+    return split.scheme == "http" and bool(split.hostname) and port is not None
+
+
+def _presentable(credential: str) -> bool:
+    """Whether a credential is one an `Authorization` header carries intact.
+
+    The same rule the server holds its own credential to, and each installed
+    smoke check holds its `--credential` to.
+    """
+    return (
+        bool(credential)
+        and all(" " <= character <= "~" for character in credential)
+        and not credential.startswith(" ")
+        and not credential.endswith(" ")
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ClientConfiguration:
+    """What a supervisor wrote for the clients beside it."""
+
+    #: The address it bound.
+    server: str
+    #: The credential it serves under.
+    credential: Credential
 
 
 class Machine:
@@ -325,10 +369,11 @@ class World:
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
         )
-        server = self._await_address()
-        print_id, image_id, event_id = self._open_a_print(server)
+        written = self._await_client_configuration()
+        print_id, image_id, event_id = self._open_a_print(written.server)
         return Running(
-            server=server,
+            server=written.server,
+            credential=written.credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,
@@ -348,11 +393,19 @@ class World:
             self._supervisor = None
         self.machine.stop()
 
-    def _await_address(self) -> str:
-        """The address the supervisor bound, read from what it wrote for its clients.
+    def _await_client_configuration(self) -> ClientConfiguration:
+        """The address the supervisor bound and the credential in force.
+
+        Both read from the `[client]` table it wrote for its clients, which is
+        where every client beside a real service reads them from: the
+        configuration this writes names no credential, so the supervisor
+        generated one.
 
         Raises:
-            WorldError: If it never wrote one.
+            WorldError: If it never wrote both, or wrote either as nothing a
+                client could use: a server that is no `http://host:port`
+                address, or a credential no `Authorization` header carries
+                intact — which no supervisor serves under.
         """
         written = self.state / CLIENT_CONFIG
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
@@ -362,10 +415,33 @@ class World:
                 msg = f"the supervisor stopped before it answered:\n{said}"
                 raise WorldError(msg)
             if written.is_file():
-                for line in written.read_text(encoding="utf-8").splitlines():
-                    name, _, value = line.partition("=")
-                    if name.strip() == "server":
-                        return value.strip().strip('"')
+                try:
+                    table = tomllib.loads(written.read_text(encoding="utf-8")).get("client", {})
+                except tomllib.TOMLDecodeError:
+                    # Caught part-way through being written; the next look
+                    # reads the whole of it.
+                    table = {}
+                match table:
+                    case {"server": str(server), "credential": str(credential)}:
+                        if not _addressable(server):
+                            msg = (
+                                f"the supervisor wrote {written} with a server that is no "
+                                f"http://host:port address: {server!r}"
+                            )
+                            raise WorldError(msg)
+                        if not _presentable(credential):
+                            # The credential is never quoted: it is the one
+                            # the supervisor serves under.
+                            msg = (
+                                f"the supervisor wrote {written} with a credential no request "
+                                "presents: printable ASCII, not empty, and neither beginning "
+                                "nor ending with a space"
+                            )
+                            raise WorldError(msg)
+                        return ClientConfiguration(server=server, credential=Credential(credential))
+                    case _:
+                        # Neither is written yet; the next look reads both.
+                        pass
             time.sleep(0.1)
         msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)
@@ -377,7 +453,6 @@ class World:
             WorldError: If the ingress opened none.
         """
         import http.client
-        from urllib.parse import urlsplit
 
         alert = json.dumps(
             {

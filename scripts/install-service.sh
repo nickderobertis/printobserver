@@ -230,6 +230,14 @@ shared_secret = ""
 # would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
 # answer bound".
 
+# The API credential every client presents is not written in this file. Left
+# out, the service generates one the first time it starts, into the file
+# api-credential in its state directory, readable by the service's user alone,
+# and writes it with the address into client.toml beside it for the clients on
+# this host. To choose the credential yourself, add an [api] table whose
+# credential key holds a long random value; the generated file is then neither
+# read nor written.
+
 # What any actor may ask for at all. A manifest may narrow these; nothing may
 # widen them.
 [safety]

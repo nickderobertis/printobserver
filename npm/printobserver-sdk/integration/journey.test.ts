@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { Client } from "../src/client.ts";
 import { type JobManifest, type PrinterState, payloadOf } from "../src/contract.ts";
-import { NoReason, Rejected } from "../src/surface.ts";
+import { NoReason, Refused, Rejected } from "../src/surface.ts";
 import { Recording, same } from "./live.ts";
 import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
@@ -75,7 +75,11 @@ function manifest(fileName: string): JobManifest {
  */
 async function unreasoned(world: Supervisor): Promise<void> {
   await using proxy = new Recording(world.server);
-  const client = new Client({ server: proxy.url, actor: "operator" });
+  const client = new Client({
+    server: proxy.url,
+    actor: "operator",
+    credential: world.credential,
+  });
 
   // A read first: "nothing went through" is a claim about the calls below, and
   // against a proxy nothing could reach it would be true of anything at all.
@@ -121,7 +125,11 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
 }
 
 test("the same nine steps are answered against a real OctoPrint", async () => {
-  const client = new Client({ server: world.server, actor: "operator" });
+  const client = new Client({
+    server: world.server,
+    actor: "operator",
+    credential: world.credential,
+  });
 
   // journey step 1: status
   expect((await client.status(world.print_id)).print.id).toBe(world.print_id);
@@ -209,3 +217,49 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
     "putting the hold print back where the bring-up left it",
   );
 }, 600_000);
+
+/**
+ * A real supervisor refuses a client that does not present its credential.
+ *
+ * The refusal arrives as the error every other unsuccessful answer does, under
+ * status 401, saying what to present and quoting no credential — and the same
+ * read presenting the credential in force is served.
+ *
+ * It sits below the nine steps rather than above them: the journey check's own
+ * suite removes step one by rewriting the file's first status read, and a read
+ * here placed first would take that rewrite instead.
+ */
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+test("a client without the credential in force is refused by a real supervisor", async () => {
+  const unauthenticated: Array<[string, Client]> = [
+    ["no credential", new Client({ server: world.server, actor: "operator" })],
+    [
+      "a wrong credential",
+      new Client({
+        server: world.server,
+        actor: "operator",
+        credential: "not-the-credential-in-force",
+      }),
+    ],
+  ];
+  for (const [what, client] of unauthenticated) {
+    let refused: unknown;
+    try {
+      await client.status(world.print_id);
+    } catch (raised) {
+      refused = raised;
+    }
+    if (!(refused instanceof Refused)) {
+      throw new Error(`a client with ${what} was not refused: ${String(refused)}`);
+    }
+    expect(refused.status).toBe(401);
+    expect(refused.detail).toContain("Authorization: Bearer");
+    expect(refused.detail).not.toContain(world.credential);
+  }
+  const presenting = new Client({
+    server: world.server,
+    actor: "operator",
+    credential: world.credential,
+  });
+  expect((await presenting.status(world.print_id)).print.id).toBe(world.print_id);
+});

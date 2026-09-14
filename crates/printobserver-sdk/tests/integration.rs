@@ -94,7 +94,7 @@ fn the_same_nine_steps_are_answered_against_a_real_octoprint() {
     let root = tempfile::tempdir().expect("this journey's own root");
     let mut standing = supervisor::standing(root.path());
     let world = standing.at.clone();
-    let client = Client::new(&world.server, Actor::Operator);
+    let client = Client::new(&world.server, Actor::Operator).with_credential(&*world.credential);
 
     // journey step 1: status
     reads_status(&client, &world);
@@ -232,7 +232,7 @@ fn the_refused_adjustment(client: &Client, world: &supervisor::Supervisor) {
 /// through it.
 fn unreasoned(world: &supervisor::Supervisor) {
     let proxy = live::Proxy::in_front_of(&world.server);
-    let watched = Client::new(proxy.url(), Actor::Operator);
+    let watched = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
 
     // A read first: "nothing went through" is a claim about the calls below,
     // and against a proxy nothing could reach it would be true of everything.
@@ -389,4 +389,47 @@ fn digest(path: &std::path::Path) -> String {
             let _ = write!(said, "{byte:02x}");
             said
         })
+}
+
+/// A real supervisor refuses a client that does not present its credential.
+///
+/// The refusal arrives as the error every other unsuccessful answer does, under
+/// status `401`, saying what to present and quoting no credential — and the
+/// same read presenting the credential in force is served.
+///
+/// It sits after the nine steps and every step's own code rather than before
+/// them: the journey check's own suite removes step one by rewriting the file's
+/// first status read, and a read here placed earlier would take that rewrite.
+#[test]
+fn a_client_without_the_credential_in_force_is_refused_by_a_real_supervisor() {
+    let root = tempfile::tempdir().expect("this journey's own root");
+    let mut standing = supervisor::standing(root.path());
+    let world = standing.at.clone();
+
+    for (what, client) in [
+        ("no credential", Client::new(&world.server, Actor::Operator)),
+        (
+            "a wrong credential",
+            Client::new(&world.server, Actor::Operator)
+                .with_credential("not-the-credential-in-force"),
+        ),
+    ] {
+        match client.status(&world.print_id) {
+            Err(ClientError::Refused { status, detail }) => {
+                assert_eq!(status, 401, "a client with {what} was refused as {detail}");
+                assert!(
+                    detail.contains("Authorization: Bearer") && !detail.contains(&world.credential),
+                    "a client with {what} was refused saying the wrong thing: {detail}"
+                );
+            }
+            other => panic!("a client with {what} was not refused as unauthenticated: {other:?}"),
+        }
+    }
+    let presenting =
+        Client::new(&world.server, Actor::Operator).with_credential(&*world.credential);
+    assert!(
+        presenting.status(&world.print_id).is_ok(),
+        "a client presenting the credential in force was not served"
+    );
+    standing.stop();
 }

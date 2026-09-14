@@ -12,19 +12,41 @@ takes a body at all, and answers `application/json`.
 
 One endpoint sits outside it: `/obico/webhook`, where Obico's own webhook
 notification plugin posts. That is the producer's ingress rather than an
-operation a client calls — it is authenticated by a shared secret rather than by
-an actor, it carries Obico's body rather than this system's, and it answers
-before its handling completes so that the producer's short posting timeout is
-never the thing that loses an alert.
+operation a client calls — it is authenticated by its shared secret alone rather
+than by the API credential or an actor, it carries Obico's body rather than this
+system's, and it answers before its handling completes so that the producer's
+short posting timeout is never the thing that loses an alert. The API credential
+does not admit a post there, and the shared secret does not admit a versioned
+operation.
 
 ## How a request is authenticated
 
-Every request to a versioned operation carries the credential the server was
-configured with. A client reads that credential and the server's address from a
-configuration file or from `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`;
-neither is ever a request parameter. Who is *asking* is a different thing from
-who is *authenticated*: every mutating operation carries an actor in its body,
-and the safety envelope grants actions per actor class.
+Every request to a versioned operation carries the credential the server is
+configured with, as `Authorization: Bearer <credential>`. A request with no such
+header, a malformed one or another credential is answered `401` before anything
+reads it — with the error body, under the operations' own media type, and a
+`WWW-Authenticate: Bearer` header — so it reaches no store, no printer and no
+record. Nothing turns this off.
+
+The credential in force is `api.credential` when the server's configuration sets
+one. Otherwise the server generates one before it first listens — at least 32
+bytes from the operating system's secure random source, written as unpadded
+URL-safe base64 — into `api-credential` in its state directory, readable by the
+service's user alone, and reuses it unchanged on every later start. A file a
+person writes there may end in one line terminator, `\n` or `\r\n`, which is not
+part of the credential; any other control character refuses the start. Either way it
+writes the address it bound and that credential into `client.toml` beside it, as
+a `[client]` table with `server` and `credential`, also readable by that user
+alone.
+
+A client reads the credential and the server's address from a configuration file
+or from `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`; neither is ever a
+request parameter. Refused, the command-line program exits `unconfigured` and
+says where the credential is read from, and each client raises the error it
+raises for any other unsuccessful answer, carrying status `401`. Who is *asking*
+is a different thing from who is *authenticated*: every mutating operation
+carries an actor in its body, and the safety envelope grants actions per actor
+class.
 
 A mutating operation answers `200` when it was carried out and `409` when the
 policy refused it. A rejection is not a transport failure — the body is the same

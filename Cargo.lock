@@ -1481,6 +1481,8 @@ name = "printobserver-server"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base64",
+ "getrandom 0.3.4",
  "oneharness",
  "printobserver-core",
  "printobserver-obico",
@@ -1496,6 +1498,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "subtle",
  "tempfile",
  "tokio",
  "toml 0.9.12+spec-1.1.0",

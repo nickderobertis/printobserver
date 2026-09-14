@@ -29,9 +29,9 @@ OctoPrint's API using the configured address and API key. It also exposes an
 ingress for alerts posted by Obico's webhook notification plugin; when an alert
 arrives, it immediately fetches the snapshot named by that alert.
 
-The server exposes an HTTP API. Every other `printobserver` subcommand, the
-Rust, Python, and Node clients, and the agent use that same API and command
-surface. The oneharness adapter in `crates/printobserver-oneharness` runs one
+The server exposes an HTTP API that serves only requests carrying its API
+credential. Every other `printobserver` subcommand, the Rust, Python, and Node
+clients, and the agent use that same API and command surface. The oneharness adapter in `crates/printobserver-oneharness` runs one
 supervision turn for each event on the harness identity configured under
 `[supervisor]`. It supplies
 [`printobserver-skill.md`](./crates/printobserver-oneharness/assets/printobserver-skill.md)
@@ -145,6 +145,14 @@ Edit `/etc/printobserver/config.toml`:
   the template selects `claude-code`.
 - `ingress.shared_secret` is the private random value used in step 2. Anyone
   who has it can submit an alert that may lead to a printer action.
+- `api.credential` is optional, and the template leaves it out. Every request to
+  the HTTP API must carry the API credential, and the server refuses any request
+  that does not. Left out, the service generates a random credential the first
+  time it starts, into `/var/lib/printobserver/api-credential`, and reuses it on
+  every later start. To choose it yourself, add an `[api]` table with
+  `credential` set to a long random value; the generated file is then not used.
+  This credential is separate from `ingress.shared_secret`, and neither is
+  accepted in place of the other.
 - `safety.agent_min_interval_s` is the minimum time between agent actions.
   Under `safety.allowed`, set the allowed range for feedrate factor, flowrate
   factor, fan percentage, bed target, and each tool target. Under
@@ -154,6 +162,36 @@ Edit `/etc/printobserver/config.toml`:
 
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.
+
+Each time it starts, the service writes `/var/lib/printobserver/client.toml`: a
+`[client]` table with `server`, the address it is listening on, and
+`credential`, the API credential in force. Its supervision turns read that file.
+You can too, as root: pass `--config /var/lib/printobserver/client.toml` to any
+command. `client.toml` and `api-credential` are readable only by the service's
+user.
+
+From your own user account you cannot read `/etc/printobserver/config.toml` or
+anything under `/var/lib/printobserver`. Read the credential once as root, then
+supply it with the address. Either set both environment variables:
+
+```console
+export PRINTOBSERVER_SERVER=http://127.0.0.1:8420
+export PRINTOBSERVER_CREDENTIAL="$(sudo cat /var/lib/printobserver/api-credential)"
+```
+
+or put both in a `[client]` table in a file only you can read, and pass that
+file with `--config`:
+
+```toml
+[client]
+server = "http://127.0.0.1:8420"
+credential = "the credential you read as root"
+```
+
+If you set `api.credential`, use that value instead of the generated file. When
+both variables are set and you pass no `--config`, `printobserver` does not read
+the service's configuration file at all. A command the server refuses exits with
+status 4 and says where the credential is read from.
 
 ### 6. Install and sign in the agent's harness
 
@@ -213,7 +251,9 @@ printobserver --version
 ```
 
 Start a print through OctoPrint. Once you have its printobserver ID, make a
-first read against the running supervisor:
+first read against the running supervisor. The command reads the address and the
+API credential from the two environment variables or the `--config` file
+described in step 5:
 
 ```console
 printobserver context --print-id PRINT_ID
@@ -230,8 +270,10 @@ workflow remains unspecified by the implementation.
 printobserver --help
 ```
 
-Read a print's context before intervening, and give every change a
-`--reason`. See
+Every command reads the server's address and the API credential from a
+configuration file named with `--config`, or from `PRINTOBSERVER_SERVER` and
+`PRINTOBSERVER_CREDENTIAL`; see step 5. Read a print's context before
+intervening, and give every change a `--reason`. See
 [common operations](./docs/reference/common-operations.md) for a worked example
 of every command, including a temporary adjustment with `--duration-s`, and
 its output.

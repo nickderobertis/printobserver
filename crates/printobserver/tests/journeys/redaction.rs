@@ -29,7 +29,12 @@
 //! on. All of them are driven here, and the fragment search is what rules.
 
 use std::collections::BTreeSet;
+use std::io::{BufRead as _, BufReader, Read as _};
+use std::path::Path;
 use std::process::{Command, Stdio};
+
+use printobserver::failure::Exit;
+use printobserver_server::{API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE};
 
 use crate::machine::Reports;
 use crate::walk;
@@ -39,6 +44,10 @@ use super::{failures, running};
 
 /// How long a fragment has to be to be looked for.
 const FRAGMENT: usize = 4;
+
+/// How long a credential the server generates is, as it is written: the
+/// unpadded URL-safe base64 of the bytes it draws.
+const GENERATED_LENGTH: usize = (printobserver_server::GENERATED_CREDENTIAL_BYTES * 4).div_ceil(3);
 
 /// Every path this task defines a behaviour for, under both credentials.
 pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
@@ -58,8 +67,184 @@ pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
                 "`{}` printed {found:?} of the credential it was configured with",
                 said.0
             );
+            assert!(
+                !said.1.contains(OTHER_CREDENTIAL),
+                "`{}` printed the control credential it was configured with",
+                said.0
+            );
         }
     }
+    a_refused_credential_is_named_and_neither_credential_is_printed(world);
+    the_server_command_under_a_credential_it_generated(world);
+}
+
+/// A credential the supervisor refuses is reported by where it is read from.
+///
+/// The supervisor serves under the walk's own credential, so every command
+/// configured with the control credential is refused — and what each prints is
+/// required to say where the credential is read from while printing neither
+/// the credential it presented nor the one in force.
+fn a_refused_credential_is_named_and_neither_credential_is_printed(world: &World) {
+    for one in walk::walk(world) {
+        world.wants(one.reports);
+        let ran = running::configured(world, &failures::succeeding(&one), OTHER_CREDENTIAL);
+        let said = ran.said();
+        assert_eq!(
+            ran.code,
+            Some(i32::from(Exit::Unconfigured.status())),
+            "`{}` under a refused credential did not exit as `unconfigured`: {said}",
+            one.command.name
+        );
+        assert!(
+            said.contains("refused the credential this program presented")
+                && said.contains("`credential` in the `[client]` table")
+                && said.contains("PRINTOBSERVER_CREDENTIAL"),
+            "`{}` under a refused credential did not say where the credential is read from: \
+             {said}",
+            one.command.name
+        );
+        for credential in [CREDENTIAL, OTHER_CREDENTIAL] {
+            assert!(
+                !said.contains(credential),
+                "`{}` under a refused credential printed a credential: {said}",
+                one.command.name
+            );
+        }
+    }
+}
+
+/// The command that runs the server, under a credential it generated itself.
+///
+/// Of the shipped length and alphabet, so the search is for exactly what an
+/// installed service holds. Its startup line, a refusal it makes after the
+/// credential is settled, a client command reading the configuration it wrote,
+/// and the configuration it was started under all go without it — while each
+/// still says what it is required to — and the one file that carries it is the
+/// client configuration, which is private.
+fn the_server_command_under_a_credential_it_generated(world: &World) {
+    let (configuration, state) = world.generating_server_config("generating", "127.0.0.1:0");
+    let mut serving = Command::new(running::program())
+        .arg("server")
+        .arg("--config")
+        .arg(&configuration)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the command that runs the server runs");
+    let mut printed = String::new();
+    let mut lines = BufReader::new(serving.stderr.take().expect("the server's own output"));
+    while !printed.contains("is serving on") {
+        let mut line = String::new();
+        if lines.read_line(&mut line).expect("the output reads") == 0 {
+            break;
+        }
+        printed.push_str(&line);
+    }
+    assert!(
+        printed.contains("is serving on"),
+        "the generating supervisor did not start: {printed}"
+    );
+
+    let credential = std::fs::read_to_string(state.join(API_CREDENTIAL_FILE))
+        .expect("the server wrote the credential it generated");
+    assert_eq!(
+        credential.len(),
+        GENERATED_LENGTH,
+        "the generated credential is not of the shipped length"
+    );
+    assert!(
+        credential
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character)),
+        "the generated credential is not of the shipped alphabet"
+    );
+
+    let client_config = state.join(CLIENT_CONFIG_FILE);
+    let read = running::with(
+        world,
+        &[
+            "status".to_owned(),
+            "--print-id".to_owned(),
+            world.print_id.clone(),
+            "--config".to_owned(),
+            client_config.display().to_string(),
+        ],
+        &[],
+    );
+    assert!(
+        read.said().contains(&world.print_id),
+        "a read through the configuration the server wrote said nothing about the print it \
+         asked for: {}",
+        read.said()
+    );
+    assert!(
+        !read.said().contains(&credential),
+        "a read through the configuration the server wrote printed the credential"
+    );
+
+    let _ = serving.kill();
+    let _ = lines.read_to_string(&mut printed);
+    let finished = serving.wait_with_output().expect("the server exits");
+    printed.push_str(&String::from_utf8_lossy(&finished.stdout));
+    assert!(
+        !printed.contains(&credential),
+        "the server printed the credential it generated"
+    );
+
+    // A refusal made once the credential is settled: the address to listen on
+    // is already taken, and the credential was read before the listener was.
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let occupied = taken.local_addr().expect("the bound address").to_string();
+    let (refusing, _) = world.generating_server_config("generating", &occupied);
+    let refused = Command::new(running::program())
+        .arg("server")
+        .arg("--config")
+        .arg(&refusing)
+        .output()
+        .expect("the command that runs the server runs");
+    let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        said.contains("will not start") && said.contains(&occupied),
+        "the refusal did not say why the server will not start: {said}"
+    );
+    assert!(
+        !said.contains(&credential),
+        "the server's refusal printed the credential it generated"
+    );
+
+    for file in [configuration.as_path(), refusing.as_path()] {
+        assert!(
+            !std::fs::read_to_string(file)
+                .expect("the configuration reads")
+                .contains(&credential),
+            "{} carries the credential the server generated",
+            file.display()
+        );
+    }
+    assert_private(&client_config, &credential);
+    world.wants(Reports::Printing);
+}
+
+/// The client configuration is the one file carrying the credential, and it is
+/// the service's own user's alone.
+fn assert_private(client_config: &Path, credential: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+    assert!(
+        std::fs::read_to_string(client_config)
+            .expect("the client configuration reads")
+            .contains(credential),
+        "the client configuration does not carry the credential in force"
+    );
+    assert_eq!(
+        std::fs::metadata(client_config)
+            .expect("the client configuration is there")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "the client configuration carrying the credential is readable by others"
+    );
 }
 
 /// Every contiguous fragment of one credential, at the length searched for.

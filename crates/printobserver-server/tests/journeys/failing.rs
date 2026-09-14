@@ -66,7 +66,11 @@ async fn every_operation_answers_this_servers_own_failure_when_the_store_has() {
     let server = served(root.path(), FailingStore::after_starting())
         .await
         .expect("a store that fails afterwards lets the server start");
-    let client = reqwest::Client::new();
+    // The credential is presented, so what each operation answers is about the
+    // store rather than about who asked.
+    let client = crate::world::presenting(&crate::world::generated_credential(
+        &server.config().state_dir,
+    ));
     let print_id = PrintId::new();
 
     for operation in OPERATIONS {

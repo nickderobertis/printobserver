@@ -8,7 +8,7 @@
  * materialization whose answered path it opens and whose bytes it checks
  * against the digest the image record itself declares.
  *
- *   node smoke.mjs --server http://127.0.0.1:8420 --print-id <id> --image-id <id>
+ *   node smoke.mjs --server http://127.0.0.1:8420 --credential <credential> --print-id <id> --image-id <id>
  */
 
 import { createHash } from "node:crypto";
@@ -27,11 +27,24 @@ function argument(name) {
   return value;
 }
 
+/** Whether a credential is one an `Authorization` header carries intact. */
+function presentable(credential) {
+  return /^[!-~](?:[ -~]*[!-~])?$/.test(credential);
+}
+
 const server = argument("server");
+const credential = argument("credential");
+if (!presentable(credential)) {
+  process.stderr.write(
+    "smoke: --credential takes the credential the supervisor serves under: printable ASCII, " +
+      "not empty, and neither beginning nor ending with a space\n",
+  );
+  process.exit(2);
+}
 const printId = argument("print-id");
 const imageId = argument("image-id");
 
-const client = new Client({ server, actor: "operator" });
+const client = new Client({ server, actor: "operator", credential });
 
 const status = await client.status(printId);
 if (status.print.id !== printId) {

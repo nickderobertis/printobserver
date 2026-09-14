@@ -214,6 +214,18 @@ site = "working_dir: assets.clone(),"
 reason = "A wrong working directory makes the agent's relative reference-file opens fail with a missing-path error on its first documentation read. That failure is visible to the supervising agent, not silent, so the rule's silent-failure condition is not met. The installed-assets journey already proves the bundled links resolve without a checkout; a billed harness turn would re-prove file resolution."
 
 [[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver-server/src/server.rs"
+site = "let held = std::fs::read(&path)"
+reason = "The API credential contract reuses an existing credential file's contents unchanged and never rewrites a file the start did not write, so the server does not change a hand-provisioned file's mode. The installed path keeps the file private by its directory: the installer creates the state directory at mode 0700 owned by the service user, and a file the server generates is created 0600. The manager ruled this reading over refusing or narrowing the mode; a mode check on hand-provisioned files is a recorded follow-up."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "crates/printobserver-server/src/config.rs"
+site = "Ok(Self(value.to_owned()))"
+reason = "ApiCredential::new refuses exactly the set the API credential contract states, which the nodes building on this server are planned against: empty or whitespace, a control or non-printable-ASCII byte, a leading or trailing space. A length floor would refuse operator credentials that contract admits; the manager ruled it a recorded follow-up rather than part of this change. The default an operator gets without configuring one is the generated 32 random bytes."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = ".config/nextest.toml"
 site = "[test-groups]"
@@ -542,3 +554,148 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/actions.py"
 site = "class ArtifactStore:"
 reason = "What this stands in for is GitHub's own artifact service, which no journey can reach: an upload lands on the forge's storage and a download reads it back with the forge's token, and neither exists off github.com. The layer under test is the seam between two committed workflows — the record one run uploads and a run of the other downloads by the triggering run's id — and that seam cannot be driven at all without a store; a boundary that ran nothing would leave the resolving job's download, and every journey through it, proving nothing. The store keeps the actions' own semantics where they decide a job's outcome — a name the run already holds refused, a name nothing uploaded failing the step in the action's own words, an empty path uploading nothing — and the first dispatched run on the forge is where a semantic modelled wrongly shows."
+
+# --- The API credential: the clients' integration tiers -----------------------
+#
+# The change that made the server require its API credential passes that
+# credential through every client's integration journey. The judged tier read
+# the lines it touched against rules about the product's HTTP boundary and about
+# where slow tiers live; the entries below say why neither is what those lines are.
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/live.py"
+site = "http.client.HTTPConnection(proxy.onward"
+reason = "This is the recording proxy of the Python client's own integration tier, not a product boundary: one synchronous `http.server` handler forwarding one request at a time to a loopback supervisor the tier stood up, and answering it before the next is read. The line the change touched only forwards the client's own `Authorization` header so the supervisor authenticates the client rather than the proxy. An awaited client here would need an event loop inside a synchronous request handler with nothing to overlap; the boundary the rule is about is the published `printobserver_sdk.Client`, which the journeys drive directly."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'Client(world.server, "operator", credential).status'
+reason = "This call is the published Python client driven exactly as a dependent drives it, which is the whole point of the journey: it proves that `printobserver_sdk.Client` surfaces a 401 through the error it already raises. That client is synchronous and typed by design in every released version, so an async wrapper here would test a client nobody ships, and making the published client async would break its dependents and is outside this change."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'served = Client(world.server, "operator", world.credential)'
+reason = "The second call of the same journey as the entry above, on the same published synchronous client: it proves the read that was refused without the credential is served with it, and the same reason applies unchanged."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'client = Client(world.server, "operator", world.credential)'
+reason = "The nine-step journey drives the published Python client exactly as a dependent drives it, because proving that client against a real supervisor is what the journey is for. `printobserver_sdk.Client` is synchronous and typed by design in every released version and ships no async counterpart, so an async client here would test a client nobody ships; this change only hands the journey the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "The seventh journey step, on the same published synchronous client as the entry above, pointed at the recording proxy in front of the real supervisor: what it proves is that this client refuses an unreasoned call before any request leaves it, which only the shipped client can show. The same reason applies unchanged."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_falsifying.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "This falsification drives the published synchronous Python client through the recording proxy so the walk's equality is asserted against what that client really sent and received. `printobserver_sdk.Client` ships no async counterpart, so an async client would falsify a surface nobody ships; this change only hands it the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "The method walk drives every method of the published synchronous Python client against a real supervisor, which is what proves the shipped client. It ships no async counterpart, so an async client would walk a surface nobody ships; this change only hands the walk the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = '"an actor this envelope grants nothing"'
+reason = "The rejection walk, on the same published synchronous client as the entry above, acting as an actor the envelope grants nothing so every action comes back as a typed rejection from a real supervisor. The same reason applies unchanged."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "This is the generator's own copy of the method walk's directive in `python/printobserver-sdk/integration/test_live.py`, which that file carries because the generator writes it: the walk drives the published synchronous Python client, which ships no async counterpart, and the entry for that file says why. Written here so the generated file and what the generator writes stay one text."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = '"an actor this envelope grants nothing"'
+reason = "The generator's own copy of the rejection walk's directive in `python/printobserver-sdk/integration/test_live.py`, for the same reason as the entry above: the generated walk drives the published synchronous Python client, and the generated file and what the generator writes must stay one text."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/smoke/smoke.py"
+site = 'client = Client(asked.server, "operator", asked.credential)'
+reason = "This smoke check exists to prove the installed `printobserver_sdk` distribution as its consumers use it, and that distribution's `Client` is synchronous and typed and ships no async counterpart. It makes two ordered calls, a status read and then an image read whose answer it checks, from a one-shot program with nothing to run concurrently; an async client would prove a client the distribution does not carry."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = "def test_a_client_without_the_credential_in_force_is_refused"
+reason = "This test is in the client's `integration` directory, which only the project's own `test-integration` target runs; the fast `test` target runs `tests/` alone and `just check` runs neither. `AGENTS.md`'s 'The scripted OctoPrint environment' makes that target the printer integration tier of every client, `nx.json` declares it unparallelisable because all of them drive one shared OctoPrint, and `just check-repo`'s `[integration]` rules hold the CI job to those names. A project of its own would carry the same target, run under the same recipe against the same machine, and give no narrower edge."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = "A real supervisor refuses a client that does not present its credential."
+reason = "The slow tier is already split by target and directory rather than by a marker: `integration/` sits beside `tests/`, the project's `test` target runs only `tests/`, and only `test-integration` runs `integration/`. That is the per-client layout `AGENTS.md` describes and `just check-repo` holds the integration job to; moving three clients' tiers into new projects is a repository-layout change outside this dispatch, which only adds the credential the supervisor now requires."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_falsifying.py"
+site = "def test_the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image"
+reason = "The same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`: this suite runs only under the project's `test-integration` target, the printer integration tier `AGENTS.md` and `just check-repo` define per client over one shared OctoPrint. The change only hands its client the credential the supervisor now requires."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "python/printobserver-sdk/integration/test_falsifying.py"
+site = "The published client passes it; both variants are refused."
+reason = "The same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`: the slow tier is its own directory under its own target, not a marker inside the fast one."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "def test_every_method_is_answered_by_a_real_supervisor"
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive, and run only under the project's `test-integration` target: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "Every method, answered by a real supervisor, in the one order it admits."
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "npm/printobserver-sdk/integration/journey.test.ts"
+site = 'test("a client without the credential in force is refused by a real supervisor"'
+reason = "This test is in the Node client's `integration` directory, which only the project's `test-integration` target runs (`bun test` with that directory as its working directory); the fast `test` target and `just check` do not reach it. It is that client's printer integration tier over the one shared OctoPrint `AGENTS.md` and `nx.json` describe, and a project of its own would carry the same target and drive the same machine, giving no narrower edge."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "npm/printobserver-sdk/integration/falsifying.test.ts"
+site = 'test("the equality the walk asserts refuses a client that carries the image"'
+reason = "The same ground as the entry for this rule at `npm/printobserver-sdk/integration/journey.test.ts`: this suite runs only under the Node client's `test-integration` target, and the change only hands its client the credential the supervisor now requires."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "npm/printobserver-sdk/integration/live.test.ts"
+site = 'test("every method is answered by a real supervisor"'
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive, and run only under the Node client's `test-integration` target: the same ground as the entry for this rule at `npm/printobserver-sdk/integration/journey.test.ts`."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "def test_every_method_is_answered_by_a_real_supervisor"
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "Every method, answered by a real supervisor, in the one order it admits."
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
+site = 'test("every method is answered by a real supervisor"'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Node walk, so that the directive standing in `npm/printobserver-sdk/integration/live.test.ts` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

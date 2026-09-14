@@ -114,6 +114,12 @@ def _handler(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             headers = {"Accept": MEDIA_TYPE}
             if body:
                 headers["Content-Type"] = MEDIA_TYPE
+            # The credential goes on exactly as the client presented it, so what
+            # the supervisor authenticates is the client rather than this proxy.
+            presented = self.headers.get("Authorization")
+            if presented is not None:
+                headers["Authorization"] = presented
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             upstream = http.client.HTTPConnection(proxy.onward, timeout=FORWARD_TIMEOUT_SECONDS)
             try:
                 upstream.request(self.command, self.path, body=body or None, headers=headers)

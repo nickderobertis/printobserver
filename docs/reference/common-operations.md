@@ -16,9 +16,13 @@ authenticates to it. Where the server is and what authenticates to it are never
 arguments, so every example below is the command and nothing else.
 
 - `PRINTOBSERVER_SERVER` — the address the supervisor is listening on.
-- `PRINTOBSERVER_CREDENTIAL` — the credential it was configured with.
+- `PRINTOBSERVER_CREDENTIAL` — the credential it serves under: its
+  `api.credential`, or the one it generated into `api-credential` in its state
+  directory.
 
-A configuration file does the same job and `--config <path>` names one.
+A configuration file's `[client]` table does the same job, as `server` and
+`credential`, and `--config <path>` names one. The supervisor writes one such
+file, `client.toml`, into its state directory.
 
 Four words in the examples stand for values that are yours rather than
 this document's, and three stand for values that differ on every run:

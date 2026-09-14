@@ -332,9 +332,14 @@ async function stepResume(client: Client, proxy: Recording) {
   same("resume", answered, seen.answer);
 }
 
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every method is answered by a real supervisor", async () => {
   await using proxy = new Recording(world.server);
-  const client = new Client({ server: proxy.url, actor: "operator" });
+  const client = new Client({
+    server: proxy.url,
+    actor: "operator",
+    credential: world.credential,
+  });
 
   await stepStatus(client, proxy);
   await stepContext(client, proxy);
@@ -492,6 +497,7 @@ test("every action is refused as a typed rejection by a real supervisor", async 
   const client = new Client({
     server: proxy.url,
     actor: { agent: { session_name: "an actor this envelope grants nothing" } },
+    credential: world.credential,
   });
 
   await refusedCancel(client, proxy);

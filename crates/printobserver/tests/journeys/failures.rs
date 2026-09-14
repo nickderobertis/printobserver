@@ -96,6 +96,25 @@ pub fn every_command_owes_its_failures(world: &World) {
             "PRINTOBSERVER_SERVER",
         );
 
+        // A supervisor that is there and will not serve a caller configured
+        // with no credential is a program configured incompletely, and it says
+        // where the credential goes.
+        let no_credential = running::without_a_credential(world, &arguments);
+        said_what_to_do(
+            &no_credential,
+            Exit::Unconfigured,
+            "PRINTOBSERVER_CREDENTIAL",
+        );
+        assert!(
+            no_credential.err.contains("configured with none")
+                && no_credential
+                    .err
+                    .contains("`credential` in the `[client]` table"),
+            "{:?} with no credential was refused without saying where one goes: {}",
+            no_credential.arguments,
+            no_credential.said()
+        );
+
         if one.operation().action_kind().is_some() {
             the_policy_refuses_it(world, &one);
         }

@@ -859,7 +859,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     let mut standing = supervisor::standing(root.path());
     let world = standing.at.clone();
     let proxy = live::Proxy::in_front_of(&world.server);
-    let client = Client::new(proxy.url(), Actor::Operator);
+    let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
     let manifest = manifest(&world.file_name);
 
     step_status(&client, &world, &proxy);
@@ -899,7 +899,8 @@ fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
         Actor::Agent {
             session_name: "an actor this envelope grants nothing".to_owned(),
         },
-    );
+    )
+    .with_credential(&*world.credential);
     let manifest = manifest(&world.file_name);
 
     refused_cancel(&client, &world, &proxy);

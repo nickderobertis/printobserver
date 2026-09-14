@@ -39,9 +39,11 @@ export interface ClientOptions {
   /** Who this client acts as. */
   actor: Actor;
   /**
-   * What authenticates to it. This server requires none of its API callers; a
-   * credential is for a deployment that has put something in front of it that
-   * does.
+   * What authenticates to it. The supervisor serves no versioned operation to a
+   * caller that does not present the credential it is configured with — its
+   * `api.credential`, or the one it generated into its state directory and
+   * wrote into the client configuration beside it — and a call it refuses for
+   * that throws `Refused` with status 401.
    */
   credential?: string;
 }

@@ -13,6 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
+from typing import NewType
 
 from repo_checks.shell import start
 
@@ -23,11 +24,18 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 STARTUP_TIMEOUT_SECONDS = 2400
 
 
+#: The API credential a supervisor serves under, as a request presents it.
+Credential = NewType("Credential", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Supervisor:
     """Where the supervisor is, and what a journey acts on."""
 
     server: str
+    #: The credential it serves under, as the client configuration it wrote
+    #: carries it.
+    credential: Credential
     print_id: str
     image_id: str
     event_id: str
@@ -97,6 +105,7 @@ class Standing:
         described = json.loads(said)
         return Supervisor(
             server=described["server"],
+            credential=Credential(described["credential"]),
             print_id=described["print_id"],
             image_id=described["image_id"],
             event_id=described["event_id"],

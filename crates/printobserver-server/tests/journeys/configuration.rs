@@ -121,6 +121,16 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             ),
         ),
         ConfigField::IngressSharedSecret => remove(&mut document, "ingress.shared_secret"),
+        // Optional, so what makes it unacceptable is a value no caller could
+        // present rather than its absence.
+        ConfigField::ApiCredential => {
+            let mut api = toml::Table::new();
+            api.insert(
+                "credential".to_owned(),
+                toml::Value::String("   ".to_owned()),
+            );
+            set(&mut document, "api", toml::Value::Table(api));
+        }
     }
     document
 }

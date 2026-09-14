@@ -6,8 +6,9 @@ program of this suite's own standing in for the one the workspace builds. What
 these journeys are about is the taking rather than the program: whether an
 artifact built from this tree installs, and whether what it installed runs.
 
-The world's own bring-up is driven beside them, including the two ways it can
-fail: a supervisor that stops before it answers, and one that answers nowhere.
+The world's own bring-up is driven beside them, including the ways it can fail:
+a supervisor that stops before it answers, one that answers nowhere, and one
+that writes its clients an address or a credential none of them can use.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from release_artifacts.world import (
     _as_toml,
     scripted_printer,
 )
-from repo_checks.expect import contains, equal, truth
+from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 
 #: The three routes an end user gets the program by, each installed for real.
@@ -113,7 +114,8 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
     # reaches nothing however this host is configured.
     quiet = root / "answers-nowhere"
     quiet.write_text(
-        f"#!/bin/sh\nprintf '[client]\\nserver = \"http://127.0.0.1:1\"\\n' "
+        f'#!/bin/sh\nprintf \'[client]\\nserver = "http://127.0.0.1:1"\\n'
+        f'credential = "a-credential-nothing-checks"\\n\' '
         f'> "{state / CLIENT_CONFIG}"\nsleep 60\n',
         encoding="utf-8",
     )
@@ -122,6 +124,89 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
 
     try:
         with pytest.raises(OSError, match="Connection refused"):
+            world.start()
+    finally:
+        world.stop()
+
+
+def _writing_client_configuration(root: Path, server: str, credential: str) -> World:
+    """A world whose supervisor writes this `[client]` table and then waits.
+
+    Every character outside printable ASCII, and each quote and backslash, is
+    written as a TOML escape, so the file parses and carries exactly these.
+    """
+
+    def quoted(text: str) -> str:
+        escaped = "".join(
+            c if " " <= c <= "~" and c not in '"\\' else f"\\u{ord(c):04x}" for c in text
+        )
+        return f'"{escaped}"'
+
+    state = root / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    staged = root / "staged-client.toml"
+    staged.write_text(
+        f"[client]\nserver = {quoted(server)}\ncredential = {quoted(credential)}\n",
+        encoding="utf-8",
+    )
+    writing = root / "writes-a-client-configuration"
+    writing.write_text(
+        f'#!/bin/sh\ncp "{staged}" "{state / CLIENT_CONFIG}"\nsleep 60\n', encoding="utf-8"
+    )
+    writing.chmod(0o755)
+    return World(writing, root)
+
+
+#: Credentials no `Authorization` header carries intact, one for every clause of
+#: the rule the server holds its own credential to — the list the server's own
+#: journey and each client's smoke check are held to.
+UNPRESENTABLE: list[dict[str, str]] = json.loads(
+    (
+        Path(__file__).resolve().parents[3]
+        / "crates/printobserver-server/tests/fixtures/unpresentable-credentials.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("entry", UNPRESENTABLE, ids=[entry["what"] for entry in UNPRESENTABLE])
+def test_a_supervisor_writing_an_unpresentable_credential_is_said_to_have(
+    entry: dict[str, str], repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """A world handing its clients a credential nothing serves under says so at once.
+
+    It says so without quoting the credential, and before any request is made.
+    """
+    world = _writing_client_configuration(
+        into(f"credential-{UNPRESENTABLE.index(entry)}"), "http://127.0.0.1:1", entry["credential"]
+    )
+
+    try:
+        with pytest.raises(WorldError, match="a credential no request presents") as refused:
+            world.start()
+    finally:
+        world.stop()
+    absent(str(refused.value), "qx-distinctive", describing=f"a credential {entry['what']}")
+
+
+@pytest.mark.parametrize(
+    "server",
+    [
+        "",
+        "127.0.0.1:8420",
+        "https://127.0.0.1:8420",
+        "http://127.0.0.1",
+        "http://:8420",
+        "http://127.0.0.1:a-port",
+    ],
+)
+def test_a_supervisor_writing_no_http_address_is_said_to_have(
+    server: str, repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """A world handing its clients an address none of them connects to says so at once."""
+    world = _writing_client_configuration(into("address"), server, "a-credential-nothing-checks")
+
+    try:
+        with pytest.raises(WorldError, match="no http://host:port address"):
             world.start()
     finally:
         world.stop()

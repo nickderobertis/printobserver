@@ -17,6 +17,14 @@ test-responder = ["dep:oneharness"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+# The API credential a server generates for itself is text an operator copies
+# and a header carries, so its random bytes are written as unpadded URL-safe
+# base64.
+base64.workspace = true
+# The operating system's own cryptographically secure random source, and
+# nothing seeded: the credential it fills is the whole of what stands between a
+# caller and a printer.
+getrandom = "0.3"
 printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
 printobserver-obico = { path = "../printobserver-obico", version = "0.2.0" }
 printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.2.0" }
@@ -28,6 +36,9 @@ printobserver-types.workspace = true
 printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
+# The one comparison of a presented API credential against the one in force,
+# which takes as long however much of it a caller guessed.
+subtle = "2.6"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
 

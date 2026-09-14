@@ -19,11 +19,15 @@ options. An option that takes a document takes it either as the document itself
 or, under the same name with `-file` after it, as the path of a file carrying it.
 
 **Where the server is and what authenticates to it are configuration, never
-arguments.** They are read from a configuration file — which may be the server's
-own — and from the environment variables `PRINTOBSERVER_SERVER` and
-`PRINTOBSERVER_CREDENTIAL`, which win over the file. No command takes either as
-an option, because the closure that matters is the closure of the action surface:
-a path to a file reaches no printer.
+arguments.** They are read from a configuration file's `[client]` table, as
+`server` and `credential`, and from the environment variables
+`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win over the file.
+The server writes one such file, `client.toml`, into its state directory, carrying
+the address it bound and the credential it serves under. When both variables are
+set and no `--config` names a file, the default file is not read at all, so an
+operator who cannot read the service's own files supplies both there. No command
+takes either as an option, because the closure that matters is the closure of the
+action surface: a path to a file reaches no printer.
 
 **Images are a path, never bytes.** Every answer that carries an image carries an
 absolute path on the *server's* own filesystem. This program transports no image
@@ -47,7 +51,7 @@ class has a status of its own.
 - `success` (0) — the command did what it was asked.
 - `usage` (2) — the arguments name nothing this program does.
 - `unreachable` (3) — nothing answered at the configured address.
-- `unconfigured` (4) — nothing configured this program with a server to talk to.
+- `unconfigured` (4) — nothing configured this program with a server to talk to, or the server refused the credential it was configured with; the message says where the credential is read from.
 - `rejected` (5) — the policy refused the action, and the rejection is the answer.
 - `image-elsewhere` (6) — the answer named an image path, and no file is there on this host.
 - `refused` (7) — the supervisor answered something this program will not act on.

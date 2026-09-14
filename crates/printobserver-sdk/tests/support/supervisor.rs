@@ -19,6 +19,8 @@ use std::process::{Child, Command, Stdio};
 pub struct Supervisor {
     /// Where it answers, as its own client configuration writes it.
     pub server: String,
+    /// The credential it serves under, as that same configuration carries it.
+    pub credential: String,
     /// The print every step is about.
     pub print_id: String,
     /// The image the materialization step is about.
@@ -125,6 +127,7 @@ pub fn standing(into: &Path) -> Standing {
     Standing {
         at: Supervisor {
             server: named("server"),
+            credential: named("credential"),
             print_id: named("print_id"),
             image_id: named("image_id"),
             event_id: named("event_id"),

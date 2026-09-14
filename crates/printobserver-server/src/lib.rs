@@ -16,7 +16,9 @@
 //! against. [`operations`] is the whole public API declared once, and [`api`]
 //! builds the router by folding over it, so the set served and the set declared
 //! cannot come apart. [`ingress`] is `Obico`'s own endpoint, which answers
-//! before its handling completes and inside a bound this repository declares.
+//! before its handling completes and inside a bound this repository declares,
+//! and admits a post by its shared secret alone; every route beneath the
+//! versioned prefix admits a request by the API credential alone.
 //! [`server`] is the composition root: the one place an implementation crate is
 //! named, and the only file here that knows there is an `OctoPrint` at all.
 //!
@@ -42,9 +44,10 @@ pub mod wire;
 
 pub use api::{ApiState, router};
 pub use config::{
-    ASSETS_DIRECTORY, ConfigError, ConfigField, ConfigFile, DEFAULT_INGRESS_ANSWER_BOUND_MS,
-    FAN_VOCABULARY, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED,
-    ServerConfig, SharedSecret, SignInConfig, SupervisorSection,
+    ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
+    DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,
+    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, ServerConfig, SharedSecret, SignInConfig,
+    SupervisorSection,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
@@ -61,8 +64,8 @@ pub use reconcile::{
     reconcile,
 };
 pub use server::{
-    CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running, SCHEMA_FILE, SKILL_FILE,
-    Server, StartError, TURN_PROMPT, context_command,
+    API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running,
+    SCHEMA_FILE, SKILL_FILE, Server, StartError, TURN_PROMPT, context_command,
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,

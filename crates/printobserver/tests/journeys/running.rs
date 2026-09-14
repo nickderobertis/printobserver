@@ -95,6 +95,15 @@ pub fn against_nothing(world: &World, arguments: &[String], credential: &str) ->
     )
 }
 
+/// One command run against the supervisor, configured by a file naming it and
+/// no credential.
+pub fn without_a_credential(world: &World, arguments: &[String]) -> Ran {
+    let mut given = arguments.to_vec();
+    given.push("--config".to_owned());
+    given.push(world.credentialless_config().display().to_string());
+    with(world, &given, &[])
+}
+
 /// One command run with nothing naming a supervisor.
 ///
 /// The credential is still configured, because what the redaction walk searches

@@ -29,6 +29,15 @@
 //! [`OBICO_POSTING_TIMEOUT_MS`]; `AGENTS.md`'s "The Obico ingress answer bound"
 //! records that number, where it was read and why the default is where it is,
 //! and `just check-repo` refuses a tree in which the two disagree.
+//!
+//! # The API credential
+//!
+//! Every request beneath the versioned prefix carries one credential, and
+//! [`ApiCredential`] is it. `api.credential` names it outright; left out, the
+//! composition root generates one into the state directory the first time it
+//! starts and reuses it after. Either way it is held in a type neither
+//! rendering of which shows it, and the one comparison a presented credential
+//! is admitted by is [`ApiCredential::admits`].
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -92,11 +101,14 @@ pub enum ConfigField {
     IngressAnswerBoundMs,
     /// The shared secret the ingress requires of every post.
     IngressSharedSecret,
+    /// The credential every request to a versioned operation must carry, when
+    /// the operator chose one rather than letting the server generate it.
+    ApiCredential,
 }
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -109,6 +121,7 @@ impl ConfigField {
         Self::PromptTemplatePath,
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
+        Self::ApiCredential,
     ];
 
     /// The dotted key this field is spelled under in the configuration file.
@@ -127,6 +140,7 @@ impl ConfigField {
             Self::PromptTemplatePath => "supervisor.prompt_template_path",
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
+            Self::ApiCredential => "api.credential",
         }
     }
 }
@@ -308,6 +322,21 @@ impl Default for IngressSection {
     }
 }
 
+/// What a caller of the versioned API authenticates with, as written down.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct ApiSection {
+    /// The credential every request must carry. Left out, the server generates
+    /// one into its state directory and reuses it on every later start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<String>,
+}
+
 /// The whole configuration file, exactly as it is written down.
 ///
 /// This is the parsed document rather than the validated configuration:
@@ -339,6 +368,9 @@ pub struct ConfigFile {
     /// What the `Obico` ingress requires.
     #[serde(default)]
     pub ingress: IngressSection,
+    /// What a caller of the versioned API authenticates with.
+    #[serde(default)]
+    pub api: ApiSection,
 }
 
 /// The shared secret the ingress requires of every post.
@@ -404,6 +436,107 @@ impl core::fmt::Debug for SharedSecret {
     }
 }
 
+/// How many random bytes a credential this server generates is drawn from.
+pub const GENERATED_CREDENTIAL_BYTES: usize = 32;
+
+/// The credential every request to a versioned operation must carry.
+///
+/// Neither rendering of this type shows the value. Its text is read in exactly
+/// one place outside this file — the client configuration the composition root
+/// writes, which exists to carry it — and the one comparison a presented
+/// credential is admitted by is [`Self::admits`], so there is no second
+/// comparison anywhere that could return early.
+#[derive(Clone)]
+pub struct ApiCredential(String);
+
+impl ApiCredential {
+    /// The credential this text names.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the text cannot be a credential, in words that never quote
+    /// it: empty or nothing but whitespace, or carrying a control character or
+    /// a character outside printable ASCII, or beginning or ending with a space
+    /// — none of which an `Authorization` header carries intact.
+    pub fn new(value: &str) -> Result<Self, &'static str> {
+        if value.trim().is_empty() {
+            return Err(
+                "it is empty, and anything that can reach this server's API can command a printer",
+            );
+        }
+        if !value.bytes().all(|byte| (b' '..=b'~').contains(&byte)) {
+            return Err(
+                "it carries a control character or a character outside printable ASCII, which \
+                 no `Authorization` header carries intact",
+            );
+        }
+        if value.starts_with(' ') || value.ends_with(' ') {
+            return Err(
+                "it begins or ends with a space, which an `Authorization` header does not carry",
+            );
+        }
+        // llmlint: ignore[boundary_inputs_validated] The refusal set above is exactly the contract this server's API credential is planned against, shared with the nodes that build on it: empty or whitespace, a control or non-printable-ASCII byte, a leading or trailing space. A length floor would refuse operator credentials that contract admits, so it is recorded as a follow-up rather than added here; the default an operator gets without configuring one is the generated 32 random bytes.
+        Ok(Self(value.to_owned()))
+    }
+
+    /// A fresh credential, drawn from the operating system's own
+    /// cryptographically secure random source.
+    ///
+    /// [`GENERATED_CREDENTIAL_BYTES`] bytes, written as unpadded URL-safe
+    /// base64 so an operator can copy it and a header can carry it as it is.
+    ///
+    /// # Errors
+    ///
+    /// Answers the random source's own refusal, when it has none to give.
+    pub fn generate() -> Result<Self, getrandom::Error> {
+        use base64::Engine as _;
+
+        let mut drawn = [0_u8; GENERATED_CREDENTIAL_BYTES];
+        getrandom::fill(&mut drawn)?;
+        Ok(Self(
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(drawn),
+        ))
+    }
+
+    /// Whether a presented credential is this one.
+    ///
+    /// The lengths are compared first, which says how long the credential is and
+    /// nothing else; the bytes are then compared in constant time, so how long
+    /// this takes says nothing about how much of it a caller guessed.
+    #[must_use]
+    pub fn admits(&self, presented: &[u8]) -> bool {
+        use subtle::ConstantTimeEq as _;
+
+        let expected = self.0.as_bytes();
+        expected.len() == presented.len() && bool::from(expected.ct_eq(presented))
+    }
+
+    /// The text, for the one file whose purpose is to carry it.
+    pub(crate) fn written(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq for ApiCredential {
+    fn eq(&self, other: &Self) -> bool {
+        self.admits(other.0.as_bytes())
+    }
+}
+
+impl Eq for ApiCredential {}
+
+impl core::fmt::Display for ApiCredential {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(REDACTED)
+    }
+}
+
+impl core::fmt::Debug for ApiCredential {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "ApiCredential({REDACTED})")
+    }
+}
+
 /// One running server's validated configuration.
 ///
 /// Every value here is one no later step has to re-examine, and where a
@@ -435,6 +568,9 @@ pub struct ServerConfig {
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
     pub ingress_shared_secret: SharedSecret,
+    /// The API credential the operator configured, when they configured one.
+    /// Absent, the composition root takes the one in the state directory.
+    pub api_credential: Option<ApiCredential>,
 }
 
 impl ServerConfig {
@@ -500,6 +636,15 @@ impl ServerConfig {
             ConfigField::IngressSharedSecret,
             file.ingress.shared_secret,
         )?)?;
+        let api_credential = file
+            .api
+            .credential
+            .as_deref()
+            .map(|value| {
+                ApiCredential::new(value)
+                    .map_err(|why| ConfigError::about(ConfigField::ApiCredential, why))
+            })
+            .transpose()?;
         Ok(Self {
             state_dir,
             listen,
@@ -511,6 +656,7 @@ impl ServerConfig {
             prompt_template_path,
             ingress_answer_bound,
             ingress_shared_secret,
+            api_credential,
         })
     }
 

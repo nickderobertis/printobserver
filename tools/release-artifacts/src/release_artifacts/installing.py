@@ -339,7 +339,7 @@ def prove(repo: Repo, identifier: str, into: Path, binary: Path | None = None) -
     taken = install(repo, identifier, into, binary)
     if taken.program is not None:
         return _prove_route(repo, taken)
-    return _prove_client(repo, taken, binary)
+    return prove_client(repo, taken, binary)
 
 
 def _prove_route(repo: Repo, taken: Installed) -> str:
@@ -375,8 +375,12 @@ def _prove_route(repo: Repo, taken: Installed) -> str:
     return f"{version}\n{taken.target}: {TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}"
 
 
-def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
-    """One client's own smoke check, against a real supervisor."""
+def smoke_check(repo: Repo, taken: Installed) -> list[str]:
+    """The command that runs one installed client's own smoke check where it was installed.
+
+    Raises:
+        InstallError: If that client has no committed smoke check.
+    """
     smoke = SMOKE.get(taken.target)
     if smoke is None:
         msg = f"{taken.target} has no committed smoke check"
@@ -393,6 +397,16 @@ def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
         beside = taken.environment / Path(piece).name
         shutil.copy2(repo.path(piece), beside)
         argv.append(str(beside))
+    return argv
+
+
+def prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
+    """One installed client's own smoke check, against a real supervisor.
+
+    Raises:
+        InstallError: If that client has no committed smoke check.
+    """
+    argv = smoke_check(repo, taken)
     world = World(program(repo, binary), taken.environment / "world")
     try:
         running = world.start()
@@ -401,6 +415,8 @@ def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
                 *argv,
                 "--server",
                 running.server,
+                "--credential",
+                running.credential,
                 "--print-id",
                 running.print_id,
                 "--image-id",

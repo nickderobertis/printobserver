@@ -302,6 +302,37 @@ impl World {
         self.root.path().join("other-client.toml")
     }
 
+    /// A configuration file naming the supervisor and no credential.
+    pub fn credentialless_config(&self) -> PathBuf {
+        let path = self.root.path().join("credentialless.toml");
+        std::fs::write(
+            &path,
+            format!("[client]\nserver = \"{}\"\n", self.proxy.url()),
+        )
+        .expect("the configuration is writable");
+        path
+    }
+
+    /// The configuration a supervisor that generates its own credential is
+    /// started under, and the state directory it generates it into.
+    ///
+    /// Its own state directory, named for the journey asking, and no
+    /// `api.credential` — so what it serves under is what it drew for itself,
+    /// which is what an installed service holds — listening where it is told.
+    pub fn generating_server_config(&self, name: &str, listen: &str) -> (PathBuf, PathBuf) {
+        let state = self.root.path().join(format!("{name}-state"));
+        std::fs::create_dir_all(&state).expect("a state directory");
+        let mut document = server_value(&state, &self.printer);
+        let table = document
+            .as_object_mut()
+            .expect("the configuration is a table");
+        table.remove("api");
+        table.insert("listen".to_owned(), json!(listen));
+        let path = self.root.path().join(format!("{name}-server.toml"));
+        std::fs::write(&path, toml_of(&document)).expect("the configuration is writable");
+        (path, state)
+    }
+
     /// A configuration file naming no supervisor at all.
     pub fn serverless_config(&self) -> PathBuf {
         let path = self.root.path().join("serverless.toml");
@@ -643,7 +674,12 @@ fn seed(state: &Path, file: &str) -> (String, String, String) {
 
 /// The configuration the supervisor is started under.
 fn server_document(state: &Path, printer: &Printer) -> String {
-    let document = json!({
+    toml_of(&server_value(state, printer))
+}
+
+/// The same configuration, as the values it is written from.
+fn server_value(state: &Path, printer: &Printer) -> Value {
+    json!({
         "state_dir": state.display().to_string(),
         "listen": "127.0.0.1:0",
         "octoprint": {
@@ -653,6 +689,11 @@ fn server_document(state: &Path, printer: &Printer) -> String {
         },
         "supervisor": { "harness": "claude-code" },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
+        // The credential the walk's own commands are configured with is the
+        // one in force, chosen here so that a search for it in anything this
+        // program prints finds only a rendering of it. The control credential
+        // is therefore one the supervisor refuses.
+        "api": { "credential": CREDENTIAL },
         "safety": {
             "agent_min_interval_s": 0,
             "allowed": {
@@ -681,8 +722,7 @@ fn server_document(state: &Path, printer: &Printer) -> String {
                 ],
             },
         },
-    });
-    toml_of(&document)
+    })
 }
 
 /// One JSON document, as the TOML the supervisor reads it in.

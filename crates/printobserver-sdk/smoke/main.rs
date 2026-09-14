@@ -9,7 +9,7 @@
 //! checks against the digest the image record itself declares.
 //!
 //! ```console
-//! printobserver-sdk-smoke --server http://127.0.0.1:8420 --print-id <id> --image-id <id>
+//! printobserver-sdk-smoke --server http://127.0.0.1:8420 --credential <credential> --print-id <id> --image-id <id>
 //! ```
 
 use std::process::ExitCode;
@@ -102,17 +102,33 @@ fn sha256(message: &[u8]) -> String {
     state.iter().map(|word| format!("{word:08x}")).collect()
 }
 
+/// Whether a credential is one an `Authorization` header carries intact.
+fn presentable(credential: &str) -> bool {
+    !credential.is_empty()
+        && credential.bytes().all(|byte| (b' '..=b'~').contains(&byte))
+        && !credential.starts_with(' ')
+        && !credential.ends_with(' ')
+}
+
 /// Make the two calls, answering a process exit status.
 fn main() -> ExitCode {
     let Some(server) = argument("server") else {
         eprintln!("smoke: --server takes an address and was given none");
         return ExitCode::from(2);
     };
+    let Some(credential) = argument("credential").filter(|credential| presentable(credential))
+    else {
+        eprintln!(
+            "smoke: --credential takes the credential the supervisor serves under: printable \
+             ASCII, not empty, and neither beginning nor ending with a space"
+        );
+        return ExitCode::from(2);
+    };
     let (Some(print_id), Some(image_id)) = (argument("print-id"), argument("image-id")) else {
         eprintln!("smoke: --print-id and --image-id each take an identifier");
         return ExitCode::from(2);
     };
-    let client = Client::new(server, Actor::Operator);
+    let client = Client::new(server, Actor::Operator).with_credential(credential);
 
     let status = match client.status(&print_id) {
         Ok(status) => status,
