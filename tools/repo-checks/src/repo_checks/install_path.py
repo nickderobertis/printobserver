@@ -1,7 +1,9 @@
 """The end-user install path, read from its one authoritative source.
 
 `AGENTS.md`'s "The end-user install path" section states three alternative
-routes to the `printobserver` program and then two commands in order. Every
+routes to the `printobserver` program, then two commands in order, and how the
+agent's harness is installed and signed in as the service's own user between
+those two. Every
 other statement of one of them in this repository is derived from it, and
 `drifted_statements` is what holds them together.
 """
@@ -27,6 +29,14 @@ VERIFICATION_HEADING = "then, check"
 # program every route delivers, and ask it which version it is.
 VERIFICATION_PROGRAM = "printobserver"
 VERIFICATION_OPTION = "--version"
+
+# The subsection stating how the agent's harness is installed and signed in as
+# the service's own user, between the two commands. Its commands are part of the
+# section's canonical set, so every restatement of them is held to it.
+SIGN_IN_HEADING = "between the two commands"
+
+# What the sign-in subsection has to run to sign the harness in at all.
+SIGN_IN_COMMAND = "printobserver sign-in"
 
 # The sentence the section must carry so a reader cannot mistake the routes for
 # steps. Stated literally because a check cannot judge a paraphrase.
@@ -72,13 +82,15 @@ class Route:
 
 @dataclass(frozen=True, slots=True)
 class InstallPath:
-    """The whole path: three alternative routes, a check, then two commands in order."""
+    """The whole path: three routes, a check, two commands, then the harness sign-in."""
 
     intro: str
     routes: tuple[Route, ...]
     #: What a caller runs to see what the route installed.
     verification: tuple[str, ...]
     commands: tuple[str, ...]
+    #: How the agent's harness is installed and signed in as the service's user.
+    sign_in: tuple[str, ...] = ()
 
     @property
     def checked(self) -> str:
@@ -93,6 +105,7 @@ class InstallPath:
             stated.extend(route.commands)
         stated.extend(self.verification)
         stated.extend(self.commands)
+        stated.extend(self.sign_in)
         return tuple(stated)
 
 
@@ -111,6 +124,7 @@ def parse(agents_md: str) -> InstallPath:
     routes: list[Route] = []
     verification: tuple[str, ...] = ()
     commands: tuple[str, ...] = ()
+    sign_in: tuple[str, ...] = ()
     intro_lines: list[str] = []
     seen_route = False
     for level, title, lines in blocks:
@@ -122,9 +136,11 @@ def parse(agents_md: str) -> InstallPath:
             verification = tuple(fenced_commands(text))
         elif title.lower().startswith("then, in order"):
             commands = tuple(fenced_commands(text))
+        elif title.lower().startswith(SIGN_IN_HEADING):
+            sign_in = tuple(fenced_commands(text))
         elif not seen_route:
             intro_lines.extend(lines)
-    return InstallPath("\n".join(intro_lines), tuple(routes), verification, commands)
+    return InstallPath("\n".join(intro_lines), tuple(routes), verification, commands, sign_in)
 
 
 def statement_key(command: str) -> tuple[str, ...]:

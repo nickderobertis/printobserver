@@ -450,11 +450,7 @@ impl ServerConfig {
     /// where a printer exists to ask.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
-        let text = std::fs::read_to_string(path).map_err(|error| ConfigError::Unreadable {
-            path: path.to_path_buf(),
-            detail: error.to_string(),
-        })?;
-        Self::parse(&text, path)
+        Self::parse(&read(path)?, path)
     }
 
     /// The same, over a document already read.
@@ -483,8 +479,7 @@ impl ServerConfig {
         let octoprint = octoprint(&file.octoprint)?;
         let safety = required(ConfigField::SafetyEnvelope, file.safety)?;
         check_envelope(&safety)?;
-        let harness = HarnessIdentity::new(&named(ConfigField::Harness, file.supervisor.harness)?)
-            .map_err(|error| ConfigError::about(ConfigField::Harness, error.to_string()))?;
+        let harness = harness_identity(file.supervisor.harness)?;
         let model = match file.supervisor.model {
             None => None,
             Some(name) => Some(
@@ -524,6 +519,83 @@ impl ServerConfig {
     pub fn assets_dir(&self) -> PathBuf {
         self.state_dir.join(ASSETS_DIRECTORY)
     }
+}
+
+/// The two values signing a harness in reads, and nothing else.
+///
+/// An operator signs the agent in before or after filling in the machine and
+/// the failure detector, so `printobserver sign-in` reads the state directory
+/// and the harness identity out of the server's own file and nothing beside
+/// them: every other value the file carries, present or not and valid or not,
+/// is one it never looks at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignInConfig {
+    /// Where the state lives, and so where the harness keeps its sign-in.
+    pub state_dir: PathBuf,
+    /// The harness identity supervision turns run on.
+    pub harness: HarnessIdentity,
+}
+
+impl SignInConfig {
+    /// Read those two values out of one configuration file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Unreadable`] when the file is not there,
+    /// [`ConfigError::Unparsable`] when it is not a document carrying either
+    /// value in the shape this program reads it in, and [`ConfigError::Field`]
+    /// naming `state_dir` or `supervisor.harness` when that value cannot be
+    /// accepted.
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
+        let path = path.as_ref();
+        let file: SignInFile =
+            toml::from_str(&read(path)?).map_err(|error| ConfigError::Unparsable {
+                path: path.to_path_buf(),
+                detail: error.to_string(),
+            })?;
+        Ok(Self {
+            state_dir: state_directory(required(ConfigField::StateDir, file.state_dir)?.as_path())?,
+            harness: harness_identity(file.supervisor.harness)?,
+        })
+    }
+}
+
+/// The configuration file, read for the two values signing in takes.
+///
+/// Unlike [`ConfigFile`] it refuses no key it does not know, because every key
+/// but these two is one signing in does not read.
+#[derive(Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct SignInFile {
+    /// Where the state lives.
+    #[serde(default)]
+    state_dir: Option<PathBuf>,
+    /// The supervisor's section, for its harness alone.
+    #[serde(default)]
+    supervisor: SignInSupervisor,
+}
+
+/// The supervisor's section, read for the harness alone.
+#[derive(Default, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct SignInSupervisor {
+    /// The harness identity turns run on.
+    #[serde(default)]
+    harness: Option<String>,
+}
+
+/// One configuration file's text.
+fn read(path: &Path) -> Result<String, ConfigError> {
+    std::fs::read_to_string(path).map_err(|error| ConfigError::Unreadable {
+        path: path.to_path_buf(),
+        detail: error.to_string(),
+    })
+}
+
+/// The harness identity, refused by its own key when it names nothing.
+fn harness_identity(value: Option<String>) -> Result<HarnessIdentity, ConfigError> {
+    HarnessIdentity::new(&named(ConfigField::Harness, value)?)
+        .map_err(|error| ConfigError::about(ConfigField::Harness, error.to_string()))
 }
 
 /// One field the file has to carry, refused by its own key when it does not.

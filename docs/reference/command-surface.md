@@ -56,13 +56,23 @@ class has a status of its own.
 
 ### server
 
-Runs the supervisor. This is the only command that is not a request to an already-running one.
+Runs the supervisor. This and `sign-in` are the two commands that are not requests to an already-running one.
 
 **Arguments.** None of its own; the four global options are the whole of it.
 
 **Output.** The address it is serving on, on standard error, and then nothing until it stops.
 
 **Failures.** `unconfigured` when the configuration file is absent, unreadable or incomplete, naming the field; `usage` when the arguments name nothing this program does.
+
+### sign-in
+
+Signs the supervisor's harness in, as the user it is run as — which is meant to be the user the service runs as. It reads the state directory and the harness from the server's own configuration file and nothing else, keeps the harness's sign-in in that harness's own directory under the state directory, and runs the harness's own interactive sign-in there on the terminal it was run from. Every supervision turn the server runs is pointed at the same directory. It starts no server and reaches no printer.
+
+**Arguments.** None of its own. `--config` names the server's configuration file, and the default is the one the installer writes.
+
+**Output.** One line on standard error naming the harness, its sign-in and the directory it is kept in, and then whatever the harness itself prints and asks. It exits with the harness's own status.
+
+**Failures.** `unconfigured`, before anything is run, when the configuration file cannot be read for its state directory and its harness, when that harness is not one this program can sign in — naming it and the ones it can — when the directory cannot be created, and when the harness's program is not on the caller's path.
 
 ### status
 

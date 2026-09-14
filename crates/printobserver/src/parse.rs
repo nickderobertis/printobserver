@@ -21,9 +21,11 @@ use printobserver_server::{Located, ValueKind};
 use printobserver_types::serde_json;
 use printobserver_types::serde_json::{Map, Value, json};
 
+use crate::config::DEFAULT_CONFIG_PATH;
 use crate::surface::{
     CONFIG_OPTION, Command, Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS,
-    MIN_DURATION_SECONDS, SERVE_COMMAND, Supply, VERSION_OPTION, command, is_duration, usage,
+    MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION_OPTION, command,
+    is_duration, usage,
 };
 
 /// One request to a running supervisor, as the caller asked for it.
@@ -108,6 +110,12 @@ pub enum Invocation {
     /// Run the supervisor over one configuration file.
     Serve {
         /// The configuration file to run under.
+        config: PathBuf,
+    },
+    /// Sign the configured harness in, as the user this runs as.
+    SignIn {
+        /// The server's configuration file, read for its state directory and
+        /// its harness.
         config: PathBuf,
     },
     /// Make one request to a running supervisor.
@@ -206,6 +214,12 @@ pub fn parse(arguments: &[String]) -> Invocation {
                 "`{SERVE_COMMAND}` needs the one configuration file it runs under, named \
                  with `{CONFIG_OPTION}`."
             )),
+        };
+    }
+    // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
+    if command.name == SIGN_IN_COMMAND {
+        return Invocation::SignIn {
+            config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
         };
     }
     for field in &command.fields {

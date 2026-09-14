@@ -56,6 +56,60 @@ file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
 reason = "Whole-file, and the rule is about the whole file: every external input it takes is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing and PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — and each package name is a constant in the file rather than anything a caller supplies, so no untrusted input is executed anywhere in it."
 
+# --- the service installer ----------------------------------------------------
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install-service.sh"
+site = "was left alone\" >&2"
+reason = "Pre-existing, deliberate output that the harness sign-in change only moved, by adding the service home above it. On a reinstall the operator's filled-in configuration is kept rather than overwritten by the template, and this one line on standard error is how they learn that their values survived; it names the file, and it is the one fact about a reinstall they need before enabling the service."
+
+# --- the sign-in command ------------------------------------------------------
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "crates/printobserver/src/sign_in.rs"
+site = "Ok(exited_with(status))"
+reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `docs/reference/command-surface.md` says so."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "crates/printobserver/src/parse.rs"
+site = "if command.name == SIGN_IN_COMMAND {"
+reason = "`--json` is one of the four global options every command takes, and `sign-in` has no answer document for it to select: what it produces is the harness's own interactive sign-in on the caller's terminal, which it hands its standard input, output and error, and its result is the exit status. A machine-readable rendering would have to be interleaved with a third-party program's prompts on the same stream, which no consumer could parse; refusing the flag instead would make `sign-in` the one command the global options do not apply to."
+
+# --- the harness sign-in table ------------------------------------------------
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "identity: &'static str,"
+reason = "`HarnessIdentity` owns a `String`, so it cannot be built in the const `SIGN_INS` table the server and the command-line program both read. The field is private, so that table is the only place an entry is ever constructed, and `every_identity_is_one_oneharness_runs` holds each identity to one OneHarness's own registry runs — which is a stricter validation than `HarnessIdentity::new`, which admits any non-empty name."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "arguments: &[\"auth\", \"login\"],"
+reason = "Claude Code's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `claude auth login --help` as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "arguments: &[\"login\", \"--device-auth\"],"
+reason = "Codex's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `codex login --help` (the device-code form, which completes on a machine with no browser) as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "The sign-in command exists because"
+reason = "The task that added `printobserver sign-in` requires `AGENTS.md`'s \"The agent's and the operator's surface\" to describe it beside the server command. That section is the root's one statement of the program's whole surface — derived from the server's operations, carried by the command-line crate, and signed in through the adapter's table — so no single crate subtree owns it, and a nested file would split one surface's description in two."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The sign-in command exists because"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]

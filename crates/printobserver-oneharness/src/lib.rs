@@ -45,6 +45,7 @@
 mod config;
 mod ledger;
 mod prompt;
+mod sign_in;
 mod turn;
 
 /// The `PrintObserver` skill this crate ships, as bytes in the built artifact.
@@ -126,4 +127,5 @@ pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{
     CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SLOTS, TemplateError,
 };
+pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use turn::{HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, TurnReport};
