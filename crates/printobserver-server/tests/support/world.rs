@@ -135,8 +135,11 @@ pub struct World {
     pub agent: Arc<StandInAgent>,
     /// Durable state, as the server holds it.
     pub stores: Stores,
-    /// The client a journey drives the real surface with.
+    /// The client a journey drives the real surface with, presenting the
+    /// credential the server generated for itself on every request.
     pub client: reqwest::Client,
+    /// That credential, read from where the server wrote it.
+    pub credential: String,
 }
 
 impl World {
@@ -146,18 +149,24 @@ impl World {
     }
 
     /// A server over a fresh root, over the machine and agent given.
+    ///
+    /// The base configuration names no API credential, so the server generates
+    /// one into its state directory — which is the route an installed service
+    /// takes — and every journey's client presents it.
     pub async fn open_with(printer: Arc<RecordingPrinter>, agent: Arc<StandInAgent>) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
         let (server, stores) = start(&config, &printer, &agent).await;
+        let credential = generated_credential(&config.state_dir);
         Self {
             root,
             server,
             printer,
             agent,
             stores,
-            client: reqwest::Client::new(),
+            client: presenting(&credential),
+            credential,
         }
     }
 
@@ -172,6 +181,7 @@ impl World {
             printer,
             agent,
             client,
+            credential,
             ..
         } = self;
         let config = server.config().clone();
@@ -184,6 +194,7 @@ impl World {
             agent,
             stores,
             client,
+            credential,
         }
     }
 
@@ -287,6 +298,43 @@ impl World {
             .expect("the server answers");
         read(response).await
     }
+}
+
+/// The credential a server generated into one state directory.
+///
+/// # Panics
+///
+/// Panics when the server wrote none there, which is a server that came up with
+/// nothing to check a caller against.
+#[must_use]
+pub fn generated_credential(state_dir: &Path) -> String {
+    let path = state_dir.join(printobserver_server::API_CREDENTIAL_FILE);
+    std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "the server wrote no credential at {}: {error}",
+            path.display()
+        )
+    })
+}
+
+/// A client presenting one credential on every request it makes.
+///
+/// # Panics
+///
+/// Panics when the credential cannot be a header value, which no credential a
+/// server accepts is.
+#[must_use]
+pub fn presenting(credential: &str) -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+            .expect("a credential is a header value"),
+    );
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("a client is built")
 }
 
 /// The status, the media type and the body of one answer.

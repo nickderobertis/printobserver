@@ -18,6 +18,8 @@ mod probes;
 #[path = "support/world.rs"]
 mod world;
 
+#[path = "journeys/authenticating.rs"]
+mod authenticating;
 #[path = "journeys/configuration.rs"]
 mod configuration;
 #[path = "journeys/failing.rs"]

@@ -81,11 +81,29 @@ impl Composed {
         let root = TempDir::new().expect("this tier's own root");
         let config = configuration(root.path(), instance, octoprint);
         let (server, stores) = start(&config).await;
+        // The configuration names no API credential, so the server generated
+        // one into its state directory; this tier presents it on every request,
+        // as an operator reading that file would.
+        let credential = std::fs::read_to_string(
+            config
+                .state_dir
+                .join(printobserver_server::API_CREDENTIAL_FILE),
+        )
+        .expect("the server wrote the credential it generated");
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+                .expect("a credential is a header value"),
+        );
         Self {
             root,
             server,
             stores,
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .expect("a client is built"),
             config,
         }
     }

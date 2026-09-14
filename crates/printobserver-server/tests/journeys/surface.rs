@@ -259,11 +259,13 @@ async fn every_declared_route_is_served_and_answers_json() {
     }
 
     // A path this server declares no operation for is served by nothing, which
-    // is the other half of "one route per operation and no more".
+    // is the other half of "one route per operation and no more": what answers
+    // it is the versioned prefix's own refusal, and no operation's answer.
     let (status, media, body) = world.raw_get(&world.url("/prints/reboot")).await;
     assert_eq!(status, reqwest::StatusCode::NOT_FOUND);
     assert!(
-        !media.starts_with(MEDIA_TYPE) && body.is_empty(),
+        media.starts_with(MEDIA_TYPE)
+            && body.contains("no operation of this server is served at that path"),
         "a path this server declares no operation for reached a handler: {media} {body}"
     );
     world.server.stop().await;
@@ -271,9 +273,9 @@ async fn every_declared_route_is_served_and_answers_json() {
 
 /// What a running server says about itself carries no secret.
 ///
-/// A long-running host writes down what it came up as, and the two things that
-/// would be worst to find in that record are the `OctoPrint` key and the
-/// ingress secret. Neither is in any of these renderings.
+/// A long-running host writes down what it came up as, and the things that
+/// would be worst to find in that record are the `OctoPrint` key, the ingress
+/// secret and the API credential. None is in any of these renderings.
 #[tokio::test(flavor = "multi_thread")]
 async fn what_a_running_server_says_about_itself_carries_no_secret() {
     let world = World::open().await;
@@ -283,6 +285,10 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
         events: std::sync::Arc::clone(&world.server.stores().events),
         images: std::sync::Arc::clone(&world.server.stores().images),
         sessions: std::sync::Arc::clone(&world.server.stores().sessions),
+        credential: std::sync::Arc::new(
+            printobserver_server::ApiCredential::new(&world.credential)
+                .expect("the generated credential is one"),
+        ),
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",
@@ -305,6 +311,10 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
     assert!(
         !rendered.contains(crate::world::SECRET),
         "a rendering of this server carries the ingress secret: {rendered}"
+    );
+    assert!(
+        !rendered.contains(&world.credential),
+        "a rendering of this server carries the API credential: {rendered}"
     );
     assert!(
         rendered.contains("ApiState") && rendered.contains("Running") && rendered.contains("Ports"),
@@ -342,7 +352,7 @@ async fn a_body_that_is_not_json_is_refused() {
 
 /// An identifier of an image nothing holds, spelled the one way this system
 /// spells one.
-fn image_id() -> String {
+pub fn image_id() -> String {
     printobserver_types::ImageId::new().to_string()
 }
 
@@ -355,7 +365,7 @@ fn manifest() -> Value {
 }
 
 /// A body one mutating operation takes, carrying whatever that action needs.
-fn body_for(operation: &Operation) -> Value {
+pub fn body_for(operation: &Operation) -> Value {
     let Effect::Mutating(kind) = operation.effect else {
         return json!({});
     };

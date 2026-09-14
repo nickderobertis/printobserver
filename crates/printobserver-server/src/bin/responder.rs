@@ -46,6 +46,9 @@ const CONTEXT_MARKER: &str = "printobserver context --config ";
 /// The key the client configuration names the server under.
 const SERVER_KEY: &str = "server = ";
 
+/// The key the client configuration carries the credential in force under.
+const CREDENTIAL_KEY: &str = "credential = ";
+
 /// How long one action this responder issues may take.
 ///
 /// A supervising agent that hung on its own request would hang the turn, and a
@@ -57,12 +60,23 @@ const SERVER_KEY: &str = "server = ";
 /// through a dwell answers when the dwell does.
 const BOUND: core::time::Duration = core::time::Duration::from_secs(90);
 
-/// Where the supervisor is, and which print the turn is about.
+/// Where the supervisor is, what authenticates to it, and which print the turn
+/// is about.
 struct Turn {
     /// The address the server is answering on.
     server: String,
+    /// The credential it serves under.
+    credential: String,
     /// The print the turn is about.
     print: String,
+}
+
+/// One quoted value of the client configuration, by the key it is written under.
+fn written_under(configuration: &str, key: &str) -> Option<String> {
+    configuration
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(key))
+        .map(|value| value.trim().trim_matches('"').to_owned())
 }
 
 /// The server and the print this turn's own prompt names.
@@ -76,22 +90,23 @@ fn turn_from_the_prompt() -> Option<Turn> {
     let mut words = after.split_whitespace();
     // The command names a configuration file rather than an address, because
     // no client command of that program takes an address. This responder is
-    // not that program, so it reads the one value it needs out of the file the
-    // server wrote — which is where a real client reads it from too.
+    // not that program, so it reads the two values it needs out of the file the
+    // server wrote — which is where a real client reads them from too.
     let configuration = std::fs::read_to_string(words.next()?).ok()?;
-    let server = configuration
-        .lines()
-        .find_map(|line| line.trim().strip_prefix(SERVER_KEY))?
-        .trim()
-        .trim_matches('"')
+    let server = written_under(&configuration, SERVER_KEY)?
         .trim_end_matches('/')
         .to_owned();
+    let credential = written_under(&configuration, CREDENTIAL_KEY)?;
     let print = words
         .skip_while(|word| *word != "--print-id")
         .nth(1)?
         .trim()
         .to_owned();
-    Some(Turn { server, print })
+    Some(Turn {
+        server,
+        credential,
+        print,
+    })
 }
 
 /// One action this responder could not issue at all.
@@ -122,9 +137,10 @@ fn issue(turn: &Turn, operation: &str, body: &str) -> serde_json::Value {
     if write!(
         stream,
         "POST {path} HTTP/1.1\r\nHost: {authority}\r\nContent-Type: {}\r\n\
-         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+         Content-Length: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n{body}",
         printobserver_server::MEDIA_TYPE,
-        body.len()
+        body.len(),
+        turn.credential
     )
     .is_err()
     {
