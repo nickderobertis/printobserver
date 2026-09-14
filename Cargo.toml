@@ -47,7 +47,8 @@ authors = ["Nick DeRobertis"]
 # opt-in per crate, so a crate that still pins its own is unaffected by this
 # table and builds exactly as it did.
 [workspace.dependencies]
-jsonschema = { version = "0.34", default-features = false }
+base64 = "0.22"
+jsonschema ={ version = "0.34", default-features = false }
 oneharness-core = "0.12.3"
 oneharness = "0.11.4"
 printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.2.0" }

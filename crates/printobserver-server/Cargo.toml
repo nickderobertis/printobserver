@@ -20,7 +20,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 # The API credential a server generates for itself is text an operator copies
 # and a header carries, so its random bytes are written as unpadded URL-safe
 # base64.
-base64 = "0.22"
+base64.workspace = true
 # The operating system's own cryptographically secure random source, and
 # nothing seeded: the credential it fills is the whole of what stands between a
 # caller and a printer.
