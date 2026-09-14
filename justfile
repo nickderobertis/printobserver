@@ -23,9 +23,18 @@ bootstrap:
     uv run -q python -m repo_checks install-tools
     uv run -q python -m repo_checks install-hooks
 
-# Install the tools `repo-policy.toml` declares, skipping any already on PATH.
+# Install the tools `repo-policy.toml` declares, skipping any already on PATH
+# at the release it holds them at, and replacing any at another.
 install-tools:
     uv run -q python -m repo_checks install-tools
+
+# The release `repo-policy.toml` holds TOOL at, as `version=<release>`.
+#
+# What a workflow installing TOOL prebuilt rather than through `install-tools`
+# appends to `GITHUB_OUTPUT` and installs, so the gate's toolchain and the
+# release job run one release and a bump is one edit.
+tool-version TOOL:
+    @uv run -q python -m repo_checks tool-version {{TOOL}}
 
 # The full gate: every tier `repo-policy.toml` declares, end-to-end included.
 check:

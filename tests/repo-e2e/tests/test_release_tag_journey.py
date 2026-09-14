@@ -59,16 +59,36 @@ OWNER, NAME = "nickderobertis", "printobserver"
 
 #: What GitHub answered the second `POST …/git/refs` for `refs/tags/v0.2.0`,
 #: recorded verbatim from the `release` job's log of workflow run 34578287017
-#: on 2026-09-11 — the line release-plz prints as `Response body: …` when a
-#: forge refuses it (`gh run view 34578287017 --log`). The forge stand-in
-#: answers this recording rather than a restatement of it, and the journey
-#: over the former configuration holds the program to reporting it exactly as
-#: that run did. It has no drift gate against a live GitHub, because
-#: reconciling it means creating one ref twice on the real repository.
+#: on 2026-09-11 — the line release-plz 0.3.164, the release that run
+#: installed, printed as `Response body: …` when the forge refused it (`gh run
+#: view 34578287017 --log`). The forge stand-in answers this recording rather
+#: than a restatement of it, and the journey over the former configuration
+#: holds the held release-plz to reporting it as `REPORTED_REFUSAL` records. It
+#: has no drift gate against a live GitHub, because reconciling it means
+#: creating one ref twice on the real repository.
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 REFERENCE_EXISTS = (
     '{"message":"Reference already exists","documentation_url":'
     '"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}'
+)
+
+#: How release-plz 0.3.167 — the release `repo-policy.toml` holds — reports that
+#: refusal: `Response body:` as one entry of the error's cause chain, and the
+#: body re-serialized beneath it, keys sorted, indented under the entry.
+#: Recorded verbatim on 2026-09-14 from what that release printed when the
+#: former-configuration journey below drove it (`uv run -q pytest` over this
+#: module's `test_creation_enabled_for_every_package_dies_on_the_second_ref`,
+#: with `release-plz --version` answering `release-plz 0.3.167` first on PATH).
+#: 0.3.164 printed the body on the `Response body:` line as it arrived; 0.3.165
+#: changed that ("improve error message on 422"). The journey runs the held
+#: program on every run, so a release printing it otherwise fails there.
+REPORTED_REFUSAL = (
+    "Response body:\n"
+    "       {\n"
+    '         "documentation_url": "https://docs.github.com/rest/git/refs#create-a-reference",\n'
+    '         "message": "Reference already exists",\n'
+    '         "status": "422"\n'
+    "       }\n"
 )
 
 ALREADY_PUBLISHED = "{crate} {version}: already published"
@@ -973,8 +993,8 @@ def test_creation_enabled_for_every_package_dies_on_the_second_ref(
 
     The same seeded registry and clean forge, over a copy whose release
     configuration lets every package create the tag. The program dies naming
-    the ref it could not create and reporting the forge's body as the real
-    run's log did, leaves at least one publishable crate unuploaded, and
+    the ref it could not create and reporting the forge's body as the held
+    release reports it, leaves at least one publishable crate unuploaded, and
     writes no answer — which the recipe refuses rather than reading as
     "released nothing".
     """
@@ -988,7 +1008,12 @@ def test_creation_enabled_for_every_package_dies_on_the_second_ref(
         code, answer, said = stage.released()
 
         failing((code, said), naming=f"{FAILED_REF}{version}")
-        contains(said, f"Response body: {REFERENCE_EXISTS}", describing="what the program said")
+        contains(said, REPORTED_REFUSAL, describing="what the program said")
+        equal(
+            json.loads(REPORTED_REFUSAL.removeprefix("Response body:")),
+            json.loads(REFERENCE_EXISTS),
+            describing="the body the recorded report carries, against the one the forge served",
+        )
         uploaded = {name for name, _ in stage.registry.uploads[seeded:]}
         truth(
             any(
