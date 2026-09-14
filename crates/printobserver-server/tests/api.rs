@@ -34,6 +34,11 @@ mod operating;
 mod reconciling;
 #[path = "journeys/refusing.rs"]
 mod refusing;
+// The responder binary this journey runs is built only under the feature this
+// crate's own test target is run with.
+#[cfg(feature = "test-responder")]
+#[path = "journeys/responding.rs"]
+mod responding;
 #[path = "journeys/restarting.rs"]
 mod restarting;
 #[path = "journeys/surface.rs"]

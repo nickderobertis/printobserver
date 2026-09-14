@@ -194,7 +194,7 @@ async fn assert_refused(response: reqwest::Response, what: &str, credential: &st
 }
 
 /// Every event one print holds.
-async fn history(stores: &Stores, print_id: PrintId) -> usize {
+pub async fn history(stores: &Stores, print_id: PrintId) -> usize {
     stores
         .events
         .history(HistoryQuery {
