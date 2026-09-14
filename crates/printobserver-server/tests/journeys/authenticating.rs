@@ -640,7 +640,7 @@ async fn a_configured_credential_is_in_force_and_the_file_is_left_alone() {
 
 /// A credential file a person wrote with a shell or an editor ends in one line
 /// terminator, and the credential in force is the text before it — while the
-/// file itself is left exactly as that person wrote it.
+/// file itself is left exactly as that person wrote it, by every start over it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_credential_file_ending_in_one_line_terminator_is_the_text_before_it() {
     const HELD: &str = "an-operators-hand-written-credential-5Vn9";
@@ -650,31 +650,44 @@ async fn a_credential_file_ending_in_one_line_terminator_is_the_text_before_it()
     ] {
         let rooted = Rooted::with(|_| {}).await;
         let file = rooted.credential_file();
-        let written = format!("{HELD}{terminator}");
+        let written = format!("{HELD}{terminator}").into_bytes();
         std::fs::write(&file, &written).expect("the file is writable");
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600))
             .expect("the file's mode is settable");
+        let modified = || {
+            std::fs::metadata(&file)
+                .and_then(|metadata| metadata.modified())
+                .expect("the file has a modification time")
+        };
+        let as_written = modified();
 
-        let server = rooted
-            .start()
-            .await
-            .unwrap_or_else(|error| panic!("a credential file ending in {what} refused: {error}"));
+        for start in ["a first start", "a second start"] {
+            let server = rooted.start().await.unwrap_or_else(|error| {
+                panic!("{start} over a credential file ending in {what} refused: {error}")
+            });
 
-        assert!(
-            admits(&server, HELD).await,
-            "a credential file ending in {what} is not in force as the text before it"
-        );
-        assert_eq!(
-            client_configuration(&rooted.state())["client"]["credential"].as_str(),
-            Some(HELD),
-            "the client configuration does not carry the text before {what}"
-        );
-        server.stop().await;
-        assert_eq!(
-            std::fs::read_to_string(&file).expect("the file is still there"),
-            written,
-            "a credential file ending in {what} was rewritten"
-        );
+            assert!(
+                admits(&server, HELD).await,
+                "after {start}, a credential file ending in {what} is not in force as the \
+                 text before it"
+            );
+            assert_eq!(
+                client_configuration(&rooted.state())["client"]["credential"].as_str(),
+                Some(HELD),
+                "after {start}, the client configuration does not carry the text before {what}"
+            );
+            server.stop().await;
+            assert_eq!(
+                std::fs::read(&file).expect("the file is still there"),
+                written,
+                "{start} changed the bytes of a credential file ending in {what}"
+            );
+            assert_eq!(
+                modified(),
+                as_written,
+                "{start} rewrote a credential file ending in {what}"
+            );
+        }
     }
 }
 
