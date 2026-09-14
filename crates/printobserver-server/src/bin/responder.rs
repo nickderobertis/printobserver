@@ -63,9 +63,23 @@ struct Turn {
     /// The address the server is answering on.
     server: String,
     /// The credential it serves under.
-    credential: String,
+    credential: Credential,
     /// The print the turn is about.
     print: String,
+}
+
+/// A credential this responder presents, held only once the server's own rule
+/// admits it as one.
+struct Credential(String);
+
+impl Credential {
+    /// The credential a text names, when [`printobserver_server::ApiCredential`]
+    /// admits it — so what this responder puts into a request head is held to
+    /// the one rule the server holds its own credential to.
+    fn admitted(text: String) -> Option<Self> {
+        printobserver_server::ApiCredential::new(&text).ok()?;
+        Some(Self(text))
+    }
 }
 
 /// One text value of the client configuration's `[client]` table.
@@ -104,7 +118,7 @@ fn turn_from_the_prompt() -> Option<Turn> {
     let server = client_value(&configuration, "server")?
         .trim_end_matches('/')
         .to_owned();
-    let credential = client_value(&configuration, "credential")?;
+    let credential = Credential::admitted(client_value(&configuration, "credential")?)?;
     let print = words
         .skip_while(|word| *word != "--print-id")
         .nth(1)?
@@ -148,7 +162,7 @@ fn issue(turn: &Turn, operation: &str, body: &str) -> serde_json::Value {
          Content-Length: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n{body}",
         printobserver_server::MEDIA_TYPE,
         body.len(),
-        turn.credential
+        turn.credential.0
     )
     .is_err()
     {

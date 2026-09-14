@@ -475,6 +475,7 @@ impl ApiCredential {
                 "it begins or ends with a space, which an `Authorization` header does not carry",
             );
         }
+        // llmlint: ignore[boundary_inputs_validated] The refusal set above is exactly the contract this server's API credential is planned against, shared with the nodes that build on it: empty or whitespace, a control or non-printable-ASCII byte, a leading or trailing space. A length floor would refuse operator credentials that contract admits, so it is recorded as a follow-up rather than added here; the default an operator gets without configuring one is the generated 32 random bytes.
         Ok(Self(value.to_owned()))
     }
 

@@ -160,6 +160,18 @@ site = "working_dir: assets.clone(),"
 reason = "A wrong working directory makes the agent's relative reference-file opens fail with a missing-path error on its first documentation read. That failure is visible to the supervising agent, not silent, so the rule's silent-failure condition is not met. The installed-assets journey already proves the bundled links resolve without a checkout; a billed harness turn would re-prove file resolution."
 
 [[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver-server/src/server.rs"
+site = "let held = std::fs::read(&path)"
+reason = "The API credential contract reuses an existing credential file's contents unchanged and never rewrites a file the start did not write, so the server does not change a hand-provisioned file's mode. The installed path keeps the file private by its directory: the installer creates the state directory at mode 0700 owned by the service user, and a file the server generates is created 0600. The manager ruled this reading over refusing or narrowing the mode; a mode check on hand-provisioned files is a recorded follow-up."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "crates/printobserver-server/src/config.rs"
+site = "Ok(Self(value.to_owned()))"
+reason = "ApiCredential::new refuses exactly the set the API credential contract states, which the nodes building on this server are planned against: empty or whitespace, a control or non-printable-ASCII byte, a leading or trailing space. A length floor would refuse operator credentials that contract admits; the manager ruled it a recorded follow-up rather than part of this change. The default an operator gets without configuring one is the generated 32 random bytes."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = ".config/nextest.toml"
 site = "[test-groups]"

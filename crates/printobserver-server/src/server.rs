@@ -175,6 +175,7 @@ fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartErro
             written
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            // llmlint: ignore[least_privilege_grants] The contract reuses an existing credential file's contents unchanged and never rewrites a file this start did not write, so the server does not change a hand-provisioned file's mode. The installed path keeps the file private by its directory: the installer creates the state directory at mode 0700, owned by the service user, and a file this server generates is created 0600. A mode check on hand-provisioned files is recorded as a follow-up.
             let held = std::fs::read(&path)
                 .map_err(|error| refusing(format!("it cannot be read: {error}")))?;
             let text = core::str::from_utf8(&held).ok().map(without_terminator);
