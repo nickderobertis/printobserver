@@ -583,7 +583,7 @@ reason = "This test is in the client's `integration` directory, which only the p
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_journey.py"
-site = "def test_a_client_without_the_credential_in_force_is_refused"
+site = "A real supervisor refuses a client that does not present its credential."
 reason = "The slow tier is already split by target and directory rather than by a marker: `integration/` sits beside `tests/`, the project's `test` target runs only `tests/`, and only `test-integration` runs `integration/`. That is the per-client layout `AGENTS.md` describes and `just check-repo` holds the integration job to; moving three clients' tiers into new projects is a repository-layout change outside this dispatch, which only adds the credential the supervisor now requires."
 
 [[suppression]]
@@ -595,7 +595,7 @@ reason = "The same ground as the entry for this rule at `python/printobserver-sd
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_falsifying.py"
-site = "def test_the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image"
+site = "The published client passes it; both variants are refused."
 reason = "The same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`: the slow tier is its own directory under its own target, not a marker inside the fast one."
 
 [[suppression]]
@@ -607,7 +607,7 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_live.py"
-site = "def test_every_method_is_answered_by_a_real_supervisor"
+site = "Every method, answered by a real supervisor, in the one order it admits."
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
@@ -637,7 +637,7 @@ reason = "Not a directive over this file's own code: it is the text the emitter 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "def test_every_method_is_answered_by_a_real_supervisor"
+site = "Every method, answered by a real supervisor, in the one order it admits."
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
 [[suppression]]
