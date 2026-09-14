@@ -27,6 +27,7 @@ pub const HARNESS_DIRECTORY: &str = "harness";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HarnessSignIn {
     /// The identity, as `OneHarness` names it and a configuration selects it.
+    // llmlint: ignore[invalid_states_unrepresentable] `HarnessIdentity` owns a `String` and cannot be built in a const table. The fields are private, so `SIGN_INS` is the only place an entry is constructed, and this crate's tests hold every identity to one OneHarness's registry runs.
     identity: &'static str,
     /// The variable selecting the directory that harness keeps its sign-in in.
     config_env: &'static str,
@@ -109,37 +110,30 @@ impl HarnessSignIn {
     /// That directory, created where it is not there yet, and readable by its
     /// owner alone whether it was just created or was already there.
     ///
+    /// The state directory is the one this program was configured with, which
+    /// is resolved where it is configured. Below it, each of the two levels is
+    /// created on its own rather than recursively, so neither is ever reached
+    /// through a symlink.
+    ///
     /// # Errors
     ///
     /// Returns [`std::io::ErrorKind::InvalidInput`] when something other than a
-    /// directory is at that path — a symlink included, since a sign-in kept
+    /// directory is at either level — a symlink included, since a sign-in kept
     /// through one is kept wherever it points — and the operating system's own
-    /// error when the directory cannot be created or cannot be made private.
+    /// error when the state directory is not there, or a level cannot be created
+    /// or made private.
     pub fn prepare(&self, state_dir: &Path) -> std::io::Result<PathBuf> {
-        use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+        use std::os::unix::fs::PermissionsExt as _;
 
         let directory = self.directory(state_dir);
-        match std::fs::symlink_metadata(&directory) {
-            Ok(found) if found.is_dir() => {}
-            Ok(_) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "something other than a directory is there",
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::DirBuilder::new()
-                    .recursive(true)
-                    .mode(0o700)
-                    .create(&directory)?;
-            }
-            Err(error) => return Err(error),
+        for level in [state_dir.join(HARNESS_DIRECTORY), directory.clone()] {
+            real_directory(&level)?;
+            // Stated on every preparation rather than trusted: a creation mode
+            // is narrowed by the process's own mask, and a directory that was
+            // already there may have been widened since. Only its owner can
+            // change its mode, so a directory another user owns is refused.
+            std::fs::set_permissions(&level, std::fs::Permissions::from_mode(0o700))?;
         }
-        // Stated on every preparation rather than trusted: a creation mode is
-        // narrowed by the process's own mask, and a directory that was already
-        // there may have been widened since. Only its owner can change its
-        // mode, so a directory another user owns is refused here.
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
         Ok(directory)
     }
 
@@ -151,6 +145,24 @@ impl HarnessSignIn {
     /// path is not text an environment can carry.
     pub fn assignment(&self, directory: &Path) -> Result<EnvAssignment, ConfigError> {
         EnvAssignment::new(&format!("{}={}", self.config_env, directory.display()))
+    }
+}
+
+/// One directory, created with no access for anybody but its owner where it
+/// is not there, and refused where something other than a directory is.
+fn real_directory(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt as _;
+
+    match std::fs::symlink_metadata(path) {
+        Ok(found) if found.is_dir() => Ok(()),
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is something other than a directory", path.display()),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::DirBuilder::new().mode(0o700).create(path)
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -225,6 +237,7 @@ mod tests {
                 .as_nanos()
         ));
         let entry = &SIGN_INS[0];
+        std::fs::create_dir_all(&state).expect("a state directory");
 
         let prepared = entry.prepare(&state).expect("the directory is created");
 
@@ -252,6 +265,13 @@ mod tests {
         std::os::unix::fs::symlink(&elsewhere, SIGN_INS[1].directory(&state))
             .expect("a symlink in the directory's place");
         let through_a_symlink = SIGN_INS[1].prepare(&state).map_err(|error| error.kind());
+
+        // And one at the level every harness's directory is kept in.
+        let linked_state = state.join("linked-state");
+        std::fs::create_dir_all(&linked_state).expect("a second state directory");
+        std::os::unix::fs::symlink(&elsewhere, linked_state.join(HARNESS_DIRECTORY))
+            .expect("a symlink in the harness level's place");
+        let through_a_linked_level = entry.prepare(&linked_state).map_err(|error| error.kind());
         std::fs::remove_dir_all(&state).expect("the state directory is removable");
 
         assert_eq!(
@@ -263,6 +283,11 @@ mod tests {
             through_a_symlink,
             Err(std::io::ErrorKind::InvalidInput),
             "a symlink in the directory's place was prepared"
+        );
+        assert_eq!(
+            through_a_linked_level,
+            Err(std::io::ErrorKind::InvalidInput),
+            "a symlink in the harness level's place was followed"
         );
         assert_eq!(
             assigned.expect("an assignment"),

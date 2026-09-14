@@ -682,7 +682,6 @@ fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
     });
     let address = serving_on(&mut server.0);
 
-    // The server created the directory before anybody signed in.
     let mode = mode_of(&directory);
     assert_eq!(
         mode, 0o700,

@@ -196,6 +196,7 @@ chmod 0700 "$HOME_DIR" ||
 # An existing configuration is left exactly as it is: a reinstall must not
 # overwrite the operator's own values with a template's.
 if [ -e "$INSTALLED_CONFIG" ]; then
+    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
 else
     cat >"$INSTALLED_CONFIG" <<CONFIG || die "$WRITE_REFUSED"

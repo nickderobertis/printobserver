@@ -56,7 +56,21 @@ file = "scripts/setup-llmlint.sh"
 site = "set -uo pipefail"
 reason = "Whole-file, and the rule is about the whole file: every external input it takes is a named package from a registry the ecosystem authenticates — the `llmlint-cli` wheel from PyPI (Trusted Publishing and PEP 740 attestations) and the `@anthropic-ai/claude-code` package from npm (provenance attestations) — and each package name is a constant in the file rather than anything a caller supplies, so no untrusted input is executed anywhere in it."
 
+# --- the service installer ----------------------------------------------------
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install-service.sh"
+site = "was left alone\" >&2"
+reason = "Pre-existing, deliberate output that the harness sign-in change only moved, by adding the service home above it. On a reinstall the operator's filled-in configuration is kept rather than overwritten by the template, and this one line on standard error is how they learn that their values survived; it names the file, and it is the one fact about a reinstall they need before enabling the service."
+
 # --- the harness sign-in table ------------------------------------------------
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "identity: &'static str,"
+reason = "`HarnessIdentity` owns a `String`, so it cannot be built in the const `SIGN_INS` table the server and the command-line program both read. The field is private, so that table is the only place an entry is ever constructed, and `every_identity_is_one_oneharness_runs` holds each identity to one OneHarness's own registry runs — which is a stricter validation than `HarnessIdentity::new`, which admits any non-empty name."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
