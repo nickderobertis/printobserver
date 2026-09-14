@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import TracebackType
+from typing import NewType
 
 from repo_checks.shell import start
 
@@ -65,6 +66,10 @@ STARTUP_TIMEOUT_SECONDS = 60.0
 INGRESS_TIMEOUT_SECONDS = 60.0
 
 
+#: The API credential a supervisor serves under, as a request presents it.
+Credential = NewType("Credential", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Running:
     """A supervisor a client can be pointed at."""
@@ -72,7 +77,7 @@ class Running:
     #: Where it answers, as its own client configuration writes it.
     server: str
     #: The credential it serves under, as that same configuration carries it.
-    credential: str
+    credential: Credential
     #: The print every read of the smoke checks is about.
     print_id: str
     #: The image the materialization read is about.
@@ -96,7 +101,7 @@ class ClientConfiguration:
     #: The address it bound.
     server: str
     #: The credential it serves under.
-    credential: str
+    credential: Credential
 
 
 class Machine:
@@ -389,12 +394,15 @@ class World:
                     # Caught part-way through being written; the next look
                     # reads the whole of it.
                     table = {}
-                server, credential = table.get("server"), table.get("credential")
-                if isinstance(credential, str) and not credential.strip():
-                    msg = f"the supervisor wrote {written} with an empty credential"
-                    raise WorldError(msg)
-                if isinstance(server, str) and isinstance(credential, str):
-                    return ClientConfiguration(server=server, credential=credential)
+                match table:
+                    case {"credential": str(credential)} if not credential.strip():
+                        msg = f"the supervisor wrote {written} with an empty credential"
+                        raise WorldError(msg)
+                    case {"server": str(server), "credential": str(credential)}:
+                        return ClientConfiguration(server=server, credential=Credential(credential))
+                    case _:
+                        # Neither is written yet; the next look reads both.
+                        pass
             time.sleep(0.1)
         msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)

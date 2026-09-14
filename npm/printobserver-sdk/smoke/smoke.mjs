@@ -27,8 +27,20 @@ function argument(name) {
   return value;
 }
 
+/** Whether a credential is one an `Authorization` header carries intact. */
+function presentable(credential) {
+  return /^[!-~](?:[ -~]*[!-~])?$/.test(credential);
+}
+
 const server = argument("server");
 const credential = argument("credential");
+if (!presentable(credential)) {
+  process.stderr.write(
+    "smoke: --credential takes the credential the supervisor serves under: printable ASCII, " +
+      "not empty, and neither beginning nor ending with a space\n",
+  );
+  process.exit(2);
+}
 const printId = argument("print-id");
 const imageId = argument("image-id");
 

@@ -116,6 +116,7 @@ def test_a_client_without_the_credential_in_force_is_refused(world: Supervisor) 
 
 def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Supervisor) -> None:
     """The nine steps, in the one order a real machine admits."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     client = Client(world.server, "operator", world.credential)
 
     # journey step 1: status
@@ -212,6 +213,7 @@ def _unreasoned(world: Supervisor) -> None:
     it.
     """
     with Proxy(world.server) as proxy:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client = Client(proxy.url, "operator", world.credential)
 
         # A read first: "nothing went through" is a claim about the calls below,

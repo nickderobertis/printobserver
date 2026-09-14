@@ -21,8 +21,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from release_artifacts.installing import prove
-from repo_checks.expect import contains, passing
+from release_artifacts.installing import install, prove, prove_client, smoke_check
+from repo_checks.expect import absent, contains, equal, passing
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
@@ -50,6 +50,17 @@ def supervisor(request: pytest.FixtureRequest) -> Path:
     return built
 
 
+#: Credentials no `Authorization` header carries intact, each of which a smoke
+#: check refuses as a usage error before it makes any request. Every one that
+#: is not empty is spelled so that a search for it finds only a quotation of it.
+UNPRESENTABLE = [
+    ("empty", ""),
+    ("beginning with a space", " qx-distinctive-offered"),
+    ("carrying a tab", "qx-distinctive\toffered"),
+    ("carrying a character outside ASCII", "qx-distinctive-offered-ä"),
+]
+
+
 @pytest.mark.parametrize("identifier", CLIENTS)
 def test_each_client_is_installed_and_proved_against_a_real_supervisor(
     identifier: str,
@@ -63,8 +74,41 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
     the server answered and checks its bytes against the digest the record
     declares. A check that reached no server would say nothing about the
     artifact.
+
+    Given a credential no header could carry, the same installed check stops
+    as a usage error naming the option, and quotes nothing it was given.
     """
-    said = prove(repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor)
+    taken = install(
+        repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor
+    )
+    for what, credential in UNPRESENTABLE:
+        stopped = run(
+            [
+                *smoke_check(repo, taken),
+                "--server",
+                "http://127.0.0.1:9",
+                "--credential",
+                credential,
+                "--print-id",
+                "a-print",
+                "--image-id",
+                "an-image",
+            ],
+            cwd=taken.environment,
+        )
+        equal(stopped.returncode, 2, describing=f"the exit `{identifier}` gave a credential {what}")
+        contains(
+            stopped.stderr,
+            "--credential takes the credential the supervisor serves under",
+            describing=f"what `{identifier}` said of a credential {what}",
+        )
+        absent(
+            stopped.stdout + stopped.stderr,
+            "qx-distinctive",
+            describing=f"what `{identifier}` said of a credential {what}",
+        )
+
+    said = prove_client(repo, taken, supervisor)
 
     contains(said, "smoke: contract", describing=f"what `{identifier}` said where it was put")
     contains(said, "image ", describing=f"what `{identifier}` said where it was put")

@@ -487,6 +487,7 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
 def test_every_method_is_answered_by_a_real_supervisor(world: Supervisor) -> None:
     """Every method, answered by a real supervisor, in the one order it admits."""
     with Proxy(world.server) as proxy:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client = Client(proxy.url, "operator", world.credential)
         step_status(client, world, proxy)
         step_context(client, world, proxy)
@@ -679,6 +680,7 @@ def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None
     bounds, so every action is refused from wherever the machine happens to be.
     """
     with Proxy(world.server) as proxy:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client = Client(
             proxy.url,
             {"agent": {"session_name": "an actor this envelope grants nothing"}},

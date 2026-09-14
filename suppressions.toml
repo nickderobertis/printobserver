@@ -527,6 +527,54 @@ site = 'served = Client(world.server, "operator", world.credential)'
 reason = "The second call of the same journey as the entry above, on the same published synchronous client: it proves the read that was refused without the credential is served with it, and the same reason applies unchanged."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'client = Client(world.server, "operator", world.credential)'
+reason = "The nine-step journey drives the published Python client exactly as a dependent drives it, because proving that client against a real supervisor is what the journey is for. `printobserver_sdk.Client` is synchronous and typed by design in every released version and ships no async counterpart, so an async client here would test a client nobody ships; this change only hands the journey the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "The seventh journey step, on the same published synchronous client as the entry above, pointed at the recording proxy in front of the real supervisor: what it proves is that this client refuses an unreasoned call before any request leaves it, which only the shipped client can show. The same reason applies unchanged."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_falsifying.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "This falsification drives the published synchronous Python client through the recording proxy so the walk's equality is asserted against what that client really sent and received. `printobserver_sdk.Client` ships no async counterpart, so an async client would falsify a surface nobody ships; this change only hands it the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "The method walk drives every method of the published synchronous Python client against a real supervisor, which is what proves the shipped client. It ships no async counterpart, so an async client would walk a surface nobody ships; this change only hands the walk the credential that client already takes."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = '"an actor this envelope grants nothing"'
+reason = "The rejection walk, on the same published synchronous client as the entry above, acting as an actor the envelope grants nothing so every action comes back as a typed rejection from a real supervisor. The same reason applies unchanged."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = 'client = Client(proxy.url, "operator", world.credential)'
+reason = "This is the generator's own copy of the method walk's directive in `python/printobserver-sdk/integration/test_live.py`, which that file carries because the generator writes it: the walk drives the published synchronous Python client, which ships no async counterpart, and the entry for that file says why. Written here so the generated file and what the generator writes stay one text."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = '"an actor this envelope grants nothing"'
+reason = "The generator's own copy of the rejection walk's directive in `python/printobserver-sdk/integration/test_live.py`, for the same reason as the entry above: the generated walk drives the published synchronous Python client, and the generated file and what the generator writes must stay one text."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/smoke/smoke.py"
+site = 'client = Client(asked.server, "operator", asked.credential)'
+reason = "This smoke check exists to prove the installed `printobserver_sdk` distribution as its consumers use it, and that distribution's `Client` is synchronous and typed and ships no async counterpart. It makes two ordered calls, a status read and then an image read whose answer it checks, from a one-shot program with nothing to run concurrently; an async client would prove a client the distribution does not carry."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "python/printobserver-sdk/integration/test_journey.py"
 site = "def test_a_client_without_the_credential_in_force_is_refused"

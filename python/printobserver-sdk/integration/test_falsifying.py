@@ -89,6 +89,7 @@ def test_the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image(
 ) -> None:
     """The published client passes it; both variants are refused."""
     with Proxy(world.server) as proxy:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client = Client(proxy.url, "operator", world.credential)
 
         answered = client.image(world.image_id)

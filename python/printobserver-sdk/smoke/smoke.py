@@ -20,6 +20,22 @@ from pathlib import Path
 
 from printobserver_sdk import CONTRACT_VERSION, Client
 
+#: What a refused `--credential` is told, which never quotes what it was given.
+CREDENTIAL_USAGE = (
+    "--credential takes the credential the supervisor serves under: printable ASCII, "
+    "not empty, and neither beginning nor ending with a space"
+)
+
+
+def presentable(credential: str) -> bool:
+    """Whether a credential is one an `Authorization` header carries intact."""
+    return (
+        bool(credential)
+        and all(" " <= character <= "~" for character in credential)
+        and not credential.startswith(" ")
+        and not credential.endswith(" ")
+    )
+
 
 def main(argv: list[str] | None = None) -> int:
     """Make the two calls, answering a process exit status."""
@@ -29,7 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--print-id", required=True)
     parser.add_argument("--image-id", required=True)
     asked = parser.parse_args(argv)
+    if not presentable(asked.credential):
+        parser.error(CREDENTIAL_USAGE)
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     client = Client(asked.server, "operator", asked.credential)
 
     status = client.status(asked.print_id)
