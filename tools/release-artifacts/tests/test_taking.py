@@ -189,7 +189,15 @@ def test_a_supervisor_writing_an_unpresentable_credential_is_said_to_have(
 
 
 @pytest.mark.parametrize(
-    "server", ["", "127.0.0.1:8420", "https://127.0.0.1:8420", "http://127.0.0.1", "http://:8420"]
+    "server",
+    [
+        "",
+        "127.0.0.1:8420",
+        "https://127.0.0.1:8420",
+        "http://127.0.0.1",
+        "http://:8420",
+        "http://127.0.0.1:a-port",
+    ],
 )
 def test_a_supervisor_writing_no_http_address_is_said_to_have(
     server: str, repo: Repo, into: Callable[[str], Path]
