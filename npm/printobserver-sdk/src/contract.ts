@@ -20,6 +20,7 @@ export const CONTRACT_VERSION = "0.2.0";
  * the server declares and no other.
  */
 export const OPERATION_NAMES = [
+  "prints",
   "status",
   "context",
   "image",
@@ -738,6 +739,25 @@ export type PrinterState =
   | "offline"
   | { unknown: string };
 
+/**
+ * What the prints read answers: every print, and the one the printer is
+ * running.
+ *
+ * An open print's recorded `state` is the state it was opened in, which is
+ * `printing` whether or not the machine is paused now; what the machine is
+ * doing is the status read's answer.
+ */
+export interface PrintsAnswer {
+  /**
+   * The print the printer's current job belongs to, present exactly when the
+   * printer reports a job it is printing or has paused. Absent when the
+   * printer could not be read.
+   */
+  active?: PrintId | null;
+  /** Every print this server holds, ended or not, most recently opened first. */
+  prints: Array<PrintRecord>;
+}
+
 /** An inclusive pair of 64-bit floats. */
 export interface Range {
   /** The highest value the range admits, inclusive. */
@@ -917,6 +937,20 @@ export function payloadOf<K extends keyof EventPayloads>(
  * vocabulary are hand-written, and this class is written against them.
  */
 export class GeneratedClient extends GeneratedSurface {
+  /**
+   * Call `prints` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async prints(): Promise<PrintsAnswer> {
+    const target = `/v1/prints`;
+    const asked: Array<[string, string]> = [];
+    const sending = undefined;
+    return await this.call<PrintsAnswer>("GET", target, asked, sending);
+  }
+
   /**
    * Call `status` on the configured supervisor.
    *

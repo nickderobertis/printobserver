@@ -332,6 +332,20 @@ async function stepResume(client: Client, proxy: Recording) {
   same("resume", answered, seen.answer);
 }
 
+/** `prints`, answered by a real supervisor. */
+async function stepPrints(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.prints();
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/prints`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("prints", answered, seen.answer);
+}
+
 // llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every method is answered by a real supervisor", async () => {
   await using proxy = new Recording(world.server);
@@ -357,8 +371,9 @@ test("every method is answered by a real supervisor", async () => {
   await stepAcknowledgeFailure(client, proxy);
   await stepPause(client, proxy);
   await stepResume(client, proxy);
+  await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(16);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(17);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */

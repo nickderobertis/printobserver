@@ -177,6 +177,19 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
 ) {
     let said = answered(ran, invocation.machine_readable);
     match one.command.name.as_str() {
+        "prints" => {
+            assert_eq!(
+                said.get("active"),
+                Some(&world.print_id),
+                "the listing did not name this world's print as the running job's: {said:#?}"
+            );
+            assert!(
+                said.iter().any(|(key, value)| key.starts_with("prints.")
+                    && key.rsplit('.').next() == Some("id")
+                    && *value == world.print_id),
+                "the listing does not carry this world's print: {said:#?}"
+            );
+        }
         "status" => {
             assert_eq!(at(&said, "print.id"), world.print_id);
             assert!(

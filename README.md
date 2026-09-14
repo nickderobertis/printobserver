@@ -250,19 +250,27 @@ software must not start a process that can move the machine.
 printobserver --version
 ```
 
-Start a print through OctoPrint. Once you have its printobserver ID, make a
-first read against the running supervisor. The command reads the address and the
-API credential from the two environment variables or the `--config` file
-described in step 5:
+Start a print through OctoPrint. Then ask the running supervisor which prints it
+holds. Every command reads the address and the API credential from the two
+environment variables or the `--config` file described in step 5:
+
+```console
+printobserver prints
+```
+
+`active` is the ID of the print OctoPrint is running. If no print was open for
+that job, this read opens one, so the print has an ID before Obico has reported
+anything. Reading again while the job runs opens nothing more, and the first
+Obico alert about the job joins that same print. If the printer cannot be read,
+the stored prints are still listed and `active` is absent. A print's recorded
+`state` stays `printing` while it is open, even when the printer is paused;
+`printobserver status` shows what the printer is doing now.
+
+Make the first read with that ID in place of `PRINT_ID`:
 
 ```console
 printobserver context --print-id PRINT_ID
 ```
-
-The command surface requires the internal print ID for print-specific reads but
-exposes no operation that lists print IDs. The tree does not provide an
-end-user procedure for discovering that ID, so this part of the first-read
-workflow remains unspecified by the implementation.
 
 ## Using it
 
@@ -272,8 +280,19 @@ printobserver --help
 
 Every command reads the server's address and the API credential from a
 configuration file named with `--config`, or from `PRINTOBSERVER_SERVER` and
-`PRINTOBSERVER_CREDENTIAL`; see step 5. Read a print's context before
-intervening, and give every change a `--reason`. See
+`PRINTOBSERVER_CREDENTIAL`; see step 5.
+
+Every print-specific command takes the print's ID as `--print-id`. Find it
+first: `printobserver prints` lists every print, newest first, and names the one
+OctoPrint is running as `active`. Then read that print's context before
+intervening:
+
+```console
+printobserver prints
+printobserver context --print-id PRINT_ID
+```
+
+Give every change a `--reason`. See
 [common operations](./docs/reference/common-operations.md) for a worked example
 of every command, including a temporary adjustment with `--duration-s`, and
 its output.

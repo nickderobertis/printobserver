@@ -2,8 +2,8 @@
 //!
 //! The required operation set is **derived from the contracts' own
 //! `PrintAction`** — one operation per variant it declares, read out of the
-//! schema that type generates in this process — plus the six reads this server
-//! is required to serve. Growing the declared list and the routes together
+//! schema that type generates in this process — plus the seven operations this
+//! server is required to serve beside them. Growing the declared list and the routes together
 //! cannot satisfy this, because the side it is compared against is another
 //! crate's closed type.
 //!
@@ -55,7 +55,7 @@ fn served() -> Vec<Served> {
 }
 
 /// One operation per variant the contracts' own `PrintAction` declares, plus
-/// the six reads this server is required to serve.
+/// the seven operations this server is required to serve beside them.
 ///
 /// Read out of the schema that type generates rather than out of a list here,
 /// so a variant added to the contracts enters this set the moment it is added.

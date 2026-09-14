@@ -1,7 +1,7 @@
 //! The closed surface: which commands exist, and what each one accepts.
 //!
 //! Nothing here is compared against a list this crate keeps. The command set is
-//! compared against the contracts' own `PrintAction` and the six reads the
+//! compared against the contracts' own `PrintAction` and the seven reads the
 //! server declares beside that vocabulary; each command's accepted options are
 //! compared against the fields that `PrintAction` variant declares, or against
 //! the request schema the server declares for that route; and the global
@@ -37,13 +37,14 @@ use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, V
 use printobserver_types::serde_json::Value;
 
 /// The reads this program has beside the action vocabulary, as its own task
-/// names them: status, context, the image read and materialization, history,
-/// and the manifest's read and write.
+/// names them: the prints listing, status, context, the image read and
+/// materialization, history, and the manifest's read and write.
 ///
 /// Written out here rather than read from the server, and then held against
-/// what the server declares — so a server that grew a seventh read would fail
+/// what the server declares — so a server that grew an eighth read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 6] = [
+const READS: [&str; 7] = [
+    "prints",
     "status",
     "context",
     "image",
@@ -304,9 +305,9 @@ fn the_surface_this_program_ships_is_the_one_the_contracts_and_the_server_declar
     );
 }
 
-/// The server declares exactly the six reads this program's own task names.
+/// The server declares exactly the seven reads this program's own task names.
 #[test]
-fn the_server_declares_exactly_the_six_reads_this_task_names() {
+fn the_server_declares_exactly_the_seven_reads_this_task_names() {
     assert_eq!(
         BESIDE_THE_ACTIONS.iter().copied().collect::<BTreeSet<_>>(),
         READS.iter().copied().collect::<BTreeSet<_>>(),

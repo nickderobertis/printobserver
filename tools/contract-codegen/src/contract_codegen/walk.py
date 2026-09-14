@@ -225,9 +225,15 @@ LIVE_ORDER: tuple[tuple[str, str], ...] = (
     ("set_bed_target_c", "printing"),
     ("acknowledge_failure", ""),
     ("pause", "printing"),
-    # Last, so the walk leaves the machine printing — where the bring-up left
-    # it, and where the scripted environment's own suite expects it.
+    # Last of the actions, so the walk leaves the machine printing — where the
+    # bring-up left it, and where the scripted environment's own suite expects
+    # it.
     ("resume", "paused"),
+    # After every action rather than before: a listing may open a print for the
+    # running job, and an action is recorded against the most recently opened
+    # open print, so a listing earlier would move the walk's own actions onto
+    # a print the walk is not reading.
+    ("prints", ""),
 )
 
 #: What the real walk supplies for one value, by the operation and the value it

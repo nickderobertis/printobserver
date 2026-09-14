@@ -218,7 +218,11 @@ def _method(operation: Operation) -> list[str]:
     )
     if operation.mutating:
         lines.append("        crate::reason_given(reason)?;")
-    lines.append(f'        let target = format!("{_target(operation)}");')
+    target = _target(operation)
+    # A path that takes no value — the prints listing — is a plain string: a
+    # `format!` with nothing to format is a finding of the client's own linter.
+    built = f'format!("{target}")' if "{" in target else f'String::from("{target}")'
+    lines.append(f"        let target = {built};")
 
     query = [parameter for parameter in supplied if parameter.located == "query"]
     if query:

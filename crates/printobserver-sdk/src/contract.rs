@@ -17,7 +17,8 @@ pub const CONTRACT_VERSION: &str = "0.2.0";
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 16] = [
+pub const OPERATION_NAMES: [&str; 17] = [
+    "prints",
     "status",
     "context",
     "image",
@@ -975,6 +976,25 @@ pub enum PrinterState {
     Unknown(String),
 }
 
+/// What the prints read answers: every print, and the one the printer is
+/// running.
+///
+/// An open print's recorded `state` is the state it was opened in, which is
+/// `printing` whether or not the machine is paused now; what the machine is
+/// doing is the status read's answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrintsAnswer {
+    /// The print the printer's current job belongs to, present exactly when
+    /// the
+    /// printer reports a job it is printing or has paused. Absent when the
+    /// printer could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<PrintId>,
+    /// Every print this server holds, ended or not, most recently opened
+    /// first.
+    pub prints: Vec<PrintRecord>,
+}
+
 /// An inclusive pair of 64-bit floats.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Range {
@@ -1241,6 +1261,19 @@ impl EventRecord {
 }
 
 impl Client {
+    /// Call `prints` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn prints(&self) -> Result<PrintsAnswer, ClientError> {
+        let target = String::from("/v1/prints");
+        let asked: Vec<(String, String)> = Vec::new();
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
     /// Call `status` on the configured supervisor.
     ///
     /// # Errors

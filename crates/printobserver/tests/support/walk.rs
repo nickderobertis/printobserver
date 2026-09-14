@@ -132,6 +132,10 @@ pub fn manifest_of(command: &str, feedrate_max: f64, file: &str) -> Value {
 /// Every command of the walk, with the values distinct to it.
 fn ordered(world: &World) -> Vec<Entry> {
     let mut found = vec![
+        // First, while this world's own print is the one open print carrying
+        // the file the machine is running: the listing names it rather than
+        // opening another.
+        named("prints", Reports::Printing, vec![]),
         named("status", Reports::Printing, vec![]),
         named("context", Reports::Printing, vec![]),
         named(

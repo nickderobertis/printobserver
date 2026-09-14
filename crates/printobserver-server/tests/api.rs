@@ -24,6 +24,8 @@ mod authenticating;
 mod configuration;
 #[path = "journeys/failing.rs"]
 mod failing;
+#[path = "journeys/finding.rs"]
+mod finding;
 #[path = "journeys/images.rs"]
 mod images;
 #[path = "journeys/ingress.rs"]

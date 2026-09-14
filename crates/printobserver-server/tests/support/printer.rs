@@ -52,6 +52,8 @@ struct Held {
     job: JobSnapshot,
     /// Everything it has been asked, in order.
     calls: Vec<Call>,
+    /// Whether it answers no read at all, as a machine switched off does.
+    unreadable: bool,
 }
 
 /// A printer these journeys drive the server against.
@@ -123,8 +125,28 @@ impl RecordingPrinter {
                     error: None,
                 },
                 calls: Vec::new(),
+                unreadable: false,
             }),
         })
+    }
+
+    /// Make it answer no read at all, or answer them again.
+    pub fn unreadable(&self, unreadable: bool) {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .unreadable = unreadable;
+    }
+
+    /// The refusal a machine nothing can read answers, when it is one.
+    fn unread(&self) -> Option<PrinterError> {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .unreadable
+            .then(|| PrinterError::Unreachable {
+                detail: "the machine is switched off".to_owned(),
+            })
     }
 
     /// Everything it has been asked, in order.
@@ -246,18 +268,23 @@ impl RecordingPrinter {
 
 impl PrinterPort for RecordingPrinter {
     fn snapshot(&self) -> BoxFuture<'_, Result<PrinterSnapshot, PrinterError>> {
-        let taken = Self::snapshot(self);
-        Box::pin(async move { Ok(taken) })
+        let taken = self.unread().map_or_else(|| Ok(Self::snapshot(self)), Err);
+        Box::pin(async move { taken })
     }
 
     fn job(&self) -> BoxFuture<'_, Result<JobSnapshot, PrinterError>> {
-        let job = self
-            .held
-            .lock()
-            .expect("the machine is not poisoned")
-            .job
-            .clone();
-        Box::pin(async move { Ok(job) })
+        let job = self.unread().map_or_else(
+            || {
+                Ok(self
+                    .held
+                    .lock()
+                    .expect("the machine is not poisoned")
+                    .job
+                    .clone())
+            },
+            Err,
+        );
+        Box::pin(async move { job })
     }
 
     fn start(&self, file_name: FileName) -> BoxFuture<'_, Result<(), PrinterError>> {

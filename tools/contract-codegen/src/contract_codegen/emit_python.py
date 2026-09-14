@@ -211,6 +211,16 @@ def _argument(parameter: Parameter) -> str:
     return f"{parameter.name}: {type_name(parameter.type)}"
 
 
+def _string(text: str) -> str:
+    """One string literal, formatted only when it interpolates something.
+
+    An operation whose path takes no value — the prints listing — is a plain
+    literal, because an f-string with nothing to interpolate is a finding of the
+    client's own linter.
+    """
+    return f'f"{text}"' if "{" in text else f'"{text}"'
+
+
 def _target(operation: Operation) -> str:
     """The request target one call is made to, as Python builds it."""
     path = operation.path
@@ -245,7 +255,7 @@ def _method(operation: Operation) -> list[str]:
     lines.append('        """')
     if operation.mutating:
         lines.append("        reason_given(reason)")
-    lines.append(f'        target = f"{_target(operation)}"')
+    lines.append(f"        target = {_string(_target(operation))}")
 
     query = [parameter for parameter in supplied if parameter.located == "query"]
     lines.append("        asked: list[tuple[str, str]] = []")
@@ -623,7 +633,7 @@ def _live_target(step: LiveStep) -> str:
         for parameter, token in step.arguments
         if parameter.located == "query"
     ]
-    return f'f"{path}?{"&".join(asked)}"' if asked else f'f"{path}"'
+    return _string(f"{path}?{'&'.join(asked)}" if asked else path)
 
 
 def _live_body(step: LiveStep) -> list[str]:

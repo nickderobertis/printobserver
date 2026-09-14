@@ -50,7 +50,7 @@ pub const CREDENTIAL: &str = "qz7vk3xhw9mrbt2ycf5jdlgnps46auei";
 pub const OTHER_CREDENTIAL: &str = "hbxq82wntkr5vzc7jm4pldsgfj39aeoy";
 
 /// The shared secret this world's ingress requires.
-const SECRET: &str = "a-shared-secret-this-tier-configures";
+pub const SECRET: &str = "a-shared-secret-this-tier-configures";
 
 /// The image this world stores, as bytes a digest can be taken of.
 const IMAGE_BYTES: &[u8] = b"not a photograph, but the bytes of one";
@@ -173,10 +173,18 @@ impl World {
         let configuration = root.path().join("server.toml");
         std::fs::write(&configuration, server_document(&state, &printer))
             .expect("the configuration is writable");
+        // Nothing on the path the supervisor runs with. No journey here is about
+        // a supervision turn, and an alert one of them posts prompts one: over
+        // whatever harness this host happens to have installed, that turn would
+        // be a real conversation with a real agent. With nothing to find it
+        // fails the way a missing harness does, recorded against the event.
+        let no_harness = root.path().join("no-harness-on-this-path");
+        std::fs::create_dir_all(&no_harness).expect("an empty directory to search");
         let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .arg("server")
             .arg("--config")
             .arg(&configuration)
+            .env("PATH", &no_harness)
             .stderr(Stdio::piped())
             .spawn()
             .expect("the command that runs the supervisor runs");

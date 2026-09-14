@@ -55,6 +55,35 @@ range allowed.
 
 ## The operations
 
+### prints
+
+Every print the server holds, ended or not, most recently opened first, and which
+of them the printer's current job belongs to.
+
+`GET /v1/prints` — answers success.
+
+Takes nothing. It answers `PrintsAnswer`: `prints`, each a `PrintRecord`, and
+`active`, the print ID of the printer's current job. `active` is present exactly
+when the printer reports a job in one of the active states — `printing` and
+`paused`, of the `PrinterState` vocabulary — and absent when the printer reports
+any other state or cannot be read, in which case the stored prints are still the
+answer.
+
+Reading it **adopts** that job: when no print with no end recorded carries the
+job's file name, the server opens one — carrying that file name and no Obico ID —
+and names it `active`; otherwise the most recently opened such print is `active`
+and nothing is written. Reading it again while the same job runs opens nothing
+further, and it asks the printer for its job and for nothing else. An open print's
+recorded `state` is `printing` whether or not the printer is paused now; the
+printer's live state is `status`'s answer.
+
+The first Obico alert or printer notification about that job attaches its Obico
+print ID to the adopted print rather than opening a second: a print already
+carrying the alert's ID is that print; otherwise the most recently opened print
+with no end recorded, no Obico ID and the alert's own file name takes the ID;
+otherwise a print is opened for the alert. The file name is the key, because
+Obico's `print.filename` is the name OctoPrint reports as the job's file.
+
 ### status
 
 What the print and the machine are doing right now.
@@ -232,6 +261,13 @@ credential as a bearer token.
 #### actor
 
 `client.actor()` reads the actor used by generated action methods.
+
+#### prints
+
+`client.prints()` calls the prints operation and returns `PrintsAnswer`: every
+print, and `active`, the ID of the print the printer's current job belongs to
+when it reports one. It is how a caller finds the `print_id` every other print
+method takes.
 
 #### status
 

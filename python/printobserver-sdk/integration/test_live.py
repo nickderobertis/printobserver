@@ -482,6 +482,20 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("resume", answered, seen.answer)
 
 
+def step_prints(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`prints`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    answered = client.prints()
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`prints`")
+    equal(seen.target, "/v1/prints", describing="`prints`")
+    equal(seen.status, 200, describing="`prints`")
+    equal(seen.body, "", describing="what `prints` sent")
+    same("prints", answered, seen.answer)
+
+
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 def test_every_method_is_answered_by_a_real_supervisor(
     world: Supervisor,
@@ -506,9 +520,10 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_acknowledge_failure(client, world, proxy)
         step_pause(client, world, proxy)
         step_resume(client, world, proxy)
+        step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 16,
+            proxy.calls() >= 17,
             describing="every call to have gone through the proxy",
         )
 

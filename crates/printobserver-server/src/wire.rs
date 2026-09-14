@@ -20,7 +20,7 @@ use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventId, EventRecord, FileName};
+use printobserver_types::{EventId, EventRecord, FileName, PrintId};
 
 /// Why a request could not be turned into one action of the vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,6 +330,25 @@ impl From<ImageLookup> for ImageAnswer {
             ImageLookup::FileMissing { record } => Self { record, path: None },
         }
     }
+}
+
+/// What the prints read answers: every print, and the one the printer is
+/// running.
+///
+/// An open print's recorded `state` is the state it was opened in, which is
+/// `printing` whether or not the machine is paused now; what the machine is
+/// doing is the status read's answer.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrintsAnswer {
+    /// Every print this server holds, ended or not, most recently opened first.
+    pub prints: Vec<PrintRecord>,
+    /// The print the printer's current job belongs to, present exactly when the
+    /// printer reports a job it is printing or has paused. Absent when the
+    /// printer could not be read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active: Option<PrintId>,
 }
 
 /// What a history read answers.

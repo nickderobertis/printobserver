@@ -51,7 +51,7 @@ use crate::config::ApiCredential;
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, ManifestBody, StatusAnswer,
+    ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer,
 };
 
 /// What every handler is given: the supervisor, and the stores the reads
@@ -169,6 +169,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         );
     }
     match (operation.name, operation.method) {
+        ("prints", Method::Get) => get(prints),
         ("status", Method::Get) => get(status),
         ("context", Method::Get) => get(context),
         ("image", Method::Get) => get(image),
@@ -264,6 +265,25 @@ async fn act(
             printer_refusal,
         },
     )
+}
+
+/// List every print, and name the one the printer's job belongs to.
+///
+/// Reading this adopts that job when no open print carries its file name, which
+/// is how a print started at the printer gets an identifier before anything has
+/// reported on it. A printer that cannot be read still answers the stored
+/// prints, with nothing active.
+async fn prints(State(state): State<ApiState>) -> Response {
+    match state.supervisor.prints().await {
+        Ok(listing) => answer(
+            StatusCode::OK,
+            &PrintsAnswer {
+                prints: listing.prints,
+                active: listing.active,
+            },
+        ),
+        Err(error) => refusal(core_status(&error), error),
+    }
 }
 
 /// Read one print's status.

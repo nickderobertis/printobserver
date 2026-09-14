@@ -32,6 +32,22 @@ const ACTOR = JSON.parse(
   '{"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
 ) as Actor;
 
+test("prints sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"active": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prints": [{"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}]}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.prints();
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/prints");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
 test("status sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
     '{"interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "session": {"close_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "closed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "created_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "harness_identity": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "last_turn_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',

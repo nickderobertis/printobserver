@@ -38,6 +38,31 @@ ACTOR = cast(
 )
 
 
+def test_prints_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`prints` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"active": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prints":'
+        ' [{"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "en'
+        'ded_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5'
+        ', "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "ope'
+        'ned_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_p'
+        'rint_id": 7, "state": "operational"}]}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        answered = client.prints()
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/prints")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
 def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`status` sends what it declares and answers what the server sent."""
     answer = json.loads(
