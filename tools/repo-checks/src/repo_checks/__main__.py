@@ -18,6 +18,7 @@ from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
 COMMANDS = (
     "install-tools",
+    "tool-version",
     "install-hooks",
     "commit-msg",
     "pr-title",
@@ -37,7 +38,11 @@ def main(argv: list[str] | None = None) -> int:
         "name",
         help=f"one of: all, workflows, {', '.join(sorted(ALL))}, {', '.join(COMMANDS)}",
     )
-    parser.add_argument("argument", nargs="?", help="the commit-message file, for commit-msg")
+    parser.add_argument(
+        "argument",
+        nargs="?",
+        help="the commit-message file, for commit-msg; the tool, for tool-version",
+    )
     parser.add_argument("--root", default=".", help="the tree to read (default: the cwd)")
     parser.add_argument("--base", default=None, help="a base revision to compare a change against")
     parsed = parser.parse_args(argv)
@@ -47,6 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     match parsed.name:
         case "install-tools":
             return commands.install_tools(repo)
+        case "tool-version":
+            if parsed.argument is None:
+                parser.error("tool-version needs the command of a toolchain tool")
+            return commands.tool_version(repo, parsed.argument)
         case "install-hooks":
             return commands.install_hooks(repo)
         case "docs-schemas-write":

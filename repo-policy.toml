@@ -571,6 +571,16 @@ allowlist = ".claude/settings.json"
 # The tools `just install-tools` puts on PATH when they are missing. A release
 # workflow may only run a program named here: a workflow naming a program
 # nothing installs is a release that fails after a merge.
+#
+# A tool carrying `version` is held to that one release everywhere this
+# repository runs it, and that field is the one place the release is written:
+# `{version}` in its `install` is substituted from it; `just install-tools`
+# replaces a copy on PATH that answers `--version` with any other release, and
+# refuses one still answering another afterwards; and a workflow installing it
+# prebuilt installs the release `just tool-version <command>` reads from here,
+# which `just check-repo` requires of it. Unheld, the gate ran whichever release
+# a cache restored and the release job whichever a registry served newest, so a
+# journey proving one release-plz proved nothing about the one that releases.
 [[toolchain.tool]]
 command = "cargo-nextest"
 install = "cargo install cargo-nextest --locked"
@@ -579,9 +589,14 @@ install = "cargo install cargo-nextest --locked"
 command = "cargo-llvm-cov"
 install = "cargo install cargo-llvm-cov --locked"
 
+# Held at the newest release on 2026-09-14. It reports a forge's refusal in a
+# different shape from 0.3.164, the release the `0.2.0` run used, and
+# `tests/repo-e2e/tests/test_release_tag_journey.py` records the shape this one
+# prints: a bump re-reads that recording.
 [[toolchain.tool]]
 command = "release-plz"
-install = "cargo install release-plz --locked"
+version = "0.3.167"
+install = "cargo install release-plz --locked --version {version}"
 
 [docs]
 # The agent-facing documentation: one skill and the reference documents it

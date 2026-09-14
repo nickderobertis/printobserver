@@ -162,6 +162,63 @@ def test_a_release_workflow_with_no_release_step_is_refused(
     refused(findings, "no committed workflow performs releases")
 
 
+#: How the committed release workflow installs the release-plz the toolchain holds.
+HELD_INSTALL = "release-plz@${{ steps.held.outputs.version }},"
+
+
+@pytest.mark.parametrize(
+    ("installed", "why"),
+    [
+        ("release-plz,", "unpinned, it is whatever the registry serves newest"),
+        ("release-plz@0.3.160,", "pinned to a literal, it is a second statement a bump misses"),
+    ],
+)
+def test_a_prebuilt_release_program_not_at_the_held_release_is_refused(
+    tree: Callable[[], Tree], installed: str, why: str
+) -> None:
+    """The release job installs the release-plz the gate's toolchain holds, and no other."""
+    broken = tree()
+    broken.write(RELEASE, broken.read(RELEASE).replace(HELD_INSTALL, installed))
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, f"installs `{installed.rstrip(',')}` through `taiki-e/install-action@v2`")
+    refused(findings, "rather than the release `repo-policy.toml` holds `release-plz` at")
+
+
+def test_a_held_release_that_is_not_a_release_is_refused(tree: Callable[[], Tree]) -> None:
+    """A held release reaches a workflow's output, so one that is not a release is refused."""
+    broken = tree()
+    broken.write(
+        "repo-policy.toml",
+        broken.read("repo-policy.toml").replace(
+            'command = "release-plz"\nversion = "', 'command = "release-plz"\nversion = "newest-'
+        ),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "holds `release-plz` at 'newest-")
+    refused(findings, "which is not a release")
+
+
+def test_a_prebuilt_release_program_whose_release_no_step_reads_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A step output nothing wrote is an empty release, which installs the newest."""
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace(
+            'run: just tool-version release-plz >> "$GITHUB_OUTPUT"', "run: true"
+        ),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "give an earlier step of that job an `id` running `just tool-version")
+
+
 def test_a_release_that_builds_nothing_beside_the_crates_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
