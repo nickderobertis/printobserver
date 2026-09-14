@@ -25,15 +25,15 @@ base64.workspace = true
 # nothing seeded: the credential it fills is the whole of what stands between a
 # caller and a printer.
 getrandom = "0.3"
-printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
-printobserver-obico = { path = "../printobserver-obico", version = "0.2.0" }
-printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.2.0" }
-printobserver-oneharness = { path = "../printobserver-oneharness", version = "0.2.0" }
-printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.2.0" }
-printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.2.0" }
+printobserver-core = { path = "../printobserver-core", version = "0.3.0" }
+printobserver-obico = { path = "../printobserver-obico", version = "0.3.0" }
+printobserver-octoprint = { path = "../printobserver-octoprint", version = "0.3.0" }
+printobserver-oneharness = { path = "../printobserver-oneharness", version = "0.3.0" }
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.3.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.3.0" }
 printobserver-supervisor-api.workspace = true
 printobserver-types.workspace = true
-printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.2.0" }
+printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.3.0" }
 serde.workspace = true
 serde_json.workspace = true
 # The one comparison of a presented API credential against the one in force,
