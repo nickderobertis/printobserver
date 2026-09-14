@@ -597,6 +597,37 @@ fn a_harness_ended_by_a_signal_exits_as_a_shell_reports_it() {
     );
 }
 
+/// A harness directory that is already there is kept, and made private again
+/// if anything widened it.
+#[test]
+fn an_existing_harness_directory_is_kept_and_made_private() {
+    let host = Host::with_stand_ins(0);
+    let entry = &SIGN_INS[0];
+    let config = host.only_what_signing_in_reads(entry.identity());
+    let directory = host.state().join(HARNESS_DIRECTORY).join(entry.identity());
+    std::fs::create_dir_all(&directory).expect("the directory is creatable");
+    std::fs::write(directory.join("kept"), "from an earlier sign-in")
+        .expect("the directory is writable");
+    std::fs::set_permissions(
+        &directory,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("the directory is widened");
+
+    let output = signing_in(&host, &config, TYPED, &[]);
+
+    assert_eq!(output.status.code(), Some(0), "{}", said(&output));
+    assert_eq!(
+        mode(&directory),
+        0o700,
+        "a widened harness directory was signed into as it was"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("kept")).expect("what it held is kept"),
+        "from an earlier sign-in"
+    );
+}
+
 /// A harness program nobody installed where the caller's path finds it is
 /// refused naming the program and the path.
 #[test]

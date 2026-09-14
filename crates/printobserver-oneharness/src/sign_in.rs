@@ -106,27 +106,39 @@ impl HarnessSignIn {
         state_dir.join(HARNESS_DIRECTORY).join(self.identity)
     }
 
-    /// That directory, created readable by its owner alone where it is not
-    /// there yet.
+    /// That directory, created where it is not there yet, and readable by its
+    /// owner alone whether it was just created or was already there.
     ///
     /// # Errors
     ///
-    /// Returns the operating system's own error when the directory cannot be
-    /// created, or cannot be made private once it has been.
+    /// Returns [`std::io::ErrorKind::InvalidInput`] when something other than a
+    /// directory is at that path — a symlink included, since a sign-in kept
+    /// through one is kept wherever it points — and the operating system's own
+    /// error when the directory cannot be created or cannot be made private.
     pub fn prepare(&self, state_dir: &Path) -> std::io::Result<PathBuf> {
         use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 
         let directory = self.directory(state_dir);
-        if directory.is_dir() {
-            return Ok(directory);
+        match std::fs::symlink_metadata(&directory) {
+            Ok(found) if found.is_dir() => {}
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "something other than a directory is there",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(&directory)?;
+            }
+            Err(error) => return Err(error),
         }
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&directory)?;
-        // Stated again after the fact: a directory's creation mode is narrowed
-        // by the process's own mask, and a mask is not something a directory
-        // holding a sign-in may depend on.
+        // Stated on every preparation rather than trusted: a creation mode is
+        // narrowed by the process's own mask, and a directory that was already
+        // there may have been widened since. Only its owner can change its
+        // mode, so a directory another user owns is refused here.
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
         Ok(directory)
     }
@@ -201,7 +213,7 @@ mod tests {
     }
 
     /// The directory is created private under the state directory, and one
-    /// already there is left as it is.
+    /// already there keeps what it holds and is made private again.
     #[test]
     fn the_directory_is_created_private_under_the_state_directory() {
         let state = std::env::temp_dir().join(format!(
@@ -225,12 +237,33 @@ mod tests {
         assert_eq!(mode, 0o700, "the directory is mode {mode:o}");
 
         std::fs::write(prepared.join("signed-in"), "kept").expect("the directory is writable");
+        std::fs::set_permissions(&prepared, std::fs::Permissions::from_mode(0o755))
+            .expect("the directory is widened");
         let again = entry.prepare(&state).expect("the directory is there");
+        let narrowed = std::fs::metadata(&again)
+            .map(|found| found.permissions().mode() & 0o777)
+            .expect("the directory is there");
         let kept = std::fs::read_to_string(again.join("signed-in"));
         let assigned = entry.assignment(&again).map(|found| found.to_string());
+
+        // A symlink where a directory belongs is refused rather than followed.
+        let elsewhere = state.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).expect("a directory to point at");
+        std::os::unix::fs::symlink(&elsewhere, SIGN_INS[1].directory(&state))
+            .expect("a symlink in the directory's place");
+        let through_a_symlink = SIGN_INS[1].prepare(&state).map_err(|error| error.kind());
         std::fs::remove_dir_all(&state).expect("the state directory is removable");
 
+        assert_eq!(
+            narrowed, 0o700,
+            "a widened directory was left mode {narrowed:o}"
+        );
         assert_eq!(kept.expect("what it held is kept"), "kept");
+        assert_eq!(
+            through_a_symlink,
+            Err(std::io::ErrorKind::InvalidInput),
+            "a symlink in the directory's place was prepared"
+        );
         assert_eq!(
             assigned.expect("an assignment"),
             format!("{CLAUDE_IDENTITY_ENV}={}", again.display())
