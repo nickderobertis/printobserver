@@ -46,16 +46,16 @@ pub use config::{
     FAN_VOCABULARY, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED,
     ServerConfig, SharedSecret, SignInConfig, SupervisorSection,
 };
-/// The harness identities this program can sign in, as the adapter declares
-/// them: the command-line program reads the table through this crate, which is
-/// the one edge it has to the adapter.
-pub use printobserver_oneharness::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
     Answer, BESIDE_THE_ACTIONS, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect, IMAGE_PATH_FIELD,
     INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter, VERSION_PREFIX,
     ValueKind, operation,
 };
+/// The harness identities this program can sign in, as the adapter declares
+/// them: the command-line program reads the table through this crate, which is
+/// the one edge it has to the adapter.
+pub use printobserver_oneharness::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use reconcile::{
     ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue,
     reconcile,

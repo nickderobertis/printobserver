@@ -199,7 +199,10 @@ fn names_in(directory: &Path) -> Vec<String> {
 /// An address on this host nothing is listening on.
 fn nothing_listening() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    listener.local_addr().expect("the bound address").to_string()
+    listener
+        .local_addr()
+        .expect("the bound address")
+        .to_string()
 }
 
 /// The standard error of one run, as text.
@@ -411,7 +414,11 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
     let reached = {
         let _held = forking();
         Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .args(["status", "--print-id", "01a08000-0000-7000-8000-000000000001"])
+            .args([
+                "status",
+                "--print-id",
+                "01a08000-0000-7000-8000-000000000001",
+            ])
             .arg("--config")
             .arg(&client)
             .env_remove("PRINTOBSERVER_SERVER")
@@ -497,7 +504,10 @@ fn a_configuration_without_the_values_signing_in_reads_is_refused() {
     let host = Host::with_stand_ins(0);
     let without_a_harness = host.configuration(
         "config.toml",
-        &format!("state_dir = \"{}\"\n\n[supervisor]\n", host.state().display()),
+        &format!(
+            "state_dir = \"{}\"\n\n[supervisor]\n",
+            host.state().display()
+        ),
     );
     let absent = host.root.path().join("nowhere.toml");
 
