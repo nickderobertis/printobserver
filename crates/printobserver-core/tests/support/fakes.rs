@@ -327,7 +327,9 @@ const PATIENCE: Duration = Duration::from_millis(400);
 /// Unarmed, it holds nobody. Armed for a number of callers, each one that
 /// arrives waits until that many have, or until [`PATIENCE`] runs out — so two
 /// callers nothing keeps apart are made to overlap, and two that something does
-/// keep apart each wait a moment alone and go on.
+/// keep apart each wait a moment alone and go on. A read arrives **after** it
+/// has taken what it answers, so two reads that overlap here both answer what
+/// was there before either caller wrote anything.
 #[derive(Debug, Default)]
 pub struct Meeting {
     /// How many callers are wanted, and how many have come.
@@ -574,12 +576,12 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
-        self.reads_of_the_prints.arrive();
         let found: Vec<PrintRecord> = self
             .newest_first()
             .into_iter()
             .filter(|print| print.ended_at.is_none())
             .collect();
+        self.reads_of_the_prints.arrive();
         Box::pin(async move { Ok(found) })
     }
 
@@ -587,8 +589,8 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadPrints);
-        self.reads_of_the_prints.arrive();
         let found = self.newest_first();
+        self.reads_of_the_prints.arrive();
         Box::pin(async move { Ok(found) })
     }
 

@@ -64,13 +64,17 @@ impl Supervisor {
     /// print for the job could not be opened.
     pub async fn list_and_adopt_prints(&self) -> Result<PrintListing, CoreError> {
         let _resolving = self.resolving().await;
+        // The stored prints are read before the machine is asked what it is
+        // running. Which comes first changes no answer while the lock above is
+        // held; it is the order in which a second resolution the lock did not
+        // keep out would have read a listing that no longer stands.
+        let prints = self.stores().prints.prints().await?;
         let running = self
             .read_job()
             .await
             .ok()
             .filter(|job| ACTIVE_STATES.contains(&job.state))
             .and_then(|job| job.file_name);
-        let prints = self.stores().prints.prints().await?;
         let Some(file_name) = running else {
             return Ok(PrintListing {
                 prints,
