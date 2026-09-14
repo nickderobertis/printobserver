@@ -396,7 +396,7 @@ action_schema = "schemas/printobserver-core/PrintAction.json"
 # system exposes beside the action vocabulary. `context_read` is the one
 # operation the template may name, because it is a read.
 program = "printobserver"
-reads = ["status", "context", "image", "materialize", "history", "manifest-get", "manifest-set"]
+reads = ["prints", "status", "context", "image", "materialize", "history", "manifest-get", "manifest-set"]
 context_read = "context"
 # The lock the checked-in schema tree is read and written under, and every
 # suite that takes it. One journey in the adapter's suite CHANGES a checked-in

@@ -146,6 +146,18 @@ impl PrintStore for MemoryStore {
         })
     }
 
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        unsupported("prints")
+    }
+
+    fn attach_obico_print(
+        &self,
+        _print_id: PrintId,
+        _obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        unsupported("attach_obico_print")
+    }
+
     fn end_print(
         &self,
         print_id: PrintId,
@@ -338,6 +350,18 @@ impl PrintStore for RefusingStore {
     }
 
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        refused()
+    }
+
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        refused()
+    }
+
+    fn attach_obico_print(
+        &self,
+        _print_id: PrintId,
+        _obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         refused()
     }
 

@@ -65,6 +65,9 @@ fn alert_body(image_url: &str) -> String {
     )
     .expect("the committed sample is JSON");
     sample["print"]["id"] = json!(OBICO_PRINT);
+    // The job the bring-up started, named by the file the printer reports: that
+    // is what joins this alert to the print a listing adopted for the job.
+    sample["print"]["filename"] = json!(HOLD_FILE);
     sample["img_url"] = json!(image_url);
     sample.to_string()
 }
@@ -279,6 +282,94 @@ async fn print_of(world: &Composed) -> PrintId {
         .id
 }
 
+fn prints_url(world: &Composed) -> String {
+    format!(
+        "http://{}{}",
+        world.server.address(),
+        printobserver_server::operation("prints")
+            .expect("the prints read is served")
+            .full_path()
+    )
+}
+
+/// With no alert posted, a prints read names the job the bring-up started as
+/// active — adopting it, since nothing has reported on it — a second read opens
+/// nothing further, and the print it names can be read by that identifier.
+async fn a_listing_adopts_the_running_job_before_any_alert(world: &Composed) -> PrintId {
+    let (code, listed) = world.get(&prints_url(world)).await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{listed}");
+    let active = listed["active"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the job the bring-up started was not named active: {listed}"))
+        .to_owned();
+    let prints = listed["prints"].as_array().expect("the prints are a list");
+    assert_eq!(
+        prints.len(),
+        1,
+        "a supervisor over a fresh store listed prints beside the one it adopted: {listed}"
+    );
+    assert_eq!(prints[0]["id"], json!(active), "{listed}");
+    assert_eq!(
+        prints[0]["file_name"],
+        json!(HOLD_FILE),
+        "the adopted print does not carry the job's file name: {listed}"
+    );
+    assert!(
+        prints[0].get("provider_print_id").is_none(),
+        "the adopted print carries an identifier nothing reported: {listed}"
+    );
+
+    let (code, again) = world.get(&prints_url(world)).await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{again}");
+    assert_eq!(
+        again, listed,
+        "a second read while the same job runs changed the listing"
+    );
+
+    let print_id: PrintId = active.parse().expect("a print identifier");
+    let (code, context) = world.get(&world.operation_url("context", print_id)).await;
+    assert_eq!(
+        code,
+        reqwest::StatusCode::OK,
+        "the adopted print cannot be read by the identifier the listing gave: {context}"
+    );
+    assert_eq!(
+        context["context"]["print"]["id"],
+        json!(active),
+        "{context}"
+    );
+    print_id
+}
+
+/// After the first alert, the listing shows one print for the job — the one it
+/// adopted — now carrying `Obico`'s identifier.
+async fn the_listing_shows_one_print_for_the_job(world: &Composed, print_id: PrintId) {
+    let (code, listed) = world.get(&prints_url(world)).await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{listed}");
+    let for_the_job: Vec<&Value> = listed["prints"]
+        .as_array()
+        .expect("the prints are a list")
+        .iter()
+        .filter(|print| print["file_name"] == json!(HOLD_FILE))
+        .collect();
+    assert_eq!(
+        for_the_job.len(),
+        1,
+        "the alert opened a second print for the job: {listed}"
+    );
+    assert_eq!(
+        for_the_job[0]["id"],
+        json!(print_id.to_string()),
+        "{listed}"
+    );
+    assert_eq!(
+        for_the_job[0]["provider_print_id"],
+        json!(OBICO_PRINT),
+        "the adopted print does not carry the alert's identifier: {listed}"
+    );
+    assert_eq!(listed["active"], json!(print_id.to_string()), "{listed}");
+}
+
 /// One status read of the print.
 async fn status(world: &Composed, print_id: PrintId) -> Value {
     let (code, answer) = world.get(&world.operation_url("status", print_id)).await;
@@ -330,7 +421,15 @@ pub async fn walk(instance: &Scripted) {
     let proxy = Proxy::in_front_of(&instance.url);
     let world = Composed::open(instance, &proxy.base_url()).await;
 
-    let print_id = an_alert_opens_a_print_a_session_and_an_image(&world, &proxy, &host.url()).await;
+    let adopted = a_listing_adopts_the_running_job_before_any_alert(&world).await;
+    let print_id =
+        an_alert_joins_the_print_opens_a_session_and_stores_an_image(&world, &proxy, &host.url())
+            .await;
+    assert_eq!(
+        print_id, adopted,
+        "the first alert about the adopted job was handled against another print"
+    );
+    the_listing_shows_one_print_for_the_job(&world, print_id).await;
     the_agent_acted_through_the_api(&world, &proxy, print_id).await;
     the_reads_answer_the_records_they_name(&world, print_id).await;
     every_change_refuses_a_request_with_no_reason(&world, &proxy, print_id).await;
@@ -379,8 +478,9 @@ pub async fn walk(instance: &Scripted) {
     world.server.stop().await;
 }
 
-/// The alert opens the print, stores its image, and opens a session.
-async fn an_alert_opens_a_print_a_session_and_an_image(
+/// The alert joins the print adopted for its job, stores its image, and opens a
+/// session.
+async fn an_alert_joins_the_print_opens_a_session_and_stores_an_image(
     world: &Composed,
     proxy: &Proxy,
     image_url: &str,

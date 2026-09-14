@@ -198,6 +198,19 @@ def python_identifier(name: str) -> bool:
     return name.isidentifier() and name not in PYTHON_KEYWORDS
 
 
+#: The operations whose method is named for what a caller asks rather than for
+#: everything answering may record. `prints` is a read that opens a record of a
+#: job the printer is already running, and the judged rule about names matching
+#: behaviour is answered for its methods in `suppressions.toml`. A name here that
+#: no operation carries leaves those entries matching nothing, which
+#: `just check-repo` refuses.
+NAMED_FOR_WHAT_IS_ASKED = frozenset({"prints"})
+
+#: What a generated method of one of those operations carries above its name,
+#: after its own language's comment marker.
+NAME_DIRECTIVE = "llmlint: ignore[names_match_behavior] See suppressions.toml."
+
+
 def method_name(operation: str, language: str) -> str:
     """What one operation is called in one client.
 

@@ -58,6 +58,7 @@ pub mod error;
 pub mod events;
 pub mod expiry;
 pub mod kinds;
+pub mod listing;
 pub mod records;
 pub mod store;
 pub mod supervisor;

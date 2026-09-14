@@ -91,6 +91,7 @@ def step_status(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`status`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.status(world.print_id)
 
     seen = proxy.last()
@@ -105,6 +106,7 @@ def step_context(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`context`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.context(world.print_id)
 
     seen = proxy.last()
@@ -119,6 +121,7 @@ def step_image(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`image`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.image(world.image_id)
 
     seen = proxy.last()
@@ -133,6 +136,7 @@ def step_manifest_set(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`manifest_set`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.manifest_set(world.print_id, REASON, manifest(world))
 
     seen = proxy.last()
@@ -157,6 +161,7 @@ def step_manifest_get(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`manifest_get`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.manifest_get(world.print_id)
 
     seen = proxy.last()
@@ -171,6 +176,7 @@ def step_history(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`history`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.history(world.print_id, 20)
 
     seen = proxy.last()
@@ -185,6 +191,7 @@ def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`cancel`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.cancel(world.print_id, REASON)
 
     seen = proxy.last()
@@ -205,6 +212,7 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`start_print`, answered by a real supervisor."""
     ready(client, world.print_id, "operational")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON)
 
     seen = proxy.last()
@@ -237,6 +245,7 @@ def step_set_feedrate_factor(client: Client, world: Supervisor, proxy: Proxy) ->
     """`set_feedrate_factor`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.set_feedrate_factor(world.print_id, 1.1, REASON, 60)
 
     seen = proxy.last()
@@ -271,6 +280,7 @@ def step_set_flowrate_factor(client: Client, world: Supervisor, proxy: Proxy) ->
     """`set_flowrate_factor`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.set_flowrate_factor(world.print_id, 1.0, REASON, 60)
 
     seen = proxy.last()
@@ -305,6 +315,7 @@ def step_set_fan_percent(client: Client, world: Supervisor, proxy: Proxy) -> Non
     """`set_fan_percent`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.set_fan_percent(world.print_id, 50.0, REASON, 60)
 
     seen = proxy.last()
@@ -339,6 +350,7 @@ def step_set_tool_target_c(client: Client, world: Supervisor, proxy: Proxy) -> N
     """`set_tool_target_c`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.set_tool_target_c(world.print_id, REASON, 210.0, 0, 60)
 
     seen = proxy.last()
@@ -378,6 +390,7 @@ def step_set_bed_target_c(client: Client, world: Supervisor, proxy: Proxy) -> No
     """`set_bed_target_c`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.set_bed_target_c(world.print_id, REASON, 60.0, 60)
 
     seen = proxy.last()
@@ -412,6 +425,7 @@ def step_acknowledge_failure(client: Client, world: Supervisor, proxy: Proxy) ->
     """`acknowledge_failure`, answered by a real supervisor."""
     ready(client, world.print_id, "")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.acknowledge_failure(world.print_id, "continue", world.event_id, REASON)
 
     seen = proxy.last()
@@ -446,6 +460,7 @@ def step_pause(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`pause`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.pause(world.print_id, REASON)
 
     seen = proxy.last()
@@ -466,6 +481,7 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`resume`, answered by a real supervisor."""
     ready(client, world.print_id, "paused")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     answered = client.resume(world.print_id, REASON)
 
     seen = proxy.last()
@@ -480,6 +496,21 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
         describing="the `reason` `resume` sent",
     )
     same("resume", answered, seen.answer)
+
+
+def step_prints(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`prints`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.prints()
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`prints`")
+    equal(seen.target, "/v1/prints", describing="`prints`")
+    equal(seen.status, 200, describing="`prints`")
+    equal(seen.body, "", describing="what `prints` sent")
+    same("prints", answered, seen.answer)
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
@@ -506,9 +537,10 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_acknowledge_failure(client, world, proxy)
         step_pause(client, world, proxy)
         step_resume(client, world, proxy)
+        step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 16,
+            proxy.calls() >= 17,
             describing="every call to have gone through the proxy",
         )
 

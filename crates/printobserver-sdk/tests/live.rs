@@ -628,6 +628,22 @@ fn step_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live::Pr
     live::same("resume", &answered, &seen.answer);
 }
 
+/// `prints`, answered by a real supervisor.
+fn step_prints(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .prints()
+        .expect("`prints` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`prints`");
+    assert_eq!(seen.target, "/v1/prints", "`prints`");
+    assert_eq!(seen.status, 200, "`prints`");
+    assert_eq!(seen.body, "", "`prints` sends no body");
+    live::same("prints", &answered, &seen.answer);
+}
+
 /// `cancel`, refused by a real supervisor's own policy.
 fn refused_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     let refused = client
@@ -878,8 +894,9 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_acknowledge_failure(&client, &world, &proxy);
     step_pause(&client, &world, &proxy);
     step_resume(&client, &world, &proxy);
+    step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 16, "every call went through the proxy");
+    assert!(proxy.calls() >= 17, "every call went through the proxy");
     standing.stop();
 }
 

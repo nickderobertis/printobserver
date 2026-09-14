@@ -52,6 +52,8 @@ mod documenting;
 mod durations;
 #[path = "journeys/failures.rs"]
 mod failures;
+#[path = "journeys/finding.rs"]
+mod finding;
 #[path = "journeys/formats.rs"]
 mod formats;
 #[path = "journeys/materializing.rs"]
@@ -79,6 +81,18 @@ fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
     tier::run(&world, tier::WHOLE);
+}
+
+/// A print started at the printer is found with `printobserver prints`, read
+/// by the identifier that names, and joined by the first alert about it.
+///
+/// A world of its own, because the journey ends the print every other journey
+/// here acts on.
+#[test]
+fn a_print_started_at_the_printer_is_found_and_joined_by_its_alert() {
+    let world = World::open(world::STOOD_IN);
+
+    finding::a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(&world);
 }
 
 /// Every command example the reference documents show, run against a real

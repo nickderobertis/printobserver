@@ -236,6 +236,107 @@ fn the_open_prints_answer_the_unended_prints_newest_first() {
     }
 }
 
+/// Every print is listed, ended or not, most recently opened first.
+///
+/// This is where a caller finds an identifier the store minted, so what it must
+/// not do is leave one out: an ended print is still one somebody reviews.
+#[test]
+fn every_print_is_listed_newest_first_whether_or_not_it_ended() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+
+        assert_eq!(
+            block_on(port.prints()),
+            Ok(Vec::new()),
+            "{name}: a store holding no print listed one"
+        );
+
+        let first = block_on(port.open_print(Some(1), Some("first.gcode".to_owned())))
+            .expect("a print opens");
+        let second = block_on(port.open_print(None, Some("second.gcode".to_owned())))
+            .expect("a second print opens");
+        let ended = block_on(port.end_print(
+            first.id,
+            PrinterState::Operational,
+            instant("2026-03-01T13:00:00Z"),
+            "it finished".to_owned(),
+        ))
+        .expect("the first print ends");
+        let third = block_on(port.open_print(None, None)).expect("a third print opens");
+
+        assert_eq!(
+            block_on(port.prints()),
+            Ok(vec![third, second, ended]),
+            "{name}: the listing is not every print, as it stands, newest first"
+        );
+    }
+}
+
+/// `Obico`'s identifier attaches to a print carrying none, and is never moved.
+///
+/// The two refusals are the port's own: there is no print to attach to, and
+/// the print already carries another of the provider's prints. Attaching the
+/// identifier the print already carries is the print unchanged, because an
+/// alert handled twice is not a conflict.
+#[test]
+fn an_obico_identifier_attaches_once_and_is_refused_for_another() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = block_on(port.open_print(None, Some("hold.gcode".to_owned())))
+            .expect("a print opens with no provider identifier");
+
+        let attached = block_on(port.attach_obico_print(print.id, 4211))
+            .expect("an identifier attaches to a print carrying none");
+        assert_eq!(
+            attached,
+            PrintRecord {
+                provider_print_id: Some(4211),
+                ..print.clone()
+            },
+            "{name}: attaching changed something beside the identifier"
+        );
+        assert_eq!(
+            block_on(port.print_by_provider_id(4211)),
+            Ok(Some(attached.clone())),
+            "{name}: the attached identifier is not what the print is found by"
+        );
+        assert_eq!(
+            block_on(port.attach_obico_print(print.id, 4211)),
+            Ok(attached.clone()),
+            "{name}: attaching the identifier the print carries was not the print unchanged"
+        );
+
+        assert_eq!(
+            block_on(port.attach_obico_print(print.id, 4212)),
+            Err(StoreError::ConstraintRefused {
+                constraint: "prints.provider_print_id".to_owned()
+            }),
+            "{name}: a print carrying one identifier took another"
+        );
+        assert_eq!(
+            block_on(port.print(print.id)),
+            Ok(Some(attached)),
+            "{name}: the refused attach moved the identifier anyway"
+        );
+
+        let nowhere = PrintId::new();
+        assert_eq!(
+            block_on(port.attach_obico_print(nowhere, 4213)),
+            Err(StoreError::NotFound {
+                what: format!("print {nowhere}")
+            }),
+            "{name}: an identifier attached to a print nothing holds"
+        );
+        assert_eq!(
+            block_on(port.print_by_provider_id(4213)),
+            Ok(None),
+            "{name}: the refused attach left a print carrying the identifier"
+        );
+    }
+}
+
 /// Every event this journey writes, with the kind and instant it was written at.
 struct Written {
     /// The events, oldest first.

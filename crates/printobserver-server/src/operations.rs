@@ -4,8 +4,9 @@
 //!
 //! The list here is the whole API. It is exactly one operation per variant of
 //! [`PrintAction`](printobserver_core::PrintAction) the contracts declare,
-//! plus six reads — status, context, image materialization, history, and the
-//! manifest's read and write — and nothing else. The router is built by folding
+//! plus seven operations beside them — the prints listing, status, context,
+//! image materialization, history, and the manifest's read and write — and
+//! nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
@@ -374,6 +375,7 @@ impl Operation {
         );
         let schema = match (self.name, self.effect) {
             (_, Effect::Mutating(_)) => schema_for!(crate::wire::ActionAnswer),
+            ("prints", _) => schema_for!(crate::wire::PrintsAnswer),
             ("status", _) => schema_for!(crate::wire::StatusAnswer),
             ("context", _) => schema_for!(crate::wire::ContextAnswer),
             ("image", _) => schema_for!(crate::wire::ImageAnswer),
@@ -603,7 +605,11 @@ const fn read(name: &'static str, path: &'static str) -> Operation {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 16] = [
+pub const OPERATIONS: [Operation; 17] = [
+    // Takes nothing: it is how a caller finds the identifier every other
+    // print-specific operation takes.
+    // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
+    read("prints", "/prints"),
     read("status", "/prints/{print_id}/status"),
     Operation {
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
@@ -699,12 +705,13 @@ pub const OPERATIONS: [Operation; 16] = [
     ),
 ];
 
-/// The six operations this server serves beside the action vocabulary.
+/// The seven operations this server serves beside the action vocabulary.
 ///
-/// Five of them read and the sixth writes a manifest, which asks nothing of the
-/// machine; what they have in common is that none of them is an action of the
-/// vocabulary the contracts declare.
-pub const BESIDE_THE_ACTIONS: [&str; 6] = [
+/// Six of them read and the seventh writes a manifest, which asks nothing of
+/// the machine; what they have in common is that none of them is an action of
+/// the vocabulary the contracts declare.
+pub const BESIDE_THE_ACTIONS: [&str; 7] = [
+    "prints",
     "status",
     "context",
     "image",

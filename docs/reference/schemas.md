@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-83 types. The set is every type any crate declares under
+84 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -9899,6 +9899,221 @@ Declared by `printobserver-printer-api`.
 }
 ```
 
+### PrintsAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "ManifestNarrowing": {
+      "additionalProperties": false,
+      "description": "One adjustable whose manifest range was wider than the envelope's.",
+      "properties": {
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "The adjustable that was narrowed."
+        },
+        "applied": {
+          "$ref": "#/$defs/Range",
+          "description": "The range that stands."
+        },
+        "requested": {
+          "$ref": "#/$defs/Range",
+          "description": "The range the manifest asked for."
+        }
+      },
+      "required": [
+        "adjustable",
+        "requested",
+        "applied"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrintRecord": {
+      "additionalProperties": false,
+      "description": "One print, and the record supervision keys from.\n\nThe provider's own print id is carried beside this record's identifier\nrather than as it, because a print may be observed before the provider\nthat reports it has one.",
+      "properties": {
+        "end_reason": {
+          "description": "Why it ended, if it has.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When it ended, if it has."
+        },
+        "file_name": {
+          "description": "The file being printed, as the source reported it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "This print's identifier, minted by the store."
+        },
+        "narrowings": {
+          "description": "Every manifest range this print narrowed to the envelope's.",
+          "items": {
+            "$ref": "#/$defs/ManifestNarrowing"
+          },
+          "type": "array"
+        },
+        "opened_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the print was opened."
+        },
+        "provider_print_id": {
+          "description": "The provider's own identifier for the print, whichever provider\nreported it, when one has.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the print is in."
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "opened_at",
+        "narrowings"
+      ],
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the prints read answers: every print, and the one the printer is\nrunning.\n\nAn open print's recorded `state` is the state it was opened in, which is\n`printing` whether or not the machine is paused now; what the machine is\ndoing is the status read's answer.",
+  "properties": {
+    "active": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The print the printer's current job belongs to, present exactly when the\nprinter reports a job it is printing or has paused. Absent when the\nprinter could not be read."
+    },
+    "prints": {
+      "description": "Every print this server holds, ended or not, most recently opened first.",
+      "items": {
+        "$ref": "#/$defs/PrintRecord"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "prints"
+  ],
+  "title": "PrintsAnswer",
+  "type": "object"
+}
+```
+
 ### ProviderPrint
 
 Declared by `printobserver-vision-api`.
@@ -11958,6 +12173,22 @@ Declared by `printobserver-server`.
   "description_version": 1,
   "media_type": "application/json",
   "operations": [
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "prints",
+      "parameters": [],
+      "path": "/v1/prints",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "PrintsAnswer"
+        }
+      ]
+    },
     {
       "accepts": null,
       "answers": "application/json",

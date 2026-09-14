@@ -78,6 +78,18 @@ Signs the supervisor's harness in, as the user it is run as — which is meant t
 
 **Failures.** `unconfigured`, before anything is run, when the configuration file cannot be read for its state directory and its harness, when that harness is not one this program can sign in — naming it and the ones it can — when the directory cannot be created, and when the harness's program is not on the caller's path.
 
+### prints
+
+Every print the supervisor holds, most recently opened first, and which of them the printer's current job belongs to. It is where the `--print-id` every other print command takes comes from.
+
+Reached at `GET /v1/prints`.
+
+**Arguments.** None of its own; the four global options are the whole of it.
+
+**Output.** Every print record, and `active` — the ID of the print the printer's current job belongs to — when the printer reports a job it is printing or has paused. When no open print carries that job's file name, reading this opens one for it and names it; reading again while the same job runs opens nothing further. An open print's recorded state is `printing` whether or not the printer is paused now; `status` reads what the printer is doing. When the printer cannot be read, the prints are still listed and `active` is absent.
+
+**Failures.** `unreachable` when nothing answers at the configured address; `refused` when the supervisor answers something this program will not act on.
+
 ### status
 
 What the print and the machine are doing right now.

@@ -203,6 +203,60 @@ impl SqliteStore {
         })
     }
 
+    /// Read every print, most recently opened first.
+    fn read_all_prints(&self) -> Result<Vec<PrintRecord>, StoreError> {
+        let query = format!("{PRINT_SELECT} ORDER BY opened_at DESC, id DESC");
+        self.on_connection(|connection| {
+            let mut statement = connection
+                .prepare(&query)
+                .map_err(|error| database_error(&error))?;
+            let rows = statement
+                .query_map([], print_from_row)
+                .map_err(|error| database_error(&error))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|error| database_error(&error))
+        })
+    }
+
+    /// Record the provider's identifier on a print that carries none.
+    ///
+    /// Read and written in one transaction, so that two alerts attaching
+    /// different identifiers at once cannot both find the print carrying none.
+    fn write_provider_print_id(
+        &self,
+        print_id: PrintId,
+        provider_print_id: i64,
+    ) -> Result<PrintRecord, StoreError> {
+        let identifier = print_id.to_string();
+        let query = format!("{PRINT_SELECT} WHERE id = ?1");
+        self.on_connection(move |connection| {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| database_error(&error))?;
+            let mut record = transaction
+                .query_row(&query, params![identifier], print_from_row)
+                .optional()
+                .map_err(|error| database_error(&error))?
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            match record.provider_print_id {
+                Some(held) if held == provider_print_id => return Ok(record),
+                Some(_) => return Err(refused("prints.provider_print_id")),
+                None => {}
+            }
+            transaction
+                .execute(
+                    "UPDATE prints SET provider_print_id = ?2 WHERE id = ?1",
+                    params![identifier, provider_print_id],
+                )
+                .map_err(|error| database_error(&error))?;
+            transaction
+                .commit()
+                .map_err(|error| database_error(&error))?;
+            record.provider_print_id = Some(provider_print_id);
+            Ok(record)
+        })
+    }
+
     /// One print, or the refusal that there is no such print.
     fn require_print(&self, print_id: PrintId) -> Result<PrintRecord, StoreError> {
         let identifier = print_id.to_string();
@@ -824,6 +878,18 @@ impl PrintStore for SqliteStore {
 
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         Box::pin(async move { self.read_open_prints() })
+    }
+
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        Box::pin(async move { self.read_all_prints() })
+    }
+
+    fn attach_obico_print(
+        &self,
+        print_id: PrintId,
+        obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move { self.write_provider_print_id(print_id, obico_print_id) })
     }
 
     fn end_print(

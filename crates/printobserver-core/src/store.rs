@@ -311,6 +311,33 @@ pub trait PrintStore: Send + Sync {
     /// order to say it had adopted it.
     fn open_prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>>;
 
+    /// Read every print, ended or not, most recently opened first.
+    ///
+    /// This is what a caller finds a print's identifier in: the identifier is
+    /// minted here, and nothing outside the store could otherwise name it.
+    fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>>;
+
+    /// Record `Obico`'s own identifier on a print that carries none.
+    ///
+    /// A print is opened before `Obico` reports on it when a caller finds the
+    /// job the printer is running, and this is how the first alert about that
+    /// job joins the print already open for it rather than opening a second.
+    /// Recording the identifier a print already carries answers the print
+    /// unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a print that does not exist with [`StoreError::NotFound`], and a
+    /// print already carrying a different identifier with
+    /// [`StoreError::ConstraintRefused`] naming `prints.provider_print_id`: a
+    /// correlation, once recorded, is never moved to another of the provider's
+    /// prints.
+    fn attach_obico_print(
+        &self,
+        print_id: PrintId,
+        obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>>;
+
     /// Read one print by the provider's own identifier for it.
     fn print_by_provider_id(
         &self,

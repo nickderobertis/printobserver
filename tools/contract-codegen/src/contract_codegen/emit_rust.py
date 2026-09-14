@@ -28,7 +28,13 @@ from contract_codegen.model import (
     Union,
     Variant,
 )
-from contract_codegen.naming import method_name, pascal, rust_identifier
+from contract_codegen.naming import (
+    NAME_DIRECTIVE,
+    NAMED_FOR_WHAT_IS_ASKED,
+    method_name,
+    pascal,
+    rust_identifier,
+)
 from contract_codegen.walk import EventStep, LiveStep
 
 #: What each scalar of the contracts is in Rust.
@@ -212,13 +218,19 @@ def _method(operation: Operation) -> list[str]:
         ),
         "    ",
     )
+    if operation.name in NAMED_FOR_WHAT_IS_ASKED:
+        lines.append(f"    // {NAME_DIRECTIVE}")
     lines.append(
         f"    pub fn {method_name(operation.name, 'rust')}({arguments}) "
         f"-> Result<{operation.answer}, ClientError> {{"
     )
     if operation.mutating:
         lines.append("        crate::reason_given(reason)?;")
-    lines.append(f'        let target = format!("{_target(operation)}");')
+    target = _target(operation)
+    # A path that takes no value — the prints listing — is a plain string: a
+    # `format!` with nothing to format is a finding of the client's own linter.
+    built = f'format!("{target}")' if "{" in target else f'String::from("{target}")'
+    lines.append(f"        let target = {built};")
 
     query = [parameter for parameter in supplied if parameter.located == "query"]
     if query:

@@ -146,6 +146,10 @@ fn answer_schemas() -> Vec<(String, Value)> {
             schema_of::<printobserver_server::ManifestAnswer>(),
         ),
         (
+            "PrintsAnswer.json".to_owned(),
+            schema_of::<printobserver_server::PrintsAnswer>(),
+        ),
+        (
             "StatusAnswer.json".to_owned(),
             schema_of::<printobserver_server::StatusAnswer>(),
         ),

@@ -38,6 +38,27 @@ fn actor() -> Actor {
     parsed::<Actor>(r#"{"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
 }
 
+/// `prints` sends what it declares and answers what the server sent.
+#[test]
+fn prints_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"active": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prints": [{"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}]}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client.prints().expect("`prints` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(received.target, "/v1/prints");
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
 /// `status` sends what it declares and answers what the server sent.
 #[test]
 fn status_sends_what_it_declares_and_answers_what_the_server_sent() {

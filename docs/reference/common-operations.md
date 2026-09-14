@@ -41,6 +41,35 @@ status matters, `echo $?` is a command of the example like any other.
 
 ## The worked examples
 
+### prints
+
+Every print the supervisor holds, most recently opened first, and which of them
+the printer's current job belongs to. This is where `PRINT_ID` comes from: start
+a print in OctoPrint, run this, and take `active`.
+
+When the printer reports a job it is printing or has paused and no open print
+carries that job's file name, this read opens one for it — which is how a print
+started at the printer has an identifier before Obico has reported anything.
+Reading it again while the same job runs opens nothing further, and it asks the
+printer for nothing but what it is doing. The first Obico alert about that job
+joins the print this opened rather than opening a second.
+
+An open print's `state` is the state it was opened in, which is `printing`
+whether or not the printer is paused now. What the printer is doing is `status`'s
+answer. When the printer cannot be read, the prints are still listed and
+`active` is absent.
+
+```console
+$ printobserver prints
+active: PRINT_ID
+prints.0.file_name: FILE
+prints.0.id: PRINT_ID
+prints.0.narrowings: []
+prints.0.opened_at: TIMESTAMP
+prints.0.provider_print_id: 4211
+prints.0.state: printing
+```
+
 ### status
 
 What the print and the machine are doing right now. This is the read to start

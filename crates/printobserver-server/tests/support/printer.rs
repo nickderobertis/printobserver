@@ -12,7 +12,12 @@
 //! against the instance `just octoprint-up` starts; the two tiers walk the same
 //! declared operation list.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
+
+/// How long a job read waits for the others it was told to meet before going
+/// on alone.
+const PATIENCE: Duration = Duration::from_millis(400);
 
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{
@@ -52,6 +57,8 @@ struct Held {
     job: JobSnapshot,
     /// Everything it has been asked, in order.
     calls: Vec<Call>,
+    /// Whether it answers no read at all, as a machine switched off does.
+    unreadable: bool,
 }
 
 /// A printer these journeys drive the server against.
@@ -59,6 +66,10 @@ struct Held {
 pub struct RecordingPrinter {
     /// What it holds.
     held: Mutex<Held>,
+    /// How many job reads are to wait for one another, and how many have come.
+    meeting: Mutex<(usize, usize)>,
+    /// Signalled whenever a job read arrives.
+    arrived: Condvar,
 }
 
 /// One feedrate factor, flagged against the range the contracts declare for it.
@@ -123,8 +134,53 @@ impl RecordingPrinter {
                     error: None,
                 },
                 calls: Vec::new(),
+                unreadable: false,
             }),
+            meeting: Mutex::new((0, 0)),
+            arrived: Condvar::new(),
         })
+    }
+
+    /// Make this many job reads wait for one another before any answers.
+    ///
+    /// Two callers nothing keeps apart are made to overlap at the read, and two
+    /// that something does keep apart each wait a moment alone and go on.
+    pub fn job_reads_meet(&self, callers: usize) {
+        *self.meeting.lock().expect("the meeting is not poisoned") = (callers, 0);
+    }
+
+    /// Arrive at the job read's meeting, and wait for the others when one is set.
+    fn meet(&self) {
+        let mut counts = self.meeting.lock().expect("the meeting is not poisoned");
+        if counts.0 == 0 {
+            return;
+        }
+        counts.1 += 1;
+        self.arrived.notify_all();
+        let _ = self
+            .arrived
+            .wait_timeout_while(counts, PATIENCE, |(wanted, came)| *came < *wanted)
+            .expect("the meeting is not poisoned");
+    }
+
+    /// A switched-off machine: while set, both its snapshot and its job are
+    /// refused as unreachable, which is how a listing is shown to answer anyway.
+    pub fn unreadable(&self, unreadable: bool) {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .unreadable = unreadable;
+    }
+
+    /// The refusal a machine nothing can read answers, when it is one.
+    fn unread(&self) -> Option<PrinterError> {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .unreadable
+            .then(|| PrinterError::Unreachable {
+                detail: "the machine is switched off".to_owned(),
+            })
     }
 
     /// Everything it has been asked, in order.
@@ -246,18 +302,24 @@ impl RecordingPrinter {
 
 impl PrinterPort for RecordingPrinter {
     fn snapshot(&self) -> BoxFuture<'_, Result<PrinterSnapshot, PrinterError>> {
-        let taken = Self::snapshot(self);
-        Box::pin(async move { Ok(taken) })
+        let taken = self.unread().map_or_else(|| Ok(Self::snapshot(self)), Err);
+        Box::pin(async move { taken })
     }
 
     fn job(&self) -> BoxFuture<'_, Result<JobSnapshot, PrinterError>> {
-        let job = self
-            .held
-            .lock()
-            .expect("the machine is not poisoned")
-            .job
-            .clone();
-        Box::pin(async move { Ok(job) })
+        self.meet();
+        let job = self.unread().map_or_else(
+            || {
+                Ok(self
+                    .held
+                    .lock()
+                    .expect("the machine is not poisoned")
+                    .job
+                    .clone())
+            },
+            Err,
+        );
+        Box::pin(async move { job })
     }
 
     fn start(&self, file_name: FileName) -> BoxFuture<'_, Result<(), PrinterError>> {

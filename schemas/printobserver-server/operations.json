@@ -8,6 +8,22 @@
       "effect": "read",
       "image_path_field": null,
       "method": "GET",
+      "name": "prints",
+      "parameters": [],
+      "path": "/v1/prints",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "PrintsAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
       "name": "status",
       "parameters": [
         {

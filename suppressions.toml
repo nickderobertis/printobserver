@@ -699,3 +699,83 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = 'test("every method is answered by a real supervisor"'
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Node walk, so that the directive standing in `npm/printobserver-sdk/integration/live.test.ts` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+# --- the generated Python client's calls, and the prints read -----------------
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
+site = "answered = self.call("
+reason = "Every generated method of the published Python client makes its one request through `Client.call`, the synchronous `http.client` transport in `_client.py`, and this is that call. The client is synchronous by design and ships no async counterpart — the ground this rule's entries for the integration journeys already stand on, since those drive this client exactly as a dependent does. Making one generated method async would give one operation a calling convention the other sixteen do not have, and an async client is a second client of the same contract rather than a change to any one operation. The typed half is answered rather than suppressed: each method returns its answer's declared `TypedDict`, and the comment above its `cast` says why that is the shape."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_operations.py"
+site = "answered = client."
+reason = "Each generated operation test calls one method of the published synchronous client against the in-process `Host` stand-in, which is what proves the method sends what it declares and answers what the server sent. The package ships no async client, so a test driving one would prove something no dependent can use; the client's own synchronous design is answered at `contract.py`'s entry for this rule."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "answered = client."
+reason = "Each generated step of the method walk calls one method of the published synchronous client against a real supervisor. It is the same client this file's entry at `client = Client(proxy.url, \"operator\", world.credential)` answers for, and the judged tier reads each step's call as a site of its own apart from that construction; the reason is that entry's."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "ASYNC_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes before every generated call through the published client, so that the directives standing in `python/printobserver-sdk/src/printobserver_sdk/contract.py`, `tests/test_operations.py` and `integration/test_live.py` are regenerated rather than lost on the next `just generate-clients`. The reasons are those files' entries for this rule."
+
+[[suppression]]
+rule = "names_match_behavior"
+file = "crates/printobserver-server/src/operations.rs"
+site = 'read("prints", "/prints")'
+reason = "The operation's name and its declaration as a read are this node's agreed contract — `GET /v1/prints`, declared in `OPERATIONS` as a read with no reason and no actor — and a declared effect other than a read is a departure that contract reserves to its owner. Declaring it a write would also make every client demand a reason just to find a print ID. What reading it may write is disclosed wherever a caller meets it: the core method it calls is named `list_and_adopt_prints`, the adoption is stated in `api-and-clients.md`, `command-surface.md` and `common-operations.md`, and it commands nothing at the printer — it opens a record of a job the printer is already running."
+
+[[suppression]]
+rule = "names_match_behavior"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub fn prints(&self)"
+reason = "A generated method is named for its operation, and this one's name and its declaration as a read are the agreed contract answered at `crates/printobserver-server/src/operations.rs`'s entry for this rule; renaming the method alone would give the Rust client a name the operation, the command and the other two clients do not carry. What reading it may record — a print for a job the printer is already running, and nothing commanded at the printer — is stated in `api-and-clients.md`, `command-surface.md` and `common-operations.md`, which is where a caller of a generated client is told what each operation does."
+
+[[suppression]]
+rule = "names_match_behavior"
+file = "npm/printobserver-sdk/src/contract.ts"
+site = "async prints()"
+reason = "The Node client's method for the same operation, generated from the same declaration: the ground is `crates/printobserver-sdk/src/contract.rs`'s entry for this rule, unchanged."
+
+[[suppression]]
+rule = "names_match_behavior"
+file = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
+site = "def prints(self)"
+reason = "The Python client's method for the same operation, generated from the same declaration: the ground is `crates/printobserver-sdk/src/contract.rs`'s entry for this rule, unchanged."
+
+[[suppression]]
+rule = "names_match_behavior"
+file = "tools/contract-codegen/src/contract_codegen/naming.py"
+site = "NAME_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the three emitters write above the method of each operation `NAMED_FOR_WHAT_IS_ASKED` names, so that the directives standing in `contract.rs`, `contract.ts` and `contract.py` are regenerated rather than lost on the next `just generate-clients`. The reasons are those files' entries for this rule."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
+site = "return cast("
+reason = "Every generated method of the published Python client hands on the document `Client.call` parsed as its answer's declared `TypedDict`, which is the pass-through property the client is generated for: what a method answers is the document the server sent. `_document` refuses a body that is not JSON as `UnreadableError`, and checks no shape beyond that, for all seventeen operations alike. The server serializes the answer from the very type `operations.json` declares, and the generated operation tests prove each method answers exactly what was sent. Validating shapes at runtime is a transport-wide change to a published client — a validator for every generated type — rather than something one operation can take on, and one method validating while sixteen do not would be a calling convention of its own."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "npm/printobserver-sdk/src/contract.ts"
+site = "return await this.call<"
+reason = "The Node client's counterpart of `python/printobserver-sdk/src/printobserver_sdk/contract.py`'s entry for this rule: every generated method hands on what `call` parsed as its answer's declared interface, `document` refuses a body that is not JSON as `Unreadable` and checks no shape beyond that, for every operation alike. The ground is that entry's, unchanged."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "BOUNDARY_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's `cast`, so that the directives standing in `python/printobserver-sdk/src/printobserver_sdk/contract.py` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
+site = "BOUNDARY_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

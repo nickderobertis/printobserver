@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, Weak};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
@@ -170,6 +170,14 @@ impl FakePrinter {
         self.snapshot.lock().expect("the printer holds").connection = state;
     }
 
+    /// Kept apart from `reports_state` because adoption reads the job alone, so
+    /// what a listing adopts is set here and nowhere else.
+    pub fn reports_job(&self, file_name: Option<&str>, state: PrinterState) {
+        let mut job = self.job.lock().expect("the printer holds");
+        job.file_name = file_name.map(str::to_owned);
+        job.state = state;
+    }
+
     /// Fail one method with one error from now on.
     pub fn fails(&self, method: PrinterMethod, error: PrinterError) {
         self.failures
@@ -311,6 +319,47 @@ struct Held {
     sessions: BTreeMap<PrintId, SupervisionSession>,
 }
 
+/// How long a caller at a [`Meeting`] waits for the others before going on alone.
+const PATIENCE: Duration = Duration::from_millis(400);
+
+/// A place callers wait for one another at, for a journey about two of them
+/// interleaving.
+///
+/// Unarmed, it holds nobody. Armed for a number of callers, each one that
+/// arrives waits until that many have, or until [`PATIENCE`] runs out — so two
+/// callers nothing keeps apart are made to overlap, and two that something does
+/// keep apart each wait a moment alone and go on. A read arrives **after** it
+/// has taken what it answers, so two reads that overlap here both answer what
+/// was there before either caller wrote anything.
+#[derive(Debug, Default)]
+pub struct Meeting {
+    /// How many callers are wanted, and how many have come.
+    counts: Mutex<(usize, usize)>,
+    /// Signalled whenever one arrives.
+    arrived: Condvar,
+}
+
+impl Meeting {
+    /// Arm it for this many callers.
+    pub fn expect(&self, callers: usize) {
+        *self.counts.lock().expect("the meeting holds") = (callers, 0);
+    }
+
+    /// Arrive, and wait for the others when it is armed.
+    fn arrive(&self) {
+        let mut counts = self.counts.lock().expect("the meeting holds");
+        if counts.0 == 0 {
+            return;
+        }
+        counts.1 += 1;
+        self.arrived.notify_all();
+        let _ = self
+            .arrived
+            .wait_timeout_while(counts, PATIENCE, |(wanted, came)| *came < *wanted)
+            .expect("the meeting holds");
+    }
+}
+
 /// An in-memory store, which is what a fake of this port is.
 pub struct FakeStore {
     /// The shared ordered record of port calls.
@@ -323,6 +372,8 @@ pub struct FakeStore {
     failures: Mutex<BTreeMap<StoreMethod, StoreError>>,
     /// Where image bytes are written.
     root: PathBuf,
+    /// Where the reads of the prints wait for one another, when armed.
+    reads_of_the_prints: Meeting,
 }
 
 impl FakeStore {
@@ -341,7 +392,14 @@ impl FakeStore {
             held: Mutex::new(Held::default()),
             failures: Mutex::new(BTreeMap::new()),
             root,
+            reads_of_the_prints: Meeting::default(),
         }
+    }
+
+    /// Make this many reads of the prints — every print, or the open ones —
+    /// wait for one another before any of them answers.
+    pub fn reads_of_the_prints_meet(&self, callers: usize) {
+        self.reads_of_the_prints.expect(callers);
     }
 
     /// Fail one method with one error from now on.
@@ -423,6 +481,19 @@ impl FakeStore {
             .prints
             .get(&id)
             .cloned()
+    }
+
+    /// Every print it holds, most recently opened first, as the port declares.
+    ///
+    /// The fake clock does not move between two opens, so the order they were
+    /// opened in is what says which is the more recent.
+    fn newest_first(&self) -> Vec<PrintRecord> {
+        let held = self.held.lock().expect("the store holds");
+        held.opened
+            .iter()
+            .rev()
+            .filter_map(|id| held.prints.get(id).cloned())
+            .collect()
     }
 }
 
@@ -507,15 +578,50 @@ impl PrintStore for FakeStore {
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
         let found: Vec<PrintRecord> = self
-            .held
-            .lock()
-            .expect("the store holds")
-            .prints
-            .values()
+            .newest_first()
+            .into_iter()
             .filter(|print| print.ended_at.is_none())
-            .cloned()
             .collect();
+        self.reads_of_the_prints.arrive();
         Box::pin(async move { Ok(found) })
+    }
+
+    fn prints(
+        &self,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
+        self.journal.record(Call::ReadPrints);
+        let found = self.newest_first();
+        self.reads_of_the_prints.arrive();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn attach_obico_print(
+        &self,
+        print_id: PrintId,
+        obico_print_id: i64,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        self.journal.record(Call::AttachObicoPrint(obico_print_id));
+        let mut held = self.held.lock().expect("the store holds");
+        let answer = match held.prints.get_mut(&print_id) {
+            None => Err(StoreError::NotFound {
+                what: format!("print {print_id}"),
+            }),
+            Some(print)
+                if print
+                    .provider_print_id
+                    .is_some_and(|id| id != obico_print_id) =>
+            {
+                Err(StoreError::ConstraintRefused {
+                    constraint: "prints.provider_print_id".to_owned(),
+                })
+            }
+            Some(print) => {
+                print.provider_print_id = Some(obico_print_id);
+                Ok(print.clone())
+            }
+        };
+        drop(held);
+        Box::pin(async move { answer })
     }
 
     fn end_print(
