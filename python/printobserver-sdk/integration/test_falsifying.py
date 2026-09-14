@@ -82,6 +82,8 @@ def the_images_bytes_in_place_of_a_field(answered: ImageAnswer) -> dict[str, obj
     return variant
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
 def test_the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image(
     world: Supervisor,
 ) -> None:

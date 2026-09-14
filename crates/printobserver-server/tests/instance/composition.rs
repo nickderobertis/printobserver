@@ -57,6 +57,14 @@ pub const AGENT_DURATION_S: i64 = 600;
 /// The feedrate the agent also asks for, outside the operator's envelope.
 pub const AGENT_REFUSED_FACTOR: f64 = 2.5;
 
+/// The API credential this tier configures.
+///
+/// Configured rather than generated, and carrying both characters a TOML
+/// string escapes, so that what the server writes into the client
+/// configuration and what the supervision turn reads back out of it are proven
+/// over a credential that has to be unescaped to be presented.
+pub const CONFIGURED_CREDENTIAL: &str = r#"a-configured-"credential"-with-a-\-in-it"#;
+
 /// The server this tier drives, and everything it was composed from.
 pub struct Composed {
     /// The state directory, removed when this is dropped.
@@ -81,19 +89,13 @@ impl Composed {
         let root = TempDir::new().expect("this tier's own root");
         let config = configuration(root.path(), instance, octoprint);
         let (server, stores) = start(&config).await;
-        // The configuration names no API credential, so the server generated
-        // one into its state directory; this tier presents it on every request,
-        // as an operator reading that file would.
-        let credential = std::fs::read_to_string(
-            config
-                .state_dir
-                .join(printobserver_server::API_CREDENTIAL_FILE),
-        )
-        .expect("the server wrote the credential it generated");
+        // The configuration names the credential, so this tier presents that on
+        // every request — and the supervision turns it drives present what they
+        // read out of the client configuration the server wrote.
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {CONFIGURED_CREDENTIAL}"))
                 .expect("a credential is a header value"),
         );
         Self {
@@ -247,6 +249,9 @@ harness = "claude-code"
 shared_secret = "{SECRET}"
 answer_bound_ms = 1000
 
+[api]
+credential = "{credential}"
+
 [safety]
 agent_min_interval_s = 0
 
@@ -271,6 +276,9 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
         state = root.join("state").display(),
         url = octoprint,
         key = instance.api_key,
+        credential = CONFIGURED_CREDENTIAL
+            .replace('\\', "\\\\")
+            .replace('"', "\\\""),
     );
     let path = root.join("config.toml");
     std::fs::write(&path, document).expect("the configuration is writable");

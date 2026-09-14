@@ -332,6 +332,7 @@ async function stepResume(client: Client, proxy: Recording) {
   same("resume", answered, seen.answer);
 }
 
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every method is answered by a real supervisor", async () => {
   await using proxy = new Recording(world.server);
   const client = new Client({

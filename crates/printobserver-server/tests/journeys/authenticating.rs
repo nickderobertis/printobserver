@@ -48,8 +48,9 @@ use crate::world::{
 };
 
 /// A credential an operator chose, spelled so that a search for it finds only
-/// a rendering of it.
-const CONFIGURED: &str = "an-operators-own-credential-7Hq2vX9mKp4Lw";
+/// a rendering of it — and carrying both characters a TOML string escapes, so
+/// the client configuration the server writes is proven to carry it as it is.
+const CONFIGURED: &str = r#"an-operators-own-"credential"-7Hq2\vX9mKp4Lw"#;
 
 /// What a stale file left in the state directory holds.
 const STALE: &str = "a-stale-credential-nothing-should-read-3Rt8";
@@ -384,7 +385,7 @@ async fn the_ingress_and_the_api_each_admit_by_their_own_secret_alone() {
     let print_id = world.open_print().await;
     let status = printobserver_server::operation("status").expect("status is served");
     let in_the_header = anonymous
-        .get(url_of(world.server.address(), status,print_id))
+        .get(url_of(world.server.address(), status, print_id))
         .header(TOKEN_HEADER, SECRET)
         .send()
         .await
@@ -398,7 +399,7 @@ async fn the_ingress_and_the_api_each_admit_by_their_own_secret_alone() {
     let in_the_query = anonymous
         .get(format!(
             "{}?token={SECRET}",
-            url_of(world.server.address(), status,print_id)
+            url_of(world.server.address(), status, print_id)
         ))
         .send()
         .await
@@ -480,7 +481,7 @@ fn client_configuration(state: &Path) -> toml::Value {
 async fn admits(server: &Running, credential: &str) -> bool {
     let status = printobserver_server::operation("status").expect("status is served");
     presenting(credential)
-        .get(url_of(server.address(), status,PrintId::new()))
+        .get(url_of(server.address(), status, PrintId::new()))
         .send()
         .await
         .expect("the server answers")

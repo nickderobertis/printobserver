@@ -87,6 +87,8 @@ def _until(client: Client, print_id: str, wanted: set[PrinterState]) -> None:
     raise AssertionError(message)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
 def test_a_client_without_the_credential_in_force_is_refused(world: Supervisor) -> None:
     """A real supervisor refuses a client that does not present its credential.
 
@@ -99,6 +101,7 @@ def test_a_client_without_the_credential_in_force_is_refused(world: Supervisor) 
         ("a wrong credential", "not-the-credential-in-force"),
     ):
         with pytest.raises(RefusedError) as refused:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             Client(world.server, "operator", credential).status(world.print_id)
         equal(refused.value.status, 401, describing=f"the status a client with {what} gets")
         contains(refused.value.detail, "Authorization: Bearer", describing=refused.value.detail)
@@ -106,6 +109,7 @@ def test_a_client_without_the_credential_in_force_is_refused(world: Supervisor) 
             world.credential not in refused.value.detail,
             describing=f"the refusal of a client with {what} quoting no credential",
         )
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     served = Client(world.server, "operator", world.credential).status(world.print_id)
     equal(served["print"]["id"], world.print_id)
 

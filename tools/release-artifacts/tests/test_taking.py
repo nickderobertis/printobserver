@@ -128,6 +128,30 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
         world.stop()
 
 
+def test_a_supervisor_writing_an_empty_credential_is_said_to_have(
+    repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """A world handing its clients a credential nothing serves under says so at once."""
+    root = into("empty-credential")
+    state = root / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    empty = root / "writes-an-empty-credential"
+    empty.write_text(
+        f'#!/bin/sh\nprintf \'[client]\\nserver = "http://127.0.0.1:1"\\n'
+        f'credential = ""\\n\' '
+        f'> "{state / CLIENT_CONFIG}"\nsleep 60\n',
+        encoding="utf-8",
+    )
+    empty.chmod(0o755)
+    world = World(empty, root)
+
+    try:
+        with pytest.raises(WorldError, match="empty credential"):
+            world.start()
+    finally:
+        world.stop()
+
+
 def test_an_environment_with_no_scripted_printer_names_the_recipe(tmp_path: Path) -> None:
     """A tier that quietly passed against no printer would prove nothing."""
     with pytest.raises(WorldError, match="just octoprint-up"):

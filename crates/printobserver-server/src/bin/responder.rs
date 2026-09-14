@@ -43,11 +43,8 @@ const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 /// in.
 const CONTEXT_MARKER: &str = "printobserver context --config ";
 
-/// The key the client configuration names the server under.
-const SERVER_KEY: &str = "server = ";
-
-/// The key the client configuration carries the credential in force under.
-const CREDENTIAL_KEY: &str = "credential = ";
+/// The table the client configuration names the server and the credential in.
+const CLIENT_TABLE: &str = "client";
 
 /// How long one action this responder issues may take.
 ///
@@ -71,12 +68,23 @@ struct Turn {
     print: String,
 }
 
-/// One quoted value of the client configuration, by the key it is written under.
-fn written_under(configuration: &str, key: &str) -> Option<String> {
-    configuration
-        .lines()
-        .find_map(|line| line.trim().strip_prefix(key))
-        .map(|value| value.trim().trim_matches('"').to_owned())
+/// One text value of the client configuration's `[client]` table.
+///
+/// Read as the TOML document the server wrote rather than line by line, so a
+/// credential carrying a character TOML escapes is read as the credential
+/// rather than as its escaped spelling. A value that is empty, or that carries
+/// anything outside printable ASCII, is not one this responder puts into a
+/// request head, and is taken as absent.
+fn client_value(configuration: &str, key: &str) -> Option<String> {
+    let document: toml::Table = toml::from_str(configuration).ok()?;
+    document
+        .get(CLIENT_TABLE)?
+        .get(key)?
+        .as_str()
+        .filter(|value| {
+            !value.is_empty() && value.bytes().all(|byte| (b' '..=b'~').contains(&byte))
+        })
+        .map(str::to_owned)
 }
 
 /// The server and the print this turn's own prompt names.
@@ -93,10 +101,10 @@ fn turn_from_the_prompt() -> Option<Turn> {
     // not that program, so it reads the two values it needs out of the file the
     // server wrote — which is where a real client reads them from too.
     let configuration = std::fs::read_to_string(words.next()?).ok()?;
-    let server = written_under(&configuration, SERVER_KEY)?
+    let server = client_value(&configuration, "server")?
         .trim_end_matches('/')
         .to_owned();
-    let credential = written_under(&configuration, CREDENTIAL_KEY)?;
+    let credential = client_value(&configuration, "credential")?;
     let print = words
         .skip_while(|word| *word != "--print-id")
         .nth(1)?

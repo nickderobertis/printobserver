@@ -131,6 +131,7 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
  * status 401, saying what to present and quoting no credential — and the same
  * read presenting the credential in force is served.
  */
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("a client without the credential in force is refused by a real supervisor", async () => {
   const unauthenticated: Array<[string, Client]> = [
     ["no credential", new Client({ server: world.server, actor: "operator" })],

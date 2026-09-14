@@ -89,6 +89,16 @@ class WorldError(RuntimeError):
     """A supervisor could not be brought up for a client to be proven against."""
 
 
+@dataclass(frozen=True, slots=True)
+class ClientConfiguration:
+    """What a supervisor wrote for the clients beside it."""
+
+    #: The address it bound.
+    server: str
+    #: The credential it serves under.
+    credential: str
+
+
 class Machine:
     """An `OctoPrint` the supervisor reaches over HTTP, holding one printing job."""
 
@@ -329,11 +339,11 @@ class World:
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
         )
-        server, credential = self._await_client_configuration()
-        print_id, image_id, event_id = self._open_a_print(server)
+        written = self._await_client_configuration()
+        print_id, image_id, event_id = self._open_a_print(written.server)
         return Running(
-            server=server,
-            credential=credential,
+            server=written.server,
+            credential=written.credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,
@@ -353,7 +363,7 @@ class World:
             self._supervisor = None
         self.machine.stop()
 
-    def _await_client_configuration(self) -> tuple[str, str]:
+    def _await_client_configuration(self) -> ClientConfiguration:
         """The address the supervisor bound and the credential in force.
 
         Both read from the `[client]` table it wrote for its clients, which is
@@ -362,7 +372,8 @@ class World:
         generated one.
 
         Raises:
-            WorldError: If it never wrote both.
+            WorldError: If it never wrote both, or wrote a credential that is
+                empty — which no supervisor serves under.
         """
         written = self.state / CLIENT_CONFIG
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
@@ -379,8 +390,11 @@ class World:
                     # reads the whole of it.
                     table = {}
                 server, credential = table.get("server"), table.get("credential")
+                if isinstance(credential, str) and not credential.strip():
+                    msg = f"the supervisor wrote {written} with an empty credential"
+                    raise WorldError(msg)
                 if isinstance(server, str) and isinstance(credential, str):
-                    return server, credential
+                    return ClientConfiguration(server=server, credential=credential)
             time.sleep(0.1)
         msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)

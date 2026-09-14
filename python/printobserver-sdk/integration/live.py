@@ -119,6 +119,7 @@ def _handler(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             presented = self.headers.get("Authorization")
             if presented is not None:
                 headers["Authorization"] = presented
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             upstream = http.client.HTTPConnection(proxy.onward, timeout=FORWARD_TIMEOUT_SECONDS)
             try:
                 upstream.request(self.command, self.path, body=body or None, headers=headers)

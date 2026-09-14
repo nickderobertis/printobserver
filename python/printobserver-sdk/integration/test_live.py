@@ -482,6 +482,8 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("resume", answered, seen.answer)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
 def test_every_method_is_answered_by_a_real_supervisor(world: Supervisor) -> None:
     """Every method, answered by a real supervisor, in the one order it admits."""
     with Proxy(world.server) as proxy:

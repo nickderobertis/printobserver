@@ -84,6 +84,7 @@ function theImagesBytesInPlaceOfAField(answered: ImageAnswer): Record<string, un
   return variant;
 }
 
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("the equality the walk asserts refuses a client that carries the image", async () => {
   await using proxy = new Recording(world.server);
   const client = new Client({
