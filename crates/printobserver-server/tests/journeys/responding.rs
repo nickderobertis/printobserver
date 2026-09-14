@@ -27,12 +27,12 @@ use crate::world::World;
 fn slow_down() -> Value {
     json!([{
         "operation": "set_feedrate_factor",
-        "body": { "reason": "the long edges are widening", "factor": 1.1 },
+        "body": { "reason": "the long edges are widening", "factor": 0.9 },
     }])
 }
 
-/// A copy of the client configuration a server wrote, with its credential
-/// replaced, under a directory of the journey's own.
+/// Written beside the server's own file rather than over it, so that every
+/// later run in a journey still reads what the server wrote.
 fn with_credential(written: &Path, credential: &str, beside: &Path) -> PathBuf {
     let mut document: toml::Table =
         toml::from_str(&std::fs::read_to_string(written).expect("the client configuration reads"))
@@ -115,7 +115,7 @@ async fn the_responder_acts_under_the_credential_the_server_wrote_for_it() {
     assert_eq!(did[0]["operation"], json!("set_feedrate_factor"));
     assert_eq!(
         world.printer.calls(),
-        vec![Call::Feedrate(1.1)],
+        vec![Call::Feedrate(0.9)],
         "the responder's served action did not reach the machine"
     );
     assert!(
