@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import TracebackType
 from typing import NewType
+from urllib.parse import urlsplit
 
 from repo_checks.shell import start
 
@@ -92,6 +93,30 @@ class Running:
 
 class WorldError(RuntimeError):
     """A supervisor could not be brought up for a client to be proven against."""
+
+
+def _addressable(server: str) -> bool:
+    """Whether a server is an `http://host:port` address a client can connect to."""
+    split = urlsplit(server)
+    try:
+        port = split.port
+    except ValueError:
+        return False
+    return split.scheme == "http" and bool(split.hostname) and port is not None
+
+
+def _presentable(credential: str) -> bool:
+    """Whether a credential is one an `Authorization` header carries intact.
+
+    The same rule the server holds its own credential to, and each installed
+    smoke check holds its `--credential` to.
+    """
+    return (
+        bool(credential)
+        and all(" " <= character <= "~" for character in credential)
+        and not credential.startswith(" ")
+        and not credential.endswith(" ")
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,8 +402,10 @@ class World:
         generated one.
 
         Raises:
-            WorldError: If it never wrote both, or wrote a credential that is
-                empty — which no supervisor serves under.
+            WorldError: If it never wrote both, or wrote either as nothing a
+                client could use: a server that is no `http://host:port`
+                address, or a credential no `Authorization` header carries
+                intact — which no supervisor serves under.
         """
         written = self.state / CLIENT_CONFIG
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
@@ -395,10 +422,22 @@ class World:
                     # reads the whole of it.
                     table = {}
                 match table:
-                    case {"credential": str(credential)} if not credential.strip():
-                        msg = f"the supervisor wrote {written} with an empty credential"
-                        raise WorldError(msg)
                     case {"server": str(server), "credential": str(credential)}:
+                        if not _addressable(server):
+                            msg = (
+                                f"the supervisor wrote {written} with a server that is no "
+                                f"http://host:port address: {server!r}"
+                            )
+                            raise WorldError(msg)
+                        if not _presentable(credential):
+                            # The credential is never quoted: it is the one
+                            # the supervisor serves under.
+                            msg = (
+                                f"the supervisor wrote {written} with a credential no request "
+                                "presents: printable ASCII, not empty, and neither beginning "
+                                "nor ending with a space"
+                            )
+                            raise WorldError(msg)
                         return ClientConfiguration(server=server, credential=Credential(credential))
                     case _:
                         # Neither is written yet; the next look reads both.
@@ -414,7 +453,6 @@ class World:
             WorldError: If the ingress opened none.
         """
         import http.client
-        from urllib.parse import urlsplit
 
         alert = json.dumps(
             {
