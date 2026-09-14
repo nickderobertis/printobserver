@@ -21,8 +21,16 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+use printobserver::config::{CREDENTIAL_ENV, DEFAULT_CONFIG_PATH, SERVER_ENV};
+use printobserver::failure::Exit;
 use printobserver_core::store::PrintStore as _;
+use printobserver_server::{API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE};
 use tempfile::TempDir;
+
+/// The tracer the operator's own route is observed through: every file access
+/// the program makes to the paths it is watching, each of which it fails as a
+/// file this user is not permitted to read.
+const TRACER: &str = "strace";
 
 /// The unit's name, as the install-path section states it. `just check-repo`'s
 /// `service-install` holds the tree to that section; this drives what the tree
@@ -304,23 +312,68 @@ fn fill_in(configuration: &Path) {
 ///
 /// It names the address that was actually bound rather than the one that was
 /// configured, which is what lets a supervision turn reach a server started on
-/// a port the operating system chose.
-fn client_configuration(state: &Path, address: &str) -> PathBuf {
-    let path = state.join(printobserver_server::CLIENT_CONFIG_FILE);
-    assert!(
-        std::fs::read_to_string(&path)
-            .expect("the server wrote the configuration its clients read")
-            .contains(address),
+/// a port the operating system chose — and the credential in force, which is
+/// what lets it authenticate without anybody copying a secret. Carrying that,
+/// it is private to the service's own user.
+fn client_configuration(state: &Path, address: &str, credential: &str) -> PathBuf {
+    let path = state.join(CLIENT_CONFIG_FILE);
+    let written: toml::Value = toml::from_str(
+        &std::fs::read_to_string(&path)
+            .expect("the server wrote the configuration its clients read"),
+    )
+    .expect("the configuration the server wrote is a document");
+    assert_eq!(
+        written["client"]["server"].as_str(),
+        Some(format!("http://{address}").as_str()),
         "the configuration the server wrote does not name the address it bound"
+    );
+    assert_eq!(
+        written["client"]["credential"].as_str(),
+        Some(credential),
+        "the configuration the server wrote does not carry the credential in force"
+    );
+    let mode = mode_of(&path);
+    assert_eq!(
+        mode, 0o600,
+        "the configuration carrying the credential is mode {mode:o}"
     );
     path
 }
 
-/// The unit's own start command starts a server that answers the API.
-#[test]
-fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
-    let under = TempDir::new().expect("a journey's own root");
-    let installed = install(under.path());
+/// A supervisor the installed unit's own start command started, over the state
+/// directory the installer created and the configuration an operator filled in.
+struct Started {
+    /// The journey's own root, removed when this is dropped.
+    root: TempDir,
+    /// What the installer put in place.
+    installed: Installed,
+    /// The program the unit's start command started.
+    child: Child,
+    /// Where it said it is serving.
+    address: String,
+    /// A print in its store, as an alert would have opened it.
+    print_id: String,
+}
+
+impl Drop for Started {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Started {
+    /// The credential the service generated, read the way root reads it.
+    fn credential(&self) -> String {
+        std::fs::read_to_string(self.installed.state().join(API_CREDENTIAL_FILE))
+            .expect("the service generated its credential into its state directory")
+    }
+}
+
+/// Install, fill in the configuration, and run the unit's own start command.
+fn started_by_the_unit() -> Started {
+    let root = TempDir::new().expect("a journey's own root");
+    let installed = install(root.path());
     let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
 
     // Read out of the unit rather than written here, so a unit whose start
@@ -355,8 +408,50 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         .spawn()
         .expect("the unit's own start command runs");
     let address = serving_on(&mut child);
+    Started {
+        root,
+        installed,
+        child,
+        address,
+        print_id,
+    }
+}
 
-    let answer = ask(&address, &format!("/v1/prints/{}/status", absent_print()));
+/// The unit's own start command starts a server that answers the API.
+#[test]
+fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
+    let mut started = started_by_the_unit();
+    let (installed, address, print_id) = (
+        &started.installed,
+        started.address.clone(),
+        started.print_id.clone(),
+    );
+
+    // The template names no credential, so the service generated one before it
+    // listened, private to its own user.
+    let credential = started.credential();
+    let mode = mode_of(&installed.state().join(API_CREDENTIAL_FILE));
+    assert_eq!(mode, 0o600, "the generated credential is mode {mode:o}");
+
+    let refused = ask(
+        &address,
+        &format!("/v1/prints/{}/status", absent_print()),
+        None,
+    );
+    assert!(
+        refused.contains("HTTP/1.1 401")
+            && refused
+                .to_ascii_lowercase()
+                .contains("www-authenticate: bearer"),
+        "the server the unit's own command started answered a caller that presented no \
+         credential:\n{refused}"
+    );
+
+    let answer = ask(
+        &address,
+        &format!("/v1/prints/{}/status", absent_print()),
+        Some(&credential),
+    );
 
     assert!(
         answer.contains("HTTP/1.1 404"),
@@ -370,9 +465,10 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
 
     // The command a supervision turn runs to read its print's context is this
     // program's own, and it reads from the server this program started. It is
-    // given no address: the server wrote the one it bound into its own state
-    // directory, which is where every client beside it reads it from.
-    let client_config = client_configuration(&installed.state(), &address);
+    // given nothing but the configuration file: the server wrote the address it
+    // bound and the credential in force into its own state directory, which is
+    // where every client beside it reads both from.
+    let client_config = client_configuration(&installed.state(), &address, &credential);
     let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .args([
             "context",
@@ -381,6 +477,8 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
             "--print-id",
             &print_id,
         ])
+        .env_remove(SERVER_ENV)
+        .env_remove(CREDENTIAL_ENV)
         .output()
         .expect("the context read runs");
     assert!(
@@ -402,6 +500,8 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
             "--print-id",
             absent_print(),
         ])
+        .env_remove(SERVER_ENV)
+        .env_remove(CREDENTIAL_ENV)
         .output()
         .expect("the context read runs");
     assert!(
@@ -414,19 +514,271 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         String::from_utf8_lossy(&refused.stderr)
     );
 
+    carries_no_credential(installed, &credential);
+
     // Stopping it is the signal a service manager stops a unit with, and the
     // program answers it by shutting the server down and exiting successfully —
     // which is what makes `Restart=on-failure` mean what the unit says it does.
     let stopped = Command::new("kill")
         .arg("-TERM")
-        .arg(child.id().to_string())
+        .arg(started.child.id().to_string())
         .status()
         .expect("the signal is sent");
     assert!(stopped.success(), "the signal was not sent");
-    let finished = child.wait().expect("the program exits");
+    let finished = started.child.wait().expect("the program exits");
     assert!(
         finished.success(),
         "the program did not exit cleanly when it was stopped: {finished:?}"
+    );
+}
+
+/// The permission bits of one file the service wrote.
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(path)
+        .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display()))
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+/// Neither file the installer wrote carries the credential in force.
+///
+/// They are the ones a person reads, copies and pastes into a question, and the
+/// credential the service serves under is in neither.
+fn carries_no_credential(installed: &Installed, credential: &str) {
+    for (what, path) in [
+        ("unit", installed.unit()),
+        ("configuration", installed.configuration()),
+    ] {
+        assert!(
+            !std::fs::read_to_string(&path)
+                .expect("the installed file reads")
+                .contains(credential),
+            "the installed {what} carries the credential in force"
+        );
+    }
+}
+
+/// What one run of this program, watched by the tracer, did and said.
+struct Watched {
+    /// What it exited with.
+    code: Option<i32>,
+    /// Everything it printed, on either stream.
+    said: String,
+    /// Every access it made to a watched path, as the tracer recorded it.
+    touched: String,
+}
+
+/// Run this program as an operator on their own account would.
+///
+/// Under the tracer, watching every path given: each access to one is recorded,
+/// and each is failed with the answer the kernel gives a user who may not read
+/// the service's own files — which is what those files are to such a user. The
+/// environment this journey itself runs under is taken away first, so what the
+/// program is configured with is only what is given here.
+fn as_the_operator(
+    started: &Started,
+    run: &str,
+    arguments: &[&str],
+    environment: &[(&str, &str)],
+) -> Watched {
+    let trace = started.root.path().join(format!("{run}.trace"));
+    let mut watched = vec![
+        PathBuf::from(DEFAULT_CONFIG_PATH),
+        started.installed.configuration(),
+        started.installed.state(),
+    ];
+    watched.extend(
+        std::fs::read_dir(started.installed.state())
+            .expect("the state directory lists")
+            .flatten()
+            .map(|entry| entry.path()),
+    );
+    let mut command = Command::new(TRACER);
+    command
+        .args([
+            "-f",
+            "-qq",
+            "-e",
+            "trace=%file",
+            "-e",
+            "inject=%file:error=EACCES",
+        ])
+        .arg("-o")
+        .arg(&trace);
+    for path in &watched {
+        command.arg("-P").arg(path);
+    }
+    command
+        .arg("--")
+        .arg(env!("CARGO_BIN_EXE_printobserver"))
+        .args(arguments)
+        .env_remove(SERVER_ENV)
+        .env_remove(CREDENTIAL_ENV);
+    for (name, value) in environment {
+        command.env(name, value);
+    }
+    let output = command.output().unwrap_or_else(|error| {
+        panic!(
+            "`{TRACER}` could not run, and what the operator's route touches rests on it: {error}"
+        )
+    });
+    Watched {
+        code: output.status.code(),
+        said: String::from_utf8_lossy(&output.stdout).into_owned()
+            + &String::from_utf8_lossy(&output.stderr),
+        touched: std::fs::read_to_string(&trace)
+            .unwrap_or_else(|error| panic!("`{TRACER}` wrote nothing: {error}")),
+    }
+}
+
+/// An operator on their own account authenticates by the documented route.
+///
+/// They can read neither the service's configuration nor its state directory,
+/// so they read the credential once as root and supply it with the address:
+/// through the two variables, or through a `[client]` table in a file only they
+/// can read, named with `--config`. Either reads the print, and neither touches
+/// a file of the service's — each of which is, to this run, a file it is not
+/// permitted to read.
+#[test]
+fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
+    let started = started_by_the_unit();
+    let credential = started.credential();
+    let server = format!("http://{}", started.address);
+    let reading = ["context", "--print-id", started.print_id.as_str()];
+
+    let by_the_environment = as_the_operator(
+        &started,
+        "environment",
+        &reading,
+        &[(SERVER_ENV, &server), (CREDENTIAL_ENV, &credential)],
+    );
+    assert_eq!(
+        by_the_environment.code,
+        Some(0),
+        "the operator's read through the two variables failed: {}",
+        by_the_environment.said
+    );
+    assert!(by_the_environment.said.contains(&started.print_id));
+    assert!(
+        by_the_environment.touched.trim().is_empty(),
+        "the operator's read through the two variables touched the service's own files:\n{}",
+        by_the_environment.touched
+    );
+
+    let own = started.root.path().join("operator");
+    std::fs::create_dir_all(&own).expect("the operator's own directory");
+    let own_file = own.join("printobserver.toml");
+    std::fs::write(
+        &own_file,
+        format!("[client]\nserver = \"{server}\"\ncredential = \"{credential}\"\n"),
+    )
+    .expect("the operator's own file is writable");
+    std::fs::set_permissions(
+        &own_file,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .expect("the operator's own file is made private");
+    let own_path = own_file.display().to_string();
+    let mut named = reading.to_vec();
+    named.extend(["--config", own_path.as_str()]);
+    let by_their_own_file = as_the_operator(&started, "own-file", &named, &[]);
+    assert_eq!(
+        by_their_own_file.code,
+        Some(0),
+        "the operator's read through their own file failed: {}",
+        by_their_own_file.said
+    );
+    assert!(by_their_own_file.said.contains(&started.print_id));
+    assert!(
+        by_their_own_file.touched.trim().is_empty(),
+        "the operator's read through their own file touched the service's own files:\n{}",
+        by_their_own_file.touched
+    );
+
+    // Given the address alone, the program does look for the default file — and
+    // meets it unreadable, and goes on to the environment rather than stopping
+    // there. The supervisor then refuses it, and it says where the credential
+    // it was not given is read from, printing none.
+    let address_alone = as_the_operator(
+        &started,
+        "address-alone",
+        &reading,
+        &[(SERVER_ENV, &server)],
+    );
+    assert!(
+        address_alone.touched.contains(DEFAULT_CONFIG_PATH)
+            && address_alone.touched.contains("EACCES"),
+        "the run never met the default file unreadable, so it proves nothing about one:\n{}",
+        address_alone.touched
+    );
+    assert_eq!(
+        address_alone.code,
+        Some(i32::from(Exit::Unconfigured.status())),
+        "a read given no credential was not refused as unconfigured: {}",
+        address_alone.said
+    );
+    assert!(
+        address_alone
+            .said
+            .contains("`credential` in the `[client]` table")
+            && address_alone.said.contains(CREDENTIAL_ENV),
+        "a read given no credential does not say where the credential is read from: {}",
+        address_alone.said
+    );
+
+    let wrong = as_the_operator(
+        &started,
+        "wrong",
+        &reading,
+        &[
+            (SERVER_ENV, &server),
+            (CREDENTIAL_ENV, "not-the-credential-in-force"),
+        ],
+    );
+    assert_eq!(
+        wrong.code,
+        Some(i32::from(Exit::Unconfigured.status())),
+        "a read under a wrong credential was not refused as unconfigured: {}",
+        wrong.said
+    );
+    assert!(
+        wrong.said.contains(CREDENTIAL_ENV)
+            && !wrong.said.contains(&credential)
+            && !wrong.said.contains("not-the-credential-in-force"),
+        "a read under a wrong credential said the wrong thing: {}",
+        wrong.said
+    );
+}
+
+/// The installed configuration template documents the credential and carries
+/// none, and the unit carries none either.
+#[test]
+fn the_installed_files_document_the_credential_and_carry_none() {
+    let under = TempDir::new().expect("a journey's own root");
+    let installed = install(under.path());
+    let configuration =
+        std::fs::read_to_string(installed.configuration()).expect("the configuration reads");
+    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
+
+    let commented: Vec<&str> = configuration
+        .lines()
+        .filter(|line| line.trim_start().starts_with('#'))
+        .collect();
+    assert!(
+        commented.iter().any(|line| line.contains("[api]"))
+            && commented.iter().any(|line| line.contains("api-credential")),
+        "the configuration template does not document the API credential"
+    );
+    let parsed: toml::Value = toml::from_str(&configuration).expect("the template is a document");
+    assert!(
+        parsed.get("api").is_none(),
+        "the configuration template carries an API credential"
+    );
+    assert!(
+        !unit.to_ascii_lowercase().contains("credential"),
+        "the installed unit carries a credential"
     );
 }
 
@@ -468,11 +820,14 @@ fn serving_on(child: &mut Child) -> String {
 }
 
 /// One request, written out over a socket, and the whole answer.
-fn ask(address: &str, path: &str) -> String {
+fn ask(address: &str, path: &str, credential: Option<&str>) -> String {
     let mut stream = TcpStream::connect(address).expect("the started server accepts a connection");
+    let authenticating = credential.map_or_else(String::new, |credential| {
+        format!("Authorization: Bearer {credential}\r\n")
+    });
     write!(
         stream,
-        "GET {path} HTTP/1.1\r\nHost: {address}\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+        "GET {path} HTTP/1.1\r\nHost: {address}\r\nAccept: application/json\r\n{authenticating}Connection: close\r\n\r\n"
     )
     .expect("the request is written");
     let mut answer = String::new();

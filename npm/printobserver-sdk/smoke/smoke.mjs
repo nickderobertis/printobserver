@@ -8,7 +8,7 @@
  * materialization whose answered path it opens and whose bytes it checks
  * against the digest the image record itself declares.
  *
- *   node smoke.mjs --server http://127.0.0.1:8420 --print-id <id> --image-id <id>
+ *   node smoke.mjs --server http://127.0.0.1:8420 --credential <credential> --print-id <id> --image-id <id>
  */
 
 import { createHash } from "node:crypto";
@@ -28,10 +28,11 @@ function argument(name) {
 }
 
 const server = argument("server");
+const credential = argument("credential");
 const printId = argument("print-id");
 const imageId = argument("image-id");
 
-const client = new Client({ server, actor: "operator" });
+const client = new Client({ server, actor: "operator", credential });
 
 const status = await client.status(printId);
 if (status.print.id !== printId) {

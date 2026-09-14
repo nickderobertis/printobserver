@@ -88,7 +88,7 @@ fn the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image() {
     let mut standing = supervisor::standing(root.path());
     let world = standing.at.clone();
     let proxy = live::Proxy::in_front_of(&world.server);
-    let client = Client::new(proxy.url(), Actor::Operator);
+    let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
 
     // A write first, so the comparison the two refusals below are about is one
     // this client has already been seen to pass on an answer of another shape.

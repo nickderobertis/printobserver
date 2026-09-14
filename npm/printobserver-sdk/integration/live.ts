@@ -54,9 +54,19 @@ export class Recording {
         const asked = new URL(request.url);
         const target = `${asked.pathname}${asked.search}`;
         const body = await request.text();
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        };
+        // The credential goes on exactly as the client presented it, so what the
+        // supervisor authenticates is the client rather than this proxy.
+        const presented = request.headers.get("Authorization");
+        if (presented !== null) {
+          headers.Authorization = presented;
+        }
         const answered = await fetch(`${to}${target}`, {
           method: request.method,
-          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          headers,
           ...(body === "" ? {} : { body }),
         });
         const said = await answered.text();

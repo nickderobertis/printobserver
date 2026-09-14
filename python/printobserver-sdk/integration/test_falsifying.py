@@ -87,7 +87,7 @@ def test_the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image(
 ) -> None:
     """The published client passes it; both variants are refused."""
     with Proxy(world.server) as proxy:
-        client = Client(proxy.url, "operator")
+        client = Client(proxy.url, "operator", world.credential)
 
         answered = client.image(world.image_id)
         sent = proxy.last().answer

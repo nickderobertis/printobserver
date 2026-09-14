@@ -401,6 +401,8 @@ def _prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
                 *argv,
                 "--server",
                 running.server,
+                "--credential",
+                running.credential,
                 "--print-id",
                 running.print_id,
                 "--image-id",

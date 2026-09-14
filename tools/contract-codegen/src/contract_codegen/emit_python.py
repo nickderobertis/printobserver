@@ -775,7 +775,7 @@ def emit_live(contract: Contract) -> str:
         "def test_every_method_is_answered_by_a_real_supervisor(world: Supervisor) -> None:",
         '    """Every method, answered by a real supervisor, in the one order it admits."""',
         "    with Proxy(world.server) as proxy:",
-        '        client = Client(proxy.url, "operator")',
+        '        client = Client(proxy.url, "operator", world.credential)',
         *(f"        step_{step.name}(client, world, proxy)" for step in steps),
         "",
         "        truth(",
@@ -821,6 +821,7 @@ def emit_live(contract: Contract) -> str:
         "        client = Client(",
         "            proxy.url,",
         '            {"agent": {"session_name": "an actor this envelope grants nothing"}},',
+        "            world.credential,",
         "        )",
         *(f"        refused_{step.name}(client, world, proxy)" for step in rejected_live(contract)),
     ]

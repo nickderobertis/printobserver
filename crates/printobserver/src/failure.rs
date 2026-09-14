@@ -23,7 +23,8 @@ pub enum Exit {
     Usage,
     /// Nothing answered at the configured address.
     Unreachable,
-    /// Nothing configured this program with a server to talk to.
+    /// Nothing configured this program with a server to talk to, or with the
+    /// credential that server serves under.
     Unconfigured,
     /// The policy refused the action.
     Rejected,

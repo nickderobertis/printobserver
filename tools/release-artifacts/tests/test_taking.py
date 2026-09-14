@@ -113,7 +113,8 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
     # reaches nothing however this host is configured.
     quiet = root / "answers-nowhere"
     quiet.write_text(
-        f"#!/bin/sh\nprintf '[client]\\nserver = \"http://127.0.0.1:1\"\\n' "
+        f'#!/bin/sh\nprintf \'[client]\\nserver = "http://127.0.0.1:1"\\n'
+        f'credential = "a-credential-nothing-checks"\\n\' '
         f'> "{state / CLIENT_CONFIG}"\nsleep 60\n',
         encoding="utf-8",
     )

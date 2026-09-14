@@ -448,6 +448,7 @@ def _world(repo: Repo, arguments: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "server": running.server,
+                    "credential": running.credential,
                     "print_id": running.print_id,
                     "image_id": running.image_id,
                     "event_id": running.event_id,

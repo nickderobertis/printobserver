@@ -25,7 +25,7 @@ from typing import cast
 
 import pytest
 from live import Proxy, same
-from printobserver_sdk import Client, NoReasonError, RejectedError
+from printobserver_sdk import Client, NoReasonError, RefusedError, RejectedError
 from printobserver_sdk.contract import JobManifest, PrinterState, payload_of
 from repo_checks.expect import contains, equal, truth
 from supervisor_world import Standing, Supervisor
@@ -87,9 +87,32 @@ def _until(client: Client, print_id: str, wanted: set[PrinterState]) -> None:
     raise AssertionError(message)
 
 
+def test_a_client_without_the_credential_in_force_is_refused(world: Supervisor) -> None:
+    """A real supervisor refuses a client that does not present its credential.
+
+    The refusal arrives as the error every other unsuccessful answer does, under
+    status 401, saying what to present and quoting no credential — and the same
+    read presenting the credential in force is served.
+    """
+    for what, credential in (
+        ("no credential", None),
+        ("a wrong credential", "not-the-credential-in-force"),
+    ):
+        with pytest.raises(RefusedError) as refused:
+            Client(world.server, "operator", credential).status(world.print_id)
+        equal(refused.value.status, 401, describing=f"the status a client with {what} gets")
+        contains(refused.value.detail, "Authorization: Bearer", describing=refused.value.detail)
+        truth(
+            world.credential not in refused.value.detail,
+            describing=f"the refusal of a client with {what} quoting no credential",
+        )
+    served = Client(world.server, "operator", world.credential).status(world.print_id)
+    equal(served["print"]["id"], world.print_id)
+
+
 def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Supervisor) -> None:
     """The nine steps, in the one order a real machine admits."""
-    client = Client(world.server, "operator")
+    client = Client(world.server, "operator", world.credential)
 
     # journey step 1: status
     equal(client.status(world.print_id)["print"]["id"], world.print_id)
@@ -185,7 +208,7 @@ def _unreasoned(world: Supervisor) -> None:
     it.
     """
     with Proxy(world.server) as proxy:
-        client = Client(proxy.url, "operator")
+        client = Client(proxy.url, "operator", world.credential)
 
         # A read first: "nothing went through" is a claim about the calls below,
         # and against a proxy nothing could reach it would be true of anything.

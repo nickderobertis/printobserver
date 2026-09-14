@@ -13,6 +13,8 @@ import { dirname, resolve } from "node:path";
 /** Where the supervisor is, and what a journey acts on. */
 export interface Supervisor {
   server: string;
+  /** The credential it serves under, as the client configuration it wrote carries it. */
+  credential: string;
   print_id: string;
   image_id: string;
   event_id: string;

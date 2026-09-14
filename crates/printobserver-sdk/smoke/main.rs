@@ -9,7 +9,7 @@
 //! checks against the digest the image record itself declares.
 //!
 //! ```console
-//! printobserver-sdk-smoke --server http://127.0.0.1:8420 --print-id <id> --image-id <id>
+//! printobserver-sdk-smoke --server http://127.0.0.1:8420 --credential <credential> --print-id <id> --image-id <id>
 //! ```
 
 use std::process::ExitCode;
@@ -108,11 +108,15 @@ fn main() -> ExitCode {
         eprintln!("smoke: --server takes an address and was given none");
         return ExitCode::from(2);
     };
+    let Some(credential) = argument("credential") else {
+        eprintln!("smoke: --credential takes the credential the supervisor serves under");
+        return ExitCode::from(2);
+    };
     let (Some(print_id), Some(image_id)) = (argument("print-id"), argument("image-id")) else {
         eprintln!("smoke: --print-id and --image-id each take an identifier");
         return ExitCode::from(2);
     };
-    let client = Client::new(server, Actor::Operator);
+    let client = Client::new(server, Actor::Operator).with_credential(credential);
 
     let status = match client.status(&print_id) {
         Ok(status) => status,

@@ -485,7 +485,7 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
 def test_every_method_is_answered_by_a_real_supervisor(world: Supervisor) -> None:
     """Every method, answered by a real supervisor, in the one order it admits."""
     with Proxy(world.server) as proxy:
-        client = Client(proxy.url, "operator")
+        client = Client(proxy.url, "operator", world.credential)
         step_status(client, world, proxy)
         step_context(client, world, proxy)
         step_image(client, world, proxy)
@@ -680,6 +680,7 @@ def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None
         client = Client(
             proxy.url,
             {"agent": {"session_name": "an actor this envelope grants nothing"}},
+            world.credential,
         )
         refused_cancel(client, world, proxy)
         refused_start_print(client, world, proxy)

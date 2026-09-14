@@ -156,7 +156,8 @@ impl core::fmt::Display for Unconfigured {
                 formatter,
                 "the configuration file {} could not be read: {detail}. Point this program \
                  at a file it can read with `--config <path>`, or set {SERVER_ENV} to the \
-                 address the supervisor answers on",
+                 address the supervisor answers on and {CREDENTIAL_ENV} to the credential it \
+                 is configured with",
                 path.display()
             ),
             Self::Unparsable { path, detail } => write!(
@@ -243,6 +244,16 @@ fn address_of(offered: &str, from: &str) -> Result<SocketAddr, Unconfigured> {
 /// invocation can be pointed elsewhere without editing what every other
 /// invocation reads.
 ///
+/// # The operator on their own account
+///
+/// The default file is the service's own, and it is private to the service's
+/// user. So an operator on their own account supplies both values through the
+/// environment, and when nothing names a file and the environment names both,
+/// the default file is not opened at all: there is nothing it could add. A
+/// default file this program is not permitted to read is otherwise passed over
+/// the way a missing one is, and is named only when nothing else named a
+/// supervisor.
+///
 /// # Errors
 ///
 /// Returns [`Unconfigured`] when a named file cannot be read or parsed, when
@@ -250,11 +261,15 @@ fn address_of(offered: &str, from: &str) -> Result<SocketAddr, Unconfigured> {
 /// when what names a credential names an empty one.
 pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
     let path = named.map_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH), Path::to_path_buf);
-    let document = match std::fs::read_to_string(&path) {
+    let from_environment = (in_environment(SERVER_ENV), in_environment(CREDENTIAL_ENV));
+    let wanted = named.is_some() || from_environment.0.is_none() || from_environment.1.is_none();
+    let mut passed_over = None;
+    let document = match wanted.then(|| std::fs::read_to_string(&path)) {
+        None => None,
         // Read as a document rather than as a value: a file beginning with a
         // table header is a document, and a value parser meets that header as
         // an array and everything after it as content it did not expect.
-        Ok(text) => Some(toml::from_str::<toml::Value>(&text).map_err(|error| {
+        Some(Ok(text)) => Some(toml::from_str::<toml::Value>(&text).map_err(|error| {
             Unconfigured::Unparsable {
                 path: path.clone(),
                 detail: without_the_quoted_source(&error),
@@ -263,8 +278,16 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
         // A file nobody named and nobody wrote is a host configured another
         // way. A file somebody named and nothing wrote is a mistake, and is
         // refused where it was named.
-        Err(error) if named.is_none() && error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
+        Some(Err(error)) if named.is_none() && error.kind() == std::io::ErrorKind::NotFound => None,
+        // A file nobody named that belongs to somebody else is the service's
+        // own, and this caller configures this program another way.
+        Some(Err(error))
+            if named.is_none() && error.kind() == std::io::ErrorKind::PermissionDenied =>
+        {
+            passed_over = Some(error.to_string());
+            None
+        }
+        Some(Err(error)) => {
             return Err(Unconfigured::Unreadable {
                 path,
                 detail: error.to_string(),
@@ -287,15 +310,18 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
             credential = Some((value, named_by));
         }
     }
-    if let Some(value) = in_environment(SERVER_ENV) {
+    if let Some(value) = from_environment.0 {
         server = Some((value, SERVER_ENV.to_owned()));
     }
-    if let Some(value) = in_environment(CREDENTIAL_ENV) {
+    if let Some(value) = from_environment.1 {
         credential = Some((value, CREDENTIAL_ENV.to_owned()));
     }
 
     let Some((offered, from)) = server else {
-        return Err(Unconfigured::NoServer { path });
+        return Err(match passed_over {
+            Some(detail) => Unconfigured::Unreadable { path, detail },
+            None => Unconfigured::NoServer { path },
+        });
     };
     Ok(ClientConfig {
         server: address_of(&offered, &from)?,

@@ -28,6 +28,9 @@ class Supervisor:
     """Where the supervisor is, and what a journey acts on."""
 
     server: str
+    #: The credential it serves under, as the client configuration it wrote
+    #: carries it.
+    credential: str
     print_id: str
     image_id: str
     event_id: str
@@ -97,6 +100,7 @@ class Standing:
         described = json.loads(said)
         return Supervisor(
             server=described["server"],
+            credential=described["credential"],
             print_id=described["print_id"],
             image_id=described["image_id"],
             event_id=described["event_id"],

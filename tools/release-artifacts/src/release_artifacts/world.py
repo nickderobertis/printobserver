@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import tomllib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,9 +35,10 @@ INGRESS_WORD = "a-shared-word-for-a-smoke-check"
 #: The header that word travels in, as the ingress spells it.
 INGRESS_HEADER = "x-printobserver-token"
 
-#: The file the supervisor writes the address it bound into, for the clients
-#: beside it. Reading it is how this finds a server started on a port the
-#: operating system chose.
+#: The file the supervisor writes the address it bound and the credential in
+#: force into, for the clients beside it. Reading it is how this finds a server
+#: started on a port the operating system chose, and authenticates to one that
+#: generated its own credential.
 CLIENT_CONFIG = "client.toml"
 
 #: The store the supervisor keeps its record in.
@@ -69,6 +71,8 @@ class Running:
 
     #: Where it answers, as its own client configuration writes it.
     server: str
+    #: The credential it serves under, as that same configuration carries it.
+    credential: str
     #: The print every read of the smoke checks is about.
     print_id: str
     #: The image the materialization read is about.
@@ -325,10 +329,11 @@ class World:
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
         )
-        server = self._await_address()
+        server, credential = self._await_client_configuration()
         print_id, image_id, event_id = self._open_a_print(server)
         return Running(
             server=server,
+            credential=credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,
@@ -348,11 +353,16 @@ class World:
             self._supervisor = None
         self.machine.stop()
 
-    def _await_address(self) -> str:
-        """The address the supervisor bound, read from what it wrote for its clients.
+    def _await_client_configuration(self) -> tuple[str, str]:
+        """The address the supervisor bound and the credential in force.
+
+        Both read from the `[client]` table it wrote for its clients, which is
+        where every client beside a real service reads them from: the
+        configuration this writes names no credential, so the supervisor
+        generated one.
 
         Raises:
-            WorldError: If it never wrote one.
+            WorldError: If it never wrote both.
         """
         written = self.state / CLIENT_CONFIG
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
@@ -362,10 +372,15 @@ class World:
                 msg = f"the supervisor stopped before it answered:\n{said}"
                 raise WorldError(msg)
             if written.is_file():
-                for line in written.read_text(encoding="utf-8").splitlines():
-                    name, _, value = line.partition("=")
-                    if name.strip() == "server":
-                        return value.strip().strip('"')
+                try:
+                    table = tomllib.loads(written.read_text(encoding="utf-8")).get("client", {})
+                except tomllib.TOMLDecodeError:
+                    # Caught part-way through being written; the next look
+                    # reads the whole of it.
+                    table = {}
+                server, credential = table.get("server"), table.get("credential")
+                if isinstance(server, str) and isinstance(credential, str):
+                    return server, credential
             time.sleep(0.1)
         msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)

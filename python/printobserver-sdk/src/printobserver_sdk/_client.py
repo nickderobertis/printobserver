@@ -64,9 +64,12 @@ class Client(GeneratedClient):
             server: Where the supervisor answers, as its own configuration
                 writes it — `http://127.0.0.1:8420` — or as a bare `host:port`.
             actor: Who this client acts as.
-            credential: What authenticates to it. This server requires none of
-                its API callers; a credential is for a deployment that has put
-                something in front of it that does.
+            credential: What authenticates to it. The supervisor serves no
+                versioned operation to a caller that does not present the
+                credential it is configured with — its `api.credential`, or the
+                one it generated into its state directory and wrote into the
+                client configuration beside it — and a call it refuses for that
+                raises `RefusedError` with status 401.
         """
         self.address = _address(server)
         self.actor = actor

@@ -59,8 +59,11 @@ impl Client {
 
     /// The same client, authenticating with one credential.
     ///
-    /// This server requires none of its API callers; a credential is for a
-    /// deployment that has put something in front of it that does.
+    /// The supervisor serves no versioned operation to a caller that does not
+    /// present the credential it is configured with — its `api.credential`, or
+    /// the one it generated into its state directory and wrote into the client
+    /// configuration beside it — and a call it refuses for that arrives as
+    /// [`ClientError::Refused`] under status `401`.
     #[must_use]
     pub fn with_credential(mut self, credential: impl Into<String>) -> Self {
         self.credential = Some(credential.into());

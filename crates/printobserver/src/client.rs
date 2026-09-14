@@ -21,9 +21,10 @@
 
 use std::path::Path;
 
+use printobserver_server::API_CREDENTIAL_FILE;
 use printobserver_types::serde_json::{self, Value};
 
-use crate::config::{ClientConfig, load};
+use crate::config::{CREDENTIAL_ENV, ClientConfig, DEFAULT_CONFIG_PATH, load};
 use crate::failure::{Exit, Failure};
 use crate::parse::Call;
 use crate::render::{Rendering, render};
@@ -37,6 +38,10 @@ const REJECTED_STATUS: u16 = 409;
 
 /// The status an action the machine itself refused is answered under.
 const MACHINE_REFUSED_STATUS: u16 = 502;
+
+/// The status a request that did not present the credential in force is
+/// answered under.
+const UNAUTHENTICATED_STATUS: u16 = 401;
 
 /// What one call produced.
 #[derive(Debug, Clone, PartialEq)]
@@ -115,6 +120,14 @@ pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> 
             document,
             exit: Exit::Refused,
         }),
+        // The supervisor is there and will not serve this program as it is
+        // configured, which is a configuration to change rather than a request
+        // to change — so it exits the way a program nothing configured does, and
+        // says where the credential is read from.
+        UNAUTHENTICATED_STATUS => Err(Failure::of(
+            Exit::Unconfigured,
+            unauthenticated_note(call, config),
+        )),
         status => Err(Failure::of(
             Exit::Refused,
             format!(
@@ -157,6 +170,30 @@ fn rejection_note(document: &Value) -> String {
     format!(
         "the supervisor's policy refused this action{why}{ruled}. Ask again inside what the \
          answer says is allowed"
+    )
+}
+
+/// What a program the supervisor would not authenticate is told.
+///
+/// Where the credential is read from, and never what it was: the configuration
+/// file this invocation read — the one it named, or the default — and the
+/// variable that wins over it.
+fn unauthenticated_note(call: &Call, config: &ClientConfig) -> String {
+    let file = call.config.as_deref().map_or_else(
+        || DEFAULT_CONFIG_PATH.to_owned(),
+        |path| path.display().to_string(),
+    );
+    let presented = if config.credential.is_some() {
+        "refused the credential this program presented"
+    } else {
+        "requires a credential, and this program was configured with none"
+    };
+    format!(
+        "the supervisor at {} {presented}. Set `credential` in the `[client]` table of {file}, \
+         or set {CREDENTIAL_ENV}, to the credential the supervisor is configured with: its \
+         `api.credential`, or what it generated into `{API_CREDENTIAL_FILE}` in its state \
+         directory",
+        config.address()
     )
 }
 
