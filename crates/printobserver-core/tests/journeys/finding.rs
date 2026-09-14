@@ -22,12 +22,51 @@ const RUNNING: &str = "benchy.gcode";
 
 /// One listing, read the way the operation reads it.
 fn listing(world: &World) -> PrintListing {
-    block_on(world.core.prints()).expect("the prints are listed")
+    block_on(world.core.list_and_adopt_prints()).expect("the prints are listed")
 }
 
 /// Every identifier a listing carries, in the order it carries them.
 fn ids(listing: &PrintListing) -> Vec<PrintId> {
     listing.prints.iter().map(|print| print.id).collect()
+}
+
+/// A listing and an alert about the same job, resolved at the same moment,
+/// leave one print for that job.
+///
+/// Each reads the open prints and then may write one, so interleaved they could
+/// each find none and each open one. The store here makes the two reads wait
+/// for one another, which is exactly that interleaving when nothing keeps the
+/// two resolutions apart — and a short wait alone when something does.
+#[test]
+fn a_listing_and_an_alert_resolved_at_once_leave_one_print_for_the_job() {
+    let world = World::new();
+    world
+        .printer
+        .reports_job(Some(RUNNING), PrinterState::Printing);
+    world.store.reads_of_the_prints_meet(2);
+
+    let (listed, handled) = std::thread::scope(|scope| {
+        let listing_one = scope.spawn(|| listing(&world));
+        let handling_one = scope.spawn(|| world.handle(failure_alert(4211)));
+        (
+            listing_one.join().expect("the listing ran"),
+            handling_one.join().expect("the handling ran"),
+        )
+    });
+
+    let prints = world.store.prints();
+    assert_eq!(
+        prints.len(),
+        1,
+        "a listing and an alert resolved at once opened a print each: {prints:?}"
+    );
+    let only = &prints[0];
+    assert_eq!(only.provider_print_id, Some(4211), "{prints:?}");
+    assert_eq!(listed.active, Some(only.id));
+    assert_eq!(
+        handled.expect("the alert is handled").print_id,
+        Some(only.id)
+    );
 }
 
 /// A job the printer is running, with no print open for it, is adopted exactly

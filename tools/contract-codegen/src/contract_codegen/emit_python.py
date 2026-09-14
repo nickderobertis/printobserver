@@ -211,6 +211,15 @@ def _argument(parameter: Parameter) -> str:
     return f"{parameter.name}: {type_name(parameter.type)}"
 
 
+#: The directive every generated call through the published client carries.
+#:
+#: The published Python client is synchronous by design and ships no async
+#: counterpart, so the judged rule asking for an async client at a network
+#: boundary is answered once, in `suppressions.toml`, for every call the
+#: generator writes rather than site by site as operations are added.
+ASYNC_DIRECTIVE = "# llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml."
+
+
 def _string(text: str) -> str:
     """One string literal, formatted only when it interpolates something.
 
@@ -276,7 +285,10 @@ def _method(operation: Operation) -> list[str]:
                 lines.append(f'        sending["{parameter.name}"] = {parameter.name}')
     else:
         lines.append("        sending = None")
+    lines.append(f"        {ASYNC_DIRECTIVE}")
     lines.append(f'        answered = self.call("{operation.method}", target, asked, sending)')
+    lines.append("        # `call` checks no shape; the server serializes this answer from the")
+    lines.append("        # type `operations.json` declares for it, so this cast names that type.")
     lines.append(f"        return cast({operation.answer}, answered)")
     return lines
 
@@ -576,6 +588,7 @@ def _python_event_walk(events: EventStep) -> list[str]:
         "",
         "    with Host(200, answer) as host:",
         "        client = Client(host.address, ACTOR)",
+        f"        {ASYNC_DIRECTIVE}",
         f"        answered = client.{spelled}({call})",
         "",
         '    equal(answered, answer, describing="the two events, carried through untouched")',
@@ -769,6 +782,7 @@ def emit_live(contract: Contract) -> str:
             f'    """`{step.name}`, answered by a real supervisor."""',
             f'    ready(client, world.print_id, "{step.state}")',
             "",
+            f"    {ASYNC_DIRECTIVE}",
             f"    answered = client.{spelled}({call})",
             "",
             "    seen = proxy.last()",

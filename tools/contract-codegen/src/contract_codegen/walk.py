@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from contract_codegen.examples import (
     TEXT,
@@ -197,6 +198,15 @@ def actor(contract: Contract) -> str:
     return document(argument_of(Ref("Actor"), contract))
 
 
+class Ordered(NamedTuple):
+    """One operation's place in the walk against a real supervisor."""
+
+    #: The operation's own name.
+    name: str
+    #: The state the machine has to be in for it to be answered; empty is any.
+    state: str
+
+
 #: The order the walk against a **real** supervisor drives the operations in,
 #: and the state the machine has to be in for each to be answered rather than
 #: refused for want of one. `""` is any state.
@@ -207,33 +217,33 @@ def actor(contract: Contract) -> str:
 #: operation list by `plan_live`: an operation with no place here stops the
 #: generator, which is what keeps a new operation from arriving with nothing
 #: driving it.
-LIVE_ORDER: tuple[tuple[str, str], ...] = (
-    ("status", ""),
-    ("context", ""),
-    ("image", ""),
-    ("manifest_set", ""),
-    ("manifest_get", ""),
-    ("history", ""),
+LIVE_ORDER: tuple[Ordered, ...] = (
+    Ordered("status", ""),
+    Ordered("context", ""),
+    Ordered("image", ""),
+    Ordered("manifest_set", ""),
+    Ordered("manifest_get", ""),
+    Ordered("history", ""),
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
-    ("cancel", "printing"),
-    ("start_print", "operational"),
-    ("set_feedrate_factor", "printing"),
-    ("set_flowrate_factor", "printing"),
-    ("set_fan_percent", "printing"),
-    ("set_tool_target_c", "printing"),
-    ("set_bed_target_c", "printing"),
-    ("acknowledge_failure", ""),
-    ("pause", "printing"),
+    Ordered("cancel", "printing"),
+    Ordered("start_print", "operational"),
+    Ordered("set_feedrate_factor", "printing"),
+    Ordered("set_flowrate_factor", "printing"),
+    Ordered("set_fan_percent", "printing"),
+    Ordered("set_tool_target_c", "printing"),
+    Ordered("set_bed_target_c", "printing"),
+    Ordered("acknowledge_failure", ""),
+    Ordered("pause", "printing"),
     # Last of the actions, so the walk leaves the machine printing — where the
     # bring-up left it, and where the scripted environment's own suite expects
     # it.
-    ("resume", "paused"),
+    Ordered("resume", "paused"),
     # After every action rather than before: a listing may open a print for the
     # running job, and an action is recorded against the most recently opened
     # open print, so a listing earlier would move the walk's own actions onto
     # a print the walk is not reading.
-    ("prints", ""),
+    Ordered("prints", ""),
 )
 
 #: What the real walk supplies for one value, by the operation and the value it

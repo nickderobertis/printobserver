@@ -608,6 +608,7 @@ const fn read(name: &'static str, path: &'static str) -> Operation {
 pub const OPERATIONS: [Operation; 17] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
+    // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
     read("prints", "/prints"),
     read("status", "/prints/{print_id}/status"),
     Operation {

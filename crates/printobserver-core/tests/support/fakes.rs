@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, Weak};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
@@ -318,6 +318,45 @@ struct Held {
     sessions: BTreeMap<PrintId, SupervisionSession>,
 }
 
+/// How long a caller at a [`Meeting`] waits for the others before going on alone.
+const PATIENCE: Duration = Duration::from_millis(400);
+
+/// A place callers wait for one another at, for a journey about two of them
+/// interleaving.
+///
+/// Unarmed, it holds nobody. Armed for a number of callers, each one that
+/// arrives waits until that many have, or until [`PATIENCE`] runs out — so two
+/// callers nothing keeps apart are made to overlap, and two that something does
+/// keep apart each wait a moment alone and go on.
+#[derive(Debug, Default)]
+pub struct Meeting {
+    /// How many callers are wanted, and how many have come.
+    counts: Mutex<(usize, usize)>,
+    /// Signalled whenever one arrives.
+    arrived: Condvar,
+}
+
+impl Meeting {
+    /// Arm it for this many callers.
+    pub fn expect(&self, callers: usize) {
+        *self.counts.lock().expect("the meeting holds") = (callers, 0);
+    }
+
+    /// Arrive, and wait for the others when it is armed.
+    fn arrive(&self) {
+        let mut counts = self.counts.lock().expect("the meeting holds");
+        if counts.0 == 0 {
+            return;
+        }
+        counts.1 += 1;
+        self.arrived.notify_all();
+        let _ = self
+            .arrived
+            .wait_timeout_while(counts, PATIENCE, |(wanted, came)| *came < *wanted)
+            .expect("the meeting holds");
+    }
+}
+
 /// An in-memory store, which is what a fake of this port is.
 pub struct FakeStore {
     /// The shared ordered record of port calls.
@@ -330,6 +369,8 @@ pub struct FakeStore {
     failures: Mutex<BTreeMap<StoreMethod, StoreError>>,
     /// Where image bytes are written.
     root: PathBuf,
+    /// Where the reads of the prints wait for one another, when armed.
+    reads_of_the_prints: Meeting,
 }
 
 impl FakeStore {
@@ -348,7 +389,14 @@ impl FakeStore {
             held: Mutex::new(Held::default()),
             failures: Mutex::new(BTreeMap::new()),
             root,
+            reads_of_the_prints: Meeting::default(),
         }
+    }
+
+    /// Make this many reads of the prints — every print, or the open ones —
+    /// wait for one another before any of them answers.
+    pub fn reads_of_the_prints_meet(&self, callers: usize) {
+        self.reads_of_the_prints.expect(callers);
     }
 
     /// Fail one method with one error from now on.
@@ -526,6 +574,7 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
+        self.reads_of_the_prints.arrive();
         let found: Vec<PrintRecord> = self
             .newest_first()
             .into_iter()
@@ -538,6 +587,7 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadPrints);
+        self.reads_of_the_prints.arrive();
         let found = self.newest_first();
         Box::pin(async move { Ok(found) })
     }

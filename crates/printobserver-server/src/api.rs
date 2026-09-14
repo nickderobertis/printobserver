@@ -169,7 +169,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         );
     }
     match (operation.name, operation.method) {
-        ("prints", Method::Get) => get(prints),
+        ("prints", Method::Get) => get(list_and_adopt_prints),
         ("status", Method::Get) => get(status),
         ("context", Method::Get) => get(context),
         ("image", Method::Get) => get(image),
@@ -273,8 +273,8 @@ async fn act(
 /// is how a print started at the printer gets an identifier before anything has
 /// reported on it. A printer that cannot be read still answers the stored
 /// prints, with nothing active.
-async fn prints(State(state): State<ApiState>) -> Response {
-    match state.supervisor.prints().await {
+async fn list_and_adopt_prints(State(state): State<ApiState>) -> Response {
+    match state.supervisor.list_and_adopt_prints().await {
         Ok(listing) => answer(
             StatusCode::OK,
             &PrintsAnswer {

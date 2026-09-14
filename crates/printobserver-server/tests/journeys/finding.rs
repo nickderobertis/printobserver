@@ -44,6 +44,31 @@ fn listed(answer: &Value) -> Vec<String> {
         .collect()
 }
 
+/// Two reads of the prints at the same moment, while a job nothing holds a
+/// print for is running, open one print for it between them.
+///
+/// Each reads the job and the prints and then may open one, so interleaved they
+/// could each find none and each open one. The machine here makes the two job
+/// reads wait for one another, which is exactly that interleaving when nothing
+/// keeps the two reads apart.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_reads_at_the_same_moment_open_one_print_for_the_job() {
+    let world = World::open().await;
+    world.printer.job_reads_meet(2);
+
+    let (first, second) = tokio::join!(prints(&world), prints(&world));
+
+    let after = prints(&world).await;
+    assert_eq!(
+        listed(&after).len(),
+        1,
+        "two reads at once each opened a print for the one job: {after}"
+    );
+    assert_eq!(first["active"], after["active"], "{first}");
+    assert_eq!(second["active"], after["active"], "{second}");
+    world.server.stop().await;
+}
+
 /// A running job nothing holds a print for is adopted by the first read and
 /// named active, the listing is newest first with ended prints in it, and a
 /// second read of the same job opens nothing and moves nothing at the machine.

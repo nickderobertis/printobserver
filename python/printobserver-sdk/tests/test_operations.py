@@ -1579,6 +1579,7 @@ def test_history_carries_a_known_and_an_unknown_kind_through_the_kind_table() ->
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.history("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7)
 
     equal(answered, answer, describing="the two events, carried through untouched")

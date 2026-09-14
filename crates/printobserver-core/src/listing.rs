@@ -49,18 +49,20 @@ pub struct PrintListing {
 }
 
 impl Supervisor {
-    /// Every print, and the one the printer's job belongs to — opened for it
-    /// when no open print carries its file name.
+    /// Every print, and the one the printer's job belongs to — **opening** one
+    /// for that job when no open print carries its file name.
     ///
-    /// A printer that cannot be read is a listing with nothing active rather
-    /// than a failure: the stored prints are still the answer to which prints
-    /// there are.
+    /// Named for both halves, because it is not only a read: the listing is
+    /// what a caller asked for, and the print it may open is what makes that
+    /// listing name the job at all. A printer that cannot be read is a listing
+    /// with nothing active rather than a failure: the stored prints are still
+    /// the answer to which prints there are.
     ///
     /// # Errors
     ///
     /// Returns the store's own error when the prints could not be read, or a
     /// print for the job could not be opened.
-    pub async fn prints(&self) -> Result<PrintListing, CoreError> {
+    pub async fn list_and_adopt_prints(&self) -> Result<PrintListing, CoreError> {
         let _resolving = self.resolving().await;
         let running = self
             .read_job()
