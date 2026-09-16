@@ -59,17 +59,28 @@ fn repo_root() -> PathBuf {
 
 /// The packages this repository's own tools live in, read from the justfile.
 ///
+/// Joined with this host's own separator, as the justfile's export joins them:
+/// a Windows interpreter reads a `:`-joined search path as one entry.
+///
 /// # Panics
 ///
-/// Panics when the justfile exports none, which is a tree these tools are not
+/// Panics when the justfile lists none, which is a tree these tools are not
 /// reachable in.
 fn python_path(root: &Path) -> String {
+    let separator = if cfg!(windows) { ";" } else { ":" };
     let justfile = std::fs::read_to_string(root.join("justfile")).expect("the justfile reads");
     justfile
         .lines()
-        .find_map(|line| line.strip_prefix("export PYTHONPATH :="))
-        .map(|value| value.trim().trim_matches('"').to_owned())
-        .expect("the justfile exports the path this repository's tools live on")
+        .find_map(|line| line.strip_prefix("TOOL_PACKAGES :="))
+        .map(|value| {
+            value
+                .trim()
+                .trim_matches('"')
+                .split(':')
+                .collect::<Vec<_>>()
+                .join(separator)
+        })
+        .expect("the justfile lists the path this repository's tools live on")
 }
 
 /// Bring up a supervisor over the scripted `OctoPrint`, and hold it up.
