@@ -43,6 +43,33 @@ PLATFORM_LINE = re.compile(
     r"(?: — (?P<reason>.+))?$"
 )
 
+#: What one of those entries has to look like, quoted back at whoever writes one
+#: that does not. A line of that block beginning `- ` and not matching
+#: `PLATFORM_LINE` is refused rather than passed over: an entry with a typo in it
+#: would otherwise be a platform silently unsupported.
+PLATFORM_SHAPE = (
+    "- `<platform>` — runner `<runner>`, Rust target `<target>`, "
+    "service manager `<manager>`, install path: yes|no[ — <reason>]"
+)
+
+#: A token shaped like one of these identifiers: an operating-system family this
+#: list names one of, and a processor. A shape rather than a fixed set, so a
+#: document naming `linux-riscv64` is found by being a platform identifier rather
+#: than by being on a list of wrong ones — and the processor half is closed on
+#: purpose, which is what keeps a runner label (`macos-15`, `windows-11-arm`) and
+#: a registry's own selector (`linux-x64`, `darwin-arm64`) out of it.
+#:
+#: `NAMING`'s own keys are held to it, so the two cannot drift.
+PLATFORM_ID = re.compile(
+    r"^(?:linux|macos|windows)-(?:x86_64|aarch64|riscv64|armv7l?|i686|ppc64le|s390x)$"
+)
+
+#: Every service manager this repository has a name for, which is the closed set
+#: a supported-platform entry's own column may state and the set a document is
+#: read against. One per operating-system family, and each is the manager a host
+#: of that family runs a service under with nothing installed.
+SERVICE_MANAGERS = ("systemd", "launchd", "windows-service")
+
 #: The block `AGENTS.md` records each cell that does not run in.
 EXCLUSIONS_BLOCK = "platform-exclusions"
 
@@ -361,11 +388,21 @@ def host_os_version() -> tuple[int, int] | None:
         PlatformError: If a host that states one reports none, which is a host
             no wheel of this repository is built on.
     """
-    system = host_platform.system()
-    if system == "Windows":
-        return None
-    if system == "Darwin":
-        return _version(host_platform.mac_ver()[0], "this host reports its system release as")
+    match host_platform.system():
+        case "Windows":
+            return None
+        case "Darwin":
+            return _version(host_platform.mac_ver()[0], "this host reports its system release as")
+        case _:
+            return _glibc()
+
+
+def _glibc() -> tuple[int, int]:
+    """The C library version this host's programs are built against.
+
+    Raises:
+        PlatformError: If this host reports none.
+    """
     reported = os.confstr("CS_GNU_LIBC_VERSION") if hasattr(os, "confstr") else None
     parts = (reported or "").split()
     if len(parts) != 2 or parts[0] != "glibc":
@@ -384,13 +421,16 @@ def _version(reported: str, why: str) -> tuple[int, int]:
         PlatformError: If it is not one.
     """
     numbers = reported.split(".")
-    if not numbers or not numbers[0].isdigit():
+    # A version with no minor component is that platform's own way of writing
+    # `.0`; one whose minor is not a number is malformed, and reading it as zero
+    # would put a tag on a wheel stating a version nothing reported.
+    malformed = not numbers[0].isdigit() or (len(numbers) > 1 and not numbers[1].isdigit())
+    if malformed:
         msg = (
             f"{why} {reported!r}, and a wheel's platform tag has to state one it was built against"
         )
         raise PlatformError(msg)
-    minor = numbers[1] if len(numbers) > 1 and numbers[1].isdigit() else "0"
-    return int(numbers[0]), int(minor)
+    return int(numbers[0]), int(numbers[1]) if len(numbers) > 1 else 0
 
 
 def host(repo: Repo) -> Platform:

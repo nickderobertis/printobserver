@@ -98,3 +98,35 @@ def test_a_line_that_is_not_of_the_recorded_shape_is_refused(tree: Callable[[], 
     findings = unmatrixed_jobs(broken.repo)
 
     refused(findings, "which is not of the form")
+
+
+def test_a_required_check_with_no_matrix_and_no_reason_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The record is derived from what a merge waits on, so it cannot go stale against it."""
+    broken = tree()
+    record(
+        broken,
+        "- `pr-title` — a title is one string",
+        "- `obico` — an external producer's payload, over HTTP",
+    )
+
+    findings = unmatrixed_jobs(broken.repo)
+
+    refused_naming(findings, "`llmlint`", "a check a merge of this repository waits on")
+
+
+def test_the_scheduled_obico_tiers_job_with_no_reason_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """It is the other job a reader expects a matrix on, and it owes the reason it has none."""
+    broken = tree()
+    record(
+        broken,
+        "- `llmlint` — one text diff, one non-deterministic verdict",
+        "- `pr-title` — a title is one string",
+    )
+
+    findings = unmatrixed_jobs(broken.repo)
+
+    refused_naming(findings, "`obico`", "the scheduled Obico tier")

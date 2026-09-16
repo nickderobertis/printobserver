@@ -874,27 +874,6 @@ def schema_document(repo: Repo) -> list[str]:
     return findings
 
 
-#: A backticked token shaped like one of this repository's platform identifiers:
-#: an operating-system family the supported-platform list names one of, and a
-#: processor. Read as a shape rather than as a fixed list, so a document naming
-#: `linux-riscv64` is found by being a platform identifier rather than by being
-#: on a list of wrong ones.
-#:
-#: The processor half is a closed vocabulary on purpose, and it is what keeps a
-#: runner label (`macos-15`, `windows-11-arm`) and a registry's own selector
-#: (`linux-x64`, `darwin-arm64`) out: neither is a platform identifier, and a
-#: check that refused a document for naming one would be refusing a document for
-#: being right.
-PLATFORM_ID = re.compile(
-    r"^(?:linux|macos|windows)-(?:x86_64|aarch64|riscv64|armv7l?|i686|ppc64le|s390x)$"
-)
-
-#: Every service manager this repository has a name for. A document may say one
-#: of these of a platform, and `platform_names` refuses one that says a
-#: different one from what the supported-platform list gives that platform.
-SERVICE_MANAGERS = ("systemd", "launchd", "windows-service")
-
-
 def _documents(repo: Repo) -> list[tuple[str, str]]:
     """Every markdown document this repository commits, with its text.
 
@@ -919,7 +898,7 @@ def platform_names(repo: Repo) -> list[str]:
     disagreement until they follow it. This is the mechanical half of keeping
     every document derived from that list.
     """
-    from repo_checks.platforms import supported
+    from repo_checks.platforms import PLATFORM_ID, SERVICE_MANAGERS, supported
 
     try:
         declared = supported(repo)

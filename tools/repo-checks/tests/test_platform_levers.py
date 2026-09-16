@@ -210,3 +210,29 @@ def test_an_exclusion_that_is_not_of_the_recorded_shape_is_refused(
     findings = platforms(broken.repo)
 
     refused(findings, "which is not of the form")
+
+
+def test_a_list_entry_that_is_not_of_the_recorded_shape_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A line that begins like an entry and is not one is a platform silently unsupported."""
+    broken = tree()
+    broken.edit("AGENTS.md", AARCH64, "- `linux-aarch64` — runner `ubuntu-24.04-arm`")
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`linux-aarch64`", "which is not of the form")
+
+
+def test_an_entry_naming_a_service_manager_nothing_here_has_a_name_for_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The column is a closed vocabulary: a typo in it is a pair of commands nobody states."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md", AARCH64, AARCH64.replace("service manager `systemd`", "service manager `sysv`")
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`linux-aarch64`", "`sysv`", "none this repository has a name for")

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import platform as host_platform
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -20,6 +21,10 @@ import pytest
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import (
+    HOSTS,
+    NAMING,
+    PLATFORM_ID,
+    SERVICE_MANAGERS,
     PlatformError,
     descriptor,
     host,
@@ -380,3 +385,51 @@ def test_a_host_reporting_a_version_that_is_not_one_is_refused(
 
     with pytest.raises(PlatformError, match="system release"):
         host_os_version()
+
+
+def test_the_three_key_sets_of_the_module_cannot_drift_apart(committed: Repo) -> None:
+    """Every identifier is named, reachable from a host, and of the documented shape.
+
+    Three declarations in this module are about the same six identifiers, and
+    each is written out rather than derived: what a platform is called, what a
+    running interpreter reports for it, and what a platform identifier looks like
+    to a document. This is what holds them to one another, and the parametrized
+    walk above is what holds all three to the plan's table.
+    """
+    equal(
+        sorted(set(HOSTS.values())),
+        sorted(NAMING),
+        describing="the identifiers a host is answered with, against the identifiers named",
+    )
+    for identifier in NAMING:
+        truth(
+            PLATFORM_ID.match(identifier) is not None,
+            describing=f"`{identifier}` to be of the shape a document is read against",
+        )
+    for platform in supported(committed):
+        contains(
+            SERVICE_MANAGERS,
+            platform.service_manager,
+            describing="the service managers this repository has a name for",
+        )
+
+
+def test_a_host_reporting_a_minor_version_that_is_not_a_number_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reading it as zero would put a version on a wheel that nothing reported."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.beta", ("", "", ""), "arm64"))
+
+    with pytest.raises(PlatformError, match=re.escape("15.beta")):
+        host_os_version()
+
+
+def test_a_host_reporting_a_version_with_no_minor_reads_it_as_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A platform that writes `15` means `15.0`, which is a version and not a defect."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15", ("", "", ""), "arm64"))
+
+    equal(host_os_version(), (15, 0), describing="a release written with no minor component")

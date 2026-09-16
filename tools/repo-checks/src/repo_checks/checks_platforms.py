@@ -240,6 +240,45 @@ def _toolchain_findings(repo: Repo, declared: list[Platform]) -> list[str]:
     ]
 
 
+def _owes_a_reason(repo: Repo, jobs: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Every job this record has to account for, and what makes it one.
+
+    Derived rather than listed, so the record cannot go stale against the tree:
+    a job whose green a merge waits on and a job running the scheduled Obico tier
+    are the two kinds a reader expects a platform matrix on, and each of them
+    that carries none owes the reason it does.
+    """
+    from repo_checks.checks_ci import WorkflowValueError, status_contexts
+
+    try:
+        required = {
+            line[2:].strip().strip("`") for line in marker_block(repo.agents_md, "required-checks")
+        }
+    except MarkerBlockMissingError:
+        required = set()
+    owed: dict[str, str] = {}
+    try:
+        for context in status_contexts(repo):
+            if context.name in required:
+                owed[context.job] = "a check a merge of this repository waits on"
+    except WorkflowValueError:
+        # A workflow a check run cannot be derived from is that check's finding
+        # to report, and reporting it here as well would say it twice.
+        pass
+    tier = str(policy_table(repo, "obico").get("tier", "")).strip()
+    if tier:
+        from repo_checks.parsing import run_commands
+
+        owed.update(
+            {
+                job_name: "the scheduled Obico tier"
+                for job_name, job in jobs.items()
+                if f"just {tier}" in run_commands(job)
+            }
+        )
+    return owed
+
+
 def unmatrixed_jobs(repo: Repo) -> list[str]:
     """Every job recorded as carrying no platform matrix is there, and says why."""
     from repo_checks.checks_ci import _matrix_platforms
@@ -249,6 +288,9 @@ def unmatrixed_jobs(repo: Repo) -> list[str]:
     except MarkerBlockMissingError as error:
         return [str(error)]
 
+    # `Any` at the deserialization boundary: a workflow's jobs are whatever the
+    # YAML reader handed back, and the one thing read out of them here —
+    # whether a job declares a platform matrix — narrows its own values.
     jobs: dict[str, dict[str, Any]] = {}
     for file_path in repo.workflow_paths:
         for job_name, job in jobs_of(load_workflow(file_path)).items():
@@ -284,5 +326,11 @@ def unmatrixed_jobs(repo: Repo) -> list[str]:
         f"committed workflows declare one on it"
         for job in sorted(named)
         if job in jobs and _matrix_platforms(jobs[job]) is not None
+    )
+    findings.extend(
+        f"the committed workflows declare job `{job}`, which is {why} and carries no "
+        f"platform matrix, and AGENTS.md records no reason it carries none"
+        for job, why in sorted(_owes_a_reason(repo, jobs).items())
+        if job not in named and _matrix_platforms(jobs[job]) is None
     )
     return findings

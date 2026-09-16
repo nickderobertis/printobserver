@@ -241,13 +241,13 @@ pass and fail the same content while both are required checks.
 
 Each entry states four facts: the runner, the Rust target, the service manager
 whose own command pair the install-path section below states, and whether the
-end-user install path targets the platform at all. The four facts a platform has
-that nobody reads in prose — what the JavaScript registry selects a package by,
-what the program's own file is called there, what the release asset is named,
-and how a wheel's platform tag is spelled — are declared once, in
+end-user install path targets the platform at all. A platform's four other facts
+— what the JavaScript registry selects a package by, what the program's own file
+is called there, what the release asset is named, and how a wheel's platform tag
+is spelled — are nobody's prose, and live in
 `tools/repo-checks/src/repo_checks/platforms.py`, which hands a consumer all
-eight at once; every copy of one of them in the tree is held to it, and asking
-it about an identifier this list does not name is refused naming it.
+eight at once. That module is the source every other copy of one of them derives
+from.
 
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
@@ -270,17 +270,13 @@ visible here and both are refused without a reason.
 
 **`install path: yes|no`** is the first, and it is per platform. A platform
 answered `no` is carried by no install-route, registry-proof or artifact-route
-matrix, and one answered `yes` must be carried by every one of them; `just
-check-repo` refuses a job and this list disagreeing either way. A `no` states its
-own reason on the entry — `install path: no — <reason>` — and is refused without
-one, so a platform cannot be taken out of every install tier by an unexplained
-opt-out.
+matrix; one answered `yes` is carried by every one of them. A `no` carries its
+own reason — `install path: no — <reason>` — because a platform taken out of
+every install tier by an unexplained opt-out is one nobody can put back.
 
-**The block below** is the second, and it is per cell. One line for each
+**The block below** is the second, and it is per cell: one line per
 platform-dependent job that does not run on a platform this list names, with the
-reason it does not. `just check-repo` refuses an entry with no reason, an entry
-naming a platform or a job that is not there, and a platform-dependent job that
-omits a cell no entry names.
+reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 
 [//]: # (BEGIN platform-exclusions)
 [//]: # (END platform-exclusions)
@@ -294,11 +290,9 @@ with itself.
 
 ### The three jobs that carry no platform matrix
 
-Three jobs run once per change rather than once per platform, and a matrix would
-say nothing about any of them. Each records why here, and `just check-repo`
-refuses an entry carrying no reason, an entry naming a job the committed
-workflows do not declare, and a job named here that carries a platform matrix
-after all.
+These run once per change rather than once per platform, and a matrix would say
+nothing about any of them. Each carries the reason it has none — the record is
+what makes a job running once a decision rather than an omission.
 
 [//]: # (BEGIN unmatrixed-jobs)
 - `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
@@ -666,10 +660,10 @@ one of them whatever platform they are on rather than one per platform. What is
 per platform is the pair of commands after them: each service manager the
 supported-platform list names states its own installer command and its own start
 command, in that order, and a platform's pair is the one its own service-manager
-column names. Route 3 is per platform one level down, because a shell script is
-not a route a Windows machine can take: it states one fetch command per install
-script behind it, and `just check-repo` requires every platform the list answers
-`install path: yes` for to be reached by exactly one of those scripts.
+column names. Route 3 goes one level further down, because a shell script is not
+a route a Windows machine can take: it states one fetch command per install
+script behind it, and every platform this list answers `install path: yes` for is
+reached by exactly one of those scripts.
 
 ### The three routes
 
@@ -739,9 +733,8 @@ printobserver --version
 Both run as root, and which pair you run is your platform's own: the
 supported-platform list's service-manager column names it. The first of a pair
 puts the service in place and the second starts it, and one subsection below
-states one pair, headed by the service manager it belongs to. `just check-repo`
-refuses a service manager the list names and this section states no pair for,
-and a pair here for a service manager the list does not name.
+states one pair, headed by the service manager it belongs to. Every service
+manager that list names has a pair here, and no manager it does not name has one.
 
 **Enabling and starting is a command of its own rather than something the
 installer does, and the reason is that this service commands a 3D printer.**
@@ -752,10 +745,9 @@ back together, in any pair.
 
 `just check-repo`'s `service-install` reads this section beside the tree and
 refuses one in which the unit's name or the installer's path differs from what is
-written below, or in which that installer enables or starts anything. It reads
-the pair belonging to a platform through that platform's own service-manager
-column, so a platform run under a second service manager is read against that
-manager's own pair rather than against this one.
+written below, or in which that installer enables or starts anything. What it
+reads for a platform is that platform's own service-manager column, so a second
+service manager here is read against its own pair rather than against systemd's.
 
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
@@ -839,11 +831,6 @@ distinguishable, and every cell of a required job is required, because a job
 required on one platform and not the other is a merge path the other never
 blocked — and why the judged tier appears once, with no platform in its name at
 all.
-
-Whether `main`'s branch protection actually requires these is a repository
-setting a person applies through GitHub; what this record is, and what `just
-check-repo` holds it to, is the set of check runs the committed workflows report
-that a merge must not proceed without.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`

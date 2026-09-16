@@ -25,6 +25,8 @@ from repo_checks.platforms import (
     EXCLUSION_SHAPE,
     EXCLUSIONS_BLOCK,
     PLATFORM_LINE,
+    PLATFORM_SHAPE,
+    SERVICE_MANAGERS,
     Platform,
 )
 from repo_checks.platforms import supported as platforms_of
@@ -351,6 +353,32 @@ def _install_answer_findings(declared: list[Platform]) -> list[str]:
     ]
 
 
+def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
+    """Every line of the list is an entry, and every entry states a known manager.
+
+    A line that begins like an entry and is not one would otherwise be passed
+    over, which is a platform silently unsupported — every matrix derived from
+    this list would narrow to match, and every check here would agree with it.
+
+    Raises:
+        MarkerBlockMissingError: If `AGENTS.md` carries no such list.
+    """
+    findings = [
+        f"AGENTS.md's supported-platform list carries `{line}`, which is not of the "
+        f"form `{PLATFORM_SHAPE}`"
+        for line in marker_block(repo.agents_md, "supported-platforms")
+        if line.startswith("- ") and not PLATFORM_LINE.match(line)
+    ]
+    findings.extend(
+        f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "
+        f"`{platform.service_manager}`, which is none this repository has a name for "
+        f"({', '.join(f'`{one}`' for one in SERVICE_MANAGERS)})"
+        for platform in declared
+        if platform.service_manager not in SERVICE_MANAGERS
+    )
+    return findings
+
+
 def platforms(repo: Repo) -> list[str]:
     """The supported-platform list is the one source every CI matrix comes from."""
     try:
@@ -377,6 +405,7 @@ def platforms(repo: Repo) -> list[str]:
             "the service manager the unit in the end-user install path is written for"
         )
     findings.extend(_install_answer_findings(declared))
+    findings.extend(_entry_findings(repo, declared))
 
     declared_ids = [item.id for item in declared]
     installed_ids = [item.id for item in declared if item.install_path]
