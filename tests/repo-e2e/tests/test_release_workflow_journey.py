@@ -661,7 +661,7 @@ def test_the_proof_after_a_dispatched_run_proves_the_version_that_run_recorded(
         equal(proof.run.result(job), Result.SUCCESS, describing=f"the `{job}` job")
         equal(
             [entry.proof_version for entry in proof.handed(job)],
-            [version, version],
+            [version] * 4,
             describing=f"the {PRINTOBSERVER_PROOF_VERSION} each cell of `{job}` proves",
         )
 
@@ -689,7 +689,7 @@ def test_the_proof_after_a_push_shaped_run_reads_the_version_off_the_tag_as_befo
     for job in PROVING:
         equal(
             [entry.proof_version for entry in proof.handed(job)],
-            [version, version],
+            [version] * 4,
             describing=f"the {PRINTOBSERVER_PROOF_VERSION} each cell of `{job}` proves",
         )
 

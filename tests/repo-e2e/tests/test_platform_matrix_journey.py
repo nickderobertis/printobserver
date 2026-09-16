@@ -21,9 +21,14 @@ INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
 DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+MACOS = """          - id: macos-aarch64
+            runner: macos-15
+          - id: macos-x86_64
+            runner: macos-15-intel
+"""
 # The integration job's own copy of that entry: the one that is followed by a
 # checkout taking no `with:` block, which is what tells it apart from the gate's.
-INTEGRATION_AARCH64 = AARCH64 + (
+INTEGRATION_AARCH64 = AARCH64 + MACOS + (
     "    runs-on: ${{ matrix.platform.runner }}\n"
     "    steps:\n"
     "      - uses: actions/checkout@v5\n"
@@ -31,7 +36,7 @@ INTEGRATION_AARCH64 = AARCH64 + (
 )
 # The pypi install job's own copy of that entry: the one followed by a step that
 # sets up Python, which none of the registry proofs ahead of it in that file does.
-INSTALL_ROUTE_AARCH64 = AARCH64 + (
+INSTALL_ROUTE_AARCH64 = AARCH64 + MACOS + (
     "    runs-on: ${{ matrix.platform.runner }}\n"
     "    steps:\n"
     "      - uses: actions/setup-python@v5\n"
@@ -46,6 +51,7 @@ GATE_MATRIX = (
             runner: ubuntu-24.04
 """
     + AARCH64
+    + MACOS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"
