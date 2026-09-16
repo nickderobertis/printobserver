@@ -28,7 +28,11 @@ def test_the_provisioned_key_is_accepted_and_the_same_call_without_it_is_refused
     started = answer(result)
     url = str(started["url"])
     named = str(started["api_key_file"])
-    contains(result.stdout, named, describing="the script's own output, which names the key file")
+    equal(
+        started["api_key_file"],
+        named,
+        describing="the key path in the script's decoded JSON answer",
+    )
 
     key = key_from(named)
 

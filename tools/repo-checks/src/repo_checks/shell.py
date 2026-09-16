@@ -112,6 +112,10 @@ def run(
         # formatter handed a generated file carrying an em dash refuses it as
         # not UTF-8 at all.
         encoding="utf-8",
+        # A Windows-native program can still write one diagnostic through its
+        # ANSI console code page. Preserve the rest of that diagnostic instead
+        # of losing the whole stream in subprocess's reader thread.
+        errors="replace",
         check=check,
     )
 

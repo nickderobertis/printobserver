@@ -119,8 +119,9 @@ def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_te
     result = script("up", "--state-dir", str(occupied), timeout=600)
 
     failing(result, naming="outside the declared failure classes")
-    lines = said(result).splitlines()
-    refused_naming(lines, "FileExistsError", str(occupied))
+    report = said(result)
+    contains(report, "FileExistsError", describing="the underlying error's class")
+    contains(report, str(occupied), describing="the path the underlying error names")
 
 
 def test_the_script_can_reach_no_failure_path_the_declared_set_does_not_cover() -> None:

@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { delimiter, dirname, resolve } from "node:path";
 
 /** Where the supervisor is, and what a journey acts on. */
@@ -22,7 +23,7 @@ export interface Supervisor {
 }
 
 /** The repository this package is in. */
-const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
  * Only the real-server setup hook's budget. Three warmed runs measured 2660,
