@@ -874,19 +874,30 @@ def schema_document(repo: Repo) -> list[str]:
     return findings
 
 
-def _documents(repo: Repo) -> list[tuple[str, str]]:
-    """Every markdown document this repository commits, with its text.
+def _documents(repo: Repo) -> tuple[list[tuple[str, str]], list[str]]:
+    """Every markdown document this repository commits, with its text and what refused.
 
     Symbolic links are skipped: `CLAUDE.md` is a link to `AGENTS.md`, and a
     finding reported twice under two names reads as two problems.
+
+    A file that is not readable UTF-8 is a finding rather than an exception out
+    of the middle of the tier: a check that died on one document would say
+    nothing about the rest, and what a reader needs is which document it was.
     """
     found: list[tuple[str, str]] = []
+    findings: list[str] = []
     for path in sorted(repo.root.glob("**/*.md")):
         relative = path.relative_to(repo.root)
         if UNCOMMITTED_DIRECTORIES & set(relative.parts) or path.is_symlink():
             continue
-        found.append((str(relative), path.read_text(encoding="utf-8")))
-    return found
+        try:
+            found.append((str(relative), path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError) as unreadable:
+            findings.append(
+                f"{relative} is a document this repository commits and nothing here can "
+                f"read: {unreadable}"
+            )
+    return found, findings
 
 
 def platform_names(repo: Repo) -> list[str]:
@@ -906,8 +917,8 @@ def platform_names(repo: Repo) -> list[str]:
         return [str(error)]
     known = {platform.id: platform for platform in declared}
 
-    findings: list[str] = []
-    for where, text in _documents(repo):
+    documents, findings = _documents(repo)
+    for where, text in documents:
         for number, line in enumerate(text.splitlines(), start=1):
             # Backticked or not: a claim about a platform is a claim whether or
             # not whoever wrote it quoted the name.

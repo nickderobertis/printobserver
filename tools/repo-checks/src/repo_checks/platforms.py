@@ -332,6 +332,14 @@ class Platform:
 def supported(repo: Repo) -> list[Platform]:
     """Every platform `AGENTS.md`'s own supported-platform list names.
 
+    A line of that block this cannot read is passed over here and **refused** by
+    `checks_ci.platforms`, which reads the same block and reports one beginning
+    `- ` that is not of `PLATFORM_SHAPE`. The split is deliberate: this answers a
+    list of platforms and a check answers a list of findings, so raising here
+    would abort every check that reads the list rather than report the one line
+    that is wrong with it — and every consumer of this function reaches it
+    through a gate that has already run that check.
+
     Raises:
         MarkerBlockMissingError: If `AGENTS.md` carries no such list.
     """

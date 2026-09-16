@@ -115,3 +115,15 @@ def test_a_line_naming_several_managers_and_not_the_platforms_own_is_refused(
     findings = platform_names(broken.repo)
 
     refused_naming(findings, TESTING, "`linux-aarch64`", "`launchd`", "`systemd`")
+
+
+def test_a_document_nothing_can_read_is_reported_rather_than_raised(
+    tree: Callable[[], Tree],
+) -> None:
+    """A check that died on one document would say nothing about the rest of them."""
+    broken = tree()
+    (broken.root / "docs" / "reference" / "not-utf8.md").write_bytes(b"# \xff\xfe not text\n")
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, "docs/reference/not-utf8.md", "nothing here can read")
