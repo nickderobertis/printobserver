@@ -507,12 +507,13 @@ file = ".github/workflows/install-path.yml"
 site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
 
-# --- .github/workflows/platform-probe.yml -------------------------------------
-# One trailing directive on each line a rule reads: every tier's `run:` in the
-# steps the four probe jobs share and each tier step's `continue-on-error:`, and
-# each job's `runs-on:` and job-level `continue-on-error:`. The probe is temporary scaffolding whose whole task is to
-# report what each tier does on a runner no gate has run on yet, and the
-# documentation node of the platform bring-up plan deletes it with these entries.
+# `.github/workflows/platform-probe.yml` carries one trailing directive on each
+# line a rule reads: every tier's `run:` in the steps the four probe jobs share
+# and each tier step's `continue-on-error:`, and each job's `runs-on:` and job-
+# level `continue-on-error:`. The probe is temporary scaffolding whose whole
+# task is to report what each tier does on a runner no gate has run on yet, and
+# the documentation node of the platform bring-up plan deletes it with these
+# entries.
 
 [[suppression]]
 rule = "ci_invokes_gate_recipe_not_inline_stages"
@@ -537,6 +538,12 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/workflows/platform-probe.yml"
 site = "runs-on: "
 reason = "Each job names its runner directly because a platform matrix on a job that is not a platform-dependent kind is refused by `just check-repo`, and that is the only other way to derive it. The restatement lives exactly as long as the probe, which the documentation node of the bring-up plan deletes; the permanent jobs keep reading runners out of the matrix the `platforms` check holds to AGENTS.md."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/workflows/platform-probe.yml"
+site = "run: just "
+reason = "The probe restates `repo-policy.toml`'s `gate.tiers` one step each rather than reading it, because a step is the unit GitHub reports an outcome for and a single step looping over the list would report one outcome for all of them. The restatement lives exactly as long as the probe, which the documentation node of the bring-up plan deletes; `just check` in `ci.yml` stays the one place the gate reads that list."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
