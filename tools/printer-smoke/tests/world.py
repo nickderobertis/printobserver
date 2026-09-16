@@ -215,7 +215,7 @@ class World:
                 own_group=True,
             )
             time.sleep(after)
-            process.send_signal(signal.CTRL_C_EVENT)
+            process.send_signal(signal.CTRL_BREAK_EVENT)
             stdout, stderr = process.communicate(timeout=300)
             return subprocess.CompletedProcess(
                 process.args, process.returncode, stdout + stderr, ""

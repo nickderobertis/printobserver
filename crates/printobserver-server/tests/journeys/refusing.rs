@@ -431,7 +431,9 @@ async fn an_assets_path_holding_a_file_refuses_the_start() {
         "the refusal is not about the state directory: {refusal}"
     );
     assert!(
-        refusal.to_string().contains(&assets.display().to_string()),
+        refusal
+            .to_string()
+            .contains(printobserver_server::ASSETS_DIRECTORY),
         "the refusal does not name the assets path: {refusal}"
     );
 }

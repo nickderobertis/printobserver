@@ -271,7 +271,7 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
         .find(|found| found.command.name == "set-bed-target-c")
         .expect("this walk drives a bed target");
 
-    let opened = durations::each_asks_for(world, std::slice::from_ref(&heater), SHORT);
+    let opened = durations::each_asks_for(world, std::slice::from_ref(&heater), short());
     durations::the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
     world.machine_is_deaf(true);
     refused("an incorrect restoration", || {
@@ -282,6 +282,12 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
 
 /// How long the adjustment the restoration defect is driven over stands for.
 const SHORT: i64 = 10;
+
+/// A Windows hosted runner needs enough room for the subprocess read before
+/// expiry, just as the full duration journey does.
+fn short() -> i64 {
+    if cfg!(windows) { SHORT + 10 } else { SHORT }
+}
 
 /// The command of the walk every defect is driven over.
 fn the_command(world: &World) -> Driven {

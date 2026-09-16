@@ -10,6 +10,8 @@ carries the value it found there, and the printer is operational.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from repo_checks.expect import absent, contains, equal, truth
 from world import World
@@ -152,16 +154,18 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
 ) -> None:
     """A command that hangs is one adjustable's failure and not the cleanup's end.
 
-    The fourth request of the feedrate — the one the cancel step makes to put it
-    back — never answers. The four adjustables after it are still put back, the
-    print is still cancelled, and what the run reports first is the verification
-    point that failed rather than the cleanup beneath it.
+    The final request of the feedrate — the one the cleanup makes to put it back
+    — never answers. The four adjustables after it are still put back, the print
+    is still cancelled, and what the run reports first is the verification point
+    that failed rather than the cleanup beneath it.
     """
     found = dict(world.substitute.printer.values)
 
     run = world.smoke(
         "--run",
-        environment=world.relaying(hang_on="set-feedrate-factor", after=3),
+        environment=world.relaying(
+            hang_on="set-feedrate-factor", after=2 if os.name == "nt" else 3
+        ),
         timeout=600,
     )
 
