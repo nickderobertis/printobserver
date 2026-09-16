@@ -25,6 +25,7 @@ from repo_checks.platforms import (
     EXCLUSION_LINE,
     EXCLUSION_SHAPE,
     EXCLUSIONS_BLOCK,
+    PLATFORM_ID,
     PLATFORM_LINE,
     PLATFORM_SHAPE,
     Platform,
@@ -393,6 +394,15 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
         f"AGENTS.md's supported-platform list names `{identifier}` more than once: two "
         f"entries for one platform are two answers every reader of the list takes one of"
         for identifier in sorted(repeated(platform.id for platform in declared))
+    )
+    # The line's own grammar admits any lowercase word, and a platform
+    # identifier is a family and a processor; an entry that is not one reaches a
+    # matrix, an asset name and every document check as a platform.
+    findings.extend(
+        f"AGENTS.md's supported-platform list names `{platform.id}`, which is not shaped "
+        f"like a platform identifier (a family and a processor, as `linux-x86_64` is)"
+        for platform in declared
+        if not PLATFORM_ID.match(platform.id)
     )
     findings.extend(
         f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "

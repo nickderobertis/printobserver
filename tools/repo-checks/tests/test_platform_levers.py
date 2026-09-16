@@ -276,3 +276,15 @@ def test_a_matrix_naming_one_platform_in_two_cells_is_refused(
     findings = platforms(broken.repo)
 
     refused_naming(findings, "job `gate`", "`linux-aarch64` in more than one cell")
+
+
+def test_an_entry_whose_identifier_is_not_shaped_like_one_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The line's grammar admits any word; an identifier is a family and a processor."""
+    broken = tree()
+    broken.edit("AGENTS.md", AARCH64, AARCH64.replace("`linux-aarch64`", "`arm`"))
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`arm`", "not shaped like a platform identifier")
