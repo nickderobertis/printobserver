@@ -18,13 +18,16 @@ import gzip
 import hashlib
 import io
 import os
+import platform as host_platform
 import tarfile
 import tomllib
 from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, clean_environment, run
-from repo_checks.expect import contains, failing, passing, truth
+from repo_checks import platforms
+from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 
 #: The committed script the third route fetches and runs.
@@ -40,8 +43,19 @@ CHECKSUMS = "SHA256SUMS"
 #: stand-in program reports.
 OLDER = "v0.0.1"
 
+
+def _platform() -> str:
+    """The platform this host's own artifact is named for, as the script names it.
+
+    Read through `repo_checks.platforms`, the one place that knows which
+    platform a host is — `os.uname` does not exist on Windows, and a journey
+    that raised on import there could not even say it had nothing to run.
+    """
+    return platforms.host(Repo(REPO_ROOT)).id
+
+
 #: Where this host's own artifact is named, as the script names it.
-PLATFORM = {"x86_64": "linux-x86_64", "aarch64": "linux-aarch64"}[os.uname().machine]
+PLATFORM = _platform()
 
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -248,3 +262,14 @@ def test_the_script_is_committed_where_its_own_fetch_url_names() -> None:
         f"main/{SCRIPT} | sh",
         describing="the install path's third route",
     )
+
+
+def test_the_platform_an_artifact_is_named_for_is_read_on_a_host_with_no_uname(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Windows host has no `os.uname`, and this journey still says which platform it is."""
+    monkeypatch.delattr(os, "uname", raising=False)
+    monkeypatch.setattr(host_platform, "system", lambda: "Windows")
+    monkeypatch.setattr(host_platform, "machine", lambda: "AMD64")
+
+    equal(_platform(), "windows-x86_64", describing="the platform a Windows host is")
