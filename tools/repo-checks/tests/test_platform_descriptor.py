@@ -14,8 +14,11 @@ from __future__ import annotations
 import os
 import platform as host_platform
 import re
+import struct
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from repo_checks.expect import contains, equal, truth
@@ -308,19 +311,172 @@ def test_a_host_the_list_does_not_name_is_refused_by_name(
     contains(str(refusal.value), "FreeBSD/amd64", describing="the refusal")
 
 
-def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_host(
-    tree: Callable[[], Tree], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The rule is the same one the glibc tag follows: state what it was built against."""
-    repo = supporting(tree(), TABLE[2])
+#: The Mach-O processor types a synthesized program is written for, spelled as
+#: the format's own header spells them rather than read from the module.
+ARM64 = 0x0100000C
+X86_64 = 0x01000007
+
+
+def build_version(major: int, minor: int, *, platform: int = 1) -> bytes:
+    """An `LC_BUILD_VERSION` load command (0x32) recording `major.minor` as `minos`."""
+    return struct.pack("<IIIIII", 0x32, 24, platform, major << 16 | minor << 8, 15 << 16, 0)
+
+
+def version_min(major: int, minor: int) -> bytes:
+    """An `LC_VERSION_MIN_MACOSX` load command (0x24), as older linkers wrote."""
+    return struct.pack("<IIII", 0x24, 16, major << 16 | minor << 8, 0)
+
+
+#: An `LC_UUID` load command, which says nothing about a release: a reader has
+#: to walk past it to find the one that does.
+UUID = struct.pack("<II", 0x1B, 24) + bytes(16)
+
+
+def thin(cpu: int, *commands: bytes) -> bytes:
+    """A little-endian 64-bit Mach-O executable header followed by `commands`."""
+    body = b"".join(commands)
+    return struct.pack("<IiiIIIII", 0xFEEDFACF, cpu, 0, 2, len(commands), len(body), 0, 0) + body
+
+
+def universal(*slices: tuple[int, bytes], wide: bool = False) -> bytes:
+    """A universal file carrying each `(cpu, image)` slice, as `lipo` writes one."""
+    header = struct.pack(">II", 0xCAFEBABF if wide else 0xCAFEBABE, len(slices))
+    entry_size = 32 if wide else 20
+    offset = len(header) + entry_size * len(slices)
+    entries, images = b"", b""
+    for cpu, image in slices:
+        if wide:
+            entries += struct.pack(">iiQQII", cpu, 0, offset + len(images), len(image), 0, 0)
+        else:
+            entries += struct.pack(">iiIII", cpu, 0, offset + len(images), len(image), 0)
+        images += image
+    return header + entries + images
+
+
+def macos_host(monkeypatch: pytest.MonkeyPatch, machine: str) -> None:
+    """Make this interpreter report a macOS host of `machine`, on a newer release.
+
+    The release is deliberately far newer than any program below was built for:
+    a tag read off the host rather than off the program would carry it.
+    """
     monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(host_platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.4", ("", "", ""), "arm64"))
+    monkeypatch.setattr(host_platform, "machine", lambda: machine)
+    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.7", ("", "", ""), machine))
+
+
+@pytest.mark.parametrize(
+    ("row", "machine", "image", "baseline", "tag"),
+    [
+        (TABLE[2], "arm64", thin(ARM64, UUID, build_version(11, 0)), (11, 0), "macosx_11_0_arm64"),
+        (
+            TABLE[3],
+            "x86_64",
+            thin(X86_64, UUID, build_version(10, 12)),
+            (10, 12),
+            "macosx_10_12_x86_64",
+        ),
+        (TABLE[2], "arm64", thin(ARM64, build_version(14, 2)), (14, 2), "macosx_15_0_arm64"),
+        (TABLE[3], "x86_64", thin(X86_64, version_min(10, 9)), (10, 9), "macosx_10_9_x86_64"),
+        (
+            TABLE[2],
+            "arm64",
+            universal(
+                (X86_64, thin(X86_64, build_version(10, 12))),
+                (ARM64, thin(ARM64, UUID, build_version(12, 0))),
+            ),
+            (12, 0),
+            "macosx_12_0_arm64",
+        ),
+        (
+            TABLE[3],
+            "x86_64",
+            universal(
+                (ARM64, thin(ARM64, build_version(11, 0))),
+                (X86_64, thin(X86_64, build_version(10, 13))),
+                wide=True,
+            ),
+            (10, 13),
+            "macosx_10_13_x86_64",
+        ),
+    ],
+    ids=["arm64", "x86_64", "a-minor-rounds-up", "version-min", "universal", "universal-64"],
+)
+def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
+    tree: Callable[[], Tree],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    row: Row,
+    machine: str,
+    image: bytes,
+    baseline: tuple[int, int],
+    tag: str,
+) -> None:
+    """The tag states the floor the program was linked for, spelled as `pip` matches it.
+
+    Not the host's release: the fixture's host reports 15.7, which is a tag no
+    installer generates and a floor the program does not have. A minor release
+    from macOS 11 on rounds up, so the wheel never claims an older host than
+    the program needs.
+    """
+    repo = supporting(tree(), row)
+    macos_host(monkeypatch, machine)
+    program = tmp_path / "printobserver"
+    program.write_bytes(image)
 
     found = host(repo)
 
-    equal(host_baseline(), (15, 4), describing="the system release this host reports")
-    equal(found.wheel_tag(host_baseline()), "macosx_15_4_arm64", describing="its wheel tag")
+    equal(host_baseline(program), baseline, describing="the minimum release the program records")
+    equal(found.wheel_tag(host_baseline(program)), tag, describing="its wheel tag")
+
+
+@pytest.mark.parametrize(
+    ("image", "naming"),
+    [
+        (thin(ARM64, UUID), "records no minimum macOS release"),
+        (thin(ARM64, build_version(17, 0, platform=2)), "records no minimum macOS release"),
+        (universal((X86_64, thin(X86_64, build_version(10, 12)))), "records no minimum"),
+        (b"#!/bin/sh\necho printobserver\n", "records no minimum macOS release"),
+        (thin(ARM64, UUID)[:36], "is not a macOS program"),
+        (b"", "is not a macOS program"),
+    ],
+    ids=["no-command", "not-macos", "no-slice-for-machine", "a-script", "truncated", "empty"],
+)
+def test_a_macos_program_recording_no_minimum_release_is_refused_naming_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, image: bytes, naming: str
+) -> None:
+    """A tag stating a floor nothing recorded is a wheel that installs and cannot run."""
+    macos_host(monkeypatch, "arm64")
+    program = tmp_path / "printobserver"
+    program.write_bytes(image)
+
+    with pytest.raises(PlatformError) as refusal:
+        host_baseline(program)
+
+    contains(str(refusal.value), str(program), describing="the refusal")
+    contains(str(refusal.value), naming, describing="the refusal")
+
+
+def test_a_macos_baseline_asked_for_with_no_program_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The host's own release is not a fallback: it is not what the program needs."""
+    macos_host(monkeypatch, "arm64")
+
+    with pytest.raises(PlatformError, match="no program was given"):
+        host_baseline()
+
+
+def test_a_linux_baseline_is_the_c_library_whatever_program_is_given(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A Linux wheel states the C library it was built against, as it always has."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39")
+    program = tmp_path / "printobserver"
+    program.write_bytes(thin(ARM64, build_version(11, 0)))
+
+    equal(host_baseline(program), (2, 39), describing="the C library this host reports")
+    equal(host_baseline(), (2, 39), describing="the same, with no program given")
 
 
 def test_a_host_reporting_no_baseline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -369,25 +525,37 @@ def test_a_host_no_identifier_is_known_for_is_refused_by_name(
 
 
 def test_this_hosts_own_baseline_is_read_off_the_host(committed: Repo) -> None:
-    """The rule is that the tag states what the build was actually made against."""
-    baseline = host_baseline()
+    """The rule is that the tag states what the build was actually made against.
 
-    truth(baseline is not None, describing="this host to report the baseline its wheels state")
-    contains(
-        descriptor(committed, host(committed).id).wheel_tag(baseline),
-        "manylinux_",
-        describing="this Linux host's wheel platform tag",
+    The program read is the interpreter running this suite, which is a real
+    program of this host whatever the host is: on macOS it is what the baseline
+    is read off, and on every other platform it is not read at all. The tag is
+    held to this host's own descriptor rather than to one family's spelling.
+    """
+    found = descriptor(committed, host(committed).id)
+    baseline = host_baseline(Path(sys.executable).resolve())
+
+    equal(
+        baseline is not None,
+        found.naming.wheel_versioned,
+        describing="this host to report a baseline exactly where its wheel tags state one",
+    )
+    tag = found.wheel_tag(baseline)
+    truth(
+        tag.startswith(f"{found.naming.wheel_family}_")
+        and tag.endswith(f"_{found.naming.wheel_machine}"),
+        describing=f"this host's wheel platform tag {tag!r} to be of `{found.id}`'s family",
     )
 
 
 def test_a_host_reporting_a_baseline_that_is_not_a_version_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`macos-` and a word is a tag no installer can compare; it is refused instead."""
-    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("", ("", "", ""), "arm64"))
+    """`manylinux_` and a word is a tag no installer can compare; it is refused instead."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc two")
 
-    with pytest.raises(PlatformError, match="system release"):
+    with pytest.raises(PlatformError, match="C library"):
         host_baseline()
 
 
@@ -424,18 +592,18 @@ def test_a_host_reporting_a_minor_that_is_not_a_number_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reading it as zero would put a version on a wheel that nothing reported."""
-    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.beta", ("", "", ""), "arm64"))
+    monkeypatch.setattr(host_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.beta")
 
-    with pytest.raises(PlatformError, match=re.escape("15.beta")):
+    with pytest.raises(PlatformError, match=re.escape("2.beta")):
         host_baseline()
 
 
 def test_a_baseline_written_with_no_minor_reads_it_as_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A platform that writes `15` means `15.0`, which is a version and not a defect."""
-    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15", ("", "", ""), "arm64"))
+    """A platform that writes `3` means `3.0`, which is a version and not a defect."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 3")
 
-    equal(host_baseline(), (15, 0), describing="a release written with no minor component")
+    equal(host_baseline(), (3, 0), describing="a version written with no minor component")

@@ -27,8 +27,11 @@ from __future__ import annotations
 import os
 import platform as host_platform
 import re
+import struct
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+from typing import BinaryIO
 
 from repo_checks.model import Repo
 from repo_checks.parsing import marker_block
@@ -324,12 +327,16 @@ class Platform:
 
         The tag states the oldest host the wheel claims to run on, in whichever
         version that platform states its own floor as — the C library on Linux,
-        the system release on macOS — and it is what the program was
-        **actually** built against, read off the host that built it rather than
-        assumed: a wheel claiming an older baseline installs on a machine it
-        cannot run on, and that is a failure the user meets at the printer
-        rather than at the install. The two Windows tags carry no version
-        component, so a baseline is not asked of a host that states none.
+        the minimum system release the program was linked for on macOS — and it
+        is what the program was **actually** built against, read off the host
+        and the program that built it rather than assumed: a wheel claiming an
+        older baseline installs on a machine it cannot run on, and that is a
+        failure the user meets at the printer rather than at the install. The
+        two Windows tags carry no version component, so a baseline is not asked
+        of a host that states none.
+
+        A macOS baseline is spelled the way an installer can match it, which
+        `macos_tag_version` states the rule for.
 
         Raises:
             PlatformError: If nothing here names this platform, or if the tag
@@ -344,8 +351,34 @@ class Platform:
                 f"this host reported none"
             )
             raise PlatformError(msg)
-        major, minor = baseline
+        major, minor = macos_tag_version(baseline) if naming.wheel_family == MACOS else baseline
         return f"{naming.wheel_family}_{major}_{minor}_{naming.wheel_machine}"
+
+
+#: The wheel family a macOS platform tag names.
+MACOS = "macosx"
+
+#: The first macOS release whose platform tags an installer generates by major
+#: version alone.
+MACOS_MAJOR_ONLY_FROM = 11
+
+
+def macos_tag_version(minimum: tuple[int, int]) -> tuple[int, int]:
+    """The version a macOS wheel tag carries for a program needing `minimum`.
+
+    From macOS 11 on, `pip` (through `packaging`) generates the tags a host
+    accepts as `macosx_<major>_0` alone — a `macosx_15_7` wheel is one no
+    installer on any host would ever take. So a floor of `<major>.0` is spelled
+    as itself, and a floor with a minor release is rounded **up** to the next
+    major: rounding down would claim the program runs on a release older than
+    the one it was linked for, which is a wheel that installs and cannot run.
+    Before 11 the minor release is part of what the host generates, so it is
+    kept as it is.
+    """
+    major, minor = minimum
+    if major < MACOS_MAJOR_ONLY_FROM or minor == 0:
+        return major, minor
+    return major + 1, 0
 
 
 def supported(repo: Repo) -> list[Platform]:
@@ -414,25 +447,173 @@ def descriptor(repo: Repo, identifier: str) -> Platform:
     raise PlatformError(msg)
 
 
-def host_baseline() -> tuple[int, int] | None:
+def host_baseline(program: Path | None = None) -> tuple[int, int] | None:
     """The baseline a wheel built on this host states in its platform tag.
 
-    Every platform states the oldest host a build runs on in its own terms: the
-    C library on Linux, the system release on macOS. On Windows it is `None`,
-    because the platform tags this repository's wheels carry there state no
-    version at all.
+    Every platform states the oldest host a build runs on in its own terms. On
+    Linux that is the C library of the host that built it, because a program is
+    linked against that library's symbols and runs on no older one. On Windows
+    it is `None`, because the platform tags this repository's wheels carry there
+    state no version at all.
+
+    On macOS it is the minimum system release **the program itself** was built
+    for, read off `program` — and not the release of the host that built it.
+    The linker records that floor in the program (it is the deployment target
+    the build used), and it is routinely far older than the builder: a program
+    linked on macOS 15.7 runs on macOS 11. Tagging the wheel with the host's
+    release would refuse every older host the program runs on, and a host's
+    release is not a fact the program carries at all.
+
+    Args:
+        program: The program the wheel carries. Required on macOS, where the
+            baseline is the program's own; read on no other platform.
 
     Raises:
-        PlatformError: If a host that states a baseline reports none, which is a
-            host no wheel of this repository is built on.
+        PlatformError: If a host that states a baseline reports none — which on
+            macOS includes no program given, or one that is not a macOS program
+            or records no minimum release.
     """
     match host_platform.system():
         case "Windows":
             return None
         case "Darwin":
-            return _version(host_platform.mac_ver()[0], "this host reports its system release as")
+            if program is None:
+                msg = (
+                    "a macOS wheel states the minimum release its program was built for, "
+                    "and no program was given to read it off"
+                )
+                raise PlatformError(msg)
+            return macos_minimum(program, host_platform.machine())
         case _:
             return _glibc()
+
+
+#: The first four bytes of a thin 64-bit and a thin 32-bit Mach-O file, read
+#: little-endian — the byte order of every processor macOS runs on.
+MH_MAGIC_64 = 0xFEEDFACF
+MH_MAGIC = 0xFEEDFACE
+
+#: The first four bytes of a universal file, read big-endian as that header
+#: always is, with 32-bit and with 64-bit slice offsets.
+FAT_MAGIC = 0xCAFEBABE
+FAT_MAGIC_64 = 0xCAFEBABF
+
+#: The load command recording the platform and minimum release a program was
+#: built for, and the older one recording the minimum macOS release alone.
+LC_BUILD_VERSION = 0x32
+LC_VERSION_MIN_MACOSX = 0x24
+
+#: `LC_BUILD_VERSION`'s platform value for macOS.
+PLATFORM_MACOS = 1
+
+#: The smallest a load command can be: its own type and size.
+LOAD_COMMAND_HEADER = 8
+
+#: The Mach-O processor type each machine `platform.machine()` reports on macOS
+#: selects out of a universal file.
+MACHO_CPU_TYPES = {"arm64": 0x0100000C, "x86_64": 0x01000007}
+
+
+def macos_minimum(program: Path, machine: str) -> tuple[int, int]:
+    """The minimum macOS release `program` was built for, as `(major, minor)`.
+
+    Read out of the program's own load commands: `LC_BUILD_VERSION`'s `minos`,
+    which every current linker writes, or `LC_VERSION_MIN_MACOSX`'s `version`,
+    which older ones wrote instead. A universal file is read through the slice
+    for `machine`, because that slice is the program this host runs and its
+    floor is the one a wheel tagged for this machine states.
+
+    Raises:
+        PlatformError: If `program` cannot be read as a Mach-O file, carries no
+            slice for `machine`, or records neither load command.
+    """
+    try:
+        with program.open("rb") as opened:
+            found = _macho_minimum(opened, machine)
+    except (OSError, struct.error) as unreadable:
+        msg = f"{program} is not a macOS program a minimum release can be read off: {unreadable}"
+        raise PlatformError(msg) from unreadable
+    if found is None:
+        msg = (
+            f"{program} records no minimum macOS release for `{machine}` (no LC_BUILD_VERSION "
+            f"or LC_VERSION_MIN_MACOSX load command), and a wheel's platform tag has to state "
+            f"the one it was built for"
+        )
+        raise PlatformError(msg)
+    return found
+
+
+def _macho_minimum(opened: BinaryIO, machine: str) -> tuple[int, int] | None:
+    """The minimum release the Mach-O file `opened` records, or `None` where none.
+
+    Raises:
+        struct.error: If the file ends inside a header it declares.
+    """
+    (magic,) = struct.unpack(">I", _exactly(opened, 4))
+    if magic not in (FAT_MAGIC, FAT_MAGIC_64):
+        opened.seek(0)
+        return _thin_minimum(opened)
+    (count,) = struct.unpack(">I", _exactly(opened, 4))
+    wanted = MACHO_CPU_TYPES.get(machine)
+    for _ in range(count):
+        if magic == FAT_MAGIC_64:
+            cpu, _sub, offset, _size, _align, _reserved = struct.unpack(
+                ">iiQQII", _exactly(opened, 32)
+            )
+        else:
+            cpu, _sub, offset, _size, _align = struct.unpack(">iiIII", _exactly(opened, 20))
+        if cpu == wanted:
+            opened.seek(offset)
+            return _thin_minimum(opened)
+    return None
+
+
+def _thin_minimum(opened: BinaryIO) -> tuple[int, int] | None:
+    """The minimum release the thin Mach-O image at `opened`'s position records.
+
+    Raises:
+        struct.error: If the image ends inside a header it declares.
+    """
+    start = opened.tell()
+    (magic,) = struct.unpack("<I", _exactly(opened, 4))
+    if magic not in (MH_MAGIC_64, MH_MAGIC):
+        return None
+    _cpu, _sub, _filetype, count, _size, _flags = struct.unpack("<iiIIII", _exactly(opened, 24))
+    at = start + (32 if magic == MH_MAGIC_64 else 28)
+    for _ in range(count):
+        opened.seek(at)
+        command, size = struct.unpack("<II", _exactly(opened, LOAD_COMMAND_HEADER))
+        if command == LC_BUILD_VERSION:
+            platform, minimum = struct.unpack("<II", _exactly(opened, 8))
+            if platform == PLATFORM_MACOS:
+                return _packed_version(minimum)
+        elif command == LC_VERSION_MIN_MACOSX:
+            (minimum,) = struct.unpack("<I", _exactly(opened, 4))
+            return _packed_version(minimum)
+        if size < LOAD_COMMAND_HEADER:
+            # A command smaller than its own header would be read again forever.
+            return None
+        at += size
+    return None
+
+
+def _exactly(opened: BinaryIO, count: int) -> bytes:
+    """`count` bytes of `opened`.
+
+    Raises:
+        struct.error: If the file ends before that many, which is a header it
+            declares and does not carry.
+    """
+    read = opened.read(count)
+    if len(read) != count:
+        msg = f"the file ends {count - len(read)} bytes inside a header it declares"
+        raise struct.error(msg)
+    return read
+
+
+def _packed_version(packed: int) -> tuple[int, int]:
+    """A Mach-O `xxxx.yy.zz` version, packed into nibbles, as `(major, minor)`."""
+    return packed >> 16, (packed >> 8) & 0xFF
 
 
 def _glibc() -> tuple[int, int]:
