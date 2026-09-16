@@ -286,7 +286,7 @@ const SHORT: i64 = 10;
 /// A Windows hosted runner needs enough room for the subprocess read before
 /// expiry, just as the full duration journey does.
 fn short() -> i64 {
-    if cfg!(windows) { SHORT + 10 } else { SHORT }
+    if cfg!(windows) { SHORT + 120 } else { SHORT }
 }
 
 /// The command of the walk every defect is driven over.
