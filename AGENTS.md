@@ -257,9 +257,9 @@ from.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — the Windows service and the three install routes are owed; the `windows-install-routes` node flips this to `yes`, after the `windows-service` node
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — the Windows service and the three install routes are owed; the `windows-install-routes` node flips this to `yes`, after the `windows-service` node
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 [//]: # (END supported-platforms)
 
 The two Linux entries run under systemd, which is what the unit in the end-user
