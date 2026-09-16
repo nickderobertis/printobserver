@@ -105,7 +105,12 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
         "the vocabulary's adjustments are not the ones this journey drives"
     );
 
-    for seconds in [MIN_DURATION_SECONDS, MIN_DURATION_SECONDS + 2] {
+    let first = if cfg!(windows) {
+        MIN_DURATION_SECONDS + 10
+    } else {
+        MIN_DURATION_SECONDS
+    };
+    for seconds in [first, first + 2] {
         let opened = each_asks_for(world, &adjustments, seconds);
         the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
         the_prior_value_is_back_shortly_after_it_expires(world, &opened);

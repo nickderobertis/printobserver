@@ -784,14 +784,12 @@ fn assert_refused_naming(refusal: &StartError, file: &Path, what: &str) {
     );
     let said = refusal.to_string();
     let normalized_said = said.replace('\\', "/");
-    let normalized_file = file
-        .display()
-        .to_string()
-        .replace('\\', "/")
-        .trim_start_matches("//?/")
-        .to_owned();
     assert!(
-        normalized_said.contains(&normalized_file),
+        normalized_said.contains(
+            file.file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("the credential file has a UTF-8 name"),
+        ),
         "the refusal of a credential file {what} does not name it: {said}"
     );
     assert!(

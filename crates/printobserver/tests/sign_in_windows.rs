@@ -13,7 +13,19 @@ fn signing_in_exits_with_the_windows_harness_status() {
     let state = root.path().join("state");
     std::fs::create_dir_all(&bin).expect("a stand-in directory");
     std::fs::create_dir_all(&state).expect("a state directory");
-    std::fs::write(bin.join("claude.cmd"), "@exit /b 23\r\n").expect("a harness stand-in");
+    let source = root.path().join("harness.rs");
+    std::fs::write(&source, "fn main() { std::process::exit(23); }\n").expect("a harness source");
+    let built = Command::new("rustc")
+        .arg(&source)
+        .arg("-o")
+        .arg(bin.join("claude.exe"))
+        .output()
+        .expect("rustc runs");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
     let config = root.path().join("config.toml");
     let state_toml = state.display().to_string().replace('\\', "\\\\");
     std::fs::write(
