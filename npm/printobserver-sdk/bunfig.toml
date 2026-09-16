@@ -8,3 +8,8 @@ root = "test"
 coverage = true
 coverageThreshold = 0.95
 coverageReporter = ["text"]
+# The test files themselves are not what the threshold is over, and bun already
+# leaves them out of the report on Linux and macOS. On Windows it does not
+# recognise a test file under a backslashed path, reports each one, and holds
+# it to the threshold; naming them here leaves every platform's report the same.
+coveragePathIgnorePatterns = ["**/*.test.ts"]
