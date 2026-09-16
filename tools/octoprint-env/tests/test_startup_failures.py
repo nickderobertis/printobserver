@@ -15,7 +15,9 @@ failure path a caller would meet as a bare error, and it fails here.
 from __future__ import annotations
 
 import ast
+import shutil
 import socket
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -89,9 +91,15 @@ def test_an_instance_that_never_answers_is_reported_by_name(
     state = state_dir("never-answers")
     provisioned = script("install", "--state-dir", state)
     passing(provisioned, describing="provisioning the instance the stub server replaces")
-    server = Path(str(answer(provisioned)["state_dir"])) / "venv" / "bin" / "octoprint"
-    server.write_text(SILENT_SERVER, encoding="utf-8")
-    server.chmod(0o755)
+    venv = Path(str(answer(provisioned)["state_dir"])) / "venv"
+    if sys.platform == "win32":
+        # A program Windows will run in the server's place, and one that answers
+        # nothing: this interpreter, handed arguments it refuses.
+        shutil.copyfile(sys.executable, venv / "Scripts" / "octoprint.exe")
+    else:
+        server = venv / "bin" / "octoprint"
+        server.write_text(SILENT_SERVER, encoding="utf-8")
+        server.chmod(0o755)
 
     lines = _reported(state, "--start-timeout", "15")
 
