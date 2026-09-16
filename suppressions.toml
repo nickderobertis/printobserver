@@ -274,6 +274,42 @@ site = "pub const DEFAULT_REFERENCES:"
 reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."
 
 [[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "(BEGIN supported-platforms)"
+reason = "Required content rather than a roadmap. `repo_checks.checks_ci.platforms` refuses an `install path: no` answer that states no reason, and the reason an answer is `no` for these four platforms is that their bring-up is owed and which node flips it; a durable-sounding reason would be a false one. Each reason is deleted by the change that flips its answer to `yes`."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "(BEGIN supported-platforms)"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The macOS and Windows entries are being brought up"
+reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming four platforms with every cell excluded needs one sentence saying why and where the record of their runners is. It goes when the bring-up finishes."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The macOS and Windows entries are being brought up"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "(BEGIN platform-exclusions)"
+reason = "Required content rather than a ledger: `repo_checks.checks_ci.platforms` refuses a platform-dependent job omitting a listed platform unless this block records that cell with a reason, and the lever's contract is that each entry names the bring-up owed and what removes it. The block is meant to end empty, and each line is deleted by the change that brings its cell up."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "(BEGIN platform-exclusions)"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "Keep the OctoPrint journey in the required gate"

@@ -449,6 +449,7 @@ def _coverage_findings(repo: Repo) -> list[str]:
         return [*findings, str(error)]
 
     built_for: set[str] = set()
+    excused: set[str] = set()
     for job_name, job in building:
         entries = ((job.get("strategy") or {}).get("matrix") or {}).get("platform")
         for entry in entries if isinstance(entries, list) else []:
@@ -457,13 +458,13 @@ def _coverage_findings(repo: Repo) -> list[str]:
         # A cell the platform-exclusions block records as not running yet is
         # one this build does not owe; that block's own check holds the matrix
         # to the record.
-        built_for.update(platform for platform, job in excluded if job == job_name)
+        excused.update(platform for platform, job in excluded if job == job_name)
     findings.extend(
         f"AGENTS.md's supported-platform list names `{platform}`, and no committed job "
         f"builds this repository's artifacts for it: every one of the three end-user "
         f"routes carries the program already built for the platform"
         for platform in wanted
-        if platform not in built_for
+        if platform not in built_for and platform not in excused
     )
 
     path = ip.parse(repo.agents_md)

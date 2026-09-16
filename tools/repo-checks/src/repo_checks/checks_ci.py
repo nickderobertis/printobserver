@@ -685,7 +685,7 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     """
     try:
         named = service_managers(repo)
-        installed = {
+        targeted = {
             platform.service_manager for platform in platforms_of(repo) if platform.install_path
         }
     except MarkerBlockMissingError as error:
@@ -698,7 +698,7 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
         f"`{manager}` service manager, which its supported-platform list names a platform "
         f"the install path targets under"
         for manager in named
-        if manager in installed and not path.commands_for(manager)
+        if manager in targeted and not path.commands_for(manager)
     ]
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` states a pair of commands for the "
@@ -1298,7 +1298,7 @@ def artifact_jobs(repo: Repo) -> list[str]:
     except MarkerBlockMissingError as error:
         return [str(error)]
     everywhere = [platform.id for platform in declared]
-    installed = [platform.id for platform in declared if platform.install_path]
+    targeted = [platform.id for platform in declared if platform.install_path]
 
     path = ip.parse(repo.agents_md)
     proven_by = proving(repo)
@@ -1320,7 +1320,7 @@ def artifact_jobs(repo: Repo) -> list[str]:
         identifier = str(target.get("id", ""))
         # A route is taken only on the platforms the install path targets, which
         # is the first lever; a cell the exclusions block records is the second.
-        wanted = installed if str(target.get("route", "")).strip() else everywhere
+        wanted = targeted if str(target.get("route", "")).strip() else everywhere
         for recipe in proven_by.get(identifier, ()) or [""]:
             if not recipe:
                 findings.append(

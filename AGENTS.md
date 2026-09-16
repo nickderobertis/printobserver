@@ -249,6 +249,7 @@ is spelled — are nobody's prose, and live in
 eight at once. That module is the source every other copy of one of them derives
 from.
 
+<!-- llmlint: ignore[agents_md_durable_and_terse] The bring-up answers on these entries are the lever's own required reasons, and they leave with the bring-up. suppressions.toml has the full reason. -->
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
@@ -263,6 +264,7 @@ install path below is written for. `linux-aarch64` is not optional: the machine
 beside the printer is usually a small ARM board, and it is the worst place to
 discover an architecture was never built for.
 
+<!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
 The macOS and Windows entries are being brought up as first-class platforms,
 through the two levers below; `docs/platform-bring-up.md` records what their
 runners first said.
@@ -284,6 +286,7 @@ every install tier by an unexplained opt-out is one nobody can put back.
 platform-dependent job that does not run on a platform this list names, with the
 reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 
+<!-- llmlint: ignore[agents_md_durable_and_terse] Each line is a cell the lever requires a reason for, and the block is meant to end empty. suppressions.toml has the full reason. -->
 [//]: # (BEGIN platform-exclusions)
 - `macos-aarch64` on `gate` — bring-up owed; the macOS platform node removes this line
 - `macos-aarch64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
