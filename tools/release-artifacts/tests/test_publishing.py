@@ -30,7 +30,6 @@ from release_artifacts import targets
 from release_artifacts.__main__ import main
 from release_artifacts.build import CHECKSUMS, PROGRAM, manifest_of
 from release_artifacts.packages import digest_of
-from release_artifacts.platforms import host, supported
 from release_artifacts.publishing import (
     CREDENTIALS,
     PRINTOBSERVER_PUBLISH_VERSION,
@@ -64,6 +63,7 @@ from release_artifacts.standin import (
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.platforms import host, install_platforms
 
 #: The tokens this journey publishes under, one per registry, under the real
 #: credential names — so that what reaches each registry can be read back.
@@ -301,7 +301,7 @@ def test_a_fail_fast_publish_leaves_the_artifacts_after_the_refusal_unserved(
         {
             f"npm {platform_package}",
             f"npm @printobserver/sdk@{version}",
-            f"release {PROGRAM}-{host(repo).id}.tar.gz",
+            f"release {host(repo).asset}",
             f"release {CHECKSUMS}",
         },
         describing="what a fail-fast publish left unserved",
@@ -328,12 +328,10 @@ def test_the_checksum_file_lists_every_platforms_tarball(
     served = registries.assets_of(f"v{version}")[CHECKSUMS].decode()
     equal(served.count("\n"), 1, describing="the lines of a one-platform checksum file")
 
-    tarballs = {
-        platform.id: dist / f"{PROGRAM}-{platform.id}.tar.gz" for platform in supported(repo)
-    }
+    tarballs = {platform.id: dist / platform.asset for platform in install_platforms(repo)}
     other = [path for platform, path in tarballs.items() if platform != host(repo).id]
     for path in other:
-        shutil.copy2(dist / f"{PROGRAM}-{host(repo).id}.tar.gz", path)
+        shutil.copy2(dist / host(repo).asset, path)
     said = publish(repo, dist, environment)
 
     outcomes = _outcomes(said)

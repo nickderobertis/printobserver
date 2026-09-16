@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from release_artifacts import platforms, targets
+from release_artifacts import targets
 from release_artifacts.build import (
     CONTRACT_FIELD,
     CONTRACT_FILE,
@@ -32,6 +32,7 @@ from release_artifacts.installing import InstallError, install
 from release_artifacts.packages import checksums, digest_of
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.targets import TargetError
+from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.model import Repo
 
@@ -125,7 +126,7 @@ def test_a_staged_release_has_the_shape_the_forge_serves(
 
     version = targets.workspace(repo.root)["version"]
     truth(
-        (staged / "latest/download" / f"{PROGRAM}-{platforms.host(repo).id}.tar.gz").is_file(),
+        (staged / "latest/download" / platforms.host(repo).asset).is_file(),
         describing="the newest release to be where the forge serves one",
     )
     truth(
@@ -182,11 +183,17 @@ def test_a_checksum_file_is_what_the_tool_a_machine_already_has_reads(
 
 def test_a_platform_nothing_here_names_is_refused(repo: Repo) -> None:
     """A supported platform no artifact knows how to name is a stop, not a guess."""
-    unknown = platforms.Platform(id="linux-riscv64", runner="a-runner", target="a-target")
+    unknown = platforms.Platform(
+        id="linux-riscv64",
+        runner="a-runner",
+        target="a-target",
+        service_manager="systemd",
+        install_path=True,
+    )
 
-    with pytest.raises(platforms.PlatformError, match="NPM_NAMES"):
+    with pytest.raises(platforms.PlatformError, match="NAMING"):
         _ = unknown.npm
-    with pytest.raises(platforms.PlatformError, match="WHEEL_MACHINES"):
+    with pytest.raises(platforms.PlatformError, match="NAMING"):
         unknown.wheel_tag((2, 39))
 
 
@@ -197,7 +204,11 @@ def test_the_wheel_tag_states_the_library_the_program_was_built_against(
     platform = platforms.host(repo)
 
     equal(platform.wheel_tag((2, 39)), f"manylinux_2_39_{platform.id.split('-')[1]}")
-    truth(platforms.host_glibc()[0] >= 2, describing="this host to report a C library")
+    version = platforms.host_os_version()
+    truth(
+        version is not None and version[0] >= 2,
+        describing="this host to report a C library",
+    )
 
 
 def test_the_tool_says_what_it_refused_rather_than_stopping_silently(

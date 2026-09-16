@@ -52,6 +52,7 @@ from repo_checks.model import (
     policy_string_list,
     policy_table,
 )
+from repo_checks.parsing import MarkerBlockMissingError
 
 #: A markdown table's cell separator, which needs two of them to be a row.
 TABLE_ROW = re.compile(r"\|.*\|")
@@ -870,4 +871,79 @@ def schema_document(repo: Repo) -> list[str]:
             f"`{policy.schema_document}` is not what the types generate. It is generated "
             f"rather than written: run `just docs-generate`."
         )
+    return findings
+
+
+#: A backticked token shaped like one of this repository's platform identifiers:
+#: an operating-system family this repository or one of its registries has a
+#: name for, and a processor. Read as a shape rather than as a fixed list, so a
+#: document naming `linux-riscv64` or `macos-aarch64` is found by being a
+#: platform identifier rather than by being on a list of wrong ones.
+PLATFORM_ID = re.compile(r"^(?:linux|macos|macosx|windows|win32|darwin|osx)-[a-z0-9_]+$")
+
+#: Every service manager this repository has a name for. A document may say one
+#: of these of a platform, and `platform_names` refuses one that says a
+#: different one from what the supported-platform list gives that platform.
+SERVICE_MANAGERS = ("systemd", "launchd", "windows-service")
+
+
+def _documents(repo: Repo) -> list[tuple[str, str]]:
+    """Every markdown document this repository commits, with its text.
+
+    Symbolic links are skipped: `CLAUDE.md` is a link to `AGENTS.md`, and a
+    finding reported twice under two names reads as two problems.
+    """
+    found: list[tuple[str, str]] = []
+    for path in sorted(repo.root.glob("**/*.md")):
+        relative = path.relative_to(repo.root)
+        if UNCOMMITTED_DIRECTORIES & set(relative.parts) or path.is_symlink():
+            continue
+        found.append((str(relative), path.read_text(encoding="utf-8")))
+    return found
+
+
+def platform_names(repo: Repo) -> list[str]:
+    """No document names a platform, or gives one a service manager, the list does not.
+
+    The supported-platform list is the one source of both, and a document is the
+    one place a claim about a platform can go on reading true after the list
+    moved under it: nothing installs a paragraph, so nobody meets the
+    disagreement until they follow it. This is the mechanical half of keeping
+    every document derived from that list.
+    """
+    from repo_checks.platforms import supported
+
+    try:
+        declared = supported(repo)
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+    known = {platform.id: platform for platform in declared}
+
+    findings: list[str] = []
+    for where, text in _documents(repo):
+        for number, line in enumerate(text.splitlines(), start=1):
+            named = [
+                token for token in BACKTICKED.findall(line) if PLATFORM_ID.match(token.strip())
+            ]
+            findings.extend(
+                f"{where}:{number} names the platform `{token}`, which AGENTS.md's "
+                f"supported-platform list does not carry; it names "
+                f"{', '.join(f'`{one}`' for one in known) or 'nothing'}"
+                for token in named
+                if token not in known
+            )
+            stated = [
+                manager
+                for manager in SERVICE_MANAGERS
+                if f"`{manager}`" in line or re.search(rf"(?<![\w-]){manager}(?![\w-])", line)
+            ]
+            if len(stated) != 1:
+                continue
+            findings.extend(
+                f"{where}:{number} states `{stated[0]}` of the platform `{token}`, and "
+                f"AGENTS.md's supported-platform list gives it "
+                f"`{known[token].service_manager}`"
+                for token in named
+                if token in known and known[token].service_manager != stated[0]
+            )
     return findings

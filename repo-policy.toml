@@ -86,6 +86,32 @@ allowlist = "suppressions.toml"
 # itself.
 whole_file_rules = ["tool_output_is_signal", "boundary_inputs_validated"]
 
+[platforms]
+# The platform record, and the two copies of a platform fact that live in
+# languages which cannot import the declaration they come from.
+#
+# `AGENTS.md`'s supported-platform list declares WHICH platforms there are, and
+# `tools/repo-checks/src/repo_checks/platforms.py` declares what each of them is
+# CALLED — the JavaScript registry's own selectors, the program's file name, the
+# release asset's name, and how a wheel's platform tag is spelled. Everything
+# else in the tree that states one of those reads it from there. These two
+# cannot: a `.mjs` the JavaScript registry installs and a TOML file rustup reads
+# are the two places a copy has to be written out, and `just check-repo`'s
+# `platform-facts` is what holds each of them to its source.
+#
+# The third copy — the install script's own `uname` arms — is deliberately NOT
+# named here: which scripts route 3 has behind it is read out of the fetch
+# commands `AGENTS.md`'s install-path section states, so a script added or
+# replaced there is found by being that route's own rather than by being listed
+# twice.
+launcher = "npm/printobserver-cli/bin/printobserver.mjs"
+# Bound ONE WAY: every Rust target this file installs must be one the
+# supported-platform list names, and it is not required to name them all. The
+# array is about what a BUILD HOST installs, not about what each platform's own
+# runner builds natively — six standard libraries on every runner would be
+# waste, and a rule requiring all of them would mandate it.
+toolchain = "rust-toolchain.toml"
+
 [integration]
 # The printer integration tier, and the two recipes that bracket it. These
 # names are the one source: `just check-repo` holds the committed

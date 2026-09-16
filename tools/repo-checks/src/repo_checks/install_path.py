@@ -6,17 +6,32 @@ agent's harness is installed and signed in as the service's own user between
 those two. Every
 other statement of one of them in this repository is derived from it, and
 `drifted_statements` is what holds them together.
+
+The three routes are three ways of *obtaining* the program and stay three
+however many platforms this repository supports; the two commands after them are
+**per service manager**, because putting a service in place and starting it is
+the one part of this path that is not the same sentence on every host. So the
+section states one pair per service manager the supported-platform list names,
+each under a subsection headed by that manager's own name, and a consumer asks
+for the pair belonging to a platform through that platform's service-manager
+column rather than taking whichever pair happened to be written first.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from repo_checks.parsing import fenced_commands, section
 
 SECTION_HEADING = "The end-user install path"
+
+# The subsection under which one pair per service manager is stated. Each pair
+# sits in a subsection of its own, headed by the service manager's own name as
+# the supported-platform list spells it.
+SERVICE_COMMANDS_HEADING = "then, in order"
 
 # The subsection stating what a caller runs to see what the route installed.
 # Whichever route was taken, running the program is what tells an install that
@@ -82,13 +97,16 @@ class Route:
 
 @dataclass(frozen=True, slots=True)
 class InstallPath:
-    """The whole path: three routes, a check, two commands, then the harness sign-in."""
+    """The whole path: three routes, a check, a pair per service manager, the sign-in."""
 
     intro: str
     routes: tuple[Route, ...]
     #: What a caller runs to see what the route installed.
     verification: tuple[str, ...]
-    commands: tuple[str, ...]
+    #: The two commands after the routes, keyed by the service manager whose own
+    #: pair they are. A platform's pair is the one its service-manager column
+    #: names, which is what `commands_for` answers.
+    service_commands: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: How the agent's harness is installed and signed in as the service's user.
     sign_in: tuple[str, ...] = ()
 
@@ -96,6 +114,15 @@ class InstallPath:
     def checked(self) -> str:
         """The one command that reads back what a route installed."""
         return self.verification[0] if self.verification else ""
+
+    def commands_for(self, service_manager: str) -> tuple[str, ...]:
+        """The pair belonging to one service manager, or none where it states none."""
+        return self.service_commands.get(service_manager, ())
+
+    @property
+    def commands(self) -> tuple[str, ...]:
+        """Every command stated after the routes, in the order the section states it."""
+        return tuple(command for pair in self.service_commands.values() for command in pair)
 
     @property
     def canonical(self) -> tuple[str, ...]:
@@ -110,37 +137,46 @@ class InstallPath:
 
 
 def parse(agents_md: str) -> InstallPath:
-    """Read the install path out of its authoritative section."""
+    """Read the install path out of its authoritative section.
+
+    A subsection is read by its own heading and by the one it sits under, so a
+    pair of commands belongs to the service manager its heading names rather
+    than to wherever in the section it happens to sit.
+    """
     body = section(agents_md, SECTION_HEADING)
-    blocks: list[tuple[int, str, list[str]]] = [(2, "", [])]
+    blocks: list[tuple[int, str, str, list[str]]] = [(2, "", "", [])]
+    under = ""
     for line in body.splitlines():
         if line.startswith("#### "):
-            blocks.append((4, line[5:].strip(), []))
+            blocks.append((4, line[5:].strip(), under, []))
         elif line.startswith("### "):
-            blocks.append((3, line[4:].strip(), []))
+            under = line[4:].strip()
+            blocks.append((3, under, "", []))
         else:
-            blocks[-1][2].append(line)
+            blocks[-1][3].append(line)
 
     routes: list[Route] = []
     verification: tuple[str, ...] = ()
-    commands: tuple[str, ...] = ()
+    service_commands: dict[str, tuple[str, ...]] = {}
     sign_in: tuple[str, ...] = ()
     intro_lines: list[str] = []
     seen_route = False
-    for level, title, lines in blocks:
+    for level, title, parent, lines in blocks:
         text = "\n".join(lines)
         if level == 4 and title.lower().startswith("route"):
             seen_route = True
             routes.append(Route(title, tuple(fenced_commands(text))))
+        elif level == 4 and parent.lower().startswith(SERVICE_COMMANDS_HEADING):
+            service_commands[title.strip().lower()] = tuple(fenced_commands(text))
         elif title.lower().startswith(VERIFICATION_HEADING):
             verification = tuple(fenced_commands(text))
-        elif title.lower().startswith("then, in order"):
-            commands = tuple(fenced_commands(text))
         elif title.lower().startswith(SIGN_IN_HEADING):
             sign_in = tuple(fenced_commands(text))
         elif not seen_route:
             intro_lines.extend(lines)
-    return InstallPath("\n".join(intro_lines), tuple(routes), verification, commands, sign_in)
+    return InstallPath(
+        "\n".join(intro_lines), tuple(routes), verification, service_commands, sign_in
+    )
 
 
 def statement_key(command: str) -> tuple[str, ...]:

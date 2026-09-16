@@ -12,6 +12,7 @@ from repo_checks import (
     checks_integration,
     checks_journeys,
     checks_obico,
+    checks_platforms,
     checks_release,
     checks_repo,
     checks_service,
@@ -57,6 +58,8 @@ CHECKS: dict[str, Check] = {
     "supervisor-prompt-template": checks_supervisor.prompt_template,
     "supervisor-schema-lock": checks_supervisor.schema_lock,
     "platforms": checks_ci.platforms,
+    "platform-facts": checks_platforms.platform_facts,
+    "unmatrixed-jobs": checks_platforms.unmatrixed_jobs,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,
     "artifact-jobs": checks_ci.artifact_jobs,
@@ -85,6 +88,7 @@ CHECKS: dict[str, Check] = {
     "docs-skill": checks_docs.skill,
     "docs-reference": checks_docs.reference,
     "docs-schemas": checks_docs.schema_document,
+    "docs-platforms": checks_docs.platform_names,
 }
 
 # `workflows` is run by `just lint-workflows` rather than by `just check-repo`,

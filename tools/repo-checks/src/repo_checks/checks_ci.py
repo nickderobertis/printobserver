@@ -20,49 +20,24 @@ from repo_checks.parsing import (
     run_commands,
     steps_of,
 )
+from repo_checks.platforms import (
+    EXCLUSION_LINE,
+    EXCLUSION_SHAPE,
+    EXCLUSIONS_BLOCK,
+    PLATFORM_LINE,
+    Platform,
+)
+from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
 
 #: The prefix every recipe that takes one shipped artifact the way its own
 #: consumer takes it is named with.
 PROVE_PREFIX = "prove-"
 
-PLATFORM_LINE = re.compile(
-    r"^- `(?P<id>[a-z0-9_-]+)` — runner `(?P<runner>[^`]+)`, Rust target `(?P<target>[^`]+)`, "
-    r"service manager `(?P<service_manager>[^`]+)`, install path: (?P<install>yes|no)$"
-)
 SECRET_REFERENCE = re.compile(r"secrets\.([A-Z0-9_]+)")
 BUILT_IN_TOKEN = re.compile(r"secrets\.GITHUB_TOKEN|github\.token")
 JUDGE_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY")
 HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action")
-
-
-@dataclass(frozen=True, slots=True)
-class Platform:
-    """One supported platform, as `AGENTS.md` declares it."""
-
-    id: str
-    runner: str
-    target: str
-    service_manager: str
-    install_path: bool
-
-
-def platforms_of(repo: Repo) -> list[Platform]:
-    """Read the supported-platform list out of `AGENTS.md`."""
-    found: list[Platform] = []
-    for line in marker_block(repo.agents_md, "supported-platforms"):
-        match = PLATFORM_LINE.match(line)
-        if match:
-            found.append(
-                Platform(
-                    match["id"],
-                    match["runner"],
-                    match["target"],
-                    match["service_manager"],
-                    match["install"] == "yes",
-                )
-            )
-    return found
 
 
 def _workflows(repo: Repo) -> dict[str, dict[str, Any]]:
@@ -311,21 +286,86 @@ def status_contexts(repo: Repo) -> list[StatusContext]:
     ]
 
 
+def route_commands(repo: Repo) -> frozenset[str]:
+    """Every command a job that takes one of the end-user ROUTES runs.
+
+    A route is a way of getting the `printobserver` program onto a host, so a
+    job that takes one is a job the `install path` answer reaches: a platform
+    the supported-platform list answers `no` for has no route to prove, and one
+    it answers `yes` for must be proven on every one of them.
+
+    Read off the routed targets `release-targets.toml` declares rather than off
+    a list of job names, so the artifact-route proof and the registry proof of
+    one route are both found by being that route's own.
+    """
+    proven = proving(repo)
+    return frozenset(
+        f"just {recipe}"
+        for target in _shipped(repo)
+        if str(target.get("route", "")).strip()
+        for recipe in proven.get(str(target.get("id", "")), ())
+    )
+
+
+def _exclusions(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
+    """Each cell `AGENTS.md` records as not running, and why it does not.
+
+    The second of the two levers a platform is brought up in stages by. A cell
+    named here is one a platform-dependent job's matrix may omit; one that is
+    not is a cell the job owes, whatever the list says.
+
+    Raises:
+        MarkerBlockMissingError: If `AGENTS.md` carries no such block.
+    """
+    excluded: dict[tuple[str, str], str] = {}
+    findings: list[str] = []
+    for line in marker_block(repo.agents_md, EXCLUSIONS_BLOCK):
+        if not line.startswith("- "):
+            continue
+        match = EXCLUSION_LINE.match(line)
+        if match is None:
+            findings.append(
+                f"AGENTS.md records the platform exclusion `{line}`, which is not of "
+                f"the form `{EXCLUSION_SHAPE}`"
+            )
+            continue
+        reason = (match["reason"] or "").strip()
+        if not reason:
+            findings.append(
+                f"AGENTS.md records `{match['id']}` on job `{match['job']}` as a cell "
+                f"that does not run, with no reason it does not"
+            )
+            continue
+        excluded[match["id"], match["job"]] = reason
+    return excluded, findings
+
+
+def _install_answer_findings(declared: list[Platform]) -> list[str]:
+    """An opt-out from every install tier states the reason for itself."""
+    return [
+        f"AGENTS.md's supported-platform list answers `install path: no` for "
+        f"`{platform.id}` and states no reason: a platform taken out of every "
+        f"install-route, registry-proof and artifact-route matrix says why it is"
+        for platform in declared
+        if not platform.install_path and not platform.install_path_reason
+    ]
+
+
 def platforms(repo: Repo) -> list[str]:
     """The supported-platform list is the one source every CI matrix comes from."""
     try:
         declared = platforms_of(repo)
+        excluded, findings = _exclusions(repo)
     except MarkerBlockMissingError as error:
         return [str(error)]
 
     try:
         dependent = platform_dependent_kinds(repo)
     except PolicyValueError as error:
-        return [str(error)]
+        return [*findings, str(error)]
 
-    findings: list[str] = []
     if not declared:
-        return ["AGENTS.md's supported-platform list is empty"]
+        return [*findings, "AGENTS.md's supported-platform list is empty"]
     if not any(item.install_path for item in declared):
         findings.append(
             "AGENTS.md's supported-platform list names no platform the end-user "
@@ -336,21 +376,26 @@ def platforms(repo: Repo) -> list[str]:
             "AGENTS.md's supported-platform list names no systemd platform, which is "
             "the service manager the unit in the end-user install path is written for"
         )
+    findings.extend(_install_answer_findings(declared))
 
     declared_ids = [item.id for item in declared]
+    installed_ids = [item.id for item in declared if item.install_path]
     runners = {item.id: item.runner for item in declared}
     path = ip.parse(repo.agents_md)
     bring_up = _bring_up_command(repo)
     artifact = artifact_commands(repo)
+    routed = route_commands(repo)
+    job_names: set[str] = set()
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
+            job_names.add(job_name)
             kind = _job_kind(job, path, bring_up, artifact)
             entries = _matrix_platforms(job)
             if kind == JobKind.INTEGRATION:
                 # The printer integration job's matrix is the `integration-tier`
-                # check's: it is the one matrix the exclusions recorded in
-                # AGENTS.md may narrow, and a rule stated in two places is a
-                # rule that can disagree with itself.
+                # check's: it is the one matrix the virtual-printer exclusions
+                # recorded in AGENTS.md may narrow, and a rule stated in two
+                # places is a rule that can disagree with itself.
                 continue
             if kind not in dependent:
                 if entries is not None:
@@ -369,6 +414,13 @@ def platforms(repo: Repo) -> list[str]:
                     f"{file_name}: job `{job_name}` is a {kind} job but declares no platform matrix"
                 )
                 continue
+            # A job that takes one of the end-user routes is held to the
+            # platforms the list answers `install path: yes` for; every other
+            # platform-dependent job is held to the whole list.
+            takes_a_route = kind == JobKind.INSTALL or any(
+                command in routed for command in run_commands(job)
+            )
+            wanted = installed_ids if takes_a_route else declared_ids
             cells = [MatrixCell.read(entry, f"{file_name}: job `{job_name}`") for entry in entries]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix has a cell whose `id` is not a "
@@ -384,10 +436,23 @@ def platforms(repo: Repo) -> list[str]:
                 if found not in declared_ids
             )
             findings.extend(
-                f"{file_name}: job `{job_name}`'s matrix omits platform `{wanted}`, "
-                f"which AGENTS.md's supported-platform list names"
-                for wanted in declared_ids
-                if wanted not in ids
+                f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, which "
+                f"AGENTS.md's supported-platform list answers `install path: no` for "
+                f"({dict((p.id, p.install_path_reason) for p in declared).get(found, '')})"
+                for found in ids
+                if found in declared_ids and found not in installed_ids and takes_a_route
+            )
+            findings.extend(
+                f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, which "
+                f"AGENTS.md records as a cell that does not run ({excluded[found, job_name]})"
+                for found in ids
+                if (found, job_name) in excluded
+            )
+            findings.extend(
+                f"{file_name}: job `{job_name}`'s matrix omits platform `{missing}`, "
+                f"which AGENTS.md's supported-platform list names and no exclusion records"
+                for missing in wanted
+                if missing not in ids and (missing, job_name) not in excluded
             )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix runs `{cell.fields['id']}` on "
@@ -397,6 +462,18 @@ def platforms(repo: Repo) -> list[str]:
                 if cell.fields.get("id") in runners
                 and cell.fields.get("runner") != runners[cell.fields["id"]]
             )
+    findings.extend(
+        f"AGENTS.md records `{platform}` on job `{job}` as a cell that does not run, and "
+        f"its supported-platform list does not name `{platform}`"
+        for platform, job in sorted(excluded)
+        if platform not in declared_ids
+    )
+    findings.extend(
+        f"AGENTS.md records `{platform}` on job `{job}` as a cell that does not run, and "
+        f"the committed workflows declare no job `{job}`"
+        for platform, job in sorted(excluded)
+        if job not in job_names
+    )
     return findings
 
 
@@ -410,11 +487,7 @@ def install_path_section(repo: Repo) -> list[str]:
             f"AGENTS.md's `{ip.SECTION_HEADING}` states {len(path.routes)} routes; "
             f"it must state exactly three alternatives"
         )
-    if len(path.commands) != 2:
-        findings.append(
-            f"AGENTS.md's `{ip.SECTION_HEADING}` states {len(path.commands)} commands "
-            f"after the routes; it must state exactly two, in order"
-        )
+    findings.extend(_service_command_findings(repo, path))
 
     intro = " ".join(path.intro.split())
     if ip.ALTERNATIVES_SENTENCE not in intro:
@@ -445,12 +518,13 @@ def install_path_section(repo: Repo) -> list[str]:
     findings.extend(_pinned_form_findings(path))
     findings.extend(_verification_findings(path))
 
-    if path.commands and ip.STARTS_SERVICE.search(path.commands[0]):
-        findings.append(
-            f"the first command after the routes (`{path.commands[0]}`) starts or "
-            f"enables the service; installing must not start a process that can move a "
-            f"3D printer"
-        )
+    for manager, pair in path.service_commands.items():
+        if pair and ip.STARTS_SERVICE.search(pair[0]):
+            findings.append(
+                f"the first command of the `{manager}` pair (`{pair[0]}`) starts or "
+                f"enables the service; installing must not start a process that can move "
+                f"a 3D printer"
+            )
     if "commands a 3D printer" not in repo.agents_md:
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` does not state why enabling and "
@@ -464,6 +538,51 @@ def install_path_section(repo: Repo) -> list[str]:
         )
 
     findings.extend(ip.drifted_statements(path, _restatements(repo)))
+    return findings
+
+
+def service_managers(repo: Repo) -> list[str]:
+    """Every service manager `AGENTS.md`'s supported-platform list names, in order.
+
+    Raises:
+        MarkerBlockMissingError: If `AGENTS.md` carries no such list.
+    """
+    named: list[str] = []
+    for platform in platforms_of(repo):
+        if platform.service_manager not in named:
+            named.append(platform.service_manager)
+    return named
+
+
+def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
+    """One pair of commands per service manager the supported-platform list names.
+
+    The routes are three however many platforms there are; the pair after them
+    is per service manager, because putting a service in place and starting it
+    is the one part of this path that is not the same sentence on every host.
+    """
+    try:
+        wanted = service_managers(repo)
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+    findings = [
+        f"AGENTS.md's `{ip.SECTION_HEADING}` states no pair of commands for the "
+        f"`{manager}` service manager, which its supported-platform list names"
+        for manager in wanted
+        if not path.commands_for(manager)
+    ]
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` states a pair of commands for the "
+        f"`{manager}` service manager, which its supported-platform list does not name"
+        for manager in path.service_commands
+        if manager not in wanted
+    )
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` states {len(pair)} commands for the "
+        f"`{manager}` service manager; it must state exactly two, in order"
+        for manager, pair in path.service_commands.items()
+        if len(pair) != 2
+    )
     return findings
 
 
@@ -709,6 +828,28 @@ def _reporting_findings(
     return findings
 
 
+def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any]) -> tuple[str, ...]:
+    """The commands after the routes an install job owes, for the platforms it runs on.
+
+    Read through the service-manager column of the platforms the job's own
+    matrix names, so a job is held to the pair belonging to its platforms rather
+    than to whichever pair the section happened to state first.
+    """
+    entries = _matrix_platforms(job) or []
+    named = {str(entry["id"]) for entry in entries if "id" in entry}
+    try:
+        declared = platforms_of(repo)
+    except MarkerBlockMissingError:
+        return path.commands
+    managers: list[str] = []
+    for platform in declared:
+        if named and platform.id not in named:
+            continue
+        if platform.service_manager not in managers:
+            managers.append(platform.service_manager)
+    return tuple(command for manager in managers for command in path.commands_for(manager))
+
+
 def _install_job_findings(
     repo: Repo, path: ip.InstallPath, install: list[tuple[str, str, dict[str, Any]]]
 ) -> list[str]:
@@ -734,8 +875,9 @@ def _install_job_findings(
             if command not in path.canonical and not (summary and summary in command)
         )
         findings.extend(_reporting_findings(repo, file_name, job_name, job))
-        positions = [commands.index(c) if c in commands else -1 for c in path.commands]
-        for stated, position in zip(path.commands, positions, strict=True):
+        stated_after = _job_service_commands(repo, path, job)
+        positions = [commands.index(c) if c in commands else -1 for c in stated_after]
+        for stated, position in zip(stated_after, positions, strict=True):
             if position < 0:
                 findings.append(
                     f"{file_name}: install job `{job_name}` omits `{stated}`, which "

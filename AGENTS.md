@@ -239,6 +239,16 @@ any other job, because a second cell over the non-deterministic judged tier woul
 not be a second platform but a second, independent verdict on one diff — free to
 pass and fail the same content while both are required checks.
 
+Each entry states four facts: the runner, the Rust target, the service manager
+whose own command pair the install-path section below states, and whether the
+end-user install path targets the platform at all. The four facts a platform has
+that nobody reads in prose — what the JavaScript registry selects a package by,
+what the program's own file is called there, what the release asset is named,
+and how a wheel's platform tag is spelled — are declared once, in
+`tools/repo-checks/src/repo_checks/platforms.py`, which hands a consumer all
+eight at once; every copy of one of them in the tree is held to it, and asking
+it about an identifier this list does not name is refused naming it.
+
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
@@ -247,9 +257,54 @@ pass and fail the same content while both are required checks.
 Both are Linux with systemd, which is what the unit in the end-user install path
 below is written for. `linux-aarch64` is not optional: the machine beside the
 printer is usually a small ARM board, and it is the worst place to discover an
-architecture was never built for. macOS and Windows are deliberately absent —
-they can host a *client*, and the clients land at the `sdks` node, which is
-where the list grows if they need one.
+architecture was never built for. macOS and Windows are not on this list yet:
+the module above names all six identifiers, and a platform joins this list only
+once every cell derived from it is green.
+
+### The two levers a platform is brought up in stages by
+
+Growing this list fans out instantly to every matrix derived from it, which on
+its own would make adding a platform one impossible change. Two levers make it a
+set of reviewable ones instead, and neither can be pulled quietly: both are
+visible here and both are refused without a reason.
+
+**`install path: yes|no`** is the first, and it is per platform. A platform
+answered `no` is carried by no install-route, registry-proof or artifact-route
+matrix, and one answered `yes` must be carried by every one of them; `just
+check-repo` refuses a job and this list disagreeing either way. A `no` states its
+own reason on the entry — `install path: no — <reason>` — and is refused without
+one, so a platform cannot be taken out of every install tier by an unexplained
+opt-out.
+
+**The block below** is the second, and it is per cell. One line for each
+platform-dependent job that does not run on a platform this list names, with the
+reason it does not. `just check-repo` refuses an entry with no reason, an entry
+naming a platform or a job that is not there, and a platform-dependent job that
+omits a cell no entry names.
+
+[//]: # (BEGIN platform-exclusions)
+[//]: # (END platform-exclusions)
+
+It is empty: every platform-dependent job runs on every platform this list
+names. The printer integration job is the one job this block does not reach,
+because that job has a narrowing of its own — the "Virtual printer availability"
+block below, which is the integration tier's own record of where the virtual
+printer is unavailable. A rule stated in two places is one that can disagree
+with itself.
+
+### The three jobs that carry no platform matrix
+
+Three jobs run once per change rather than once per platform, and a matrix would
+say nothing about any of them. Each records why here, and `just check-repo`
+refuses an entry carrying no reason, an entry naming a job the committed
+workflows do not declare, and a job named here that carries a platform matrix
+after all.
+
+[//]: # (BEGIN unmatrixed-jobs)
+- `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
+- `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
+- `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
+[//]: # (END unmatrixed-jobs)
 
 ## The scripted OctoPrint environment
 
@@ -606,6 +661,16 @@ The path is **one program obtained by any one of three alternative routes, and
 then two commands in order**, with the agent's harness installed and signed in
 as the service's own user between those two commands.
 
+The three routes are three ways of *obtaining* the program, so a reader takes
+one of them whatever platform they are on rather than one per platform. What is
+per platform is the pair of commands after them: each service manager the
+supported-platform list names states its own installer command and its own start
+command, in that order, and a platform's pair is the one its own service-manager
+column names. Route 3 is per platform one level down, because a shell script is
+not a route a Windows machine can take: it states one fetch command per install
+script behind it, and `just check-repo` requires every platform the list answers
+`install path: yes` for to be reached by exactly one of those scripts.
+
 ### The three routes
 
 These three routes are alternatives reaching the same program: take one of them,
@@ -671,8 +736,34 @@ printobserver --version
 
 ### Then, in order — two commands
 
-Both run as root. The first is the installer the `server` node ships, committed
-at `scripts/install-service.sh`: it puts the binary, the state directory, the
+Both run as root, and which pair you run is your platform's own: the
+supported-platform list's service-manager column names it. The first of a pair
+puts the service in place and the second starts it, and one subsection below
+states one pair, headed by the service manager it belongs to. `just check-repo`
+refuses a service manager the list names and this section states no pair for,
+and a pair here for a service manager the list does not name.
+
+**Enabling and starting is a command of its own rather than something the
+installer does, and the reason is that this service commands a 3D printer.**
+Installing a package must not, as a side effect, start a process that can move a
+machine, so starting the supervisor stays a decision somebody takes rather than
+something that happens while they are installing. Do not fold these two steps
+back together, in any pair.
+
+`just check-repo`'s `service-install` reads this section beside the tree and
+refuses one in which the unit's name or the installer's path differs from what is
+written below, or in which that installer enables or starts anything. It reads
+the pair belonging to a platform through that platform's own service-manager
+column, so a platform run under a second service manager is read against that
+manager's own pair rather than against this one.
+
+What makes the three routes executable is the `sdks` node, and what makes the two
+commands executable is the `server` node — each held to this section.
+
+#### systemd
+
+The first is the installer the `server` node ships, committed at
+`scripts/install-service.sh`: it puts the binary, the state directory, the
 configuration and the systemd unit in place. The second enables and starts the
 unit, whose name is `printobserver.service`. Made executable by the `server`
 node.
@@ -684,20 +775,6 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 ```console
 sudo systemctl enable --now printobserver.service
 ```
-
-**Enabling and starting is a command of its own rather than something the
-installer does, and the reason is that this service commands a 3D printer.**
-Installing a package must not, as a side effect, start a process that can move a
-machine, so starting the supervisor stays a decision somebody takes rather than
-something that happens while they are installing. Do not fold these two steps
-back together.
-
-`just check-repo`'s `service-install` reads this section beside the tree and
-refuses one in which the unit's name or the installer's path differs from what is
-written above, or in which that installer enables or starts anything.
-
-What makes the three routes executable is the `sdks` node, and what makes the two
-commands executable is the `server` node — each held to this section.
 
 ### Between the two commands, sign in the agent's harness
 
@@ -756,13 +833,23 @@ check.
 The status contexts required to be green before a pull request can merge. These
 are **check-run names, not job keys**: a branch-protection rule names a check by
 the name GitHub reports it under, and a matrixed job reports one check run per
-cell. That is why the gate appears twice — its `name` carries the cell's platform
-so the two are distinguishable — and why the judged tier appears once, with no
-platform in its name at all.
+cell. That is why the gate and the printer integration job each appear once per
+platform — each one's `name` carries the cell's platform so the cells are
+distinguishable, and every cell of a required job is required, because a job
+required on one platform and not the other is a merge path the other never
+blocked — and why the judged tier appears once, with no platform in its name at
+all.
+
+Whether `main`'s branch protection actually requires these is a repository
+setting a person applies through GitHub; what this record is, and what `just
+check-repo` holds it to, is the set of check runs the committed workflows report
+that a merge must not proceed without.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
 - `gate (linux-aarch64)`
+- `integration (linux-x86_64)`
+- `integration (linux-aarch64)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)

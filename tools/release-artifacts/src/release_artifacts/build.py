@@ -15,10 +15,11 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from repo_checks import platforms
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
-from release_artifacts import packages, platforms, targets, wheels
+from release_artifacts import packages, targets, wheels
 
 #: The program every one of the three end-user routes delivers.
 PROGRAM = "printobserver"
@@ -236,7 +237,7 @@ def rust_client(repo: Repo, target: targets.Target, into: Path) -> Built:
 def python_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> Built:
     """The Python-registry route: a wheel carrying the program for this platform."""
     platform = platforms.host(repo)
-    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_glibc())}"
+    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_os_version())}"
     wheel = wheels.Wheel(_distribution(repo, target), tag)
     wheel.add_script(PROGRAM, binary)
     return Built(target.id, (wheel.write(into),))
@@ -276,8 +277,13 @@ def node_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> 
         type="module",
         bin={PROGRAM: f"bin/{PROGRAM}.mjs"},
         files=["bin"],
+        # Every platform the supported-platform list answers `install path:
+        # yes` for, and no other: a package declared here for a platform no
+        # route targets is one nothing publishes, which an install resolves to
+        # nothing.
         optionalDependencies={
-            supported.npm_package: inherited["version"] for supported in platforms.supported(repo)
+            supported.npm_package: inherited["version"]
+            for supported in platforms.install_platforms(repo)
         },
     )
     written.append(packages.packed(launcher, launcher_manifest, beside, into))
@@ -294,7 +300,9 @@ def release_route(repo: Repo, target: targets.Target, into: Path, binary: Path) 
     platform = platforms.host(repo)
     archive = packages.Archive()
     archive.add(PROGRAM, binary.read_bytes(), executable=True)
-    written = archive.write(into / f"{PROGRAM}-{platform.id}.tar.gz")
+    # The asset's name is the descriptor's: one declaration the install script's
+    # own arms, the checksum file and this build all resolve through.
+    written = archive.write(into / platform.asset)
     digests = into / CHECKSUMS
     digests.write_bytes(packages.checksums([written]))
     return Built(target.id, (written, digests))

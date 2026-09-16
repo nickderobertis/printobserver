@@ -23,10 +23,11 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from repo_checks import platforms
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
-from release_artifacts import platforms, targets
+from release_artifacts import targets
 from release_artifacts.build import PROGRAM, Built, build, program, staged_release
 from release_artifacts.world import World
 

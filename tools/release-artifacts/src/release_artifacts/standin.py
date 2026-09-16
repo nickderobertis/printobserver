@@ -49,9 +49,10 @@ from pathlib import Path
 from typing import NewType
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from repo_checks import platforms
 from repo_checks.model import Repo
 
-from release_artifacts import packages, platforms, targets
+from release_artifacts import packages, targets
 from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 
 # The one version ordering. A stand-in that sorted versions its own way could
@@ -606,7 +607,10 @@ class Registries:
         launcher published and its platform package missing, which installs
         clean and leaves a program on the path that cannot run.
         """
-        supported = platforms.supported(self.repo)
+        # The platforms the launcher names as optional dependencies, which is
+        # every one the supported-platform list answers `install path: yes`
+        # for — the same set `release_artifacts.build` writes into it.
+        supported = platforms.install_platforms(self.repo)
         if program is not None and per_platform:
             for platform in supported:
                 system, processor = platform.npm
@@ -698,7 +702,7 @@ class Registries:
 
     def _serve_release(self, version: str, program: Path | None) -> None:
         """Publish the release artifacts the install script downloads."""
-        asset = f"{PROGRAM}-{platforms.host(self.repo).id}.tar.gz"
+        asset = platforms.host(self.repo).asset
         archive = packages.Archive()
         if program is None:
             archive.add("README", b"a release artifact carrying no program\n")

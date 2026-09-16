@@ -53,7 +53,10 @@ jobs:
       - run: just check
 
   integration:
-    name: integration
+    # The cell's platform is in the name for the same reason the gate's is: that
+    # name is the status context a branch-protection rule names, and two cells
+    # reporting under one name are two check runs a rule cannot tell apart.
+    name: integration (${{ matrix.platform.id }})
     # The printer integration tier, against a real OctoPrint. It is a job of
     # its own rather than one of `just check`'s tiers because it installs
     # OctoPrint, starts it and waits a print out — but it runs on every change,
