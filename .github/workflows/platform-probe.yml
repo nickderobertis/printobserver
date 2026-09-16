@@ -148,23 +148,3 @@ jobs:
     # every tier runs out its own step timeout.
     timeout-minutes: 330
     steps: *probe-steps
-
-  # Temporary, within this temporary workflow: which ETW events attribute a
-  # connect attempt to its process on each Windows runner. The Windows platform
-  # node removes both jobs once the tracer is written against what they print.
-  etw-windows-x86_64:
-    name: etw-windows-x86_64
-    runs-on: windows-2025  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
-    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job prints what the runner records rather than gating on it
-    timeout-minutes: 20
-    steps: &etw-steps
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-      - run: uv run --no-project python .github/probe/etw_experiment.py
-
-  etw-windows-aarch64:
-    name: etw-windows-aarch64
-    runs-on: windows-11-arm  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
-    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job prints what the runner records rather than gating on it
-    timeout-minutes: 20
-    steps: *etw-steps
