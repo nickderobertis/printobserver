@@ -1,0 +1,77 @@
+"""No document names a platform, or gives one a service manager, the list does not.
+
+A document is the one place a claim about a platform goes on reading true after
+the list moved under it: nothing installs a paragraph, so nobody meets the
+disagreement until they follow it. This is the mechanical half of keeping every
+document derived from that one list, and every refusal below is driven by
+putting the claim into a real document of a real copy of this tree.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from repo_checks.checks_docs import platform_names
+from repo_checks.expect import accepted, refused_naming
+from repo_checks.model import Repo
+from treecopy import Tree
+
+TESTING = "docs/reference/testing.md"
+
+
+def test_every_committed_document_agrees_with_the_list(committed: Repo) -> None:
+    """No document of this tree names a platform the supported-platform list does not."""
+    accepted(platform_names(committed))
+
+
+def test_a_document_naming_a_platform_the_list_does_not_carry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A document that promises a platform nothing builds for promises an install that fails."""
+    broken = tree()
+    broken.append(TESTING, "\nThe gate also runs on `macos-aarch64`.\n")
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, TESTING, "`macos-aarch64`", "does not carry")
+
+
+def test_a_document_giving_a_platform_another_service_manager_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The service manager is the list's column, and a second answer to it is a second source."""
+    broken = tree()
+    broken.append(TESTING, "\nOn `linux-aarch64` the service runs under launchd.\n")
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, TESTING, "`linux-aarch64`", "`launchd`", "`systemd`")
+
+
+def test_a_document_stating_the_service_manager_the_list_gives_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """Saying the right thing about a platform is what the check is for."""
+    agreeing = tree()
+    agreeing.append(TESTING, "\nOn `linux-aarch64` the service runs under systemd.\n")
+
+    accepted(platform_names(agreeing.repo), describing="a document that agrees with the list")
+
+
+def test_a_document_naming_a_platform_the_list_gained_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """The list is the source: a platform it names is one a document may name."""
+    grown = tree()
+    grown.edit(
+        "AGENTS.md",
+        "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
+        "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+        "- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, "
+        "service manager `launchd`, install path: no — brought up in a later change\n",
+    )
+    grown.append(TESTING, "\nOn `macos-aarch64` the service runs under launchd.\n")
+
+    accepted(platform_names(grown.repo), describing="a document naming a platform the list gained")

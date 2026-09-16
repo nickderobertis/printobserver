@@ -11,6 +11,7 @@ from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
 from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
+from repo_checks.platforms import supported
 from treecopy import Tree
 
 FETCH = (
@@ -18,6 +19,14 @@ FETCH = (
     "scripts/install.sh | sh"
 )
 PINNED = FETCH + " -s -- --version v0.1.0 --to ~/.local/bin"
+INSTALLER = (
+    "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install-service.sh | sudo sh"
+)
+#: The systemd pair with its installer replaced by the command that starts the
+#: service, which leaves a pair whose first command starts a 3D printer's
+#: supervisor.
+INSTALLER_REPLACED = "```console\nsudo systemctl enable --now printobserver.service\n```"
 FOURTH_ROUTE = """
 #### Route 4 — a distribution channel nobody built
 
@@ -46,6 +55,76 @@ def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> No
     equal(path.routes[2].commands[1], PINNED)
     equal(len(path.commands), 2)
     equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
+
+
+def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
+    committed: Repo,
+) -> None:
+    """One pair per service manager the supported-platform list names.
+
+    Every platform this repository supports is a `systemd` platform, so the one
+    pair the section states is that manager's own — and what a consumer asks for
+    is the pair belonging to a platform, not whichever pair came first.
+    """
+    path = ip.parse(committed.agents_md)
+
+    equal(sorted(path.service_commands), ["systemd"], describing="the managers stated")
+    equal(
+        path.commands_for("systemd"),
+        (INSTALLER, "sudo systemctl enable --now printobserver.service"),
+        describing="the systemd pair, in installer-then-start order",
+    )
+    equal(path.commands_for("launchd"), (), describing="a manager the list does not name")
+    for platform in supported(committed):
+        equal(
+            path.commands_for(platform.service_manager),
+            path.commands,
+            describing=f"the pair {platform.id} is held to",
+        )
+
+
+def test_a_service_manager_the_list_names_and_the_section_states_no_pair_for_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A platform whose pair is not stated is a platform nobody can put the service on."""
+    broken = tree()
+    broken.edit("AGENTS.md", "\n#### systemd\n", "\n#### launchd\n")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states no pair of commands for the `systemd` service manager")
+    refused(findings, "states a pair of commands for the `launchd` service manager")
+
+
+def test_a_pair_for_a_service_manager_the_list_does_not_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A pair nothing runs is two commands nobody is held to."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        "\n### Between the two commands, sign in the agent's harness",
+        "\n#### launchd\n\n```console\nsudo launchctl bootstrap system "
+        "/Library/LaunchDaemons/printobserver.plist\n```\n\n```console\n"
+        "sudo launchctl kickstart -k system/printobserver\n```\n"
+        "\n### Between the two commands, sign in the agent's harness",
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states a pair of commands for the `launchd` service manager")
+
+
+def test_a_pair_whose_first_command_starts_the_service_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Installing must not start a process that can move a printer, in any pair."""
+    broken = tree()
+    broken.edit("AGENTS.md", f"```console\n{INSTALLER}\n```", INSTALLER_REPLACED)
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "starts or enables the service")
 
 
 def test_a_fourth_route_is_refused(tree: Callable[[], Tree]) -> None:
@@ -87,7 +166,7 @@ def test_a_third_command_after_the_routes_is_refused(tree: Callable[[], Tree]) -
 
     findings = install_path_section(broken.repo)
 
-    refused(findings, "states 3 commands")
+    refused(findings, "states 3 commands for the `systemd` service manager")
 
 
 def test_presenting_the_routes_as_a_sequence_is_refused(
@@ -182,23 +261,6 @@ def test_a_metavariable_install_directory_is_refused(tree: Callable[[], Tree]) -
     findings = install_path_section(broken.repo)
 
     refused(findings, "no concrete install directory")
-
-
-def test_a_first_command_that_starts_the_service_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
-    """Installing must not start a process that can move a 3D printer."""
-    broken = tree()
-    broken.edit(
-        "AGENTS.md",
-        "```console\ncurl -fsSL https://raw.githubusercontent.com/nickderobertis/"
-        "printobserver/main/scripts/install-service.sh | sudo sh\n```",
-        "```console\nsudo systemctl enable --now printobserver.service\n```",
-    )
-
-    findings = install_path_section(broken.repo)
-
-    refused(findings, "starts or enables the service")
 
 
 def test_dropping_the_reason_is_refused(tree: Callable[[], Tree]) -> None:
