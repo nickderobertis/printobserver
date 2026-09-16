@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from conftest import ROUTE_PROOF
 from release_artifacts import targets
 from release_artifacts.__main__ import main
 from release_artifacts.build import CHECKSUMS, PROGRAM, manifest_of
@@ -308,6 +309,7 @@ def test_a_fail_fast_publish_leaves_the_artifacts_after_the_refusal_unserved(
     )
 
 
+@ROUTE_PROOF
 def test_the_checksum_file_lists_every_platforms_tarball(
     repo: Repo,
     dist: Path,

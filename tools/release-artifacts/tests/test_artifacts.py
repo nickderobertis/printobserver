@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from conftest import ROUTE_PROOF
 from release_artifacts import targets
 from release_artifacts.build import (
     CONTRACT_FIELD,
@@ -61,6 +62,7 @@ def test_a_target_release_automation_publishes_is_not_built_here(
         build(repo, "crate:printobserver-types", into("not-built-here"), program)
 
 
+@ROUTE_PROOF
 def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -105,6 +107,7 @@ def test_a_wheel_built_on_windows_carries_the_program_under_the_name_windows_run
     equal(scripts, ["printobserver.exe"], describing="the programs the Windows wheel carries")
 
 
+@ROUTE_PROOF
 def test_the_node_route_resolves_a_per_platform_package(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -128,6 +131,7 @@ def test_the_node_route_resolves_a_per_platform_package(
     )
 
 
+@ROUTE_PROOF
 def test_the_script_route_publishes_an_artifact_and_the_digest_it_is_verified_by(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -222,6 +226,7 @@ def test_a_platform_nothing_here_names_is_refused(repo: Repo) -> None:
         unknown.wheel_tag((2, 39))
 
 
+@ROUTE_PROOF
 def test_the_wheel_tag_states_the_library_the_program_was_built_against(
     repo: Repo,
 ) -> None:

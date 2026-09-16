@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from conftest import ROUTE_PROOF
 from release_artifacts.__main__ import main
 from release_artifacts.installing import InstallError
 from release_artifacts.registries import (
@@ -95,6 +96,7 @@ def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[...,
     return prove_route
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_a_registry_serving_a_working_artifact_is_a_pass(
     identifier: str, registries: Registries, proving: Callable[..., Proof]
@@ -161,6 +163,7 @@ def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serve
     )
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize("reported", ["0.1.0", "10.6.0"])
 def test_an_artifact_reporting_another_version_does_not_pass(
     reported: str, registries: Registries, proving: Callable[..., Proof]
@@ -180,6 +183,7 @@ def test_an_artifact_reporting_another_version_does_not_pass(
     contains(proof.report, "not the version under test", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_an_artifact_that_prints_the_version_without_answering_with_it_does_not_pass(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -294,6 +298,7 @@ def _next(report: str) -> str:
     return report.partition("Next:")[2].strip()
 
 
+@ROUTE_PROOF
 def test_the_version_a_caller_names_is_the_one_proven(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -308,6 +313,7 @@ def test_the_version_a_caller_names_is_the_one_proven(
     contains(proof.report, "named by the caller", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_the_release_a_run_is_keyed_on_is_taken_from_the_forge(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -351,6 +357,7 @@ def test_a_forge_listing_no_release_selects_nothing(
     contains(proof.report, "it lists none", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_the_stated_command_of_the_route_is_what_the_report_names(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -539,6 +546,7 @@ def test_the_stand_in_answers_nothing_for_a_path_it_does_not_serve(
     contains(answer.body.decode(), "not served here", describing="what it said")
 
 
+@ROUTE_PROOF
 def test_the_recipe_this_tier_runs_reports_the_outcome_as_its_exit(
     repo: Repo, registries: Registries, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -677,6 +685,7 @@ def test_an_artifact_that_installs_and_leaves_no_program_does_not_pass(
     contains(proof.report, "SERVED AND NOT PROVEN", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_a_launcher_whose_platform_package_was_never_published_does_not_pass(
     registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -894,6 +903,7 @@ def test_a_version_that_is_no_version_to_prove_is_refused(
     contains(str(refused.value), "is no version to prove", describing="what it said")
 
 
+@ROUTE_PROOF
 def test_a_pre_release_a_registry_serves_is_never_the_newest(
     repo: Repo, registries: Registries, proving: Callable[..., Proof]
 ) -> None:
@@ -1027,6 +1037,7 @@ def resolved(checkout: Checkout, version: str, capsys: pytest.CaptureFixture[str
     return said
 
 
+@ROUTE_PROOF
 def test_a_release_time_run_proves_the_release_it_cut_and_not_the_newest(
     repo: Repo,
     checkout: Checkout,
