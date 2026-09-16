@@ -40,6 +40,7 @@
 pub mod client;
 pub mod config;
 pub mod failure;
+pub mod locations;
 pub mod parse;
 pub mod render;
 pub mod sign_in;
