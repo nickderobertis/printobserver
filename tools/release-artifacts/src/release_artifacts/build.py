@@ -299,9 +299,10 @@ def release_route(repo: Repo, target: targets.Target, into: Path, binary: Path) 
     """The install-script route: the prebuilt artifact that script downloads."""
     platform = platforms.host(repo)
     archive = packages.Archive()
-    archive.add(PROGRAM, binary.read_bytes(), executable=True)
-    # The asset's name is the descriptor's: one declaration the install script's
-    # own arms, the checksum file and this build all resolve through.
+    # Both names are the descriptor's: one declaration the install script's own
+    # arms, the checksum file and this build all resolve through, and which
+    # `just check-repo`'s `platform-facts` holds that script to.
+    archive.add(platform.program, binary.read_bytes(), executable=True)
     written = archive.write(into / platform.asset)
     digests = into / CHECKSUMS
     digests.write_bytes(packages.checksums([written]))

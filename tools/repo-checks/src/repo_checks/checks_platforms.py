@@ -61,6 +61,23 @@ LAUNCHER_MAP_CLOSE = "};"
 #: in, and the only thing here that says which platforms that script reaches.
 SCRIPT_PLATFORM = re.compile(r"""platform\s*=\s*["'](?P<id>[a-z0-9_-]+)["']""")
 
+#: A literal assignment an install script makes — `PROGRAM="printobserver"` —
+#: which is where the name of the program it puts on a path is written.
+SCRIPT_LITERAL = re.compile(
+    r"""^\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*["'](?P<value>[^"'$]*)["']\s*$""",
+    re.MULTILINE,
+)
+
+#: How an install script composes the name of the asset it downloads, out of
+#: the values it has already settled.
+SCRIPT_ASSET = re.compile(r"""^\s*asset\s*=\s*["'](?P<template>[^"']+)["']\s*$""", re.MULTILINE)
+
+#: The variable an install script holds the program's own file name in, and the
+#: one it holds the platform it settled on in. Naming them here is what lets the
+#: composed asset name be read back and compared with the descriptor's.
+SCRIPT_PROGRAM_VARIABLE = "PROGRAM"
+SCRIPT_PLATFORM_VARIABLE = "platform"
+
 #: The `targets = [...]` array of the toolchain file.
 TOOLCHAIN_TARGETS = re.compile(r"targets\s*=\s*\[(?P<targets>[^\]]*)\]", re.DOTALL)
 
@@ -224,7 +241,61 @@ def _install_script_findings(
         for identifier, scripts in sorted(reached.items())
         if identifier in wanted and len(scripts) != 1
     )
+    by_id = {platform.id: platform for platform in installed}
+    for script, covered in sorted(_covered(repo, install_scripts(path)).items()):
+        findings.extend(
+            _named_findings(repo, script, [by_id[one] for one in covered if one in by_id])
+        )
     return findings
+
+
+def _covered(repo: Repo, scripts: list[str]) -> dict[str, list[str]]:
+    """Which platforms each install script has an arm for."""
+    return {
+        script: sorted(set(SCRIPT_PLATFORM.findall(repo.read(script))))
+        for script in scripts
+        if repo.exists(script)
+    }
+
+
+def _named_findings(repo: Repo, script: str, covered: list[Platform]) -> list[str]:
+    """The asset a script downloads and the program it unpacks are the descriptor's.
+
+    A script composes both out of values it settles itself, so they are two more
+    copies of a platform fact — and the one a user meets, because a script
+    downloading an asset no release publishes fails at the printer. Both are read
+    back here by composing the script's own template with its own values.
+    """
+    text = repo.read(script)
+    literals = {match["name"]: match["value"] for match in SCRIPT_LITERAL.finditer(text)}
+    program = literals.get(SCRIPT_PROGRAM_VARIABLE)
+    template = SCRIPT_ASSET.search(text)
+    if program is None or template is None:
+        return [
+            f"`{script}` settles no `{SCRIPT_PROGRAM_VARIABLE}` and `asset` between them, "
+            f"so nothing here can hold what it downloads and what it installs to the "
+            f"platform declaration"
+        ]
+    findings = [
+        f"`{script}` installs a program called `{program}`, and the platform declaration "
+        f"names `{platform.program}` on `{platform.id}`"
+        for platform in covered
+        if program != platform.program
+    ]
+    findings.extend(
+        f"`{script}` downloads `{_composed(template['template'], program, platform.id)}` for "
+        f"`{platform.id}`, and the platform declaration names `{platform.asset}`"
+        for platform in covered
+        if _composed(template["template"], program, platform.id) != platform.asset
+    )
+    return findings
+
+
+def _composed(template: str, program: str, identifier: str) -> str:
+    """One asset name, as the script's own template composes it."""
+    return template.replace(f"${SCRIPT_PROGRAM_VARIABLE}", program).replace(
+        f"${SCRIPT_PLATFORM_VARIABLE}", identifier
+    )
 
 
 def _toolchain_findings(repo: Repo, declared: list[Platform]) -> list[str]:

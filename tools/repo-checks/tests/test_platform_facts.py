@@ -203,3 +203,39 @@ def test_a_launcher_map_line_this_cannot_read_is_refused(tree: Callable[[], Tree
     findings = platform_facts(broken.repo)
 
     refused_naming(findings, LAUNCHER, "...RESOLVED_ELSEWHERE", "not an entry this can read")
+
+
+def test_an_install_script_installing_another_program_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The program's file name is the descriptor's, and a script's own copy is held to it."""
+    broken = tree()
+    broken.edit(SCRIPT, 'PROGRAM="printobserver"', 'PROGRAM="printobserver-cli"')
+
+    findings = platform_facts(broken.repo)
+
+    refused_naming(findings, SCRIPT, "`printobserver-cli`", "`printobserver`")
+
+
+def test_an_install_script_downloading_another_asset_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A script downloading an asset no release publishes fails at the printer."""
+    broken = tree()
+    broken.edit(SCRIPT, 'asset="$PROGRAM-$platform.tar.gz"', 'asset="$PROGRAM-$platform.tgz"')
+
+    findings = platform_facts(broken.repo)
+
+    refused_naming(
+        findings, SCRIPT, "printobserver-linux-x86_64.tgz", "printobserver-linux-x86_64.tar.gz"
+    )
+
+
+def test_an_install_script_settling_neither_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without both there is nothing to hold what it downloads and installs to."""
+    broken = tree()
+    broken.edit(SCRIPT, 'asset="$PROGRAM-$platform.tar.gz"', 'asset="$(printf "%s" unknown)"')
+
+    findings = platform_facts(broken.repo)
+
+    refused_naming(findings, SCRIPT, "settles no `PROGRAM` and `asset`")

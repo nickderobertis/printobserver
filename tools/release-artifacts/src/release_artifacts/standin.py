@@ -702,12 +702,13 @@ class Registries:
 
     def _serve_release(self, version: str, program: Path | None) -> None:
         """Publish the release artifacts the install script downloads."""
-        asset = platforms.host(self.repo).asset
+        platform = platforms.host(self.repo)
+        asset = platform.asset
         archive = packages.Archive()
         if program is None:
             archive.add("README", b"a release artifact carrying no program\n")
         else:
-            archive.add(PROGRAM, program.read_bytes(), executable=True)
+            archive.add(platform.program, program.read_bytes(), executable=True)
         written = archive.write(self.into / "releases" / version / asset)
         tag = f"v{version}"
         assets = self._assets.setdefault(tag, {})
