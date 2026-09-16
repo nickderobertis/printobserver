@@ -349,14 +349,15 @@ int listen(int fd, int backlog) {
 /// Build the recorder under one root, and answer the library's path.
 fn recorder(root: &Path) -> PathBuf {
     let source = root.join("recorder.c");
-    let library = root.join("recorder.so");
+    let library = root.join(RECORDER_LIBRARY);
     std::fs::write(&source, RECORDER).expect("the recorder's source is writable");
     let _held = forking();
     let built = Command::new("cc")
-        .args(["-shared", "-fPIC", "-o"])
+        .args(RECORDER_LINKED_AS)
+        .arg("-o")
         .arg(&library)
         .arg(&source)
-        .arg("-ldl")
+        .args(RECORDER_LINKED_WITH)
         .output()
         .expect("a C compiler runs");
     assert!(
@@ -366,6 +367,21 @@ fn recorder(root: &Path) -> PathBuf {
     );
     library
 }
+
+#[cfg(target_os = "macos")]
+const RECORDER_LIBRARY: &str = "recorder.dylib";
+#[cfg(not(target_os = "macos"))]
+const RECORDER_LIBRARY: &str = "recorder.so";
+
+#[cfg(target_os = "macos")]
+const RECORDER_LINKED_AS: &[&str] = &["-dynamiclib"];
+#[cfg(not(target_os = "macos"))]
+const RECORDER_LINKED_AS: &[&str] = &["-shared", "-fPIC"];
+
+#[cfg(target_os = "macos")]
+const RECORDER_LINKED_WITH: &[&str] = &[];
+#[cfg(not(target_os = "macos"))]
+const RECORDER_LINKED_WITH: &[&str] = &["-ldl"];
 
 /// What the recorder wrote down about this program, and nothing it wrote about
 /// the stand-in harness, which is a shell and not this program.
