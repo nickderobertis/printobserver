@@ -104,23 +104,21 @@ jobs:
         run: just test-e2e  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
       # Every step's outcome, read from the pretty-printed steps context rather
       # than listed by hand: a step's id sits at two spaces, its outcome at four.
-      # A context this reads nothing from is written out whole instead, so a
-      # format change shows up as raw JSON rather than as an empty report. The
-      # report also goes to the log, where this pull request's own probe run is
-      # what proves it.
+      # The raw context follows, collapsed, so a format change the list misses
+      # still shows in every summary. The report also goes to the log, where
+      # this pull request's own probe run is what proves it.
       - if: always()
         continue-on-error: true
         env:
           STEPS: ${{ toJSON(steps) }}
         run: |
           printf -v report "## %s" "$GITHUB_JOB"
-          found=0
           while IFS= read -r line; do
             if [[ $line =~ ^\ \ \"([^\"]+)\":\ \{ ]]; then step=${BASH_REMATCH[1]}
-            elif [[ $line =~ ^\ \ \ \ \"outcome\":\ \"([^\"]+)\" ]]; then report+=$'\n'"- $step: ${BASH_REMATCH[1]}"; found=$((found + 1))
+            elif [[ $line =~ ^\ \ \ \ \"outcome\":\ \"([^\"]+)\" ]]; then report+=$'\n'"- $step: ${BASH_REMATCH[1]}"
             fi
           done <<< "$STEPS"
-          if [ "$found" -eq 0 ]; then report+=$'\n\n```json\n'"$STEPS"$'\n```'; fi
+          printf -v report '%s\n\n<details><summary>steps context</summary>\n<pre>\n%s\n</pre>\n</details>' "$report" "$STEPS"
           echo "$report"
           echo "$report" >> "$GITHUB_STEP_SUMMARY"
 
