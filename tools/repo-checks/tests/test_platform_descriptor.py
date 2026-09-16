@@ -439,6 +439,7 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
         (thin(ARM64, UUID)[:36], "is not a macOS program"),
         (b"", "is not a macOS program"),
         (thin(ARM64, struct.pack("<II", 0x24, 8), UUID), "is not a macOS program"),
+        (thin(X86_64, build_version(10, 12)), "records no minimum macOS release for `arm64`"),
     ],
     ids=[
         "no-command",
@@ -448,6 +449,7 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
         "truncated",
         "empty",
         "a-command-smaller-than-its-fields",
+        "a-thin-image-for-another-processor",
     ],
 )
 def test_a_macos_program_recording_no_minimum_release_is_refused_naming_it(

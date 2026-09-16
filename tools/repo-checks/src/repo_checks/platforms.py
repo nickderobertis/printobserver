@@ -555,11 +555,11 @@ def _macho_minimum(opened: BinaryIO, machine: str) -> tuple[int, int] | None:
         struct.error: If the file ends inside a header it declares.
     """
     (magic,) = struct.unpack(">I", _exactly(opened, 4))
+    wanted = MACHO_CPU_TYPES.get(machine)
     if magic not in (FAT_MAGIC, FAT_MAGIC_64):
         opened.seek(0)
-        return _thin_minimum(opened)
+        return _thin_minimum(opened, wanted)
     (count,) = struct.unpack(">I", _exactly(opened, 4))
-    wanted = MACHO_CPU_TYPES.get(machine)
     for _ in range(count):
         if magic == FAT_MAGIC_64:
             cpu, _sub, offset, _size, _align, _reserved = struct.unpack(
@@ -569,12 +569,16 @@ def _macho_minimum(opened: BinaryIO, machine: str) -> tuple[int, int] | None:
             cpu, _sub, offset, _size, _align = struct.unpack(">iiIII", _exactly(opened, 20))
         if cpu == wanted:
             opened.seek(offset)
-            return _thin_minimum(opened)
+            return _thin_minimum(opened, wanted)
     return None
 
 
-def _thin_minimum(opened: BinaryIO) -> tuple[int, int] | None:
+def _thin_minimum(opened: BinaryIO, wanted: int | None) -> tuple[int, int] | None:
     """The minimum release the thin Mach-O image at `opened`'s position records.
+
+    An image built for another processor than `wanted` records nothing about the
+    program this host runs, so it answers `None` rather than lending its floor to
+    a wheel for this machine.
 
     Raises:
         struct.error: If the image ends inside a header it declares.
@@ -583,7 +587,9 @@ def _thin_minimum(opened: BinaryIO) -> tuple[int, int] | None:
     (magic,) = struct.unpack("<I", _exactly(opened, 4))
     if magic not in (MH_MAGIC_64, MH_MAGIC):
         return None
-    _cpu, _sub, _filetype, count, _size, _flags = struct.unpack("<iiIIII", _exactly(opened, 24))
+    cpu, _sub, _filetype, count, _size, _flags = struct.unpack("<iiIIII", _exactly(opened, 24))
+    if cpu != wanted:
+        return None
     at = start + (32 if magic == MH_MAGIC_64 else 28)
     for _ in range(count):
         opened.seek(at)

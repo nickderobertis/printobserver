@@ -1154,14 +1154,15 @@ fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
 }
 
 /// The installed configuration template documents the credential and carries
-/// none, and the unit carries none either.
+/// none, and the service definition carries none either.
 #[test]
 fn the_installed_files_document_the_credential_and_carry_none() {
     let under = TempDir::new().expect("a journey's own root");
     let installed = install(under.path());
     let configuration =
         std::fs::read_to_string(installed.configuration()).expect("the configuration reads");
-    let unit = std::fs::read_to_string(installed.definition_file()).expect("the unit reads");
+    let definition =
+        std::fs::read_to_string(installed.definition_file()).expect("the service definition reads");
 
     let commented: Vec<&str> = configuration
         .lines()
@@ -1178,8 +1179,8 @@ fn the_installed_files_document_the_credential_and_carry_none() {
         "the configuration template carries an API credential"
     );
     assert!(
-        !unit.to_ascii_lowercase().contains("credential"),
-        "the installed unit carries a credential"
+        !definition.to_ascii_lowercase().contains("credential"),
+        "the installed service definition carries a credential"
     );
 }
 
