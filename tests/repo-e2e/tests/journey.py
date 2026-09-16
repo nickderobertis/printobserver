@@ -27,16 +27,17 @@ ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b
 
 
 def pythonpath() -> str:
-    """The packages this repository's own tools live in.
+    """The packages this repository's own tools live in, as a search path.
 
-    Read out of the justfile's own export rather than repeated here, so a
-    package this repository grows is one a journey's subprocesses find without
-    being told.
+    Read out of the justfile's own list rather than repeated here, so a package
+    this repository grows is one a journey's subprocesses find without being
+    told — and joined with this host's own separator, as the justfile's export
+    joins it, because a Windows interpreter reads a `:`-joined path as one entry.
     """
     for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
-        if line.startswith("export PYTHONPATH :="):
-            return line.partition(":=")[2].strip().strip('"')
-    message = "the justfile exports no PYTHONPATH, and these tools live on it"
+        if line.startswith("TOOL_PACKAGES :="):
+            return os.pathsep.join(line.partition(":=")[2].strip().strip('"').split(":"))
+    message = "the justfile lists no TOOL_PACKAGES, and these tools live on it"
     raise AssertionError(message)
 
 

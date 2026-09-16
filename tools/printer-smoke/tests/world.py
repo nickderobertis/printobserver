@@ -97,7 +97,7 @@ class World:
                 "OCTOPRINT_ENV_STATE_DIR": str(self.state_dir),
                 "PRINTOBSERVER_SERVER": self.substitute.url,
                 "PRINTOBSERVER_CREDENTIAL": CREDENTIAL,
-                "PYTHONPATH": ":".join(
+                "PYTHONPATH": os.pathsep.join(
                     str(REPO_ROOT / part)
                     for part in ("tools/repo-checks/src", "tools/octoprint-env")
                 ),

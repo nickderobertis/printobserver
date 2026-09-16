@@ -17,13 +17,13 @@
       "command": "cargo clippy -p printobserver-server --all-targets --features test-responder --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-server --features test-responder --no-report --no-tests=pass -E 'not binary(integration)'"
+      "command": "cargo llvm-cov nextest -p printobserver-server --features test-responder --no-report --no-tests=pass -E \"not binary(integration)\""
     },
     "build": {
       "command": "cargo build -p printobserver-server --locked"
     },
     "test-integration": {
-      "command": "cargo nextest run -p printobserver-server --features test-responder --no-fail-fast -E 'binary(integration)'"
+      "command": "cargo nextest run -p printobserver-server --features test-responder --no-fail-fast -E \"binary(integration)\""
     }
   }
 }

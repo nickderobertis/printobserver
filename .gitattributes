@@ -1,0 +1,9 @@
+# Every text file is checked out with LF line endings, on every host.
+#
+# A Windows checkout otherwise converts them to CRLF, and the tree is read as
+# bytes by nearly everything that gates it: the formatters report every line as
+# changed, `shellcheck` refuses a literal carriage return, the schema drift test
+# finds every checked-in schema differing from what the types generate, and
+# `rustfmt` refuses generated code. What decides whether a file is text is git's
+# own detection, so an image stays the bytes it was committed as.
+* text=auto eol=lf
