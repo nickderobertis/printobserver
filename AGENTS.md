@@ -826,17 +826,26 @@ The status contexts required to be green before a pull request can merge. These
 are **check-run names, not job keys**: a branch-protection rule names a check by
 the name GitHub reports it under, and a matrixed job reports one check run per
 cell. That is why the gate and the printer integration job each appear once per
-platform — each one's `name` carries the cell's platform so the cells are
-distinguishable, and every cell of a required job is required, because a job
-required on one platform and not the other is a merge path the other never
-blocked — and why the judged tier appears once, with no platform in its name at
-all.
+platform, and every cell of a required job is required, because a job required on
+one platform and not the other is a merge path the other never blocked — and why
+the judged tier appears once, with no platform in its name at all.
+
+The two matrixed jobs are spelled differently below, and the difference is
+GitHub's rather than ours. The gate's own `name` interpolates the cell's
+platform, so GitHub takes that name verbatim and the context is `gate
+(<platform>)`. The integration job's `name` interpolates nothing, so GitHub
+qualifies it instead, appending the cell's whole matrix entry — which puts the
+runner in the context beside the platform. Neither is preferred; what matters is
+that the record spells each the way the job is actually reported, because a
+context named here that nothing reports blocks every pull request forever. Do not
+"tidy" the integration contexts by qualifying that job's name: that is a rename,
+and it strands the two contexts branch protection already requires.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
 - `gate (linux-aarch64)`
-- `integration (linux-x86_64)`
-- `integration (linux-aarch64)`
+- `integration (linux-x86_64, ubuntu-24.04)`
+- `integration (linux-aarch64, ubuntu-24.04-arm)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)

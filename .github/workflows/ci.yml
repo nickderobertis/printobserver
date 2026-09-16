@@ -53,10 +53,13 @@ jobs:
       - run: just check
 
   integration:
-    # The cell's platform is in the name for the same reason the gate's is: that
-    # name is the status context a branch-protection rule names, and two cells
-    # reporting under one name are two check runs a rule cannot tell apart.
-    name: integration (${{ matrix.platform.id }})
+    # This name interpolates no matrix value, so GitHub appends the cell's own
+    # values to it and the two cells report under distinguishable contexts of
+    # its making rather than of ours. Do not qualify it: the appended form is
+    # what `main`'s branch protection already requires, and a name that
+    # interpolates a matrix value is taken verbatim instead, which would move
+    # both required contexts out from under that rule and block every merge.
+    name: integration
     # The printer integration tier, against a real OctoPrint. It is a job of
     # its own rather than one of `just check`'s tiers because it installs
     # OctoPrint, starts it and waits a print out — but it runs on every change,

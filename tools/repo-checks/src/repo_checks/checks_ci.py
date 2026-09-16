@@ -65,6 +65,12 @@ def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
 # context per platform.
 MATRIX_EXPRESSION = re.compile(r"\$\{\{\s*matrix\.platform\.(?P<key>[A-Za-z0-9_-]+)\s*\}\}")
 
+# Any expression at all in a job's name. Which of GitHub's two naming rules a
+# matrixed job falls under turns on this and not on what the expression says: a
+# name carrying one is taken verbatim with it evaluated, and a name carrying
+# none has the cell's own matrix values appended to it in parentheses.
+ANY_EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+
 
 class JobKind(StrEnum):
     """What a workflow job is, judged by what its own steps run.
@@ -247,29 +253,75 @@ class MatrixCell:
 
         return MATRIX_EXPRESSION.sub(value, base)
 
+    def appended(self, base: str) -> str:
+        """`base` with this cell's own values appended, as GitHub appends them.
+
+        A matrixed job whose name interpolates nothing is qualified by GitHub
+        rather than by its author: it appends the cell's values, in the order the
+        cell declares them, so the cells report under distinguishable contexts
+        without the workflow naming them. Deriving that is what lets such a job
+        be required per cell.
+
+        Raises:
+            WorkflowValueError: If the cell carries a field no name can be built
+                from. GitHub would append something for it regardless, so
+                guessing here would derive a context nothing reports.
+        """
+        unusable = sorted(self.declared - set(self.fields))
+        if unusable:
+            named = ", ".join(f"`{one}`" for one in unusable)
+            msg = (
+                f"{self.where}'s name interpolates no matrix value, so GitHub appends "
+                f"this cell's own, and {named} is not something a status context can be "
+                f"named after"
+            )
+            raise WorkflowValueError(msg)
+        return f"{base} ({', '.join(self.fields.values())})"
+
 
 def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
     """The check-run name each of a job's cells reports under.
 
     GitHub names a check run after the job's `name` where it sets one and after
-    the job's key otherwise, substituting the cell's own matrix values into it. A
-    matrixed job whose name interpolates none of them therefore reports every
-    cell under one repeated name, which this returns as the repetition it is
-    rather than collapsing.
+    the job's key otherwise, and it qualifies a matrixed job by one of two rules
+    that this derives rather than assumes. A name interpolating a matrix value is
+    taken verbatim with the cell's values put in, which is how `gate` reports
+    `gate (linux-x86_64)`. A name interpolating none has the cell's own values
+    appended in parentheses, which is how `integration` reports
+    `integration (linux-x86_64, ubuntu-24.04)` — a context of GitHub's making,
+    carrying the runner the cell named as well as the platform.
+
+    Both shapes are here because the record has to name what is actually
+    reported: reading the second as one name repeated per cell would make the
+    integration job unrequirable and invite qualifying it, which moves the two
+    contexts `main`'s branch protection already requires out from under it.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
     that deserialization boundary; the name is narrowed here and the cells by
     `MatrixCell.read`.
 
     Raises:
-        WorkflowValueError: If a cell cannot be substituted into the name.
+        WorkflowValueError: If a cell cannot be resolved into the name, or if the
+            name interpolates an expression that is no matrix value of the cell's.
     """
     declared = job.get("name")
     base = declared if isinstance(declared, str) and declared else job_name
     entries = _matrix_platforms(job)
     if entries is None:
         return [base]
-    return [MatrixCell.read(entry, where).substituted(base) for entry in entries]
+    cells = [MatrixCell.read(entry, where) for entry in entries]
+    if not ANY_EXPRESSION.search(base):
+        return [cell.appended(base) for cell in cells]
+    names = [cell.substituted(base) for cell in cells]
+    for name in names:
+        left = ANY_EXPRESSION.search(name)
+        if left:
+            msg = (
+                f"{where}'s name interpolates `{left[0]}`, which is no matrix value of "
+                f"its cells and nothing this can resolve to the context GitHub reports"
+            )
+            raise WorkflowValueError(msg)
+    return names
 
 
 def status_contexts(repo: Repo) -> list[StatusContext]:
