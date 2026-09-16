@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from conftest import ROUTE_PROOF
 from release_artifacts.__main__ import main
 from release_artifacts.installing import InstallError
 from release_artifacts.registries import (
@@ -55,6 +54,7 @@ from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
+from route_proof import ROUTE_PROOF
 
 #: The three routes an end user gets the program by, each taken from its own
 #: registry. Every one of them is driven against every outcome below.

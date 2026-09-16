@@ -19,7 +19,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import ROUTE_PROOF
 from release_artifacts.__main__ import main
 from release_artifacts.installing import NO_TOOLCHAIN, prove
 from release_artifacts.publishing import PublishError, publish
@@ -34,6 +33,7 @@ from release_artifacts.world import (
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
+from route_proof import ROUTE_PROOF
 
 #: The three routes an end user gets the program by, each installed for real.
 ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobserver"]

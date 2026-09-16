@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from conftest import ROUTE_PROOF
 from release_artifacts import targets
 from release_artifacts.build import (
     CONTRACT_FIELD,
@@ -37,6 +36,7 @@ from release_artifacts.targets import TargetError
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.model import Repo
+from route_proof import ROUTE_PROOF
 
 
 def test_the_declaration_names_the_six_this_tool_assembles(repo: Repo) -> None:

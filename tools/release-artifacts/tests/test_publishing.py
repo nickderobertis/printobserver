@@ -26,7 +26,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from conftest import ROUTE_PROOF
 from release_artifacts import targets
 from release_artifacts.__main__ import main
 from release_artifacts.build import CHECKSUMS, PROGRAM, manifest_of
@@ -65,6 +64,7 @@ from release_artifacts.standin import (
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import host, install_platforms
+from route_proof import ROUTE_PROOF
 
 #: The tokens this journey publishes under, one per registry, under the real
 #: credential names — so that what reaches each registry can be read back.
