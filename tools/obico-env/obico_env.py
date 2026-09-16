@@ -733,7 +733,16 @@ def hand_back_ownership(stack: Stack) -> bool:
     Done before the containers are stopped, and reported rather than raised on:
     a bring-down that refused to stop a stack because it could not chown a cache
     would be worse than the leftovers.
+
+    On Windows there is nothing to hand back, and nobody to hand it to: a
+    Windows file carries no numeric owner a container could write as root, and
+    Docker Desktop's bind mounts leave what a container writes owned by the user
+    who shares the directory. So nothing is run there, and saying so is the
+    answer.
     """
+    if sys.platform == "win32":
+        note(f"{stack.source} is on Windows, where nothing a container wrote needs handing back")
+        return True
     handed = run_program(
         stack.compose(
             "exec", "-T", "web", "chown", "-R", f"{os.getuid()}:{os.getgid()}", "/app", "/frontend"
