@@ -236,3 +236,43 @@ def test_an_entry_naming_a_service_manager_nothing_here_has_a_name_for_is_refuse
     findings = platforms(broken.repo)
 
     refused_naming(findings, "`linux-aarch64`", "`sysv`", "none this repository has a name for")
+
+
+def test_a_platform_listed_twice_is_refused(tree: Callable[[], Tree]) -> None:
+    """A mapping built from the list would take the second and drop the first silently."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        AARCH64,
+        AARCH64 + "\n" + AARCH64.replace("install path: yes", "install path: no — a second answer"),
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`linux-aarch64`", "more than once")
+
+
+def test_a_cell_recorded_as_not_running_twice_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two reasons for one cell are two a reader takes one of."""
+    broken = tree()
+    record(
+        broken,
+        "- `linux-aarch64` on `artifact-client-rust` — the arm runner is coming up",
+        "- `linux-aarch64` on `artifact-client-rust` — and a second reason for it",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`artifact-client-rust`", "more than once")
+
+
+def test_a_matrix_naming_one_platform_in_two_cells_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The second is a check run repeating the first under the same name."""
+    broken = tree()
+    broken.edit(".github/workflows/ci.yml", MATRIX_AARCH64, MATRIX_AARCH64 + MATRIX_AARCH64)
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `gate`", "`linux-aarch64` in more than one cell")

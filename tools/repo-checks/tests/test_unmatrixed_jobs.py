@@ -130,3 +130,19 @@ def test_the_scheduled_obico_tiers_job_with_no_reason_is_refused(
     findings = unmatrixed_jobs(broken.repo)
 
     refused_naming(findings, "`obico`", "the scheduled Obico tier")
+
+
+def test_a_job_recorded_twice_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two reasons for one job are two a reader takes one of."""
+    broken = tree()
+    record(
+        broken,
+        "- `llmlint` — one text diff, one non-deterministic verdict",
+        "- `llmlint` — and a second reason for the same job",
+        "- `pr-title` — a title is one string",
+        "- `obico` — an external producer's payload, over HTTP",
+    )
+
+    findings = unmatrixed_jobs(broken.repo)
+
+    refused_naming(findings, "`llmlint`", "more than once")

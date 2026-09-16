@@ -60,9 +60,17 @@ PLATFORM_SHAPE = (
 #: a registry's own selector (`linux-x64`, `darwin-arm64`) out of it.
 #:
 #: `NAMING`'s own keys are held to it, so the two cannot drift.
-PLATFORM_ID = re.compile(
-    r"^(?:linux|macos|windows)-(?:x86_64|aarch64|riscv64|armv7l?|i686|ppc64le|s390x)$"
+#: The one spelling of that shape, used anchored below and embedded in
+#: `PLATFORM_ID_IN_TEXT`, so a document and an entry are read against one rule.
+PLATFORM_ID_PATTERN = (
+    r"(?:linux|macos|windows)-(?:x86_64|aarch64|riscv64|armv7l?|i686|ppc64le|s390x)"
 )
+
+PLATFORM_ID = re.compile(rf"^{PLATFORM_ID_PATTERN}$")
+
+#: The same shape as a document writes one, backticked or not. A claim about a
+#: platform is a claim whether or not somebody quoted it.
+PLATFORM_ID_IN_TEXT = re.compile(rf"(?<![\w-]){PLATFORM_ID_PATTERN}(?![\w-])")
 
 #: Every service manager this repository has a name for, which is the closed set
 #: a supported-platform entry's own column may state and the set a document is

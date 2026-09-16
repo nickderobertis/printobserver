@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -338,6 +339,13 @@ def _exclusions(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
                 f"that does not run, with no reason it does not"
             )
             continue
+        if (match["id"], match["job"]) in excluded:
+            findings.append(
+                f"AGENTS.md records `{match['id']}` on job `{match['job']}` as a cell "
+                f"that does not run more than once: two reasons for one cell are two a "
+                f"reader takes one of"
+            )
+            continue
         excluded[match["id"], match["job"]] = reason
     return excluded, findings
 
@@ -351,6 +359,18 @@ def _install_answer_findings(declared: list[Platform]) -> list[str]:
         for platform in declared
         if not platform.install_path and not platform.install_path_reason
     ]
+
+
+def repeated(names: Iterable[str]) -> set[str]:
+    """Every name that occurs more than once.
+
+    Read out before a mapping is built from those names: a second entry for one
+    key replaces the first silently, leaving whichever came last as the one
+    every reader takes — which is a declaration overridden by a duplicate
+    nobody meant to write.
+    """
+    counted = Counter(names)
+    return {name for name, count in counted.items() if count > 1}
 
 
 def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
@@ -369,6 +389,11 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
         for line in marker_block(repo.agents_md, "supported-platforms")
         if line.startswith("- ") and not PLATFORM_LINE.match(line)
     ]
+    findings.extend(
+        f"AGENTS.md's supported-platform list names `{identifier}` more than once: two "
+        f"entries for one platform are two answers every reader of the list takes one of"
+        for identifier in sorted(repeated(platform.id for platform in declared))
+    )
     findings.extend(
         f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "
         f"`{platform.service_manager}`, which is none this repository has a name for "
@@ -458,6 +483,12 @@ def platforms(repo: Repo) -> list[str]:
                 if "id" not in cell.fields
             )
             ids = [cell.fields["id"] for cell in cells if "id" in cell.fields]
+            findings.extend(
+                f"{file_name}: job `{job_name}`'s matrix names platform `{found}` in more "
+                f"than one cell: the second is a check run repeating the first under the "
+                f"same name"
+                for found in sorted(repeated(ids))
+            )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, "
                 f"which AGENTS.md's supported-platform list does not"
@@ -611,6 +642,12 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
         f"`{manager}` service manager; it must state exactly two, in order"
         for manager, pair in path.service_commands.items()
         if len(pair) != 2
+    )
+    findings.extend(
+        f"AGENTS.md's `{ip.SECTION_HEADING}` states more than one pair of commands for "
+        f"the `{manager}` service manager: the second replaces the first, leaving a pair "
+        f"nobody wrote as the one every platform of that manager is held to"
+        for manager in sorted(set(path.repeated))
     )
     return findings
 

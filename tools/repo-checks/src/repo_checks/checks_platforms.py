@@ -111,12 +111,20 @@ def _launcher_findings(repo: Repo, installed: list[Platform]) -> list[str]:
         ]
     body = text.split(LAUNCHER_MAP_OPEN, 1)[1].split(LAUNCHER_MAP_CLOSE, 1)[0]
     carried: dict[str, str] = {}
+    findings: list[str] = []
     for line in body.splitlines():
         match = LAUNCHER_ENTRY.match(line)
-        if match:
-            carried[match["selector"]] = match["package"]
+        if match is None:
+            continue
+        if match["selector"] in carried:
+            findings.append(
+                f"`{launcher}` resolves `{match['selector']}` more than once: the second "
+                f"entry replaces the first, and what a caller installs is whichever came "
+                f"last rather than whichever was meant"
+            )
+            continue
+        carried[match["selector"]] = match["package"]
 
-    findings: list[str] = []
     wanted: dict[str, str] = {}
     for platform in installed:
         try:
@@ -243,6 +251,10 @@ def _toolchain_findings(repo: Repo, declared: list[Platform]) -> list[str]:
 def _owes_a_reason(repo: Repo, jobs: dict[str, dict[str, Any]]) -> dict[str, str]:
     """Every job this record has to account for, and what makes it one.
 
+    `jobs` carries `Any` for the reason its caller's does: a workflow's jobs are
+    whatever the YAML reader handed back, and what is read out of them here —
+    the command lines their steps run — is narrowed by `run_commands`.
+
     Derived rather than listed, so the record cannot go stale against the tree:
     a job whose green a merge waits on and a job running the scheduled Obico tier
     are the two kinds a reader expects a platform matrix on, and each of them
@@ -312,6 +324,12 @@ def unmatrixed_jobs(repo: Repo) -> list[str]:
             findings.append(
                 f"AGENTS.md records job `{match['job']}` as carrying no platform matrix, "
                 f"with no reason it carries none"
+            )
+            continue
+        if match["job"] in named:
+            findings.append(
+                f"AGENTS.md records job `{match['job']}` as carrying no platform matrix "
+                f"more than once: two reasons for one job are two a reader takes one of"
             )
             continue
         named.add(match["job"])

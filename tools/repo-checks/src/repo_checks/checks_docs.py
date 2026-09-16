@@ -898,7 +898,7 @@ def platform_names(repo: Repo) -> list[str]:
     disagreement until they follow it. This is the mechanical half of keeping
     every document derived from that list.
     """
-    from repo_checks.platforms import PLATFORM_ID, SERVICE_MANAGERS, supported
+    from repo_checks.platforms import PLATFORM_ID_IN_TEXT, SERVICE_MANAGERS, supported
 
     try:
         declared = supported(repo)
@@ -909,9 +909,9 @@ def platform_names(repo: Repo) -> list[str]:
     findings: list[str] = []
     for where, text in _documents(repo):
         for number, line in enumerate(text.splitlines(), start=1):
-            named = [
-                token for token in BACKTICKED.findall(line) if PLATFORM_ID.match(token.strip())
-            ]
+            # Backticked or not: a claim about a platform is a claim whether or
+            # not whoever wrote it quoted the name.
+            named = PLATFORM_ID_IN_TEXT.findall(line)
             findings.extend(
                 f"{where}:{number} names the platform `{token}`, which AGENTS.md's "
                 f"supported-platform list does not carry; it names "
@@ -922,15 +922,17 @@ def platform_names(repo: Repo) -> list[str]:
             stated = [
                 manager
                 for manager in SERVICE_MANAGERS
-                if f"`{manager}`" in line or re.search(rf"(?<![\w-]){manager}(?![\w-])", line)
+                if re.search(rf"(?<![\w-]){manager}(?![\w-])", line)
             ]
-            if len(stated) != 1:
-                continue
+            # A line may name several managers — a sentence contrasting two is
+            # right about both — so what is refused is a platform beside a set
+            # of managers its own is not in, rather than a line with more than
+            # one in it.
             findings.extend(
-                f"{where}:{number} states `{stated[0]}` of the platform `{token}`, and "
-                f"AGENTS.md's supported-platform list gives it "
+                f"{where}:{number} states {', '.join(f'`{one}`' for one in stated)} of the "
+                f"platform `{token}`, and AGENTS.md's supported-platform list gives it "
                 f"`{known[token].service_manager}`"
                 for token in named
-                if token in known and known[token].service_manager != stated[0]
+                if stated and token in known and known[token].service_manager not in stated
             )
     return findings

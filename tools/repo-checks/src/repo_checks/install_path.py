@@ -109,6 +109,10 @@ class InstallPath:
     service_commands: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: How the agent's harness is installed and signed in as the service's user.
     sign_in: tuple[str, ...] = ()
+    #: Every service manager the section states more than one pair for. Kept
+    #: rather than collapsed: the second subsection would otherwise replace the
+    #: first, leaving a pair nobody wrote as the one every check reads.
+    repeated: tuple[str, ...] = ()
 
     @property
     def checked(self) -> str:
@@ -158,6 +162,7 @@ def parse(agents_md: str) -> InstallPath:
     routes: list[Route] = []
     verification: tuple[str, ...] = ()
     service_commands: dict[str, tuple[str, ...]] = {}
+    repeated: list[str] = []
     sign_in: tuple[str, ...] = ()
     intro_lines: list[str] = []
     seen_route = False
@@ -167,7 +172,10 @@ def parse(agents_md: str) -> InstallPath:
             seen_route = True
             routes.append(Route(title, tuple(fenced_commands(text))))
         elif level == 4 and parent.lower().startswith(SERVICE_COMMANDS_HEADING):
-            service_commands[title.strip().lower()] = tuple(fenced_commands(text))
+            manager = title.strip().lower()
+            if manager in service_commands:
+                repeated.append(manager)
+            service_commands[manager] = tuple(fenced_commands(text))
         elif title.lower().startswith(VERIFICATION_HEADING):
             verification = tuple(fenced_commands(text))
         elif title.lower().startswith(SIGN_IN_HEADING):
@@ -175,7 +183,12 @@ def parse(agents_md: str) -> InstallPath:
         elif not seen_route:
             intro_lines.extend(lines)
     return InstallPath(
-        "\n".join(intro_lines), tuple(routes), verification, service_commands, sign_in
+        "\n".join(intro_lines),
+        tuple(routes),
+        verification,
+        service_commands,
+        sign_in,
+        tuple(repeated),
     )
 
 

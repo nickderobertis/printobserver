@@ -75,3 +75,43 @@ def test_a_document_naming_a_platform_the_list_gained_is_accepted(
     grown.append(TESTING, "\nOn `macos-aarch64` the service runs under launchd.\n")
 
     accepted(platform_names(grown.repo), describing="a document naming a platform the list gained")
+
+
+def test_a_platform_named_without_backticks_is_refused(tree: Callable[[], Tree]) -> None:
+    """A claim about a platform is a claim whether or not somebody quoted the name."""
+    broken = tree()
+    broken.append(TESTING, "\nThe gate also runs on macos-x86_64 hosts.\n")
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, TESTING, "`macos-x86_64`", "does not carry")
+
+
+def test_a_line_naming_several_managers_one_of_which_is_the_platforms_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """A sentence contrasting two managers is right about the platform it names."""
+    agreeing = tree()
+    agreeing.append(
+        TESTING,
+        "\nWhere launchd would be the manager on a Mac, `linux-aarch64` runs the service "
+        "under systemd.\n",
+    )
+
+    accepted(platform_names(agreeing.repo), describing="a sentence contrasting two managers")
+
+
+def test_a_line_naming_several_managers_and_not_the_platforms_own_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A set of managers a platform's own is not in is a claim about it that is wrong."""
+    broken = tree()
+    broken.append(
+        TESTING,
+        "\nOn `linux-aarch64` the service runs under launchd, as it does under "
+        "windows-service elsewhere.\n",
+    )
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, TESTING, "`linux-aarch64`", "`launchd`", "`systemd`")

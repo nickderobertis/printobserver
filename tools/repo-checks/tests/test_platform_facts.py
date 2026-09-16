@@ -173,3 +173,19 @@ def test_a_toolchain_naming_fewer_targets_than_the_list_is_accepted(
     )
 
     accepted(platform_facts(fewer.repo), describing="a toolchain installing one of the two")
+
+
+def test_a_launcher_resolving_one_platform_twice_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The second entry replaces the first, and an install takes whichever came last."""
+    broken = tree()
+    broken.edit(
+        LAUNCHER,
+        ARM64_ENTRY,
+        ARM64_ENTRY + '  "linux-arm64": "@printobserver/cli-linux-aarch64",\n',
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused_naming(findings, LAUNCHER, "`linux-arm64` more than once")
