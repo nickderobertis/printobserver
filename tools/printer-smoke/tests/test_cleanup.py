@@ -10,8 +10,6 @@ carries the value it found there, and the printer is operational.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 from repo_checks.expect import absent, contains, equal, truth
 from world import World
@@ -163,9 +161,7 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
 
     run = world.smoke(
         "--run",
-        environment=world.relaying(
-            hang_on="set-feedrate-factor", after=2 if os.name == "nt" else 3
-        ),
+        environment=world.relaying(hang_on="set-feedrate-factor", after=3),
         timeout=600,
     )
 

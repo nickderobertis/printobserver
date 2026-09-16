@@ -816,7 +816,9 @@ def _action_ids(events: Sequence[object], kind: str) -> set[str]:
 
 def _command_present(smoke: Smoke) -> str | None:
     """The program this smoke drives is on this host."""
-    if shutil.which(smoke.program) is None:
+    program = Path(smoke.program)
+    python_script = program.suffix.casefold() == ".py" and program.is_file()
+    if not python_script and shutil.which(smoke.program) is None:
         return (
             f"`{smoke.program}` is not on PATH: install this stack's own command, or name "
             f"another with {PROGRAM_ENV}"
