@@ -126,12 +126,12 @@ def test_a_job_naming_a_platform_the_list_does_not_name_is_refused(
     _integration_matrix_entry(
         broken,
         AARCH64_ENTRY,
-        AARCH64_ENTRY + "          - id: windows-x86_64\n            runner: windows-2022\n",
+        AARCH64_ENTRY + "          - id: linux-riscv64\n            runner: ubuntu-24.04-riscv\n",
     )
 
     findings = integration_tier(broken.repo)
 
-    refused(findings, "`windows-x86_64`, which AGENTS.md's supported-platform list does not")
+    refused(findings, "`linux-riscv64`, which AGENTS.md's supported-platform list does not")
 
 
 def test_an_exclusion_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:

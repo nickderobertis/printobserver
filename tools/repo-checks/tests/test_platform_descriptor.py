@@ -126,9 +126,13 @@ TABLE = (
     ),
 )
 
-#: The two the supported-platform list names today, which is the pair every
-#: other assertion here has to leave exactly as it found.
-CARRIED_TODAY = ("linux-x86_64", "linux-aarch64")
+#: The six the supported-platform list names today, which is the set every
+#: other assertion here has to leave exactly as it found. The four macOS and
+#: Windows entries answer `install path: no` while they are brought up.
+CARRIED_TODAY = tuple(row.id for row in TABLE)
+
+#: Identifiers shaped like platforms that the list does not carry.
+NOT_CARRIED = ("linux-riscv64", "freebsd-x86_64")
 
 
 def entry(row: Row, *, install_path: str = "yes") -> str:
@@ -197,7 +201,7 @@ def test_the_committed_list_states_the_table_for_the_platforms_it_carries(
 
 @pytest.mark.parametrize(
     "identifier",
-    [row.id for row in TABLE if row.id not in CARRIED_TODAY],
+    NOT_CARRIED,
 )
 def test_an_identifier_the_list_does_not_carry_is_refused_by_name(
     committed: Repo, identifier: str
@@ -294,15 +298,14 @@ def test_a_windows_host_is_answered_with_no_posix_only_interface_present(
 def test_a_host_the_list_does_not_name_is_refused_by_name(
     committed: Repo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A Windows host of a repository that supports none is told so, not guessed at."""
-    monkeypatch.delattr(os, "uname", raising=False)
-    monkeypatch.setattr(host_platform, "system", lambda: "Windows")
-    monkeypatch.setattr(host_platform, "machine", lambda: "ARM64")
+    """A host of a family the list names nothing of is told so, not guessed at."""
+    monkeypatch.setattr(host_platform, "system", lambda: "FreeBSD")
+    monkeypatch.setattr(host_platform, "machine", lambda: "amd64")
 
     with pytest.raises(PlatformError) as refusal:
         host(committed)
 
-    contains(str(refusal.value), "Windows/ARM64", describing="the refusal")
+    contains(str(refusal.value), "FreeBSD/amd64", describing="the refusal")
 
 
 def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_host(

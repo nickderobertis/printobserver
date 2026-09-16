@@ -408,13 +408,13 @@ def _coverage_findings(repo: Repo) -> list[str]:
     except PolicyValueError as error:
         return [str(error)]
 
-    building: list[dict[str, Any]] = []
+    building: list[tuple[str, dict[str, Any]]] = []
     publishing: list[str] = []
     for path in repo.workflow_paths:
         for job_name, job in jobs_of(load_workflow(path)).items():
             commands = run_commands(job)
             if f"just {recipes['build_recipe']}" in commands:
-                building.append(job)
+                building.append((job_name, job))
             if f"just {recipes['publish_recipe']}" in commands:
                 publishing.append(f"{path.name}: `{job_name}`")
             if any("release-plz release" in command for command in commands):
@@ -439,12 +439,23 @@ def _coverage_findings(repo: Repo) -> list[str]:
     except MarkerBlockMissingError as error:
         return [*findings, str(error)]
 
+    from repo_checks.checks_ci import _exclusions as platform_exclusions
+
+    try:
+        excluded, _ = platform_exclusions(repo)
+    except MarkerBlockMissingError as error:
+        return [*findings, str(error)]
+
     built_for: set[str] = set()
-    for job in building:
+    for job_name, job in building:
         entries = ((job.get("strategy") or {}).get("matrix") or {}).get("platform")
         for entry in entries if isinstance(entries, list) else []:
             if isinstance(entry, dict) and "id" in entry:
                 built_for.add(str(entry["id"]))
+        # A cell the platform-exclusions block records as not running yet is
+        # one this build does not owe; that block's own check holds the matrix
+        # to the record.
+        built_for.update(platform for platform, job in excluded if job == job_name)
     findings.extend(
         f"AGENTS.md's supported-platform list names `{platform}`, and no committed job "
         f"builds this repository's artifacts for it: every one of the three end-user "

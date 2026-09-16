@@ -60,11 +60,13 @@ def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> No
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
     committed: Repo,
 ) -> None:
-    """One pair per service manager the supported-platform list names.
+    """One pair per service manager the install path targets a platform under.
 
-    Every platform this repository supports is a `systemd` platform, so the one
-    pair the section states is that manager's own — and what a consumer asks for
-    is the pair belonging to a platform, not whichever pair came first.
+    Every platform the install path targets today is a `systemd` platform, so the
+    one pair the section states is that manager's own — and what a consumer asks
+    for is the pair belonging to a platform, not whichever pair came first. The
+    `launchd` and `windows-service` platforms answer `install path: no`, so no
+    pair is stated for either yet.
     """
     path = ip.parse(committed.agents_md)
 
@@ -74,13 +76,28 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
         (INSTALLER, "sudo systemctl enable --now printobserver.service"),
         describing="the systemd pair, in installer-then-start order",
     )
-    equal(path.commands_for("launchd"), (), describing="a manager the list does not name")
     for platform in supported(committed):
         equal(
             path.commands_for(platform.service_manager),
-            path.commands,
+            path.commands if platform.install_path else (),
             describing=f"the pair {platform.id} is held to",
         )
+
+
+def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair(
+    tree: Callable[[], Tree],
+) -> None:
+    """Flipping a platform to `install path: yes` is what makes its manager's pair owed."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    start = text.index("- `macos-aarch64` — ")
+    end = text.index("\n", start)
+    entry = text[start:end]
+    broken.edit("AGENTS.md", entry, entry[: entry.index("install path: no")] + "install path: yes")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states no pair of commands for the `launchd` service manager")
 
 
 def test_a_service_manager_the_list_names_and_the_section_states_no_pair_for_is_refused(
@@ -88,12 +105,12 @@ def test_a_service_manager_the_list_names_and_the_section_states_no_pair_for_is_
 ) -> None:
     """A platform whose pair is not stated is a platform nobody can put the service on."""
     broken = tree()
-    broken.edit("AGENTS.md", "\n#### systemd\n", "\n#### launchd\n")
+    broken.edit("AGENTS.md", "\n#### systemd\n", "\n#### openrc\n")
 
     findings = install_path_section(broken.repo)
 
     refused(findings, "states no pair of commands for the `systemd` service manager")
-    refused(findings, "states a pair of commands for the `launchd` service manager")
+    refused(findings, "states a pair of commands for the `openrc` service manager")
 
 
 def test_a_pair_for_a_service_manager_the_list_does_not_name_is_refused(
@@ -104,15 +121,14 @@ def test_a_pair_for_a_service_manager_the_list_does_not_name_is_refused(
     broken.edit(
         "AGENTS.md",
         "\n### Between the two commands, sign in the agent's harness",
-        "\n#### launchd\n\n```console\nsudo launchctl bootstrap system "
-        "/Library/LaunchDaemons/printobserver.plist\n```\n\n```console\n"
-        "sudo launchctl kickstart -k system/printobserver\n```\n"
+        "\n#### openrc\n\n```console\nsudo rc-update add printobserver default\n```\n\n"
+        "```console\nsudo rc-service printobserver start\n```\n"
         "\n### Between the two commands, sign in the agent's harness",
     )
 
     findings = install_path_section(broken.repo)
 
-    refused(findings, "states a pair of commands for the `launchd` service manager")
+    refused(findings, "states a pair of commands for the `openrc` service manager")
 
 
 def test_a_pair_whose_first_command_starts_the_service_is_refused(

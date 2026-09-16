@@ -29,11 +29,11 @@ def test_a_document_naming_a_platform_the_list_does_not_carry_is_refused(
 ) -> None:
     """A document that promises a platform nothing builds for promises an install that fails."""
     broken = tree()
-    broken.append(TESTING, "\nThe gate also runs on `macos-aarch64`.\n")
+    broken.append(TESTING, "\nThe gate also runs on `linux-riscv64`.\n")
 
     findings = platform_names(broken.repo)
 
-    refused_naming(findings, TESTING, "`macos-aarch64`", "does not carry")
+    refused_naming(findings, TESTING, "`linux-riscv64`", "does not carry")
 
 
 def test_a_document_giving_a_platform_another_service_manager_is_refused(
@@ -69,10 +69,11 @@ def test_a_document_naming_a_platform_the_list_gained_is_accepted(
         "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
         "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
         "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
-        "- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, "
-        "service manager `launchd`, install path: no — brought up in a later change\n",
+        "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
+        "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, install path: no — "
+        "brought up in a later change\n",
     )
-    grown.append(TESTING, "\nOn `macos-aarch64` the service runs under launchd.\n")
+    grown.append(TESTING, "\nOn `linux-riscv64` the service runs under systemd.\n")
 
     accepted(platform_names(grown.repo), describing="a document naming a platform the list gained")
 
@@ -80,11 +81,11 @@ def test_a_document_naming_a_platform_the_list_gained_is_accepted(
 def test_a_platform_named_without_backticks_is_refused(tree: Callable[[], Tree]) -> None:
     """A claim about a platform is a claim whether or not somebody quoted the name."""
     broken = tree()
-    broken.append(TESTING, "\nThe gate also runs on macos-x86_64 hosts.\n")
+    broken.append(TESTING, "\nThe gate also runs on freebsd-x86_64 hosts.\n")
 
     findings = platform_names(broken.repo)
 
-    refused_naming(findings, TESTING, "`macos-x86_64`", "does not carry")
+    refused_naming(findings, TESTING, "`freebsd-x86_64`", "does not carry")
 
 
 def test_a_line_naming_several_managers_one_of_which_is_the_platforms_is_accepted(

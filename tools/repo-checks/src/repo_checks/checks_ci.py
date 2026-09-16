@@ -684,20 +684,27 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     is the one part of this path that is not the same sentence on every host.
     """
     try:
-        wanted = service_managers(repo)
+        named = service_managers(repo)
+        installed = {
+            platform.service_manager for platform in platforms_of(repo) if platform.install_path
+        }
     except MarkerBlockMissingError as error:
         return [str(error)]
+    # A pair is owed for a manager the install path targets a platform of, and
+    # permitted for any manager the list names: a platform answered `install
+    # path: no` has no install path to state commands for yet.
     findings = [
         f"AGENTS.md's `{ip.SECTION_HEADING}` states no pair of commands for the "
-        f"`{manager}` service manager, which its supported-platform list names"
-        for manager in wanted
-        if not path.commands_for(manager)
+        f"`{manager}` service manager, which its supported-platform list names a platform "
+        f"the install path targets under"
+        for manager in named
+        if manager in installed and not path.commands_for(manager)
     ]
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` states a pair of commands for the "
         f"`{manager}` service manager, which its supported-platform list does not name"
         for manager in path.service_commands
-        if manager not in wanted
+        if manager not in named
     )
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` states {len(pair)} commands for the "
@@ -1286,9 +1293,12 @@ def artifact_jobs(repo: Repo) -> list[str]:
     because a check reading the matrix is satisfied by narrowing the matrix.
     """
     try:
-        wanted = [platform.id for platform in platforms_of(repo)]
+        declared = platforms_of(repo)
+        excluded, _ = _exclusions(repo)
     except MarkerBlockMissingError as error:
         return [str(error)]
+    everywhere = [platform.id for platform in declared]
+    installed = [platform.id for platform in declared if platform.install_path]
 
     path = ip.parse(repo.agents_md)
     proven_by = proving(repo)
@@ -1308,6 +1318,9 @@ def artifact_jobs(repo: Repo) -> list[str]:
     }
     for target in _shipped(repo):
         identifier = str(target.get("id", ""))
+        # A route is taken only on the platforms the install path targets, which
+        # is the first lever; a cell the exclusions block records is the second.
+        wanted = installed if str(target.get("route", "")).strip() else everywhere
         for recipe in proven_by.get(identifier, ()) or [""]:
             if not recipe:
                 findings.append(
@@ -1330,7 +1343,7 @@ def artifact_jobs(repo: Repo) -> list[str]:
                 f"{file_name}: job `{job_name}` proves `{identifier}` on "
                 f"{sorted(named) or 'no'} platform(s), and AGENTS.md names `{platform}`"
                 for platform in wanted
-                if platform not in named
+                if platform not in named and (platform, job_name) not in excluded
             )
 
     findings.extend(
