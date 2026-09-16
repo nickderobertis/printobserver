@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import socket
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -25,6 +26,12 @@ from repo_checks.expect import contains, failing, passing, refused_naming, truth
 # What the server is replaced with to induce an instance that starts and never
 # answers: a program that runs, and says nothing.
 SILENT_SERVER = "#!/bin/sh\nsleep 300\n"
+
+# How long that start is given, and how long its stop may take beyond that: well
+# under the script's own thirty-second kill grace, which a stop only waits out
+# when it mistakes an exited server for a running one.
+START_TIMEOUT_S = 15
+STOP_WITHIN_S = 20
 
 # Raising one of these would leave `main`'s outside-the-set report — which
 # catches `Exception` — with nothing to report.
@@ -93,9 +100,19 @@ def test_an_instance_that_never_answers_is_reported_by_name(
     server.write_text(SILENT_SERVER, encoding="utf-8")
     server.chmod(0o755)
 
-    lines = _reported(state, "--start-timeout", "15")
+    started = time.monotonic()
+    lines = _reported(state, "--start-timeout", str(START_TIMEOUT_S))
+    took = time.monotonic() - started
 
     refused_naming(lines, "never-answered")
+    # The stub it stopped is this script's own child. Reaped as it exits, the
+    # stop is over in moments; counted as running while it is a zombie, the stop
+    # waits out the whole kill grace and then signals a group holding nothing
+    # but that zombie, which macOS refuses outright.
+    truth(
+        took < START_TIMEOUT_S + STOP_WITHIN_S,
+        describing=f"the failed start to be over in {took:.0f}s",
+    )
     refused_naming(lines, "what happened:", "server.log")
     refused_naming(lines, "next action:", "read the server log")
 

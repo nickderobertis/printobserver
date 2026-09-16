@@ -62,15 +62,18 @@ document have no escape for"
 }
 
 # A system user name, as `useradd` and a unit's `User=` take one: a letter or an
-# underscore, then letters, digits, underscores and hyphens.
+# underscore, then letters, digits, underscores and hyphens. The letters are
+# spelled out rather than written as a range: macOS's own `sh` matches `[a-z]` by
+# the locale's collation, in which capitals fall between the lower-case letters.
+LOWER="abcdefghijklmnopqrstuvwxyz"
 user_name() {
     case "$1" in
-        [a-z_]*) ;;
+        ["$LOWER"_]*) ;;
         *) die "$1 is not a system user name: it does not begin with a letter or an \
 underscore" ;;
     esac
     case "$1" in
-        *[!a-z0-9_-]*)
+        *[!"$LOWER"0123456789_-]*)
             die "$1 is not a system user name: it carries something other than \
 letters, digits, underscores and hyphens"
             ;;

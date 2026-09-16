@@ -25,12 +25,15 @@ export interface Supervisor {
 const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
 
 /**
- * Only the real-server setup hook's budget. Three warmed runs measured 2660,
- * 3016 and 2737 ms; the shared integration host exceeded Bun's 5000 ms default.
- * Ten seconds gives roughly three times the measured maximum for contention.
- * The test bodies and cleanup retain their own existing timeouts.
+ * Only the real-server setup hook's budget. Three warmed Linux runs measured
+ * 2660, 3016 and 2737 ms, and a macOS runner overran ten seconds standing the
+ * same world up, so what bounds it is what the world itself may do rather than
+ * a warmed measurement: the Python tier's `STARTUP_TIMEOUT_SECONDS` allows the
+ * world forty minutes, because the first time the tier is driven that includes
+ * a release build of the program, and this is the same world. The test bodies
+ * and cleanup retain their own existing timeouts.
  */
-export const SETUP_TIMEOUT_MS = 10_000;
+export const SETUP_TIMEOUT_MS = 2_400_000;
 
 /** The packages this repository's own tools live in, read from the justfile. */
 function pythonPath(): string {

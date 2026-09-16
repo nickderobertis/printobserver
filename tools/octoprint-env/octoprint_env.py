@@ -549,7 +549,20 @@ def claim_device(connection: Connection) -> None:
 
 
 def alive(pid: int) -> bool:
-    """Whether a process this script started is still running."""
+    """Whether a process this script started is still running.
+
+    A child of this very process that has exited is reaped here rather than
+    counted as running: until it is, it stays a zombie that still answers a
+    signal, so a stop would wait out its whole grace period for a server that
+    is already gone — and macOS then refuses the final `killpg` to a group
+    holding nothing but that zombie with `EPERM`, where Linux lets it through.
+    """
+    try:
+        reaped, _ = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        reaped = 0
+    if reaped == pid:
+        return False
     try:
         os.kill(pid, 0)
     except OSError:
