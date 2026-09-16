@@ -276,13 +276,13 @@ reason = "The immutable array carries literal bundled paths rather than caller-c
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
-site = "(BEGIN supported-platforms)"
+site = "flips this to `yes`"
 reason = "Required content rather than a roadmap. `repo_checks.checks_ci.platforms` refuses an `install path: no` answer that states no reason, and the reason an answer is `no` for these four platforms is that their bring-up is owed and which node flips it; a durable-sounding reason would be a false one. Each reason is deleted by the change that flips its answer to `yes`."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
-site = "(BEGIN supported-platforms)"
+site = "flips this to `yes`"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
@@ -300,13 +300,13 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
-site = "(BEGIN platform-exclusions)"
+site = "removes this line"
 reason = "Required content rather than a ledger: `repo_checks.checks_ci.platforms` refuses a platform-dependent job omitting a listed platform unless this block records that cell with a reason, and the lever's contract is that each entry names the bring-up owed and what removes it. The block is meant to end empty, and each line is deleted by the change that brings its cell up."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
-site = "(BEGIN platform-exclusions)"
+site = "removes this line"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
@@ -508,34 +508,34 @@ site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
 
 # --- .github/workflows/platform-probe.yml -------------------------------------
-# One directive above each of the four probe jobs, naming four rules; the site
-# `name: probe-` is on the line after every one of them. The probe is temporary
-# scaffolding whose whole task is to report what each tier does on a runner no
-# gate has run on yet, and the documentation node of the platform bring-up plan
-# deletes it with these entries.
+# One trailing directive on each line a rule reads: every tier's `run:` in the
+# steps the four probe jobs share, and each job's `runs-on:` and job-level
+# `continue-on-error:`. The probe is temporary scaffolding whose whole task is to
+# report what each tier does on a runner no gate has run on yet, and the
+# documentation node of the platform bring-up plan deletes it with these entries.
 
 [[suppression]]
 rule = "ci_invokes_gate_recipe_not_inline_stages"
 file = ".github/workflows/platform-probe.yml"
-site = "name: probe-"
+site = "run: just "
 reason = "Running the gate's tiers one step each is what the probe is for: `just check` stops at the first tier that fails, so on a runner where bootstrap already fails it would report one failure and hide what the nine tiers after it say. The gate itself still runs `just check` in `ci.yml`, and this job is not a gate."
 
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/platform-probe.yml"
-site = "name: probe-"
+site = "run: just "
 reason = "It is not a second sweep of what the gate already ran: the gate runs on the two Linux runners, and this runs the same tiers once on each of the four macOS and Windows runners no gate reaches yet, to record what they say there. It is removed once those platforms' gate cells run."
 
 [[suppression]]
 rule = "diagnostics_error_or_absent"
 file = ".github/workflows/platform-probe.yml"
-site = "name: probe-"
+site = "continue-on-error: true  # llmlint"
 reason = "The job reports rather than gates: every tier is expected to fail on at least one of these runners until the platforms are brought up, and a job that failed its run would be a required-looking red check over a change that broke nothing. Every step's own outcome, failures included, is written into the run summary, so no diagnostic is hidden."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/workflows/platform-probe.yml"
-site = "name: probe-"
+site = "runs-on: "
 reason = "Each job names its runner directly because a platform matrix on a job that is not a platform-dependent kind is refused by `just check-repo`, and that is the only other way to derive it. The restatement lives exactly as long as the probe, which the documentation node of the bring-up plan deletes; the permanent jobs keep reading runners out of the matrix the `platforms` check holds to AGENTS.md."
 
 [[suppression]]

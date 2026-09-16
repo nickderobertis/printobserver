@@ -24,16 +24,15 @@ defaults:
     shell: bash
 
 jobs:
-  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-macos-aarch64:
     name: probe-macos-aarch64
-    runs-on: macos-15
-    # A job that could still fail its run would be a tier; this one only reports.
-    continue-on-error: true
+    runs-on: macos-15  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
     # Under the six-hour default, so the summary step is reached even when
     # every tier runs out its own step timeout.
     timeout-minutes: 330
-    steps:
+    # Every probe job runs these same steps.
+    steps: &probe-steps
       - id: checkout
         continue-on-error: true
         uses: actions/checkout@v5
@@ -71,39 +70,39 @@ jobs:
       - id: format-check
         continue-on-error: true
         timeout-minutes: 10
-        run: just format-check
+        run: just format-check  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: lint
         continue-on-error: true
         timeout-minutes: 30
-        run: just lint
+        run: just lint  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: typecheck
         continue-on-error: true
         timeout-minutes: 30
-        run: just typecheck
+        run: just typecheck  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: test
         continue-on-error: true
         timeout-minutes: 45
-        run: just test
+        run: just test  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: coverage
         continue-on-error: true
         timeout-minutes: 45
-        run: just coverage
+        run: just coverage  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: build
         continue-on-error: true
         timeout-minutes: 30
-        run: just build
+        run: just build  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: lint-workflows
         continue-on-error: true
         timeout-minutes: 10
-        run: just lint-workflows
+        run: just lint-workflows  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: check-repo
         continue-on-error: true
         timeout-minutes: 15
-        run: just check-repo
+        run: just check-repo  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: test-e2e
         continue-on-error: true
         timeout-minutes: 60
-        run: just test-e2e
+        run: just test-e2e  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - if: always()
         continue-on-error: true
         env:
@@ -125,7 +124,7 @@ jobs:
           OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
           OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
         run: >-
-          echo -e "## probe-macos-aarch64\n
+          echo -e "## ${{ github.job }}\n
           - checkout: $OUTCOME_CHECKOUT\n
           - setup-just: $OUTCOME_SETUP_JUST\n
           - setup-rust: $OUTCOME_SETUP_RUST\n
@@ -144,362 +143,29 @@ jobs:
           - just check-repo: $OUTCOME_CHECK_REPO\n
           - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
 
-  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-macos-x86_64:
     name: probe-macos-x86_64
-    runs-on: macos-15-intel
-    # A job that could still fail its run would be a tier; this one only reports.
-    continue-on-error: true
+    runs-on: macos-15-intel  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
     # Under the six-hour default, so the summary step is reached even when
     # every tier runs out its own step timeout.
     timeout-minutes: 330
-    steps:
-      - id: checkout
-        continue-on-error: true
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - id: setup-just
-        continue-on-error: true
-        uses: extractions/setup-just@v3
-      - id: setup-rust
-        continue-on-error: true
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-      - id: install-cargo-tools
-        continue-on-error: true
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest,cargo-llvm-cov
-      - id: setup-uv
-        continue-on-error: true
-        uses: astral-sh/setup-uv@v7
-      - id: setup-bun
-        continue-on-error: true
-        uses: oven-sh/setup-bun@v2
-      # Where the setup action has no prebuilt `just` for the runner, build it,
-      # so the tiers after it say something about the tree rather than about
-      # the action. The action's own failure stays in the summary.
-      - id: install-just-from-source
-        if: steps.setup-just.outcome == 'failure'
-        continue-on-error: true
-        timeout-minutes: 20
-        run: cargo install just --locked
-      - id: bootstrap
-        continue-on-error: true
-        timeout-minutes: 40
-        run: just bootstrap
-      - id: format-check
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just format-check
-      - id: lint
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just lint
-      - id: typecheck
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just typecheck
-      - id: test
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just test
-      - id: coverage
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just coverage
-      - id: build
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just build
-      - id: lint-workflows
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just lint-workflows
-      - id: check-repo
-        continue-on-error: true
-        timeout-minutes: 15
-        run: just check-repo
-      - id: test-e2e
-        continue-on-error: true
-        timeout-minutes: 60
-        run: just test-e2e
-      - if: always()
-        continue-on-error: true
-        env:
-          OUTCOME_CHECKOUT: ${{ steps.checkout.outcome }}
-          OUTCOME_SETUP_JUST: ${{ steps.setup-just.outcome }}
-          OUTCOME_SETUP_RUST: ${{ steps.setup-rust.outcome }}
-          OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
-          OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
-          OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
-          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
-          OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
-          OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
-          OUTCOME_LINT: ${{ steps.lint.outcome }}
-          OUTCOME_TYPECHECK: ${{ steps.typecheck.outcome }}
-          OUTCOME_TEST: ${{ steps.test.outcome }}
-          OUTCOME_COVERAGE: ${{ steps.coverage.outcome }}
-          OUTCOME_BUILD: ${{ steps.build.outcome }}
-          OUTCOME_LINT_WORKFLOWS: ${{ steps.lint-workflows.outcome }}
-          OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
-          OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
-        run: >-
-          echo -e "## probe-macos-x86_64\n
-          - checkout: $OUTCOME_CHECKOUT\n
-          - setup-just: $OUTCOME_SETUP_JUST\n
-          - setup-rust: $OUTCOME_SETUP_RUST\n
-          - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
-          - setup-uv: $OUTCOME_SETUP_UV\n
-          - setup-bun: $OUTCOME_SETUP_BUN\n
-          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
-          - just bootstrap: $OUTCOME_BOOTSTRAP\n
-          - just format-check: $OUTCOME_FORMAT_CHECK\n
-          - just lint: $OUTCOME_LINT\n
-          - just typecheck: $OUTCOME_TYPECHECK\n
-          - just test: $OUTCOME_TEST\n
-          - just coverage: $OUTCOME_COVERAGE\n
-          - just build: $OUTCOME_BUILD\n
-          - just lint-workflows: $OUTCOME_LINT_WORKFLOWS\n
-          - just check-repo: $OUTCOME_CHECK_REPO\n
-          - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
+    steps: *probe-steps
 
-  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-windows-x86_64:
     name: probe-windows-x86_64
-    runs-on: windows-2025
-    # A job that could still fail its run would be a tier; this one only reports.
-    continue-on-error: true
+    runs-on: windows-2025  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
     # Under the six-hour default, so the summary step is reached even when
     # every tier runs out its own step timeout.
     timeout-minutes: 330
-    steps:
-      - id: checkout
-        continue-on-error: true
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - id: setup-just
-        continue-on-error: true
-        uses: extractions/setup-just@v3
-      - id: setup-rust
-        continue-on-error: true
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-      - id: install-cargo-tools
-        continue-on-error: true
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest,cargo-llvm-cov
-      - id: setup-uv
-        continue-on-error: true
-        uses: astral-sh/setup-uv@v7
-      - id: setup-bun
-        continue-on-error: true
-        uses: oven-sh/setup-bun@v2
-      # Where the setup action has no prebuilt `just` for the runner, build it,
-      # so the tiers after it say something about the tree rather than about
-      # the action. The action's own failure stays in the summary.
-      - id: install-just-from-source
-        if: steps.setup-just.outcome == 'failure'
-        continue-on-error: true
-        timeout-minutes: 20
-        run: cargo install just --locked
-      - id: bootstrap
-        continue-on-error: true
-        timeout-minutes: 40
-        run: just bootstrap
-      - id: format-check
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just format-check
-      - id: lint
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just lint
-      - id: typecheck
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just typecheck
-      - id: test
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just test
-      - id: coverage
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just coverage
-      - id: build
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just build
-      - id: lint-workflows
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just lint-workflows
-      - id: check-repo
-        continue-on-error: true
-        timeout-minutes: 15
-        run: just check-repo
-      - id: test-e2e
-        continue-on-error: true
-        timeout-minutes: 60
-        run: just test-e2e
-      - if: always()
-        continue-on-error: true
-        env:
-          OUTCOME_CHECKOUT: ${{ steps.checkout.outcome }}
-          OUTCOME_SETUP_JUST: ${{ steps.setup-just.outcome }}
-          OUTCOME_SETUP_RUST: ${{ steps.setup-rust.outcome }}
-          OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
-          OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
-          OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
-          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
-          OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
-          OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
-          OUTCOME_LINT: ${{ steps.lint.outcome }}
-          OUTCOME_TYPECHECK: ${{ steps.typecheck.outcome }}
-          OUTCOME_TEST: ${{ steps.test.outcome }}
-          OUTCOME_COVERAGE: ${{ steps.coverage.outcome }}
-          OUTCOME_BUILD: ${{ steps.build.outcome }}
-          OUTCOME_LINT_WORKFLOWS: ${{ steps.lint-workflows.outcome }}
-          OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
-          OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
-        run: >-
-          echo -e "## probe-windows-x86_64\n
-          - checkout: $OUTCOME_CHECKOUT\n
-          - setup-just: $OUTCOME_SETUP_JUST\n
-          - setup-rust: $OUTCOME_SETUP_RUST\n
-          - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
-          - setup-uv: $OUTCOME_SETUP_UV\n
-          - setup-bun: $OUTCOME_SETUP_BUN\n
-          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
-          - just bootstrap: $OUTCOME_BOOTSTRAP\n
-          - just format-check: $OUTCOME_FORMAT_CHECK\n
-          - just lint: $OUTCOME_LINT\n
-          - just typecheck: $OUTCOME_TYPECHECK\n
-          - just test: $OUTCOME_TEST\n
-          - just coverage: $OUTCOME_COVERAGE\n
-          - just build: $OUTCOME_BUILD\n
-          - just lint-workflows: $OUTCOME_LINT_WORKFLOWS\n
-          - just check-repo: $OUTCOME_CHECK_REPO\n
-          - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
+    steps: *probe-steps
 
-  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-windows-aarch64:
     name: probe-windows-aarch64
-    runs-on: windows-11-arm
-    # A job that could still fail its run would be a tier; this one only reports.
-    continue-on-error: true
+    runs-on: windows-11-arm  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
     # Under the six-hour default, so the summary step is reached even when
     # every tier runs out its own step timeout.
     timeout-minutes: 330
-    steps:
-      - id: checkout
-        continue-on-error: true
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - id: setup-just
-        continue-on-error: true
-        uses: extractions/setup-just@v3
-      - id: setup-rust
-        continue-on-error: true
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-      - id: install-cargo-tools
-        continue-on-error: true
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest,cargo-llvm-cov
-      - id: setup-uv
-        continue-on-error: true
-        uses: astral-sh/setup-uv@v7
-      - id: setup-bun
-        continue-on-error: true
-        uses: oven-sh/setup-bun@v2
-      # Where the setup action has no prebuilt `just` for the runner, build it,
-      # so the tiers after it say something about the tree rather than about
-      # the action. The action's own failure stays in the summary.
-      - id: install-just-from-source
-        if: steps.setup-just.outcome == 'failure'
-        continue-on-error: true
-        timeout-minutes: 20
-        run: cargo install just --locked
-      - id: bootstrap
-        continue-on-error: true
-        timeout-minutes: 40
-        run: just bootstrap
-      - id: format-check
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just format-check
-      - id: lint
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just lint
-      - id: typecheck
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just typecheck
-      - id: test
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just test
-      - id: coverage
-        continue-on-error: true
-        timeout-minutes: 45
-        run: just coverage
-      - id: build
-        continue-on-error: true
-        timeout-minutes: 30
-        run: just build
-      - id: lint-workflows
-        continue-on-error: true
-        timeout-minutes: 10
-        run: just lint-workflows
-      - id: check-repo
-        continue-on-error: true
-        timeout-minutes: 15
-        run: just check-repo
-      - id: test-e2e
-        continue-on-error: true
-        timeout-minutes: 60
-        run: just test-e2e
-      - if: always()
-        continue-on-error: true
-        env:
-          OUTCOME_CHECKOUT: ${{ steps.checkout.outcome }}
-          OUTCOME_SETUP_JUST: ${{ steps.setup-just.outcome }}
-          OUTCOME_SETUP_RUST: ${{ steps.setup-rust.outcome }}
-          OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
-          OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
-          OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
-          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
-          OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
-          OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
-          OUTCOME_LINT: ${{ steps.lint.outcome }}
-          OUTCOME_TYPECHECK: ${{ steps.typecheck.outcome }}
-          OUTCOME_TEST: ${{ steps.test.outcome }}
-          OUTCOME_COVERAGE: ${{ steps.coverage.outcome }}
-          OUTCOME_BUILD: ${{ steps.build.outcome }}
-          OUTCOME_LINT_WORKFLOWS: ${{ steps.lint-workflows.outcome }}
-          OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
-          OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
-        run: >-
-          echo -e "## probe-windows-aarch64\n
-          - checkout: $OUTCOME_CHECKOUT\n
-          - setup-just: $OUTCOME_SETUP_JUST\n
-          - setup-rust: $OUTCOME_SETUP_RUST\n
-          - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
-          - setup-uv: $OUTCOME_SETUP_UV\n
-          - setup-bun: $OUTCOME_SETUP_BUN\n
-          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
-          - just bootstrap: $OUTCOME_BOOTSTRAP\n
-          - just format-check: $OUTCOME_FORMAT_CHECK\n
-          - just lint: $OUTCOME_LINT\n
-          - just typecheck: $OUTCOME_TYPECHECK\n
-          - just test: $OUTCOME_TEST\n
-          - just coverage: $OUTCOME_COVERAGE\n
-          - just build: $OUTCOME_BUILD\n
-          - just lint-workflows: $OUTCOME_LINT_WORKFLOWS\n
-          - just check-repo: $OUTCOME_CHECK_REPO\n
-          - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
+    steps: *probe-steps
