@@ -54,6 +54,11 @@ pub const CLIENT_CONFIG_FILE: &str = "client.toml";
 pub const API_CREDENTIAL_FILE: &str = "api-credential";
 
 /// The mode both files carrying the credential are created with.
+///
+/// Unix alone has one. A file Windows creates carries the access its directory
+/// grants rather than a mode, so there the state directory is what keeps both
+/// files to the service's own account.
+#[cfg(unix)]
 const PRIVATE: u32 = 0o600;
 
 /// The command a supervision turn runs to read its print's context.
@@ -93,20 +98,18 @@ fn write_client_config(
     credential: &ApiCredential,
 ) -> Result<PathBuf, StartError> {
     use std::io::Write as _;
-    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
     let path = directory.join(CLIENT_CONFIG_FILE);
     let failing = |error: std::io::Error| StartError::State {
         detail: format!("{} could not be written: {error}", path.display()),
     };
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(PRIVATE)
-        .open(&path)
-        .map_err(failing)?;
-    file.set_permissions(std::fs::Permissions::from_mode(PRIVATE))
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE);
+    let mut file = options.open(&path).map_err(failing)?;
+    #[cfg(unix)]
+    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(PRIVATE))
         .map_err(failing)?;
     file.write_all(
         format!(
@@ -140,7 +143,6 @@ fn toml_basic_string(text: &str) -> String {
 /// when it cannot be created or read or holds nothing a header could present.
 fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartError> {
     use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt as _;
 
     if let Some(configured) = &config.api_credential {
         return Ok(configured.clone());
@@ -150,12 +152,11 @@ fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartErro
         path: path.clone(),
         detail,
     };
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(PRIVATE)
-        .open(&path)
-    {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE);
+    match options.open(&path) {
         Ok(mut file) => {
             let generated = ApiCredential::generate().map_err(|error| {
                 refusing(format!(
@@ -714,30 +715,70 @@ impl Running {
 
     /// Serve until the operating system asks this process to stop.
     ///
-    /// This is what the `server` subcommand runs. It answers when the service
-    /// manager sends the signal it stops units with, or when the terminal that
-    /// started it interrupts.
+    /// This is what the `server` subcommand runs. It answers however this
+    /// platform asks a process to stop — see [`stop_requested`] — and every one
+    /// of those ways enters the same shutdown: [`Running::stop`].
     ///
     /// # Errors
     ///
-    /// Returns [`StartError::State`] when the signal handlers cannot be
+    /// Returns [`StartError::State`] when the stop handlers cannot be
     /// installed, which is a process that could not be stopped cleanly.
     pub async fn serve_until_signalled(self) -> Result<(), StartError> {
-        use tokio::signal::unix::{SignalKind, signal};
-
-        let mut terminate = signal(SignalKind::terminate()).map_err(|error| StartError::State {
-            detail: format!("the termination signal cannot be handled: {error}"),
-        })?;
-        let mut interrupt = signal(SignalKind::interrupt()).map_err(|error| StartError::State {
-            detail: format!("the interrupt signal cannot be handled: {error}"),
-        })?;
-        tokio::select! {
-            _ = terminate.recv() => {}
-            _ = interrupt.recv() => {}
-        }
+        stop_requested().await?;
         self.stop().await;
         Ok(())
     }
+}
+
+/// A stop handler that could not be installed, naming which.
+fn unhandled(what: &str, error: &std::io::Error) -> StartError {
+    StartError::State {
+        detail: format!("{what} cannot be handled: {error}"),
+    }
+}
+
+/// Wait until the operating system asks this process to stop.
+///
+/// On Unix that is the signal a service manager stops a unit with, or the
+/// interrupt from the terminal that started it.
+#[cfg(unix)]
+async fn stop_requested() -> Result<(), StartError> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut terminate = signal(SignalKind::terminate())
+        .map_err(|error| unhandled("the termination signal", &error))?;
+    let mut interrupt = signal(SignalKind::interrupt())
+        .map_err(|error| unhandled("the interrupt signal", &error))?;
+    tokio::select! {
+        _ = terminate.recv() => {}
+        _ = interrupt.recv() => {}
+    }
+    Ok(())
+}
+
+/// Wait until the operating system asks this process to stop.
+///
+/// Windows has no signals: a console process is stopped by a console control
+/// event. `CTRL_C` and `CTRL_BREAK` are the terminal's interrupt — the second is
+/// the one another process can send a process group started apart from its own
+/// — and `CTRL_CLOSE` and `CTRL_SHUTDOWN` are the console closing and the
+/// machine shutting down.
+#[cfg(windows)]
+async fn stop_requested() -> Result<(), StartError> {
+    use tokio::signal::windows::{ctrl_break, ctrl_c, ctrl_close, ctrl_shutdown};
+
+    let mut interrupt = ctrl_c().map_err(|error| unhandled("the CTRL_C event", &error))?;
+    let mut breaking = ctrl_break().map_err(|error| unhandled("the CTRL_BREAK event", &error))?;
+    let mut closing = ctrl_close().map_err(|error| unhandled("the CTRL_CLOSE event", &error))?;
+    let mut shutting_down =
+        ctrl_shutdown().map_err(|error| unhandled("the CTRL_SHUTDOWN event", &error))?;
+    tokio::select! {
+        _ = interrupt.recv() => {}
+        _ = breaking.recv() => {}
+        _ = closing.recv() => {}
+        _ = shutting_down.recv() => {}
+    }
+    Ok(())
 }
 
 impl Drop for Running {

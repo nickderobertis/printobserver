@@ -228,20 +228,23 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
 
 /// The client configuration is the one file carrying the credential, and it is
 /// the service's own user's alone.
+///
+/// Its mode is asserted on Unix alone: Windows has none, and a file there
+/// carries the access its directory grants.
 fn assert_private(client_config: &Path, credential: &str) {
-    use std::os::unix::fs::PermissionsExt as _;
     assert!(
         std::fs::read_to_string(client_config)
             .expect("the client configuration reads")
             .contains(credential),
         "the client configuration does not carry the credential in force"
     );
+    #[cfg(unix)]
     assert_eq!(
-        std::fs::metadata(client_config)
-            .expect("the client configuration is there")
-            .permissions()
-            .mode()
-            & 0o777,
+        std::os::unix::fs::PermissionsExt::mode(
+            &std::fs::metadata(client_config)
+                .expect("the client configuration is there")
+                .permissions()
+        ) & 0o777,
         0o600,
         "the client configuration carrying the credential is readable by others"
     );

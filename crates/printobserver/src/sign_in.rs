@@ -28,6 +28,7 @@ use crate::failure::{Exit, Failure};
 
 /// The status this program exits with when the harness was ended by a signal,
 /// less the signal's own number, as a shell reports one.
+#[cfg(unix)]
 const SIGNALLED: u8 = 128;
 
 /// Sign the harness one configuration file names in, and answer the status the
@@ -109,6 +110,7 @@ pub fn sign_in(config: &Path) -> Result<u8, Failure> {
 }
 
 /// The status to exit with, for a harness that exited with this one.
+#[cfg(unix)]
 fn exited_with(status: ExitStatus) -> u8 {
     use std::os::unix::process::ExitStatusExt as _;
 
@@ -119,4 +121,15 @@ fn exited_with(status: ExitStatus) -> u8 {
         }
         (None, None) => u8::MAX,
     }
+}
+
+/// The status to exit with, for a harness that exited with this one.
+///
+/// A Windows process always ends with a code — there are no signals to end it
+/// by — and one that does not fit a status is reported as the highest there is.
+#[cfg(not(unix))]
+fn exited_with(status: ExitStatus) -> u8 {
+    status
+        .code()
+        .map_or(u8::MAX, |code| u8::try_from(code).unwrap_or(u8::MAX))
 }

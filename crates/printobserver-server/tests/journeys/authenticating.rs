@@ -21,7 +21,6 @@
 //! file a person could leave behind refuses the start naming the file and never
 //! what it holds.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -457,7 +456,10 @@ impl Rooted {
 }
 
 /// The mode of one file, without the file type.
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+
     std::fs::metadata(path)
         .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display()))
         .permissions()
@@ -465,13 +467,34 @@ fn mode_of(path: &Path) -> u32 {
         & 0o777
 }
 
+/// Hold one file to a mode, where this platform has modes.
+///
+/// Windows has none: a file there carries the access its directory grants, so
+/// what these journeys say about a file's mode they say on Unix alone, and
+/// everything else they say everywhere.
+fn assert_mode(path: &Path, expected: u32, why: &str) {
+    #[cfg(unix)]
+    assert_eq!(mode_of(path), expected, "{why}");
+    #[cfg(not(unix))]
+    let _ = (path, expected, why);
+}
+
+/// Put one file at a mode, where this platform has modes.
+fn set_mode(path: &Path, mode: u32) {
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(mode))
+        .expect("the file's mode is settable");
+    #[cfg(not(unix))]
+    let _ = (path, mode);
+}
+
 /// The client configuration a running server wrote, as a document.
 fn client_configuration(state: &Path) -> toml::Value {
     let path = state.join(CLIENT_CONFIG_FILE);
-    assert_eq!(
-        mode_of(&path),
+    assert_mode(
+        &path,
         0o600,
-        "the client configuration carrying the credential is readable by others"
+        "the client configuration carrying the credential is readable by others",
     );
     toml::from_str(&std::fs::read_to_string(&path).expect("the client configuration reads"))
         .expect("the client configuration is a document")
@@ -502,10 +525,10 @@ async fn a_generated_credential_is_written_privately_once_and_reused() {
 
     let first = rooted.start().await.expect("the server starts");
     let generated = std::fs::read_to_string(&file).expect("the server wrote a credential");
-    assert_eq!(
-        mode_of(&file),
+    assert_mode(
+        &file,
         0o600,
-        "the generated credential is readable by others"
+        "the generated credential is readable by others",
     );
     assert!(
         generated.chars().all(url_safe) && !generated.contains('='),
@@ -588,8 +611,7 @@ async fn a_configured_credential_is_in_force_and_the_file_is_left_alone() {
     .await;
     let stale = rooted.credential_file();
     std::fs::write(&stale, STALE).expect("a stale file is writable");
-    std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o640))
-        .expect("the stale file's mode is settable");
+    set_mode(&stale, 0o640);
     let modified = std::fs::metadata(&stale)
         .and_then(|metadata| metadata.modified())
         .expect("the file has a modification time");
@@ -616,7 +638,7 @@ async fn a_configured_credential_is_in_force_and_the_file_is_left_alone() {
         modified,
         "a server with a configured credential touched the state directory's file"
     );
-    assert_eq!(mode_of(&stale), 0o640, "the stale file's mode was changed");
+    assert_mode(&stale, 0o640, "the stale file's mode was changed");
     assert_eq!(
         client_configuration(&rooted.state())["client"]["credential"].as_str(),
         Some(CONFIGURED),
@@ -652,8 +674,7 @@ async fn a_credential_file_ending_in_one_line_terminator_is_the_text_before_it()
         let file = rooted.credential_file();
         let written = format!("{HELD}{terminator}").into_bytes();
         std::fs::write(&file, &written).expect("the file is writable");
-        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600))
-            .expect("the file's mode is settable");
+        set_mode(&file, 0o600);
         let modified = || {
             std::fs::metadata(&file)
                 .and_then(|metadata| metadata.modified())
