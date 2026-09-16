@@ -91,6 +91,7 @@ def integration_tier(repo: Repo, base: str | None = None) -> list[str]:
         ]
     file_name, job_name, job, workflow = found
     where = f"{file_name}: the integration job `{job_name}`"
+    excluded = {**excluded, **_cells_not_running_yet(repo, job_name)}
     findings.extend(_step_findings(repo, policy, job, where))
     findings.extend(_matrix_findings(declared, excluded, job, where))
     findings.extend(_trigger_findings(repo, workflow, job, file_name, where))
@@ -160,6 +161,24 @@ def _exclusions(repo: Repo, policy: dict[str, Any]) -> tuple[dict[str, str], lis
             continue
         excluded[match["id"]] = reason
     return excluded, findings
+
+
+def _cells_not_running_yet(repo: Repo, job_name: str) -> dict[str, str]:
+    """The integration job's own cells `AGENTS.md`'s platform-exclusions block records.
+
+    The virtual-printer block says where that printer is unavailable; this is the
+    other reason a cell of the job does not run — a platform whose bring-up is
+    still owed. Either one excuses the cell, and a matrix carrying a cell either
+    one records is refused. A malformed line of that block is the `platforms`
+    check's finding to report, so it is passed over here rather than said twice.
+    """
+    from repo_checks.checks_ci import _exclusions as platform_exclusions
+
+    try:
+        recorded, _ = platform_exclusions(repo)
+    except MarkerBlockMissingError:
+        return {}
+    return {platform: reason for (platform, job), reason in recorded.items() if job == job_name}
 
 
 def _integration_job(
@@ -234,8 +253,8 @@ def _matrix_findings(
         if wanted not in named and wanted not in excluded
     )
     findings.extend(
-        f"{where}'s matrix names platform `{found}`, which AGENTS.md records as one "
-        f"where the virtual printer is unavailable ({excluded[str(found)]})"
+        f"{where}'s matrix names platform `{found}`, which AGENTS.md records as a cell "
+        f"that does not run ({excluded[str(found)]})"
         for found in named
         if str(found) in excluded
     )

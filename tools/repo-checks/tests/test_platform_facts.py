@@ -153,12 +153,12 @@ def test_a_toolchain_target_no_supported_platform_is_built_for_is_refused(
         TOOLCHAIN,
         'targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]',
         'targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", '
-        '"x86_64-apple-darwin"]',
+        '"riscv64gc-unknown-linux-gnu"]',
     )
 
     findings = platform_facts(broken.repo)
 
-    refused_naming(findings, TOOLCHAIN, "x86_64-apple-darwin")
+    refused_naming(findings, TOOLCHAIN, "riscv64gc-unknown-linux-gnu")
 
 
 def test_a_toolchain_naming_fewer_targets_than_the_list_is_accepted(

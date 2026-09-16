@@ -1,0 +1,150 @@
+# Temporary: reports what each deterministic tier does on the macOS and Windows
+# runners, and fails nothing. `docs/platform-bring-up.md` says what it is, what
+# it found and which node deletes it.
+#
+# Summaries read `outcome`, not `conclusion`: `continue-on-error` makes a failed
+# step's `conclusion` read `success`.
+
+name: platform-probe
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-probe-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Git Bash on the Windows runners, so every step is one script on all four.
+    shell: bash
+
+jobs:
+  probe-macos-aarch64:
+    name: probe-macos-aarch64
+    runs-on: macos-15  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
+    # Under the six-hour default, so the summary step is reached even when
+    # every tier runs out its own step timeout.
+    timeout-minutes: 330
+    steps: &probe-steps
+      - id: checkout
+        continue-on-error: true
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: setup-just
+        continue-on-error: true
+        uses: extractions/setup-just@v3
+      - id: setup-rust
+        continue-on-error: true
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - id: install-cargo-tools
+        continue-on-error: true
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
+      - id: setup-uv
+        continue-on-error: true
+        uses: astral-sh/setup-uv@v7
+      - id: setup-bun
+        continue-on-error: true
+        uses: oven-sh/setup-bun@v2
+      # Where the setup action has no prebuilt `just` for the runner, build it,
+      # so the tiers after it say something about the tree rather than about
+      # the action. The action's own failure stays in the summary.
+      - id: install-just-from-source
+        if: steps.setup-just.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: cargo install just --locked  # llmlint: ignore[changed_behavior_has_e2e] proven on a real runner: run 35087431232, job 104765467478 (windows-11-arm) built just this way
+      - id: bootstrap
+        continue-on-error: true
+        timeout-minutes: 40
+        run: just bootstrap
+      - id: format-check
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 10
+        run: just format-check  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: lint
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 30
+        run: just lint  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: typecheck
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 30
+        run: just typecheck  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: test
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 45
+        run: just test  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: coverage
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 45
+        run: just coverage  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: build
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 30
+        run: just build  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: lint-workflows
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 10
+        run: just lint-workflows  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: check-repo
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 15
+        run: just check-repo  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      - id: test-e2e
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
+        timeout-minutes: 60
+        run: just test-e2e  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, contracts_have_one_source_or_a_drift_gate] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet; goes with the probe
+      # Every step's outcome, read from the pretty-printed steps context rather
+      # than listed by hand: a step's id sits at two spaces, its outcome at four.
+      # The raw context follows, collapsed, so a format change the list misses
+      # still shows in every summary. The report also goes to the log, where
+      # this pull request's own probe run is what proves it.
+      - if: always()
+        continue-on-error: true
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |  # llmlint: ignore[changed_behavior_has_e2e] proven on a real runner: run 35105405513, job 104825522347 wrote this report and the raw context
+          printf -v report "## %s" "$GITHUB_JOB"
+          while IFS= read -r line; do
+            if [[ $line =~ ^\ \ \"([^\"]+)\":\ \{ ]]; then step=${BASH_REMATCH[1]}
+            elif [[ $line =~ ^\ \ \ \ \"outcome\":\ \"([^\"]+)\" ]]; then report+=$'\n'"- $step: ${BASH_REMATCH[1]}"
+            fi
+          done <<< "$STEPS"
+          printf -v report '%s\n\n<details><summary>steps context</summary>\n<pre>\n%s\n</pre>\n</details>' "$report" "$STEPS"
+          echo "$report"
+          echo "$report" >> "$GITHUB_STEP_SUMMARY"
+
+  probe-macos-x86_64:
+    name: probe-macos-x86_64
+    runs-on: macos-15-intel  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
+    # Under the six-hour default, so the summary step is reached even when
+    # every tier runs out its own step timeout.
+    timeout-minutes: 330
+    steps: *probe-steps
+
+  probe-windows-x86_64:
+    name: probe-windows-x86_64
+    runs-on: windows-2025  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
+    # Under the six-hour default, so the summary step is reached even when
+    # every tier runs out its own step timeout.
+    timeout-minutes: 330
+    steps: *probe-steps
+
+  probe-windows-aarch64:
+    name: probe-windows-aarch64
+    runs-on: windows-11-arm  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
+    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
+    # Under the six-hour default, so the summary step is reached even when
+    # every tier runs out its own step timeout.
+    timeout-minutes: 330
+    steps: *probe-steps

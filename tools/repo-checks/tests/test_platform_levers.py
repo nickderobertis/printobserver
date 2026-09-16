@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from repo_checks.checks_ci import platforms
+from repo_checks.checks_ci import artifact_jobs, platforms
+from repo_checks.checks_integration import integration_tier
+from repo_checks.checks_release import release_automation
 from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
@@ -28,13 +30,42 @@ EXCLUSIONS_END = "[//]: # (END platform-exclusions)"
 MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 
 
+#: A platform the list carries while its bring-up is owed, answered `install path: no`.
+BEING_BROUGHT_UP = "macos-aarch64"
+
+
 def record(copy: Tree, *lines: str) -> None:
-    """Put exactly `lines` into the platform-exclusions block of a real tree."""
+    """Add `lines` to the platform-exclusions block of a real tree.
+
+    The entries the committed block already carries stay: they are what lets the
+    platforms still being brought up be absent from every matrix, and a copy
+    without them would be refused for that before it said anything about `lines`.
+    """
+    copy.edit(
+        "AGENTS.md",
+        f"{EXCLUSIONS_BEGIN}\n",
+        f"{EXCLUSIONS_BEGIN}\n{''.join(f'{line}\n' for line in lines)}",
+    )
+
+
+def unrecord(copy: Tree, platform: str, job: str) -> None:
+    """Take the committed entry for one cell out of a real tree's exclusions block."""
     text = copy.read("AGENTS.md")
-    start = text.index(EXCLUSIONS_BEGIN)
-    end = text.index(EXCLUSIONS_END)
-    body = "".join(f"{line}\n" for line in lines)
-    copy.write("AGENTS.md", f"{text[:start]}{EXCLUSIONS_BEGIN}\n{body}{text[end:]}")
+    start = text.index(f"- `{platform}` on `{job}` — ")
+    end = text.index("\n", start) + 1
+    copy.write("AGENTS.md", text[:start] + text[end:])
+
+
+def answer_yes(copy: Tree, platform: str) -> None:
+    """Flip one committed entry of the supported-platform list to `install path: yes`."""
+    text = copy.read("AGENTS.md")
+    start = text.index(f"- `{platform}` — ")
+    end = text.index("\n", start)
+    entry = text[start:end]
+    copy.write(
+        "AGENTS.md",
+        text[:start] + entry[: entry.index("install path: no")] + "install path: yes" + text[end:],
+    )
 
 
 def test_the_committed_tree_carries_every_cell_it_owes(committed: Repo) -> None:
@@ -288,3 +319,110 @@ def test_an_entry_whose_identifier_is_not_shaped_like_one_is_refused(
     findings = platforms(broken.repo)
 
     refused_naming(findings, "`arm`", "not shaped like a platform identifier")
+
+
+def test_the_committed_tree_owes_no_cell_of_a_platform_still_being_brought_up(
+    committed: Repo,
+) -> None:
+    """Every check a platform's cells are derived by reads both levers, not only `platforms`."""
+    accepted(artifact_jobs(committed), describing="the artifact jobs")
+    accepted(release_automation(committed), describing="release automation")
+    accepted(integration_tier(committed), describing="the integration tier")
+
+
+def test_a_route_job_owes_a_platform_once_the_install_path_targets_it(
+    tree: Callable[[], Tree],
+) -> None:
+    """The first lever, read by the artifact-job check: `yes` makes every route's cell owed."""
+    broken = tree()
+    answer_yes(broken, BEING_BROUGHT_UP)
+
+    findings = artifact_jobs(broken.repo)
+
+    refused_naming(findings, "job `artifact-route-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+
+
+def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifact_check(
+    tree: Callable[[], Tree],
+) -> None:
+    """The second lever, read by the artifact-job check: only a recorded cell is excused."""
+    broken = tree()
+    unrecord(broken, BEING_BROUGHT_UP, "artifact-client-rust")
+
+    findings = artifact_jobs(broken.repo)
+
+    refused_naming(findings, "job `artifact-client-rust`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    for job in ("artifact-client-python", "artifact-client-node"):
+        accepted(
+            [finding for finding in findings if f"job `{job}`" in finding],
+            describing=f"`{job}`, whose cell is still recorded",
+        )
+
+
+def test_a_release_build_omitting_a_cell_no_entry_records_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Release automation builds for every platform the list names but the cells recorded."""
+    broken = tree()
+    unrecord(broken, BEING_BROUGHT_UP, "artifacts")
+
+    findings = release_automation(broken.repo)
+
+    refused_naming(findings, f"names `{BEING_BROUGHT_UP}`", "no committed job builds")
+
+
+def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The integration job reads this block beside its virtual-printer one."""
+    broken = tree()
+    unrecord(broken, BEING_BROUGHT_UP, "integration")
+
+    findings = integration_tier(broken.repo)
+
+    refused_naming(
+        findings, "the integration job `integration`", f"omits platform `{BEING_BROUGHT_UP}`"
+    )
+
+
+def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """An entry says that cell does not run, for the integration job as for any other."""
+    broken = tree()
+    text = broken.read(".github/workflows/ci.yml")
+    job = text.index("\n  integration:\n")
+    at = text.index(MATRIX_AARCH64, job) + len(MATRIX_AARCH64)
+    broken.write(
+        ".github/workflows/ci.yml",
+        f"{text[:at]}          - id: {BEING_BROUGHT_UP}\n            runner: macos-15\n{text[at:]}",
+    )
+
+    findings = integration_tier(broken.repo)
+
+    refused_naming(
+        findings,
+        "the integration job `integration`",
+        f"names platform `{BEING_BROUGHT_UP}`",
+        "a cell that does not run",
+    )
+
+
+def test_a_release_build_whose_strategy_is_not_a_mapping_is_refused_rather_than_crashing(
+    tree: Callable[[], Tree],
+) -> None:
+    """A malformed matrix builds for nothing, which is a finding and not a traceback."""
+    broken = tree()
+    text = broken.read(".github/workflows/release-plz.yml")
+    job = text.index("\n  artifacts:\n")
+    start = text.index("    strategy:\n", job)
+    end = text.index("    runs-on:", start)
+    broken.write(
+        ".github/workflows/release-plz.yml",
+        f"{text[:start]}    strategy: fail-fast\n{text[end:]}",
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused_naming(findings, "names `linux-x86_64`", "no committed job builds")

@@ -252,14 +252,23 @@ from.
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
+- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
+- `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
 [//]: # (END supported-platforms)
 
-Both are Linux with systemd, which is what the unit in the end-user install path
-below is written for. `linux-aarch64` is not optional: the machine beside the
-printer is usually a small ARM board, and it is the worst place to discover an
-architecture was never built for. macOS and Windows are not on this list yet:
-the module above names all six identifiers, and a platform joins this list only
-once every cell derived from it is green.
+The two Linux entries run under systemd, which is what the unit in the end-user
+install path below is written for. `linux-aarch64` is not optional: the machine
+beside the printer is usually a small ARM board, and it is the worst place to
+discover an architecture was never built for.
+
+<!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
+The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
 
 ### The two levers a platform is brought up in stages by
 
@@ -279,14 +288,65 @@ platform-dependent job that does not run on a platform this list names, with the
 reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 
 [//]: # (BEGIN platform-exclusions)
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `gate` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `artifacts` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-aarch64` on `integration` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `gate` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `artifacts` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `macos-x86_64` on `integration` — bring-up owed; the macOS platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `gate` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-x86_64` on `integration` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `gate` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `integration` — bring-up owed; the Windows platform node removes this line
 [//]: # (END platform-exclusions)
 
-It is empty: every platform-dependent job runs on every platform this list
-names. The printer integration job is the one job this block does not reach,
-because that job has a narrowing of its own — the "Virtual printer availability"
-block below, which is the integration tier's own record of where the virtual
-printer is unavailable. A rule stated in two places is one that can disagree
-with itself.
+An entry is a cell that **does not run yet**, not one nobody intends to run: it
+names the bring-up owed and what removes it, and the block is meant to end empty.
+
+The printer integration job is read against this block and against a narrowing
+of its own — the "Virtual printer availability" block below, which records where
+the virtual printer is unavailable. The two say different things: that block
+records a platform the tier cannot run on, and this one a cell whose bring-up is
+still owed, so either excuses a cell of that job and a matrix carrying a cell
+either records is refused.
 
 ### The three jobs that carry no platform matrix
 
@@ -734,7 +794,10 @@ Both run as root, and which pair you run is your platform's own: the
 supported-platform list's service-manager column names it. The first of a pair
 puts the service in place and the second starts it, and one subsection below
 states one pair, headed by the service manager it belongs to. Every service
-manager that list names has a pair here, and no manager it does not name has one.
+manager that list names a platform the install path targets under has a pair
+here, and no manager it does not name has one; a manager whose platforms all
+answer `install path: no` has none yet, because there is no install path there
+to state it for.
 
 **Enabling and starting is a command of its own rather than something the
 installer does, and the reason is that this service commands a 3D printer.**

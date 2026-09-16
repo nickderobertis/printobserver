@@ -212,12 +212,12 @@ def test_a_matrix_naming_an_undeclared_platform_is_refused(
         ".github/workflows/ci.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-        "          - id: windows-x86_64\n            runner: windows-2022\n",
+        "          - id: linux-riscv64\n            runner: ubuntu-24.04-riscv\n",
     )
 
     findings = platforms(broken.repo)
 
-    refused(findings, "windows-x86_64")
+    refused(findings, "linux-riscv64")
 
 
 def test_a_matrix_omitting_a_declared_platform_is_refused(
