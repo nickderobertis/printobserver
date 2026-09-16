@@ -18,6 +18,8 @@
 
 #[path = "support/harness.rs"]
 mod harness;
+#[path = "support/manager.rs"]
+mod manager;
 
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -36,6 +38,8 @@ use tempfile::TempDir;
 
 #[cfg(target_os = "linux")]
 use harness::{ANSWERED, SIGN_IN_SEEN};
+use manager::{Manager, policy, repo_root};
+
 use harness::{
     SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking, recorded, stand_in,
 };
@@ -48,103 +52,16 @@ const TRACER: &str = "strace";
 /// Where the installer is committed, as the install-path section states.
 const INSTALLER: &str = "scripts/install-service.sh";
 
-/// The service managers the installer writes a definition for, spelled as
-/// `AGENTS.md`'s supported-platform list and `repo-policy.toml` spell them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Manager {
-    /// Linux's: a unit under `/etc/systemd/system`.
-    Systemd,
-    /// macOS's: a property list under `/Library/LaunchDaemons`.
-    Launchd,
-}
+/// Both service managers the installer writes a definition for.
+const MANAGERS: [Manager; 2] = [Manager::Systemd, Manager::Launchd];
 
-impl Manager {
-    /// Both of them.
-    const ALL: [Self; 2] = [Self::Systemd, Self::Launchd];
-
-    /// The one this host runs a service under.
-    fn host() -> Self {
-        if cfg!(target_os = "macos") {
-            Self::Launchd
-        } else {
-            Self::Systemd
-        }
+/// What `uname -s` answers on a host one manager runs services under, which is
+/// what the installer chooses between them by.
+fn system_of(manager: Manager) -> &'static str {
+    match manager {
+        Manager::Systemd => "Linux",
+        Manager::Launchd => "Darwin",
     }
-
-    /// How `AGENTS.md` and `repo-policy.toml` spell it.
-    fn spelled(self) -> &'static str {
-        match self {
-            Self::Systemd => "systemd",
-            Self::Launchd => "launchd",
-        }
-    }
-
-    /// What `uname -s` answers on a host this manager runs services under,
-    /// which is what the installer chooses between them by.
-    fn system(self) -> &'static str {
-        match self {
-            Self::Systemd => "Linux",
-            Self::Launchd => "Darwin",
-        }
-    }
-
-    /// This manager's table of `repo-policy.toml`'s `[service]`.
-    fn policy(self) -> toml::Value {
-        policy()["service"][self.spelled()].clone()
-    }
-
-    /// The pair of commands `AGENTS.md`'s install path states for this manager.
-    fn pair(self) -> Vec<String> {
-        let agents =
-            std::fs::read_to_string(repo_root().join("AGENTS.md")).expect("AGENTS.md reads");
-        let heading = format!("\n#### {}\n", self.spelled());
-        let body = &agents[agents
-            .find(&heading)
-            .unwrap_or_else(|| panic!("AGENTS.md states no `{}` pair", self.spelled()))
-            + heading.len()..];
-        let body = &body[..body.find("\n### ").unwrap_or(body.len())];
-        let body = &body[..body.find("\n#### ").unwrap_or(body.len())];
-        let mut commands = Vec::new();
-        let mut fenced = false;
-        for line in body.lines() {
-            match (fenced, line.trim()) {
-                (false, "```console") => fenced = true,
-                (true, "```") => fenced = false,
-                (true, command) if !command.is_empty() => commands.push(command.to_owned()),
-                _ => {}
-            }
-        }
-        commands
-    }
-
-    /// Where, beneath a root, this manager's definition is written: the
-    /// directory the policy states it loads definitions from at boot, and the
-    /// file the install path's own start command names.
-    fn definition(self, root: &Path) -> PathBuf {
-        let start = self.pair().pop().expect("the pair states a start command");
-        let named = start
-            .split_whitespace()
-            .last()
-            .expect("the start command names the service");
-        let file = Path::new(named)
-            .file_name()
-            .expect("the start command names a file or a unit");
-        let directory = self.policy()["unit_directory"]
-            .as_str()
-            .expect("the policy states where the definition is written")
-            .trim_start_matches('/')
-            .to_owned();
-        root.join(directory).join(file)
-    }
-}
-
-/// `repo-policy.toml`, which states what the installer must not invoke and, per
-/// service manager, where the definition goes and what starts it unattended.
-fn policy() -> toml::Value {
-    toml::from_str(
-        &std::fs::read_to_string(repo_root().join("repo-policy.toml")).expect("the policy reads"),
-    )
-    .expect("the policy is a document")
 }
 
 /// The programs the installer must not invoke, each shimmed to record being run.
@@ -155,13 +72,6 @@ fn must_not_invoke() -> Vec<String> {
         .iter()
         .map(|program| program.as_str().expect("a program name").to_owned())
         .collect()
-}
-
-/// The repository root.
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
 }
 
 /// Write one executable shell script.
@@ -199,7 +109,7 @@ fn shims(root: &Path, manager: Manager) -> (PathBuf, PathBuf) {
             &bin.join("uname"),
             &format!(
                 "#!/bin/sh\ncase \"${{1:-}}\" in -m) echo x86_64 ;; *) echo {} ;; esac\n",
-                manager.system()
+                system_of(manager)
             ),
         );
     }
@@ -554,7 +464,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
     let agents = std::fs::read_to_string(repo_root().join("AGENTS.md")).expect("AGENTS.md reads");
     let whoami = Command::new("id").arg("-un").output().expect("id runs");
     let invoking = String::from_utf8_lossy(&whoami.stdout).trim().to_owned();
-    for manager in Manager::ALL {
+    for manager in MANAGERS {
         let under = TempDir::new().expect("a journey's own root");
         let (installed, run) = installing_for(
             under.path(),
@@ -597,7 +507,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
             );
         }
         assert!(installed.state().is_dir(), "{spelled}: no state directory");
-        let other = Manager::ALL
+        let other = MANAGERS
             .into_iter()
             .find(|one| *one != manager)
             .expect("two managers");
