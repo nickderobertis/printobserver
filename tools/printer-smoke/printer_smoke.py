@@ -35,6 +35,7 @@ import ctypes
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -1067,6 +1068,11 @@ PRECONDITIONS: tuple[tuple[str, Callable[[Smoke], str | None]], ...] = (
 )
 
 
+def _interrupted(_number: int, _frame: object) -> None:
+    """Enter the ordinary interrupted-run cleanup from a Windows console break."""
+    raise KeyboardInterrupt
+
+
 def smoke_of(environ: dict[str, str], device: str) -> Smoke:
     """One run, configured from the environment it was started in.
 
@@ -1105,6 +1111,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         still holding this run's own values, or over one nothing could see, is
         the worst answer this program could give.
     """
+    if sys.platform == "win32":
+        # A process group on Windows is stopped with CTRL_BREAK_EVENT. Python
+        # exposes that event as SIGBREAK, so turn it into the same interruption
+        # path SIGINT enters on Unix and let the one cleanup sequence run.
+        signal.signal(signal.SIGBREAK, _interrupted)
     arguments = list(sys.argv[1:] if argv is None else argv)
     environ = dict(os.environ)
 
