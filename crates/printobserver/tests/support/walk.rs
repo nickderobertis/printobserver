@@ -176,7 +176,11 @@ fn named(command: &str, reports: Reports, values: Vec<(String, String)>) -> Entr
 
 /// The ten actions of the vocabulary, each with values no other command drives.
 fn actions(world: &World) -> Vec<Entry> {
-    let bounded = ("duration_s".to_owned(), "60".to_owned());
+    // Long enough that no intervention the walk opens expires while the walk is
+    // still reading it back: a command's two renderings are two runs, and on
+    // Windows each traced run pays for starting and reading a trace session, so
+    // a minute ran out between them. The journey about expiry sets its own.
+    let bounded = ("duration_s".to_owned(), "600".to_owned());
     let acting = |command: &str, reports: Reports, mut rest: Vec<(String, String)>| {
         rest.push(("actor".to_owned(), "operator".to_owned()));
         rest.push(("reason".to_owned(), reason_of(command)));

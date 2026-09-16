@@ -155,12 +155,26 @@ impl PrintLedger {
                     .map_err(|detail| io::Error::other(format!("{}: {detail}", path.display())))?;
                 Ok(ledger)
             }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self {
-                schema_version: LEDGER_FORMAT,
-                print_id: *print_id,
-                sessions: Vec::new(),
-                turns: Vec::new(),
-            }),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                // A print with no ledger has no history only where the ledger
+                // directory is one, or is not there yet. Windows answers "not
+                // found" for a file under something that is not a directory,
+                // where Unix answers "not a directory", so that is asked here
+                // rather than read as a print that has never been supervised.
+                let directory = state_dir.join(SESSIONS_DIRECTORY);
+                if fs::metadata(&directory).is_ok_and(|found| !found.is_dir()) {
+                    return Err(io::Error::other(format!(
+                        "{} is something other than a directory, so no ledger can be read from it",
+                        directory.display()
+                    )));
+                }
+                Ok(Self {
+                    schema_version: LEDGER_FORMAT,
+                    print_id: *print_id,
+                    sessions: Vec::new(),
+                    turns: Vec::new(),
+                })
+            }
             Err(error) => Err(error),
         }
     }

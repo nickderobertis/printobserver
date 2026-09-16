@@ -234,7 +234,7 @@ async fn read(
 fn configuration(root: &std::path::Path, instance: &Scripted, octoprint: &str) -> ServerConfig {
     let document = format!(
         r#"
-state_dir = "{state}"
+state_dir = {state}
 listen = "127.0.0.1:0"
 
 [octoprint]
@@ -273,7 +273,9 @@ agent = ["set_feedrate_factor"]
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
 "#,
-        state = root.join("state").display(),
+        // A TOML string rather than the path spliced between quotes: a Windows
+        // path's separators are escapes inside a basic string.
+        state = toml::Value::String(root.join("state").display().to_string()),
         url = octoprint,
         key = instance.api_key,
         credential = CONFIGURED_CREDENTIAL

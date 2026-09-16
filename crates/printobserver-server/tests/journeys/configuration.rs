@@ -316,3 +316,64 @@ fn section_reference(property: &Value) -> Option<&str> {
     let name = reference.strip_prefix("#/$defs/")?;
     name.ends_with("Section").then_some(name)
 }
+
+/// The state directory a server resolves is written the way its platform's own
+/// tools write a path, so every image path it answers under it is one too.
+///
+/// On Windows resolving a path answers its verbatim form, `\\?\C:\…`; the
+/// server writes the drive path that form names instead. On every other
+/// platform the resolved path is already that, and is answered as it is.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_resolved_state_directory_is_written_as_its_platform_writes_a_path() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let path = crate::world::write(
+        root.path(),
+        &crate::world::document(root.path(), &base_url(&answering)),
+    );
+
+    let running = Server::start(&path).await.expect("the server starts");
+    let resolved = running.config().state_dir.clone();
+    running.stop().await;
+
+    let expected = printobserver_server::plainly_written(
+        root.path()
+            .join("state")
+            .canonicalize()
+            .expect("the state directory resolves"),
+    );
+    assert_eq!(resolved, expected);
+    assert!(
+        !resolved.to_string_lossy().starts_with(r"\\?\"),
+        "the state directory is written in its verbatim form: {}",
+        resolved.display()
+    );
+}
+
+/// A verbatim drive path is written as the drive path it names, and nothing
+/// else is changed.
+#[test]
+fn only_a_verbatim_drive_path_is_rewritten() {
+    use printobserver_server::plainly_written;
+
+    for (given, written) in [
+        (
+            r"\\?\C:\ProgramData\printobserver\state",
+            r"C:\ProgramData\printobserver\state",
+        ),
+        (r"\\?\d:\state", r"d:\state"),
+        (r"\\?\UNC\server\share\state", r"\\?\UNC\server\share\state"),
+        (r"\\?\Volume{0}\state", r"\\?\Volume{0}\state"),
+        ("/var/lib/printobserver", "/var/lib/printobserver"),
+        (
+            r"C:\ProgramData\printobserver\state",
+            r"C:\ProgramData\printobserver\state",
+        ),
+    ] {
+        assert_eq!(
+            plainly_written(PathBuf::from(given)),
+            PathBuf::from(written),
+            "{given} was written as something else"
+        );
+    }
+}
