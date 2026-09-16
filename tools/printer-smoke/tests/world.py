@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -28,7 +30,7 @@ from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
 from repo_checks import platforms
 from repo_checks.model import Repo
-from repo_checks.shell import run
+from repo_checks.shell import run, start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
@@ -174,7 +176,7 @@ class World:
         Returns:
             What this changes about the environment the smoke runs under.
         """
-        relay = self.root / "printobserver-relay"
+        relay = self.root / "printobserver-relay.py"
         relay.write_text(RELAY.read_text(encoding="utf-8"), encoding="utf-8")
         relay.chmod(0o755)
         return {
@@ -204,6 +206,20 @@ class World:
         Returns:
             The completed run, including everything it said while cleaning up.
         """
+        environment = self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s})
+        if os.name == "nt":
+            process = start(
+                [sys.executable, str(SMOKE), "--run"],
+                cwd=REPO_ROOT,
+                env=environment,
+                own_group=True,
+            )
+            time.sleep(after)
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+            stdout, stderr = process.communicate(timeout=300)
+            return subprocess.CompletedProcess(
+                process.args, process.returncode, stdout + stderr, ""
+            )
         return run(
             [
                 "timeout",
@@ -221,7 +237,7 @@ class World:
                 "--run",
             ],
             cwd=REPO_ROOT,
-            env=self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s}),
+            env=environment,
             timeout=300,
         )
 

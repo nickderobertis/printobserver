@@ -281,7 +281,7 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
 }
 
 /// How long the adjustment the restoration defect is driven over stands for.
-const SHORT: i64 = 2;
+const SHORT: i64 = 10;
 
 /// The command of the walk every defect is driven over.
 fn the_command(world: &World) -> Driven {

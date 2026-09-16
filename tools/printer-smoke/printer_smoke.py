@@ -336,8 +336,11 @@ class Smoke:
         Returns:
             The exit it earned, the document it printed and everything it said.
         """
+        program = (
+            [sys.executable, self.program] if Path(self.program).suffix == ".py" else [self.program]
+        )
         argv = [
-            self.program,
+            *program,
             command,
             "--print-id",
             self.print_id,
