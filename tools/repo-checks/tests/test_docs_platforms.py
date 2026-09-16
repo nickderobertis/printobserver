@@ -127,3 +127,33 @@ def test_a_document_nothing_can_read_is_reported_rather_than_raised(
     findings = platform_names(broken.repo)
 
     refused_naming(findings, "docs/reference/not-utf8.md", "nothing here can read")
+
+
+def test_a_document_naming_a_platform_of_a_family_nothing_here_supports_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A platform identifier the list does not carry is one whatever family it names."""
+    broken = tree()
+    broken.append(TESTING, "\nThe clients are also built for `freebsd-x86_64`.\n")
+
+    findings = platform_names(broken.repo)
+
+    refused_naming(findings, TESTING, "`freebsd-x86_64`", "does not carry")
+
+
+def test_a_runner_label_and_a_registry_selector_are_not_platform_names(
+    tree: Callable[[], Tree],
+) -> None:
+    """Neither is an identifier.
+
+    Refusing a document for naming one would be refusing it for being right.
+    """
+    agreeing = tree()
+    agreeing.append(
+        TESTING,
+        "\nThe gate's cells run on `ubuntu-24.04` and `ubuntu-24.04-arm`; the JavaScript "
+        "registry selects them as `linux-x64` and `linux-arm64`, built for "
+        "`aarch64-unknown-linux-gnu` among others.\n",
+    )
+
+    accepted(platform_names(agreeing.repo), describing="runner labels and registry selectors")

@@ -53,18 +53,23 @@ PLATFORM_SHAPE = (
     "service manager `<manager>`, install path: yes|no[ — <reason>]"
 )
 
-#: A token shaped like one of these identifiers: an operating-system family this
-#: list names one of, and a processor. A shape rather than a fixed set, so a
-#: document naming `linux-riscv64` is found by being a platform identifier rather
-#: than by being on a list of wrong ones — and the processor half is closed on
-#: purpose, which is what keeps a runner label (`macos-15`, `windows-11-arm`) and
-#: a registry's own selector (`linux-x64`, `darwin-arm64`) out of it.
+#: A token shaped like a platform identifier: an operating-system family and a
+#: processor. A shape rather than a fixed set, so a document naming
+#: `linux-riscv64` or `freebsd-x86_64` is found by being a platform identifier
+#: rather than by being on a list of wrong ones — which is what lets it catch a
+#: platform nothing here supports as readily as one it might.
 #:
-#: `NAMING`'s own keys are held to it, so the two cannot drift.
-#: The one spelling of that shape, used anchored below and embedded in
+#: The **processor** half is closed and the family half is not, and that is the
+#: whole of what keeps the false positives out: a runner label (`macos-15`,
+#: `windows-11-arm`, `ubuntu-24.04-arm`), a Rust target (`aarch64-apple-darwin`)
+#: and a registry's own selector (`linux-x64`, `darwin-arm64`) each fail on
+#: their second half rather than on their first.
+#:
+#: `NAMING`'s own keys are held to it, so the two cannot drift. It is the one
+#: spelling of that shape, used anchored below and embedded in
 #: `PLATFORM_ID_IN_TEXT`, so a document and an entry are read against one rule.
 PLATFORM_ID_PATTERN = (
-    r"(?:linux|macos|windows)-(?:x86_64|aarch64|riscv64|armv7l?|i686|ppc64le|s390x)"
+    r"(?:[a-z][a-z0-9]*)-(?:x86_64|aarch64|riscv64|loongarch64|armv7l?|i686|ppc64le|s390x)"
 )
 
 PLATFORM_ID = re.compile(rf"^{PLATFORM_ID_PATTERN}$")
