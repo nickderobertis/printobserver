@@ -31,6 +31,7 @@ policy and the safety envelope this system exists to put in between.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
@@ -819,8 +820,18 @@ def _command_present(smoke: Smoke) -> str | None:
     return None
 
 
+#: How a Windows program spells a device as a path: `\\.\COM3` is the port `COM3`.
+WINDOWS_DEVICE_NAMESPACE = "\\\\.\\"
+
+#: How many characters the answer naming what a Windows device maps to is given.
+#: A serial port maps to one kernel device path, far shorter than this.
+DOS_DEVICE_CHARACTERS = 1024
+
+
 def _device_readable(smoke: Smoke) -> str | None:
     """The named serial device is there, and this user can read it."""
+    if sys.platform == "win32":
+        return _windows_device_present(smoke)
     device = Path(smoke.device)
     if not device.exists():
         return f"{DEVICE_ENV} names {smoke.device}, which is not there"
@@ -830,6 +841,42 @@ def _device_readable(smoke: Smoke) -> str | None:
             f"and that this user is in the `dialout` group"
         )
     return None
+
+
+def _windows_device_present(smoke: Smoke) -> str | None:
+    r"""On Windows: the named serial device is one the system has a device for.
+
+    A Windows serial port is named `COM3` and opened as `\\.\COM3`, and it is
+    no file: there is nothing to stat and no mode a user's access could be read
+    from. What the system does keep is its table of device names, and that table
+    answers whether `COM3` is a device **without opening the port** — which is
+    the point. Opening a serial port can raise its DTR line, and the controller
+    of a printer on the other end resets when it does; and while `OctoPrint`
+    holds the port, which the next precondition requires, nothing else may open
+    it anyway. So the Windows answer is the device table's, and a name it does
+    not carry is refused exactly as a path that is not there is.
+    """
+    name = smoke.device.removeprefix(WINDOWS_DEVICE_NAMESPACE)
+    # An empty name asks the table for every device it carries, which answers
+    # something for any host — so it is refused before it is asked.
+    if not name or _query_dos_device(name) is None:
+        return f"{DEVICE_ENV} names {smoke.device}, which is not there"
+    return None
+
+
+def _query_dos_device(name: str) -> str | None:
+    """What Windows maps the device name `name` to, or None where it maps it to nothing.
+
+    Raises:
+        OSError: On a host that is not Windows, which keeps no such table.
+    """
+    if sys.platform != "win32":
+        message = f"only Windows keeps a device table to look {name} up in"
+        raise OSError(message)
+    answer = ctypes.create_unicode_buffer(DOS_DEVICE_CHARACTERS)
+    if not ctypes.windll.kernel32.QueryDosDeviceW(name, answer, len(answer)):
+        return None
+    return answer.value
 
 
 def _octoprint_on_the_device(smoke: Smoke) -> str | None:
