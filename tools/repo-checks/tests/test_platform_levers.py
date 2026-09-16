@@ -407,3 +407,22 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
         f"names platform `{BEING_BROUGHT_UP}`",
         "a cell that does not run",
     )
+
+
+def test_a_release_build_whose_strategy_is_not_a_mapping_is_refused_rather_than_crashing(
+    tree: Callable[[], Tree],
+) -> None:
+    """A malformed matrix builds for nothing, which is a finding and not a traceback."""
+    broken = tree()
+    text = broken.read(".github/workflows/release-plz.yml")
+    job = text.index("\n  artifacts:\n")
+    start = text.index("    strategy:\n", job)
+    end = text.index("    runs-on:", start)
+    broken.write(
+        ".github/workflows/release-plz.yml",
+        f"{text[:start]}    strategy: fail-fast\n{text[end:]}",
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused_naming(findings, "names `linux-x86_64`", "no committed job builds")

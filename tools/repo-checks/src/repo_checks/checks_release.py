@@ -451,7 +451,9 @@ def _coverage_findings(repo: Repo) -> list[str]:
     built_for: set[str] = set()
     excused: set[str] = set()
     for job_name, job in building:
-        entries = ((job.get("strategy") or {}).get("matrix") or {}).get("platform")
+        strategy = job.get("strategy")
+        matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
+        entries = matrix.get("platform") if isinstance(matrix, dict) else None
         for entry in entries if isinstance(entries, list) else []:
             if isinstance(entry, dict) and "id" in entry:
                 built_for.add(str(entry["id"]))
