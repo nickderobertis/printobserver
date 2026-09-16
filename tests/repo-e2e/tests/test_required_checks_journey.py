@@ -47,10 +47,20 @@ def test_a_record_naming_only_one_of_the_gates_cells_is_refused(
 def test_a_required_name_several_cells_report_under_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """Two check runs under one name are two a rule requiring it cannot tell apart."""
+    """Two check runs under one name are two a rule requiring it cannot tell apart.
+
+    GitHub appends an unqualified job's own matrix values to its name, so leaving
+    the name bare keeps its cells distinct; the way two cells collide is a
+    qualified name interpolating a value they share — here a matrix entry copied
+    for a second runner and left under the first one's id.
+    """
     broken = gate_copy()
-    broken.edit(CI, QUALIFIED, "    name: gate\n")
-    broken.edit(AGENTS, X86 + AARCH64, "- `gate`\n")
+    broken.edit(
+        CI,
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n",
+    )
 
     result = broken.just("check-repo")
 
