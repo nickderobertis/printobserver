@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from repo_checks.checks_service import ingress_answer_bound, service_install
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, refused, truth
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -199,7 +199,7 @@ def test_a_section_that_names_no_unit_is_refused(tree: Callable[[], Tree]) -> No
 
     findings = service_install(broken.repo)
 
-    refused(findings, "states no `systemctl enable --now")
+    refused(findings, "states no `systemctl enable --now <unit>`")
 
 
 def test_a_section_that_fetches_no_installer_is_refused(tree: Callable[[], Tree]) -> None:
@@ -267,7 +267,120 @@ def test_a_policy_naming_no_unit_directory_is_refused(tree: Callable[[], Tree]) 
 
     findings = service_install(broken.repo)
 
-    refused(findings, "service.unit_directory")
+    refused(findings, "service.systemd.unit_directory")
+
+
+LAUNCHD_START = (
+    "sudo launchctl bootstrap system "
+    "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist"
+)
+
+
+def test_an_installer_shipping_another_launchd_label_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A property list the install path's own launchd command cannot load."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace(
+            'LAUNCHD_LABEL="io.github.nickderobertis.printobserver"',
+            'LAUNCHD_LABEL="com.example.observer"',
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "com.example.observer")
+
+
+def test_a_launchd_command_loading_from_outside_the_boot_directory_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A property list loaded from anywhere else is one launchd forgets at the next boot."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            LAUNCHD_START, LAUNCHD_START.replace("/Library/LaunchDaemons", "/Users/Shared")
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "the directory launchd loads daemons from at boot")
+
+
+def test_a_section_that_names_no_launchd_service_is_refused(tree: Callable[[], Tree]) -> None:
+    """A macOS platform the install path targets is owed a command naming its service."""
+    broken = tree()
+    broken.write(AGENTS, broken.read(AGENTS).replace(LAUNCHD_START, "sudo start-it-on-a-mac"))
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states no `launchctl bootstrap system")
+
+
+def test_a_property_list_that_does_not_start_at_boot_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A definition loaded for this session only is one an operator re-activates every boot."""
+    broken = tree()
+    broken.write(INSTALLER, broken.read(INSTALLER).replace("<key>RunAtLoad</key>", ""))
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries no `<key>RunAtLoad</key>`")
+
+
+def test_a_unit_that_does_not_restart_is_refused(tree: Callable[[], Tree]) -> None:
+    """A service that ends abruptly and stays down leaves a printer unsupervised."""
+    broken = tree()
+    broken.write(INSTALLER, broken.read(INSTALLER).replace("Restart=on-failure", "Restart=no"))
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries no `Restart=on-failure`")
+
+
+def test_an_installer_that_loads_the_property_list_is_refused(tree: Callable[[], Tree]) -> None:
+    """Loading a launchd definition starts it, which installing must never do."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER) + '\nlaunchctl bootstrap system "$INSTALLED_UNIT"\n',
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "runs `launchctl`")
+
+
+def test_an_assignment_naming_the_start_command_is_not_running_it(
+    committed: Repo,
+) -> None:
+    """The installer remembers each manager's start command to print it, and runs neither."""
+    script = committed.read(INSTALLER)
+
+    truth(
+        'START_COMMAND="sudo launchctl bootstrap system' in script
+        and 'START_COMMAND="sudo systemctl enable --now' in script,
+        describing="the installer to hold both start commands only as strings it prints",
+    )
+    accepted(service_install(committed))
+
+
+def test_a_policy_declaring_no_launchd_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing states where a macOS installer writes the property list."""
+    broken = tree()
+    text = broken.read(POLICY)
+    start = text.index("[service.launchd]\n")
+    end = text.index("\n\n", start)
+    broken.write(POLICY, text[:start] + text[end:])
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "declares no `[service.launchd]` table")
 
 
 def test_an_installer_granting_nothing_is_refused(tree: Callable[[], Tree]) -> None:

@@ -252,16 +252,17 @@ required_block_keys = ["posting timeout", "source", "release", "retries"]
 
 [service]
 # The service this repository installs. NEITHER of these is declared here: the
-# unit's name and the installer's path are read out of `AGENTS.md`'s
-# "The end-user install path" section, which is the authoritative source of both,
-# and `just check-repo` holds the tree to what that section states. What is
-# declared here is where the installer writes the unit, and the fact that it must
-# start nothing.
-unit_directory = "/etc/systemd/system"
-# Programs the installer may not invoke. Installing must not, as a side effect,
-# start a process that can move a 3D printer, so the installer names the command
-# that starts the service only in what it prints.
-may_not_invoke = ["systemctl", "service", "systemd-run"]
+# service definition's name and the installer's path are read out of
+# `AGENTS.md`'s "The end-user install path" section, which is the authoritative
+# source of both, and `just check-repo` holds the tree to what that section
+# states. What is declared here is the fact that the installer must start
+# nothing, and — per service manager, in the tables below — where it writes the
+# definition and what in that definition starts the service unattended.
+#
+# Programs the installer may not invoke, under any service manager. Installing
+# must not, as a side effect, start a process that can move a 3D printer, so the
+# installer names the command that starts the service only in what it prints.
+may_not_invoke = ["systemctl", "service", "systemd-run", "launchctl"]
 # The configuration template the installer writes grants each actor class a set
 # of actions, and those names are the CONTRACTS' vocabulary rather than this
 # script's. `just check-repo` reads the generated action schema
@@ -269,6 +270,30 @@ may_not_invoke = ["systemctl", "service", "systemd-run"]
 # contracts do not declare, so a vocabulary that moves cannot leave an installed
 # configuration granting something that no longer exists.
 granting_table = "[safety.actions]"
+
+# One table per service manager the install path states a pair of commands for,
+# keyed as AGENTS.md's supported-platform list spells the manager.
+#
+# `unit_directory` is where the installer writes that manager's definition, and
+# it is the directory the manager loads system-wide at boot. `name_variable` is
+# the installer's own variable holding the name the install path's start command
+# names. `at_boot` and `restart` are the two unattended behaviours, each as the
+# setting that carries it in that manager's own vocabulary: the one that starts
+# the service at boot rather than on demand, and the one that starts it again
+# after it ends abruptly. `just check-repo` refuses an installer whose definition
+# does not carry them, and the command's own service tests read them from here
+# rather than restating them.
+[service.systemd]
+unit_directory = "/etc/systemd/system"
+name_variable = "UNIT_NAME"
+at_boot = { key = "WantedBy", value = "multi-user.target" }
+restart = { key = "Restart", value = "on-failure" }
+
+[service.launchd]
+unit_directory = "/Library/LaunchDaemons"
+name_variable = "LAUNCHD_LABEL"
+at_boot = { key = "RunAtLoad", value = true }
+restart = { key = "KeepAlive", value = { SuccessfulExit = false } }
 
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable

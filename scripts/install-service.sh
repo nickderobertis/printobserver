@@ -6,11 +6,12 @@
 # which this path, or the unit name below, differs from what that section says.
 #
 # It places FOUR things and no more: the program, the configuration, the state
-# directory, and the systemd unit. It does NOT enable the service and does NOT
-# start it, and it must never be changed to — nor given an option that does.
-# This service commands a 3D printer, so installing a package must not, as a
-# side effect, start a process that can move a machine. Enabling and starting is
-# the operator's own third command, which this script prints when it is done.
+# directory, and the service definition — a systemd unit on Linux, a launchd
+# property list on macOS. It does NOT enable, load or start the service, and it
+# must never be changed to — nor given an option that does. This service
+# commands a 3D printer, so installing a package must not, as a side effect,
+# start a process that can move a machine. Starting is the operator's own
+# second command, which this script prints when it is done.
 #
 # Usage:
 #   install-service.sh [--root DIR] [--binary PATH] [--user NAME]
@@ -23,9 +24,13 @@
 #             `printobserver` when this runs as root, and to the invoking user
 #             otherwise — because a caller who cannot create a user cannot hand
 #             the state directory to one either.
+#
+# Which service manager is written for is read off `uname -s`: Linux is systemd
+# and Darwin is launchd, as AGENTS.md's supported-platform list states.
 set -eu
 
 UNIT_NAME="printobserver.service"
+LAUNCHD_LABEL="io.github.nickderobertis.printobserver"
 PROGRAM="printobserver"
 SERVICE_USER=""
 BINARY=""
@@ -93,7 +98,7 @@ while [ "$#" -gt 0 ]; do
             shift 2
             ;;
         --help | -h)
-            sed -n '2,25p' "$0"
+            sed -n '2,29p' "$0"
             exit 0
             ;;
         *)
@@ -101,6 +106,29 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+SYSTEM="$(uname -s)"
+case "$SYSTEM" in
+    Linux) MANAGER="systemd" ;;
+    Darwin) MANAGER="launchd" ;;
+    *)
+        die "this is $SYSTEM, for which this script writes no service definition. The \
+platforms it installs a service on are named in AGENTS.md's supported-platform list."
+        ;;
+esac
+
+# A property list is XML, which reads an ampersand or an angle bracket as markup
+# rather than as part of a value.
+if [ "$MANAGER" = "launchd" ]; then
+    for given in "$ROOT" "$BINARY"; do
+        case "$given" in
+            *[\&\<\>]*)
+                die "$given carries an ampersand or an angle bracket, which a property \
+list reads as markup"
+                ;;
+        esac
+    done
+fi
 
 if [ -z "$BINARY" ]; then
     BINARY="$(command -v "$PROGRAM" || true)"
@@ -121,15 +149,25 @@ $SERVICE_USER" >&2
     user_name "$SERVICE_USER"
 fi
 
-# The four places, spelled once. Everything below writes into one of them.
+# The four places, spelled once. Everything below writes into one of them. The
+# first three are the same on every platform, so the sign-in command AGENTS.md
+# states is one command; the service definition's is its manager's own.
 BIN_DIR="$ROOT/usr/local/lib/$PROGRAM"
 CONF_DIR="$ROOT/etc/$PROGRAM"
 STATE_DIR="$ROOT/var/lib/$PROGRAM"
-UNIT_DIR="$ROOT/etc/systemd/system"
+if [ "$MANAGER" = "launchd" ]; then
+    # The directory launchd loads system-wide daemons from at boot.
+    UNIT_DIR="$ROOT/Library/LaunchDaemons"
+    INSTALLED_UNIT="$UNIT_DIR/$LAUNCHD_LABEL.plist"
+    START_COMMAND="sudo launchctl bootstrap system /Library/LaunchDaemons/$LAUNCHD_LABEL.plist"
+else
+    UNIT_DIR="$ROOT/etc/systemd/system"
+    INSTALLED_UNIT="$UNIT_DIR/$UNIT_NAME"
+    START_COMMAND="sudo systemctl enable --now $UNIT_NAME"
+fi
 
 INSTALLED_BINARY="$BIN_DIR/$PROGRAM"
 INSTALLED_CONFIG="$CONF_DIR/config.toml"
-INSTALLED_UNIT="$UNIT_DIR/$UNIT_NAME"
 
 # The paths the unit and the configuration name are the ones the SERVICE will
 # see, which are the ones without the throwaway root in front of them. A unit
@@ -151,12 +189,40 @@ fi
 HOME_DIR="$STATE_DIR/home"
 RUNTIME_HOME="$RUNTIME_STATE/home"
 
+# A macOS system user, as `dscl` records one: an id below 500, where macOS keeps
+# the users services run as, shared by a group of the same name, hidden from the
+# login window and given no shell.
+create_launchd_user() {
+    taken="$(dscl . -list /Users UniqueID | awk '{print $2}'
+        dscl . -list /Groups PrimaryGroupID | awk '{print $2}')"
+    number=400
+    while printf '%s\n' "$taken" | grep -qx "$number"; do
+        number=$((number + 1))
+        [ "$number" -lt 500 ] || return 1
+    done
+    dscl . -create "/Groups/$1" PrimaryGroupID "$number" &&
+        dscl . -create "/Groups/$1" Password '*' &&
+        dscl . -create "/Users/$1" UniqueID "$number" &&
+        dscl . -create "/Users/$1" PrimaryGroupID "$number" &&
+        dscl . -create "/Users/$1" UserShell /usr/bin/false &&
+        dscl . -create "/Users/$1" NFSHomeDirectory "$RUNTIME_HOME" &&
+        dscl . -create "/Users/$1" RealName "$PROGRAM service" &&
+        dscl . -create "/Users/$1" IsHidden 1 &&
+        dscl . -create "/Users/$1" Password '*'
+}
+
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     [ "$(id -u)" -eq 0 ] || die "there is no user $SERVICE_USER and this is not root"
-    useradd --system --no-create-home --home-dir "$RUNTIME_HOME" \
-        --shell /usr/sbin/nologin "$SERVICE_USER" ||
-        die "the system user $SERVICE_USER could not be created. Create it yourself \
+    if [ "$MANAGER" = "launchd" ]; then
+        create_launchd_user "$SERVICE_USER" ||
+            die "the system user $SERVICE_USER could not be created. Create it yourself \
+with \`dscl\`, or pass --user a user that already exists."
+    else
+        useradd --system --no-create-home --home-dir "$RUNTIME_HOME" \
+            --shell /usr/sbin/nologin "$SERVICE_USER" ||
+            die "the system user $SERVICE_USER could not be created. Create it yourself \
 (\`useradd --system $SERVICE_USER\`), or pass --user a user that already exists."
+    fi
 fi
 
 # What every failed write here says, so that the two heredocs below can name it
@@ -265,7 +331,53 @@ CONFIG
         die "$INSTALLED_CONFIG could not be made private. Run this as root."
 fi
 
-cat >"$INSTALLED_UNIT" <<UNIT || die "$WRITE_REFUSED"
+if [ "$MANAGER" = "launchd" ]; then
+    # RunAtLoad starts it when launchd loads it, which for a property list in
+    # /Library/LaunchDaemons is at every boot; KeepAlive with SuccessfulExit false
+    # starts it again whenever it ends other than successfully, which a process
+    # killed by a signal has not. The PATH is where a harness program installed
+    # as root is found on either processor.
+    cat >"$INSTALLED_UNIT" <<PLIST || die "$WRITE_REFUSED"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$LAUNCHD_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$RUNTIME_BINARY</string>
+        <string>server</string>
+        <string>--config</string>
+        <string>$RUNTIME_CONFIG</string>
+    </array>
+    <key>UserName</key>
+    <string>$SERVICE_USER</string>
+    <key>WorkingDirectory</key>
+    <string>$RUNTIME_STATE</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>$RUNTIME_HOME</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>$RUNTIME_STATE/$PROGRAM.log</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+</dict>
+</plist>
+PLIST
+else
+    cat >"$INSTALLED_UNIT" <<UNIT || die "$WRITE_REFUSED"
 [Unit]
 Description=printobserver, a supervision layer between a 3D printer and an agent
 Documentation=https://github.com/nickderobertis/printobserver
@@ -289,9 +401,10 @@ ReadWritePaths=$RUNTIME_STATE
 [Install]
 WantedBy=multi-user.target
 UNIT
+fi
 chmod 0644 "$INSTALLED_UNIT" ||
     die "$INSTALLED_UNIT could not be made readable. Run this as root."
 
 echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE_DIR \
-and $INSTALLED_UNIT and started nothing; edit $INSTALLED_CONFIG, then run: sudo \
-systemctl enable --now $UNIT_NAME" >&2
+and $INSTALLED_UNIT and started nothing; edit $INSTALLED_CONFIG, then run: \
+$START_COMMAND" >&2
