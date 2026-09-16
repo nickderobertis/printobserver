@@ -13,9 +13,10 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # the separator the interpreter on this host reads. A Windows interpreter splits
 # a search path on `;` and reads a `:`-joined one as a single entry that names
 # nothing, so without this every recipe reaching `repo_checks` fails there
-# before doing anything.
+# before doing anything. The separator is exported too, for a recipe that puts
+# one more entry in front of the path.
 TOOL_PACKAGES := "tools/repo-checks/src:tools/contract-codegen/src:tools/release-artifacts/src"
-PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
+export PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
 export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 
 # Show the command surface.
@@ -310,7 +311,7 @@ docs-generate:
 # `AGENTS.md`'s "The real-printer smoke test" says what it requires, how to set
 # a host up for it, and what to watch while it runs. Stay next to the machine.
 test-printer-smoke *flags:
-    PYTHONPATH="tools/octoprint-env{{PATH_SEPARATOR}}$PYTHONPATH" uv run -q python tools/printer-smoke/printer_smoke.py {{flags}}
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/printer-smoke/printer_smoke.py {{flags}}
 
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:
