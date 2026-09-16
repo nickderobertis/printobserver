@@ -28,18 +28,26 @@ MACOS = """          - id: macos-aarch64
 """
 # The integration job's own copy of that entry: the one that is followed by a
 # checkout taking no `with:` block, which is what tells it apart from the gate's.
-INTEGRATION_AARCH64 = AARCH64 + MACOS + (
-    "    runs-on: ${{ matrix.platform.runner }}\n"
-    "    steps:\n"
-    "      - uses: actions/checkout@v5\n"
-    "      - uses: extractions/setup-just@v3\n"
+INTEGRATION_AARCH64 = (
+    AARCH64
+    + MACOS
+    + (
+        "    runs-on: ${{ matrix.platform.runner }}\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v5\n"
+        "      - uses: extractions/setup-just@v3\n"
+    )
 )
 # The pypi install job's own copy of that entry: the one followed by a step that
 # sets up Python, which none of the registry proofs ahead of it in that file does.
-INSTALL_ROUTE_AARCH64 = AARCH64 + MACOS + (
-    "    runs-on: ${{ matrix.platform.runner }}\n"
-    "    steps:\n"
-    "      - uses: actions/setup-python@v5\n"
+INSTALL_ROUTE_AARCH64 = (
+    AARCH64
+    + MACOS
+    + (
+        "    runs-on: ${{ matrix.platform.runner }}\n"
+        "    steps:\n"
+        "      - uses: actions/setup-python@v5\n"
+    )
 )
 # The gate's whole matrix, down to the line that reads a cell out of it.
 GATE_MATRIX = (
