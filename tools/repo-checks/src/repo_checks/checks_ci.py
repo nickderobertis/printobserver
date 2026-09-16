@@ -677,11 +677,14 @@ def service_managers(repo: Repo) -> list[str]:
 
 
 def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
-    """One pair of commands per service manager the supported-platform list names.
+    """One pair of commands per service manager the install path targets a platform under.
 
     The routes are three however many platforms there are; the pair after them
     is per service manager, because putting a service in place and starting it
-    is the one part of this path that is not the same sentence on every host.
+    is the one part of this path that is not the same sentence on every host. A
+    pair is owed only for a manager with a platform answered `install path: yes`,
+    and permitted for any manager the list names: a platform answered `no` has no
+    install path to state commands for yet.
     """
     try:
         named = service_managers(repo)
@@ -690,9 +693,6 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
         }
     except MarkerBlockMissingError as error:
         return [str(error)]
-    # A pair is owed for a manager the install path targets a platform of, and
-    # permitted for any manager the list names: a platform answered `install
-    # path: no` has no install path to state commands for yet.
     findings = [
         f"AGENTS.md's `{ip.SECTION_HEADING}` states no pair of commands for the "
         f"`{manager}` service manager, which its supported-platform list names a platform "
