@@ -381,6 +381,12 @@ fn this_programs_network_calls(recording: &Path) -> Vec<String> {
         .collect()
 }
 
+#[cfg(target_os = "macos")]
+const RECORDER_LOADER_ENV: &str = "DYLD_INSERT_LIBRARIES";
+
+#[cfg(not(target_os = "macos"))]
+const RECORDER_LOADER_ENV: &str = "LD_PRELOAD";
+
 /// Signing in reads the state directory and the harness and nothing else: a
 /// configuration whose machine and ingress values are unreachable or invalid
 /// still signs in, and the program connects to nothing and listens on nothing.
@@ -423,7 +429,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
             .arg(&client)
             .env_remove("PRINTOBSERVER_SERVER")
             .env_remove("PRINTOBSERVER_CREDENTIAL")
-            .env("LD_PRELOAD", &library)
+            .env(RECORDER_LOADER_ENV, &library)
             .env(RECORDING_ENV, &recording)
             .output()
             .expect("the built program runs")
@@ -447,7 +453,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         &host,
         &config,
         TYPED,
-        &[("LD_PRELOAD", &library), (RECORDING_ENV, &recording)],
+        &[(RECORDER_LOADER_ENV, &library), (RECORDING_ENV, &recording)],
     );
 
     assert_eq!(
