@@ -900,6 +900,10 @@ def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any])
     Read through the service-manager column of the platforms the job's own
     matrix names, so a job is held to the pair belonging to its platforms rather
     than to whichever pair the section happened to state first.
+
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; the one thing read out of it here is its
+    platform matrix, whose cells `_matrix_platforms` narrows.
     """
     entries = _matrix_platforms(job) or []
     named = {str(entry["id"]) for entry in entries if "id" in entry}
