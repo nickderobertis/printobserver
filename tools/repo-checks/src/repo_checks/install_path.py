@@ -79,7 +79,10 @@ PLACEHOLDER_MARKERS = ("...", "…", "<", ">", "TODO", "TBD", "PLACEHOLDER", "YO
 PINNED_VERSION = re.compile(r"--version\s+v\d+\.\d+\.\d+(?:\s|$)")
 PINNED_DIRECTORY = re.compile(r"--to\s+(?:~|/)\S+")
 RAW_URL = re.compile(r"https://raw\.githubusercontent\.com/\S+")
-STARTS_SERVICE = re.compile(r"\bsystemctl\b.*\b(start|enable)\b|--now\b")
+STARTS_SERVICE = re.compile(
+    r"\bsystemctl\b.*\b(start|enable)\b|--now\b"
+    r"|\blaunchctl\b.*\b(bootstrap|load|kickstart|enable|start)\b"
+)
 
 
 @dataclass(frozen=True, slots=True)

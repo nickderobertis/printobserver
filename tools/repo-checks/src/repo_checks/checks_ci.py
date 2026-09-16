@@ -963,12 +963,17 @@ def _reporting_findings(
     return findings
 
 
-def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any]) -> tuple[str, ...]:
-    """The commands after the routes an install job owes, for the platforms it runs on.
+def _job_service_pairs(
+    repo: Repo, path: ip.InstallPath, job: dict[str, Any]
+) -> tuple[tuple[str, ...], ...]:
+    """The pairs of commands after the routes an install job owes, one per service manager.
 
     Read through the service-manager column of the platforms the job's own
     matrix names, so a job is held to the pair belonging to its platforms rather
-    than to whichever pair the section happened to state first.
+    than to whichever pair the section happened to state first. Kept as pairs
+    rather than flattened: two managers may share their installer command, and
+    the order owed is the order within each pair, which a flattened sequence
+    repeating that command could never satisfy.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
     that deserialization boundary; the one thing read out of it here is its
@@ -979,14 +984,14 @@ def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any])
     try:
         declared = platforms_of(repo)
     except MarkerBlockMissingError:
-        return path.commands
+        return tuple(path.service_commands.values())
     managers: list[str] = []
     for platform in declared:
         if named and platform.id not in named:
             continue
         if platform.service_manager not in managers:
             managers.append(platform.service_manager)
-    return tuple(command for manager in managers for command in path.commands_for(manager))
+    return tuple(path.commands_for(manager) for manager in managers)
 
 
 def _install_job_findings(
@@ -1014,19 +1019,26 @@ def _install_job_findings(
             if command not in path.canonical and not (summary and summary in command)
         )
         findings.extend(_reporting_findings(repo, file_name, job_name, job))
-        stated_after = _job_service_commands(repo, path, job)
-        positions = [commands.index(c) if c in commands else -1 for c in stated_after]
-        for stated, position in zip(stated_after, positions, strict=True):
-            if position < 0:
-                findings.append(
-                    f"{file_name}: install job `{job_name}` omits `{stated}`, which "
-                    f"AGENTS.md states after the routes"
-                )
-        if all(position >= 0 for position in positions) and positions != sorted(positions):
-            findings.append(
-                f"{file_name}: install job `{job_name}` runs the two commands after the "
-                f"routes out of the order AGENTS.md states"
+        positions: list[int] = []
+        omitted: list[str] = []
+        for pair in _job_service_pairs(repo, path, job):
+            placed = [commands.index(c) if c in commands else -1 for c in pair]
+            positions.extend(placed)
+            omitted.extend(
+                stated
+                for stated, position in zip(pair, placed, strict=True)
+                if position < 0 and stated not in omitted
             )
+            if all(position >= 0 for position in placed) and placed != sorted(placed):
+                findings.append(
+                    f"{file_name}: install job `{job_name}` runs the two commands after the "
+                    f"routes out of the order AGENTS.md states"
+                )
+        findings.extend(
+            f"{file_name}: install job `{job_name}` omits `{stated}`, which "
+            f"AGENTS.md states after the routes"
+            for stated in omitted
+        )
         findings.extend(_checked_findings(path, file_name, job_name, commands, positions))
     return findings
 

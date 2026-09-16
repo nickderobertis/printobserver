@@ -81,10 +81,12 @@ machine="$(uname -m)"
 case "$system/$machine" in
     Linux/x86_64) platform="linux-x86_64" ;;
     Linux/aarch64 | Linux/arm64) platform="linux-aarch64" ;;
+    Darwin/arm64) platform="macos-aarch64" ;;
+    Darwin/x86_64) platform="macos-x86_64" ;;
     *)
         die "this is $system/$machine, which printobserver publishes no program for" \
-            "The platforms it publishes for are linux-x86_64 and linux-aarch64. On \
-anything else, build it from source with \`cargo install printobserver\`."
+            "The platforms it publishes for are linux-x86_64, linux-aarch64, macos-aarch64 \
+and macos-x86_64. On anything else, build it from source with \`cargo install printobserver\`."
         ;;
 esac
 
@@ -179,4 +181,7 @@ $DIRECTORY/$PROGRAM by its whole name." >&2
 esac
 echo "install.sh: next, put the service in place and then start it:" >&2
 echo "  curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh" >&2
-echo "  sudo systemctl enable --now $PROGRAM.service" >&2
+case "$system" in
+    Darwin) echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.$PROGRAM.plist" >&2 ;;
+    *) echo "  sudo systemctl enable --now $PROGRAM.service" >&2 ;;
+esac

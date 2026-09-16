@@ -29,9 +29,15 @@ EXCLUSIONS_END = "[//]: # (END platform-exclusions)"
 #: The matrix every platform-dependent job of this repository carries.
 MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 
+#: The two macOS cells that follow it in every one of those matrices.
+MATRIX_MACOS = (
+    "          - id: macos-aarch64\n            runner: macos-15\n"
+    "          - id: macos-x86_64\n            runner: macos-15-intel\n"
+)
+
 
 #: A platform the list carries while its bring-up is owed, answered `install path: no`.
-BEING_BROUGHT_UP = "macos-aarch64"
+BEING_BROUGHT_UP = "windows-x86_64"
 
 
 def record(copy: Tree, *lines: str) -> None:
@@ -120,14 +126,14 @@ def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
     broken = tree()
     broken.edit(
         ".github/workflows/artifacts.yml",
-        MATRIX_AARCH64 + "    runs-on: ${{ matrix.platform.runner }}\n"
+        MATRIX_AARCH64 + MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
         "    steps:\n      - uses: actions/checkout@v5\n"
         "      - uses: extractions/setup-just@v3\n"
         "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
         "      - uses: astral-sh/setup-uv@v7\n"
         "      - uses: oven-sh/setup-bun@v2\n"
         "      - run: just bootstrap\n      - run: just prove-route-npm\n",
-        "    runs-on: ${{ matrix.platform.runner }}\n"
+        MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
         "    steps:\n      - uses: actions/checkout@v5\n"
         "      - uses: extractions/setup-just@v3\n"
         "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
@@ -393,10 +399,11 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     broken = tree()
     text = broken.read(".github/workflows/ci.yml")
     job = text.index("\n  integration:\n")
-    at = text.index(MATRIX_AARCH64, job) + len(MATRIX_AARCH64)
+    at = text.index(MATRIX_MACOS, job) + len(MATRIX_MACOS)
     broken.write(
         ".github/workflows/ci.yml",
-        f"{text[:at]}          - id: {BEING_BROUGHT_UP}\n            runner: macos-15\n{text[at:]}",
+        f"{text[:at]}          - id: {BEING_BROUGHT_UP}\n"
+        f"            runner: windows-2025\n{text[at:]}",
     )
 
     findings = integration_tier(broken.repo)

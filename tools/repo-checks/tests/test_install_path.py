@@ -23,6 +23,10 @@ INSTALLER = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.sh | sudo sh"
 )
+LAUNCHD_START = (
+    "sudo launchctl bootstrap system "
+    "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist"
+)
 #: The systemd pair with its installer replaced by the command that starts the
 #: service, which leaves a pair whose first command starts a 3D printer's
 #: supervisor.
@@ -53,8 +57,10 @@ def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> No
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands), 2)
-    equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
+    equal(len(path.commands_for("systemd")), 2)
+    equal(path.commands_for("systemd")[1], "sudo systemctl enable --now printobserver.service")
+    equal(len(path.commands_for("launchd")), 2)
+    equal(path.commands_for("launchd")[1], LAUNCHD_START)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
@@ -62,25 +68,29 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 ) -> None:
     """One pair per service manager the install path targets a platform under.
 
-    Every platform the install path targets today is a `systemd` platform, so the
-    one pair the section states is that manager's own — and what a consumer asks
-    for is the pair belonging to a platform, not whichever pair came first. The
-    `launchd` and `windows-service` platforms answer `install path: no`, so no
-    pair is stated for either yet.
+    The install path targets `systemd` and `launchd` platforms, so the section
+    states one pair for each — and what a consumer asks for is the pair belonging
+    to a platform, not whichever pair came first. The `windows-service` platforms
+    answer `install path: no`, so no pair is stated for that manager yet.
     """
     path = ip.parse(committed.agents_md)
 
-    equal(sorted(path.service_commands), ["systemd"], describing="the managers stated")
+    equal(sorted(path.service_commands), ["launchd", "systemd"], describing="the managers stated")
     equal(
         path.commands_for("systemd"),
         (INSTALLER, "sudo systemctl enable --now printobserver.service"),
         describing="the systemd pair, in installer-then-start order",
     )
+    equal(
+        path.commands_for("launchd"),
+        (INSTALLER, LAUNCHD_START),
+        describing="the launchd pair, in installer-then-start order",
+    )
     for platform in supported(committed):
         equal(
-            path.commands_for(platform.service_manager),
-            path.commands if platform.install_path else (),
-            describing=f"the pair {platform.id} is held to",
+            bool(path.commands_for(platform.service_manager)),
+            platform.install_path,
+            describing=f"whether {platform.id} is held to a pair",
         )
 
 
@@ -90,14 +100,14 @@ def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair
     """Flipping a platform to `install path: yes` is what makes its manager's pair owed."""
     broken = tree()
     text = broken.read("AGENTS.md")
-    start = text.index("- `macos-aarch64` — ")
+    start = text.index("- `windows-x86_64` — ")
     end = text.index("\n", start)
     entry = text[start:end]
     broken.edit("AGENTS.md", entry, entry[: entry.index("install path: no")] + "install path: yes")
 
     findings = install_path_section(broken.repo)
 
-    refused(findings, "states no pair of commands for the `launchd` service manager")
+    refused(findings, "states no pair of commands for the `windows-service` service manager")
 
 
 def test_a_service_manager_the_list_names_and_the_section_states_no_pair_for_is_refused(
@@ -141,6 +151,26 @@ def test_a_pair_whose_first_command_starts_the_service_is_refused(
     findings = install_path_section(broken.repo)
 
     refused(findings, "starts or enables the service")
+
+
+def test_a_launchd_pair_whose_first_command_loads_the_service_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Loading a property list starts what it defines, so it may not come first either."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    launchd = text.index("\n#### launchd\n")
+    installer = text.index(f"```console\n{INSTALLER}\n```", launchd)
+    broken.write(
+        "AGENTS.md",
+        text[:installer]
+        + f"```console\n{LAUNCHD_START}\n```"
+        + text[installer + len(f"```console\n{INSTALLER}\n```") :],
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "the first command of the `launchd` pair")
 
 
 def test_a_fourth_route_is_refused(tree: Callable[[], Tree]) -> None:

@@ -60,7 +60,12 @@ def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> N
 
     equal(
         sorted(gate),
-        ["gate (linux-aarch64)", "gate (linux-x86_64)"],
+        [
+            "gate (linux-aarch64)",
+            "gate (linux-x86_64)",
+            "gate (macos-aarch64)",
+            "gate (macos-x86_64)",
+        ],
         describing="the gate entries of the required record",
     )
 
@@ -118,6 +123,8 @@ def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
         [
             "integration (linux-aarch64, ubuntu-24.04-arm)",
             "integration (linux-x86_64, ubuntu-24.04)",
+            "integration (macos-aarch64, macos-15)",
+            "integration (macos-x86_64, macos-15-intel)",
         ],
         describing="the contexts the committed integration job reports",
     )
