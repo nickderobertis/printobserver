@@ -120,7 +120,7 @@ def release_targets(repo: Repo) -> list[str]:
         if "*" in pattern:
             owned |= set(repo.root.glob(pattern))
     findings.extend(
-        f"{path.relative_to(repo.root)} carries a version field, and release automation "
+        f"{path.relative_to(repo.root).as_posix()} carries a version field, and release automation "
         f"does not own it (`repo-policy.toml`'s manifests.automation_owned)"
         for path in _manifest_paths(repo)
         if _has_version(path) and path not in owned

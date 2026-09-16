@@ -741,7 +741,7 @@ def _rejection_vocabulary(repo: Repo, policy: DocsPolicy) -> set[str] | str:
     if not found:
         return "the contracts generate no `RejectionReason` schema to read a rejection off"
     path = found[0]
-    invalid = f"`{path.relative_to(repo.root)}` is not a readable rejection schema"
+    invalid = f"`{path.relative_to(repo.root).as_posix()}` is not a readable rejection schema"
     try:
         schema = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -891,10 +891,10 @@ def _documents(repo: Repo) -> tuple[list[tuple[str, str]], list[str]]:
         if UNCOMMITTED_DIRECTORIES & set(relative.parts) or path.is_symlink():
             continue
         try:
-            found.append((str(relative), path.read_text(encoding="utf-8")))
+            found.append((relative.as_posix(), path.read_text(encoding="utf-8")))
         except (OSError, UnicodeDecodeError) as unreadable:
             findings.append(
-                f"{relative} is a document this repository commits and nothing here can "
+                f"{relative.as_posix()} is a document this repository commits and nothing here can "
                 f"read: {unreadable}"
             )
     return found, findings

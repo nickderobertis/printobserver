@@ -390,7 +390,7 @@ def octoprint_client(repo: Repo) -> list[str]:
                         found_in_permitted = True
                         continue
                     findings.append(
-                        f"{path.relative_to(repo.root)}:{number} carries `{marker}`, so "
+                        f"{path.relative_to(repo.root).as_posix()}:{number} carries `{marker}`, so "
                         f"crate `{directory.name}` constructs an OctoPrint request: only "
                         f"`{permitted}` may"
                     )
