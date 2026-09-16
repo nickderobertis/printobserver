@@ -219,7 +219,6 @@ jobs:
       - id: install-service
         continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      # Each platform's own start command, per its service-manager column.
       - id: start-service-systemd
         if: runner.os == 'Linux'
         continue-on-error: true
@@ -261,7 +260,6 @@ jobs:
       - id: install-service
         continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      # Each platform's own start command, per its service-manager column.
       - id: start-service-systemd
         if: runner.os == 'Linux'
         continue-on-error: true
@@ -302,7 +300,6 @@ jobs:
       - id: install-service
         continue-on-error: true
         run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-      # Each platform's own start command, per its service-manager column.
       - id: start-service-systemd
         if: runner.os == 'Linux'
         continue-on-error: true

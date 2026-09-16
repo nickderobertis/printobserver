@@ -130,13 +130,13 @@ struct Installed {
 
 impl Installed {
     /// The service definition it wrote.
-    fn unit(&self) -> PathBuf {
+    fn definition_file(&self) -> PathBuf {
         self.manager.definition(&self.root)
     }
 
     /// The service definition it wrote, read.
     fn definition(&self) -> Definition {
-        Definition::read(self.manager, &self.unit())
+        Definition::read(self.manager, &self.definition_file())
     }
 
     /// The program it put in place.
@@ -407,7 +407,7 @@ fn the_installer_places_four_things_and_starts_nothing() {
     for (what, path) in [
         ("the program", installed.binary()),
         ("the configuration", installed.configuration()),
-        ("the service definition", installed.unit()),
+        ("the service definition", installed.definition_file()),
     ] {
         assert!(path.is_file(), "{what} is not at {}", path.display());
     }
@@ -500,7 +500,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
         for (what, path) in [
             ("the program", installed.binary()),
             ("the configuration", installed.configuration()),
-            ("the service definition", installed.unit()),
+            ("the service definition", installed.definition_file()),
         ] {
             assert!(
                 path.is_file(),
@@ -528,7 +528,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
             .expect("a directory")
             .to_owned();
         assert_eq!(
-            installed.unit().parent().expect("a directory"),
+            installed.definition_file().parent().expect("a directory"),
             installed.root.join(directory.trim_start_matches('/')),
             "the {spelled} definition is not in the directory that manager loads at boot"
         );
@@ -537,7 +537,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
                 pair[1].ends_with(&format!(
                     " {directory}/{}",
                     installed
-                        .unit()
+                        .definition_file()
                         .file_name()
                         .expect("a file")
                         .to_string_lossy()
@@ -584,7 +584,10 @@ fn assert_the_definition_says_what_is_stated(installed: &Installed, invoking: &s
     if let Some(list) = &definition.list {
         assert_eq!(
             list.get("Label").and_then(plist::Value::as_string),
-            installed.unit().file_stem().and_then(|stem| stem.to_str()),
+            installed
+                .definition_file()
+                .file_stem()
+                .and_then(|stem| stem.to_str()),
             "the property list's label is not the name the start command loads"
         );
     }
@@ -601,7 +604,7 @@ fn assert_the_definition_says_what_is_stated(installed: &Installed, invoking: &s
 
 /// The installed definition is one the service manager's own verifier accepts.
 #[test]
-fn the_installed_unit_passes_the_service_managers_own_verifier() {
+fn the_installed_definition_passes_the_service_managers_own_verifier() {
     let under = TempDir::new().expect("a journey's own root");
     let installed = install(under.path());
     let manager_verifier: &[&str] = match installed.manager {
@@ -611,7 +614,7 @@ fn the_installed_unit_passes_the_service_managers_own_verifier() {
 
     let verified = Command::new(manager_verifier[0])
         .args(&manager_verifier[1..])
-        .arg(installed.unit())
+        .arg(installed.definition_file())
         .output()
         .expect("the service manager's own verifier runs");
     assert!(
@@ -898,7 +901,7 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
 /// credential the service serves under is in neither.
 fn carries_no_credential(installed: &Installed, credential: &str) {
     for (what, path) in [
-        ("unit", installed.unit()),
+        ("unit", installed.definition_file()),
         ("configuration", installed.configuration()),
     ] {
         assert!(
@@ -1158,7 +1161,7 @@ fn the_installed_files_document_the_credential_and_carry_none() {
     let installed = install(under.path());
     let configuration =
         std::fs::read_to_string(installed.configuration()).expect("the configuration reads");
-    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
+    let unit = std::fs::read_to_string(installed.definition_file()).expect("the unit reads");
 
     let commented: Vec<&str> = configuration
         .lines()
@@ -2026,7 +2029,7 @@ fn an_installer_that_can_find_no_program_says_so() {
         "the refusal says nothing a caller can act on: {said}"
     );
     assert!(
-        !installed.unit().exists(),
+        !installed.definition_file().exists(),
         "a unit was written for a program that was never found"
     );
 }

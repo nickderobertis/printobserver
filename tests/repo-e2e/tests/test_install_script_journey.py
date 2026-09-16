@@ -200,6 +200,7 @@ TARGETED = [
 ]
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 def _uname(shims: Path, system: str, machine: str) -> None:
     """A `uname` on the path answering one system and one processor."""
     shims.mkdir(parents=True, exist_ok=True)
@@ -211,6 +212,7 @@ def _uname(shims: Path, system: str, machine: str) -> None:
     (shims / "uname").chmod(0o755)
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 @pytest.mark.parametrize(
     ("system", "machine", "identifier"),
     TARGETED,

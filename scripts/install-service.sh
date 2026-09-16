@@ -112,8 +112,9 @@ case "$SYSTEM" in
     Linux) MANAGER="systemd" ;;
     Darwin) MANAGER="launchd" ;;
     *)
-        die "this is $SYSTEM, for which this script writes no service definition. The \
-platforms it installs a service on are named in AGENTS.md's supported-platform list."
+        die "this is $SYSTEM, for which this script writes no service definition. Run it \
+on Linux or macOS, or run \`printobserver server --config <file>\` under this system's own \
+service manager yourself."
         ;;
 esac
 
@@ -124,7 +125,7 @@ if [ "$MANAGER" = "launchd" ]; then
         case "$given" in
             *[\&\<\>]*)
                 die "$given carries an ampersand or an angle bracket, which a property \
-list reads as markup"
+list reads as markup. Pass --root and --binary paths without them."
                 ;;
         esac
     done
@@ -157,12 +158,12 @@ CONF_DIR="$ROOT/etc/$PROGRAM"
 STATE_DIR="$ROOT/var/lib/$PROGRAM"
 if [ "$MANAGER" = "launchd" ]; then
     # The directory launchd loads system-wide daemons from at boot.
-    UNIT_DIR="$ROOT/Library/LaunchDaemons"
-    INSTALLED_UNIT="$UNIT_DIR/$LAUNCHD_LABEL.plist"
+    DEFINITION_DIR="$ROOT/Library/LaunchDaemons"
+    INSTALLED_DEFINITION="$DEFINITION_DIR/$LAUNCHD_LABEL.plist"
     START_COMMAND="sudo launchctl bootstrap system /Library/LaunchDaemons/$LAUNCHD_LABEL.plist"
 else
-    UNIT_DIR="$ROOT/etc/systemd/system"
-    INSTALLED_UNIT="$UNIT_DIR/$UNIT_NAME"
+    DEFINITION_DIR="$ROOT/etc/systemd/system"
+    INSTALLED_DEFINITION="$DEFINITION_DIR/$UNIT_NAME"
     START_COMMAND="sudo systemctl enable --now $UNIT_NAME"
 fi
 
@@ -231,7 +232,7 @@ fi
 WRITE_REFUSED="a file could not be written under $ROOT/. Run this as root, or pass \
 --root a directory you can write to."
 
-mkdir -p "$BIN_DIR" "$CONF_DIR" "$UNIT_DIR" ||
+mkdir -p "$BIN_DIR" "$CONF_DIR" "$DEFINITION_DIR" ||
     die "$ROOT/ could not be made writable for the install. Run this as root, or pass \
 --root a directory you own."
 
@@ -337,7 +338,7 @@ if [ "$MANAGER" = "launchd" ]; then
     # starts it again whenever it ends other than successfully, which a process
     # killed by a signal has not. The PATH is where a harness program installed
     # as root is found on either processor.
-    cat >"$INSTALLED_UNIT" <<PLIST || die "$WRITE_REFUSED"
+    cat >"$INSTALLED_DEFINITION" <<PLIST || die "$WRITE_REFUSED"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -377,7 +378,7 @@ if [ "$MANAGER" = "launchd" ]; then
 </plist>
 PLIST
 else
-    cat >"$INSTALLED_UNIT" <<UNIT || die "$WRITE_REFUSED"
+    cat >"$INSTALLED_DEFINITION" <<UNIT || die "$WRITE_REFUSED"
 [Unit]
 Description=printobserver, a supervision layer between a 3D printer and an agent
 Documentation=https://github.com/nickderobertis/printobserver
@@ -402,9 +403,9 @@ ReadWritePaths=$RUNTIME_STATE
 WantedBy=multi-user.target
 UNIT
 fi
-chmod 0644 "$INSTALLED_UNIT" ||
-    die "$INSTALLED_UNIT could not be made readable. Run this as root."
+chmod 0644 "$INSTALLED_DEFINITION" ||
+    die "$INSTALLED_DEFINITION could not be made readable. Run this as root."
 
 echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE_DIR \
-and $INSTALLED_UNIT and started nothing; edit $INSTALLED_CONFIG, then run: \
+and $INSTALLED_DEFINITION and started nothing; edit $INSTALLED_CONFIG, then run: \
 $START_COMMAND" >&2

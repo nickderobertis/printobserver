@@ -22,9 +22,6 @@ SERVICE_STEP = (
     "printobserver/main/scripts/install-service.sh | sudo sh\n"
 )
 
-#: The comment between the installer and the per-platform start commands.
-START_COMMENT = "      # Each platform's own start command, per its service-manager column.\n"
-
 #: The step that starts it on a systemd platform, as the workflow spells it.
 START_STEP = (
     "      - id: start-service-systemd\n"
@@ -233,8 +230,8 @@ def test_an_install_job_running_the_two_commands_out_of_order_is_refused(
     broken = tree()
     broken.edit(
         INSTALL,
-        SERVICE_STEP + START_COMMENT + START_STEP,
-        START_STEP + SERVICE_STEP + START_COMMENT,
+        SERVICE_STEP + START_STEP,
+        START_STEP + SERVICE_STEP,
     )
 
     findings = continuous_integration(broken.repo)

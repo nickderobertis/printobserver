@@ -865,3 +865,15 @@ rule = "boundary_inputs_validated"
 file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = "BOUNDARY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "def _uname"
+reason = "What stands in is the host's own answer to `uname`, and nothing else: this journey proves the script maps each `uname` answer the platform declaration names to that platform's artifact and start command, and a single host can only give its own answer, so the macOS answers could never be reached on a Linux runner (nor the Linux ones on a Mac) without supplying them. Everything the script does with the answer is real: the committed script run by `sh`, a staged release in the layout the forge serves, the real checksum verification, the real unpacking and the real installed program reporting which artifact it is. The macOS cells of the gate run the same journey on a real Mac, where the host's own answer is one of those supplied here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "@pytest.mark.parametrize"
+reason = "The same `uname` answers as the entry for `def _uname` above, supplied to the one parametrized journey that walks every targeted platform; that entry carries the reason."

@@ -171,17 +171,17 @@ mv -f "$work/$PROGRAM" "$DIRECTORY/$PROGRAM" || die \
     "$PROGRAM could not be put in $DIRECTORY" \
     "Nothing was installed. Pass \`--to\` a directory you can write to."
 
-echo "install.sh: installed $DIRECTORY/$PROGRAM from $which" >&2
+case "$system" in
+    Darwin) start="sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.$PROGRAM.plist" ;;
+    *) start="sudo systemctl enable --now $PROGRAM.service" ;;
+esac
+echo "install.sh: installed $DIRECTORY/$PROGRAM from $which; next, put the service in \
+place with \`curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh\` \
+and then start it with \`$start\`" >&2
 case ":$PATH:" in
     *":$DIRECTORY:"*) ;;
     *)
         echo "install.sh: $DIRECTORY is not on your PATH. Add it, or run \
 $DIRECTORY/$PROGRAM by its whole name." >&2
         ;;
-esac
-echo "install.sh: next, put the service in place and then start it:" >&2
-echo "  curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh" >&2
-case "$system" in
-    Darwin) echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.$PROGRAM.plist" >&2 ;;
-    *) echo "  sudo systemctl enable --now $PROGRAM.service" >&2 ;;
 esac

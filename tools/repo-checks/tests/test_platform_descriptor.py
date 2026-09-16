@@ -438,8 +438,17 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
         (b"#!/bin/sh\necho printobserver\n", "records no minimum macOS release"),
         (thin(ARM64, UUID)[:36], "is not a macOS program"),
         (b"", "is not a macOS program"),
+        (thin(ARM64, struct.pack("<II", 0x24, 8), UUID), "is not a macOS program"),
     ],
-    ids=["no-command", "not-macos", "no-slice-for-machine", "a-script", "truncated", "empty"],
+    ids=[
+        "no-command",
+        "not-macos",
+        "no-slice-for-machine",
+        "a-script",
+        "truncated",
+        "empty",
+        "a-command-smaller-than-its-fields",
+    ],
 )
 def test_a_macos_program_recording_no_minimum_release_is_refused_naming_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, image: bytes, naming: str

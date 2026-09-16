@@ -503,6 +503,11 @@ FAT_MAGIC_64 = 0xCAFEBABF
 LC_BUILD_VERSION = 0x32
 LC_VERSION_MIN_MACOSX = 0x24
 
+#: The bytes after the load-command header this reader takes from each command
+#: it reads a release out of: a platform and a `minos` for the first, a version
+#: for the second.
+PAYLOAD_SIZES = {LC_BUILD_VERSION: 8, LC_VERSION_MIN_MACOSX: 4}
+
 #: `LC_BUILD_VERSION`'s platform value for macOS.
 PLATFORM_MACOS = 1
 
@@ -583,16 +588,22 @@ def _thin_minimum(opened: BinaryIO) -> tuple[int, int] | None:
     for _ in range(count):
         opened.seek(at)
         command, size = struct.unpack("<II", _exactly(opened, LOAD_COMMAND_HEADER))
+        # The payload a command is read for has to lie inside the size it
+        # declares: read past it, the fields would be the next command's bytes.
+        payload = PAYLOAD_SIZES.get(command, 0)
+        if size < LOAD_COMMAND_HEADER + payload:
+            msg = (
+                f"a load command {command:#x} declares {size} bytes, fewer than the "
+                f"{LOAD_COMMAND_HEADER + payload} its own fields take"
+            )
+            raise struct.error(msg)
         if command == LC_BUILD_VERSION:
-            platform, minimum = struct.unpack("<II", _exactly(opened, 8))
+            platform, minimum = struct.unpack("<II", _exactly(opened, payload))
             if platform == PLATFORM_MACOS:
                 return _packed_version(minimum)
         elif command == LC_VERSION_MIN_MACOSX:
-            (minimum,) = struct.unpack("<I", _exactly(opened, 4))
+            (minimum,) = struct.unpack("<I", _exactly(opened, payload))
             return _packed_version(minimum)
-        if size < LOAD_COMMAND_HEADER:
-            # A command smaller than its own header would be read again forever.
-            return None
         at += size
     return None
 

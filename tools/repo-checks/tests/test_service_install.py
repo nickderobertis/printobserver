@@ -348,7 +348,7 @@ def test_an_installer_that_loads_the_property_list_is_refused(tree: Callable[[],
     broken = tree()
     broken.write(
         INSTALLER,
-        broken.read(INSTALLER) + '\nlaunchctl bootstrap system "$INSTALLED_UNIT"\n',
+        broken.read(INSTALLER) + '\nlaunchctl bootstrap system "$INSTALLED_DEFINITION"\n',
     )
 
     findings = service_install(broken.repo)

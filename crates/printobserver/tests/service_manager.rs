@@ -638,7 +638,6 @@ fn install_and_fill_in(
     binary: &Path,
 ) {
     let spelled = manager.spelled();
-    // 1. The committed installer, as root, and nothing running afterwards.
     let ran = environment.root(
         &[
             "sh",
@@ -655,7 +654,6 @@ fn install_and_fill_in(
         "the installer left a {spelled} service running"
     );
 
-    // 2. The configuration, filled in as an operator would.
     let filled = read_as_root(environment, CONFIGURATION)
         .expect("the installer wrote a configuration")
         .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
@@ -680,11 +678,11 @@ fn install_and_fill_in(
 /// Steps 3 to 5: the operator's documented command, the program up and answering
 /// as the service's user with nobody having launched it, and the definition one
 /// the manager starts at boot. Answers the process the manager started.
+///
+/// The documented command opens with `sudo`, which is where the operator becomes
+/// root; this journey already runs it as root, so that word is all it drops.
 fn activate(environment: &Environment, manager: Manager) -> u32 {
     let spelled = manager.spelled();
-    // 3. The operator's own documented command. This journey is already root,
-    // so the `sudo` it opens with is where the operator becomes root and
-    // nothing more.
     let pair = manager.pair();
     let documented = pair.last().expect("the pair states a start command");
     let words: Vec<&str> = documented
@@ -697,8 +695,6 @@ fn activate(environment: &Environment, manager: Manager) -> u32 {
         &format!("the documented command `{documented}`"),
     );
 
-    // 4. The program comes up as the service's user and answers, launched by
-    // nothing but the manager.
     let first = environment.until(
         manager,
         &format!("{spelled} to bring the service up"),
@@ -712,7 +708,6 @@ fn activate(environment: &Environment, manager: Manager) -> u32 {
         "the {spelled} service does not run as the user the installer created"
     );
 
-    // 5. It is one the manager starts at boot.
     if let Err(why) = starts_at_boot(environment, manager) {
         panic!("the activated {spelled} service is not one started at boot: {why}");
     }
@@ -724,7 +719,6 @@ fn activate(environment: &Environment, manager: Manager) -> u32 {
 /// up that answers again. Answers that new process.
 fn kill_and_see_it_back(environment: &Environment, manager: Manager, first: u32) -> u32 {
     let spelled = manager.spelled();
-    // 6. Ended abruptly, and brought back.
     succeeded(
         &environment.root(&["kill", "-KILL", &first.to_string()], None),
         "killing the service",
@@ -757,7 +751,6 @@ fn kill_and_see_it_back(environment: &Environment, manager: Manager, first: u32)
 /// found.
 fn tear_down(environment: Environment, manager: Manager) {
     let spelled = manager.spelled();
-    // 7. Torn down, and the host as it was found.
     match manager {
         Manager::Systemd => succeeded(
             &environment.root(&["systemctl", "disable", "--now", &label(manager)], None),
