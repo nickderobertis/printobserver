@@ -1,27 +1,9 @@
-# What this repository's own tiers do on a macOS and on a Windows runner, said
-# rather than enforced.
+# Temporary: reports what each deterministic tier does on the macOS and Windows
+# runners, and fails nothing. `docs/platform-bring-up.md` says what it is, what
+# it found and which node deletes it.
 #
-# Scaffolding with a stated end. AGENTS.md's supported-platform list names the
-# four platforms below with every cell of theirs recorded as not running yet,
-# and `docs/platform-bring-up.md` is the record of what each tier said here.
-# The platform nodes that follow bring the tiers up against that record, and
-# the documentation node of that plan deletes this workflow once the
-# `platform-exclusions` block is empty.
-#
-# It cannot fail its run, whatever a step reports: every step continues on
-# error, and the last step of each job writes every step's own `outcome` into
-# the run's summary — `outcome` and not `conclusion`, because
-# `continue-on-error` is what makes `conclusion` read `success` for a step that
-# failed. What a failed tier said is in that step's own log, which is where the
-# record quotes it from.
-#
-# One job per new runner, each naming that runner directly. No platform matrix:
-# this is not one of `repo-policy.toml`'s platform-dependent job kinds, and it
-# deliberately runs none of the recipes that would make it one — not `just
-# check`, which invokes every tier at once, not the OctoPrint bring-up, not a
-# `prove-` recipe and not the judged tier. Each of the gate's deterministic
-# tiers runs as a step of its own instead, so one that fails does not hide
-# what the ones after it would have said.
+# Summaries read `outcome`, not `conclusion`: `continue-on-error` makes a failed
+# step's `conclusion` read `success`.
 
 name: platform-probe
 
