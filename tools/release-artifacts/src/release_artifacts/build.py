@@ -237,7 +237,7 @@ def rust_client(repo: Repo, target: targets.Target, into: Path) -> Built:
 def python_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> Built:
     """The Python-registry route: a wheel carrying the program for this platform."""
     platform = platforms.host(repo)
-    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_os_version())}"
+    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_baseline())}"
     wheel = wheels.Wheel(_distribution(repo, target), tag)
     wheel.add_script(PROGRAM, binary)
     return Built(target.id, (wheel.write(into),))

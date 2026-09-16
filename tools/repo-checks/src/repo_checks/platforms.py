@@ -125,12 +125,13 @@ class Naming:
     wheel_family: str
     #: The processor part of that tag.
     wheel_machine: str
-    #: Whether that tag carries the minimum operating-system version the
-    #: program was built against. Every tag that can carry one does — a wheel
-    #: claiming an older one installs on a machine it cannot run on, and that
-    #: is a failure the user meets at the printer. The Windows tags carry no
-    #: version component at all, which is the platform's own rule rather than
-    #: this repository choosing not to state one.
+    #: Whether that tag carries the baseline the program was built against —
+    #: the oldest host the wheel claims to run on, in whichever version that
+    #: platform states its floor as. Every tag that can carry one does: a wheel
+    #: claiming an older baseline installs on a machine it cannot run on, and
+    #: that is a failure the user meets at the printer. The Windows tags carry
+    #: no version component at all, which is that platform's own rule rather
+    #: than this repository choosing not to state one.
     wheel_versioned: bool
 
 
@@ -299,31 +300,32 @@ class Platform:
         """
         return self.naming.asset
 
-    def wheel_tag(self, os_version: tuple[int, int] | None) -> str:
+    def wheel_tag(self, baseline: tuple[int, int] | None) -> str:
         """The platform tag a wheel built for this platform carries.
 
-        The tag states the minimum operating-system version the program was
-        **actually** built against — the C library on Linux, the system release
-        on macOS — read off the host that built it rather than assumed: a wheel
-        claiming an older one installs on a machine it cannot run on, and that
-        is a failure the user meets at the printer rather than at the install.
-        The two Windows tags carry no version component, so a version is not
-        asked of a host that cannot state one.
+        The tag states the oldest host the wheel claims to run on, in whichever
+        version that platform states its own floor as — the C library on Linux,
+        the system release on macOS — and it is what the program was
+        **actually** built against, read off the host that built it rather than
+        assumed: a wheel claiming an older baseline installs on a machine it
+        cannot run on, and that is a failure the user meets at the printer
+        rather than at the install. The two Windows tags carry no version
+        component, so a baseline is not asked of a host that states none.
 
         Raises:
             PlatformError: If nothing here names this platform, or if the tag
-                needs a version this host did not report.
+                needs a baseline this host did not report.
         """
         naming = self.naming
         if not naming.wheel_versioned:
             return f"{naming.wheel_family}_{naming.wheel_machine}"
-        if os_version is None:
+        if baseline is None:
             msg = (
-                f"a wheel for `{self.id}` states the operating-system version it was "
-                f"built against, and this host reported none"
+                f"a wheel for `{self.id}` states the baseline it was built against, and "
+                f"this host reported none"
             )
             raise PlatformError(msg)
-        major, minor = os_version
+        major, minor = baseline
         return f"{naming.wheel_family}_{major}_{minor}_{naming.wheel_machine}"
 
 
@@ -385,16 +387,17 @@ def descriptor(repo: Repo, identifier: str) -> Platform:
     raise PlatformError(msg)
 
 
-def host_os_version() -> tuple[int, int] | None:
-    """The minimum operating-system version this host's programs are built against.
+def host_baseline() -> tuple[int, int] | None:
+    """The baseline a wheel built on this host states in its platform tag.
 
-    The C library on Linux and the system release on macOS. On Windows it is
-    `None`, because the platform tags this repository's wheels carry there state
-    no version at all.
+    Every platform states the oldest host a build runs on in its own terms: the
+    C library on Linux, the system release on macOS. On Windows it is `None`,
+    because the platform tags this repository's wheels carry there state no
+    version at all.
 
     Raises:
-        PlatformError: If a host that states one reports none, which is a host
-            no wheel of this repository is built on.
+        PlatformError: If a host that states a baseline reports none, which is a
+            host no wheel of this repository is built on.
     """
     match host_platform.system():
         case "Windows":

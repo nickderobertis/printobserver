@@ -204,7 +204,7 @@ def test_the_wheel_tag_states_the_library_the_program_was_built_against(
     platform = platforms.host(repo)
 
     equal(platform.wheel_tag((2, 39)), f"manylinux_2_39_{platform.id.split('-')[1]}")
-    version = platforms.host_os_version()
+    version = platforms.host_baseline()
     truth(
         version is not None and version[0] >= 2,
         describing="this host to report a C library",

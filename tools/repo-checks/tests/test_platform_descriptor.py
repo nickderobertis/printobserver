@@ -28,7 +28,7 @@ from repo_checks.platforms import (
     PlatformError,
     descriptor,
     host,
-    host_os_version,
+    host_baseline,
     install_platforms,
     supported,
 )
@@ -49,10 +49,11 @@ class Row:
     npm: tuple[str, str]
     program: str
     asset: str
-    #: The operating-system version a host of this platform reports, and the
-    #: wheel platform tag that host's build then carries. The Windows tags carry
-    #: no version component at all, which is why the version is unused there.
-    os_version: tuple[int, int]
+    #: The baseline a host of this platform reports — the oldest host a build
+    #: there claims to run on, in that platform's own terms — and the wheel
+    #: platform tag that host's build then carries. The Windows tags carry no
+    #: version component at all, which is why the baseline is unused there.
+    baseline: tuple[int, int]
     wheel_tag: str
 
 
@@ -163,7 +164,7 @@ def test_every_fact_of_every_identifier_reads_back_through_the_module(
     equal(found.program, row.program, describing=f"{row.id}'s program file name")
     equal(found.asset, row.asset, describing=f"{row.id}'s release asset")
     equal(
-        found.wheel_tag(row.os_version),
+        found.wheel_tag(row.baseline),
         row.wheel_tag,
         describing=f"{row.id}'s wheel platform tag",
     )
@@ -286,8 +287,8 @@ def test_a_windows_host_is_answered_with_no_posix_only_interface_present(
 
     truth(not hasattr(os, "uname"), describing="the fixture to have taken `os.uname` away")
     equal(found.id, "windows-aarch64", describing="the platform this host is")
-    equal(host_os_version(), None, describing="the version a Windows wheel tag carries")
-    equal(found.wheel_tag(host_os_version()), "win_arm64", describing="its wheel platform tag")
+    equal(host_baseline(), None, describing="the baseline a Windows wheel tag carries")
+    equal(found.wheel_tag(host_baseline()), "win_arm64", describing="its wheel platform tag")
 
 
 def test_a_host_the_list_does_not_name_is_refused_by_name(
@@ -304,7 +305,7 @@ def test_a_host_the_list_does_not_name_is_refused_by_name(
     contains(str(refusal.value), "Windows/ARM64", describing="the refusal")
 
 
-def test_a_macos_host_takes_its_wheel_tag_version_from_the_host(
+def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_host(
     tree: Callable[[], Tree], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The rule is the same one the glibc tag follows: state what it was built against."""
@@ -315,21 +316,21 @@ def test_a_macos_host_takes_its_wheel_tag_version_from_the_host(
 
     found = host(repo)
 
-    equal(host_os_version(), (15, 4), describing="the system release this host reports")
-    equal(found.wheel_tag(host_os_version()), "macosx_15_4_arm64", describing="its wheel tag")
+    equal(host_baseline(), (15, 4), describing="the system release this host reports")
+    equal(found.wheel_tag(host_baseline()), "macosx_15_4_arm64", describing="its wheel tag")
 
 
-def test_a_host_reporting_no_version_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_host_reporting_no_baseline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     """A tag stating a version it did not read is a wheel that installs and cannot run."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
     monkeypatch.setattr(os, "confstr", lambda _name: None)
 
     with pytest.raises(PlatformError, match="C library"):
-        host_os_version()
+        host_baseline()
 
 
-def test_a_versioned_tag_asked_for_without_a_version_is_refused(committed: Repo) -> None:
-    """Linux and macOS tags state a version; asking for one with none is a refusal."""
+def test_a_versioned_tag_asked_for_without_a_baseline_is_refused(committed: Repo) -> None:
+    """Linux and macOS tags state a baseline; asking for one with none is a refusal."""
     with pytest.raises(PlatformError, match="linux-x86_64"):
         descriptor(committed, "linux-x86_64").wheel_tag(None)
 
@@ -364,19 +365,19 @@ def test_a_host_no_identifier_is_known_for_is_refused_by_name(
     contains(str(refusal.value), "SunOS/sparc", describing="the refusal")
 
 
-def test_this_hosts_own_version_is_read_off_the_host(committed: Repo) -> None:
+def test_this_hosts_own_baseline_is_read_off_the_host(committed: Repo) -> None:
     """The rule is that the tag states what the build was actually made against."""
-    version = host_os_version()
+    baseline = host_baseline()
 
-    truth(version is not None, describing="this host to report the version its wheels state")
+    truth(baseline is not None, describing="this host to report the baseline its wheels state")
     contains(
-        descriptor(committed, host(committed).id).wheel_tag(version),
+        descriptor(committed, host(committed).id).wheel_tag(baseline),
         "manylinux_",
         describing="this Linux host's wheel platform tag",
     )
 
 
-def test_a_host_reporting_a_version_that_is_not_one_is_refused(
+def test_a_host_reporting_a_baseline_that_is_not_a_version_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`macos-` and a word is a tag no installer can compare; it is refused instead."""
@@ -384,7 +385,7 @@ def test_a_host_reporting_a_version_that_is_not_one_is_refused(
     monkeypatch.setattr(host_platform, "mac_ver", lambda: ("", ("", "", ""), "arm64"))
 
     with pytest.raises(PlatformError, match="system release"):
-        host_os_version()
+        host_baseline()
 
 
 def test_the_three_key_sets_of_the_module_cannot_drift_apart(committed: Repo) -> None:
@@ -414,7 +415,7 @@ def test_the_three_key_sets_of_the_module_cannot_drift_apart(committed: Repo) ->
         )
 
 
-def test_a_host_reporting_a_minor_version_that_is_not_a_number_is_refused(
+def test_a_host_reporting_a_minor_that_is_not_a_number_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reading it as zero would put a version on a wheel that nothing reported."""
@@ -422,14 +423,14 @@ def test_a_host_reporting_a_minor_version_that_is_not_a_number_is_refused(
     monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.beta", ("", "", ""), "arm64"))
 
     with pytest.raises(PlatformError, match=re.escape("15.beta")):
-        host_os_version()
+        host_baseline()
 
 
-def test_a_host_reporting_a_version_with_no_minor_reads_it_as_zero(
+def test_a_baseline_written_with_no_minor_reads_it_as_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A platform that writes `15` means `15.0`, which is a version and not a defect."""
     monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
     monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15", ("", "", ""), "arm64"))
 
-    equal(host_os_version(), (15, 0), describing="a release written with no minor component")
+    equal(host_baseline(), (15, 0), describing="a release written with no minor component")
