@@ -9,6 +9,9 @@ the artifact around it.
 from __future__ import annotations
 
 import json
+import os
+import platform as host_platform
+import struct
 import tarfile
 import zipfile
 from collections.abc import Callable
@@ -16,7 +19,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from release_artifacts import targets
+from release_artifacts import targets, wheels
 from release_artifacts.build import (
     CONTRACT_FIELD,
     CONTRACT_FILE,
@@ -69,9 +72,13 @@ def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
     built = build(repo, "pypi:printobserver-cli", dist, program)
 
     wheel = built.paths[0]
+    platform = platforms.host(repo)
     truth(
-        "manylinux" in wheel.name and platforms.host(repo).id.split("-")[1] in wheel.name,
-        describing=f"{wheel.name} to state the platform it was built for",
+        wheel.name.endswith(
+            f"-{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_baseline(program))}.whl"
+        )
+        and f"-{platform.naming.wheel_family}_" in wheel.name,
+        describing=f"{wheel.name} to state the platform it was built for, `{platform.id}`",
     )
     truth("none-any" not in wheel.name, describing=f"{wheel.name} not to carry a pure tag")
     with zipfile.ZipFile(wheel) as opened:
@@ -197,18 +204,145 @@ def test_a_platform_nothing_here_names_is_refused(repo: Repo) -> None:
         unknown.wheel_tag((2, 39))
 
 
-def test_the_wheel_tag_states_the_library_the_program_was_built_against(
-    repo: Repo,
-) -> None:
-    """A wheel claiming an older one would install where it cannot run."""
-    platform = platforms.host(repo)
+def host_of(identifier: str) -> tuple[str, str]:
+    """What `platform.system()` and `platform.machine()` report on a host of `identifier`."""
+    return next(reported for reported, named in platforms.HOSTS.items() if named == identifier)
 
-    equal(platform.wheel_tag((2, 39)), f"manylinux_2_39_{platform.id.split('-')[1]}")
-    version = platforms.host_baseline()
-    truth(
-        version is not None and version[0] >= 2,
-        describing="this host to report a C library",
+
+def pretend_host(monkeypatch: pytest.MonkeyPatch, identifier: str) -> None:
+    """Make this interpreter report a host of `identifier`, through what the builders read.
+
+    A Linux host reports a C library, and a macOS host a system release far newer
+    than any program below was built for — so a tag read off the host rather than
+    off the program would carry it.
+    """
+    system, machine = host_of(identifier)
+    monkeypatch.setattr(host_platform, "system", lambda: system)
+    monkeypatch.setattr(host_platform, "machine", lambda: machine)
+    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.7", ("", "", ""), machine))
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39")
+
+
+#: The Mach-O processor type of each macOS platform, as the format's header spells it.
+MACHO_CPU = {"macos-aarch64": 0x0100000C, "macos-x86_64": 0x01000007}
+
+
+def macos_program(path: Path, identifier: str, minimum: tuple[int, int]) -> Path:
+    """A 64-bit Mach-O program for `identifier` whose `LC_BUILD_VERSION` records `minimum`.
+
+    The header, an `LC_UUID` a reader has to walk past, and one
+    `LC_BUILD_VERSION` (0x32) for macOS carrying `minimum` as its `minos` — the
+    shape a linker writes, and all a wheel's tag is read from.
+    """
+    major, minor = minimum
+    commands = struct.pack("<II", 0x1B, 24) + bytes(16)
+    commands += struct.pack("<IIIIII", 0x32, 24, 1, major << 16 | minor << 8, 15 << 16, 0)
+    header = struct.pack(
+        "<IiiIIIII", 0xFEEDFACF, MACHO_CPU[identifier], 0, 2, 2, len(commands), 0, 0
     )
+    path.write_bytes(header + commands)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("identifier", "minimum", "tag"),
+    [
+        ("linux-x86_64", None, "manylinux_2_39_x86_64"),
+        ("linux-aarch64", None, "manylinux_2_39_aarch64"),
+        ("macos-aarch64", (11, 0), "macosx_11_0_arm64"),
+        ("macos-x86_64", (10, 12), "macosx_10_12_x86_64"),
+        ("macos-aarch64", (13, 4), "macosx_14_0_arm64"),
+    ],
+    ids=["linux-x86_64", "linux-aarch64", "macos-aarch64", "macos-x86_64", "macos-minor-rounds-up"],
+)
+def test_the_wheel_tag_states_the_floor_the_program_was_built_against(
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    identifier: str,
+    minimum: tuple[int, int] | None,
+    tag: str,
+) -> None:
+    """A wheel claiming an older floor would install where it cannot run.
+
+    The real builder, on a host of each platform: Linux states the C library the
+    host built against, and macOS the minimum release recorded in the program the
+    wheel carries — spelled as an installer generates it, so a minor release
+    from 11 on rounds up rather than claiming a host older than the program
+    needs, and never the release of the host that happened to build it.
+    """
+    pretend_host(monkeypatch, identifier)
+    carried = program if minimum is None else macos_program(program, identifier, minimum)
+
+    built = build(repo, "pypi:printobserver-cli", into("tagged"), carried)
+
+    equal(
+        built.paths[0].name.removesuffix(".whl").split("-")[-1],
+        tag,
+        describing=f"the platform tag of the wheel built on a `{identifier}` host",
+    )
+
+
+def test_a_macos_program_recording_no_floor_is_refused_naming_it(
+    repo: Repo, program: Path, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tag stating a floor nothing recorded is a guess put on a wheel; it is a stop."""
+    pretend_host(monkeypatch, "macos-aarch64")
+    header = struct.pack("<IiiIIIII", 0xFEEDFACF, MACHO_CPU["macos-aarch64"], 0, 2, 0, 0, 0, 0)
+    program.write_bytes(header)
+
+    with pytest.raises(platforms.PlatformError) as refusal:
+        build(repo, "pypi:printobserver-cli", into("refused"), program)
+
+    contains(str(refusal.value), str(program), describing="the refusal")
+    contains(str(refusal.value), "records no minimum macOS release", describing="the refusal")
+
+
+@pytest.mark.parametrize("identifier", sorted(platforms.NAMING))
+def test_every_install_platforms_routes_are_named_by_its_descriptor(
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    identifier: str,
+) -> None:
+    """On a host of each platform the install path targets, the routes name that platform.
+
+    The per-platform package is the one the launcher resolves on that host,
+    selected by the operating system and processor its descriptor states; the
+    launcher declares every install platform's; and the release asset carries
+    that platform's name and program file. A platform the install path does not
+    target builds nothing to check, and says so by being skipped.
+    """
+    supported = {platform.id: platform for platform in platforms.install_platforms(repo)}
+    if identifier not in supported:
+        pytest.skip(f"`{identifier}` is not a platform the install path targets")
+    platform = supported[identifier]
+    pretend_host(monkeypatch, identifier)
+
+    node = build(repo, "npm:printobserver-cli", into("node"), program)
+    script = build(repo, "release:printobserver", into("script"), program)
+
+    manifests = {manifest_of(path)["name"]: manifest_of(path) for path in node.paths}
+    carried = manifests[platform.npm_package]
+    system, processor = platform.npm
+    equal(carried["os"], [system], describing=f"the operating system `{identifier}` selects by")
+    equal(carried["cpu"], [processor], describing=f"the processor `{identifier}` selects by")
+    equal(carried["printobserverPlatform"], identifier, describing="the platform it carries")
+    equal(
+        manifests["printobserver-cli"]["optionalDependencies"],
+        {one.npm_package: targets.workspace(repo.root)["version"] for one in supported.values()},
+        describing="the packages the launcher resolves the program through",
+    )
+    equal(
+        sorted(path.name for path in script.paths),
+        sorted([platform.asset, "SHA256SUMS"]),
+        describing=f"what the script route publishes on a `{identifier}` host",
+    )
+    archive = next(path for path in script.paths if path.name == platform.asset)
+    with tarfile.open(archive, "r:gz") as opened:
+        equal(opened.getnames(), [platform.program], describing="what the asset carries")
 
 
 def test_the_tool_says_what_it_refused_rather_than_stopping_silently(

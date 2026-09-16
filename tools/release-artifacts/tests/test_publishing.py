@@ -206,13 +206,13 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
     for registry, name in (
         ("npm", platform_package.rpartition("@")[0]),
         ("npm", "@printobserver/sdk"),
-        ("release", f"{PROGRAM}-{host(repo).id}.tar.gz"),
+        ("release", host(repo).asset),
     ):
         registries.refuse(registry, name, status=404, body=SCOPE_NOT_FOUND)
     with pytest.raises(PublishError):
         publish(repo, dist, environment)
     registries.accept("npm", "@printobserver/sdk")
-    registries.accept("release", f"{PROGRAM}-{host(repo).id}.tar.gz")
+    registries.accept("release", host(repo).asset)
     del registries.written[:]
 
     for name, value in environment.items():
@@ -224,7 +224,7 @@ def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
     artifacts = _artifacts(repo, dist, version)
     expected = dict.fromkeys(artifacts, Outcome.ALREADY_PUBLISHED)
     expected[f"npm @printobserver/sdk@{version}"] = Outcome.PUBLISHED
-    expected[f"release {PROGRAM}-{host(repo).id}.tar.gz"] = Outcome.PUBLISHED
+    expected[f"release {host(repo).asset}"] = Outcome.PUBLISHED
     expected[f"npm {platform_package}"] = Outcome.REFUSED
     equal(_outcomes(out.splitlines()), expected, describing="what the run said")
     contains(err, platform_package.rpartition("@")[0], describing="the refused package named")
@@ -364,7 +364,7 @@ def test_an_asset_whose_upload_never_finished_is_replaced(
     """An asset the forge lists under the name in another state is not one served."""
     registries.release(f"v{version}")
     publish(repo, dist, environment)
-    asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    asset = host(repo).asset
     download = f"{bases.releases}/download/v{version}/{asset}"
     registries.interrupted(f"v{version}", asset)
     with pytest.raises(RegistryError, match="404"):
@@ -402,7 +402,7 @@ def test_a_forge_refusing_to_remove_an_interrupted_asset_uploads_nothing_over_it
     """
     registries.release(f"v{version}")
     publish(repo, dist, environment)
-    asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    asset = host(repo).asset
     registries.interrupted(f"v{version}", asset)
     registries.refuse("release", asset, status=403, body=b'{"message": "Resource not accessible"}')
     del registries.written[:]
@@ -437,7 +437,7 @@ def test_an_upload_refused_after_the_deletion_landed_is_finished_by_running_it_a
     """
     registries.release(f"v{version}")
     publish(repo, dist, environment)
-    asset = f"{PROGRAM}-{host(repo).id}.tar.gz"
+    asset = host(repo).asset
     registries.interrupted(f"v{version}", asset)
     registries.refuse(
         "release", asset, status=502, body=b'{"message": "Bad Gateway"}', method="POST"

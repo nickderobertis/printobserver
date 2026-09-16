@@ -235,9 +235,14 @@ def rust_client(repo: Repo, target: targets.Target, into: Path) -> Built:
 
 
 def python_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> Built:
-    """The Python-registry route: a wheel carrying the program for this platform."""
+    """The Python-registry route: a wheel carrying the program for this platform.
+
+    The platform tag states the oldest host the program runs on, and `binary`
+    is handed to what reads it because on macOS that floor is recorded in the
+    program itself rather than anywhere on the host that built it.
+    """
     platform = platforms.host(repo)
-    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_baseline())}"
+    tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_baseline(binary))}"
     wheel = wheels.Wheel(_distribution(repo, target), tag)
     wheel.add_script(PROGRAM, binary)
     return Built(target.id, (wheel.write(into),))
