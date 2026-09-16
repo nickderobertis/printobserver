@@ -573,7 +573,10 @@ def _macho_minimum(opened: BinaryIO, machine: str) -> tuple[int, int] | None:
             file_end = opened.tell()
             opened.seek(here)
             if offset > file_end or size > file_end - offset:
-                msg = f"a universal Mach-O slice declares bytes {offset}..{offset + size} outside its {file_end}-byte file"
+                msg = (
+                    f"a universal Mach-O slice declares bytes {offset}..{offset + size} "
+                    f"outside its {file_end}-byte file"
+                )
                 raise struct.error(msg)
             opened.seek(offset)
             return _thin_minimum(opened, wanted, end=offset + size)
