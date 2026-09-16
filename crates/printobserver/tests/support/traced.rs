@@ -441,6 +441,31 @@ mod etw {
         );
     }
 
+    /// A UTF-8 marker from `tracerpt` is not part of the XML it prefixes.
+    #[test]
+    fn a_dump_written_as_utf8_with_a_marker_reads_as_the_same_session() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend(RECORDED.as_bytes());
+
+        assert_eq!(text_of(&bytes), RECORDED);
+    }
+
+    /// A missing native tracer is a refusal, never an empty observation.
+    #[cfg(windows)]
+    #[test]
+    fn an_unavailable_trace_tool_is_refused() {
+        let panic = std::panic::catch_unwind(|| tool("printobserver-no-such-trace-tool", &[]))
+            .expect_err("a tool that does not exist unexpectedly ran");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("panic carried no text");
+
+        assert!(message.contains("could not run"), "{message}");
+        assert!(message.contains("whole claim"), "{message}");
+    }
+
     /// An address `tracerpt` renders without brackets is still an endpoint.
     #[test]
     fn an_ipv6_endpoint_is_read_with_or_without_brackets() {
@@ -450,4 +475,28 @@ mod etw {
         assert_eq!(endpoint("::1:8420"), expected);
         assert_eq!(number("0x1C70"), Some(7280));
     }
+}
+
+/// A process that cannot start is refused after its native trace session is
+/// stopped, so one bad invocation cannot leak a session into later journeys.
+#[cfg(windows)]
+#[test]
+fn an_invocation_that_cannot_start_is_refused() {
+    let scratch = std::env::temp_dir().join(format!(
+        "printobserver-traced-missing-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&scratch).expect("trace scratch could not be created");
+    let missing = scratch.join("no-such-printobserver.exe");
+
+    let panic = std::panic::catch_unwind(|| traced(&missing, &[], &[], &scratch))
+        .expect_err("an invocation that does not exist unexpectedly ran");
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("panic carried no text");
+    assert!(message.contains("could not be run"), "{message}");
+
+    std::fs::remove_dir_all(&scratch).expect("trace scratch could not be removed");
 }
