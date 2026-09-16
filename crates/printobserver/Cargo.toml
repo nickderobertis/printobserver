@@ -60,6 +60,10 @@ jsonschema.workspace = true
 # path a materialization printed and check it is that image.
 sha2 = "0.10"
 tempfile = "3"
+# The reader the service journeys hold a launchd property list to: the one the
+# installer writes on macOS is read as a document, on every host, rather than
+# matched as text.
+plist = { version = "1.10.1", default-features = false }
 
 [lints]
 workspace = true

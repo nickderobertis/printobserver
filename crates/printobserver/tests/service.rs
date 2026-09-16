@@ -34,9 +34,10 @@ use printobserver_server::{
 };
 use tempfile::TempDir;
 
+#[cfg(target_os = "linux")]
+use harness::{ANSWERED, SIGN_IN_SEEN};
 use harness::{
-    ANSWERED, SIGN_IN_SEEN, SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking,
-    recorded, stand_in,
+    SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking, recorded, stand_in,
 };
 
 /// The tracer the operator's own route is observed through: every file access
@@ -44,16 +45,117 @@ use harness::{
 /// file this user is not permitted to read.
 const TRACER: &str = "strace";
 
-/// The unit's name, as the install-path section states it. `just check-repo`'s
-/// `service-install` holds the tree to that section; this drives what the tree
-/// holds.
-const UNIT_NAME: &str = "printobserver.service";
-
-/// Where the installer is committed, as that same section states.
+/// Where the installer is committed, as the install-path section states.
 const INSTALLER: &str = "scripts/install-service.sh";
 
+/// The service managers the installer writes a definition for, spelled as
+/// `AGENTS.md`'s supported-platform list and `repo-policy.toml` spell them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Manager {
+    /// Linux's: a unit under `/etc/systemd/system`.
+    Systemd,
+    /// macOS's: a property list under `/Library/LaunchDaemons`.
+    Launchd,
+}
+
+impl Manager {
+    /// Both of them.
+    const ALL: [Self; 2] = [Self::Systemd, Self::Launchd];
+
+    /// The one this host runs a service under.
+    fn host() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Launchd
+        } else {
+            Self::Systemd
+        }
+    }
+
+    /// How `AGENTS.md` and `repo-policy.toml` spell it.
+    fn spelled(self) -> &'static str {
+        match self {
+            Self::Systemd => "systemd",
+            Self::Launchd => "launchd",
+        }
+    }
+
+    /// What `uname -s` answers on a host this manager runs services under,
+    /// which is what the installer chooses between them by.
+    fn system(self) -> &'static str {
+        match self {
+            Self::Systemd => "Linux",
+            Self::Launchd => "Darwin",
+        }
+    }
+
+    /// This manager's table of `repo-policy.toml`'s `[service]`.
+    fn policy(self) -> toml::Value {
+        policy()["service"][self.spelled()].clone()
+    }
+
+    /// The pair of commands `AGENTS.md`'s install path states for this manager.
+    fn pair(self) -> Vec<String> {
+        let agents =
+            std::fs::read_to_string(repo_root().join("AGENTS.md")).expect("AGENTS.md reads");
+        let heading = format!("\n#### {}\n", self.spelled());
+        let body = &agents[agents
+            .find(&heading)
+            .unwrap_or_else(|| panic!("AGENTS.md states no `{}` pair", self.spelled()))
+            + heading.len()..];
+        let body = &body[..body.find("\n### ").unwrap_or(body.len())];
+        let body = &body[..body.find("\n#### ").unwrap_or(body.len())];
+        let mut commands = Vec::new();
+        let mut fenced = false;
+        for line in body.lines() {
+            match (fenced, line.trim()) {
+                (false, "```console") => fenced = true,
+                (true, "```") => fenced = false,
+                (true, command) if !command.is_empty() => commands.push(command.to_owned()),
+                _ => {}
+            }
+        }
+        commands
+    }
+
+    /// Where, beneath a root, this manager's definition is written: the
+    /// directory the policy states it loads definitions from at boot, and the
+    /// file the install path's own start command names.
+    fn definition(self, root: &Path) -> PathBuf {
+        let start = self.pair().pop().expect("the pair states a start command");
+        let named = start
+            .split_whitespace()
+            .last()
+            .expect("the start command names the service");
+        let file = Path::new(named)
+            .file_name()
+            .expect("the start command names a file or a unit");
+        let directory = self.policy()["unit_directory"]
+            .as_str()
+            .expect("the policy states where the definition is written")
+            .trim_start_matches('/')
+            .to_owned();
+        root.join(directory).join(file)
+    }
+}
+
+/// `repo-policy.toml`, which states what the installer must not invoke and, per
+/// service manager, where the definition goes and what starts it unattended.
+fn policy() -> toml::Value {
+    toml::from_str(
+        &std::fs::read_to_string(repo_root().join("repo-policy.toml")).expect("the policy reads"),
+    )
+    .expect("the policy is a document")
+}
+
 /// The programs the installer must not invoke, each shimmed to record being run.
-const MUST_NOT_INVOKE: [&str; 3] = ["systemctl", "service", "systemd-run"];
+fn must_not_invoke() -> Vec<String> {
+    policy()["service"]["may_not_invoke"]
+        .as_array()
+        .expect("the policy names what the installer may not invoke")
+        .iter()
+        .map(|program| program.as_str().expect("a program name").to_owned())
+        .collect()
+}
 
 /// The repository root.
 fn repo_root() -> PathBuf {
@@ -62,30 +164,44 @@ fn repo_root() -> PathBuf {
         .join("..")
 }
 
+/// Write one executable shell script.
+fn executable(path: &Path, body: &str) {
+    std::fs::write(path, body).expect("a shim is writable");
+    let mut mode = std::fs::metadata(path)
+        .expect("the shim is there")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
+    std::fs::set_permissions(path, mode).expect("the shim is executable");
+}
+
 /// A directory holding shims that record being run and do nothing.
 ///
 /// This is what makes "the installer started nothing" an assertion rather than
-/// a hope: an installer that ran `systemctl enable --now` would leave a line in
-/// the recording.
-fn shims(root: &Path) -> (PathBuf, PathBuf) {
+/// a hope: an installer that ran `systemctl enable --now` or `launchctl
+/// bootstrap` would leave a line in the recording. Where the manager asked for
+/// is not this host's own, a `uname` answering that manager's system is put
+/// beside them, which is the one fact the installer chooses its branch by.
+fn shims(root: &Path, manager: Manager) -> (PathBuf, PathBuf) {
     let bin = root.join("bin");
     std::fs::create_dir_all(&bin).expect("a bin directory");
     let recording = root.join("what-was-run");
-    for name in MUST_NOT_INVOKE {
-        let shim = bin.join(name);
-        std::fs::write(
-            &shim,
-            format!(
+    for name in must_not_invoke() {
+        executable(
+            &bin.join(&name),
+            &format!(
                 "#!/bin/sh\necho \"{name} $*\" >> \"{}\"\nexit 0\n",
                 recording.display()
             ),
-        )
-        .expect("a shim is writable");
-        let mut mode = std::fs::metadata(&shim)
-            .expect("the shim is there")
-            .permissions();
-        std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
-        std::fs::set_permissions(&shim, mode).expect("the shim is executable");
+        );
+    }
+    if manager != Manager::host() {
+        executable(
+            &bin.join("uname"),
+            &format!(
+                "#!/bin/sh\ncase \"${{1:-}}\" in -m) echo x86_64 ;; *) echo {} ;; esac\n",
+                manager.system()
+            ),
+        );
     }
     (bin, recording)
 }
@@ -96,12 +212,19 @@ struct Installed {
     root: PathBuf,
     /// The file the shims record into, which must never come to exist.
     recording: PathBuf,
+    /// The service manager it wrote a definition for.
+    manager: Manager,
 }
 
 impl Installed {
-    /// The unit it wrote.
+    /// The service definition it wrote.
     fn unit(&self) -> PathBuf {
-        self.root.join("etc/systemd/system").join(UNIT_NAME)
+        self.manager.definition(&self.root)
+    }
+
+    /// The service definition it wrote, read.
+    fn definition(&self) -> Definition {
+        Definition::read(self.manager, &self.unit())
     }
 
     /// The program it put in place.
@@ -120,6 +243,115 @@ impl Installed {
     }
 }
 
+/// What a service definition says, whichever manager's vocabulary it is in.
+struct Definition {
+    /// The command it starts the service with.
+    start: Vec<String>,
+    /// The user it runs the service as.
+    user: String,
+    /// The home it gives the service.
+    home: String,
+    /// The directory it starts the service in.
+    working_directory: String,
+    /// The whole of it, as written.
+    text: String,
+    /// The property list, where it is one.
+    list: Option<plist::Dictionary>,
+}
+
+impl Definition {
+    /// Read one manager's definition as that manager reads it.
+    fn read(manager: Manager, path: &Path) -> Self {
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("{} does not read: {error}", path.display()));
+        match manager {
+            Manager::Systemd => Self {
+                start: unit_value(&text, "ExecStart")
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
+                user: unit_value(&text, "User"),
+                home: unit_value(&text, "Environment")
+                    .strip_prefix("HOME=")
+                    .expect("the unit gives the service a home")
+                    .to_owned(),
+                working_directory: unit_value(&text, "WorkingDirectory"),
+                text,
+                list: None,
+            },
+            Manager::Launchd => {
+                let list = plist::Value::from_file(path)
+                    .unwrap_or_else(|error| {
+                        panic!("{} is not a property list: {error}", path.display())
+                    })
+                    .into_dictionary()
+                    .expect("the property list is a dictionary");
+                let string = |value: Option<&plist::Value>, what: &str| {
+                    value
+                        .and_then(plist::Value::as_string)
+                        .unwrap_or_else(|| panic!("the property list declares no {what}"))
+                        .to_owned()
+                };
+                Self {
+                    start: list
+                        .get("ProgramArguments")
+                        .and_then(plist::Value::as_array)
+                        .expect("the property list declares ProgramArguments")
+                        .iter()
+                        .map(|argument| string(Some(argument), "argument"))
+                        .collect(),
+                    user: string(list.get("UserName"), "UserName"),
+                    home: string(
+                        list.get("EnvironmentVariables")
+                            .and_then(plist::Value::as_dictionary)
+                            .and_then(|environment| environment.get("HOME")),
+                        "HOME",
+                    ),
+                    working_directory: string(list.get("WorkingDirectory"), "WorkingDirectory"),
+                    text,
+                    list: Some(list),
+                }
+            }
+        }
+    }
+
+    /// Whether it carries one setting `repo-policy.toml` states as a
+    /// `{ key, value }`, in its own manager's vocabulary: a `Key=value` line of
+    /// a unit, or a key of a property list holding that value.
+    fn carries(&self, setting: &toml::Value) -> bool {
+        let key = setting["key"].as_str().expect("a setting names its key");
+        match &self.list {
+            None => {
+                let value = setting["value"]
+                    .as_str()
+                    .expect("a unit's value is a string");
+                self.text
+                    .lines()
+                    .any(|line| line.trim() == format!("{key}={value}"))
+            }
+            Some(list) => list
+                .get(key)
+                .is_some_and(|found| *found == as_plist(&setting["value"])),
+        }
+    }
+}
+
+/// One `repo-policy.toml` value as the property list value it states.
+fn as_plist(value: &toml::Value) -> plist::Value {
+    match value {
+        toml::Value::Boolean(flag) => plist::Value::Boolean(*flag),
+        toml::Value::Integer(number) => plist::Value::Integer((*number).into()),
+        toml::Value::String(text) => plist::Value::String(text.clone()),
+        toml::Value::Table(table) => plist::Value::Dictionary(
+            table
+                .iter()
+                .map(|(key, value)| (key.clone(), as_plist(value)))
+                .collect(),
+        ),
+        other => panic!("the policy states a setting no property list carries: {other}"),
+    }
+}
+
 /// Run the committed installer against a root this journey owns.
 fn install(under: &Path) -> Installed {
     let (installed, run) = installing(under, &["--binary", env!("CARGO_BIN_EXE_printobserver")]);
@@ -133,7 +365,16 @@ fn install(under: &Path) -> Installed {
 
 /// Run the committed installer with the arguments given, and answer what it did.
 fn installing(under: &Path, arguments: &[&str]) -> (Installed, std::process::Output) {
-    let (bin, recording) = shims(under);
+    installing_for(under, Manager::host(), arguments)
+}
+
+/// Run the committed installer as a host of one service manager runs it.
+fn installing_for(
+    under: &Path,
+    manager: Manager,
+    arguments: &[&str],
+) -> (Installed, std::process::Output) {
+    let (bin, recording) = shims(under, manager);
     let root = under.join("target-root");
     let path = format!(
         "{}:{}",
@@ -147,7 +388,14 @@ fn installing(under: &Path, arguments: &[&str]) -> (Installed, std::process::Out
         .env("PATH", path)
         .output()
         .expect("the installer runs");
-    (Installed { root, recording }, run)
+    (
+        Installed {
+            root,
+            recording,
+            manager,
+        },
+        run,
+    )
 }
 
 /// A directory holding a `printobserver` on PATH, which is what any of the
@@ -174,15 +422,25 @@ fn unit_value(unit: &str, key: &str) -> String {
         .to_owned()
 }
 
-/// The owner of one path, by name.
-fn owner(path: &Path) -> String {
-    let listed = Command::new("stat")
-        .arg("-c")
-        .arg("%U")
-        .arg(path)
+/// The user id owning one path.
+fn owner(path: &Path) -> u32 {
+    std::os::unix::fs::MetadataExt::uid(
+        &std::fs::metadata(path)
+            .unwrap_or_else(|error| panic!("{} is not there: {error}", path.display())),
+    )
+}
+
+/// The user id of one user, by name.
+fn uid_of(user: &str) -> u32 {
+    let listed = Command::new("id")
+        .arg("-u")
+        .arg(user)
         .output()
-        .expect("stat runs");
-    String::from_utf8_lossy(&listed.stdout).trim().to_owned()
+        .expect("id runs");
+    String::from_utf8_lossy(&listed.stdout)
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("{user} is no user of this host"))
 }
 
 /// The permission bits of one path.
@@ -237,7 +495,7 @@ fn the_installer_places_four_things_and_starts_nothing() {
     for (what, path) in [
         ("the program", installed.binary()),
         ("the configuration", installed.configuration()),
-        ("the unit", installed.unit()),
+        ("the service definition", installed.unit()),
     ] {
         assert!(path.is_file(), "{what} is not at {}", path.display());
     }
@@ -250,11 +508,10 @@ fn the_installer_places_four_things_and_starts_nothing() {
     // The state directory is the service's own user's, and readable by no other
     // principal: the mode denies group and other, and no access-control entry
     // grants anybody else anything.
-    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
     assert_eq!(
         owner(&installed.state()),
-        unit_value(&unit, "User"),
-        "the state directory is not owned by the user the unit runs the service as"
+        uid_of(&installed.definition().user),
+        "the state directory is not owned by the user the definition runs the service as"
     );
     let (mode, listing) = permissions(&installed.state());
     assert_eq!(
@@ -281,37 +538,203 @@ fn the_installer_places_four_things_and_starts_nothing() {
     );
 }
 
-/// The installed unit is one the service manager accepts.
+/// Each service manager's branch of the installer writes the definition the
+/// platform list, the install path and the policy say it should, and starts
+/// nothing.
+///
+/// Both branches are driven on every host: the one this host is not is reached
+/// through a `uname` answering the other system, which is the one fact the
+/// installer chooses by. So the property list a Mac is given is read here as a
+/// property list — its label, its start command, its user, and the two settings
+/// that start the service unattended — and a definition that would not start
+/// at boot or would not come back after an abrupt end is refused on this host
+/// rather than only on a runner.
+#[test]
+fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
+    let agents = std::fs::read_to_string(repo_root().join("AGENTS.md")).expect("AGENTS.md reads");
+    let whoami = Command::new("id").arg("-un").output().expect("id runs");
+    let invoking = String::from_utf8_lossy(&whoami.stdout).trim().to_owned();
+    for manager in Manager::ALL {
+        let under = TempDir::new().expect("a journey's own root");
+        let (installed, run) = installing_for(
+            under.path(),
+            manager,
+            &["--binary", env!("CARGO_BIN_EXE_printobserver")],
+        );
+        let spelled = manager.spelled();
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            run.status.success(),
+            "the {spelled} installer failed: {said}"
+        );
+
+        // The platform list targets the install path at a platform of this
+        // manager, and the installer names that manager's own start command.
+        assert!(
+            agents.lines().any(|line| line.starts_with("- `")
+                && line.contains(&format!("service manager `{spelled}`, install path: yes"))),
+            "AGENTS.md's supported-platform list targets no `{spelled}` platform"
+        );
+        let pair = manager.pair();
+        assert_eq!(pair.len(), 2, "the `{spelled}` pair is not two commands");
+        assert!(
+            said.contains(&pair[1]),
+            "the {spelled} installer does not name `{}` as what to run next: {said}",
+            pair[1]
+        );
+
+        // The four things, the definition where the policy says that manager
+        // loads definitions from at boot, and nothing started.
+        for (what, path) in [
+            ("the program", installed.binary()),
+            ("the configuration", installed.configuration()),
+            ("the service definition", installed.unit()),
+        ] {
+            assert!(
+                path.is_file(),
+                "{spelled}: {what} is not at {}",
+                path.display()
+            );
+        }
+        assert!(installed.state().is_dir(), "{spelled}: no state directory");
+        let other = Manager::ALL
+            .into_iter()
+            .find(|one| *one != manager)
+            .expect("two managers");
+        assert!(
+            !other.definition(&installed.root).exists(),
+            "the {spelled} installer wrote a {} definition too",
+            other.spelled()
+        );
+        assert!(
+            !installed.recording.exists(),
+            "the {spelled} installer started or enabled something: {}",
+            std::fs::read_to_string(&installed.recording).unwrap_or_default()
+        );
+        let directory = manager.policy()["unit_directory"]
+            .as_str()
+            .expect("a directory")
+            .to_owned();
+        assert_eq!(
+            installed.unit().parent().expect("a directory"),
+            installed.root.join(directory.trim_start_matches('/')),
+            "the {spelled} definition is not in the directory that manager loads at boot"
+        );
+        if manager == Manager::Launchd {
+            assert!(
+                pair[1].ends_with(&format!(
+                    " {directory}/{}",
+                    installed
+                        .unit()
+                        .file_name()
+                        .expect("a file")
+                        .to_string_lossy()
+                )),
+                "the launchd start command loads something other than what was written: {}",
+                pair[1]
+            );
+        }
+        assert_the_definition_says_what_is_stated(&installed, &invoking);
+    }
+}
+
+/// What one manager's installed definition says, held to what is stated: the
+/// installed program on the installed configuration, the invoking user, the state
+/// directory and a home under it, the label its start command loads, and the two
+/// settings `repo-policy.toml` states for starting it unattended.
+fn assert_the_definition_says_what_is_stated(installed: &Installed, invoking: &str) {
+    let manager = installed.manager;
+    let spelled = manager.spelled();
+    // What the definition says.
+    let definition = installed.definition();
+    assert_eq!(
+        definition.start,
+        [
+            installed.binary().display().to_string(),
+            "server".to_owned(),
+            "--config".to_owned(),
+            installed.configuration().display().to_string(),
+        ],
+        "the {spelled} definition does not start the installed program on the \
+         installed configuration"
+    );
+    assert_eq!(definition.user, invoking, "{spelled}: the service's user");
+    let state = installed.state().display().to_string();
+    assert_eq!(
+        definition.working_directory, state,
+        "{spelled}: working directory"
+    );
+    assert!(
+        definition.home.starts_with(&format!("{state}/")),
+        "{spelled}: the home {} is not under the state directory",
+        definition.home
+    );
+    if let Some(list) = &definition.list {
+        assert_eq!(
+            list.get("Label").and_then(plist::Value::as_string),
+            installed.unit().file_stem().and_then(|stem| stem.to_str()),
+            "the property list's label is not the name the start command loads"
+        );
+    }
+    for behaviour in ["at_boot", "restart"] {
+        let setting = &manager.policy()[behaviour];
+        assert!(
+            definition.carries(setting),
+            "the {spelled} definition does not carry `{setting}`, the setting \
+             repo-policy.toml states for `{behaviour}`:\n{}",
+            definition.text
+        );
+    }
+}
+
+/// The installed definition is one the service manager's own verifier accepts.
 #[test]
 fn the_installed_unit_passes_the_service_managers_own_verifier() {
     let under = TempDir::new().expect("a journey's own root");
     let installed = install(under.path());
+    let manager_verifier: &[&str] = match installed.manager {
+        Manager::Systemd => &["systemd-analyze", "verify"],
+        Manager::Launchd => &["plutil", "-lint"],
+    };
 
-    let verified = Command::new("systemd-analyze")
-        .arg("verify")
+    let verified = Command::new(manager_verifier[0])
+        .args(&manager_verifier[1..])
         .arg(installed.unit())
         .output()
         .expect("the service manager's own verifier runs");
     assert!(
         verified.status.success(),
-        "the installed unit was refused by its own verifier:\n{}",
+        "the installed definition was refused by its own verifier:\n{}{}",
+        String::from_utf8_lossy(&verified.stdout),
         String::from_utf8_lossy(&verified.stderr)
     );
 
     // A verifier that reported nothing whatever it was handed would satisfy the
-    // assertion above and say nothing, so it is driven over a unit that is
-    // deliberately not one.
-    let malformed = under.path().join("malformed.service");
-    std::fs::write(&malformed, "[Service]\nType=nonsense\n").expect("a unit is writable");
-    let refused = Command::new("systemd-analyze")
-        .arg("verify")
+    // assertion above and say nothing, so it is driven over a definition that
+    // is deliberately not one.
+    let malformed = under.path().join(match installed.manager {
+        Manager::Systemd => "malformed.service",
+        Manager::Launchd => "malformed.plist",
+    });
+    std::fs::write(
+        &malformed,
+        match installed.manager {
+            Manager::Systemd => "[Service]\nType=nonsense\n",
+            Manager::Launchd => {
+                "<?xml version=\"1.0\"?>\n<plist version=\"1.0\"><dict><key>Label\n"
+            }
+        },
+    )
+    .expect("a definition is writable");
+    let refused = Command::new(manager_verifier[0])
+        .args(&manager_verifier[1..])
         .arg(&malformed)
         .output()
         .expect("the verifier runs");
     assert!(
         !refused.status.success(),
-        "the verifier accepted a unit that is not one, so it says nothing about the \
-         installed one"
+        "the verifier accepted a definition that is not one, so it says nothing about \
+         the installed one"
     );
 }
 
@@ -403,14 +826,10 @@ impl Started {
 fn started_by_the_unit() -> Started {
     let root = TempDir::new().expect("a journey's own root");
     let installed = install(root.path());
-    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
 
-    // Read out of the unit rather than written here, so a unit whose start
-    // command is wrong fails this journey rather than being masked.
-    let start: Vec<String> = unit_value(&unit, "ExecStart")
-        .split_whitespace()
-        .map(str::to_owned)
-        .collect();
+    // Read out of the definition rather than written here, so a definition whose
+    // start command is wrong fails this journey rather than being masked.
+    let start = installed.definition().start;
     assert_eq!(
         PathBuf::from(&start[0]),
         installed.binary(),
@@ -1000,11 +1419,8 @@ fn eventually(path: &Path, server: &mut Child) -> String {
 fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
     let under = TempDir::new().expect("a journey's own root");
     let installed = install(under.path());
-    let unit = std::fs::read_to_string(installed.unit()).expect("the unit reads");
-    let start: Vec<String> = unit_value(&unit, "ExecStart")
-        .split_whitespace()
-        .map(str::to_owned)
-        .collect();
+    let definition = installed.definition();
+    let start = definition.start;
     let configuration = PathBuf::from(start.last().expect("a configuration"));
     fill_in(&configuration);
     let entry = configured_harness(&configuration);
@@ -1012,10 +1428,7 @@ fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
     let invocations = under.path().join("invocations");
     stand_in(&bin, entry, &invocations, 0, &assessment_answer());
     let path = format!("{}:/usr/bin:/bin", bin.display());
-    let home = unit_value(&unit, "Environment")
-        .strip_prefix("HOME=")
-        .expect("the unit gives the service a home")
-        .to_owned();
+    let home = definition.home;
     let directory = installed
         .state()
         .canonicalize()
@@ -1097,6 +1510,7 @@ fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
 ///
 /// A directive the unit gains that is not here fails the journey, so a unit
 /// cannot grow a restriction this substitute silently does not apply.
+#[cfg(target_os = "linux")]
 const UNIT_SERVICE_DIRECTIVES: [&str; 12] = [
     "Type",
     "User",
@@ -1113,6 +1527,7 @@ const UNIT_SERVICE_DIRECTIVES: [&str; 12] = [
 ];
 
 /// What the operator types at the stand-in harness's prompt in the journey.
+#[cfg(target_os = "linux")]
 const TYPED_IN_THE_JOURNEY: &str = "the-code-the-operator-typed";
 
 /// The whole journey, as `sh` runs it as root inside a mount namespace of its
@@ -1127,6 +1542,7 @@ const TYPED_IN_THE_JOURNEY: &str = "the-code-the-operator-typed";
 /// before it runs the documented sign-in and the unit's own start command under
 /// them. Everything it learns it prints as `key=value` lines for the journey to
 /// assert, because under those restrictions it may write nowhere else.
+#[cfg(target_os = "linux")]
 const SERVICE_JOURNEY: &str = r#"
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -1276,6 +1692,7 @@ echo "finished=yes"
 /// by it. An unprivileged user namespace does that where the host allows one;
 /// where it does not, a password-free `sudo` enters a private mount namespace
 /// instead. A host with neither cannot run this journey, and it says so.
+#[cfg(target_os = "linux")]
 fn namespace_launcher() -> Vec<String> {
     let owned = |words: &[&str]| {
         words
@@ -1327,6 +1744,7 @@ fn namespace_launcher() -> Vec<String> {
 }
 
 /// Every value one `key=value` report carries under one key.
+#[cfg(target_os = "linux")]
 fn reported<'a>(report: &'a [(String, String)], key: &str) -> Vec<&'a str> {
     report
         .iter()
@@ -1336,6 +1754,7 @@ fn reported<'a>(report: &'a [(String, String)], key: &str) -> Vec<&'a str> {
 }
 
 /// The one value one report carries under one key.
+#[cfg(target_os = "linux")]
 fn reported_once<'a>(report: &'a [(String, String)], key: &str) -> &'a str {
     match reported(report, key).as_slice() {
         [value] => value,
@@ -1347,6 +1766,7 @@ fn reported_once<'a>(report: &'a [(String, String)], key: &str) -> &'a str {
 }
 
 /// Whether one path is the state directory or inside it.
+#[cfg(target_os = "linux")]
 fn inside(path: &str, state: &str) -> bool {
     path == state || path.starts_with(&format!("{state}/"))
 }
@@ -1354,6 +1774,7 @@ fn inside(path: &str, state: &str) -> bool {
 /// Run [`SERVICE_JOURNEY`] on a root this journey owns, post a real failure
 /// alert when the server it started says where it is serving, and answer
 /// everything it reported once it has finished and what it installed is gone.
+#[cfg(target_os = "linux")]
 fn run_the_service_journey() -> Vec<(String, String)> {
     let under = TempDir::new().expect("a journey's own root");
     // The service's user has to be able to reach the root this journey installs
@@ -1448,6 +1869,7 @@ fn run_the_service_journey() -> Vec<(String, String)> {
 /// What the journey reported about the installed unit and the user it runs
 /// as, held to what the installer writes; answers the state directory and that
 /// user.
+#[cfg(target_os = "linux")]
 fn assert_the_unit_and_its_user(report: &[(String, String)]) -> (&str, &str) {
     // The unit is the one the installer writes, and every restriction it
     // carries is one this journey applied.
@@ -1510,6 +1932,7 @@ fn assert_the_unit_and_its_user(report: &[(String, String)]) -> (&str, &str) {
 
 /// What the journey reported about auditing its own restrictions as the
 /// service user: every one relevant to where a sign-in may be kept was applied.
+#[cfg(target_os = "linux")]
 fn assert_the_audit(report: &[(String, String)], state: &str, service_user: &str) {
     assert_eq!(reported_once(report, "audit_user"), service_user);
     assert_eq!(reported_once(report, "audit_no_new_privs"), "1");
@@ -1531,6 +1954,7 @@ fn assert_the_audit(report: &[(String, String)], state: &str, service_user: &str
 
 /// What the journey reported about the documented sign-in and the supervision
 /// turn the unit's own start command ran after it.
+#[cfg(target_os = "linux")]
 fn assert_the_sign_in_and_the_turn(report: &[(String, String)], state: &str, service_user: &str) {
     let entry = SIGN_INS
         .iter()
@@ -1591,6 +2015,7 @@ fn assert_the_sign_in_and_the_turn(report: &[(String, String)], state: &str, ser
 /// every mount read-only and the state directory alone writable, which the
 /// journey audits as that user before it relies on it.
 #[test]
+#[cfg(target_os = "linux")]
 fn the_documented_sign_in_works_under_the_units_own_user_and_restrictions() {
     let report = run_the_service_journey();
 
@@ -1630,7 +2055,6 @@ fn an_installer_that_can_find_no_program_says_so() {
     // rather than on anybody's PATH, so what the installer meets is a machine
     // none of the three routes has been taken on.
     let (installed, run) = installing(under.path(), &[]);
-    let root = installed.root.clone();
 
     assert!(
         !run.status.success(),
@@ -1642,7 +2066,7 @@ fn an_installer_that_can_find_no_program_says_so() {
         "the refusal says nothing a caller can act on: {said}"
     );
     assert!(
-        !root.join("etc/systemd/system").join(UNIT_NAME).exists(),
+        !installed.unit().exists(),
         "a unit was written for a program that was never found"
     );
 }
