@@ -68,39 +68,39 @@ jobs:
         timeout-minutes: 40
         run: just bootstrap
       - id: format-check
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 10
         run: just format-check  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: lint
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 30
         run: just lint  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: typecheck
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 30
         run: just typecheck  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: test
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 45
         run: just test  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: coverage
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 45
         run: just coverage  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: build
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 30
         run: just build  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: lint-workflows
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 10
         run: just lint-workflows  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: check-repo
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 15
         run: just check-repo  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - id: test-e2e
-        continue-on-error: true
+        continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] each tier's outcome is written to the summary; the probe records, the gate enforces
         timeout-minutes: 60
         run: just test-e2e  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit] one tier per step, so a failing tier hides none after it, on a runner no gate reaches yet
       - if: always()

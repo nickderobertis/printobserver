@@ -509,8 +509,8 @@ reason = "The same tier and the same reason as the two jobs above it: the forge'
 
 # --- .github/workflows/platform-probe.yml -------------------------------------
 # One trailing directive on each line a rule reads: every tier's `run:` in the
-# steps the four probe jobs share, and each job's `runs-on:` and job-level
-# `continue-on-error:`. The probe is temporary scaffolding whose whole task is to
+# steps the four probe jobs share and each tier step's `continue-on-error:`, and
+# each job's `runs-on:` and job-level `continue-on-error:`. The probe is temporary scaffolding whose whole task is to
 # report what each tier does on a runner no gate has run on yet, and the
 # documentation node of the platform bring-up plan deletes it with these entries.
 
