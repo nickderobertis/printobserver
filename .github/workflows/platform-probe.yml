@@ -73,6 +73,14 @@ jobs:
       - id: setup-bun
         continue-on-error: true
         uses: oven-sh/setup-bun@v2
+      # Where the setup action has no prebuilt `just` for the runner, build it,
+      # so the tiers after it say something about the tree rather than about
+      # the action. The action's own failure stays in the summary.
+      - id: install-just-from-source
+        if: steps.setup-just.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: cargo install just --locked
       - id: bootstrap
         continue-on-error: true
         timeout-minutes: 40
@@ -122,6 +130,7 @@ jobs:
           OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
           OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
           OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
+          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
           OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
           OUTCOME_LINT: ${{ steps.lint.outcome }}
@@ -140,6 +149,7 @@ jobs:
           - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
           - setup-uv: $OUTCOME_SETUP_UV\n
           - setup-bun: $OUTCOME_SETUP_BUN\n
+          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
           - just bootstrap: $OUTCOME_BOOTSTRAP\n
           - just format-check: $OUTCOME_FORMAT_CHECK\n
           - just lint: $OUTCOME_LINT\n
@@ -182,6 +192,14 @@ jobs:
       - id: setup-bun
         continue-on-error: true
         uses: oven-sh/setup-bun@v2
+      # Where the setup action has no prebuilt `just` for the runner, build it,
+      # so the tiers after it say something about the tree rather than about
+      # the action. The action's own failure stays in the summary.
+      - id: install-just-from-source
+        if: steps.setup-just.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: cargo install just --locked
       - id: bootstrap
         continue-on-error: true
         timeout-minutes: 40
@@ -231,6 +249,7 @@ jobs:
           OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
           OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
           OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
+          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
           OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
           OUTCOME_LINT: ${{ steps.lint.outcome }}
@@ -249,6 +268,7 @@ jobs:
           - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
           - setup-uv: $OUTCOME_SETUP_UV\n
           - setup-bun: $OUTCOME_SETUP_BUN\n
+          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
           - just bootstrap: $OUTCOME_BOOTSTRAP\n
           - just format-check: $OUTCOME_FORMAT_CHECK\n
           - just lint: $OUTCOME_LINT\n
@@ -291,6 +311,14 @@ jobs:
       - id: setup-bun
         continue-on-error: true
         uses: oven-sh/setup-bun@v2
+      # Where the setup action has no prebuilt `just` for the runner, build it,
+      # so the tiers after it say something about the tree rather than about
+      # the action. The action's own failure stays in the summary.
+      - id: install-just-from-source
+        if: steps.setup-just.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: cargo install just --locked
       - id: bootstrap
         continue-on-error: true
         timeout-minutes: 40
@@ -340,6 +368,7 @@ jobs:
           OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
           OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
           OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
+          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
           OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
           OUTCOME_LINT: ${{ steps.lint.outcome }}
@@ -358,6 +387,7 @@ jobs:
           - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
           - setup-uv: $OUTCOME_SETUP_UV\n
           - setup-bun: $OUTCOME_SETUP_BUN\n
+          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
           - just bootstrap: $OUTCOME_BOOTSTRAP\n
           - just format-check: $OUTCOME_FORMAT_CHECK\n
           - just lint: $OUTCOME_LINT\n
@@ -400,6 +430,14 @@ jobs:
       - id: setup-bun
         continue-on-error: true
         uses: oven-sh/setup-bun@v2
+      # Where the setup action has no prebuilt `just` for the runner, build it,
+      # so the tiers after it say something about the tree rather than about
+      # the action. The action's own failure stays in the summary.
+      - id: install-just-from-source
+        if: steps.setup-just.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: cargo install just --locked
       - id: bootstrap
         continue-on-error: true
         timeout-minutes: 40
@@ -449,6 +487,7 @@ jobs:
           OUTCOME_INSTALL_CARGO_TOOLS: ${{ steps.install-cargo-tools.outcome }}
           OUTCOME_SETUP_UV: ${{ steps.setup-uv.outcome }}
           OUTCOME_SETUP_BUN: ${{ steps.setup-bun.outcome }}
+          OUTCOME_INSTALL_JUST_FROM_SOURCE: ${{ steps.install-just-from-source.outcome }}
           OUTCOME_BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           OUTCOME_FORMAT_CHECK: ${{ steps.format-check.outcome }}
           OUTCOME_LINT: ${{ steps.lint.outcome }}
@@ -467,6 +506,7 @@ jobs:
           - install-cargo-tools: $OUTCOME_INSTALL_CARGO_TOOLS\n
           - setup-uv: $OUTCOME_SETUP_UV\n
           - setup-bun: $OUTCOME_SETUP_BUN\n
+          - install-just-from-source: $OUTCOME_INSTALL_JUST_FROM_SOURCE\n
           - just bootstrap: $OUTCOME_BOOTSTRAP\n
           - just format-check: $OUTCOME_FORMAT_CHECK\n
           - just lint: $OUTCOME_LINT\n
