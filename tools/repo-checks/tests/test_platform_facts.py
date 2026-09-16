@@ -189,3 +189,17 @@ def test_a_launcher_resolving_one_platform_twice_is_refused(
     findings = platform_facts(broken.repo)
 
     refused_naming(findings, LAUNCHER, "`linux-arm64` more than once")
+
+
+def test_a_launcher_map_line_this_cannot_read_is_refused(tree: Callable[[], Tree]) -> None:
+    """Holding the launcher to whichever entries parsed is not holding the map it ships."""
+    broken = tree()
+    broken.edit(
+        LAUNCHER,
+        ARM64_ENTRY,
+        ARM64_ENTRY + "  ...RESOLVED_ELSEWHERE,\n",
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused_naming(findings, LAUNCHER, "...RESOLVED_ELSEWHERE", "not an entry this can read")

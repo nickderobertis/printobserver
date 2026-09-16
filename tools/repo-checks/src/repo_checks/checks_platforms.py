@@ -115,6 +115,16 @@ def _launcher_findings(repo: Repo, installed: list[Platform]) -> list[str]:
     for line in body.splitlines():
         match = LAUNCHER_ENTRY.match(line)
         if match is None:
+            # Blank lines and the map's own comments carry no entry; anything
+            # else between its braces is a declaration this cannot read, and
+            # passing it over would hold the launcher to the entries that
+            # happened to parse rather than to the map it actually ships.
+            if line.strip() and not line.strip().startswith("//"):
+                findings.append(
+                    f"`{launcher}`'s `{LAUNCHER_MAP_OPEN}` map carries `{line.strip()}`, "
+                    f"which is not an entry this can read "
+                    f'(expected `"<os>-<cpu>": "<package>",`)'
+                )
             continue
         if match["selector"] in carried:
             findings.append(
