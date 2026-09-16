@@ -279,8 +279,8 @@ mod etw {
     /// The providers a session records, as `logman` reads a provider file:
     /// the TCP/IP stack's connect path, and process starts.
     #[cfg(windows)]
-    pub const PROVIDERS: &str = "{2F07E2EE-15DB-40F1-90EF-9D7BA282188A} 0x8000000400000480 0x4\r\n\
-                                 {22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716} 0x10 0x4\r\n";
+    pub const PROVIDERS: &str = "\"Microsoft-Windows-TCPIP\" 0xFFFFFFFFFFFFFFFF 0xFF\r\n\
+         \"Microsoft-Windows-Kernel-Process\" 0xFFFFFFFFFFFFFFFF 0xFF\r\n";
 
     /// The provider recording a TCP connect request, and its event for one.
     const TCPIP: &str = "Microsoft-Windows-TCPIP";
