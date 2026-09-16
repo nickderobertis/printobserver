@@ -1065,6 +1065,15 @@ relocation saves only their critical-path difference. Keep the journey in the
 required gate unless `integration` first becomes required through a coordinated
 repository-setting and merge-path inventory change.
 
+**The service-manager journey needs Docker on Linux and `sudo` on macOS.**
+`crates/printobserver/tests/service_manager.rs` activates what the installer
+wrote through the service manager itself, kills the process and waits for the
+manager to bring it back. Under systemd it runs systemd as the first process of
+a throwaway container over the host's read-only `/usr`, so the host gains no
+user, unit or service. Nothing on macOS isolates a system daemon, so under
+launchd it runs through a password-free `sudo`, refuses a Mac that already
+carries an installation, and removes what it installed.
+
 ### The one journey, in three clients
 
 The nine steps all three clients drive are declared once, in
