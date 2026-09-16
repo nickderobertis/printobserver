@@ -99,17 +99,94 @@ def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
     refused_naming(findings, "some but not all", "gate (linux-aarch64)")
 
 
+def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
+    committed: Repo,
+) -> None:
+    """A name interpolating nothing is qualified by GitHub, not by its author.
+
+    The committed integration job is that shape, and the contexts it reports
+    carry the cell's runner beside its platform because GitHub appends the whole
+    matrix entry. Those are the names a branch-protection rule requires it under,
+    so deriving them wrongly is what makes a record strand a required check.
+    """
+    reported = sorted(
+        context.name for context in status_contexts(committed) if context.job == "integration"
+    )
+
+    equal(
+        reported,
+        [
+            "integration (linux-aarch64, ubuntu-24.04-arm)",
+            "integration (linux-x86_64, ubuntu-24.04)",
+        ],
+        describing="the contexts the committed integration job reports",
+    )
+
+
+def test_qualifying_an_unqualified_matrix_job_renames_every_context_it_reports(
+    tree: Callable[[], Tree],
+) -> None:
+    """The two rules are different, and moving between them is a rename.
+
+    GitHub takes a name interpolating a matrix value verbatim instead of
+    appending to it, so qualifying the integration job does not tidy its contexts
+    — it replaces them, stranding whatever required the old ones.
+    """
+    renamed = tree()
+    renamed.edit(
+        CI,
+        "    name: integration\n",
+        "    name: integration (${{ matrix.platform.id }})\n",
+    )
+
+    reported = {context.name for context in status_contexts(renamed.repo)}
+
+    contains(reported, "integration (linux-x86_64)", describing="the derived contexts")
+    absent(
+        reported,
+        "integration (linux-x86_64, ubuntu-24.04)",
+        describing="the derived contexts",
+    )
+
+
 def test_a_matrix_job_whose_cells_share_one_name_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Two check runs under one name are two a rule requiring it cannot tell apart."""
+    """Two check runs under one name are two a rule requiring it cannot tell apart.
+
+    GitHub's own appending keeps an unqualified job's cells distinct, so the way
+    two cells collide is a qualified name interpolating a value they share — here
+    a matrix entry copied for a second runner and left under the first one's id.
+    """
     broken = tree()
-    broken.edit(CI, QUALIFIED, "    name: gate\n")
-    _replace_required(broken, ["gate", "llmlint", "pr-title"])
+    broken.edit(
+        CI,
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n",
+    )
+    _replace_required(broken, [*GATE_CELLS, "llmlint", "pr-title"])
 
     findings = merge_model(broken.repo)
 
     refused_naming(findings, "2 matrix cells of job `gate`", "which of them was green")
+
+
+def test_an_appended_field_no_name_can_be_built_from_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """GitHub appends something for that field, so deriving nothing for it would lie."""
+    broken = tree()
+    broken.edit(CI, QUALIFIED, "    name: gate\n")
+    broken.edit(
+        CI,
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+        "          - id: linux-x86_64\n            runner: [ubuntu, 24.04]\n",
+    )
+
+    findings = merge_model(broken.repo)
+
+    refused(findings, "not something a status context can be named after")
 
 
 def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(

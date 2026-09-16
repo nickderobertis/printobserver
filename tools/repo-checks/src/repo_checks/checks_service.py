@@ -34,6 +34,12 @@ from repo_checks.model import (
     policy_table,
 )
 from repo_checks.parsing import MarkerBlockMissingError, marker_block, section
+from repo_checks.platforms import ServiceManager, supported
+
+#: The service manager this repository's own unit is written for. The unit's
+#: name and the installer's path are read out of this manager's own pair of
+#: commands.
+SYSTEMD = ServiceManager.SYSTEMD
 
 # `sudo systemctl enable --now <unit>`: the install path's third command, whose
 # last word is the unit's name.
@@ -66,18 +72,30 @@ class Named:
 
 
 def _named(repo: Repo) -> tuple[Named | None, list[str]]:
-    """The unit's name and the installer's path, read out of the section."""
+    """The unit's name and the installer's path, read out of the section.
+
+    Read through the service-manager column rather than off whichever pair the
+    section states first: the unit this repository installs is the `systemd`
+    platforms' own, so it is the `systemd` pair this reads, and a platform run
+    under another service manager is read against that manager's pair by
+    whatever check is written for it.
+    """
     path = ip.parse(repo.agents_md)
     findings: list[str] = []
+    try:
+        pair = _systemd_pair(repo, path)
+    except MarkerBlockMissingError as error:
+        return None, [str(error)]
     unit = ""
-    for command in path.commands:
+    for command in pair:
         match = ENABLE_COMMAND.search(command)
         if match:
             unit = match["unit"]
     if not unit:
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no `systemctl enable --now "
-            f"<unit>` command, so nothing here names the unit this repository installs"
+            f"<unit>` command under `{SYSTEMD.value}`, so nothing here names the unit this "
+            f"repository installs"
         )
     try:
         installer = policy_strings(
@@ -85,14 +103,26 @@ def _named(repo: Repo) -> tuple[Named | None, list[str]]:
         )["install_service_script_path"]
     except PolicyValueError as error:
         return None, [*findings, str(error)]
-    if not any(installer in command for command in path.commands):
+    if not any(installer in command for command in pair):
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no command fetching "
-            f"`{installer}`, which is the installer this repository ships"
+            f"`{installer}` under `{SYSTEMD.value}`, which is the installer this repository ships"
         )
     if findings:
         return None, findings
     return Named(unit, installer), []
+
+
+def _systemd_pair(repo: Repo, path: ip.InstallPath) -> tuple[str, ...]:
+    """The pair of commands belonging to this repository's systemd platforms.
+
+    Raises:
+        MarkerBlockMissingError: If `AGENTS.md` carries no supported-platform list.
+    """
+    for platform in supported(repo):
+        if platform.service_manager == SYSTEMD:
+            return path.commands_for(platform.service_manager)
+    return ()
 
 
 def _executes(script: str, program: str) -> list[int]:

@@ -1,5 +1,12 @@
 [toolchain]
 channel = "1.97.1"
 components = ["rustfmt", "clippy", "llvm-tools-preview"]
+# Every target here must be one AGENTS.md's supported-platform list names, and
+# `just check-repo`'s `platform-facts` refuses one that is not. The binding is
+# ONE WAY on purpose: this array is what a BUILD HOST installs a standard
+# library for, not what each platform's own runner builds natively — every
+# platform's job runs on its own runner and builds for itself — so requiring
+# this to name every supported platform would put a standard library nothing
+# uses on every runner.
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 profile = "minimal"

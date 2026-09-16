@@ -53,6 +53,12 @@ jobs:
       - run: just check
 
   integration:
+    # This name interpolates no matrix value, so GitHub appends the cell's own
+    # values to it and the two cells report under distinguishable contexts of
+    # its making rather than of ours. Do not qualify it: the appended form is
+    # what `main`'s branch protection already requires, and a name that
+    # interpolates a matrix value is taken verbatim instead, which would move
+    # both required contexts out from under that rule and block every merge.
     name: integration
     # The printer integration tier, against a real OctoPrint. It is a job of
     # its own rather than one of `just check`'s tiers because it installs

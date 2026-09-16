@@ -52,6 +52,7 @@ from repo_checks.model import (
     policy_string_list,
     policy_table,
 )
+from repo_checks.parsing import MarkerBlockMissingError
 
 #: A markdown table's cell separator, which needs two of them to be a row.
 TABLE_ROW = re.compile(r"\|.*\|")
@@ -870,4 +871,79 @@ def schema_document(repo: Repo) -> list[str]:
             f"`{policy.schema_document}` is not what the types generate. It is generated "
             f"rather than written: run `just docs-generate`."
         )
+    return findings
+
+
+def _documents(repo: Repo) -> tuple[list[tuple[str, str]], list[str]]:
+    """Every markdown document this repository commits, with its text and what refused.
+
+    Symbolic links are skipped: `CLAUDE.md` is a link to `AGENTS.md`, and a
+    finding reported twice under two names reads as two problems.
+
+    A file that is not readable UTF-8 is a finding rather than an exception out
+    of the middle of the tier: a check that died on one document would say
+    nothing about the rest, and what a reader needs is which document it was.
+    """
+    found: list[tuple[str, str]] = []
+    findings: list[str] = []
+    for path in sorted(repo.root.glob("**/*.md")):
+        relative = path.relative_to(repo.root)
+        if UNCOMMITTED_DIRECTORIES & set(relative.parts) or path.is_symlink():
+            continue
+        try:
+            found.append((str(relative), path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError) as unreadable:
+            findings.append(
+                f"{relative} is a document this repository commits and nothing here can "
+                f"read: {unreadable}"
+            )
+    return found, findings
+
+
+def platform_names(repo: Repo) -> list[str]:
+    """No document names a platform, or gives one a service manager, the list does not.
+
+    The supported-platform list is the one source of both, and a document is the
+    one place a claim about a platform can go on reading true after the list
+    moved under it: nothing installs a paragraph, so nobody meets the
+    disagreement until they follow it. This is the mechanical half of keeping
+    every document derived from that list.
+    """
+    from repo_checks.platforms import PLATFORM_ID_IN_TEXT, ServiceManager, supported
+
+    try:
+        declared = supported(repo)
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+    known = {platform.id: platform for platform in declared}
+
+    documents, findings = _documents(repo)
+    for where, text in documents:
+        for number, line in enumerate(text.splitlines(), start=1):
+            # Backticked or not: a claim about a platform is a claim whether or
+            # not whoever wrote it quoted the name.
+            named = PLATFORM_ID_IN_TEXT.findall(line)
+            findings.extend(
+                f"{where}:{number} names the platform `{token}`, which AGENTS.md's "
+                f"supported-platform list does not carry; it names "
+                f"{', '.join(f'`{one}`' for one in known) or 'nothing'}"
+                for token in named
+                if token not in known
+            )
+            stated = [
+                manager.value
+                for manager in ServiceManager
+                if re.search(rf"(?<![\w-]){manager.value}(?![\w-])", line)
+            ]
+            # A line may name several managers — a sentence contrasting two is
+            # right about both — so what is refused is a platform beside a set
+            # of managers its own is not in, rather than a line with more than
+            # one in it.
+            findings.extend(
+                f"{where}:{number} states {', '.join(f'`{one}`' for one in stated)} of the "
+                f"platform `{token}`, and AGENTS.md's supported-platform list gives it "
+                f"`{known[token].service_manager}`"
+                for token in named
+                if stated and token in known and known[token].service_manager not in stated
+            )
     return findings

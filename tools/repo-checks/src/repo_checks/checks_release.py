@@ -399,9 +399,9 @@ def _coverage_findings(repo: Repo) -> list[str]:
     the matrix beside it, since a check reading the matrix is satisfied by
     narrowing the matrix.
     """
-    from repo_checks.checks_ci import platforms_of
     from repo_checks.model import PolicyValueError
     from repo_checks.parsing import MarkerBlockMissingError
+    from repo_checks.platforms import supported as platforms_of
 
     try:
         recipes = _release_policy(repo)

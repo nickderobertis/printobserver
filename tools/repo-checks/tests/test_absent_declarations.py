@@ -12,7 +12,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from repo_checks.checks_ci import install_path_section, merge_model, platforms, secrets
+from repo_checks.checks_ci import (
+    continuous_integration,
+    install_path_section,
+    merge_model,
+    platforms,
+    secrets,
+)
+from repo_checks.checks_platforms import platform_facts, unmatrixed_jobs
 from repo_checks.checks_release import release_targets
 from repo_checks.checks_repo import agent_layer, recipe_set, workspace
 from repo_checks.expect import equal, refused
@@ -292,3 +299,174 @@ def test_an_allowlist_entry_missing_a_field_is_refused(tree: Callable[[], Tree])
     findings = suppressions(broken.repo)
 
     refused(findings, "names no site")
+
+
+def test_a_platform_check_without_the_platform_list_says_so(
+    tree: Callable[[], Tree],
+) -> None:
+    """The three copies are held to that list, so without it there is nothing to hold them to."""
+    broken = tree()
+    _drop_block(broken, "supported-platforms")
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "carries no supported-platform list")
+
+
+def test_an_empty_platform_list_leaves_the_copies_nothing_to_agree_with(
+    tree: Callable[[], Tree],
+) -> None:
+    """A repository that supports nothing has no facts for a copy to be held to."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    start = text.index("[//]: # (BEGIN supported-platforms)")
+    end = text.index("[//]: # (END supported-platforms)")
+    broken.write("AGENTS.md", text[:start] + "[//]: # (BEGIN supported-platforms)\n" + text[end:])
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "supported-platform list is empty")
+
+
+def test_a_policy_naming_no_launcher_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without the declaration nothing says which file the launcher's map is in."""
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml",
+        'launcher = "npm/printobserver-cli/bin/printobserver.mjs"',
+        "",
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "declares no `platforms.launcher` string")
+
+
+def test_a_launcher_the_tree_does_not_carry_is_refused(tree: Callable[[], Tree]) -> None:
+    """Route 2 installs a package whose program this file resolves, and it is not there."""
+    broken = tree()
+    broken.remove("npm/printobserver-cli/bin/printobserver.mjs")
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "is absent: it is the launcher")
+
+
+def test_a_launcher_carrying_no_map_is_refused(tree: Callable[[], Tree]) -> None:
+    """A launcher with nothing to read is not one this check can hold to anything."""
+    broken = tree()
+    broken.edit(
+        "npm/printobserver-cli/bin/printobserver.mjs",
+        "const PACKAGES = {",
+        "const RESOLVED = {",
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "carries no `const PACKAGES = {` map")
+
+
+def test_a_platform_the_launcher_cannot_be_asked_about_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A supported platform nothing names for npm is a package nobody can resolve."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
+        "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
+        "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "nothing here names for the registries or a release")
+
+
+def test_a_policy_naming_no_toolchain_file_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without the declaration nothing says where the Rust targets are pinned."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'toolchain = "rust-toolchain.toml"', "")
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "declares no `platforms.toolchain` string")
+
+
+def test_a_toolchain_file_the_tree_does_not_carry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The pin is what every build here reads; absent, there is nothing to hold."""
+    broken = tree()
+    broken.remove("rust-toolchain.toml")
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "is absent: it is where this repository pins")
+
+
+def test_a_toolchain_file_declaring_no_targets_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A file naming no target says nothing about which platforms a host builds for."""
+    broken = tree()
+    broken.edit(
+        "rust-toolchain.toml",
+        'targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]',
+        "",
+    )
+
+    findings = platform_facts(broken.repo)
+
+    refused(findings, "declares no `targets` array")
+
+
+def test_a_missing_unmatrixed_block_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without it, a job running once per change records nothing about why."""
+    broken = tree()
+    _drop_block(broken, "unmatrixed-jobs")
+
+    findings = unmatrixed_jobs(broken.repo)
+
+    refused(findings, "no `unmatrixed-jobs` marker block")
+
+
+def test_a_missing_platform_exclusions_block_is_refused(tree: Callable[[], Tree]) -> None:
+    """The second lever's record is where every omitted cell is accounted for."""
+    broken = tree()
+    _drop_block(broken, "platform-exclusions")
+
+    findings = platforms(broken.repo)
+
+    refused(findings, "no `platform-exclusions` marker block")
+
+
+def test_the_install_path_check_without_the_platform_list_says_so(
+    tree: Callable[[], Tree],
+) -> None:
+    """The pair after the routes is per service manager, and the list is what names those."""
+    broken = tree()
+    _drop_block(broken, "supported-platforms")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "no `supported-platforms` marker block")
+
+
+def test_the_install_job_check_without_the_platform_list_falls_back_to_every_pair(
+    tree: Callable[[], Tree],
+) -> None:
+    """A job is still held to the commands the section states when nothing names its platforms."""
+    broken = tree()
+    _drop_block(broken, "supported-platforms")
+    broken.edit(
+        ".github/workflows/install-path.yml",
+        "      - id: start-service\n        continue-on-error: true\n"
+        "        run: sudo systemctl enable --now printobserver.service\n",
+        "",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "omits `sudo systemctl enable --now printobserver.service`")

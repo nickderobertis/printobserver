@@ -32,7 +32,6 @@ import json
 import re
 from typing import Any
 
-from repo_checks.checks_ci import PLATFORM_LINE, Platform, platforms_of
 from repo_checks.model import Repo
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -43,6 +42,8 @@ from repo_checks.parsing import (
     run_commands,
     steps_of,
 )
+from repo_checks.platforms import PLATFORM_LINE, Platform
+from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
 
 # One recorded exclusion: a platform the virtual printer is unavailable on, and
