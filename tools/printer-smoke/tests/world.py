@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
-from repo_checks.shell import run
+from repo_checks.shell import run, start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
@@ -170,10 +171,17 @@ class World:
     ) -> subprocess.CompletedProcess[str]:
         """Run the smoke and interrupt it part-way, as a person at the machine would.
 
-        The interrupt is a real `SIGINT` from `timeout`, and the bounded
-        intervention is given long enough that the run is waiting it out when
-        the signal lands — so what is interrupted is a run that has already
-        started a print and already moved the machine.
+        The interrupt is a real `SIGINT`, and the bounded intervention is given
+        long enough that the run is waiting it out when the signal lands — so
+        what is interrupted is a run that has already started a print and
+        already moved the machine.
+
+        The signal is sent to the smoke itself rather than to a process group:
+        the group is where the `printobserver` commands the smoke is spawning at
+        that instant live, so a run could be interrupted between spawning one
+        and reading it. What a person's own interrupt reaches is the program
+        they started, and this is that. It is sent from here rather than by
+        GNU `timeout`, which a macOS host does not carry.
 
         Args:
             after: How long to let it run before interrupting it, in seconds.
@@ -182,26 +190,18 @@ class World:
         Returns:
             The completed run, including everything it said while cleaning up.
         """
-        return run(
-            [
-                "timeout",
-                # Only the smoke itself, rather than a process group. Without
-                # this, `timeout` signals the group — and the group is where the
-                # `printobserver` commands the smoke is spawning at that instant
-                # live, so a run could be interrupted between spawning one and
-                # reading it. What a person's own interrupt reaches is the
-                # program they started, and this is that.
-                "--foreground",
-                "--signal=INT",
-                str(after),
-                sys.executable,
-                str(SMOKE),
-                "--run",
-            ],
+        argv = [sys.executable, str(SMOKE), "--run"]
+        process = start(
+            argv,
             cwd=REPO_ROOT,
             env=self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s}),
-            timeout=300,
         )
+        try:
+            stdout, stderr = process.communicate(timeout=after)
+        except subprocess.TimeoutExpired:
+            process.send_signal(signal.SIGINT)
+            stdout, stderr = process.communicate(timeout=300)
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 
 def open_a_serial_device() -> tuple[str, int, int]:
