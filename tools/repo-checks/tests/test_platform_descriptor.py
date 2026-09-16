@@ -327,3 +327,56 @@ def test_a_versioned_tag_asked_for_without_a_version_is_refused(committed: Repo)
     """Linux and macOS tags state a version; asking for one with none is a refusal."""
     with pytest.raises(PlatformError, match="linux-x86_64"):
         descriptor(committed, "linux-x86_64").wheel_tag(None)
+
+
+def test_a_line_in_the_list_that_is_not_an_entry_is_passed_over(
+    tree: Callable[[], Tree],
+) -> None:
+    """A block carrying prose beside its entries still reads as the entries it has."""
+    copy = tree()
+    text = copy.read("AGENTS.md")
+    start, end = text.index(BEGIN), text.index(END)
+    listed = f"{entry(TABLE[0])}<!-- the second platform lands in a later change -->\n"
+    copy.write("AGENTS.md", f"{text[:start]}{BEGIN}\n{listed}{text[end:]}")
+
+    equal(
+        [platform.id for platform in supported(copy.repo)],
+        ["linux-x86_64"],
+        describing="the platforms read out of a block carrying a comment",
+    )
+
+
+def test_a_host_no_identifier_is_known_for_is_refused_by_name(
+    committed: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A machine this repository has never heard of is named back, not guessed at."""
+    monkeypatch.setattr(host_platform, "system", lambda: "SunOS")
+    monkeypatch.setattr(host_platform, "machine", lambda: "sparc")
+
+    with pytest.raises(PlatformError) as refusal:
+        host(committed)
+
+    contains(str(refusal.value), "SunOS/sparc", describing="the refusal")
+
+
+def test_this_hosts_own_version_is_read_off_the_host(committed: Repo) -> None:
+    """The rule is that the tag states what the build was actually made against."""
+    version = host_os_version()
+
+    truth(version is not None, describing="this host to report the version its wheels state")
+    contains(
+        descriptor(committed, host(committed).id).wheel_tag(version),
+        "manylinux_",
+        describing="this Linux host's wheel platform tag",
+    )
+
+
+def test_a_host_reporting_a_version_that_is_not_one_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`macos-` and a word is a tag no installer can compare; it is refused instead."""
+    monkeypatch.setattr(host_platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(host_platform, "mac_ver", lambda: ("", ("", "", ""), "arm64"))
+
+    with pytest.raises(PlatformError, match="system release"):
+        host_os_version()
