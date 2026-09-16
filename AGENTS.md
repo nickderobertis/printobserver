@@ -252,10 +252,10 @@ from.
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
-- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: no — its bring-up is owed: the macOS platform node of this plan brings its tiers up next, and flips this answer to `yes` once every install cell of it is green
-- `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — its bring-up is owed: the macOS platform node of this plan brings its tiers up next, and flips this answer to `yes` once every install cell of it is green
-- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — its bring-up is owed: the Windows platform node of this plan brings its tiers up next, and flips this answer to `yes` once every install cell of it is green
-- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — its bring-up is owed: the Windows platform node of this plan brings its tiers up next, and flips this answer to `yes` once every install cell of it is green
+- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
+- `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
 [//]: # (END supported-platforms)
 
 The two Linux entries run under systemd, which is what the unit in the end-user
@@ -263,14 +263,9 @@ install path below is written for. `linux-aarch64` is not optional: the machine
 beside the printer is usually a small ARM board, and it is the worst place to
 discover an architecture was never built for.
 
-The four macOS and Windows entries are being brought up, as first-class
-platforms rather than as hosts for a client alone. They entered this list before
-any cell of theirs was green, which is what the two levers below are for: each
-answers `install path: no` with the bring-up it is owed, and every other
-platform-dependent cell of theirs is a line of the exclusions block. What their
-runners actually said when this repository's tiers were first run on them is
-recorded in `docs/platform-bring-up.md`, and the platform nodes that bring them
-up work from that record.
+The macOS and Windows entries are being brought up as first-class platforms,
+through the two levers below; `docs/platform-bring-up.md` records what their
+runners first said.
 
 ### The two levers a platform is brought up in stages by
 
@@ -290,36 +285,34 @@ platform-dependent job that does not run on a platform this list names, with the
 reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 
 [//]: # (BEGIN platform-exclusions)
-- `macos-aarch64` on `gate` — does not run yet: the bring-up of the gate on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-aarch64` on `artifact-client-rust` — does not run yet: the bring-up of the Rust client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-aarch64` on `artifact-client-python` — does not run yet: the bring-up of the Python client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-aarch64` on `artifact-client-node` — does not run yet: the bring-up of the Node client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-aarch64` on `artifacts` — does not run yet: the bring-up of the release artifacts build on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-aarch64` on `integration` — does not run yet: the bring-up of the printer integration tier on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `gate` — does not run yet: the bring-up of the gate on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `artifact-client-rust` — does not run yet: the bring-up of the Rust client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `artifact-client-python` — does not run yet: the bring-up of the Python client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `artifact-client-node` — does not run yet: the bring-up of the Node client artifact on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `artifacts` — does not run yet: the bring-up of the release artifacts build on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `macos-x86_64` on `integration` — does not run yet: the bring-up of the printer integration tier on it is owed, and the macOS platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `gate` — does not run yet: the bring-up of the gate on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `artifact-client-rust` — does not run yet: the bring-up of the Rust client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `artifact-client-python` — does not run yet: the bring-up of the Python client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `artifact-client-node` — does not run yet: the bring-up of the Node client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `artifacts` — does not run yet: the bring-up of the release artifacts build on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-x86_64` on `integration` — does not run yet: the bring-up of the printer integration tier on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `gate` — does not run yet: the bring-up of the gate on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `artifact-client-rust` — does not run yet: the bring-up of the Rust client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `artifact-client-python` — does not run yet: the bring-up of the Python client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `artifact-client-node` — does not run yet: the bring-up of the Node client artifact on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `artifacts` — does not run yet: the bring-up of the release artifacts build on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
-- `windows-aarch64` on `integration` — does not run yet: the bring-up of the printer integration tier on it is owed, and the Windows platform node of this plan, which does that bring-up next, removes this line
+- `macos-aarch64` on `gate` — bring-up owed; the macOS platform node removes this line
+- `macos-aarch64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
+- `macos-aarch64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
+- `macos-aarch64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
+- `macos-aarch64` on `artifacts` — bring-up owed; the macOS platform node removes this line
+- `macos-aarch64` on `integration` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `gate` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `artifacts` — bring-up owed; the macOS platform node removes this line
+- `macos-x86_64` on `integration` — bring-up owed; the macOS platform node removes this line
+- `windows-x86_64` on `gate` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `integration` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `gate` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `integration` — bring-up owed; the Windows platform node removes this line
 [//]: # (END platform-exclusions)
 
-An entry there is a cell that **does not run yet**, not one nobody intends to
-run: each names the bring-up it is owed and the node that removes it. The block is
-meant to end empty, and every line it carries today belongs to the macOS and
-Windows bring-up.
+An entry is a cell that **does not run yet**, not one nobody intends to run: it
+names the bring-up owed and what removes it, and the block is meant to end empty.
 
 The printer integration job is read against this block and against a narrowing
 of its own — the "Virtual printer availability" block below, which records where

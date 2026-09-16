@@ -42,6 +42,7 @@ defaults:
     shell: bash
 
 jobs:
+  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-macos-aarch64:
     name: probe-macos-aarch64
     runs-on: macos-15
@@ -142,7 +143,7 @@ jobs:
           OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
           OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
         run: >-
-          echo -e "## probe-macos-aarch64: macos-aarch64 on macos-15\n
+          echo -e "## probe-macos-aarch64\n
           - checkout: $OUTCOME_CHECKOUT\n
           - setup-just: $OUTCOME_SETUP_JUST\n
           - setup-rust: $OUTCOME_SETUP_RUST\n
@@ -161,6 +162,7 @@ jobs:
           - just check-repo: $OUTCOME_CHECK_REPO\n
           - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
 
+  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-macos-x86_64:
     name: probe-macos-x86_64
     runs-on: macos-15-intel
@@ -261,7 +263,7 @@ jobs:
           OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
           OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
         run: >-
-          echo -e "## probe-macos-x86_64: macos-x86_64 on macos-15-intel\n
+          echo -e "## probe-macos-x86_64\n
           - checkout: $OUTCOME_CHECKOUT\n
           - setup-just: $OUTCOME_SETUP_JUST\n
           - setup-rust: $OUTCOME_SETUP_RUST\n
@@ -280,6 +282,7 @@ jobs:
           - just check-repo: $OUTCOME_CHECK_REPO\n
           - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
 
+  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-windows-x86_64:
     name: probe-windows-x86_64
     runs-on: windows-2025
@@ -380,7 +383,7 @@ jobs:
           OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
           OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
         run: >-
-          echo -e "## probe-windows-x86_64: windows-x86_64 on windows-2025\n
+          echo -e "## probe-windows-x86_64\n
           - checkout: $OUTCOME_CHECKOUT\n
           - setup-just: $OUTCOME_SETUP_JUST\n
           - setup-rust: $OUTCOME_SETUP_RUST\n
@@ -399,6 +402,7 @@ jobs:
           - just check-repo: $OUTCOME_CHECK_REPO\n
           - just test-e2e: $OUTCOME_TEST_E2E" >> "$GITHUB_STEP_SUMMARY"
 
+  # llmlint: ignore[ci_invokes_gate_recipe_not_inline_stages, no_second_broader_sweep_over_an_already_gated_commit, diagnostics_error_or_absent, contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
   probe-windows-aarch64:
     name: probe-windows-aarch64
     runs-on: windows-11-arm
@@ -499,7 +503,7 @@ jobs:
           OUTCOME_CHECK_REPO: ${{ steps.check-repo.outcome }}
           OUTCOME_TEST_E2E: ${{ steps.test-e2e.outcome }}
         run: >-
-          echo -e "## probe-windows-aarch64: windows-aarch64 on windows-11-arm\n
+          echo -e "## probe-windows-aarch64\n
           - checkout: $OUTCOME_CHECKOUT\n
           - setup-just: $OUTCOME_SETUP_JUST\n
           - setup-rust: $OUTCOME_SETUP_RUST\n

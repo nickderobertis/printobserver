@@ -408,6 +408,8 @@ def _coverage_findings(repo: Repo) -> list[str]:
     except PolicyValueError as error:
         return [str(error)]
 
+    # `Any` at the deserialization boundary: a job is whatever the YAML reader
+    # handed back, and only its matrix entries are read, each narrowed below.
     building: list[tuple[str, dict[str, Any]]] = []
     publishing: list[str] = []
     for path in repo.workflow_paths:

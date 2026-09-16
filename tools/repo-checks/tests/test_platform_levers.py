@@ -31,7 +31,7 @@ MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.0
 
 
 #: A platform the list carries while its bring-up is owed, answered `install path: no`.
-BROUGHT_UP = "macos-aarch64"
+BEING_BROUGHT_UP = "macos-aarch64"
 
 
 def record(copy: Tree, *lines: str) -> None:
@@ -335,12 +335,12 @@ def test_a_route_job_owes_a_platform_once_the_install_path_targets_it(
 ) -> None:
     """The first lever, read by the artifact-job check: `yes` makes every route's cell owed."""
     broken = tree()
-    answer_yes(broken, BROUGHT_UP)
+    answer_yes(broken, BEING_BROUGHT_UP)
 
     findings = artifact_jobs(broken.repo)
 
-    refused_naming(findings, "job `artifact-route-npm`", f"AGENTS.md names `{BROUGHT_UP}`")
-    refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BROUGHT_UP}`")
+    refused_naming(findings, "job `artifact-route-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
 
 
 def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifact_check(
@@ -348,11 +348,11 @@ def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifac
 ) -> None:
     """The second lever, read by the artifact-job check: only a recorded cell is excused."""
     broken = tree()
-    unrecord(broken, BROUGHT_UP, "artifact-client-rust")
+    unrecord(broken, BEING_BROUGHT_UP, "artifact-client-rust")
 
     findings = artifact_jobs(broken.repo)
 
-    refused_naming(findings, "job `artifact-client-rust`", f"AGENTS.md names `{BROUGHT_UP}`")
+    refused_naming(findings, "job `artifact-client-rust`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
     for job in ("artifact-client-python", "artifact-client-node"):
         accepted(
             [finding for finding in findings if f"job `{job}`" in finding],
@@ -365,11 +365,11 @@ def test_a_release_build_omitting_a_cell_no_entry_records_is_refused(
 ) -> None:
     """Release automation builds for every platform the list names but the cells recorded."""
     broken = tree()
-    unrecord(broken, BROUGHT_UP, "artifacts")
+    unrecord(broken, BEING_BROUGHT_UP, "artifacts")
 
     findings = release_automation(broken.repo)
 
-    refused_naming(findings, f"names `{BROUGHT_UP}`", "no committed job builds")
+    refused_naming(findings, f"names `{BEING_BROUGHT_UP}`", "no committed job builds")
 
 
 def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
@@ -377,11 +377,13 @@ def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
 ) -> None:
     """The integration job reads this block beside its virtual-printer one."""
     broken = tree()
-    unrecord(broken, BROUGHT_UP, "integration")
+    unrecord(broken, BEING_BROUGHT_UP, "integration")
 
     findings = integration_tier(broken.repo)
 
-    refused_naming(findings, "the integration job `integration`", f"omits platform `{BROUGHT_UP}`")
+    refused_naming(
+        findings, "the integration job `integration`", f"omits platform `{BEING_BROUGHT_UP}`"
+    )
 
 
 def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
@@ -394,7 +396,7 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     at = text.index(MATRIX_AARCH64, job) + len(MATRIX_AARCH64)
     broken.write(
         ".github/workflows/ci.yml",
-        f"{text[:at]}          - id: {BROUGHT_UP}\n            runner: macos-15\n{text[at:]}",
+        f"{text[:at]}          - id: {BEING_BROUGHT_UP}\n            runner: macos-15\n{text[at:]}",
     )
 
     findings = integration_tier(broken.repo)
@@ -402,6 +404,6 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     refused_naming(
         findings,
         "the integration job `integration`",
-        f"names platform `{BROUGHT_UP}`",
+        f"names platform `{BEING_BROUGHT_UP}`",
         "a cell that does not run",
     )

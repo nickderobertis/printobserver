@@ -471,6 +471,37 @@ file = ".github/workflows/install-path.yml"
 site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
 
+# --- .github/workflows/platform-probe.yml -------------------------------------
+# One directive above each of the four probe jobs, naming four rules; the site
+# `name: probe-` is on the line after every one of them. The probe is temporary
+# scaffolding whose whole task is to report what each tier does on a runner no
+# gate has run on yet, and the documentation node of the platform bring-up plan
+# deletes it with these entries.
+
+[[suppression]]
+rule = "ci_invokes_gate_recipe_not_inline_stages"
+file = ".github/workflows/platform-probe.yml"
+site = "name: probe-"
+reason = "Running the gate's tiers one step each is what the probe is for: `just check` stops at the first tier that fails, so on a runner where bootstrap already fails it would report one failure and hide what the nine tiers after it say. The gate itself still runs `just check` in `ci.yml`, and this job is not a gate."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/platform-probe.yml"
+site = "name: probe-"
+reason = "It is not a second sweep of what the gate already ran: the gate runs on the two Linux runners, and this runs the same tiers once on each of the four macOS and Windows runners no gate reaches yet, to record what they say there. It is removed once those platforms' gate cells run."
+
+[[suppression]]
+rule = "diagnostics_error_or_absent"
+file = ".github/workflows/platform-probe.yml"
+site = "name: probe-"
+reason = "The job reports rather than gates: every tier is expected to fail on at least one of these runners until the platforms are brought up, and a job that failed its run would be a required-looking red check over a change that broke nothing. Every step's own outcome, failures included, is written into the run summary, so no diagnostic is hidden."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/workflows/platform-probe.yml"
+site = "name: probe-"
+reason = "Each job names its runner directly because a platform matrix on a job that is not a platform-dependent kind is refused by `just check-repo`, and that is the only other way to derive it. The restatement lives exactly as long as the probe, which the documentation node of the bring-up plan deletes; the permanent jobs keep reading runners out of the matrix the `platforms` check holds to AGENTS.md."
+
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
