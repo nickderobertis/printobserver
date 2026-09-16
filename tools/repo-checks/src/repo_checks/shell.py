@@ -170,6 +170,7 @@ def start(
         env=without_ambient_git(os.environ if env is None else env),
         text=True,
         encoding="utf-8",
+        errors="replace",
         creationflags=(
             subprocess.CREATE_NEW_PROCESS_GROUP if own_group and sys.platform == "win32" else 0
         ),

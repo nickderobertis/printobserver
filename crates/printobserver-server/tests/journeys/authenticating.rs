@@ -784,7 +784,12 @@ fn assert_refused_naming(refusal: &StartError, file: &Path, what: &str) {
     );
     let said = refusal.to_string();
     let normalized_said = said.replace('\\', "/");
-    let normalized_file = file.display().to_string().replace('\\', "/");
+    let normalized_file = file
+        .display()
+        .to_string()
+        .replace('\\', "/")
+        .trim_start_matches("//?/")
+        .to_owned();
     assert!(
         normalized_said.contains(&normalized_file),
         "the refusal of a credential file {what} does not name it: {said}"

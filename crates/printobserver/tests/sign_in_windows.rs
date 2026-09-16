@@ -18,7 +18,7 @@ fn signing_in_exits_with_the_windows_harness_status() {
     let state_toml = state.display().to_string().replace('\\', "\\\\");
     std::fs::write(
         &config,
-        format!("state_dir = \"{state_toml}\"\n\n[supervisor]\nharness = \"claude\"\n"),
+        format!("state_dir = \"{state_toml}\"\n\n[supervisor]\nharness = \"claude-code\"\n"),
     )
     .expect("a configuration");
 
