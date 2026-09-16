@@ -61,7 +61,7 @@ jobs:
         if: steps.setup-just.outcome == 'failure'
         continue-on-error: true
         timeout-minutes: 20
-        run: cargo install just --locked
+        run: cargo install just --locked  # llmlint: ignore[changed_behavior_has_e2e] proven on a real runner: run 35087431232, job 104765467478 (windows-11-arm) built just this way
       - id: bootstrap
         continue-on-error: true
         timeout-minutes: 40
@@ -111,7 +111,7 @@ jobs:
         continue-on-error: true
         env:
           STEPS: ${{ toJSON(steps) }}
-        run: |
+        run: |  # llmlint: ignore[changed_behavior_has_e2e] proven on a real runner: run 35105405513, job 104825522347 wrote this report and the raw context
           printf -v report "## %s" "$GITHUB_JOB"
           while IFS= read -r line; do
             if [[ $line =~ ^\ \ \"([^\"]+)\":\ \{ ]]; then step=${BASH_REMATCH[1]}

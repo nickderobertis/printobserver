@@ -546,6 +546,18 @@ site = "run: just "
 reason = "The probe restates `repo-policy.toml`'s `gate.tiers` one step each rather than reading it, because a step is the unit GitHub reports an outcome for and a single step looping over the list would report one outcome for all of them. The restatement lives exactly as long as the probe, which the documentation node of the bring-up plan deletes; `just check` in `ci.yml` stays the one place the gate reads that list."
 
 [[suppression]]
+rule = "changed_behavior_has_e2e"
+file = ".github/workflows/platform-probe.yml"
+site = "run: cargo install just --locked"
+reason = "This step is a workflow step that only runs on a hosted runner where `extractions/setup-just` has no build, and there is no local harness that reproduces that runner. Its proof is the runner itself: in platform-probe run 35087431232, job 104765467478 (probe-windows-aarch64 on windows-11-arm), setup-just failed with `failed to determine any valid targets; arch = arm64, platform = win32`, this step ran `cargo install just --locked`, and the tiers after it ran `just`. The probe is temporary and the documentation node of the bring-up plan deletes it with this entry."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = ".github/workflows/platform-probe.yml"
+site = "run: |  # llmlint: ignore[changed_behavior_has_e2e]"
+reason = "The summary step reads GitHub's own `toJSON(steps)` context, which exists only inside a hosted run, so its end-to-end proof is a real run rather than a local test. In platform-probe run 35105405513, job 104825522347 (probe-macos-aarch64 at commit 17339cb), this step wrote all 17 step outcomes, matching that cell's recorded results, followed by the collapsed raw steps context, to the job log and summary. The probe is temporary and the documentation node of the bring-up plan deletes it with this entry."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
