@@ -18,11 +18,26 @@ carry it.
 from __future__ import annotations
 
 import json
+import os
+import sys
+import tomllib
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
-from release_artifacts.installing import install, prove, prove_client, smoke_check
+from release_artifacts.installing import (
+    consumer_manifest,
+    executable,
+    install,
+    interpreter_in,
+    npm_global_program,
+    programs_in,
+    prove,
+    prove_client,
+    smoke_check,
+    without_rust,
+)
+from repo_checks import platforms
 from repo_checks.expect import absent, contains, equal, passing
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -38,7 +53,7 @@ BUILD_TIMEOUT_SECONDS = 2400
 def supervisor(request: pytest.FixtureRequest) -> Path:
     """The program a client's smoke check is proved against, built once."""
     repo = Repo(Path(__file__).resolve().parents[3])
-    built = repo.root / "target" / "debug" / "printobserver"
+    built = repo.root / "target" / "debug" / platforms.host(repo).program
     if not built.is_file():
         passing(
             run(
@@ -129,3 +144,111 @@ def test_a_client_with_no_smoke_check_is_refused(
 
     with pytest.raises(installing.InstallError, match="has no committed smoke check"):
         prove(repo, "pypi:printobserver-sdk", into("no-smoke-check"), supervisor)
+
+
+#: Where each host family's own installers put what taking a client reaches for,
+#: relative to the environment they installed into: the interpreter a Python
+#: client is run under, the `pip` a registry proof installs with, the consumer a
+#: Rust client's smoke check is built as, and the program a global npm install
+#: leaves on a path.
+LAYOUTS: dict[str, dict[str, str]] = {
+    "linux": {
+        "python": "bin/python",
+        "pip": "bin/pip",
+        "smoke": "target/release/printobserver-sdk-smoke",
+        "npm": "bin/printobserver",
+    },
+    "win32": {
+        "python": "Scripts/python.exe",
+        "pip": "Scripts/pip.exe",
+        "smoke": "target/release/printobserver-sdk-smoke.exe",
+        "npm": "printobserver.cmd",
+    },
+}
+
+
+@pytest.mark.parametrize("host", sorted(LAYOUTS))
+def test_an_installed_client_is_reached_where_its_own_hosts_installer_put_it(
+    host: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A virtual environment on Windows keeps its programs under `Scripts`, as `.exe`.
+
+    And a global npm install there writes a `.cmd` straight into its prefix
+    rather than linking into `bin`. A proof asking for the POSIX layout on
+    Windows reports a program missing that the install put somewhere else — so
+    each host's answer is asked for on every host, whichever one this runs on.
+    """
+    monkeypatch.setattr(sys, "platform", host)
+    environment = tmp_path / "env"
+    layout = LAYOUTS[host]
+
+    equal(
+        interpreter_in(environment),
+        environment / layout["python"],
+        describing="the interpreter a Python client is run under",
+    )
+    equal(
+        programs_in(environment) / executable("pip"),
+        environment / layout["pip"],
+        describing="the `pip` a registry proof installs with",
+    )
+    equal(
+        environment / "target" / "release" / executable("printobserver-sdk-smoke"),
+        environment / layout["smoke"],
+        describing="the program the Rust client's smoke check is built as",
+    )
+    equal(
+        npm_global_program(environment, "printobserver"),
+        environment / layout["npm"],
+        describing="what a global npm install puts on a path",
+    )
+
+
+#: What a Rust toolchain's own program is called in the directory rustup puts it in.
+TOOLCHAIN_FILES = {"linux": "cargo", "win32": "cargo.exe"}
+
+
+@pytest.mark.parametrize("host", sorted(TOOLCHAIN_FILES))
+def test_a_rust_toolchain_is_taken_off_the_path_under_the_name_its_host_gives_it(
+    host: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory holding `cargo.exe` is a toolchain on Windows, and is taken away.
+
+    Looked for as a bare `cargo`, a Windows `PATH` keeps its toolchain, and a
+    route proven "with no Rust toolchain on the path" was proven with one on it.
+    """
+    toolchain = tmp_path / "toolchain"
+    toolchain.mkdir()
+    (toolchain / TOOLCHAIN_FILES[host]).write_bytes(b"")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("PATH", os.pathsep.join([str(toolchain), str(elsewhere)]))
+    monkeypatch.setattr(sys, "platform", host)
+
+    kept = without_rust()["PATH"].split(os.pathsep)
+
+    equal(kept, [str(elsewhere)], describing="the path an install is run under")
+
+
+def test_a_consumer_manifest_names_a_windows_path_cargo_can_parse() -> None:
+    """The unpacked crate's path reaches `cargo` intact, whichever separator it has.
+
+    Written into a TOML string as it stands, a Windows path is a run of escapes
+    TOML refuses, and the Rust client could not be taken on Windows at all.
+    """
+    for inside, expected in (
+        (
+            PureWindowsPath(r"D:\a\printobserver\env\vendor\printobserver-sdk-0.2.0"),
+            "D:/a/printobserver/env/vendor/printobserver-sdk-0.2.0",
+        ),
+        (
+            PurePosixPath("/home/proof/env/vendor/printobserver-sdk-0.2.0"),
+            "/home/proof/env/vendor/printobserver-sdk-0.2.0",
+        ),
+    ):
+        parsed = tomllib.loads(consumer_manifest(inside))
+        equal(
+            parsed["dependencies"]["printobserver-sdk"]["path"],
+            expected,
+            describing=f"the path a consumer of {inside} depends on",
+        )
