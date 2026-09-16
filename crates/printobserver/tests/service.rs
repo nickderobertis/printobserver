@@ -46,7 +46,9 @@ use harness::{
 
 /// The tracer the operator's own route is observed through: every file access
 /// the program makes to the paths it is watching, each of which it fails as a
-/// file this user is not permitted to read.
+/// file this user is not permitted to read. macOS has no `strace`, and there the
+/// interposer observes the same accesses from inside the program.
+#[cfg(not(target_os = "macos"))]
 const TRACER: &str = "strace";
 
 /// Where the installer is committed, as the install-path section states.
@@ -914,9 +916,15 @@ struct Watched {
     code: Option<i32>,
     /// Everything it printed, on either stream.
     said: String,
-    /// Every access it made to a watched path, as the tracer recorded it.
+    /// Every access it made to a watched path, as the tracer recorded it:
+    /// empty when it made none, and naming the path and `EACCES` when it did.
     touched: String,
 }
+
+/// The macOS observation of the same accesses, shared with the journeys tier.
+#[cfg(target_os = "macos")]
+#[path = "support/interposer.rs"]
+mod interposer;
 
 /// Run this program as an operator on their own account would.
 ///
@@ -924,14 +932,15 @@ struct Watched {
 /// and each is failed with the answer the kernel gives a user who may not read
 /// the service's own files — which is what those files are to such a user. The
 /// environment this journey itself runs under is taken away first, so what the
-/// program is configured with is only what is given here.
+/// program is configured with is only what is given here. On macOS the
+/// interposer loaded into the program records and fails the same accesses,
+/// and only this launcher differs.
 fn as_the_operator(
     started: &Started,
     run: &str,
     arguments: &[&str],
     environment: &[(&str, &str)],
 ) -> Watched {
-    let trace = started.root.path().join(format!("{run}.trace"));
     let mut watched = vec![
         PathBuf::from(DEFAULT_CONFIG_PATH),
         started.installed.configuration(),
@@ -943,6 +952,26 @@ fn as_the_operator(
             .flatten()
             .map(|entry| entry.path()),
     );
+    let (output, touched) = watching(started, run, arguments, environment, &watched);
+    Watched {
+        code: output.status.code(),
+        said: String::from_utf8_lossy(&output.stdout).into_owned()
+            + &String::from_utf8_lossy(&output.stderr),
+        touched,
+    }
+}
+
+/// The program run as the operator under `strace`, and every watched access it
+/// recorded.
+#[cfg(not(target_os = "macos"))]
+fn watching(
+    started: &Started,
+    run: &str,
+    arguments: &[&str],
+    environment: &[(&str, &str)],
+    watched: &[PathBuf],
+) -> (std::process::Output, String) {
+    let trace = started.root.path().join(format!("{run}.trace"));
     let mut command = Command::new(TRACER);
     command
         .args([
@@ -955,7 +984,7 @@ fn as_the_operator(
         ])
         .arg("-o")
         .arg(&trace);
-    for path in &watched {
+    for path in watched {
         command.arg("-P").arg(path);
     }
     command
@@ -972,13 +1001,34 @@ fn as_the_operator(
             "`{TRACER}` could not run, and what the operator's route touches rests on it: {error}"
         )
     });
-    Watched {
-        code: output.status.code(),
-        said: String::from_utf8_lossy(&output.stdout).into_owned()
-            + &String::from_utf8_lossy(&output.stderr),
-        touched: std::fs::read_to_string(&trace)
-            .unwrap_or_else(|error| panic!("`{TRACER}` wrote nothing: {error}")),
+    let touched = std::fs::read_to_string(&trace)
+        .unwrap_or_else(|error| panic!("`{TRACER}` wrote nothing: {error}"));
+    (output, touched)
+}
+
+/// The program run as the operator with the interposer loaded, and every
+/// watched access it recorded.
+#[cfg(target_os = "macos")]
+fn watching(
+    started: &Started,
+    run: &str,
+    arguments: &[&str],
+    environment: &[(&str, &str)],
+    watched: &[PathBuf],
+) -> (std::process::Output, String) {
+    let scratch = started.root.path().join(format!("{run}.interposed"));
+    std::fs::create_dir_all(&scratch).expect("the run's own scratch directory");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+    command
+        .args(arguments)
+        .env_remove(SERVER_ENV)
+        .env_remove(CREDENTIAL_ENV);
+    for (name, value) in environment {
+        command.env(name, value);
     }
+    let observed = interposer::interposed(command, &scratch, watched);
+    let touched = observed.touched();
+    (observed.output, touched)
 }
 
 /// An operator on their own account authenticates by the documented route.
