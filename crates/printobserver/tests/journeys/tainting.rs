@@ -272,8 +272,8 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
         .expect("this walk drives a bed target");
 
     let opened = durations::each_asks_for(world, std::slice::from_ref(&heater), short());
-    durations::the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
     world.machine_is_deaf(true);
+    durations::the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
     refused("an incorrect restoration", || {
         durations::the_prior_value_is_back_shortly_after_it_expires(world, &opened);
     });
