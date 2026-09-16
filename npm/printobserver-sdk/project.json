@@ -2,6 +2,7 @@
   "name": "printobserver-sdk-node",
   "root": "npm/printobserver-sdk",
   "projectType": "library",
+  "implicitDependencies": ["release-artifacts"],
   "tags": ["lang:typescript", "type:client"],
   "targets": {
     "format": {

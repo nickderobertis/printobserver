@@ -353,6 +353,20 @@ def universal(*slices: tuple[int, bytes], wide: bool = False) -> bytes:
     return header + entries + images
 
 
+def slice_declaring_only_its_header() -> bytes:
+    """A universal image whose selected slice excludes its own load command."""
+    image = bytearray(universal((ARM64, thin(ARM64, build_version(11, 0)))))
+    struct.pack_into(">I", image, 20, 32)
+    return bytes(image)
+
+
+def image_declaring_too_small_a_command_region() -> bytes:
+    """A thin image whose command count cannot fit in its `sizeofcmds`."""
+    image = bytearray(thin(ARM64, build_version(11, 0)))
+    struct.pack_into("<I", image, 20, 8)
+    return bytes(image)
+
+
 def macos_host(monkeypatch: pytest.MonkeyPatch, machine: str) -> None:
     """Make this interpreter report a macOS host of `machine`, on a newer release.
 
@@ -440,6 +454,8 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
         (b"", "is not a macOS program"),
         (thin(ARM64, struct.pack("<II", 0x24, 8), UUID), "is not a macOS program"),
         (thin(X86_64, build_version(10, 12)), "records no minimum macOS release for `arm64`"),
+        (slice_declaring_only_its_header(), "is not a macOS program"),
+        (image_declaring_too_small_a_command_region(), "is not a macOS program"),
     ],
     ids=[
         "no-command",
@@ -450,6 +466,8 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
         "empty",
         "a-command-smaller-than-its-fields",
         "a-thin-image-for-another-processor",
+        "a-command-outside-its-universal-slice",
+        "a-command-outside-sizeofcmds",
     ],
 )
 def test_a_macos_program_recording_no_minimum_release_is_refused_naming_it(

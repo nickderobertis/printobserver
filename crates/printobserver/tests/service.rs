@@ -450,6 +450,68 @@ fn the_installer_places_four_things_and_starts_nothing() {
     );
 }
 
+/// A host for which the installer has no service definition is refused by
+/// name, before anything is placed or started.
+#[test]
+fn an_unsupported_host_is_refused_before_installation() {
+    let under = TempDir::new().expect("a journey's own root");
+    let bin = under.path().join("bin");
+    std::fs::create_dir(&bin).expect("a bin directory");
+    executable(&bin.join("uname"), "#!/bin/sh\necho FreeBSD\n");
+    let root = under.path().join("target-root");
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let run = Command::new(repo_root().join(INSTALLER))
+        .args(["--root", root.to_str().expect("a UTF-8 root")])
+        .env("PATH", path)
+        .output()
+        .expect("the installer runs");
+
+    assert!(!run.status.success(), "the installer accepted FreeBSD");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.contains("FreeBSD"),
+        "the refusal did not name the host: {said}"
+    );
+    assert!(!root.exists(), "the refused installer placed files");
+}
+
+/// Values that would become launchd property-list markup are refused before
+/// the installer writes a definition or invokes a service manager.
+#[test]
+fn launchd_paths_that_are_property_list_markup_are_refused() {
+    let under = TempDir::new().expect("a journey's own root");
+    let program = under.path().join("print&observer");
+    std::fs::copy(env!("CARGO_BIN_EXE_printobserver"), &program).expect("the program is copied");
+    let (installed, run) = installing_for(
+        under.path(),
+        Manager::Launchd,
+        &["--binary", program.to_str().expect("a UTF-8 path")],
+    );
+
+    assert!(
+        !run.status.success(),
+        "the installer accepted property-list markup"
+    );
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.contains("ampersand or an angle bracket"),
+        "the refusal did not name the unsafe markup: {said}"
+    );
+    assert!(
+        !installed.root.exists(),
+        "the refused installer placed files"
+    );
+    assert!(
+        !installed.recording.exists(),
+        "the refused installer invoked a service manager"
+    );
+}
+
 /// Each service manager's branch of the installer writes the definition the
 /// platform list, the install path and the policy say it should, and starts
 /// nothing.

@@ -562,18 +562,27 @@ def _macho_minimum(opened: BinaryIO, machine: str) -> tuple[int, int] | None:
     (count,) = struct.unpack(">I", _exactly(opened, 4))
     for _ in range(count):
         if magic == FAT_MAGIC_64:
-            cpu, _sub, offset, _size, _align, _reserved = struct.unpack(
+            cpu, _sub, offset, size, _align, _reserved = struct.unpack(
                 ">iiQQII", _exactly(opened, 32)
             )
         else:
-            cpu, _sub, offset, _size, _align = struct.unpack(">iiIII", _exactly(opened, 20))
+            cpu, _sub, offset, size, _align = struct.unpack(">iiIII", _exactly(opened, 20))
         if cpu == wanted:
+            here = opened.tell()
+            opened.seek(0, 2)
+            file_end = opened.tell()
+            opened.seek(here)
+            if offset > file_end or size > file_end - offset:
+                msg = f"a universal Mach-O slice declares bytes {offset}..{offset + size} outside its {file_end}-byte file"
+                raise struct.error(msg)
             opened.seek(offset)
-            return _thin_minimum(opened, wanted)
+            return _thin_minimum(opened, wanted, end=offset + size)
     return None
 
 
-def _thin_minimum(opened: BinaryIO, wanted: int | None) -> tuple[int, int] | None:
+def _thin_minimum(
+    opened: BinaryIO, wanted: int | None, *, end: int | None = None
+) -> tuple[int, int] | None:
     """The minimum release the thin Mach-O image at `opened`'s position records.
 
     An image built for another processor than `wanted` records nothing about the
@@ -587,11 +596,23 @@ def _thin_minimum(opened: BinaryIO, wanted: int | None) -> tuple[int, int] | Non
     (magic,) = struct.unpack("<I", _exactly(opened, 4))
     if magic not in (MH_MAGIC_64, MH_MAGIC):
         return None
-    cpu, _sub, _filetype, count, _size, _flags = struct.unpack("<iiIIII", _exactly(opened, 24))
+    cpu, _sub, _filetype, count, commands_size, _flags = struct.unpack(
+        "<iiIIII", _exactly(opened, 24)
+    )
     if cpu != wanted:
         return None
     at = start + (32 if magic == MH_MAGIC_64 else 28)
+    commands_end = at + commands_size
+    if end is not None and commands_end > end:
+        msg = (
+            f"a Mach-O image declares load commands through byte {commands_end}, "
+            f"past its slice ending at byte {end}"
+        )
+        raise struct.error(msg)
     for _ in range(count):
+        if at + LOAD_COMMAND_HEADER > commands_end:
+            msg = "a Mach-O image's load-command header lies outside its declared command region"
+            raise struct.error(msg)
         opened.seek(at)
         command, size = struct.unpack("<II", _exactly(opened, LOAD_COMMAND_HEADER))
         # The payload a command is read for has to lie inside the size it
@@ -601,6 +622,12 @@ def _thin_minimum(opened: BinaryIO, wanted: int | None) -> tuple[int, int] | Non
             msg = (
                 f"a load command {command:#x} declares {size} bytes, fewer than the "
                 f"{LOAD_COMMAND_HEADER + payload} its own fields take"
+            )
+            raise struct.error(msg)
+        if size > commands_end - at:
+            msg = (
+                f"a load command {command:#x} declares {size} bytes past the "
+                "image's declared load-command region"
             )
             raise struct.error(msg)
         if command == LC_BUILD_VERSION:
