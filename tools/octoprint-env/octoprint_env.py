@@ -252,6 +252,9 @@ def _spawn(
     return subprocess.Popen(  # noqa: S603
         argv,
         text=True,
+        # What `uv` and OctoPrint say is UTF-8; a Windows host's own code page
+        # would refuse some of it.
+        encoding="utf-8",
         stdout=stdout,
         stderr=stderr,
         start_new_session=start_new_session,

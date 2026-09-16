@@ -107,6 +107,11 @@ def run(
         timeout=timeout,
         capture_output=capture,
         text=True,
+        # Every program this repository runs reads and writes UTF-8. Left to
+        # the locale, a Windows host encodes with its ANSI code page, and a
+        # formatter handed a generated file carrying an em dash refuses it as
+        # not UTF-8 at all.
+        encoding="utf-8",
         check=check,
     )
 
@@ -160,6 +165,7 @@ def start(
         cwd=cwd,
         env=without_ambient_git(os.environ if env is None else env),
         text=True,
+        encoding="utf-8",
         creationflags=(
             subprocess.CREATE_NEW_PROCESS_GROUP if own_group and sys.platform == "win32" else 0
         ),
