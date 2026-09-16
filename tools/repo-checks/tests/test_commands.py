@@ -47,9 +47,17 @@ with open(os.environ["CARGO_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(" ".join(arguments) + "\\n")
 release = arguments[arguments.index("--version") + 1] if "--version" in arguments else "0.0.1"
 release = os.environ.get("CARGO_STANDIN_ANSWERS", release)
-program = pathlib.Path(os.environ["CARGO_STANDIN_INTO"]) / arguments[1]
-program.write_text(f"#!/bin/sh\\necho '{arguments[1]} {release}'\\n", encoding="utf-8")
-program.chmod(0o755)
+into = pathlib.Path(os.environ["CARGO_STANDIN_INTO"])
+answer = f"print({arguments[1] + ' ' + release!r})\\n"
+if sys.platform == "win32":
+    (into / f"{arguments[1]}.py").write_text(answer, encoding="utf-8")
+    (into / f"{arguments[1]}.cmd").write_text(
+        f'@"{sys.executable}" "%~dp0{arguments[1]}.py" %*\\r\\n', encoding="utf-8"
+    )
+else:
+    program = into / arguments[1]
+    program.write_text(f"#!{sys.executable}\\n{answer}", encoding="utf-8")
+    program.chmod(0o755)
 """
 
 POLICY = """
@@ -114,16 +122,32 @@ def test_install_tools_reports_an_install_it_could_not_do(
     contains(capsys.readouterr().err, "Run `false` by hand")
 
 
-def program(directory: Path, name: str, text: str) -> None:
-    """Put an executable `name` in `directory`."""
+def program(directory: Path, name: str, code: str) -> None:
+    """Put a program `name` running the Python `code` in `directory`.
+
+    A POSIX host runs it by its interpreter line. A Windows host finds a program
+    by its suffix and runs no interpreter line, so there the code sits beside a
+    `.cmd` that hands it to this interpreter.
+    """
+    if sys.platform == "win32":
+        (directory / f"{name}.py").write_text(code, encoding="utf-8")
+        (directory / f"{name}.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0{name}.py" %*\r\n', encoding="utf-8"
+        )
+        return
     written = directory / name
-    written.write_text(text, encoding="utf-8")
+    written.write_text(f"#!{sys.executable}\n{code}", encoding="utf-8")
     written.chmod(0o755)
 
 
 def answering(release: str) -> str:
-    """A program's text that answers `--version` the way release-plz does."""
-    return f"#!/bin/sh\necho 'release-plz {release}'\n"
+    """A program's code that answers `--version` the way release-plz does."""
+    return f"print({f'release-plz {release}'!r})\n"
+
+
+def failing_with(status: int) -> str:
+    """A program's code that exits with `status` and says nothing."""
+    return f"raise SystemExit({status})\n"
 
 
 def toolchain(
@@ -142,9 +166,9 @@ def toolchain(
     shutil.copy2(REPO_ROOT / "repo-policy.toml", root / "repo-policy.toml")
     installs = tmp_path / "cargo-bin"
     installs.mkdir()
-    program(installs, "cargo", f"#!{sys.executable}\n{CARGO_STANDIN}")
+    program(installs, "cargo", CARGO_STANDIN)
     for present in ("cargo-nextest", "cargo-llvm-cov"):
-        program(installs, present, f"#!/bin/sh\necho '{present} 0.0.1'\n")
+        program(installs, present, f"print({f'{present} 0.0.1'!r})\n")
     record = tmp_path / "cargo-invocations"
     record.touch()
     directories = [installs]
@@ -163,7 +187,7 @@ def toolchain(
     ("stale", "said"),
     [
         (answering(STALE), f"answers {STALE}, not the held {HELD}"),
-        ("#!/bin/sh\nexit 1\n", f"answers no release, not the held {HELD}"),
+        (failing_with(1), f"answers no release, not the held {HELD}"),
     ],
 )
 def test_install_tools_replaces_a_held_tool_on_the_path_at_another_release(
@@ -211,7 +235,7 @@ def test_install_tools_reports_a_replacement_it_could_not_install(
     """A stale copy the install could not replace fails naming the command to run by hand."""
     root, installs, _ = toolchain(tmp_path, monkeypatch)
     program(installs, "release-plz", answering(STALE))
-    program(installs, "cargo", "#!/bin/sh\nexit 101\n")
+    program(installs, "cargo", failing_with(101))
 
     equal(main(["install-tools", "--root", str(root)]), 1)
 
@@ -273,7 +297,7 @@ def test_install_tools_refuses_a_held_tool_a_copy_earlier_on_the_path_shadows(
     equal(main(["install-tools", "--root", str(root)]), 1)
 
     said = capsys.readouterr().err
-    contains(said, f"{tmp_path / 'shadow' / 'release-plz'} still answers {STALE}")
+    contains(said, f"{shutil.which('release-plz')} still answers {STALE}")
     contains(said, "a copy earlier on PATH shadows the one installed")
     equal(
         record.read_text(encoding="utf-8").splitlines(),

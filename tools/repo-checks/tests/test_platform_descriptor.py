@@ -326,7 +326,9 @@ def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_host(
 def test_a_host_reporting_no_baseline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     """A tag stating a version it did not read is a wheel that installs and cannot run."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: None)
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace, and
+    # the host this answers for is the Linux one the lambda above reports.
+    monkeypatch.setattr(os, "confstr", lambda _name: None, raising=False)
 
     with pytest.raises(PlatformError, match="C library"):
         host_baseline()
@@ -369,14 +371,24 @@ def test_a_host_no_identifier_is_known_for_is_refused_by_name(
 
 
 def test_this_hosts_own_baseline_is_read_off_the_host(committed: Repo) -> None:
-    """The rule is that the tag states what the build was actually made against."""
-    baseline = host_baseline()
+    """The rule is that the tag states what the build was actually made against.
 
-    truth(baseline is not None, describing="this host to report the baseline its wheels state")
+    A host whose tags state a baseline reports one — the C library on Linux, the
+    system release on macOS — and a Windows host, whose tags state none, reports
+    none; either way the tag is its own platform's family.
+    """
+    baseline = host_baseline()
+    here = descriptor(committed, host(committed).id)
+
+    equal(
+        baseline is not None,
+        here.naming.wheel_versioned,
+        describing=f"whether this `{here.id}` host reports the baseline its wheels state",
+    )
     contains(
-        descriptor(committed, host(committed).id).wheel_tag(baseline),
-        "manylinux_",
-        describing="this Linux host's wheel platform tag",
+        here.wheel_tag(baseline),
+        f"{here.naming.wheel_family}_",
+        describing=f"this `{here.id}` host's wheel platform tag",
     )
 
 
