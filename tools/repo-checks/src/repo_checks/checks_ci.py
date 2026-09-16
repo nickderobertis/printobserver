@@ -27,8 +27,8 @@ from repo_checks.platforms import (
     EXCLUSIONS_BLOCK,
     PLATFORM_LINE,
     PLATFORM_SHAPE,
-    SERVICE_MANAGERS,
     Platform,
+    ServiceManager,
 )
 from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
@@ -397,9 +397,9 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
     findings.extend(
         f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "
         f"`{platform.service_manager}`, which is none this repository has a name for "
-        f"({', '.join(f'`{one}`' for one in SERVICE_MANAGERS)})"
+        f"({', '.join(f'`{one.value}`' for one in ServiceManager)})"
         for platform in declared
-        if platform.service_manager not in SERVICE_MANAGERS
+        if platform.service_manager not in ServiceManager
     )
     return findings
 

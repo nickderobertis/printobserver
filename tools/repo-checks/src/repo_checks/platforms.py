@@ -28,6 +28,7 @@ import os
 import platform as host_platform
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 
 from repo_checks.model import Repo
 from repo_checks.parsing import marker_block
@@ -72,11 +73,24 @@ PLATFORM_ID = re.compile(rf"^{PLATFORM_ID_PATTERN}$")
 #: platform is a claim whether or not somebody quoted it.
 PLATFORM_ID_IN_TEXT = re.compile(rf"(?<![\w-]){PLATFORM_ID_PATTERN}(?![\w-])")
 
-#: Every service manager this repository has a name for, which is the closed set
-#: a supported-platform entry's own column may state and the set a document is
-#: read against. One per operating-system family, and each is the manager a host
-#: of that family runs a service under with nothing installed.
-SERVICE_MANAGERS = ("systemd", "launchd", "windows-service")
+
+class ServiceManager(StrEnum):
+    """Every service manager this repository has a name for.
+
+    A closed set: it is what a supported-platform entry's own column may state,
+    what the install path states one pair of commands per, and what a document
+    is read against. One per operating-system family, and each is the manager a
+    host of that family runs a service under with nothing installed.
+
+    A `StrEnum` so that a member compares equal to the spelling `AGENTS.md`
+    carries, which is how a value read out of prose is held to this set without
+    a conversion that could fail on the way.
+    """
+
+    SYSTEMD = "systemd"
+    LAUNCHD = "launchd"
+    WINDOWS_SERVICE = "windows-service"
+
 
 #: The block `AGENTS.md` records each cell that does not run in.
 EXCLUSIONS_BLOCK = "platform-exclusions"

@@ -34,12 +34,12 @@ from repo_checks.model import (
     policy_table,
 )
 from repo_checks.parsing import MarkerBlockMissingError, marker_block, section
-from repo_checks.platforms import supported
+from repo_checks.platforms import ServiceManager, supported
 
-#: The service manager this repository's own unit is written for, as the
-#: supported-platform list spells it. The unit's name and the installer's path
-#: are read out of this manager's own pair of commands.
-SYSTEMD = "systemd"
+#: The service manager this repository's own unit is written for. The unit's
+#: name and the installer's path are read out of this manager's own pair of
+#: commands.
+SYSTEMD = ServiceManager.SYSTEMD
 
 # `sudo systemctl enable --now <unit>`: the install path's third command, whose
 # last word is the unit's name.
@@ -94,7 +94,7 @@ def _named(repo: Repo) -> tuple[Named | None, list[str]]:
     if not unit:
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no `systemctl enable --now "
-            f"<unit>` command under `{SYSTEMD}`, so nothing here names the unit this "
+            f"<unit>` command under `{SYSTEMD.value}`, so nothing here names the unit this "
             f"repository installs"
         )
     try:
@@ -106,7 +106,7 @@ def _named(repo: Repo) -> tuple[Named | None, list[str]]:
     if not any(installer in command for command in pair):
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no command fetching "
-            f"`{installer}` under `{SYSTEMD}`, which is the installer this repository ships"
+            f"`{installer}` under `{SYSTEMD.value}`, which is the installer this repository ships"
         )
     if findings:
         return None, findings

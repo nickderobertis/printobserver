@@ -909,7 +909,7 @@ def platform_names(repo: Repo) -> list[str]:
     disagreement until they follow it. This is the mechanical half of keeping
     every document derived from that list.
     """
-    from repo_checks.platforms import PLATFORM_ID_IN_TEXT, SERVICE_MANAGERS, supported
+    from repo_checks.platforms import PLATFORM_ID_IN_TEXT, ServiceManager, supported
 
     try:
         declared = supported(repo)
@@ -931,9 +931,9 @@ def platform_names(repo: Repo) -> list[str]:
                 if token not in known
             )
             stated = [
-                manager
-                for manager in SERVICE_MANAGERS
-                if re.search(rf"(?<![\w-]){manager}(?![\w-])", line)
+                manager.value
+                for manager in ServiceManager
+                if re.search(rf"(?<![\w-]){manager.value}(?![\w-])", line)
             ]
             # A line may name several managers — a sentence contrasting two is
             # right about both — so what is refused is a platform beside a set

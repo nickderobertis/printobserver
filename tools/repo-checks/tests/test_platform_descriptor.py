@@ -24,8 +24,8 @@ from repo_checks.platforms import (
     HOSTS,
     NAMING,
     PLATFORM_ID,
-    SERVICE_MANAGERS,
     PlatformError,
+    ServiceManager,
     descriptor,
     host,
     host_baseline,
@@ -408,10 +408,12 @@ def test_the_three_key_sets_of_the_module_cannot_drift_apart(committed: Repo) ->
             describing=f"`{identifier}` to be of the shape a document is read against",
         )
     for platform in supported(committed):
-        contains(
-            SERVICE_MANAGERS,
-            platform.service_manager,
-            describing="the service managers this repository has a name for",
+        truth(
+            platform.service_manager in ServiceManager,
+            describing=(
+                f"`{platform.service_manager}` to be a service manager this repository "
+                f"has a name for"
+            ),
         )
 
 
