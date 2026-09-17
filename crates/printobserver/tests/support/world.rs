@@ -99,6 +99,8 @@ pub enum Printer {
         api_key: String,
         /// The file it has to print, which its bring-up uploaded.
         file: String,
+        /// How long one print of that file runs for, in seconds.
+        runs_for_s: i64,
     },
 }
 
@@ -299,17 +301,23 @@ impl World {
     pub fn wants(&self, state: Reports) {
         match &self.printer {
             Printer::StoodIn(machine) => machine.reports(state),
-            Printer::Scripted { .. } => {
+            Printer::Scripted { runs_for_s, .. } => {
                 // A slow architecture can reach the end of the hold print
                 // between observing `printing` and starting the next traced
                 // command. Restart it through this program's own surface while
-                // there is less than one generous invocation left.
+                // there is less than one generous invocation left — measured
+                // from how long the print has run against how long the file
+                // runs for, because the machine's own estimate of what is left
+                // is read off the file's bytes, most of which are its comment
+                // header, and says the print is nearly over the moment it
+                // starts. A walk that believed it restarted the print before
+                // every command, at ten seconds a time.
                 if matches!(state, Reports::Printing | Reports::Paused)
                     && self
                         .status()
-                        .pointer("/job/print_time_left_s")
+                        .pointer("/job/print_time_s")
                         .and_then(Value::as_i64)
-                        .is_some_and(|seconds| seconds < INVOCATION_MARGIN_SECONDS)
+                        .is_some_and(|elapsed| elapsed > runs_for_s - INVOCATION_MARGIN_SECONDS)
                 {
                     self.drive_to(Reports::Operational);
                 }
