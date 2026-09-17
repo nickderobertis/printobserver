@@ -67,9 +67,12 @@ pub const MARGIN: Duration = Duration::from_millis(400);
 /// The margin the host's tracer leaves around the expiry read.
 ///
 /// Decoding one ETW session is materially slower than reading one `strace`
-/// file. The shortest Windows duration is already raised above the public
-/// minimum for that reason, so take enough of that Windows-only allowance to
-/// ensure the traced request finishes on the side of the expiry it started on.
+/// file: on the hosted ARM runner a traced read issued [`MARGIN`] before an
+/// expiry landed well after it. The shortest Windows duration is already
+/// raised above the public minimum for that reason, so take enough of that
+/// Windows-only allowance — three seconds, a few times what one `logman`
+/// start and `tracerpt` decode cost there — to ensure the traced request
+/// finishes on the side of the expiry it started on. Linux keeps [`MARGIN`].
 fn margin(windows: bool) -> Duration {
     if windows {
         Duration::from_secs(3)
@@ -287,21 +290,34 @@ fn wait(when: Timestamp, shift: i64) -> Timestamp {
 /// One read for the batch, taken before the earliest expiry among them: every
 /// intervention is then asserted to have been read before **its own**, so a
 /// read that arrived late fails here rather than passing for having been taken
-/// at all.
+/// at all. Two instants say so. `at` is when the read was issued, which is the
+/// schedule; the status's own `printer.observed_at` is when the server looked
+/// at the machine to answer it, which it stamps before reading which
+/// interventions still stand — so a read issued in time that landed late fails
+/// naming the tracer's cost rather than a value that was not in force.
 pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
     let earliest = opened
         .iter()
         .map(|bounded| bounded.expires_at)
         .min()
         .expect("this journey opened an intervention");
-    let at = just_before(earliest, margin(cfg!(windows)));
+    let margin = margin(cfg!(windows));
+    let at = just_before(earliest, margin);
     let status = running::read(world, &["status", "--print-id", &world.print_id]);
+    let observed = instant(&status, "/printer/observed_at");
     let held = in_force(&status);
 
     for bounded in opened {
         assert!(
             at < bounded.expires_at,
             "`{}` was read at {at}, which is not before it expires at {}",
+            bounded.command,
+            bounded.expires_at
+        );
+        assert!(
+            observed < bounded.expires_at,
+            "`{}` was read at {at}, before it expires at {}, but the machine was observed \
+             at {observed}, after: the traced read took longer than the {margin:?} it was left",
             bounded.command,
             bounded.expires_at
         );
