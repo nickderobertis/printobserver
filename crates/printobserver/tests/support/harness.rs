@@ -59,6 +59,10 @@ pub const ANSWERED: &str = "was answered: ";
 /// it was asked — which is what lets a journey assert it was never run at all.
 /// `status` is what its sign-in exits with, and `answer` is the document its
 /// supervision turn prints.
+///
+/// Each record it writes appears whole: it is written beside its name and
+/// renamed into place, because a journey polls for the record and a read that
+/// landed between two of its lines would find a record with no `state`.
 pub fn stand_in(
     directory: &Path,
     harness: &HarnessSignIn,
@@ -90,7 +94,8 @@ case "$1" in
             echo "directory=$dir"
             echo "home=${{HOME:-}}"
             echo "state=$(cat "$dir/{SIGNED_IN}")"
-        }} > "$dir/{TURN_SEEN}"
+        }} > "$dir/{TURN_SEEN}.part"
+        mv "$dir/{TURN_SEEN}.part" "$dir/{TURN_SEEN}"
         printf '%s\n' '{answer}'
         exit 0
         ;;
@@ -108,7 +113,8 @@ esac
     echo "stdin=$(readlink /proc/self/fd/0)"
     echo "parent_stdin=$(readlink /proc/$PPID/fd/0)"
     echo "parent_sockets=$(ls -l /proc/$PPID/fd | grep -c 'socket:')"
-}} > "$dir/{SIGN_IN_SEEN}"
+}} > "$dir/{SIGN_IN_SEEN}.part"
+mv "$dir/{SIGN_IN_SEEN}.part" "$dir/{SIGN_IN_SEEN}"
 echo "{SIGN_IN_STATE}" > "$dir/{SIGNED_IN}"
 echo "{program} is asking for the code it printed a link to" >&2
 if IFS= read -r answered; then
