@@ -10,7 +10,7 @@
 //! under any other is refused before it reaches the machine, and a
 //! configuration naming nothing a header could carry sends no request at all.
 
-use std::io::{Read as _, Write as _};
+use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -247,8 +247,23 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
         .expect("the malformed server has an address");
     let server = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().expect("the responder connects");
-        let mut request = [0_u8; 4096];
-        let _ = stream.read(&mut request).expect("the request reads");
+        let mut reader = BufReader::new(&mut stream);
+        let mut content_length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("a request line reads");
+            if line == "\r\n" {
+                break;
+            }
+            if let Some(length) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                content_length = length.trim().parse().expect("content length is a number");
+            }
+        }
+        let mut body = vec![0; content_length];
+        reader
+            .read_exact(&mut body)
+            .expect("the request body reads");
+        drop(reader);
         stream
             .write_all(b"not an HTTP answer")
             .expect("the malformed answer writes");
