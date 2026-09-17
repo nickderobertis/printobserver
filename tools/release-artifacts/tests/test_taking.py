@@ -63,6 +63,31 @@ def test_node_is_kept_when_a_runner_installs_it_beside_rust(
     )
 
 
+def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    version: str,
+) -> None:
+    """The real npm route preserves Node before removing a shared tool directory."""
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
+    (shared / "node").symlink_to(node)
+    (shared / "cargo").symlink_to(cargo)
+    monkeypatch.setenv("PATH", os.pathsep.join((str(shared), os.environ["PATH"])))
+
+    said = prove(repo, "npm:printobserver-cli", into("runner-shaped-npm"), program)
+
+    contains(said, f"printobserver {version}", describing="what the npm route installed")
+    contains(said, NO_TOOLCHAIN, describing="what the npm route was taken with")
+
+
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_each_route_installs_a_program_that_runs(
     identifier: str, repo: Repo, program: Path, into: Callable[[str], Path], version: str

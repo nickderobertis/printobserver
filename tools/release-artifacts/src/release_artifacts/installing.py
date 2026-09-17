@@ -270,7 +270,7 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
             *tarballs,
         ],
         cwd=into,
-        env=without_rust(),
+        env=without_rust(preserve=("node",), preserved_at=environment / ".path"),
         describing="installing the launcher and the program beside it",
     )
     return Installed(built.target, environment, environment / "bin" / PROGRAM, "")
