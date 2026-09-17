@@ -189,6 +189,18 @@ site = "urllib.request.urlopen(request"
 reason = "The second half of the same one site: S310 flags both building the request and opening it, and this stand-in posts through exactly one `urlopen`."
 
 [[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "if not command.startswith(server_command_prefix(instance)):"
+reason = "The judged tier's fifth pass over this change objected that a prefix comparison admits a command line that merely extends the prefix. The prefix is the program's absolute path in this instance's own virtual environment, `--basedir` naming this instance's own directory, and the `serve` command — the whole of the argv `start_server` starts a server under, before the address it listens on — so the only command line that extends it is that server's own, with its address after `serve`. What the check refuses is what the pass before asked it to: a process whose command line mentions the directory anywhere without being that server, which the decoy journey in `tests/test_startup_failures.py` drives."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "bare = parts.hostname and parts.port is not None and parts.username is None"
+reason = "The same pass objected that the host's own spelling is not validated here. Every value this narrows is one this script wrote as `http://127.0.0.1:<port>`, and the one reader of it — `_already_running` — hands it to `http.client`, which refuses a host it cannot spell as `InvalidURL`, an `HTTPException` that reader already catches and answers as no running instance. Validating the spelling of a host name here would restate the HTTP client's own rule for a value it is about to check anyway; what this boundary holds is the shape the record promises, `http://host:port` and nothing beyond it, each departure driven through the script by the parametrized journey in `tests/test_startup_failures.py`."
+
+[[suppression]]
 rule = "S603"
 file = "tools/octoprint-env/tests/test_startup_failures.py"
 site = "decoy = subprocess.Popen("

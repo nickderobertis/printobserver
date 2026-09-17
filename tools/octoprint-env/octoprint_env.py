@@ -689,6 +689,7 @@ def stop(instance: Instance) -> dict[str, Any]:
         # id is handed to something else — so what is running under that id is
         # read before its whole session is signalled.
         command = command_of(pid)
+        # llmlint: ignore[boundary_inputs_validated] the prefix runs through `serve`
         if not command.startswith(server_command_prefix(instance)):
             instance.record.unlink()
             note(
@@ -758,6 +759,7 @@ def record_url(record: object) -> str:
         raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
     parts = urllib.parse.urlsplit(value)
     # An address and nothing more: no user, no path, no query, no fragment.
+    # llmlint: ignore[boundary_inputs_validated] the host's spelling is the client's to refuse
     bare = parts.hostname and parts.port is not None and parts.username is None
     if parts.scheme != "http" or not bare or parts.path or parts.query or parts.fragment:
         raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
