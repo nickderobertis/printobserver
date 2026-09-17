@@ -424,14 +424,20 @@ def smoke_check(repo: Repo, taken: Installed) -> list[str]:
     return argv
 
 
-def prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
+def prove_client(
+    repo: Repo,
+    taken: Installed,
+    binary: Path | None,
+    *,
+    credential: str | None = None,
+) -> str:
     """One installed client's own smoke check, against a real supervisor.
 
     Raises:
         InstallError: If that client has no committed smoke check.
     """
     argv = smoke_check(repo, taken)
-    world = World(program(repo, binary), taken.environment / "world")
+    world = World(program(repo, binary), taken.environment / "world", credential=credential)
     try:
         running = world.start()
         return ran(
@@ -439,8 +445,7 @@ def prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
                 *argv,
                 "--server",
                 running.server,
-                "--credential",
-                running.credential,
+                f"--credential={running.credential}",
                 "--print-id",
                 running.print_id,
                 "--image-id",

@@ -118,6 +118,19 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
     contains(said, "smoke: contract", describing=f"what `{identifier}` said where it was put")
     contains(said, "image ", describing=f"what `{identifier}` said where it was put")
 
+    if identifier == "pypi:printobserver-sdk":
+        leading_dash = prove_client(
+            repo,
+            taken,
+            supervisor,
+            credential="-a-valid-leading-dash-credential",
+        )
+        contains(
+            leading_dash,
+            "smoke: contract",
+            describing="what the installed Python client said under a leading-dash credential",
+        )
+
 
 def test_a_client_with_no_smoke_check_is_refused(
     repo: Repo, supervisor: Path, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch

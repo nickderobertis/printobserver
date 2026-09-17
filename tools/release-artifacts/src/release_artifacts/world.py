@@ -223,54 +223,54 @@ def _machine_handler(machine: Machine) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def _configuration(state: Path, printer: Printer) -> str:
+def _configuration(state: Path, printer: Printer, credential: str | None = None) -> str:
     """The one configuration file the supervisor reads, as a document."""
-    return json.dumps(
-        {
-            "state_dir": str(state),
-            "listen": "127.0.0.1:0",
-            "octoprint": {
-                "url": printer.url,
-                "api_key": printer.api_key,
-                "fan": "commandable",
+    document = {
+        "state_dir": str(state),
+        "listen": "127.0.0.1:0",
+        "octoprint": {
+            "url": printer.url,
+            "api_key": printer.api_key,
+            "fan": "commandable",
+        },
+        "supervisor": {"harness": "claude-code"},
+        "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
+        "safety": {
+            "agent_min_interval_s": 0,
+            "allowed": {
+                "feedrate": {"min": 0.5, "max": 1.5},
+                "flowrate": {"min": 0.9, "max": 1.1},
+                "fan": {"min": 0.0, "max": 100.0},
+                "bed_target": {"min": 0.0, "max": 110.0},
+                "tool_target:0": {"min": 0.0, "max": 260.0},
             },
-            "supervisor": {"harness": "claude-code"},
-            "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
-            "safety": {
-                "agent_min_interval_s": 0,
-                "allowed": {
-                    "feedrate": {"min": 0.5, "max": 1.5},
-                    "flowrate": {"min": 0.9, "max": 1.1},
-                    "fan": {"min": 0.0, "max": 100.0},
-                    "bed_target": {"min": 0.0, "max": 110.0},
-                    "tool_target:0": {"min": 0.0, "max": 260.0},
-                },
-                "actions": {
-                    "operator": [
-                        "pause",
-                        "resume",
-                        "cancel",
-                        "start_print",
-                        "set_feedrate_factor",
-                        "set_flowrate_factor",
-                        "set_tool_target_c",
-                        "set_bed_target_c",
-                        "set_fan_percent",
-                        "acknowledge_failure",
-                    ],
-                    # Nothing at all, and deliberately: the all-operation walk
-                    # needs one refusal per action method, and the grant is the
-                    # one rejection the policy takes before it looks at the
-                    # state, the interval or the bounds — so a client acting as
-                    # an agent is refused every action from wherever the
-                    # machine happens to be.
-                    "agent": [],
-                    "system": ["pause"],
-                },
+            "actions": {
+                "operator": [
+                    "pause",
+                    "resume",
+                    "cancel",
+                    "start_print",
+                    "set_feedrate_factor",
+                    "set_flowrate_factor",
+                    "set_tool_target_c",
+                    "set_bed_target_c",
+                    "set_fan_percent",
+                    "acknowledge_failure",
+                ],
+                # Nothing at all, and deliberately: the all-operation walk
+                # needs one refusal per action method, and the grant is the
+                # one rejection the policy takes before it looks at the
+                # state, the interval or the bounds — so a client acting as
+                # an agent is refused every action from wherever the
+                # machine happens to be.
+                "agent": [],
+                "system": ["pause"],
             },
         },
-        indent=2,
-    )
+    }
+    if credential is not None:
+        document["api"] = {"credential": credential}
+    return json.dumps(document, indent=2)
 
 
 #: Where `just octoprint-up` keeps what it started, and the two files this
@@ -321,7 +321,13 @@ def scripted_printer(root: Path) -> Printer:
 class World:
     """A machine, a real supervisor over it, and a print to read."""
 
-    def __init__(self, program: Path, root: Path, printer: Printer | None = None) -> None:
+    def __init__(
+        self,
+        program: Path,
+        root: Path,
+        printer: Printer | None = None,
+        credential: str | None = None,
+    ) -> None:
         """Bring one up under `root`, running the program at `program`.
 
         `printer` is the machine the supervisor reaches. Given none, a stand-in
@@ -333,6 +339,7 @@ class World:
         self.root = root
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
+        self.credential = credential
         self.state = root / "state"
         self.state.mkdir(parents=True, exist_ok=True)
         self._supervisor: subprocess.Popen[str] | None = None
@@ -362,7 +369,7 @@ class World:
         (self.state / CLIENT_CONFIG).unlink(missing_ok=True)
         configuration = self.root / "supervisor.toml"
         configuration.write_text(
-            _as_toml(json.loads(_configuration(self.state, self.printer))),
+            _as_toml(json.loads(_configuration(self.state, self.printer, self.credential))),
             encoding="utf-8",
         )
         self._supervisor = start(
