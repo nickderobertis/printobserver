@@ -313,6 +313,7 @@ fn recorder(root: &Path) -> PathBuf {
     let _held = forking();
     let built = Command::new("cc")
         .args(RECORDER_LINKED_AS)
+        .args(RECORDER_ARCHITECTURES)
         .arg("-o")
         .arg(&library)
         .arg(&source)
@@ -336,6 +337,14 @@ const RECORDER_LIBRARY: &str = "recorder.so";
 const RECORDER_LINKED_AS: &[&str] = &["-dynamiclib"];
 #[cfg(not(target_os = "macos"))]
 const RECORDER_LINKED_AS: &[&str] = &["-shared", "-fPIC"];
+
+// Apple Silicon's system programs use the arm64e ABI while cargo's test
+// binary uses arm64. The loader variable is inherited across the whole process
+// tree, so the inserted library carries a slice for both processes.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const RECORDER_ARCHITECTURES: &[&str] = &["-arch", "arm64", "-arch", "arm64e"];
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+const RECORDER_ARCHITECTURES: &[&str] = &[];
 
 #[cfg(target_os = "macos")]
 const RECORDER_LINKED_WITH: &[&str] = &[];
