@@ -440,12 +440,17 @@ def prove_client(
     world = World(program(repo, binary), taken.environment / "world", credential=credential)
     try:
         running = world.start()
+        credential_arguments = (
+            [f"--credential={running.credential}"]
+            if taken.target == "pypi:printobserver-sdk"
+            else ["--credential", running.credential]
+        )
         return ran(
             [
                 *argv,
                 "--server",
                 running.server,
-                f"--credential={running.credential}",
+                *credential_arguments,
                 "--print-id",
                 running.print_id,
                 "--image-id",

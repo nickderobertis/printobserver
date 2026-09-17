@@ -203,6 +203,7 @@ create_launchd_user() {
     groups="$(dscl . -list /Groups PrimaryGroupID)" ||
         die "\`dscl . -list /Groups PrimaryGroupID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
     taken="$(printf '%s\n%s\n' "$users" "$groups" | awk '
+        NF == 0 { next }
         NF != 2 || $2 !~ /^[0-9]+$/ { exit 1 }
         { print $2 }
     ')" || die "directory service returned a malformed user or group id while finding a free system-user id. Run the two reported \`dscl -list\` commands and repair the record they print, or pass --user a user that already exists."
