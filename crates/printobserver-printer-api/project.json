@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-printer-api --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-printer-api-%p.profraw; fi; exec cargo llvm-cov nextest -p printobserver-printer-api --no-report --no-tests=pass'"
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-printer-api-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-printer-api --no-report --no-tests=pass'"
     },
     "build": {
       "command": "cargo build -p printobserver-printer-api --locked"

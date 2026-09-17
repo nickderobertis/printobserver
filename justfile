@@ -97,7 +97,7 @@ test:
     just node-modules
     cargo llvm-cov clean --workspace
     uv run -q coverage erase
-    if [ "${OS:-}" = Windows_NT ]; then bunx nx run-many -t test --output-style=stream --parallel=1; else bunx nx run-many -t test --output-style=stream; fi
+    bunx nx run-many -t test --output-style=stream
 
 # Fail the build below the coverage floors `repo-policy.toml` records.
 coverage:

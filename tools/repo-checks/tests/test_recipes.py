@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from repo_checks.checks_repo import recipe_set
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
@@ -25,8 +26,8 @@ def test_two_rust_targets_sharing_a_windows_profile_name_are_refused(
     broken = tree()
     broken.edit(
         "crates/printobserver-core/project.json",
-        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p.profraw",
-        "LLVM_PROFILE_FILE_NAME=printobserver-types-%p.profraw",
+        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p-%m.profraw",
+        "LLVM_PROFILE_FILE_NAME=printobserver-types-%p-%m.profraw",
     )
 
     findings = recipe_set(broken.repo)
@@ -34,20 +35,23 @@ def test_two_rust_targets_sharing_a_windows_profile_name_are_refused(
     refused(findings, "shares Windows coverage profile")
 
 
-def test_parallel_windows_coverage_targets_are_refused(
-    tree: Callable[[], Tree],
+@pytest.mark.parametrize(
+    "profile", ["printobserver-core-%p.profraw", "printobserver-core-%m.profraw"]
+)
+def test_a_windows_profile_name_a_reused_process_identifier_could_overwrite_is_refused(
+    tree: Callable[[], Tree], profile: str
 ) -> None:
-    """Concurrent cargo-llvm-cov targets cannot corrupt one another's profiles."""
+    """Parallel test processes on Windows share identifiers; a file per process must merge."""
     broken = tree()
     broken.edit(
-        "justfile",
-        " --parallel=1; else",
-        "; else",
+        "crates/printobserver-core/project.json",
+        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p-%m.profraw",
+        f"LLVM_PROFILE_FILE_NAME={profile}",
     )
 
     findings = recipe_set(broken.repo)
 
-    refused(findings, "does not serialize Windows coverage targets")
+    refused(findings, "which a reused process identifier could overwrite")
 
 
 def test_a_check_recipe_omitting_a_declared_tier_is_refused(

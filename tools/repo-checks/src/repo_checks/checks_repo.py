@@ -178,11 +178,18 @@ def recipe_set(repo: Repo) -> list[str]:
                 f"{name}:test shares Windows coverage profile {profile!r} with "
                 f"{coverage_profiles[profile]}:test"
             )
+        elif "%p" not in profile or "%m" not in profile:
+            # The test targets run in parallel on Windows as everywhere else,
+            # and Windows reuses process identifiers freely. `%p` gives each
+            # process its own file; `%m` makes a process handed a reused
+            # identifier merge into that file rather than truncate it. A
+            # name missing either is coverage a later process silently drops.
+            findings.append(
+                f"{name}:test names Windows coverage profile {profile!r}, which a reused "
+                f"process identifier could overwrite: it needs both `%p` and `%m`"
+            )
         else:
             coverage_profiles[profile] = name
-    test_body = "\n".join(parsed["test"].body)
-    if '"${OS:-}" = Windows_NT' not in test_body or "--parallel=1" not in test_body:
-        findings.append("the `test` recipe does not serialize Windows coverage targets")
     return findings
 
 
