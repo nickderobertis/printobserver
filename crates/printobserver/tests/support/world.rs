@@ -65,6 +65,9 @@ const SETTLING_POLLS: usize = 40;
 /// How long it waits between looking.
 const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(500);
 
+/// Enough hold-print time for one traced command on the slowest hosted runner.
+const INVOCATION_MARGIN_SECONDS: i64 = 120;
+
 /// The reason an action taken only to settle the machine gives.
 ///
 /// Distinct from every reason the walk drives, so an assertion about what a
@@ -296,7 +299,22 @@ impl World {
     pub fn wants(&self, state: Reports) {
         match &self.printer {
             Printer::StoodIn(machine) => machine.reports(state),
-            Printer::Scripted { .. } => self.drive_to(state),
+            Printer::Scripted { .. } => {
+                // A slow architecture can reach the end of the hold print
+                // between observing `printing` and starting the next traced
+                // command. Restart it through this program's own surface while
+                // there is less than one generous invocation left.
+                if matches!(state, Reports::Printing | Reports::Paused)
+                    && self
+                        .status()
+                        .pointer("/job/print_time_left_s")
+                        .and_then(Value::as_i64)
+                        .is_some_and(|seconds| seconds < INVOCATION_MARGIN_SECONDS)
+                {
+                    self.drive_to(Reports::Operational);
+                }
+                self.drive_to(state);
+            }
         }
     }
 
