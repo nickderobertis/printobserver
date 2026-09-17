@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-obico --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-obico --no-report --no-tests=pass"
+      "command": "if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-obico-%p.profraw; fi; cargo llvm-cov nextest -p printobserver-obico --no-report --no-tests=pass"
     },
     "build": {
       "command": "cargo build -p printobserver-obico --locked"

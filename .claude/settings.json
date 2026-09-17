@@ -27,7 +27,6 @@
       "Bash(uv:*)",
       "Bash(bun:*)",
       "Bash(bunx:*)",
-      "Bash(env:*)",
       "Bash(llmlint:*)",
       "Bash(release-plz:*)",
       "Bash(./scripts/setup-llmlint.sh)"

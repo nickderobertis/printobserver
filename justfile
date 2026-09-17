@@ -19,16 +19,6 @@ TOOL_PACKAGES := "tools/repo-checks/src:tools/contract-codegen/src:tools/release
 export PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
 export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 
-# LLVM's pooled `%Nm` profile name loses coverage from native child processes
-# on the hosted Windows runners. A PID-unique file keeps each real subprocess's
-# profile for the final workspace report; other platforms retain cargo-llvm-cov's
-# own default byte for byte.
-windows_coverage_profile := if env_var_or_default("OS", "") == "Windows_NT" {
-    "LLVM_PROFILE_FILE_NAME=printobserver-%p.profraw"
-} else {
-    ""
-}
-
 # Show the command surface.
 default:
     @just --list
@@ -107,7 +97,7 @@ test:
     just node-modules
     cargo llvm-cov clean --workspace
     uv run -q coverage erase
-    env {{windows_coverage_profile}} bunx nx run-many -t test --output-style=stream
+    bunx nx run-many -t test --output-style=stream
 
 # Fail the build below the coverage floors `repo-policy.toml` records.
 coverage:
