@@ -604,6 +604,82 @@ fn a_launchd_user_creation_failure_names_the_dscl_operation() {
     );
 }
 
+/// Every read used to choose a macOS system-user id fails closed with the
+/// operation's own diagnostic, and exhausting the reserved range refuses the
+/// installation rather than choosing a login user's id.
+#[test]
+fn launchd_system_user_id_selection_failures_are_actionable() {
+    let occupied = (400..500)
+        .map(|number| format!("occupied-{number} {number}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cases = [
+        (
+            "users-list",
+            "#!/bin/sh\necho 'users directory unavailable' >&2\nexit 1\n".to_owned(),
+            "dscl . -list /Users UniqueID",
+            Some("users directory unavailable"),
+        ),
+        (
+            "groups-list",
+            "#!/bin/sh\ncase \"$*\" in *'/Users '*) exit 0 ;; *) echo 'groups directory unavailable' >&2; exit 1 ;; esac\n".to_owned(),
+            "dscl . -list /Groups PrimaryGroupID",
+            Some("groups directory unavailable"),
+        ),
+        (
+            "reserved-ids-exhausted",
+            format!("#!/bin/sh\nprintf '%s\\n' '{occupied}'\n"),
+            "the system user missing-service-user could not be created",
+            None,
+        ),
+    ];
+
+    for (name, dscl, expected, own_diagnostic) in cases {
+        let under = TempDir::new().expect("a journey's own root");
+        let (bin, _) = shims(under.path(), Manager::Launchd);
+        executable(
+            &bin.join("id"),
+            "#!/bin/sh\ncase \"$#:$1\" in 1:-u) echo 0; exit 0 ;; 2:-u) exit 1 ;; *) exit 1 ;; esac\n",
+        );
+        executable(&bin.join("dscl"), &dscl);
+        let root = under.path().join("target-root");
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let run = Command::new(repo_root().join(INSTALLER))
+            .args([
+                "--root",
+                root.to_str().expect("a UTF-8 root"),
+                "--binary",
+                env!("CARGO_BIN_EXE_printobserver"),
+                "--user",
+                "missing-service-user",
+            ])
+            .env("PATH", path)
+            .output()
+            .expect("the installer runs");
+
+        assert!(!run.status.success(), "{name}: the installer succeeded");
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            said.contains(expected),
+            "{name}: the refusal did not name the failed selection: {said}"
+        );
+        if let Some(diagnostic) = own_diagnostic {
+            assert!(
+                said.contains(diagnostic),
+                "{name}: the refusal hid dscl's own diagnostic: {said}"
+            );
+        }
+        assert!(
+            !root.exists(),
+            "{name}: the refused installer placed service files"
+        );
+    }
+}
+
 /// Each service manager's branch of the installer writes the definition the
 /// platform list, the install path and the policy say it should, and starts
 /// nothing.

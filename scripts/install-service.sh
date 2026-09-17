@@ -41,10 +41,10 @@ die() {
     exit 1
 }
 
-# Every value this script is given is written into a TOML document and into a
-# systemd unit, neither of which has an escape for a quote, a backslash or a
-# newline. So a value carrying one is refused here rather than producing a unit
-# the service manager reads as something else.
+# Every value this script is given is written into the TOML configuration, and
+# on Linux into a systemd unit. Those formats do not give this installer a safe
+# spelling for a quote, a backslash or a newline, so refuse one before writing a
+# document that the program or service manager would read as something else.
 plain() {
     [ -n "$2" ] || die "$1 is empty"
     case "$2" in
