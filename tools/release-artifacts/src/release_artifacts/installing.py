@@ -18,6 +18,7 @@ a source install are what the end user gets.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import tarfile
 from dataclasses import dataclass
@@ -99,10 +100,10 @@ def without_rust(
             if source is None:
                 raise InstallError(f"cannot preserve `{name}` because it is not on PATH")
             destination = preserved_at / name
-            try:
-                os.link(source, destination)
-            except OSError:
-                shutil.copy2(source, destination)
+            destination.write_text(
+                f'#!/bin/sh\nexec {shlex.quote(source)} "$@"\n', encoding="utf-8"
+            )
+            destination.chmod(0o755)
         kept.insert(0, str(preserved_at))
     environment["PATH"] = os.pathsep.join(kept)
     environment.pop("CARGO_HOME", None)
