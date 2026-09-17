@@ -182,7 +182,7 @@ def test_an_action_vocabulary_that_declares_nothing_is_refused(
 
 
 def test_the_committed_holders_all_take_the_same_schema_lock(committed: Repo) -> None:
-    """The two suites that read the checked-in schema tree lock one file."""
+    """Every suite that reads the checked-in schema tree locks one file."""
     accepted(schema_lock(committed))
 
 
@@ -212,11 +212,9 @@ def test_a_lock_only_one_suite_takes_is_refused(tree: Callable[[], Tree]) -> Non
     """A lock one side takes serializes nothing, so a lone holder is refused."""
     copy = tree()
     policy = copy.read("repo-policy.toml")
-    holders = _holders(copy)
-    copy.write(
-        "repo-policy.toml",
-        policy.replace(f'    "{holders[1]}",\n', "", 1),
-    )
+    for holder in _holders(copy)[1:]:
+        policy = policy.replace(f'    "{holder}",\n', "", 1)
+    copy.write("repo-policy.toml", policy)
     refused(schema_lock(copy.repo), "fewer than two")
 
 
@@ -396,7 +394,7 @@ def test_the_committed_policy_reads_as_the_declarations_the_checks_act_on(
 
     equal(policy.adapter, "printobserver-oneharness")
     equal(policy.context_read in policy.reads, True)
-    equal(len(policy.schema_lock_holders), 2)
+    equal(len(policy.schema_lock_holders), 3)
 
 
 def _retype(copy: Tree, key: str, replacement: str) -> None:

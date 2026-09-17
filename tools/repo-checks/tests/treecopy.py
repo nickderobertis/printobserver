@@ -7,14 +7,47 @@ files, and the files are the ones this repository ships.
 
 from __future__ import annotations
 
+import fcntl
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
+from typing import IO
 
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+#: The lock the checked-in schema tree is read and written under, named by
+#: `repo-policy.toml`'s `supervisor.schema_lock`. One journey in the adapter's
+#: suite rewrites a checked-in schema on disk while every other suite runs
+#: beside it under `nx run-many`, and this suite copies that tree file by file:
+#: a copy taken between that journey's truncate and its write carries an empty
+#: schema, and a check over an empty schema finds nothing to refuse.
+SCHEMA_LOCK = "printobserver-schemas.lock"
+
+
+class SchemaTreeLock:
+    """The shared lock a copy of the tree is taken under.
+
+    Shared, so copies run beside each other and beside every suite that only
+    reads the schema tree, and only the journey that changes it waits for them.
+    """
+
+    def __init__(self) -> None:
+        """Open the one lock file, under `target`, which is per worktree."""
+        directory = REPO_ROOT / "target"
+        directory.mkdir(parents=True, exist_ok=True)
+        self.file: IO[str] = (directory / SCHEMA_LOCK).open("a", encoding="utf-8")
+
+    def lock(self) -> None:
+        """Take the lock, shared."""
+        fcntl.flock(self.file.fileno(), fcntl.LOCK_SH)
+
+    def release(self) -> None:
+        """Let it go, and close the file it was taken on."""
+        fcntl.flock(self.file.fileno(), fcntl.LOCK_UN)
+        self.file.close()
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -36,21 +69,26 @@ def copy_tree(destination: Path, *, omit: Iterable[str] = ()) -> Path:
     """Copy the committed tree, symlinks and all, into a fresh directory."""
     omitted = tuple(omit)
     destination.mkdir(parents=True, exist_ok=True)
-    for name in tracked_files(REPO_ROOT):
-        if any(name.startswith(prefix) for prefix in omitted):
-            continue
-        source = REPO_ROOT / name
-        if not source.exists() and not source.is_symlink():
-            # A file the index still lists and the working tree no longer has:
-            # a deletion nobody has staged yet. What a clone would carry is
-            # what this copies, and a clone would not carry it.
-            continue
-        target = destination / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if source.is_symlink():
-            target.symlink_to(source.readlink())
-        else:
-            shutil.copy2(source, target)
+    held = SchemaTreeLock()
+    held.lock()
+    try:
+        for name in tracked_files(REPO_ROOT):
+            if any(name.startswith(prefix) for prefix in omitted):
+                continue
+            source = REPO_ROOT / name
+            if not source.exists() and not source.is_symlink():
+                # A file the index still lists and the working tree no longer
+                # has: a deletion nobody has staged yet. What a clone would
+                # carry is what this copies, and a clone would not carry it.
+                continue
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_symlink():
+                target.symlink_to(source.readlink())
+            else:
+                shutil.copy2(source, target)
+    finally:
+        held.release()
     return destination
 
 
