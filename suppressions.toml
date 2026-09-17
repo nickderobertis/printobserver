@@ -883,3 +883,9 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "_uname(shims, system, machine)"
 reason = "The call site that supplies the `uname` answers justified by the `def _uname` entry above. The task explicitly requires the committed install script's macOS branch to be reached through a fixture on this host; the helper's entry explains why this is the only substituted host fact and which real boundaries the journey continues to drive."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_uname(shims, system, machine)"
+reason = "The task explicitly requires this real committed-script journey to reach both macOS branches through a fixture on the dispatch's non-macOS host. Supplying `uname` is the sole platform fact a user cannot select; artifact resolution, checksum verification, unpacking, execution, and the emitted service-manager command all remain the public route's real behavior, and the same journey runs with the native answer in each macOS cell."

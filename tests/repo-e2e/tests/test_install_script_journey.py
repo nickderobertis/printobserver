@@ -239,6 +239,7 @@ def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_star
     home = tmp_path / "home"
     shims = home / "shims"
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     _uname(shims, system, machine)
     environment = clean_environment(
         HOME=str(home),

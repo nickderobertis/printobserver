@@ -149,8 +149,6 @@ if [ -z "$SERVICE_USER" ]; then
         SERVICE_USER="$PROGRAM"
     else
         SERVICE_USER="$(id -un)"
-        echo "install-service.sh: not running as root, so the service will run as \
-$SERVICE_USER" >&2
     fi
     user_name "$SERVICE_USER"
 fi
