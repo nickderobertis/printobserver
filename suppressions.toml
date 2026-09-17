@@ -711,7 +711,7 @@ reason = "The generator's own copy of the rejection walk's directive in `python/
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/smoke/smoke.py"
-site = 'client = Client(asked.server, "operator", asked.credential)'
+site = 'client = Client(server, "operator", credential)'
 reason = "This smoke check exists to prove the installed `printobserver_sdk` distribution as its consumers use it, and that distribution's `Client` is synchronous and typed and ships no async counterpart. It makes two ordered calls, a status read and then an image read whose answer it checks, from a one-shot program with nothing to run concurrently; an async client would prove a client the distribution does not carry."
 
 [[suppression]]

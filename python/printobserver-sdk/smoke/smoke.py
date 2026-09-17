@@ -13,7 +13,6 @@ the digest the image record itself declares.
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import sys
 from pathlib import Path
@@ -22,9 +21,38 @@ from printobserver_sdk import CONTRACT_VERSION, Client
 
 #: What a refused `--credential` is told, which never quotes what it was given.
 CREDENTIAL_USAGE = (
-    "--credential takes the credential the supervisor serves under: printable ASCII, "
+    "smoke: --credential takes the credential the supervisor serves under: printable ASCII, "
     "not empty, and neither beginning nor ending with a space"
 )
+
+#: The exit of a check stopped by what it was given, before it made any request.
+USAGE = 2
+
+
+class UsageError(Exception):
+    """The check was given something it cannot run with, and says which."""
+
+
+def argument(argv: list[str], name: str) -> str:
+    """One named argument, taken exactly as given.
+
+    The token after `--<name>` is the value whatever it begins with: the
+    credential a supervisor generates for itself is unpadded URL-safe base64,
+    whose alphabet includes `-`, so one in sixty-four of them begins with a
+    character an option parser would read as the start of another option. The
+    Node and Rust smoke checks read theirs the same way.
+
+    Raises:
+        UsageError: If the argument is absent or given no value.
+    """
+    try:
+        at = argv.index(f"--{name}")
+    except ValueError:
+        at = -1
+    if at < 0 or at + 1 >= len(argv):
+        msg = f"smoke: --{name} takes a value and was given none"
+        raise UsageError(msg)
+    return argv[at + 1]
 
 
 def presentable(credential: str) -> bool:
@@ -39,24 +67,27 @@ def presentable(credential: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     """Make the two calls, answering a process exit status."""
-    parser = argparse.ArgumentParser(prog="printobserver-sdk-smoke", description=__doc__)
-    parser.add_argument("--server", required=True)
-    parser.add_argument("--credential", required=True)
-    parser.add_argument("--print-id", required=True)
-    parser.add_argument("--image-id", required=True)
-    asked = parser.parse_args(argv)
-    if not presentable(asked.credential):
-        parser.error(CREDENTIAL_USAGE)
+    given = sys.argv[1:] if argv is None else argv
+    try:
+        server = argument(given, "server")
+        credential = argument(given, "credential")
+        print_id = argument(given, "print-id")
+        image_id = argument(given, "image-id")
+        if not presentable(credential):
+            raise UsageError(CREDENTIAL_USAGE)
+    except UsageError as usage:
+        print(usage, file=sys.stderr)
+        return USAGE
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    client = Client(asked.server, "operator", asked.credential)
+    client = Client(server, "operator", credential)
 
-    status = client.status(asked.print_id)
-    if status["print"]["id"] != asked.print_id:
+    status = client.status(print_id)
+    if status["print"]["id"] != print_id:
         print(f"the status read answered another print: {status['print']['id']}", file=sys.stderr)
         return 1
 
-    answered = client.image(asked.image_id)
+    answered = client.image(image_id)
     path = answered.get("path")
     if not isinstance(path, str):
         print("the image read answered no path on the server's own host", file=sys.stderr)

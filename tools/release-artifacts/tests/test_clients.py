@@ -37,6 +37,7 @@ from release_artifacts.installing import (
     smoke_check,
     without_rust,
 )
+from release_artifacts.world import World
 from repo_checks import platforms
 from repo_checks.expect import absent, contains, equal, passing
 from repo_checks.model import Repo
@@ -47,6 +48,13 @@ CLIENTS = ["crate:printobserver-sdk", "pypi:printobserver-sdk", "npm:@printobser
 
 #: How long the one program build these share is given.
 BUILD_TIMEOUT_SECONDS = 2400
+
+#: A credential shaped like the one a supervisor generates for itself — 32
+#: random bytes as unpadded URL-safe base64 — and beginning with `-`, as one in
+#: sixty-four of those does. An option parser reads a value beginning with `-`
+#: as the start of another option, so a smoke check that parsed its arguments
+#: that way stopped as a usage error on a credential the server itself issued.
+HYPHEN_LEADING = "-qx_generated-shaped_credential_of_43_chars"
 
 
 @pytest.fixture(scope="module")
@@ -132,6 +140,54 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
 
     contains(said, "smoke: contract", describing=f"what `{identifier}` said where it was put")
     contains(said, "image ", describing=f"what `{identifier}` said where it was put")
+
+
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_each_installed_client_takes_a_credential_beginning_with_a_hyphen(
+    identifier: str,
+    repo: Repo,
+    supervisor: Path,
+    into: Callable[[str], Path],
+) -> None:
+    """A credential the supervisor itself could generate is taken exactly as given.
+
+    The supervisor is configured to serve under one beginning with `-`, its
+    installed smoke check is handed that credential the way `prove_client`
+    hands every credential, and it reaches the server rather than stopping as
+    a usage error over the character the credential begins with.
+    """
+    taken = install(
+        repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor
+    )
+    world = World(supervisor, taken.environment / "world", credential=HYPHEN_LEADING)
+    try:
+        running = world.start()
+        equal(
+            running.credential,
+            HYPHEN_LEADING,
+            describing="the credential the supervisor wrote for its clients",
+        )
+        proved = run(
+            [
+                *smoke_check(repo, taken),
+                "--server",
+                running.server,
+                "--credential",
+                running.credential,
+                "--print-id",
+                running.print_id,
+                "--image-id",
+                running.image_id,
+            ],
+            cwd=taken.environment,
+        )
+    finally:
+        world.stop()
+
+    passing(
+        proved, describing=f"`{identifier}`'s smoke check under a credential beginning with `-`"
+    )
+    contains(proved.stdout, "smoke: contract", describing=f"what `{identifier}` said")
 
 
 def test_a_client_with_no_smoke_check_is_refused(
