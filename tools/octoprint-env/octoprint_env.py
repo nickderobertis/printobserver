@@ -572,16 +572,7 @@ def reap_and_is_running(pid: int) -> bool:
 
 def start_server(instance: Instance, port: int) -> int:
     """Start the server in a session of its own, and answer with its process id."""
-    argv = [
-        str(instance.executable),
-        "--basedir",
-        str(instance.basedir),
-        "serve",
-        "--host",
-        HOST,
-        "--port",
-        str(port),
-    ]
+    argv = [*server_argv_prefix(instance), "--host", HOST, "--port", str(port)]
     if os.geteuid() == 0:
         # Not a recommendation. A container that has nothing but root is
         # somewhere this environment has to come up anyway.
@@ -698,7 +689,7 @@ def stop(instance: Instance) -> dict[str, Any]:
         # id is handed to something else — so what is running under that id is
         # read before its whole session is signalled.
         command = command_of(pid)
-        if str(instance.basedir) not in command:
+        if not command.startswith(server_command_prefix(instance)):
             instance.record.unlink()
             note(
                 f"process {pid} is not this instance's OctoPrint (it runs `{command}`); "
@@ -709,6 +700,25 @@ def stop(instance: Instance) -> dict[str, Any]:
     instance.record.unlink()
     note(f"stopped process {pid}")
     return {"state_dir": str(instance.state_dir), "stopped": True, "pid": pid}
+
+
+def server_argv_prefix(instance: Instance) -> list[str]:
+    """How every server this script starts begins its argv.
+
+    The program, its base directory and the `serve` command, before the address
+    it listens on.
+    """
+    return [str(instance.executable), "--basedir", str(instance.basedir), "serve"]
+
+
+def server_command_prefix(instance: Instance) -> str:
+    """The same prefix as `ps` reports a command line, words joined by spaces.
+
+    A record is trusted only over a process whose command line begins exactly
+    so — this instance's own OctoPrint — rather than over one whose command
+    line happens to mention its directory.
+    """
+    return " ".join(server_argv_prefix(instance))
 
 
 def command_of(pid: int) -> str:
@@ -747,7 +757,9 @@ def record_url(record: object) -> str:
     if not isinstance(value, str):
         raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
     parts = urllib.parse.urlsplit(value)
-    if parts.scheme != "http" or not parts.hostname or parts.port is None:
+    # An address and nothing more: no user, no path, no query, no fragment.
+    bare = parts.hostname and parts.port is not None and parts.username is None
+    if parts.scheme != "http" or not bare or parts.path or parts.query or parts.fragment:
         raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
     return value
 

@@ -17,9 +17,9 @@ from __future__ import annotations
 import ast
 import json
 import os
-import shutil
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -158,12 +158,30 @@ def test_a_persisted_record_that_is_not_an_object_is_refused(
     )
 
 
-def test_a_persisted_url_that_is_not_an_http_address_is_refused(tmp_path: Path) -> None:
-    """The existing-instance path narrows the recorded address before asking at it."""
+@pytest.mark.parametrize(
+    "url",
+    [
+        17,
+        "ftp://127.0.0.1:5000",
+        "http://127.0.0.1",
+        "http://user@127.0.0.1:5000",
+        "http://127.0.0.1:5000/api",
+        "http://127.0.0.1:5000?key=1",
+        "http://127.0.0.1:5000#top",
+    ],
+)
+def test_a_persisted_url_that_is_not_an_http_address_is_refused(
+    tmp_path: Path, url: object
+) -> None:
+    """The existing-instance path narrows the recorded address before asking at it.
+
+    Exactly `http://host:port`: a value of another type, another scheme, no
+    port, or anything carried beyond the address is refused naming it.
+    """
     state = tmp_path / "up"
     state.mkdir()
     (state / "instance.json").write_text(
-        json.dumps({"pid": os.getpid(), "url": 17}) + "\n", encoding="utf-8"
+        json.dumps({"pid": os.getpid(), "url": url}) + "\n", encoding="utf-8"
     )
     (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
 
@@ -173,21 +191,30 @@ def test_a_persisted_url_that_is_not_an_http_address_is_refused(tmp_path: Path) 
     refused_naming(
         said(result).splitlines(),
         "ValueError",
-        "instance record url must be an http://host:port address, not 17",
+        f"instance record url must be an http://host:port address, not {url!r}",
     )
 
 
-def test_a_persisted_pid_naming_another_program_is_not_signalled(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mentions_the_instance", [False, True])
+def test_a_persisted_pid_naming_another_program_is_not_signalled(
+    tmp_path: Path, mentions_the_instance: bool
+) -> None:
     """A record that outlived its server names whatever holds the id now.
 
-    That is a `sleep` in a session of its own here, so a bring-down that
-    signalled it would take the decoy rather than this suite.
+    That is a sleeping interpreter in a session of its own here, so a
+    bring-down that signalled it would take the decoy rather than this suite —
+    and in one case its command line mentions the instance's own directory, as
+    an editor or a shell open in it would, which is not what makes a process
+    this instance's OctoPrint.
     """
     state = tmp_path / "down"
     state.mkdir()
-    sleep = shutil.which("sleep")
-    truth(sleep is not None, describing="a sleep to stand in for an unrelated process")
-    decoy = subprocess.Popen([str(sleep), "300"], start_new_session=True)  # noqa: S603
+    sleeping = "import time; time.sleep(300)"
+    if mentions_the_instance:
+        sleeping = f"{sleeping}  # {state / 'instance'}"
+    decoy = subprocess.Popen(  # noqa: S603
+        [sys.executable, "-c", sleeping], start_new_session=True
+    )
     try:
         (state / "instance.json").write_text(
             json.dumps({"pid": decoy.pid, "url": "http://127.0.0.1:1"}) + "\n", encoding="utf-8"
