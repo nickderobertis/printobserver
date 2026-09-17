@@ -243,7 +243,8 @@ dscl_create() {
 }
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
-    [ "$(id -u)" -eq 0 ] || die "there is no user $SERVICE_USER and this is not root"
+    [ "$(id -u)" -eq 0 ] ||
+        die "there is no user $SERVICE_USER and this is not root, so it cannot be created. Run this as root, or pass --user a user that already exists."
     if [ "$MANAGER" = "launchd" ]; then
         create_launchd_user "$SERVICE_USER" ||
             die "the system user $SERVICE_USER could not be created. Create it yourself \
