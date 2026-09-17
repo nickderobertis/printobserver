@@ -278,9 +278,8 @@ mod etw {
 
     /// The providers a session records, as `logman` reads a provider file:
     /// the TCP/IP stack's connect path, and process starts.
-    #[cfg(windows)]
-    pub const PROVIDERS: &str = "\"Microsoft-Windows-TCPIP\" 0xFFFFFFFFFFFFFFFF 0xFF\r\n\
-         \"Microsoft-Windows-Kernel-Process\" 0xFFFFFFFFFFFFFFFF 0xFF\r\n";
+    pub const PROVIDERS: &str = "{2f07e2ee-15db-40f1-90ef-9d7ba282188a} 0xFFFFFFFFFFFFFFFF 0xFF\r\n\
+         {22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716} 0xFFFFFFFFFFFFFFFF 0xFF\r\n";
 
     /// The provider recording a TCP connect request, and its event for one.
     const TCPIP: &str = "Microsoft-Windows-TCPIP";
@@ -402,6 +401,19 @@ mod etw {
 
     /// What a Windows runner's `tracerpt` wrote for one traced invocation.
     const RECORDED: &str = include_str!("tracerpt-connects.xml");
+
+    /// Session setup uses the provider identities the hosted Windows runner
+    /// recorded, without depending on WMI resolving their display names.
+    #[test]
+    fn the_provider_file_names_the_providers_in_the_recorded_session_by_guid() {
+        for guid in [
+            "{2f07e2ee-15db-40f1-90ef-9d7ba282188a}",
+            "{22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}",
+        ] {
+            assert!(PROVIDERS.lines().any(|line| line.starts_with(guid)));
+            assert!(RECORDED.contains(&format!("Guid=\"{guid}\"")));
+        }
+    }
 
     /// The tree's own requests are every one its root and the process it
     /// started made, to any address — refused, accepted or unroutable — and
