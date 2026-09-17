@@ -35,7 +35,11 @@ const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../.."
 const startupTimeoutSeconds = Number(
   readFileSync(`${REPO_ROOT}/tools/release-artifacts/world-startup-timeout-seconds`, "utf8").trim(),
 );
-if (!Number.isSafeInteger(startupTimeoutSeconds) || startupTimeoutSeconds <= 0) {
+if (
+  !Number.isSafeInteger(startupTimeoutSeconds) ||
+  startupTimeoutSeconds <= 0 ||
+  startupTimeoutSeconds > 2_147_483
+) {
   throw new Error("the shared world startup timeout must be a positive whole number of seconds");
 }
 export const SETUP_TIMEOUT_MS = startupTimeoutSeconds * 1000;

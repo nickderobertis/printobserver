@@ -121,8 +121,18 @@ service manager yourself."
         ;;
 esac
 
+if [ -z "$BINARY" ]; then
+    BINARY="$(command -v "$PROGRAM" || true)"
+fi
+[ -n "$BINARY" ] || die "no $PROGRAM program on PATH. Take one of the three routes \
+AGENTS.md's install path states, or pass --binary."
+plain "the $PROGRAM program on PATH" "$BINARY"
+[ -x "$BINARY" ] || die "$BINARY is not executable. Run \`chmod +x $BINARY\`, or pass \
+--binary the program one of the install path's three routes put on your path."
+
 # A property list is XML, which reads an ampersand or an angle bracket as markup
-# rather than as part of a value.
+# rather than as part of a value. Validate after resolving the default binary,
+# so a program found on PATH crosses the same boundary as an explicit one.
 if [ "$MANAGER" = "launchd" ]; then
     for given in "$ROOT" "$BINARY"; do
         case "$given" in
@@ -133,14 +143,6 @@ list reads as markup. Pass --root and --binary paths without them."
         esac
     done
 fi
-
-if [ -z "$BINARY" ]; then
-    BINARY="$(command -v "$PROGRAM" || true)"
-fi
-[ -n "$BINARY" ] || die "no $PROGRAM program on PATH. Take one of the three routes \
-AGENTS.md's install path states, or pass --binary."
-[ -x "$BINARY" ] || die "$BINARY is not executable. Run \`chmod +x $BINARY\`, or pass \
---binary the program one of the install path's three routes put on your path."
 
 if [ -z "$SERVICE_USER" ]; then
     if [ "$(id -u)" -eq 0 ]; then

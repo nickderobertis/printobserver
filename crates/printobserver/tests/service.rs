@@ -512,6 +512,50 @@ fn launchd_paths_that_are_property_list_markup_are_refused() {
     );
 }
 
+/// A program discovered on PATH crosses the same property-list boundary as an
+/// explicit `--binary` value before the installer writes anything.
+#[test]
+fn a_launchd_program_on_a_markup_path_is_refused() {
+    let under = TempDir::new().expect("a journey's own root");
+    let (bin, recording) = shims(under.path(), Manager::Launchd);
+    let program_dir = under.path().join("program&path");
+    std::fs::create_dir(&program_dir).expect("the program directory is writable");
+    let program = program_dir.join("printobserver");
+    std::fs::copy(env!("CARGO_BIN_EXE_printobserver"), &program).expect("the program is copied");
+    let mut permissions = std::fs::metadata(&program)
+        .expect("the program is there")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&program, permissions).expect("the program is executable");
+    let root = under.path().join("target-root");
+    let path = format!(
+        "{}:{}:{}",
+        bin.display(),
+        program_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = Command::new(repo_root().join(INSTALLER))
+        .args(["--root", root.to_str().expect("a UTF-8 root")])
+        .env("PATH", path)
+        .output()
+        .expect("the installer runs");
+
+    assert!(
+        !run.status.success(),
+        "the installer accepted XML markup from PATH"
+    );
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.contains("ampersand or an angle bracket"),
+        "the refusal did not name the unsafe markup: {said}"
+    );
+    assert!(!root.exists(), "the refused installer placed files");
+    assert!(
+        !recording.exists(),
+        "the refused installer invoked a service manager"
+    );
+}
+
 /// A launchd account failure identifies the exact directory-service write,
 /// while retaining the service manager's own diagnostic beside it.
 #[test]

@@ -548,8 +548,8 @@ def claim_device(connection: Connection) -> None:
     os.close(handle)
 
 
-def alive(pid: int) -> bool:
-    """Whether a process this script started is still running.
+def reap_and_is_running(pid: int) -> bool:
+    """Reap an exited child, or report that the process is still running.
 
     A child of this very process that has exited is reaped here rather than
     counted as running: until it is, it stays a zombie that still answers a
@@ -601,7 +601,7 @@ def wait_for_api(instance: Instance, url: str, pid: int, timeout: float) -> None
     key = api_key(instance)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not reap_and_is_running(pid):
             raise StartupError(
                 "never-answered",
                 f"the server exited before it answered; read {instance.server_log}",
@@ -693,7 +693,7 @@ def stop(instance: Instance) -> dict[str, Any]:
         return {"state_dir": str(instance.state_dir), "stopped": False, "pid": None}
     record = json.loads(instance.record.read_text(encoding="utf-8"))
     pid = int(record["pid"])
-    if alive(pid):
+    if reap_and_is_running(pid):
         _terminate(pid)
     instance.record.unlink()
     note(f"stopped process {pid}")
@@ -709,7 +709,7 @@ def _terminate(pid: int) -> None:
     os.killpg(group, signal.SIGTERM)
     deadline = time.monotonic() + 30.0
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not reap_and_is_running(pid):
             return
         time.sleep(0.5)
     os.killpg(group, signal.SIGKILL)
@@ -774,7 +774,7 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not instance.record.is_file() or not instance.api_key_file.is_file():
         return None
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    if not alive(int(record["pid"])):
+    if not reap_and_is_running(int(record["pid"])):
         return None
     try:
         status, _ = call(str(record["url"]), api_key(instance), "/api/version", timeout=5.0)
