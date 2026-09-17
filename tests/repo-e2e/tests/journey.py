@@ -64,7 +64,11 @@ def copy_tracked(destination: Path) -> Path:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_symlink():
-            target.symlink_to(source.readlink())
+            # Windows keeps file and directory links apart: a link to a
+            # directory made as a file link is one nothing can open there, so
+            # the kind is read off what the link reaches. Elsewhere the flag
+            # is ignored.
+            target.symlink_to(source.readlink(), target_is_directory=source.is_dir())
         else:
             shutil.copy2(source, target)
     return destination
