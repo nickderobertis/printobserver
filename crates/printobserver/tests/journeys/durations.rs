@@ -136,11 +136,21 @@ fn adjustments(world: &World) -> Vec<Driven> {
 /// machine reports one at all: an adjustment made from the value it asks for
 /// restores to that same value, and a machine that ignored both the change and
 /// the putting back would be indistinguishable from one that did neither.
+///
+/// Every one is moved there **before** any is asked for. The read that follows
+/// the batch is scheduled [`MARGIN`] before the *first* request's expiry, so at
+/// the shortest duration this program accepts everything between that request
+/// and the read has to fit in the remainder of one second — and a heater
+/// settling in that span polls the machine at a pause of its own that alone
+/// can exceed it. Settling first leaves the span holding the requests and
+/// nothing else, and moves no value any other adjustment is about.
 pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec<Bounded> {
+    for one in adjustments {
+        super::confirming::starting_from_somewhere_else(world, &one.command.name);
+    }
     adjustments
         .iter()
         .map(|one| {
-            super::confirming::starting_from_somewhere_else(world, &one.command.name);
             let answer = ask_for(world, one, &seconds.to_string());
             the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds)
         })
