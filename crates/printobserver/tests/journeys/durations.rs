@@ -64,6 +64,27 @@ const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 /// right side of the instant it is about.
 pub const MARGIN: Duration = Duration::from_millis(400);
 
+/// The margin the host's tracer leaves around the expiry read.
+///
+/// Decoding one ETW session is materially slower than reading one `strace`
+/// file. The shortest Windows duration is already raised above the public
+/// minimum for that reason, so take enough of that Windows-only allowance to
+/// ensure the traced request finishes on the side of the expiry it started on.
+fn margin(windows: bool) -> Duration {
+    if windows {
+        Duration::from_secs(3)
+    } else {
+        MARGIN
+    }
+}
+
+#[test]
+fn each_tracer_gets_its_platform_margin_around_an_expiry() {
+    assert_eq!(margin(false), MARGIN);
+    assert_eq!(margin(true), Duration::from_secs(3));
+    assert!(margin(true) < Duration::from_secs(MIN_DURATION_SECONDS as u64 + 10));
+}
+
 /// What one accepted adjustment left behind.
 pub struct Bounded {
     /// The command that asked for it.
@@ -273,7 +294,7 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, o
         .map(|bounded| bounded.expires_at)
         .min()
         .expect("this journey opened an intervention");
-    let at = just_before(earliest, MARGIN);
+    let at = just_before(earliest, margin(cfg!(windows)));
     let status = running::read(world, &["status", "--print-id", &world.print_id]);
     let held = in_force(&status);
 
@@ -301,7 +322,7 @@ pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &
         .map(|bounded| bounded.expires_at)
         .max()
         .expect("this journey opened an intervention");
-    let at = just_after(latest, MARGIN);
+    let at = just_after(latest, margin(cfg!(windows)));
     let status = running::read(world, &["status", "--print-id", &world.print_id]);
     let held = in_force(&status);
     let history = running::read(
