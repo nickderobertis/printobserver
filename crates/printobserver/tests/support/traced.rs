@@ -466,6 +466,25 @@ mod etw {
         assert!(message.contains("whole claim"), "{message}");
     }
 
+    /// A native tracer that runs but refuses the request is not accepted as an
+    /// empty observation.
+    #[cfg(windows)]
+    #[test]
+    fn a_trace_tool_failure_is_refused() {
+        let panic = std::panic::catch_unwind(|| {
+            tool("cmd", &["/C".as_ref(), "exit".as_ref(), "23".as_ref()]);
+        })
+        .expect_err("a failing trace tool was unexpectedly accepted");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("panic carried no text");
+
+        assert!(message.contains("refused"), "{message}");
+        assert!(message.contains("whole claim"), "{message}");
+    }
+
     /// An address `tracerpt` renders without brackets is still an endpoint.
     #[test]
     fn an_ipv6_endpoint_is_read_with_or_without_brackets() {
@@ -499,4 +518,25 @@ fn an_invocation_that_cannot_start_is_refused() {
     assert!(message.contains("could not be run"), "{message}");
 
     std::fs::remove_dir_all(&scratch).expect("trace scratch could not be removed");
+}
+
+/// A scratch path that cannot hold the native trace artifacts is refused
+/// before a partial session can be started.
+#[cfg(windows)]
+#[test]
+fn an_unwritable_trace_scratch_is_refused() {
+    let scratch =
+        std::env::temp_dir().join(format!("printobserver-traced-file-{}", std::process::id()));
+    std::fs::write(&scratch, b"not a directory").expect("trace scratch file could not be made");
+
+    let panic = std::panic::catch_unwind(|| traced(Path::new("unused"), &[], &[], &scratch))
+        .expect_err("an unwritable trace scratch was unexpectedly accepted");
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("panic carried no text");
+    assert!(message.contains("could not be written"), "{message}");
+
+    std::fs::remove_file(&scratch).expect("trace scratch file could not be removed");
 }
