@@ -41,7 +41,7 @@
 
 use std::collections::BTreeSet;
 #[cfg(windows)]
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(not(windows))]
@@ -61,6 +61,31 @@ static TRACED: AtomicU64 = AtomicU64::new(0);
 /// cannot overlap within this test process.
 #[cfg(windows)]
 static KERNEL_TRACE: Mutex<()> = Mutex::new(());
+
+/// Hold Windows' one kernel logger across every Nextest process on this host.
+#[cfg(windows)]
+fn kernel_trace_lock() -> File {
+    let path = std::env::temp_dir().join("printobserver-kernel-trace.lock");
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "kernel trace lock {} could not be opened: {error}",
+                path.display()
+            )
+        });
+    lock.lock().unwrap_or_else(|error| {
+        panic!(
+            "kernel trace lock {} could not be taken: {error}",
+            path.display()
+        )
+    });
+    lock
+}
 
 /// One invocation, and everything it did.
 #[derive(Debug, Clone)]
@@ -194,25 +219,7 @@ pub fn traced(
     // Nextest runs each journey in its own process. The static mutex orders
     // callers inside one process; this operating-system lock orders those
     // processes around Windows' one kernel logger.
-    let trace_lock_path = std::env::temp_dir().join("printobserver-kernel-trace.lock");
-    let trace_lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&trace_lock_path)
-        .unwrap_or_else(|error| {
-            panic!(
-                "kernel trace lock {} could not be opened: {error}",
-                trace_lock_path.display()
-            )
-        });
-    trace_lock.lock().unwrap_or_else(|error| {
-        panic!(
-            "kernel trace lock {} could not be taken: {error}",
-            trace_lock_path.display()
-        )
-    });
+    let _host_trace = kernel_trace_lock();
 
     let invocation = format!(
         "{}-{}",
