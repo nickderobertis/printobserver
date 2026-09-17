@@ -265,6 +265,13 @@ pub fn traced(
         etw::text_of(&std::fs::read(&dump).unwrap_or_else(|error| {
             panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
         }));
+    let connected = etw::connections_of(&decoded, root);
+    assert!(
+        !connected.is_empty(),
+        "the Windows kernel trace recorded no connection for process {root}; decoded network \
+         events:\n{}",
+        etw::network_diagnostic(&decoded)
+    );
     for written in [&etl, &dump] {
         let _ = std::fs::remove_file(written);
     }
@@ -272,7 +279,7 @@ pub fn traced(
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
         err: String::from_utf8_lossy(&output.stderr).into_owned(),
-        connected: etw::connections_of(&decoded, root),
+        connected,
         arguments: arguments.to_vec(),
     }
 }
@@ -384,6 +391,27 @@ mod etw {
                     .or_else(|| endpoint_parts(&data(event, "daddr")?, &data(event, "dport")?))
             })
             .collect()
+    }
+
+    /// The bounded part of a decoded trace that diagnoses an unrecognized
+    /// network-event schema without dumping unrelated host activity.
+    pub fn network_diagnostic(dump: &str) -> String {
+        let mut diagnostic = dump
+            .split("<Event ")
+            .skip(1)
+            .filter(|event| event.contains("TcpIp") || event.contains("daddr"))
+            .take(8)
+            .fold(String::new(), |mut found, event| {
+                found.push_str("<Event ");
+                found.push_str(event);
+                found
+            });
+        diagnostic.truncate(12_000);
+        if diagnostic.is_empty() {
+            "(tracerpt decoded no event carrying `TcpIp` or `daddr`)".to_owned()
+        } else {
+            diagnostic
+        }
     }
 
     /// Whether one event is the one event of one provider.
@@ -498,6 +526,7 @@ mod etw {
             connections_of(recorded, 4200),
             BTreeSet::from(["192.0.2.1:33".parse().expect("fixture endpoint")])
         );
+        assert!(network_diagnostic(recorded).contains("ConnectIPV4"));
     }
 
     /// A dump written as UTF-16, as `tracerpt` may write one, reads the same.
