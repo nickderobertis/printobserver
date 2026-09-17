@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-supervisor-api --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-supervisor-api --no-clean --no-tests=pass"
+      "command": "cargo llvm-cov nextest -p printobserver-supervisor-api --no-report --no-tests=pass"
     },
     "build": {
       "command": "cargo build -p printobserver-supervisor-api --locked"

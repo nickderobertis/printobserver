@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-store-sqlite --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-store-sqlite --no-clean --no-tests=pass"
+      "command": "cargo llvm-cov nextest -p printobserver-store-sqlite --no-report --no-tests=pass"
     },
     "build": {
       "command": "cargo build -p printobserver-store-sqlite --locked"

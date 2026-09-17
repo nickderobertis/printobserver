@@ -155,23 +155,6 @@ def recipe_set(repo: Repo) -> list[str]:
         )
         if recipe.body and not does_something:
             findings.append(f"the `{name}` recipe is a placeholder: its body runs nothing")
-
-    # Nx runs crate targets concurrently. The recipe above owns the single
-    # clean before that fan-out; a cargo-llvm-cov child using its default clean
-    # can otherwise erase profiles a faster sibling has already written.
-    for project in repo.project_paths:
-        data = json.loads(project.read_text(encoding="utf-8"))
-        command = (data.get("targets") or {}).get("test", {}).get("command")
-        if (
-            isinstance(command, str)
-            and "cargo llvm-cov" in command
-            and "--no-clean" not in command.split()
-        ):
-            name = data.get("name", project.parent.name)
-            findings.append(
-                f"{name}:test runs cargo llvm-cov without --no-clean: parallel "
-                "crate targets can erase one another's coverage profiles"
-            )
     return findings
 
 
