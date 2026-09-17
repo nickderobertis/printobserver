@@ -48,7 +48,7 @@ def test_the_committed_recipe_gives_windows_child_processes_unique_profiles(
     """The real recipe selects a PID-unique Windows coverage record."""
     equal(
         evaluated_profile_name(committed, windows=True),
-        "LLVM_PROFILE_FILE_NAME=printobserver-%p-%m.profraw",
+        "LLVM_PROFILE_FILE_NAME=printobserver-%p.profraw",
     )
 
 

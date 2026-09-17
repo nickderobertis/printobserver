@@ -24,7 +24,7 @@ export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 # profile for the final workspace report; other platforms retain cargo-llvm-cov's
 # own default byte for byte.
 windows_coverage_profile := if env_var_or_default("OS", "") == "Windows_NT" {
-    "LLVM_PROFILE_FILE_NAME=printobserver-%p-%m.profraw"
+    "LLVM_PROFILE_FILE_NAME=printobserver-%p.profraw"
 } else {
     ""
 }
