@@ -877,3 +877,9 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "@pytest.mark.parametrize"
 reason = "The same `uname` answers as the entry for `def _uname` above, supplied to the one parametrized journey that walks every targeted platform; that entry carries the reason."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_uname(shims, system, machine)"
+reason = "The call site that supplies the `uname` answers justified by the `def _uname` entry above. The task explicitly requires the committed install script's macOS branch to be reached through a fixture on this host; the helper's entry explains why this is the only substituted host fact and which real boundaries the journey continues to drive."
