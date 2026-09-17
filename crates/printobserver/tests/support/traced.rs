@@ -382,6 +382,7 @@ mod etw {
             .filter(|event| {
                 is(event, TCPIP, REQUESTED_TO_CONNECT)
                     || rendered(event, SYSTEM_TRACE, "TcpIp", "Connect")
+                    || rendered(event, SYSTEM_TRACE, "TcpIp", "Reconnect")
             })
             .filter_map(|event| connection(event))
             .filter(|(pid, _)| tree.contains(pid))
@@ -505,7 +506,7 @@ mod etw {
         let bytes = payload(event)?;
         let pid = little_u32(&bytes, 0)?;
         let (address, port_at) = match rendered_opcode(event)? {
-            "ConnectIPV4" => (
+            "ConnectIPV4" | "ReconnectIPV4" => (
                 IpAddr::V4(Ipv4Addr::new(
                     *bytes.get(8)?,
                     *bytes.get(9)?,
@@ -514,7 +515,7 @@ mod etw {
                 )),
                 16,
             ),
-            "ConnectIPV6" => {
+            "ConnectIPV6" | "ReconnectIPV6" => {
                 let octets: [u8; 16] = bytes.get(8..24)?.try_into().ok()?;
                 (IpAddr::V6(Ipv6Addr::from(octets)), 40)
             }
@@ -577,6 +578,11 @@ mod etw {
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
   <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>00000000000000006910000068100000</EventPayload></ProcessingErrorData>
   <RenderingInfo><Opcode>Start</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">Process</EventName></RenderingInfo>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
+  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>6910000000000000C00002017F0000010021002A0000000000000000</EventPayload></ProcessingErrorData>
+  <RenderingInfo><Opcode>ReconnectIPV4</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
