@@ -400,7 +400,9 @@ mod etw {
                 && between(rendering, "<EventName", "</EventName>")
                     .and_then(|tag| tag.split_once('>').map(|(_, value)| value.trim()))
                     == Some(event_name)
-                && between(rendering, "<Opcode>", "</Opcode>").map(str::trim) == Some(opcode)
+                && between(rendering, "<Opcode>", "</Opcode>")
+                    .map(str::trim)
+                    .is_some_and(|rendered| rendered.starts_with(opcode))
         })
     }
 
@@ -484,7 +486,7 @@ mod etw {
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
   <EventData><Data Name="PID">4201</Data><Data Name="daddr">192.0.2.1</Data><Data Name="dport">0x21</Data></EventData>
-  <RenderingInfo><Opcode>Connect</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
+  <RenderingInfo><Opcode>ConnectIPV4</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
