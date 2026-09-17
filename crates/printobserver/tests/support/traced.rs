@@ -188,7 +188,7 @@ pub fn traced(
 
     let _trace = KERNEL_TRACE
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     let invocation = format!(
         "{}-{}",
