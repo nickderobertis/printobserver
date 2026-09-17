@@ -573,7 +573,8 @@ fn a_launchd_user_creation_failure_names_the_dscl_operation() {
         &bin.join("dscl"),
         &format!(
             "#!/bin/sh\ncase \"$*\" in *UserShell*) echo 'directory service refused UserShell' \
-             >&2; exit 1 ;; *'-delete'*) echo \"dscl $*\" >> \"{}\" ;; *) exit 0 ;; esac\n",
+             >&2; exit 1 ;; *'-read'*) exit 1 ;; *'-delete'*) echo \"dscl $*\" >> \"{}\" ;; \
+             *) exit 0 ;; esac\n",
             deleted.display()
         ),
     );
@@ -643,6 +644,7 @@ fn a_launchd_system_user_is_created_at_the_first_free_reserved_id() {
         &bin.join("dscl"),
         &format!(
             "#!/bin/sh\ncase \"$*\" in\n\
+             *'-read'*) exit 1 ;;\n\
              *'-list /Users UniqueID'*) printf '%s\\n' 'nobody -2' '_unknown -99' 'root 0' \
              'daemon 1' '_www 70' 'taken 400' ;;\n\
              *'-list /Groups PrimaryGroupID'*) printf '%s\\n' 'nobody -2' 'nogroup -1' \
@@ -704,6 +706,14 @@ fn launchd_system_user_id_selection_failures_are_actionable() {
         .join("\n");
     let cases = [
         (
+            "group-already-there",
+            "#!/bin/sh\ncase \"$*\" in *'-read /Groups/missing-service-user'*) exit 0 ;; \
+             *) echo \"dscl $*\" >&2; exit 1 ;; esac\n"
+                .to_owned(),
+            "there is a group missing-service-user but no user missing-service-user",
+            None,
+        ),
+        (
             "users-list",
             "#!/bin/sh\necho 'users directory unavailable' >&2\nexit 1\n".to_owned(),
             "dscl . -list /Users UniqueID",
@@ -717,13 +727,14 @@ fn launchd_system_user_id_selection_failures_are_actionable() {
         ),
         (
             "reserved-ids-exhausted",
-            format!("#!/bin/sh\nprintf '%s\\n' '{occupied}'\n"),
+            format!("#!/bin/sh\ncase \"$*\" in *'-read'*) exit 1 ;; esac\nprintf '%s\\n' '{occupied}'\n"),
             "every macOS system-user id from 400 to 499 is already taken",
             None,
         ),
         (
             "malformed-id",
-            "#!/bin/sh\necho 'damaged not-a-number'\n".to_owned(),
+            "#!/bin/sh\ncase \"$*\" in *'-read'*) exit 1 ;; esac\necho 'damaged not-a-number'\n"
+                .to_owned(),
             "directory service returned a malformed user or group id",
             None,
         ),

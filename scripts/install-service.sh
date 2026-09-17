@@ -198,6 +198,12 @@ RUNTIME_HOME="$RUNTIME_STATE/home"
 # the users services run as, shared by a group of the same name, hidden from the
 # login window and given no shell.
 create_launchd_user() {
+    # The group is created beside the user and shares its name, so a group of
+    # that name with no user is somebody else's: it is neither written over
+    # here nor, should a later write fail, removed by the rollback below.
+    if dscl . -read "/Groups/$1" >/dev/null 2>&1; then
+        die "there is a group $1 but no user $1, so the system user cannot be created beside it. Remove that group, or pass --user a user that already exists."
+    fi
     users="$(dscl . -list /Users UniqueID)" ||
         die "\`dscl . -list /Users UniqueID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
     groups="$(dscl . -list /Groups PrimaryGroupID)" ||
@@ -229,8 +235,8 @@ create_launchd_user() {
 
 # One write of the user being created. A write that fails leaves the records
 # written before it standing, and a half-made user is one the next run finds
-# with `id` and takes for a whole one — so both records are removed before
-# the failure is reported, and the machine is as it was.
+# with `id` and takes for a whole one — so both records, which this run alone
+# created, are removed before the failure is reported.
 dscl_create() {
     record="$1"
     attribute="$2"
