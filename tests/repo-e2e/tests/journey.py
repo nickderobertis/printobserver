@@ -17,9 +17,33 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+from repo_checks import platforms
+from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+#: This host's own entry in AGENTS.md's supported-platform list.
+HERE = platforms.host(Repo(REPO_ROOT))
+
+#: A journey over an end-user install route, run where the install path targets
+#: this host's platform and skipped where it does not.
+#:
+#: Keyed off the platform's own `install path` answer rather than off which
+#: platform this is, exactly as the artifact tool's own route proofs are: that
+#: answer is the record a platform's install-route delivery flips, so flipping
+#: it runs these journeys there with nobody editing a test, and a platform the
+#: list says the install path targets never skips one.
+NO_ROUTE_HERE: str | None = (
+    None
+    if HERE.install_path
+    else (
+        f"a journey over an end-user install route, and AGENTS.md's supported-platform "
+        f"list answers `install path: no` for `{HERE.id}`: {HERE.install_path_reason}"
+    )
+)
+ROUTE_JOURNEY = pytest.mark.skipif(NO_ROUTE_HERE is not None, reason=NO_ROUTE_HERE or "")
 # Every escape sequence a terminal-aware program writes here: a CSI sequence —
 # introducer, numeric and private parameters, intermediates, final byte — and an
 # OSC sequence, which `nx` uses for hyperlinks and which ends at BEL or at ST.

@@ -24,7 +24,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
@@ -106,7 +106,14 @@ def staged(tmp_path: Path) -> Path:
     `latest/download` is what the forge serves for the newest release and
     `download/<tag>` for a pinned one, so a script proven against this is
     proven against the layout it will meet.
+
+    Staged only where the install path targets this platform: the script is
+    the third route, and on a platform whose record answers `install path: no`
+    there is no artifact of this host's for it to stage, so a journey asking
+    for one is skipped naming that record rather than built for.
     """
+    if NO_ROUTE_HERE is not None:
+        pytest.skip(NO_ROUTE_HERE)
     base = tmp_path / "releases"
     real = _program().read_bytes()
     stand_in = f'#!/bin/sh\necho "{PROGRAM} {OLDER.removeprefix("v")}"\n'.encode()

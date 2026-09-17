@@ -23,7 +23,7 @@ from __future__ import annotations
 import tomllib
 
 import pytest
-from journey import REPO_ROOT, clean_environment, pythonpath, run
+from journey import REPO_ROOT, ROUTE_JOURNEY, clean_environment, pythonpath, run
 from repo_checks.expect import contains, failing, passing
 
 #: How long one recipe is given: the first pays for a release build of the
@@ -44,6 +44,10 @@ ROUTES = [
     ("release:printobserver", "prove-route-script"),
 ]
 SHIPPED = CLIENTS + ROUTES
+
+#: The routes as this tier drives them: proven where the install path targets
+#: this platform, and skipped naming the record where it does not.
+ROUTE_CASES = [pytest.param(*route, marks=ROUTE_JOURNEY, id=route[1]) for route in ROUTES]
 
 
 def _version() -> str:
@@ -98,7 +102,7 @@ def test_each_client_is_installed_and_proved_against_a_real_server(
     contains(said, f"contract {_version()}", describing=f"what `just {recipe}` said")
 
 
-@pytest.mark.parametrize(("identifier", "recipe"), ROUTES, ids=[name for _, name in ROUTES])
+@pytest.mark.parametrize(("identifier", "recipe"), ROUTE_CASES)
 def test_each_route_leaves_a_runnable_program_on_the_path(identifier: str, recipe: str) -> None:
     """A route installs a program that runs and reports its own version.
 
@@ -120,7 +124,10 @@ def test_each_route_leaves_a_runnable_program_on_the_path(identifier: str, recip
 
 @pytest.mark.parametrize(
     ("recipe", "expected"),
-    [("prove-client-python", "smoke: contract"), ("prove-route-pypi", "printobserver")],
+    [
+        ("prove-client-python", "smoke: contract"),
+        pytest.param("prove-route-pypi", "printobserver", marks=ROUTE_JOURNEY),
+    ],
 )
 def test_python_proofs_can_be_repeated(recipe: str, expected: str) -> None:
     """A second proof installs and runs the artifact in its disposable environment."""
