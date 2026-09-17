@@ -294,7 +294,7 @@ mod etw {
     use std::collections::{BTreeMap, BTreeSet};
     #[cfg(windows)]
     use std::ffi::OsStr;
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
     #[cfg(windows)]
     use std::process::Command;
 
@@ -354,10 +354,15 @@ mod etw {
                     || rendered(event, SYSTEM_TRACE, "Process", "Start")
             })
             .filter_map(|event| {
-                Some((
-                    number(&data(event, "ProcessID").or_else(|| data(event, "ProcessId"))?)?,
-                    number(&data(event, "ParentProcessID").or_else(|| data(event, "ParentId"))?)?,
-                ))
+                let decoded = || {
+                    Some((
+                        number(&data(event, "ProcessID").or_else(|| data(event, "ProcessId"))?)?,
+                        number(
+                            &data(event, "ParentProcessID").or_else(|| data(event, "ParentId"))?,
+                        )?,
+                    ))
+                };
+                decoded().or_else(|| raw_process(event))
             })
             .collect();
         let mut tree = BTreeSet::from([root]);
@@ -378,19 +383,26 @@ mod etw {
                 is(event, TCPIP, REQUESTED_TO_CONNECT)
                     || rendered(event, SYSTEM_TRACE, "TcpIp", "Connect")
             })
-            .filter(|event| {
-                data(event, "PID")
-                    .as_deref()
-                    .or_else(|| between(event, "<Execution ProcessID=\"", "\""))
-                    .and_then(number)
-                    .is_some_and(|pid| tree.contains(&pid))
-            })
-            .filter_map(|event| {
-                data(event, "RemoteAddress")
-                    .and_then(|rendered| endpoint(&rendered))
-                    .or_else(|| endpoint_parts(&data(event, "daddr")?, &data(event, "dport")?))
-            })
+            .filter_map(|event| connection(event))
+            .filter(|(pid, _)| tree.contains(pid))
+            .map(|(_, endpoint)| endpoint)
             .collect()
+    }
+
+    /// One connect event's process and destination, whether `tracerpt`
+    /// decoded its fields or left the classic event as a raw payload.
+    fn connection(event: &str) -> Option<(u32, SocketAddr)> {
+        let decoded = || {
+            let pid = data(event, "PID")
+                .as_deref()
+                .or_else(|| between(event, "<Execution ProcessID=\"", "\""))
+                .and_then(number)?;
+            let endpoint = data(event, "RemoteAddress")
+                .and_then(|rendered| endpoint(&rendered))
+                .or_else(|| endpoint_parts(&data(event, "daddr")?, &data(event, "dport")?))?;
+            Some((pid, endpoint))
+        };
+        decoded().or_else(|| raw_connection(event))
     }
 
     /// The bounded part of a decoded trace that diagnoses an unrecognized
@@ -422,7 +434,7 @@ mod etw {
 
     /// Whether a classic event's rendered identity names one kernel operation.
     fn rendered(event: &str, provider: &str, event_name: &str, opcode: &str) -> bool {
-        let rendering = event.split_once("<RenderingInfo").map(|(_, rest)| rest);
+        let rendering = rendering(event);
         rendering.is_some_and(|rendering| {
             between(rendering, "<Provider>", "</Provider>").map(str::trim) == Some(provider)
                 && between(rendering, "<EventName", "</EventName>")
@@ -432,6 +444,16 @@ mod etw {
                     .map(str::trim)
                     .is_some_and(|rendered| rendered.starts_with(opcode))
         })
+    }
+
+    /// The rendering section of one classic event.
+    fn rendering(event: &str) -> Option<&str> {
+        event.split_once("<RenderingInfo").map(|(_, rest)| rest)
+    }
+
+    /// One classic event's rendered operation name.
+    fn rendered_opcode(event: &str) -> Option<&str> {
+        between(rendering(event)?, "<Opcode>", "</Opcode>").map(str::trim)
     }
 
     /// One named datum of one event.
@@ -472,6 +494,51 @@ mod etw {
         ))
     }
 
+    /// A process start that `tracerpt` left as the classic event's raw bytes.
+    fn raw_process(event: &str) -> Option<(u32, u32)> {
+        let bytes = payload(event)?;
+        Some((little_u32(&bytes, 8)?, little_u32(&bytes, 12)?))
+    }
+
+    /// A TCP connect that `tracerpt` left as the classic event's raw bytes.
+    fn raw_connection(event: &str) -> Option<(u32, SocketAddr)> {
+        let bytes = payload(event)?;
+        let pid = little_u32(&bytes, 0)?;
+        let (address, port_at) = match rendered_opcode(event)? {
+            "ConnectIPV4" => (
+                IpAddr::V4(Ipv4Addr::new(
+                    *bytes.get(8)?,
+                    *bytes.get(9)?,
+                    *bytes.get(10)?,
+                    *bytes.get(11)?,
+                )),
+                16,
+            ),
+            "ConnectIPV6" => {
+                let octets: [u8; 16] = bytes.get(8..24)?.try_into().ok()?;
+                (IpAddr::V6(Ipv6Addr::from(octets)), 40)
+            }
+            _ => return None,
+        };
+        let port = u16::from_be_bytes([*bytes.get(port_at)?, *bytes.get(port_at + 1)?]);
+        Some((pid, SocketAddr::new(address, port)))
+    }
+
+    /// Raw ETW bytes `tracerpt` could not map through a schema on this host.
+    fn payload(event: &str) -> Option<Vec<u8>> {
+        let rendered = between(event, "<EventPayload>", "</EventPayload>")?.trim();
+        (rendered.len() % 2 == 0).then_some(())?;
+        (0..rendered.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&rendered[at..at + 2], 16).ok())
+            .collect()
+    }
+
+    /// One little-endian integer in a classic ETW payload.
+    fn little_u32(bytes: &[u8], at: usize) -> Option<u32> {
+        Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    }
+
     /// What a Windows runner's `tracerpt` wrote for one traced invocation.
     const RECORDED: &str = include_str!("tracerpt-connects.xml");
 
@@ -508,12 +575,12 @@ mod etw {
         let recorded = r#"
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <EventData><Data Name="ProcessId">4201</Data><Data Name="ParentId">4200</Data></EventData>
+  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>00000000000000006910000068100000</EventPayload></ProcessingErrorData>
   <RenderingInfo><Opcode>Start</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">Process</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <EventData><Data Name="PID">4201</Data><Data Name="daddr">192.0.2.1</Data><Data Name="dport">0x21</Data></EventData>
+  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>6910000000000000C00002017F0000010021002AD7FF010000000100FFFF0000080008000000000000000000</EventPayload></ProcessingErrorData>
   <RenderingInfo><Opcode>ConnectIPV4</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
