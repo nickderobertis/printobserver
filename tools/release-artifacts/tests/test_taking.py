@@ -24,12 +24,16 @@ from release_artifacts.__main__ import main
 from release_artifacts.installing import NO_TOOLCHAIN, TOOLCHAIN, prove, without_rust
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.world import (
+    ACTION_KINDS,
     CLIENT_CONFIG,
     INGRESS_WORD,
     Machine,
+    Printer,
     World,
     WorldError,
     _as_toml,
+    _configuration,
+    every_action,
     scripted_printer,
 )
 from repo_checks.expect import absent, contains, equal, truth
@@ -135,6 +139,39 @@ def test_the_configuration_a_supervisor_is_started_under_is_toml_it_reads() -> N
     contains(written, '"tool_target:0" = { min = 0.0, max = 260.0 }', describing=written)
     contains(written, 'operator = ["pause"]', describing=written)
     truth(INGRESS_WORD, describing="the ingress to have a word of its own")
+
+
+def test_the_operator_is_granted_every_action_the_contract_declares(repo: Repo) -> None:
+    """The grant is read off `ActionKind.json` rather than copied beside it."""
+    contract = json.loads(repo.read("schemas/printobserver-core/ActionKind.json"))
+    declared = [variant["const"] for variant in contract["oneOf"]]
+    printer = Printer("http://127.0.0.1:1", "a-provisioned-key", scripted=False)
+    written = json.loads(_configuration(Path("/var/lib/printobserver"), printer))
+
+    equal(ACTION_KINDS, repo.path("schemas/printobserver-core/ActionKind.json"))
+    equal(written["safety"]["actions"]["operator"], declared, describing="the operator's grant")
+    truth(len(declared) >= 10, describing="the contract to be the closed vocabulary it was")
+
+
+@pytest.mark.parametrize(
+    ("document", "why"),
+    [
+        ("{}", "does not declare a closed vocabulary"),
+        ('{"oneOf": [{"const": "pause"}, {"const": 7}]}', "does not declare a closed vocabulary"),
+        ("not json", "could not be read"),
+    ],
+)
+def test_a_contract_that_is_not_a_closed_vocabulary_is_refused_naming_it(
+    tmp_path: Path, document: str, why: str
+) -> None:
+    """A world started from a damaged contract stops before granting anything."""
+    contract = tmp_path / "ActionKind.json"
+    contract.write_text(document, encoding="utf-8")
+
+    with pytest.raises(WorldError, match=why) as refused:
+        every_action(contract)
+
+    contains(str(refused.value), str(contract), describing="the refusal")
 
 
 def test_a_supervisor_that_stops_before_it_answers_is_said_to_have(

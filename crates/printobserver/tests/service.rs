@@ -629,7 +629,7 @@ fn launchd_system_user_id_selection_failures_are_actionable() {
         (
             "reserved-ids-exhausted",
             format!("#!/bin/sh\nprintf '%s\\n' '{occupied}'\n"),
-            "the system user missing-service-user could not be created",
+            "every macOS system-user id from 400 to 499 is already taken",
             None,
         ),
         (

@@ -700,12 +700,17 @@ def stop(instance: Instance) -> dict[str, Any]:
     return {"state_dir": str(instance.state_dir), "stopped": True, "pid": pid}
 
 
-def record_pid(record: dict[str, Any]) -> int:
+def record_pid(record: object) -> int:
     """Read the positive process identifier written into an instance record.
 
+    The record is whatever `instance.json` decoded to, narrowed here rather
+    than trusted: a file somebody edited can hold any document at all.
+
     Raises:
-        ValueError: If the record does not carry a positive integer PID.
+        ValueError: If the record is not an object carrying a positive integer PID.
     """
+    if not isinstance(record, dict):
+        raise ValueError(f"instance record must be a JSON object, not {type(record).__name__}")
     value = record.get("pid")
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"instance record pid must be a positive integer, not {value!r}")

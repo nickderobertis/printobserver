@@ -134,6 +134,27 @@ def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_te
     refused_naming(lines, "FileExistsError", str(occupied))
 
 
+@pytest.mark.parametrize(("command", "document"), [("down", "[17]"), ("up", '"17"')])
+def test_a_persisted_record_that_is_not_an_object_is_refused(
+    tmp_path: Path, command: str, document: str
+) -> None:
+    """Both record readers narrow the decoded document before reading a PID off it."""
+    state = tmp_path / command
+    state.mkdir()
+    (state / "instance.json").write_text(document + "\n", encoding="utf-8")
+    if command == "up":
+        (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script(command, "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        "instance record must be a JSON object, not",
+    )
+
+
 @pytest.mark.parametrize(("command", "pid"), [("down", 0), ("up", -1)])
 def test_a_persisted_pid_that_could_name_more_than_one_process_is_refused(
     tmp_path: Path, command: str, pid: int

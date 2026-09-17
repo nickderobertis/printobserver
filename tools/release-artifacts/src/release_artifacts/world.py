@@ -60,6 +60,12 @@ IMAGE = bytes.fromhex(
 #: The statuses the ingress answers a post it took under.
 ACCEPTED = (200, 202)
 
+#: The contract naming every action there is, in the tree this module is in.
+#: The operator is granted the whole vocabulary below, and reading it from
+#: here rather than copying it is what grants a variant the contracts gain
+#: without anybody spelling its name a second time.
+ACTION_KINDS = Path(__file__).resolve().parents[4] / "schemas/printobserver-core/ActionKind.json"
+
 #: How long the supervisor is given to answer at the address it bound.
 STARTUP_TIMEOUT_SECONDS = 60.0
 
@@ -223,6 +229,25 @@ def _machine_handler(machine: Machine) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def every_action(contract: Path = ACTION_KINDS) -> list[str]:
+    """Every action kind the contract declares, in the order it declares them.
+
+    Raises:
+        WorldError: If the contract is not the closed vocabulary its schema is.
+    """
+    try:
+        document = json.loads(contract.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        msg = f"the action contract at {contract} could not be read: {error}"
+        raise WorldError(msg) from error
+    variants = document.get("oneOf") if isinstance(document, dict) else None
+    kinds = [one.get("const") for one in variants] if isinstance(variants, list) else []
+    if not kinds or not all(isinstance(kind, str) and kind for kind in kinds):
+        msg = f"the action contract at {contract} does not declare a closed vocabulary of names"
+        raise WorldError(msg)
+    return kinds
+
+
 def _configuration(state: Path, printer: Printer, credential: str | None = None) -> str:
     """The one configuration file the supervisor reads, as a document."""
     document = {
@@ -245,18 +270,8 @@ def _configuration(state: Path, printer: Printer, credential: str | None = None)
                 "tool_target:0": {"min": 0.0, "max": 260.0},
             },
             "actions": {
-                "operator": [
-                    "pause",
-                    "resume",
-                    "cancel",
-                    "start_print",
-                    "set_feedrate_factor",
-                    "set_flowrate_factor",
-                    "set_tool_target_c",
-                    "set_bed_target_c",
-                    "set_fan_percent",
-                    "acknowledge_failure",
-                ],
+                # Every action there is, read from the contract that names them.
+                "operator": every_action(),
                 # Nothing at all, and deliberately: the all-operation walk
                 # needs one refusal per action method, and the grant is the
                 # one rejection the policy takes before it looks at the

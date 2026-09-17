@@ -210,7 +210,8 @@ create_launchd_user() {
     number=400
     while printf '%s\n' "$taken" | grep -qx "$number"; do
         number=$((number + 1))
-        [ "$number" -lt 500 ] || return 1
+        [ "$number" -lt 500 ] ||
+            die "every macOS system-user id from 400 to 499 is already taken, so there is no free one for $1. Remove a user or group that no longer needs its id, or pass --user a user that already exists."
     done
     dscl_create "/Groups/$1" PrimaryGroupID "$number"
     dscl_create "/Groups/$1" Password '*'

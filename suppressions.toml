@@ -341,6 +341,12 @@ reason = "A passing `just test-install-proof` prints three lines, and they are t
 
 [[suppression]]
 rule = "instruction_layer_localized"
+file = "crates/printobserver/AGENTS.md"
+site = "# printobserver"
+reason = "The same ground the `tools/release-artifacts/AGENTS.md` entry below states, met at this crate's own nested file: `.github/CODEOWNERS` assigns every path with `* @nickderobertis`, and the judged tier reads a diff that does not carry that unchanged file — run `20260917T165131Z-e8507` failed this file's service-manager passage for the repository having no CODEOWNERS, while the file has stood since before this change."
+
+[[suppression]]
+rule = "instruction_layer_localized"
 file = "tools/release-artifacts/AGENTS.md"
 site = "# release-artifacts"
 reason = "The rule asks that project rules live in a nested `AGENTS.md` and that `CODEOWNERS` routes reviews, and both hold: this file is that nested one, and `.github/CODEOWNERS` assigns every path with `* @nickderobertis`. The judged tier runs over a diff and is handed only the files that changed, so that unchanged file is outside what it reads — run `20260910T235643Z-7ce94` listed `.github/CODEOWNERS` among its `diff_excluded_files` and then failed this file for having no routing. The same diff passed this rule on the two runs before it; this directive makes the answer not depend on which files a diff happens to carry."
