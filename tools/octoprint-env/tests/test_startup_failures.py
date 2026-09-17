@@ -15,11 +15,13 @@ failure path a caller would meet as a bare error, and it fails here.
 from __future__ import annotations
 
 import ast
+import json
 import socket
 import time
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from environment import SCRIPT, answer, said, script
 from repo_checks.expect import contains, failing, passing, refused_naming, truth
 
@@ -130,6 +132,27 @@ def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_te
     failing(result, naming="outside the declared failure classes")
     lines = said(result).splitlines()
     refused_naming(lines, "FileExistsError", str(occupied))
+
+
+@pytest.mark.parametrize(("command", "pid"), [("down", 0), ("up", -1)])
+def test_a_persisted_pid_that_could_name_more_than_one_process_is_refused(
+    tmp_path: Path, command: str, pid: int
+) -> None:
+    """Both record readers stop before handing unsafe PID semantics to the OS."""
+    state = tmp_path / command
+    state.mkdir()
+    (state / "instance.json").write_text(json.dumps({"pid": pid}) + "\n", encoding="utf-8")
+    if command == "up":
+        (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script(command, "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        f"instance record pid must be a positive integer, not {pid}",
+    )
 
 
 def test_the_script_can_reach_no_failure_path_the_declared_set_does_not_cover() -> None:

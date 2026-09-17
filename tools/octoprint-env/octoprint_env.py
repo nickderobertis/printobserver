@@ -692,12 +692,24 @@ def stop(instance: Instance) -> dict[str, Any]:
         note(f"no instance is recorded under {instance.state_dir}")
         return {"state_dir": str(instance.state_dir), "stopped": False, "pid": None}
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    pid = int(record["pid"])
+    pid = record_pid(record)
     if reap_and_is_running(pid):
         _terminate(pid)
     instance.record.unlink()
     note(f"stopped process {pid}")
     return {"state_dir": str(instance.state_dir), "stopped": True, "pid": pid}
+
+
+def record_pid(record: dict[str, Any]) -> int:
+    """Read the positive process identifier written into an instance record.
+
+    Raises:
+        ValueError: If the record does not carry a positive integer PID.
+    """
+    value = record.get("pid")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"instance record pid must be a positive integer, not {value!r}")
+    return value
 
 
 def _terminate(pid: int) -> None:
@@ -774,7 +786,7 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not instance.record.is_file() or not instance.api_key_file.is_file():
         return None
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    if not reap_and_is_running(int(record["pid"])):
+    if not reap_and_is_running(record_pid(record)):
         return None
     try:
         status, _ = call(str(record["url"]), api_key(instance), "/api/version", timeout=5.0)
