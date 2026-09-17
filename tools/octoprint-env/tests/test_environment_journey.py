@@ -31,15 +31,38 @@ from environment import (
 )
 from repo_checks.expect import contains, equal, passing, truth
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 # The minimum this journey holds the script to, stated here rather than read
 # out of it: a script that declared a shorter one fails here rather than
 # passing against its own choice.
 REQUIRED_HOLD_SECONDS = 120
 
+#: Enough reserve for every unparallelised client journey on a cold hosted Mac.
+REQUIRED_TIER_HOLD_SECONDS = 90 * 60
+
 CONNECTED = frozenset({"Operational", "Printing"})
 # The G-code file this repository owns, which is what the tier is given to act on.
 HOLD_PRINT = "hold.gcode"
 REFUSED = frozenset({401, 403})
+
+
+def test_the_hold_program_outlasts_the_cold_integration_tier() -> None:
+    """The bundled no-motion print cannot expire between client journeys."""
+    gcode = REPO_ROOT / "tools/octoprint-env/gcode" / HOLD_PRINT
+    dwell_seconds = sum(
+        int(line.removeprefix("G4 S"))
+        for line in gcode.read_text(encoding="utf-8").splitlines()
+        if line.startswith("G4 S")
+    )
+
+    truth(
+        dwell_seconds >= REQUIRED_TIER_HOLD_SECONDS,
+        describing=(
+            f"a hold of at least {REQUIRED_TIER_HOLD_SECONDS}s for the cold tier, "
+            f"not {dwell_seconds}s"
+        ),
+    )
 
 
 def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
