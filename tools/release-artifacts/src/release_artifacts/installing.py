@@ -69,7 +69,12 @@ class Installed:
     said: str
 
 
-def without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
+def without_rust(
+    extra: dict[str, str] | None = None,
+    *,
+    preserve: tuple[str, ...] = (),
+    preserved_at: Path | None = None,
+) -> dict[str, str]:
     """The caller's environment, minus every place a Rust toolchain lives.
 
     Not a claim in a comment: the directories carrying `cargo` and `rustc` are
@@ -77,11 +82,28 @@ def without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
     here rather than passing on this host's toolchain.
     """
     environment = dict(os.environ)
+    preserved = {
+        program: shutil.which(program, path=environment.get("PATH")) for program in preserve
+    }
     kept = [
         directory
         for directory in environment.get("PATH", "").split(os.pathsep)
         if directory and not any(Path(directory, program).exists() for program in TOOLCHAIN)
     ]
+    if preserve:
+        if preserved_at is None:
+            msg = "a directory is required when preserving programs on the toolchain-free path"
+            raise InstallError(msg)
+        preserved_at.mkdir(parents=True, exist_ok=True)
+        for name, source in preserved.items():
+            if source is None:
+                raise InstallError(f"cannot preserve `{name}` because it is not on PATH")
+            destination = preserved_at / name
+            try:
+                os.link(source, destination)
+            except OSError:
+                shutil.copy2(source, destination)
+        kept.insert(0, str(preserved_at))
     environment["PATH"] = os.pathsep.join(kept)
     environment.pop("CARGO_HOME", None)
     environment.pop("RUSTUP_HOME", None)
@@ -215,7 +237,7 @@ def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     ran(
         ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
         cwd=into,
-        env=without_rust(),
+        env=without_rust(preserve=("node",), preserved_at=environment / ".path"),
         describing=f"installing {wheel.name}",
     )
     return Installed(built.target, environment, environment / "bin" / PROGRAM, "")

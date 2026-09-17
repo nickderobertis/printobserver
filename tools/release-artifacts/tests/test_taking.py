@@ -14,12 +14,14 @@ that writes its clients an address or a credential none of them can use.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.installing import NO_TOOLCHAIN, prove
+from release_artifacts.installing import NO_TOOLCHAIN, TOOLCHAIN, prove, without_rust
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.world import (
     CLIENT_CONFIG,
@@ -35,6 +37,30 @@ from repo_checks.model import Repo
 
 #: The three routes an end user gets the program by, each installed for real.
 ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobserver"]
+
+
+def test_node_is_kept_when_a_runner_installs_it_beside_rust(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The npm route keeps its runtime when a hosted runner shares a tool directory."""
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
+    (shared / "node").symlink_to(node)
+    (shared / "cargo").symlink_to(cargo)
+    monkeypatch.setenv("PATH", os.pathsep.join((str(shared), os.environ["PATH"])))
+
+    environment = without_rust(preserve=("node",), preserved_at=tmp_path / "route-path")
+
+    truth(shutil.which("node", path=environment["PATH"]), describing="the npm runtime on PATH")
+    equal(
+        [name for name in TOOLCHAIN if shutil.which(name, path=environment["PATH"])],
+        [],
+        describing="the Rust programs reachable from the install path",
+    )
 
 
 @pytest.mark.parametrize("identifier", ROUTES)
