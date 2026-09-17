@@ -18,6 +18,22 @@ def test_the_committed_recipe_set_is_accepted(committed: Repo) -> None:
     accepted(recipe_set(committed))
 
 
+def test_a_parallel_rust_coverage_target_that_cleans_profiles_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """One crate cannot erase profiles another parallel Nx task already wrote."""
+    broken = tree()
+    project = "crates/printobserver-core/project.json"
+    broken.edit(project, " --no-clean", "")
+
+    findings = recipe_set(broken.repo)
+
+    refused(
+        findings,
+        "printobserver-core:test runs cargo llvm-cov without --no-clean",
+    )
+
+
 def test_a_check_recipe_omitting_a_declared_tier_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

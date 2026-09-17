@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver --all-targets --features test-fixtures --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver --features test-fixtures --no-report --no-tests=pass -E \"not binary(integration)\""
+      "command": "cargo llvm-cov nextest -p printobserver --features test-fixtures --no-clean --no-tests=pass -E \"not binary(integration)\""
     },
     "build": {
       "command": "cargo build -p printobserver --locked"

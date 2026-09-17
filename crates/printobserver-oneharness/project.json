@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-oneharness --all-targets --features test-responder --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-oneharness --features test-responder --no-report --no-tests=pass"
+      "command": "cargo llvm-cov nextest -p printobserver-oneharness --features test-responder --no-clean --no-tests=pass"
     },
     "build": {
       "command": "cargo build -p printobserver-oneharness --locked"

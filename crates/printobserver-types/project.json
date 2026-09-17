@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-types --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "cargo llvm-cov nextest -p printobserver-types --no-report --no-tests=pass",
+      "command": "cargo llvm-cov nextest -p printobserver-types --no-clean --no-tests=pass",
       "dependsOn": [
         "schemas"
       ]
