@@ -43,7 +43,7 @@ install-tools:
 # appends to `GITHUB_OUTPUT` and installs, so the gate's toolchain and the
 # release job run one release and a bump is one edit.
 tool-version TOOL:
-    @uv run -q python -m repo_checks tool-version {{TOOL}}
+    @uv run -q python -m repo_checks tool-version {{quote(TOOL)}}
 
 # The full gate: every tier `repo-policy.toml` declares, end-to-end included.
 check:
@@ -192,7 +192,7 @@ prove-registry-script:
 # finding nothing unreleased — answers an empty field, and that is what those
 # jobs are gated on. Needs a checkout carrying the commit and its tags.
 release-version COMMIT ROOT:
-    @uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
+    @uv run -q python -m release_artifacts released --commit {{quote(COMMIT)}} --root {{quote(ROOT)}}
 
 # What the publishing job released, as `released=<tag>...`, read off ANSWER.
 #
@@ -206,7 +206,7 @@ release-version COMMIT ROOT:
 # that program's is refused rather than read as "none": a publish skipped over
 # an unreadable answer is a release nobody can install and nothing reported.
 release-answer ANSWER:
-    @uv run -q python -m release_artifacts answered --answer {{ANSWER}}
+    @uv run -q python -m release_artifacts answered --answer {{quote(ANSWER)}}
 
 # Which release a hand-dispatched run publishes, as `released=<tag>`, off TAG.
 #
@@ -224,7 +224,7 @@ release-answer ANSWER:
 # refused naming why, and nothing is printed or written: the job fails, and
 # the jobs after it are skipped.
 release-dispatched TAG ROOT RECORD REF:
-    @uv run -q python -m release_artifacts dispatched --tag {{TAG}} --root {{ROOT}} --record {{RECORD}} --ref {{REF}}
+    @uv run -q python -m release_artifacts dispatched --tag {{quote(TAG)}} --root {{quote(ROOT)}} --record {{quote(RECORD)}} --ref {{quote(REF)}}
 
 # Which version a dispatched run recorded, as `version=<version>`, off RECORD.
 #
@@ -235,7 +235,7 @@ release-dispatched TAG ROOT RECORD REF:
 # field, because the route proofs skip on that field and a proof skipped over
 # an unreadable record is a publish nobody checked.
 release-version-dispatched RECORD:
-    @uv run -q python -m release_artifacts recorded --record {{RECORD}}
+    @uv run -q python -m release_artifacts recorded --record {{quote(RECORD)}}
 
 # The registry install-path proof: all three routes, which is how a person runs
 # this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
