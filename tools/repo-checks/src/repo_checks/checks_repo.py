@@ -172,9 +172,7 @@ def recipe_set(repo: Repo) -> list[str]:
             None,
         )
         if profile is None or '"${OS:-}" = Windows_NT' not in command:
-            findings.append(
-                f"{name}:test carries no Windows-only coverage profile name"
-            )
+            findings.append(f"{name}:test carries no Windows-only coverage profile name")
         elif profile in coverage_profiles:
             findings.append(
                 f"{name}:test shares Windows coverage profile {profile!r} with "
