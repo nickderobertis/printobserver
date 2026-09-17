@@ -173,8 +173,6 @@ def recipe_set(repo: Repo) -> list[str]:
         )
         if profile is None or '"${OS:-}" = Windows_NT' not in command:
             findings.append(f"{name}:test carries no Windows-only coverage profile name")
-        elif "-%9m.profraw" not in profile:
-            findings.append(f"{name}:test Windows coverage profile has no bounded merge pool")
         elif profile in coverage_profiles:
             findings.append(
                 f"{name}:test shares Windows coverage profile {profile!r} with "
@@ -182,6 +180,9 @@ def recipe_set(repo: Repo) -> list[str]:
             )
         else:
             coverage_profiles[profile] = name
+    test_body = "\n".join(parsed["test"].body)
+    if '"${OS:-}" = Windows_NT' not in test_body or "--parallel=1" not in test_body:
+        findings.append("the `test` recipe does not serialize Windows coverage targets")
     return findings
 
 

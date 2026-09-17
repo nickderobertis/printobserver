@@ -17,7 +17,7 @@
       "command": "cargo clippy -p printobserver-oneharness --all-targets --features test-responder --locked -- -D warnings"
     },
     "test": {
-      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-oneharness-%p-%9m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-oneharness --features test-responder --no-report --no-tests=pass'"
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-oneharness-%p.profraw; fi; exec cargo llvm-cov nextest -p printobserver-oneharness --features test-responder --no-report --no-tests=pass'"
     },
     "build": {
       "command": "cargo build -p printobserver-oneharness --locked"

@@ -25,8 +25,8 @@ def test_two_rust_targets_sharing_a_windows_profile_name_are_refused(
     broken = tree()
     broken.edit(
         "crates/printobserver-core/project.json",
-        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p-%9m.profraw",
-        "LLVM_PROFILE_FILE_NAME=printobserver-types-%p-%9m.profraw",
+        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p.profraw",
+        "LLVM_PROFILE_FILE_NAME=printobserver-types-%p.profraw",
     )
 
     findings = recipe_set(broken.repo)
@@ -34,20 +34,20 @@ def test_two_rust_targets_sharing_a_windows_profile_name_are_refused(
     refused(findings, "shares Windows coverage profile")
 
 
-def test_a_windows_profile_without_a_bounded_merge_pool_is_refused(
+def test_parallel_windows_coverage_targets_are_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Reused Windows process IDs cannot overwrite an earlier test's profile."""
+    """Concurrent cargo-llvm-cov targets cannot corrupt one another's profiles."""
     broken = tree()
     broken.edit(
-        "crates/printobserver-core/project.json",
-        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p-%9m.profraw",
-        "LLVM_PROFILE_FILE_NAME=printobserver-core-%p.profraw",
+        "justfile",
+        " --parallel=1; else",
+        "; else",
     )
 
     findings = recipe_set(broken.repo)
 
-    refused(findings, "Windows coverage profile has no bounded merge pool")
+    refused(findings, "does not serialize Windows coverage targets")
 
 
 def test_a_check_recipe_omitting_a_declared_tier_is_refused(
