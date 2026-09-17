@@ -363,4 +363,6 @@ def test_coverage_fails_where_no_coverage_was_measured(
     )
 
     equal(coverage(Repo(root)), 1)
-    contains(capsys.readouterr().err, "below the")
+    error = capsys.readouterr().err
+    contains(error, "could not find `Cargo.toml`")
+    contains(error, "below the")

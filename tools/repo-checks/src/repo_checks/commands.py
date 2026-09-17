@@ -216,6 +216,7 @@ def coverage(repo: Repo) -> int:
     )
     if rust.returncode != 0:
         print(rust.stdout, file=sys.stderr)
+        print(rust.stderr, file=sys.stderr)
         print(
             f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
             f"drive the uncovered lines, or explain the floor change in AGENTS.md.",

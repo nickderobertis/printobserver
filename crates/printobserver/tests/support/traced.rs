@@ -24,15 +24,14 @@
 //! the internet endpoints among them. It cannot see a connection a process of
 //! the tree hands to another process to make, which nothing here does.
 //!
-//! **Windows** has no `strace`. It starts an event-tracing session with `logman`
-//! over two providers of the operating system's own, runs the invocation, stops
-//! the session and decodes it with `tracerpt`. `Microsoft-Windows-TCPIP` records
-//! event 1002, *requested to connect*, for every TCP connect request in the
-//! context of the process that made it, before a single packet is sent: so an
-//! attempt to an address nothing listens on, or one nothing routes to, is
-//! recorded exactly as a completed connection is. `Microsoft-Windows-Kernel-Process`
+//! **Windows** has no `strace`. It starts the operating system's kernel event-
+//! tracing session with `logman`, runs the invocation, stops the session and
+//! decodes it with `tracerpt`. The kernel network flag records every TCP connect
+//! request in the context of the process that made it, before a single packet is
+//! sent: so an attempt to an address nothing listens on, or one nothing routes
+//! to, is recorded exactly as a completed connection is. The process flag
 //! records every process start with its parent, which is how the tree is
-//! followed. It cannot see a UDP `connect`, which that provider does not record:
+//! followed. It cannot see a UDP `connect`, which that trace does not record:
 //! this program speaks HTTP over TCP and resolves no names, so every endpoint it
 //! could reach is a TCP one. Starting a session needs an administrator, which
 //! the hosted runners are; without one this refuses naming why.
@@ -45,6 +44,8 @@ use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(not(windows))]
 use std::process::Command;
+#[cfg(windows)]
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The tracer this tier reads a process tree's connections out of.
@@ -53,6 +54,11 @@ const TRACER: &str = "strace";
 
 /// How one traced invocation's own output file is named apart from every other.
 static TRACED: AtomicU64 = AtomicU64::new(0);
+
+/// Windows exposes one kernel logger for the whole host, so its invocations
+/// cannot overlap within this test process.
+#[cfg(windows)]
+static KERNEL_TRACE: Mutex<()> = Mutex::new(());
 
 /// One invocation, and everything it did.
 #[derive(Debug, Clone)]
@@ -180,28 +186,33 @@ pub fn traced(
 ) -> Ran {
     use std::process::{Command, Stdio};
 
+    let _trace = KERNEL_TRACE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     let invocation = format!(
         "{}-{}",
         std::process::id(),
         TRACED.fetch_add(1, Ordering::Relaxed)
     );
-    let session = format!("printobserver-traced-{invocation}");
     let etl = scratch.join(format!("connections-{invocation}.etl"));
     let dump = scratch.join(format!("connections-{invocation}.xml"));
-    let providers = scratch.join(format!("connections-{invocation}.providers"));
-    std::fs::write(&providers, etw::PROVIDERS)
-        .unwrap_or_else(|error| panic!("{} could not be written: {error}", providers.display()));
+    let probe = scratch.join(format!("connections-{invocation}.probe"));
+    std::fs::write(&probe, b"")
+        .unwrap_or_else(|error| panic!("{} could not be written: {error}", probe.display()));
+    let _ = std::fs::remove_file(&probe);
 
     etw::tool(
         "logman",
         &[
             "start".as_ref(),
-            session.as_ref(),
+            "NT Kernel Logger".as_ref(),
+            "-p".as_ref(),
+            "Windows Kernel Trace".as_ref(),
+            "(process,net)".as_ref(),
             "-ets".as_ref(),
             "-o".as_ref(),
             etl.as_os_str(),
-            "-pf".as_ref(),
-            providers.as_os_str(),
             "-max".as_ref(),
             "1024".as_ref(),
             "-bs".as_ref(),
@@ -231,7 +242,11 @@ pub fn traced(
     // started leaves no session behind to fill the host's limit of them.
     etw::tool(
         "logman",
-        &["stop".as_ref(), session.as_ref(), "-ets".as_ref()],
+        &[
+            "stop".as_ref(),
+            "NT Kernel Logger".as_ref(),
+            "-ets".as_ref(),
+        ],
     );
     let (root, output) =
         output.unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
@@ -250,7 +265,7 @@ pub fn traced(
         etw::text_of(&std::fs::read(&dump).unwrap_or_else(|error| {
             panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
         }));
-    for written in [&etl, &dump, &providers] {
+    for written in [&etl, &dump] {
         let _ = std::fs::remove_file(written);
     }
     Ran {
@@ -276,11 +291,6 @@ mod etw {
     #[cfg(windows)]
     use std::process::Command;
 
-    /// The providers a session records, as `logman` reads a provider file:
-    /// the TCP/IP stack's connect path, and process starts.
-    pub const PROVIDERS: &str = "{2f07e2ee-15db-40f1-90ef-9d7ba282188a} 0xFFFFFFFFFFFFFFFF 0xFF\r\n\
-         {22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716} 0xFFFFFFFFFFFFFFFF 0xFF\r\n";
-
     /// The provider recording a TCP connect request, and its event for one.
     const TCPIP: &str = "Microsoft-Windows-TCPIP";
     const REQUESTED_TO_CONNECT: &str = "1002";
@@ -288,6 +298,8 @@ mod etw {
     /// The provider recording a process start, and its event for one.
     const KERNEL_PROCESS: &str = "Microsoft-Windows-Kernel-Process";
     const PROCESS_STARTED: &str = "1";
+    const SYSTEM_TRACE: &str = "MSNT_SystemTrace";
+    const TCP_CONNECT: &str = "12";
 
     /// Run one of the operating system's own tracing tools, and require it worked.
     #[cfg(windows)]
@@ -331,11 +343,14 @@ mod etw {
         let events: Vec<&str> = dump.split("<Event ").skip(1).collect();
         let parents: BTreeMap<u32, u32> = events
             .iter()
-            .filter(|event| is(event, KERNEL_PROCESS, PROCESS_STARTED))
+            .filter(|event| {
+                is(event, KERNEL_PROCESS, PROCESS_STARTED)
+                    || is(event, SYSTEM_TRACE, PROCESS_STARTED)
+            })
             .filter_map(|event| {
                 Some((
-                    number(&data(event, "ProcessID")?)?,
-                    number(&data(event, "ParentProcessID")?)?,
+                    number(&data(event, "ProcessID").or_else(|| data(event, "ProcessId"))?)?,
+                    number(&data(event, "ParentProcessID").or_else(|| data(event, "ParentId"))?)?,
                 ))
             })
             .collect();
@@ -353,13 +368,21 @@ mod etw {
         }
         events
             .iter()
-            .filter(|event| is(event, TCPIP, REQUESTED_TO_CONNECT))
             .filter(|event| {
-                between(event, "<Execution ProcessID=\"", "\"")
+                is(event, TCPIP, REQUESTED_TO_CONNECT) || is(event, SYSTEM_TRACE, TCP_CONNECT)
+            })
+            .filter(|event| {
+                data(event, "PID")
+                    .as_deref()
+                    .or_else(|| between(event, "<Execution ProcessID=\"", "\""))
                     .and_then(number)
                     .is_some_and(|pid| tree.contains(&pid))
             })
-            .filter_map(|event| endpoint(&data(event, "RemoteAddress")?))
+            .filter_map(|event| {
+                data(event, "RemoteAddress")
+                    .and_then(|rendered| endpoint(&rendered))
+                    .or_else(|| endpoint_parts(&data(event, "daddr")?, &data(event, "dport")?))
+            })
             .collect()
     }
 
@@ -399,21 +422,16 @@ mod etw {
         })
     }
 
+    /// A classic kernel network event renders its address and port separately.
+    fn endpoint_parts(address: &str, port: &str) -> Option<SocketAddr> {
+        Some(SocketAddr::new(
+            address.parse().ok()?,
+            number(port)?.try_into().ok()?,
+        ))
+    }
+
     /// What a Windows runner's `tracerpt` wrote for one traced invocation.
     const RECORDED: &str = include_str!("tracerpt-connects.xml");
-
-    /// Session setup uses the provider identities the hosted Windows runner
-    /// recorded, without depending on WMI resolving their display names.
-    #[test]
-    fn the_provider_file_names_the_providers_in_the_recorded_session_by_guid() {
-        for guid in [
-            "{2f07e2ee-15db-40f1-90ef-9d7ba282188a}",
-            "{22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}",
-        ] {
-            assert!(PROVIDERS.lines().any(|line| line.starts_with(guid)));
-            assert!(RECORDED.contains(&format!("Guid=\"{guid}\"")));
-        }
-    }
 
     /// The tree's own requests are every one its root and the process it
     /// started made, to any address — refused, accepted or unroutable — and
@@ -439,6 +457,33 @@ mod etw {
         );
         assert_eq!(addresses(connections_of(RECORDED, 1396)), ["127.0.0.1:1"]);
         assert!(connections_of(RECORDED, 4).is_empty());
+    }
+
+    /// The classic kernel logger used on Windows Server renders the same
+    /// process relationship and endpoint as separate fields.
+    #[test]
+    fn a_classic_kernel_session_answers_the_tree_connect() {
+        let recorded = r#"
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System><Provider Name="MSNT_SystemTrace"/><EventID>1</EventID></System>
+  <RenderingInfo><EventName>Process</EventName><Opcode>Start</Opcode></RenderingInfo>
+  <EventData><Data Name="ProcessId">4201</Data><Data Name="ParentId">4200</Data></EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System><Provider Name="MSNT_SystemTrace"/><EventID>12</EventID></System>
+  <RenderingInfo><EventName>TcpIp</EventName><Opcode>Connect</Opcode></RenderingInfo>
+  <EventData><Data Name="PID">4201</Data><Data Name="daddr">192.0.2.1</Data><Data Name="dport">0x21</Data></EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System><Provider Name="MSNT_SystemTrace"/><EventID>12</EventID></System>
+  <RenderingInfo><EventName>TcpIp</EventName><Opcode>Connect</Opcode></RenderingInfo>
+  <EventData><Data Name="PID">9999</Data><Data Name="daddr">127.0.0.1</Data><Data Name="dport">1</Data></EventData>
+</Event>"#;
+
+        assert_eq!(
+            connections_of(recorded, 4200),
+            BTreeSet::from(["192.0.2.1:33".parse().expect("fixture endpoint")])
+        );
     }
 
     /// A dump written as UTF-16, as `tracerpt` may write one, reads the same.
