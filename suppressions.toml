@@ -485,6 +485,12 @@ reason = "The forge's scheduling rules are documented prose with no machine-read
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/world.py"
+site = "http.client.HTTPConnection"
+reason = "The one HTTP request this world makes itself: the alert that opens the print every client proof then drives, posted to the ingress of the supervisor this same world just started on loopback. It is a step of a strictly ordered stand-up — start the supervisor, post the alert, wait until the print it opened is recorded — whose answer is acted on before the next step, so there is nothing for an awaited client to overlap, and the program around it is the same synchronous command-line proof the `registries.py` entries below describe. The typed half is answered where the answer is consumed: the status is narrowed to the accepted set and any other refused naming it, and the body is read and discarded because the print is confirmed by reading the supervisor back rather than by trusting the acknowledgement. The product's own boundary to this ingress is Obico's webhook plugin, which posts exactly this way."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.Request("
 reason = "The typed half is answered rather than suppressed: every answer a registry gives is narrowed at this boundary and a body that is not the document its own protocol serves is refused there. The async half does not apply to this program. It is a command-line tool a `just` recipe runs to completion, with no event loop anywhere in it: every subprocess, every install and every read it makes goes through `repo_checks.shell.run` synchronously and in order, because a proof of one route is a sequence — ask, install, run, read back. One awaited read inside it would need a loop this program has no reason to have, and would not make the proof any more concurrent, because there is nothing to overlap it with."

@@ -486,10 +486,12 @@ fn starts_at_boot(environment: &Environment, manager: Manager) -> Result<(), Str
     }
 }
 
-/// A host that answers every request with an empty document, which is what the
-/// service is pointed at as its `OctoPrint`: it refuses to start when nothing
-/// answers there, and this journey is about the manager rather than a printer.
-fn silent_host() -> SocketAddr {
+/// Start a host that answers every request with an empty document, and answer
+/// where it listens. It is what the service is pointed at as its `OctoPrint`:
+/// the service refuses to start when nothing answers there, and this journey
+/// is about the manager rather than a printer. It listens on a thread of its
+/// own for the rest of the process.
+fn start_silent_host() -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
     let address = listener.local_addr().expect("the bound address");
     std::thread::spawn(move || {
@@ -663,7 +665,7 @@ fn install_and_fill_in(
         )
         .replace(
             "url = \"http://127.0.0.1:5000\"",
-            &format!("url = \"http://{}\"", silent_host()),
+            &format!("url = \"http://{}\"", start_silent_host()),
         )
         .replace("listen = \"127.0.0.1:8420\"", "listen = \"127.0.0.1:0\"");
     succeeded(

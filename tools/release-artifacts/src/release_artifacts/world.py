@@ -474,6 +474,7 @@ class World:
                 "img_url": f"{self.machine.url}/snapshot.jpg",
             }
         )
+        # llmlint: ignore[async_typed_clients_at_boundaries] one post in a sequential proof
         connection = http.client.HTTPConnection(urlsplit(server).netloc, timeout=30)
         connection.request(
             "POST",
