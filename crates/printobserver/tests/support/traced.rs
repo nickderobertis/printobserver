@@ -299,7 +299,6 @@ mod etw {
     const KERNEL_PROCESS: &str = "Microsoft-Windows-Kernel-Process";
     const PROCESS_STARTED: &str = "1";
     const SYSTEM_TRACE: &str = "MSNT_SystemTrace";
-    const TCP_CONNECT: &str = "12";
 
     /// Run one of the operating system's own tracing tools, and require it worked.
     #[cfg(windows)]
@@ -345,7 +344,7 @@ mod etw {
             .iter()
             .filter(|event| {
                 is(event, KERNEL_PROCESS, PROCESS_STARTED)
-                    || is(event, SYSTEM_TRACE, PROCESS_STARTED)
+                    || rendered(event, SYSTEM_TRACE, "Process", "Start")
             })
             .filter_map(|event| {
                 Some((
@@ -369,7 +368,8 @@ mod etw {
         events
             .iter()
             .filter(|event| {
-                is(event, TCPIP, REQUESTED_TO_CONNECT) || is(event, SYSTEM_TRACE, TCP_CONNECT)
+                is(event, TCPIP, REQUESTED_TO_CONNECT)
+                    || rendered(event, SYSTEM_TRACE, "TcpIp", "Connect")
             })
             .filter(|event| {
                 data(event, "PID")
@@ -390,6 +390,18 @@ mod etw {
     fn is(event: &str, provider: &str, id: &str) -> bool {
         between(event, "<Provider Name=\"", "\"") == Some(provider)
             && between(event, "<EventID>", "</EventID>").map(str::trim) == Some(id)
+    }
+
+    /// Whether a classic event's rendered identity names one kernel operation.
+    fn rendered(event: &str, provider: &str, event_name: &str, opcode: &str) -> bool {
+        let rendering = event.split_once("<RenderingInfo").map(|(_, rest)| rest);
+        rendering.is_some_and(|rendering| {
+            between(rendering, "<Provider>", "</Provider>").map(str::trim) == Some(provider)
+                && between(rendering, "<EventName", "</EventName>")
+                    .and_then(|tag| tag.split_once('>').map(|(_, value)| value.trim()))
+                    == Some(event_name)
+                && between(rendering, "<Opcode>", "</Opcode>").map(str::trim) == Some(opcode)
+        })
     }
 
     /// One named datum of one event.
@@ -465,19 +477,19 @@ mod etw {
     fn a_classic_kernel_session_answers_the_tree_connect() {
         let recorded = r#"
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Name="MSNT_SystemTrace"/><EventID>1</EventID></System>
-  <RenderingInfo><EventName>Process</EventName><Opcode>Start</Opcode></RenderingInfo>
+  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
   <EventData><Data Name="ProcessId">4201</Data><Data Name="ParentId">4200</Data></EventData>
+  <RenderingInfo><Opcode>Start</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">Process</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Name="MSNT_SystemTrace"/><EventID>12</EventID></System>
-  <RenderingInfo><EventName>TcpIp</EventName><Opcode>Connect</Opcode></RenderingInfo>
+  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
   <EventData><Data Name="PID">4201</Data><Data Name="daddr">192.0.2.1</Data><Data Name="dport">0x21</Data></EventData>
+  <RenderingInfo><Opcode>Connect</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
 </Event>
 <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Name="MSNT_SystemTrace"/><EventID>12</EventID></System>
-  <RenderingInfo><EventName>TcpIp</EventName><Opcode>Connect</Opcode></RenderingInfo>
+  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
   <EventData><Data Name="PID">9999</Data><Data Name="daddr">127.0.0.1</Data><Data Name="dport">1</Data></EventData>
+  <RenderingInfo><Opcode>Connect</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
 </Event>"#;
 
         assert_eq!(
