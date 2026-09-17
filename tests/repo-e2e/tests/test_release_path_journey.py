@@ -150,6 +150,10 @@ def tagged(gate_copy: Callable[..., GateCopy], versions: tuple[str, ...]) -> Gat
     copy = gate_copy(node_modules=False)
     for version in versions:
         shell_run(["git", "tag", f"v{version}"], cwd=copy.root, check=True)
+    # release-plz copies the repository directory while it computes versions.
+    # Pack the fixture's newly-created objects first so Git auto-maintenance
+    # cannot remove a loose object between that copy's enumeration and read.
+    shell_run(["git", "repack", "-ad"], cwd=copy.root, check=True)
     return copy
 
 
