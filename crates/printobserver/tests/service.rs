@@ -632,6 +632,12 @@ fn launchd_system_user_id_selection_failures_are_actionable() {
             "the system user missing-service-user could not be created",
             None,
         ),
+        (
+            "malformed-id",
+            "#!/bin/sh\necho 'damaged not-a-number'\n".to_owned(),
+            "directory service returned a malformed user or group id",
+            None,
+        ),
     ];
 
     for (name, dscl, expected, own_diagnostic) in cases {
@@ -2323,8 +2329,13 @@ fn a_value_a_unit_file_has_no_escape_for_is_refused() {
         .expect("the installer runs");
 
     assert!(!run.status.success(), "a root carrying a quote was taken");
+    let said = String::from_utf8_lossy(&run.stderr);
     assert!(
-        String::from_utf8_lossy(&run.stderr).contains("no escape for"),
+        said.contains("no escape for"),
         "the refusal says nothing about why it cannot be written"
+    );
+    assert!(
+        said.contains("Pass a path without quotes or backslashes"),
+        "the refusal gives no corrective action: {said}"
     );
 }
