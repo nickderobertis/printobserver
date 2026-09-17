@@ -10,6 +10,8 @@
 //! under any other is refused before it reaches the machine, and a
 //! configuration naming nothing a header could carry sends no request at all.
 
+use std::io::{Read as _, Write as _};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -34,6 +36,11 @@ fn slow_down() -> Value {
 /// Written beside the server's own file rather than over it, so that every
 /// later run in a journey still reads what the server wrote.
 fn with_credential(written: &Path, credential: &str, beside: &Path) -> PathBuf {
+    with_client_value(written, "credential", credential, beside)
+}
+
+/// Copy the server-written client configuration with one value changed.
+fn with_client_value(written: &Path, key: &str, value: &str, beside: &Path) -> PathBuf {
     let mut document: toml::Table =
         toml::from_str(&std::fs::read_to_string(written).expect("the client configuration reads"))
             .expect("the client configuration is a document");
@@ -41,7 +48,7 @@ fn with_credential(written: &Path, credential: &str, beside: &Path) -> PathBuf {
         .get_mut("client")
         .and_then(toml::Value::as_table_mut)
         .expect("the client configuration has a `[client]` table")
-        .insert("credential".to_owned(), toml::Value::from(credential));
+        .insert(key.to_owned(), toml::Value::from(value));
     let path = beside.join(CLIENT_CONFIG_FILE);
     std::fs::write(
         &path,
@@ -49,6 +56,11 @@ fn with_credential(written: &Path, credential: &str, beside: &Path) -> PathBuf {
     )
     .expect("the copy is writable");
     path
+}
+
+/// One action by operation name, with an empty request body.
+fn action(operation: &str) -> Value {
+    json!([{ "operation": operation, "body": {} }])
 }
 
 /// Run the responder once, as `OneHarness` does, over a prompt naming the
@@ -188,5 +200,72 @@ async fn the_responder_under_any_other_credential_reaches_nothing() {
         history(&world.stores, print_id).await,
         held,
         "a responder that did not present the credential in force was recorded"
+    );
+}
+
+/// Every failure before a server can answer is reported by the responder
+/// process itself, rather than hidden behind the harness answer it prints.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    let written = world.state_dir().join(CLIENT_CONFIG_FILE);
+
+    let unknown = respond(&written, print_id, action("not_an_operation")).await;
+    assert_eq!(
+        unknown[0]["refused"],
+        json!("no such operation not_an_operation")
+    );
+
+    let https = TempDir::new().expect("a directory of the journey's own");
+    let https_config = with_client_value(&written, "server", "https://127.0.0.1:9", https.path());
+    let unsupported = respond(&https_config, print_id, slow_down()).await;
+    assert_eq!(
+        unsupported[0]["refused"],
+        json!("https://127.0.0.1:9 is no address this responder speaks to")
+    );
+
+    let unused = TcpListener::bind("127.0.0.1:0").expect("an unused address is reserved");
+    let unused_address = unused.local_addr().expect("the unused address reads");
+    drop(unused);
+    let unavailable = TempDir::new().expect("a directory of the journey's own");
+    let unavailable_config = with_client_value(
+        &written,
+        "server",
+        &format!("http://{unused_address}"),
+        unavailable.path(),
+    );
+    let refused = respond(&unavailable_config, print_id, slow_down()).await;
+    assert_eq!(
+        refused[0]["refused"],
+        json!(format!("nothing is answering at {unused_address}"))
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("the malformed server binds");
+    let address = listener
+        .local_addr()
+        .expect("the malformed server has an address");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("the responder connects");
+        let mut request = [0_u8; 4096];
+        let _ = stream.read(&mut request).expect("the request reads");
+        stream
+            .write_all(b"not an HTTP answer")
+            .expect("the malformed answer writes");
+    });
+    let malformed = TempDir::new().expect("a directory of the journey's own");
+    let malformed_config = with_client_value(
+        &written,
+        "server",
+        &format!("http://{address}"),
+        malformed.path(),
+    );
+    let unreadable = respond(&malformed_config, print_id, slow_down()).await;
+    server.join().expect("the malformed server finishes");
+    assert!(
+        unreadable[0]["refused"]
+            .as_str()
+            .is_some_and(|message| message.contains("answered something unreadable")),
+        "the malformed answer was not diagnosed: {unreadable:?}"
     );
 }
