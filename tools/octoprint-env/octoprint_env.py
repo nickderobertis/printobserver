@@ -243,12 +243,11 @@ def _spawn(
     holding none of its standard streams, so the step that started it can end
     while it keeps running.
     """
-    detached: dict[str, Any] = {}
+    creationflags = 0
+    stdin: int | None = None
     if sys.platform == "win32" and start_new_session:
-        detached = {
-            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-            "stdin": subprocess.DEVNULL,
-        }
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        stdin = subprocess.DEVNULL
     return subprocess.Popen(  # noqa: S603
         argv,
         text=True,
@@ -257,8 +256,9 @@ def _spawn(
         encoding="utf-8",
         stdout=stdout,
         stderr=stderr,
+        stdin=stdin,
+        creationflags=creationflags,
         start_new_session=start_new_session,
-        **detached,
     )
 
 
