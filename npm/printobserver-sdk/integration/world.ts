@@ -32,13 +32,13 @@ const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../.."
  * the first time the tier is driven includes a release build of the program,
  * and this is the same world. Test bodies and cleanup keep their own timeouts.
  */
-export const SETUP_TIMEOUT_MS =
-  Number(
-    readFileSync(
-      `${REPO_ROOT}/tools/release-artifacts/world-startup-timeout-seconds`,
-      "utf8",
-    ).trim(),
-  ) * 1000;
+const startupTimeoutSeconds = Number(
+  readFileSync(`${REPO_ROOT}/tools/release-artifacts/world-startup-timeout-seconds`, "utf8").trim(),
+);
+if (!Number.isSafeInteger(startupTimeoutSeconds) || startupTimeoutSeconds <= 0) {
+  throw new Error("the shared world startup timeout must be a positive whole number of seconds");
+}
+export const SETUP_TIMEOUT_MS = startupTimeoutSeconds * 1000;
 
 /** The packages this repository's own tools live in, read from the justfile. */
 function pythonPath(): string {

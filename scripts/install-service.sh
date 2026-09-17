@@ -110,7 +110,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-SYSTEM="$(uname -s)"
+SYSTEM="$(uname -s)" || die "\`uname -s\` failed, so this host's service manager could not be selected. Fix uname, then run the installer again."
 case "$SYSTEM" in
     Linux) MANAGER="systemd" ;;
     Darwin) MANAGER="launchd" ;;
@@ -197,8 +197,11 @@ RUNTIME_HOME="$RUNTIME_STATE/home"
 # the users services run as, shared by a group of the same name, hidden from the
 # login window and given no shell.
 create_launchd_user() {
-    taken="$(dscl . -list /Users UniqueID | awk '{print $2}'
-        dscl . -list /Groups PrimaryGroupID | awk '{print $2}')"
+    users="$(dscl . -list /Users UniqueID)" ||
+        die "\`dscl . -list /Users UniqueID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
+    groups="$(dscl . -list /Groups PrimaryGroupID)" ||
+        die "\`dscl . -list /Groups PrimaryGroupID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
+    taken="$(printf '%s\n%s\n' "$users" "$groups" | awk '{print $2}')"
     number=400
     while printf '%s\n' "$taken" | grep -qx "$number"; do
         number=$((number + 1))

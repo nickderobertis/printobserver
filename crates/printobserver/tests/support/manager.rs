@@ -27,10 +27,10 @@ pub enum Manager {
 impl Manager {
     /// The one this host runs a service under.
     pub fn host() -> Self {
-        if cfg!(target_os = "macos") {
-            Self::Launchd
-        } else {
-            Self::Systemd
+        match std::env::consts::OS {
+            "linux" => Self::Systemd,
+            "macos" => Self::Launchd,
+            other => panic!("the service journey supports no manager on {other}"),
         }
     }
 
