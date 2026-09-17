@@ -242,8 +242,15 @@ dscl_create() {
     attribute="$2"
     value="$3"
     if ! dscl . -create "$record" "$attribute" "$value"; then
-        dscl . -delete "/Users/$creating" >/dev/null 2>&1 || true
-        dscl . -delete "/Groups/$creating" >/dev/null 2>&1 || true
+        left=""
+        for partial in "/Users/$creating" "/Groups/$creating"; do
+            # A record the failed write never reached is not there to remove.
+            dscl . -read "$partial" >/dev/null 2>&1 || continue
+            dscl . -delete "$partial" >/dev/null 2>&1 || left="$left $partial"
+        done
+        if [ -n "$left" ]; then
+            die "\`dscl . -create $record $attribute\` failed while creating the system user, and the partial record(s)$left could not be removed. Remove them with \`dscl . -delete\`, fix the reported directory-service error, or pass --user a user that already exists."
+        fi
         die "\`dscl . -create $record $attribute\` failed while creating the system user; the partial records for $creating were removed. Fix the reported directory-service error, or pass --user a user that already exists."
     fi
 }

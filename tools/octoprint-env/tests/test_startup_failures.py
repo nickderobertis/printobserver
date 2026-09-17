@@ -212,6 +212,8 @@ def test_a_persisted_pid_naming_another_program_is_not_signalled(
     sleeping = "import time; time.sleep(300)"
     if mentions_the_instance:
         sleeping = f"{sleeping}  # {state / 'instance'}"
+    # Started directly rather than through `repo_checks.shell`, which cannot
+    # give it a session of its own; `suppressions.toml` carries the reason.
     decoy = subprocess.Popen(  # noqa: S603
         [sys.executable, "-c", sleeping], start_new_session=True
     )

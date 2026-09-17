@@ -565,17 +565,23 @@ fn a_launchd_user_creation_failure_names_the_dscl_operation() {
     let under = TempDir::new().expect("a journey's own root");
     let (bin, _) = shims(under.path(), Manager::Launchd);
     let deleted = under.path().join("dscl-deleted");
+    let created = under.path().join("dscl-created");
     executable(
         &bin.join("id"),
         "#!/bin/sh\ncase \"$#:$1\" in 1:-u) echo 0; exit 0 ;; *) exit 1 ;; esac\n",
     );
+    // Before anything is created the directory answers no read; after the
+    // first write it answers every read, as a directory holding the records
+    // would, so the rollback finds them to remove.
     executable(
         &bin.join("dscl"),
         &format!(
             "#!/bin/sh\ncase \"$*\" in *UserShell*) echo 'directory service refused UserShell' \
-             >&2; exit 1 ;; *'-read'*) exit 1 ;; *'-delete'*) echo \"dscl $*\" >> \"{}\" ;; \
+             >&2; exit 1 ;; *'-read'*) [ -f \"{created}\" ] ;; \
+             *'-create'*) touch \"{created}\" ;; *'-delete'*) echo \"dscl $*\" >> \"{deleted}\" ;; \
              *) exit 0 ;; esac\n",
-            deleted.display()
+            created = created.display(),
+            deleted = deleted.display()
         ),
     );
     let root = under.path().join("target-root");
@@ -893,7 +899,6 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
 fn assert_the_definition_says_what_is_stated(installed: &Installed, invoking: &str) {
     let manager = installed.manager;
     let spelled = manager.spelled();
-    // What the definition says.
     let definition = installed.definition();
     assert_eq!(
         definition.start,
