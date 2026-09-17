@@ -384,7 +384,7 @@ diagnostics = [
     "malformed instrumentation profile data: symbol name is empty",
     "no profile can be merged",
 ]
-reference = "https://github.com/rust-lang/rust/issues/82144"
+reference = "https://github.com/rust-lang/rust/issues/150123"
 native_only_lines = []
 """
     )

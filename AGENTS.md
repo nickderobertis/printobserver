@@ -270,7 +270,7 @@ discover an architecture was never built for.
 Rust 1.97.1's bundled `llvm-profdata` cannot read the profiles its native
 `aarch64-pc-windows-msvc` instrumentation writes: it reports both `malformed
 instrumentation profile data: symbol name is empty` and `no profile can be
-merged` ([rust-lang/rust#82144](https://github.com/rust-lang/rust/issues/82144)).
+merged` ([rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123)).
 That gate still runs every Rust test, build, lint and end-to-end journey
 natively; `repo-policy.toml` exempts only its unreadable Rust coverage report,
 while the 95% floor remains required everywhere profiles are readable. No code
