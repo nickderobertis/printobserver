@@ -63,7 +63,7 @@ tempfile = "3"
 # The reader the service journeys hold a launchd property list to: the one the
 # installer writes on macOS is read as a document, on every host, rather than
 # matched as text.
-plist = { version = "1.10.1", default-features = false }
+plist.workspace = true
 
 [lints]
 workspace = true

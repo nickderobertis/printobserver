@@ -175,13 +175,13 @@ case "$system" in
     Darwin) start="sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.$PROGRAM.plist" ;;
     *) start="sudo systemctl enable --now $PROGRAM.service" ;;
 esac
-echo "install.sh: installed $DIRECTORY/$PROGRAM from $which; next, put the service in \
-place with \`curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh\` \
-and then start it with \`$start\`" >&2
+path_note=""
 case ":$PATH:" in
     *":$DIRECTORY:"*) ;;
     *)
-        echo "install.sh: $DIRECTORY is not on your PATH. Add it, or run \
-$DIRECTORY/$PROGRAM by its whole name." >&2
+        path_note="; $DIRECTORY is not on your PATH, so add it or run $DIRECTORY/$PROGRAM by its whole name"
         ;;
 esac
+echo "install.sh: installed $DIRECTORY/$PROGRAM from $which; next, put the service in \
+place with \`curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh\` \
+and then start it with \`$start\`$path_note" >&2

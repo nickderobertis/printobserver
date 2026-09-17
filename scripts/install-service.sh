@@ -204,15 +204,23 @@ create_launchd_user() {
         number=$((number + 1))
         [ "$number" -lt 500 ] || return 1
     done
-    dscl . -create "/Groups/$1" PrimaryGroupID "$number" &&
-        dscl . -create "/Groups/$1" Password '*' &&
-        dscl . -create "/Users/$1" UniqueID "$number" &&
-        dscl . -create "/Users/$1" PrimaryGroupID "$number" &&
-        dscl . -create "/Users/$1" UserShell /usr/bin/false &&
-        dscl . -create "/Users/$1" NFSHomeDirectory "$RUNTIME_HOME" &&
-        dscl . -create "/Users/$1" RealName "$PROGRAM service" &&
-        dscl . -create "/Users/$1" IsHidden 1 &&
-        dscl . -create "/Users/$1" Password '*'
+    dscl_create "/Groups/$1" PrimaryGroupID "$number"
+    dscl_create "/Groups/$1" Password '*'
+    dscl_create "/Users/$1" UniqueID "$number"
+    dscl_create "/Users/$1" PrimaryGroupID "$number"
+    dscl_create "/Users/$1" UserShell /usr/bin/false
+    dscl_create "/Users/$1" NFSHomeDirectory "$RUNTIME_HOME"
+    dscl_create "/Users/$1" RealName "$PROGRAM service"
+    dscl_create "/Users/$1" IsHidden 1
+    dscl_create "/Users/$1" Password '*'
+}
+
+dscl_create() {
+    record="$1"
+    attribute="$2"
+    value="$3"
+    dscl . -create "$record" "$attribute" "$value" ||
+        die "\`dscl . -create $record $attribute\` failed while creating the system user. Fix the reported directory-service error, or pass --user a user that already exists."
 }
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then

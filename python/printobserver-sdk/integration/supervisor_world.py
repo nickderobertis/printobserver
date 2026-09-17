@@ -19,9 +19,13 @@ from repo_checks.shell import start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-#: How long the world is given to come up, which includes a release build of
-#: the program it runs the first time this tier is driven.
-STARTUP_TIMEOUT_SECONDS = 2400
+#: How long the shared world is given to come up, read from the same committed
+#: value as the Node journey rather than copied between two clients.
+STARTUP_TIMEOUT_SECONDS = int(
+    (REPO_ROOT / "tools/release-artifacts/world-startup-timeout-seconds").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 #: The API credential a supervisor serves under, as a request presents it.

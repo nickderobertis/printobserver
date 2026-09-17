@@ -512,6 +512,54 @@ fn launchd_paths_that_are_property_list_markup_are_refused() {
     );
 }
 
+/// A launchd account failure identifies the exact directory-service write,
+/// while retaining the service manager's own diagnostic beside it.
+#[test]
+fn a_launchd_user_creation_failure_names_the_dscl_operation() {
+    let under = TempDir::new().expect("a journey's own root");
+    let (bin, _) = shims(under.path(), Manager::Launchd);
+    executable(
+        &bin.join("id"),
+        "#!/bin/sh\ncase \"$#:$1\" in 1:-u) echo 0; exit 0 ;; *) exit 1 ;; esac\n",
+    );
+    executable(
+        &bin.join("dscl"),
+        "#!/bin/sh\ncase \"$*\" in *UserShell*) echo 'directory service refused UserShell' >&2; exit 1 ;; *'-list'*) exit 0 ;; *) exit 0 ;; esac\n",
+    );
+    let root = under.path().join("target-root");
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = Command::new(repo_root().join(INSTALLER))
+        .args([
+            "--root",
+            root.to_str().expect("a UTF-8 root"),
+            "--binary",
+            env!("CARGO_BIN_EXE_printobserver"),
+            "--user",
+            "missing-service-user",
+        ])
+        .env("PATH", path)
+        .output()
+        .expect("the installer runs");
+
+    assert!(
+        !run.status.success(),
+        "the installer ignored a failed dscl write"
+    );
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.contains("dscl . -create /Users/missing-service-user UserShell"),
+        "the refusal did not name the failing operation: {said}"
+    );
+    assert!(
+        said.contains("directory service refused UserShell"),
+        "the refusal hid dscl's own diagnostic: {said}"
+    );
+}
+
 /// Each service manager's branch of the installer writes the definition the
 /// platform list, the install path and the policy say it should, and starts
 /// nothing.
