@@ -366,3 +366,44 @@ def test_coverage_fails_where_no_coverage_was_measured(
     error = capsys.readouterr().err
     contains(error, "could not find `Cargo.toml`")
     contains(error, "below the")
+
+
+def test_coverage_reports_the_native_windows_arm_toolchain_exemption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The ARM gate names its unreadable native profile instead of a false floor miss."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    policy = (
+        POLICY.format(command="git", install="false")
+        + """
+[gate.coverage.exemptions.windows-aarch64]
+target = "aarch64-pc-windows-msvc"
+toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
+diagnostics = [
+    "malformed instrumentation profile data: symbol name is empty",
+    "no profile can be merged",
+]
+reference = "https://github.com/rust-lang/rust/issues/82144"
+native_only_lines = []
+"""
+    )
+    (root / "repo-policy.toml").write_text(policy, encoding="utf-8")
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(
+        programs,
+        "cargo",
+        "import sys\n"
+        'print("malformed instrumentation profile data: symbol name is empty", '
+        "file=sys.stderr)\n"
+        'print("no profile can be merged", file=sys.stderr)\n'
+        "raise SystemExit(1)\n",
+    )
+    program(programs, "uv", "raise SystemExit(0)\n")
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("PRINTOBSERVER_PLATFORM", "windows-aarch64")
+
+    equal(coverage(Repo(root)), 0)
+
+    contains(capsys.readouterr().out, "no readable profile on aarch64-pc-windows-msvc")

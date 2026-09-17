@@ -40,6 +40,13 @@ rust = 95
 python = 95
 typescript = 95
 
+[gate.coverage.exemptions.windows-aarch64]
+target = "aarch64-pc-windows-msvc"
+toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
+diagnostics = ["malformed instrumentation profile data: symbol name is empty", "no profile can be merged"]
+reference = "https://github.com/rust-lang/rust/issues/82144"
+native_only_lines = []
+
 [llmlint]
 # The judged-lint tier. Like the two tiers below it declares a `tier` recipe,
 # which is what the documentation check reads every tier outside the gate off —

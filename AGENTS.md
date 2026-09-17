@@ -267,6 +267,16 @@ install path below is written for. `linux-aarch64` is not optional: the machine
 beside the printer is usually a small ARM board, and it is the worst place to
 discover an architecture was never built for.
 
+Rust 1.97.1's bundled `llvm-profdata` cannot read the profiles its native
+`aarch64-pc-windows-msvc` instrumentation writes: it reports both `malformed
+instrumentation profile data: symbol name is empty` and `no profile can be
+merged` ([rust-lang/rust#82144](https://github.com/rust-lang/rust/issues/82144)).
+That gate still runs every Rust test, build, lint and end-to-end journey
+natively; `repo-policy.toml` exempts only its unreadable Rust coverage report,
+while the 95% floor remains required everywhere profiles are readable. No code
+is compiled only for Windows aarch64. The exemption is removed when that
+toolchain produces readable profiles.
+
 <!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
 The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sys
@@ -215,14 +216,30 @@ def coverage(repo: Repo) -> int:
         cwd=repo.root,
     )
     if rust.returncode != 0:
-        print(rust.stdout, file=sys.stderr)
-        print(rust.stderr, file=sys.stderr)
-        print(
-            f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
-            f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
-            file=sys.stderr,
+        platform_id = os.environ.get("PRINTOBSERVER_PLATFORM")
+        exemption = (floors.get("exemptions") or {}).get(platform_id, {})
+        diagnostics = exemption.get("diagnostics", [])
+        valid = (
+            exemption.get("target") == "aarch64-pc-windows-msvc"
+            and platform_id == "windows-aarch64"
+            and str(exemption.get("reference", "")).startswith("https://github.com/")
+            and len(diagnostics) == 2
+            and all(diagnostic in rust.stderr for diagnostic in diagnostics)
         )
-        failed = True
+        if valid:
+            print(
+                "no readable profile on aarch64-pc-windows-msvc, exempt by policy: "
+                f"{exemption['toolchain']}; {exemption['reference']}"
+            )
+        else:
+            print(rust.stdout, file=sys.stderr)
+            print(rust.stderr, file=sys.stderr)
+            print(
+                f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
+                f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
+                file=sys.stderr,
+            )
+            failed = True
 
     python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
     if python.returncode not in (0, 1):
