@@ -189,6 +189,12 @@ site = "urllib.request.urlopen(request"
 reason = "The second half of the same one site: S310 flags both building the request and opening it, and this stand-in posts through exactly one `urlopen`."
 
 [[suppression]]
+rule = "S603"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "decoy = subprocess.Popen("
+reason = "The one process this suite starts outside `repo_checks.shell`, and for a reason that helper cannot give it: the decoy stands in for an unrelated program holding a stale record's process id, and it has to sit in a session of its own so that a bring-down which wrongly signalled it would take the decoy rather than the whole test session it would otherwise share a process group with. The executable is resolved with `shutil.which` first, the arguments are a list, and nothing runs through a shell."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "http.client.HTTPConnection"

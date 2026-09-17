@@ -183,7 +183,17 @@ fn watched(watching: &[PathBuf]) -> String {
 }
 
 /// The interposer, built into one scratch directory once.
+///
+/// The two variables this module hands it are the ones the C source reads,
+/// held to it before the build: a rename on either side is refused here rather
+/// than read as a program that touched nothing.
 fn built(scratch: &Path) -> PathBuf {
+    for (name, value) in [("PO_LOG_ENV", LOG_ENV), ("PO_WATCH_ENV", WATCH_ENV)] {
+        assert!(
+            SOURCE.contains(&format!("#define {name} \"{value}\"")),
+            "the interposer's source does not read {value} as {name}"
+        );
+    }
     let library = scratch.join(LIBRARY);
     if library.is_file() {
         return library;

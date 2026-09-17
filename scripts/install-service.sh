@@ -202,9 +202,11 @@ create_launchd_user() {
         die "\`dscl . -list /Users UniqueID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
     groups="$(dscl . -list /Groups PrimaryGroupID)" ||
         die "\`dscl . -list /Groups PrimaryGroupID\` failed while finding a free system-user id. Fix the reported directory-service error, or pass --user a user that already exists."
+    # An id may be negative: macOS keeps `nobody` at -2, `nogroup` at -1 and
+    # `_unknown` at -99, and a listing that carries them is a healthy one.
     taken="$(printf '%s\n%s\n' "$users" "$groups" | awk '
         NF == 0 { next }
-        NF != 2 || $2 !~ /^[0-9]+$/ { exit 1 }
+        NF != 2 || $2 !~ /^-?[0-9]+$/ { exit 1 }
         { print $2 }
     ')" || die "directory service returned a malformed user or group id while finding a free system-user id. Run the two reported \`dscl -list\` commands and repair the record they print, or pass --user a user that already exists."
     number=400
@@ -213,6 +215,7 @@ create_launchd_user() {
         [ "$number" -lt 500 ] ||
             die "every macOS system-user id from 400 to 499 is already taken, so there is no free one for $1. Remove a user or group that no longer needs its id, or pass --user a user that already exists."
     done
+    creating="$1"
     dscl_create "/Groups/$1" PrimaryGroupID "$number"
     dscl_create "/Groups/$1" Password '*'
     dscl_create "/Users/$1" UniqueID "$number"
@@ -224,12 +227,19 @@ create_launchd_user() {
     dscl_create "/Users/$1" Password '*'
 }
 
+# One write of the user being created. A write that fails leaves the records
+# written before it standing, and a half-made user is one the next run finds
+# with `id` and takes for a whole one — so both records are removed before
+# the failure is reported, and the machine is as it was.
 dscl_create() {
     record="$1"
     attribute="$2"
     value="$3"
-    dscl . -create "$record" "$attribute" "$value" ||
-        die "\`dscl . -create $record $attribute\` failed while creating the system user. Fix the reported directory-service error, or pass --user a user that already exists."
+    if ! dscl . -create "$record" "$attribute" "$value"; then
+        dscl . -delete "/Users/$creating" >/dev/null 2>&1 || true
+        dscl . -delete "/Groups/$creating" >/dev/null 2>&1 || true
+        die "\`dscl . -create $record $attribute\` failed while creating the system user; the partial records for $creating were removed. Fix the reported directory-service error, or pass --user a user that already exists."
+    fi
 }
 
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then

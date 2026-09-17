@@ -306,7 +306,15 @@ fn signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal() {
 const RECORDER: &str = include_str!("support/interposer.c");
 
 /// Build the recorder under one root, and answer the library's path.
+///
+/// The variable this journey hands the recorder is the one the C source reads,
+/// held to it here: a rename on either side is refused before a recording that
+/// would otherwise be empty is read as a program that connected to nothing.
 fn recorder(root: &Path) -> PathBuf {
+    assert!(
+        RECORDER.contains(&format!("#define PO_LOG_ENV \"{RECORDING_ENV}\"")),
+        "the recorder's source does not read its log file from {RECORDING_ENV}"
+    );
     let source = root.join("recorder.c");
     let library = root.join(RECORDER_LIBRARY);
     std::fs::write(&source, RECORDER).expect("the recorder's source is writable");
@@ -351,9 +359,11 @@ const RECORDER_LINKED_WITH: &[&str] = &[];
 #[cfg(not(target_os = "macos"))]
 const RECORDER_LINKED_WITH: &[&str] = &["-ldl"];
 
-/// What the recorder wrote down about this program, and nothing it wrote about
-/// the stand-in harness, which is a shell and not this program.
-fn this_programs_network_calls(recording: &Path) -> Vec<String> {
+/// Every connection the recorder saw anywhere in the process tree: this
+/// program and the stand-in harness it ran, since a connection carries no
+/// process of its own. The stand-in is this journey's own and reaches nothing,
+/// so a connection anywhere in the tree is one this program made.
+fn network_calls_of_the_tree(recording: &Path) -> Vec<String> {
     std::fs::read_to_string(recording)
         .unwrap_or_default()
         .lines()
@@ -420,7 +430,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         Some(i32::from(Exit::Unreachable.status()))
     );
     assert!(
-        this_programs_network_calls(&recording)
+        network_calls_of_the_tree(&recording)
             .iter()
             .any(|line| line.starts_with("connected ")),
         "the recorder did not record a command that connects, so it says nothing \
@@ -448,7 +458,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         "the harness was not signed in"
     );
     assert_eq!(
-        this_programs_network_calls(&recording),
+        network_calls_of_the_tree(&recording),
         Vec::<String>::new(),
         "signing in connected to, bound or listened on something"
     );

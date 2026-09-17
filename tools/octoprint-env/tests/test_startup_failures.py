@@ -16,14 +16,17 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import shutil
 import socket
+import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from environment import SCRIPT, answer, said, script
-from repo_checks.expect import contains, failing, passing, refused_naming, truth
+from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
 
 # What the server is replaced with to induce an instance that starts and never
 # answers: a program that runs, and says nothing.
@@ -153,6 +156,56 @@ def test_a_persisted_record_that_is_not_an_object_is_refused(
         "ValueError",
         "instance record must be a JSON object, not",
     )
+
+
+def test_a_persisted_url_that_is_not_an_http_address_is_refused(tmp_path: Path) -> None:
+    """The existing-instance path narrows the recorded address before asking at it."""
+    state = tmp_path / "up"
+    state.mkdir()
+    (state / "instance.json").write_text(
+        json.dumps({"pid": os.getpid(), "url": 17}) + "\n", encoding="utf-8"
+    )
+    (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script("up", "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        "instance record url must be an http://host:port address, not 17",
+    )
+
+
+def test_a_persisted_pid_naming_another_program_is_not_signalled(tmp_path: Path) -> None:
+    """A record that outlived its server names whatever holds the id now.
+
+    That is a `sleep` in a session of its own here, so a bring-down that
+    signalled it would take the decoy rather than this suite.
+    """
+    state = tmp_path / "down"
+    state.mkdir()
+    sleep = shutil.which("sleep")
+    truth(sleep is not None, describing="a sleep to stand in for an unrelated process")
+    decoy = subprocess.Popen([str(sleep), "300"], start_new_session=True)  # noqa: S603
+    try:
+        (state / "instance.json").write_text(
+            json.dumps({"pid": decoy.pid, "url": "http://127.0.0.1:1"}) + "\n", encoding="utf-8"
+        )
+
+        result = script("down", "--state-dir", str(state))
+
+        passing(result)
+        equal(answer(result)["stopped"], False, describing="what the bring-down did")
+        equal(answer(result)["pid"], decoy.pid, describing="the process it read")
+        contains(said(result), f"process {decoy.pid} is not this instance's OctoPrint")
+        contains(said(result), "nothing was signalled")
+        truth(not (state / "instance.json").exists(), describing="the stale record to be removed")
+        time.sleep(0.5)
+        equal(decoy.poll(), None, describing="the unrelated process, which must still be running")
+    finally:
+        decoy.kill()
+        decoy.wait()
 
 
 @pytest.mark.parametrize(("command", "pid"), [("down", 0), ("up", -1)])

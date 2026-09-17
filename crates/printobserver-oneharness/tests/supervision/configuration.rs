@@ -151,7 +151,11 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
         "a schema admitting every answer was refused as something else"
     );
 
-    // The generated artifact is a schema document, and reading it says so.
+    // The generated artifact is a schema document, and reading it says so. It
+    // is held still while it is read: the assessment-schema journey rewrites
+    // that file beside this test, and a read that landed between its truncate
+    // and its write would find no document at all.
+    let _schemas = schema_read_lock();
     let named =
         AssessmentSchema::at(generated_assessment_schema()).expect("the generated artifact");
     assert_eq!(named.path(), generated_assessment_schema());

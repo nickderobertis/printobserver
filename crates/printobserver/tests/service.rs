@@ -557,18 +557,25 @@ fn a_launchd_program_on_a_markup_path_is_refused() {
 }
 
 /// A launchd account failure identifies the exact directory-service write,
-/// while retaining the service manager's own diagnostic beside it.
+/// while retaining the service manager's own diagnostic beside it — and the
+/// records written before the failing one are removed, so the next run does not
+/// find a half-made user and take it for a whole one.
 #[test]
 fn a_launchd_user_creation_failure_names_the_dscl_operation() {
     let under = TempDir::new().expect("a journey's own root");
     let (bin, _) = shims(under.path(), Manager::Launchd);
+    let deleted = under.path().join("dscl-deleted");
     executable(
         &bin.join("id"),
         "#!/bin/sh\ncase \"$#:$1\" in 1:-u) echo 0; exit 0 ;; *) exit 1 ;; esac\n",
     );
     executable(
         &bin.join("dscl"),
-        "#!/bin/sh\ncase \"$*\" in *UserShell*) echo 'directory service refused UserShell' >&2; exit 1 ;; *'-list'*) exit 0 ;; *) exit 0 ;; esac\n",
+        &format!(
+            "#!/bin/sh\ncase \"$*\" in *UserShell*) echo 'directory service refused UserShell' \
+             >&2; exit 1 ;; *'-delete'*) echo \"dscl $*\" >> \"{}\" ;; *) exit 0 ;; esac\n",
+            deleted.display()
+        ),
     );
     let root = under.path().join("target-root");
     let path = format!(
@@ -602,6 +609,88 @@ fn a_launchd_user_creation_failure_names_the_dscl_operation() {
         said.contains("directory service refused UserShell"),
         "the refusal hid dscl's own diagnostic: {said}"
     );
+    let removed = std::fs::read_to_string(&deleted).unwrap_or_default();
+    for record in [
+        "/Users/missing-service-user",
+        "/Groups/missing-service-user",
+    ] {
+        assert!(
+            removed
+                .lines()
+                .any(|line| line == format!("dscl . -delete {record}")),
+            "the half-made {record} was left standing:\n{removed}"
+        );
+    }
+    assert!(
+        said.contains("the partial records for missing-service-user were removed"),
+        "the refusal did not say the partial records were removed: {said}"
+    );
+}
+
+/// A macOS system user is given the first free id at or above 400 over the
+/// directory a real Mac lists — one carrying `nobody -2`, `nogroup -1` and
+/// `_unknown -99`, which the first hosted round refused as malformed.
+#[test]
+fn a_launchd_system_user_is_created_at_the_first_free_reserved_id() {
+    let under = TempDir::new().expect("a journey's own root");
+    let (bin, _) = shims(under.path(), Manager::Launchd);
+    let created = under.path().join("dscl-created");
+    executable(
+        &bin.join("id"),
+        "#!/bin/sh\ncase \"$#:$1\" in 1:-u) echo 0; exit 0 ;; *) exit 1 ;; esac\n",
+    );
+    executable(
+        &bin.join("dscl"),
+        &format!(
+            "#!/bin/sh\ncase \"$*\" in\n\
+             *'-list /Users UniqueID'*) printf '%s\\n' 'nobody -2' '_unknown -99' 'root 0' \
+             'daemon 1' '_www 70' 'taken 400' ;;\n\
+             *'-list /Groups PrimaryGroupID'*) printf '%s\\n' 'nobody -2' 'nogroup -1' \
+             '_unknown -99' 'wheel 0' 'staff 20' 'taken 401' ;;\n\
+             *'-create'*) echo \"dscl $*\" >> \"{}\" ;;\n\
+             esac\nexit 0\n",
+            created.display()
+        ),
+    );
+    // The user the shim creates exists nowhere on this host, so handing the
+    // state directory to it is answered by a shim rather than by the kernel.
+    executable(&bin.join("chown"), "#!/bin/sh\nexit 0\n");
+    let root = under.path().join("target-root");
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = Command::new(repo_root().join(INSTALLER))
+        .args([
+            "--root",
+            root.to_str().expect("a UTF-8 root"),
+            "--binary",
+            env!("CARGO_BIN_EXE_printobserver"),
+            "--user",
+            "missing-service-user",
+        ])
+        .env("PATH", path)
+        .output()
+        .expect("the installer runs");
+
+    assert!(
+        run.status.success(),
+        "the installer refused a healthy directory listing: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let recorded = std::fs::read_to_string(&created).expect("the shim recorded what was created");
+    for expected in [
+        "dscl . -create /Groups/missing-service-user PrimaryGroupID 402",
+        "dscl . -create /Users/missing-service-user UniqueID 402",
+        "dscl . -create /Users/missing-service-user PrimaryGroupID 402",
+        "dscl . -create /Users/missing-service-user IsHidden 1",
+    ] {
+        assert!(
+            recorded.lines().any(|line| line == expected),
+            "the user was not created as `{expected}`:\n{recorded}"
+        );
+    }
 }
 
 /// Every read used to choose a macOS system-user id fails closed with the

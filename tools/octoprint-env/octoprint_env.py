@@ -694,10 +694,30 @@ def stop(instance: Instance) -> dict[str, Any]:
     record = json.loads(instance.record.read_text(encoding="utf-8"))
     pid = record_pid(record)
     if reap_and_is_running(pid):
+        # A record outlives the process it names — across a reboot, or once the
+        # id is handed to something else — so what is running under that id is
+        # read before its whole session is signalled.
+        command = command_of(pid)
+        if str(instance.basedir) not in command:
+            instance.record.unlink()
+            note(
+                f"process {pid} is not this instance's OctoPrint (it runs `{command}`); "
+                f"the stale record was removed and nothing was signalled"
+            )
+            return {"state_dir": str(instance.state_dir), "stopped": False, "pid": pid}
         _terminate(pid)
     instance.record.unlink()
     note(f"stopped process {pid}")
     return {"state_dir": str(instance.state_dir), "stopped": True, "pid": pid}
+
+
+def command_of(pid: int) -> str:
+    """The command line a running process was started with, as `ps` reports it."""
+    ps = shutil.which("ps")
+    if ps is None:
+        message = "ps is not on PATH; it is what says which process a record names"
+        raise FileNotFoundError(message)
+    return _run([ps, "-o", "command=", "-p", str(pid)], timeout=30).stdout.strip()
 
 
 def record_pid(record: object) -> int:
@@ -714,6 +734,21 @@ def record_pid(record: object) -> int:
     value = record.get("pid")
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"instance record pid must be a positive integer, not {value!r}")
+    return value
+
+
+def record_url(record: object) -> str:
+    """Read the address written into an instance record, narrowed like its PID.
+
+    Raises:
+        ValueError: If the record does not carry an `http://host:port` address.
+    """
+    value = record.get("url") if isinstance(record, dict) else None
+    if not isinstance(value, str):
+        raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
+    parts = urllib.parse.urlsplit(value)
+    if parts.scheme != "http" or not parts.hostname or parts.port is None:
+        raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
     return value
 
 
@@ -794,7 +829,7 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not reap_and_is_running(record_pid(record)):
         return None
     try:
-        status, _ = call(str(record["url"]), api_key(instance), "/api/version", timeout=5.0)
+        status, _ = call(record_url(record), api_key(instance), "/api/version", timeout=5.0)
     except OSError, http.client.HTTPException:
         return None
     return record if status == 200 else None
