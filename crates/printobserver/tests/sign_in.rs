@@ -45,7 +45,7 @@ const TYPED: &str = "the-code-from-the-link";
 const HARNESS_STATUS: u8 = 23;
 
 /// The variable the network recorder writes to the file it names.
-const RECORDING_ENV: &str = "PRINTOBSERVER_NETWORK_RECORDING";
+const RECORDING_ENV: &str = "PRINTOBSERVER_INTERPOSE_LOG";
 
 /// One journey's own root: a state directory, a directory of stand-ins, and
 /// the file every stand-in invocation is appended to.
@@ -259,11 +259,18 @@ fn signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal() {
             directory,
             "the harness ran somewhere other than inside its own directory"
         );
-        let stdin = recorded(&recording, "stdin");
-        assert!(
-            stdin.starts_with("pipe:") && stdin == recorded(&recording, "parent_stdin"),
-            "the harness's standard input is not the caller's own: {recording}"
-        );
+        // The answer arriving through the harness's inherited input and its
+        // prompt arriving through inherited output are the portable terminal
+        // boundary. Linux additionally names both pipe descriptors through
+        // procfs; macOS has no procfs to inspect.
+        #[cfg(target_os = "linux")]
+        {
+            let stdin = recorded(&recording, "stdin");
+            assert!(
+                stdin.starts_with("pipe:") && stdin == recorded(&recording, "parent_stdin"),
+                "the harness's standard input is not the caller's own: {recording}"
+            );
+        }
         assert_eq!(
             std::fs::read_to_string(directory.join(SIGNED_IN)).expect("the sign-in was kept"),
             format!("{SIGN_IN_STATE}\n")
@@ -293,58 +300,10 @@ fn signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal() {
     }
 }
 
-/// The shared object that records every `connect`, `bind` and `listen` the
-/// process it is loaded into makes, with the program that made it.
-const RECORDER: &str = r#"
-#define _GNU_SOURCE
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-static void noted(const char *call) {
-    const char *path = getenv("PRINTOBSERVER_NETWORK_RECORDING");
-    char program[4096];
-    char line[4200];
-    ssize_t length;
-    int written;
-    int fd;
-    if (path == NULL) {
-        return;
-    }
-    length = readlink("/proc/self/exe", program, sizeof program - 1);
-    program[length < 0 ? 0 : length] = '\0';
-    written = snprintf(line, sizeof line, "%s %s\n", call, program);
-    fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
-    if (fd < 0) {
-        return;
-    }
-    if (written > 0 && write(fd, line, (size_t)written) < 0) {
-        written = 0;
-    }
-    close(fd);
-}
-
-int connect(int fd, const struct sockaddr *address, socklen_t length) {
-    int (*real)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, "connect");
-    noted("connect");
-    return real(fd, address, length);
-}
-
-int bind(int fd, const struct sockaddr *address, socklen_t length) {
-    int (*real)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, "bind");
-    noted("bind");
-    return real(fd, address, length);
-}
-
-int listen(int fd, int backlog) {
-    int (*real)(int, int) = dlsym(RTLD_NEXT, "listen");
-    noted("listen");
-    return real(fd, backlog);
-}
-"#;
+/// The same per-process-tree interposer the command-line journeys use. Keeping
+/// one C boundary matters on macOS, where dyld needs an `__interpose` table
+/// rather than a Linux-style exported replacement symbol.
+const RECORDER: &str = include_str!("support/interposer.c");
 
 /// Build the recorder under one root, and answer the library's path.
 fn recorder(root: &Path) -> PathBuf {
@@ -386,13 +345,10 @@ const RECORDER_LINKED_WITH: &[&str] = &["-ldl"];
 /// What the recorder wrote down about this program, and nothing it wrote about
 /// the stand-in harness, which is a shell and not this program.
 fn this_programs_network_calls(recording: &Path) -> Vec<String> {
-    let program = PathBuf::from(env!("CARGO_BIN_EXE_printobserver"))
-        .canonicalize()
-        .expect("the built program resolves");
     std::fs::read_to_string(recording)
         .unwrap_or_default()
         .lines()
-        .filter(|line| line.ends_with(&program.display().to_string()))
+        .filter(|line| line.starts_with("connected "))
         .map(str::to_owned)
         .collect()
 }
@@ -457,7 +413,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
     assert!(
         this_programs_network_calls(&recording)
             .iter()
-            .any(|line| line.starts_with("connect ")),
+            .any(|line| line.starts_with("connected ")),
         "the recorder did not record a command that connects, so it says nothing \
          about one that does not"
     );

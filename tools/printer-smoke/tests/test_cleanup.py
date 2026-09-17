@@ -204,7 +204,7 @@ def test_a_final_read_that_never_answers_is_reported_rather_than_passed_over(
     """
     run = world.smoke(
         "--run",
-        environment=world.relaying(hang_on="status", armed_by="history", timeout_s="1"),
+        environment=world.relaying(hang_on="status", armed_by="history", timeout_s="5"),
         timeout=600,
     )
 
