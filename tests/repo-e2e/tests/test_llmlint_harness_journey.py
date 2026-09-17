@@ -34,7 +34,12 @@ HARNESS_PACKAGE = "@anthropic-ai/claude-code"
 # `uv` is what step 1 of the script installs through, and `bash` and `python3` —
 # which `just` and the chain lookup reach for — live in the system directories.
 # Both supported platforms are Linux, which is where this tier runs.
-UV_DIRECTORY = str(Path(shutil.which("uv") or "uv").parent)
+#
+# uv is linked onto the host by name rather than reached through the directory
+# it lives in: on a contributor's machine that directory is `~/.local/bin`, which
+# holds every other program they have installed there — an agent among them —
+# and a host that inherited it would carry a harness it never declared.
+UV = Path(shutil.which("uv") or "uv")
 SYSTEM_DIRECTORIES = "/usr/bin:/bin"
 # `oneharness detect` probes a harness by running it, so one that is installed
 # has to answer for a version. Both the agent this host starts out carrying and
@@ -72,6 +77,7 @@ class HarnessHost:
         self.home.mkdir(parents=True)
         self.programs.mkdir(parents=True)
         self.github_path.write_text("", encoding="utf-8")
+        (self.programs / "uv").symlink_to(UV)
         if npm:
             self._program("npm", NPM_RECORDER)
         if harness:
@@ -108,7 +114,7 @@ class HarnessHost:
         environment.pop("CLAUDE_ENV_FILE", None)
         environment.update(
             HOME=str(self.home),
-            PATH=f"{self.programs}:{UV_DIRECTORY}:{SYSTEM_DIRECTORIES}",
+            PATH=f"{self.programs}:{SYSTEM_DIRECTORIES}",
             NPM_CALLS=str(self.npm_calls),
             HARNESS_SOURCE=HARNESS_BINARY,
             GITHUB_PATH=str(self.github_path),
