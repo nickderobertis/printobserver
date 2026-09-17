@@ -689,8 +689,7 @@ def stop(instance: Instance) -> dict[str, Any]:
         # id is handed to something else — so what is running under that id is
         # read before its whole session is signalled.
         command = command_of(pid)
-        # llmlint: ignore[boundary_inputs_validated] the prefix runs through `serve`
-        if not command.startswith(server_command_prefix(instance)):
+        if not is_this_instances_server(instance, command):
             instance.record.unlink()
             note(
                 f"process {pid} is not this instance's OctoPrint (it runs `{command}`); "
@@ -713,13 +712,25 @@ def server_argv_prefix(instance: Instance) -> list[str]:
 
 
 def server_command_prefix(instance: Instance) -> str:
-    """The same prefix as `ps` reports a command line, words joined by spaces.
-
-    A record is trusted only over a process whose command line begins exactly
-    so — this instance's own OctoPrint — rather than over one whose command
-    line happens to mention its directory.
-    """
+    """The same prefix as `ps` reports a command line, words joined by spaces."""
     return " ".join(server_argv_prefix(instance))
+
+
+def is_this_instances_server(instance: Instance, command: str) -> bool:
+    """Whether a command line `ps` reported is this instance's own OctoPrint.
+
+    It begins with the argv the server was started under — or, because that
+    program is a console script, with the one word the kernel puts first when
+    it runs the script's shebang, the interpreter, followed by that argv:
+    `<python> <venv>/bin/octoprint --basedir <instance> serve ...`. The argv
+    alone is the identity, since the program it names lives inside this
+    instance's own state directory; a command line that merely mentions that
+    directory is neither.
+    """
+    prefix = server_command_prefix(instance)
+    _, _, after_the_interpreter = command.partition(" ")
+    # llmlint: ignore[boundary_inputs_validated] the prefix runs through `serve`
+    return command.startswith(prefix) or after_the_interpreter.startswith(prefix)
 
 
 def command_of(pid: int) -> str:

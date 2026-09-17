@@ -191,8 +191,8 @@ reason = "The second half of the same one site: S310 flags both building the req
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "tools/octoprint-env/octoprint_env.py"
-site = "if not command.startswith(server_command_prefix(instance)):"
-reason = "The judged tier's fifth pass over this change objected that a prefix comparison admits a command line that merely extends the prefix. The prefix is the program's absolute path in this instance's own virtual environment, `--basedir` naming this instance's own directory, and the `serve` command — the whole of the argv `start_server` starts a server under, before the address it listens on — so the only command line that extends it is that server's own, with its address after `serve`. What the check refuses is what the pass before asked it to: a process whose command line mentions the directory anywhere without being that server, which the decoy journey in `tests/test_startup_failures.py` drives."
+site = "return command.startswith(prefix) or after_the_interpreter.startswith(prefix)"
+reason = "The judged tier's fifth pass over this change objected that a prefix comparison admits a command line that merely extends the prefix. The prefix is the program's absolute path in this instance's own virtual environment, `--basedir` naming this instance's own directory, and the `serve` command — the whole of the argv `start_server` starts a server under, before the address it listens on — so the only command line that extends it is that server's own, with its address after `serve`; and the one word admitted before it is the interpreter the kernel puts first when it runs the console script's shebang, whose own spelling adds nothing to an identity the program's path inside the instance's state directory already carries. What the check refuses is what the pass before asked it to: a process whose command line mentions the directory anywhere without being that server, which the decoy journey in `tests/test_startup_failures.py` drives."
 
 [[suppression]]
 rule = "boundary_inputs_validated"
