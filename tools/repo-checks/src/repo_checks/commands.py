@@ -206,8 +206,26 @@ def docs_schemas_write(repo: Repo) -> int:
     return 0
 
 
+def _total_of(report: str, column: int) -> str:
+    """The figure in `column` of a coverage report's `TOTAL` row, or `unknown`.
+
+    `cargo llvm-cov report --summary-only` and `coverage report` both end in a
+    `TOTAL` row; the line-coverage percentage is the ninth figure after the name in the first
+    and the last column of the second.
+    """
+    for line in reversed(report.splitlines()):
+        words = line.split()
+        if words[:1] == ["TOTAL"] and len(words) > column:
+            return words[column]
+    return "unknown"
+
+
 def coverage(repo: Repo) -> int:
-    """Fail the build below the line-coverage floors `repo-policy.toml` records."""
+    """Fail the build below the line-coverage floors `repo-policy.toml` records.
+
+    Pass or fail, one line at the end states each ecosystem's measured total
+    beside its floor, so every platform's figure is in its log.
+    """
     floors = repo.policy["gate"]["coverage"]
     failed = False
 
@@ -215,6 +233,7 @@ def coverage(repo: Repo) -> int:
         ["cargo", "llvm-cov", "report", "--summary-only", f"--fail-under-lines={floors['rust']}"],
         cwd=repo.root,
     )
+    rust_total = _total_of(rust.stdout, 9)
     if rust.returncode != 0:
         platform_id = os.environ.get("PRINTOBSERVER_PLATFORM")
         exemption = (floors.get("exemptions") or {}).get(platform_id, {})
@@ -227,6 +246,7 @@ def coverage(repo: Repo) -> int:
             and all(diagnostic in rust.stderr for diagnostic in diagnostics)
         )
         if valid:
+            rust_total = "no readable profile, exempt"
             print(
                 "no readable profile on aarch64-pc-windows-msvc, exempt by policy: "
                 f"{exemption['toolchain']}; {exemption['reference']}"
@@ -258,4 +278,8 @@ def coverage(repo: Repo) -> int:
         )
         failed = True
 
+    print(
+        f"coverage: rust lines {rust_total} (floor {floors['rust']}%), "
+        f"python lines {_total_of(report.stdout, -1)} (floor {floors['python']}%)"
+    )
     return 1 if failed else 0

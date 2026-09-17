@@ -407,3 +407,39 @@ native_only_lines = []
     equal(coverage(Repo(root)), 0)
 
     contains(capsys.readouterr().out, "no readable profile on aarch64-pc-windows-msvc")
+
+
+def test_coverage_states_each_total_beside_its_floor_on_a_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A passing run still leaves each platform's measured figure in its log."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(
+        programs,
+        "cargo",
+        'print("Filename  Regions  Missed Regions  Cover  Functions  Missed Functions  '
+        'Executed  Lines  Missed Lines  Cover  Branches  Missed Branches  Cover")\n'
+        'print("TOTAL  13221  1087  91.78%  1455  144  90.10%  9625  517  96.63%  0  0  -")\n',
+    )
+    program(
+        programs,
+        "uv",
+        "import sys\n"
+        'if "report" in sys.argv:\n'
+        '    print("Name  Stmts  Miss  Branch  BrPart  Cover")\n'
+        '    print("TOTAL  8386  435  2828  248  97%")\n',
+    )
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+
+    equal(coverage(Repo(root)), 0)
+
+    equal(
+        capsys.readouterr().out.strip().splitlines()[-1],
+        "coverage: rust lines 96.63% (floor 95%), python lines 97% (floor 95%)",
+    )
