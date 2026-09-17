@@ -40,6 +40,8 @@
 //! runs, and a host without it is refused rather than passed.
 
 use std::collections::BTreeSet;
+#[cfg(windows)]
+use std::fs::OpenOptions;
 use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(not(windows))]
@@ -189,6 +191,28 @@ pub fn traced(
     let _trace = KERNEL_TRACE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Nextest runs each journey in its own process. The static mutex orders
+    // callers inside one process; this operating-system lock orders those
+    // processes around Windows' one kernel logger.
+    let trace_lock_path = std::env::temp_dir().join("printobserver-kernel-trace.lock");
+    let trace_lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&trace_lock_path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "kernel trace lock {} could not be opened: {error}",
+                trace_lock_path.display()
+            )
+        });
+    trace_lock.lock().unwrap_or_else(|error| {
+        panic!(
+            "kernel trace lock {} could not be taken: {error}",
+            trace_lock_path.display()
+        )
+    });
 
     let invocation = format!(
         "{}-{}",
