@@ -135,6 +135,19 @@ distinct outcome rather than a figure, and `repo-policy.toml`'s
 platform's own Rust target, the toolchain release, the exact refusal text and
 an upstream issue.
 
+`just lint` lints every crate twice on a Unix host: natively, and once more for
+the Windows target `repo-policy.toml`'s `toolchain.windows_lint` names, so a
+finding in `cfg(windows)` code — dead code to the native pass — is reported
+before a push rather than by a Windows runner at the end of a two-hour round.
+Clippy for another target still runs every dependency's build script, and two
+of them compile C for it, so the pass hands cargo zig as the cross C compiler
+through `scripts/zig-cc.sh` — obtained through `uv` from the `zig` dependency
+group, off the default set so the Windows runners, whose native lint is that
+pass, never fetch it. `just bootstrap` adds the target's standard library on
+every host that is not Windows; where it is absent the pass says so and skips.
+`tests/repo-e2e/tests/test_windows_lint_journey.py` plants a Windows-only
+finding in a copy and proves the recipe fails on it.
+
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
 continuous-integration job of its own.

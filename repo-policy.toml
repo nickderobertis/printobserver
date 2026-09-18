@@ -622,6 +622,19 @@ allowlist = ".claude/settings.json"
 # which `just check-repo` requires of it. Unheld, the gate ran whichever release
 # a cache restored and the release job whichever a registry served newest, so a
 # journey proving one release-plz proved nothing about the one that releases.
+# The Windows target `just lint` runs clippy for on a Unix host, so a finding
+# in the tree's `cfg(windows)` code is reported before a push rather than by a
+# Windows runner two hours later. The GNU flavour rather than MSVC: it sees the
+# same `cfg(windows)` code, and zig — obtained through `uv` from the `zig`
+# dependency group — carries the mingw-w64 headers its C dependencies compile
+# against, so the pass needs no cross toolchain installed on the host. `just
+# bootstrap` adds the target's standard library on every host that is not
+# Windows; where it is absent the pass says so and skips, and on a Windows host
+# the native lint tier is that pass.
+[toolchain.windows_lint]
+target = "x86_64-pc-windows-gnu"
+zig_target = "x86_64-windows-gnu"
+
 [[toolchain.tool]]
 command = "cargo-nextest"
 install = "cargo install cargo-nextest --locked"

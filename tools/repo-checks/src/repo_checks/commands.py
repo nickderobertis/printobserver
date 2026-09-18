@@ -11,6 +11,7 @@ from pathlib import Path
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
 from repo_checks.platforms import PlatformError, descriptor
 from repo_checks.shell import run
+from repo_checks.windows_lint import install_target
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
 
@@ -30,6 +31,9 @@ def install_tools(repo: Repo) -> int:
         tools = toolchain_tools(repo)
     except PolicyValueError as malformed:
         print(f"{malformed}. Correct it; nothing was installed.", file=sys.stderr)
+        return 1
+    if install_target(repo) != 0:
+        print("failed to add the Windows target's standard library", file=sys.stderr)
         return 1
     for tool in tools:
         present = shutil.which(tool.command)

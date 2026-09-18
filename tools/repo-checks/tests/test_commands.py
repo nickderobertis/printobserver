@@ -156,10 +156,11 @@ def toolchain(
     """A tree carrying the committed toolchain declaration, and a PATH of stand-ins alone.
 
     The PATH holds the stand-in `cargo` and the directory it installs into — the
-    two tools the policy holds at no release already there, so what is decided
-    is release-plz's — and, with `shadow`, a directory ahead of both holding a
-    release-plz answering that release. Returns the tree, the directory installs
-    land in, and the record of what `cargo` was asked.
+    two tools the policy holds at no release already there, and a `rustup`
+    answering that the Windows lint target's standard library is too, so what
+    is decided is release-plz's — and, with `shadow`, a directory ahead of both
+    holding a release-plz answering that release. Returns the tree, the
+    directory installs land in, and the record of what `cargo` was asked.
     """
     root = tmp_path / "tree"
     root.mkdir()
@@ -169,6 +170,8 @@ def toolchain(
     program(installs, "cargo", CARGO_STANDIN)
     for present in ("cargo-nextest", "cargo-llvm-cov"):
         program(installs, present, f"print({f'{present} 0.0.1'!r})\n")
+    windows_lint = Repo(REPO_ROOT).policy["toolchain"]["windows_lint"]["target"]
+    program(installs, "rustup", f"print({windows_lint!r})\n")
     record = tmp_path / "cargo-invocations"
     record.touch()
     directories = [installs]

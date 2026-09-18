@@ -82,10 +82,13 @@ format-check:
     just node-modules
     bunx nx run-many -t format-check --output-style=stream
 
-# Lint every project with its language's linter, failing on any finding.
+# Lint every project with its language's linter, failing on any finding — and
+# every crate once more for the Windows target on a Unix host, so a finding in
+# `cfg(windows)` code is reported here rather than by a Windows runner.
 lint:
     just node-modules
     bunx nx run-many -t lint --output-style=stream
+    uv run -q python -m repo_checks lint-windows-target
 
 # Type-check every project with its language's type checker.
 typecheck:
