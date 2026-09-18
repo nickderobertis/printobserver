@@ -71,16 +71,18 @@ def stand_ins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "rustup",
         recording(tmp_path / "rustup", stdout=f"{TARGET}\nx86_64-unknown-linux-gnu\n"),
     )
-    # The zig the pass is pointed at has to be an executable file where `uv`
-    # says it is; nothing here runs it, because `cargo` is a stand-in too. A
-    # Windows host names no interpreter line and holds any file executable, so
-    # there the file is written bare rather than through `program`, which
-    # would put a `.cmd` beside a `.py` and nothing at the path itself.
+    # The zig the pass is pointed at has to be a program where `uv` says it is;
+    # nothing here runs it, because `cargo` is a stand-in too. A program is one
+    # by its suffix on Windows — `zig.exe`, which is what the ziglang wheel
+    # ships there — and by its interpreter line and mode elsewhere, which is
+    # what `program` writes; the `.cmd` beside a `.py` that helper puts on
+    # Windows would leave nothing at the path `uv` names.
+    zig = tmp_path / ("zig.exe" if sys.platform == "win32" else "zig")
     if sys.platform == "win32":
-        (tmp_path / "zig").write_text("", encoding="utf-8")
+        zig.write_bytes(b"MZ")
     else:
         program(tmp_path, "zig", "raise SystemExit(0)\n")
-    program(programs, "uv", recording(tmp_path / "uv", stdout=f"{tmp_path / 'zig'}\n"))
+    program(programs, "uv", recording(tmp_path / "uv", stdout=f"{zig}\n"))
     program(programs, "cargo", recording(tmp_path / "cargo"))
     monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
     return tmp_path
@@ -114,7 +116,10 @@ def test_each_crates_own_lint_is_run_again_for_the_windows_target(
             str(windows_lint.ARCHIVER),
             describing="the archiver cargo's build scripts are handed",
         )
-        equal(invocation["env"]["PRINTOBSERVER_ZIG"], str(stand_ins / "zig"))
+        equal(
+            invocation["env"]["PRINTOBSERVER_ZIG"],
+            str(stand_ins / ("zig.exe" if sys.platform == "win32" else "zig")),
+        )
         equal(invocation["env"]["PRINTOBSERVER_ZIG_TARGET"], "x86_64-windows-gnu")
     # Each retargeted command is the committed one and nothing else: the crate's
     # own features, its own `--all-targets`, its own `--locked`.
