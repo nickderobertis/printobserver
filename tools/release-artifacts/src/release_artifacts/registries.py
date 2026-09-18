@@ -884,11 +884,22 @@ def _crate_versions(url: str) -> list[str]:
             f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
         )
         raise RegistryError(msg)
-    return [
-        supported_version(str(entry.get("num", "")))
-        for entry in listed
-        if not entry.get("yanked", False) and supported_version(str(entry.get("num", "")))
-    ]
+    found: list[str] = []
+    for entry in listed:
+        number, yanked = entry.get("num"), entry.get("yanked", False)
+        # Each field is the type the protocol serves or the document is
+        # refused: a `yanked` read by truthiness would take a `"false"` some
+        # mirror answered as yanked and drop a version a dependent can take.
+        if not isinstance(number, str) or not isinstance(yanked, bool):
+            msg = (
+                f"{url} lists {entry!r}, which is not a version with a string `num` and "
+                f"a boolean `yanked` as its protocol serves. "
+                f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+            )
+            raise RegistryError(msg)
+        if not yanked and supported_version(number):
+            found.append(supported_version(number))
+    return found
 
 
 def released(bases: Bases) -> tuple[str, ...]:

@@ -18,6 +18,7 @@ distinctly, and one serving the real client passes.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -25,14 +26,16 @@ import pytest
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
+    Bases,
     Outcome,
     Proof,
     RegistryError,
     clients,
     prove,
+    served,
 )
-from release_artifacts.standin import Registries
-from release_artifacts.targets import declared
+from release_artifacts.standin import CRATES_PREFIX, Registries
+from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -217,6 +220,80 @@ def test_a_release_whose_supervisor_does_not_come_up_does_not_pass(
     contains(proof.report, "did not work here", describing=proof.report)
     contains(proof.report, "the supervisor stopped before it answered", describing=proof.report)
     contains(proof.report, "supervisor:", describing="where it was taken from")
+
+
+def test_a_yanked_crate_version_is_never_the_newest(
+    repo: Repo, version: str, registries: Registries
+) -> None:
+    """A yanked version is one `cargo` refuses a new dependent, so it is not one served."""
+    registries.serve_clients("crate:printobserver-sdk")
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps(
+            {
+                "crate": {"name": "printobserver-sdk", "max_version": "9.9.9"},
+                "versions": [
+                    {"num": "9.9.9", "yanked": True},
+                    {"num": version, "yanked": False},
+                    {"num": "0.0.1-rc1", "yanked": False},
+                ],
+            }
+        ).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(
+        served(bases, named(repo.root, "crate:printobserver-sdk")),
+        (version,),
+        describing="the versions the crate registry serves a dependent",
+    )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"num": 1, "yanked": False},
+        {"num": "0.2.0", "yanked": "false"},
+        {"yanked": False},
+    ],
+    ids=["num-not-a-string", "yanked-not-a-boolean", "no-num"],
+)
+def test_a_crate_version_entry_of_another_shape_is_refused(
+    repo: Repo, registries: Registries, entry: dict[str, object]
+) -> None:
+    """A version list that is not the protocol's is a stop, not an empty registry.
+
+    Read by truthiness, a `"false"` some mirror answered for `yanked` would
+    drop a version a dependent can take, and a number where a string belongs
+    is a document this proof does not describe; either is refused naming the
+    entry rather than read as `NOT SERVED`.
+    """
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps({"crate": {"name": "printobserver-sdk"}, "versions": [entry]}).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "crate:printobserver-sdk"))
+
+    contains(str(refused.value), "string `num` and a boolean `yanked`", describing="what it said")
+
+
+def test_a_crate_document_with_no_version_list_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """A crate document carrying something other than a list of versions is refused too."""
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps({"crate": {"name": "printobserver-sdk"}, "versions": "all of them"}).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "crate:printobserver-sdk"))
+
+    contains(str(refused.value), "with a `versions` list in it", describing="what it said")
 
 
 def test_the_clients_taken_are_exactly_the_clients_declared(repo: Repo) -> None:
