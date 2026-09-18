@@ -73,10 +73,10 @@ def supervisor(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return stripped
 
 
-# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] The same reason as above it.
-@pytest.fixture
-def registries(repo: Repo, tmp_path: Path) -> Iterator[Registries]:
+@pytest.fixture  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] see suppressions.toml
+def registries(  # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] see suppressions.toml
+    repo: Repo, tmp_path: Path
+) -> Iterator[Registries]:
     """The registries, answering on one address, serving nothing yet."""
     standing_in = Registries(repo, tmp_path / "served")
     try:

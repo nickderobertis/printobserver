@@ -340,3 +340,63 @@ def test_without_the_pass_over_the_copies_would_be_refused(tree: Callable[[], Tr
     refused_naming(
         platforms(broken.repo), "platform-dispatch.yml", "job `gate`", "declares no platform matrix"
     )
+
+
+def test_a_declaration_missing_a_key_is_refused(tree: Callable[[], Tree]) -> None:
+    """A declaration naming no sources, or no input, says what it is missing."""
+    broken = tree()
+    broken.edit(POLICY, 'sources = ["ci.yml", "install-path.yml"]\n', "")
+
+    refused_naming(platform_dispatch(broken.repo), "`[dispatch]` declares no sources")
+
+
+def test_a_declaration_naming_the_workflow_as_its_own_source_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow's jobs cannot be copies of themselves."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        'sources = ["ci.yml", "install-path.yml"]',
+        'sources = ["ci.yml", "install-path.yml", "platform-dispatch.yml"]',
+    )
+
+    refused_naming(platform_dispatch(broken.repo), "as its own source")
+
+
+def test_a_tree_with_no_platform_list_is_refused(tree: Callable[[], Tree]) -> None:
+    """With no list there is nothing to hold the platform input to."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md", "[//]: # (BEGIN supported-platforms)", "[//]: # (BEGIN platforms-once)"
+    )
+
+    refused(platform_dispatch(broken.repo), "supported-platforms")
+
+
+def test_an_input_that_is_not_a_choice_is_refused(tree: Callable[[], Tree]) -> None:
+    """A free-text input can name a job or a platform nothing here declares."""
+    broken = tree()
+    broken.edit(
+        DISPATCH,
+        "        required: true\n        type: choice\n        options:\n          - gate\n",
+        "        required: true\n        type: string\n",
+    )
+
+    refused_naming(platform_dispatch(broken.repo), "no `job` input of type `choice`")
+
+
+def test_a_runner_map_that_is_not_json_is_refused(tree: Callable[[], Tree]) -> None:
+    """A map nothing can read maps nothing."""
+    broken = tree()
+    broken.edit(DISPATCH, f"fromJSON('{RUNNERS}')", "fromJSON('not json')")
+
+    refused_naming(platform_dispatch(broken.repo), "job `gate`", "not JSON")
+
+
+def test_a_runner_map_that_is_not_a_map_is_refused(tree: Callable[[], Tree]) -> None:
+    """A list of runners says nothing about which platform runs where."""
+    broken = tree()
+    broken.edit(DISPATCH, f"fromJSON('{RUNNERS}')", "fromJSON('[\"ubuntu-24.04\"]')")
+
+    refused_naming(platform_dispatch(broken.repo), "job `gate`", "something other than a map")
