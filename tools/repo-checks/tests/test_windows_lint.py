@@ -106,21 +106,25 @@ def test_each_crates_own_lint_is_run_again_for_the_windows_target(
             describing=f"the target to be cargo's argument rather than clippy's: {argv}",
         )
         equal(argv[-2:], ["-D", "warnings"], describing="the committed lint's own severity")
+        # A variable's name is case-insensitive on Windows and `os.environ`
+        # hands it back upper-cased there, so the recording is read by the
+        # name cc-rs reads, whatever case the host kept it in.
+        environment = {name.upper(): value for name, value in invocation["env"].items()}
         equal(
-            invocation["env"]["CC_x86_64_pc_windows_gnu"],
+            environment["CC_X86_64_PC_WINDOWS_GNU"],
             str(windows_lint.COMPILER),
             describing="the C compiler cargo's build scripts are handed",
         )
         equal(
-            invocation["env"]["AR_x86_64_pc_windows_gnu"],
+            environment["AR_X86_64_PC_WINDOWS_GNU"],
             str(windows_lint.ARCHIVER),
             describing="the archiver cargo's build scripts are handed",
         )
         equal(
-            invocation["env"]["PRINTOBSERVER_ZIG"],
+            environment["PRINTOBSERVER_ZIG"],
             str(stand_ins / ("zig.exe" if sys.platform == "win32" else "zig")),
         )
-        equal(invocation["env"]["PRINTOBSERVER_ZIG_TARGET"], "x86_64-windows-gnu")
+        equal(environment["PRINTOBSERVER_ZIG_TARGET"], "x86_64-windows-gnu")
     # Each retargeted command is the committed one and nothing else: the crate's
     # own features, its own `--all-targets`, its own `--locked`.
     for project in committed.project_paths:
