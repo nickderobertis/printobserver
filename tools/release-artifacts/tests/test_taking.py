@@ -77,10 +77,11 @@ def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
 ) -> None:
     """The real npm route preserves Node before removing a shared tool directory.
 
-    The shared directory is the **only** place Node is on the path, as on the
-    hosted macOS images: a host that kept a second Node elsewhere would let the
-    proof run the installed launcher after the shared directory was taken off,
-    and say nothing about a host that does not.
+    The shared directory holds `node`, `npm` and `cargo` together and is the
+    **only** place `node` and `npm` are on the path, as on the hosted macOS
+    images: a host that kept a second Node elsewhere would let the proof run
+    the installed launcher after the shared directory was taken off, and say
+    nothing about a host that does not.
     """
     shared = tmp_path / "hosted-tool-bin"
     shared.mkdir()
@@ -88,14 +89,20 @@ def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
     cargo = shutil.which("cargo")
     if node is None or cargo is None:
         pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
+    # The npm beside the real node rather than a version manager's shim of it,
+    # which is what a hosted image's tool directory holds.
+    npm = Path(node).resolve().parent / "npm"
+    if not npm.exists():
+        pytest.fail(f"the artifact journey needs npm beside {node}")
     (shared / "node").symlink_to(node)
+    (shared / "npm").symlink_to(npm)
     (shared / "cargo").symlink_to(cargo)
-    without_node = [
+    elsewhere = [
         directory
         for directory in os.environ["PATH"].split(os.pathsep)
-        if directory and not Path(directory, "node").exists()
+        if directory and not any(Path(directory, name).exists() for name in ("node", "npm"))
     ]
-    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *without_node]))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *elsewhere]))
 
     said = prove(repo, "npm:printobserver-cli", into("runner-shaped-npm"), program)
 
