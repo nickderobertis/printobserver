@@ -166,7 +166,7 @@ def spawn_free(repo: Repo) -> list[str]:
 
     findings: list[str] = []
     for path in sorted(sources.rglob("*.rs")):
-        relative = path.relative_to(repo.root)
+        relative = path.relative_to(repo.root).as_posix()
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             findings.extend(
                 f"{relative}:{number} uses the process-spawning interface `{interface}`. "
@@ -227,7 +227,7 @@ def schema_source(repo: Repo) -> list[str]:
         if _is_json_schema(path):
             findings.append(
                 f"crate `{adapter}` carries the JSON Schema file "
-                f"`{path.relative_to(repo.root)}`. The agent's answer is constrained by "
+                f"`{path.relative_to(repo.root).as_posix()}`. The agent's answer is constrained by "
                 f"`{generated}`, the artifact the contracts' generation target writes; a "
                 f"schema this crate carries would be one it wrote, whatever its bytes say."
             )

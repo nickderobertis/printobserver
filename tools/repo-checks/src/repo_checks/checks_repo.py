@@ -155,6 +155,41 @@ def recipe_set(repo: Repo) -> list[str]:
         )
         if recipe.body and not does_something:
             findings.append(f"the `{name}` recipe is a placeholder: its body runs nothing")
+
+    coverage_profiles: dict[str, str] = {}
+    for project in repo.project_paths:
+        data = json.loads(project.read_text(encoding="utf-8"))
+        command = (data.get("targets") or {}).get("test", {}).get("command")
+        if not isinstance(command, str) or "cargo llvm-cov" not in command:
+            continue
+        name = str(data.get("name", project.parent.name))
+        profile = next(
+            (
+                word.partition("=")[2]
+                for word in command.split()
+                if word.startswith("LLVM_PROFILE_FILE_NAME=")
+            ),
+            None,
+        )
+        if profile is None or '"${OS:-}" = Windows_NT' not in command:
+            findings.append(f"{name}:test carries no Windows-only coverage profile name")
+        elif profile in coverage_profiles:
+            findings.append(
+                f"{name}:test shares Windows coverage profile {profile!r} with "
+                f"{coverage_profiles[profile]}:test"
+            )
+        elif "%p" not in profile or "%m" not in profile:
+            # The test targets run in parallel on Windows as everywhere else,
+            # and Windows reuses process identifiers freely. `%p` gives each
+            # process its own file; `%m` makes a process handed a reused
+            # identifier merge into that file rather than truncate it. A
+            # name missing either is coverage a later process silently drops.
+            findings.append(
+                f"{name}:test names Windows coverage profile {profile!r}, which a reused "
+                f"process identifier could overwrite: it needs both `%p` and `%m`"
+            )
+        else:
+            coverage_profiles[profile] = name
     return findings
 
 
@@ -390,7 +425,7 @@ def octoprint_client(repo: Repo) -> list[str]:
                         found_in_permitted = True
                         continue
                     findings.append(
-                        f"{path.relative_to(repo.root)}:{number} carries `{marker}`, so "
+                        f"{path.relative_to(repo.root).as_posix()}:{number} carries `{marker}`, so "
                         f"crate `{directory.name}` constructs an OctoPrint request: only "
                         f"`{permitted}` may"
                     )

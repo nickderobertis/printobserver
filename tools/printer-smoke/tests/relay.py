@@ -47,18 +47,20 @@ def main(argv: list[str]) -> int:
     Returns:
         Whatever the program itself exited with, once it has been let run.
     """
-    command = argv[0] if argv else ""
+    hang_on = os.environ.get(HANG_ON, "")
+    armed_by = os.environ.get(ARMED_BY, "")
+    command = next((argument for argument in argv if argument in {hang_on, armed_by}), "")
     state_file = Path(os.environ[STATE])
     state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else {}
-    armed = bool(state.get("armed", not os.environ.get(ARMED_BY, "")))
+    armed = bool(state.get("armed", not armed_by))
     seen = int(state.get("seen", 0))
 
-    if command == os.environ.get(HANG_ON) and armed:
+    if command == hang_on and armed:
         seen += 1
         state_file.write_text(json.dumps({"armed": armed, "seen": seen}), encoding="utf-8")
         if seen > int(os.environ.get(AFTER, "0")):
             time.sleep(FOREVER_S)
-    elif command == os.environ.get(ARMED_BY, ""):
+    elif command == armed_by:
         state_file.write_text(json.dumps({"armed": True, "seen": seen}), encoding="utf-8")
 
     # Not captured: what the program writes is what the smoke reads, so it goes

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- What `tracerpt -of XML` wrote for one traced invocation on windows-11-arm (run 35116861422):
+     process 8508 asked to connect three times and started process 7280, which asked once.
+     Every event is verbatim except the last, which is the first with its process and its
+     addresses changed, standing for a connection a process outside that tree made. -->
+<Events>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-TCPIP" Guid="{2f07e2ee-15db-40f1-90ef-9d7ba282188a}" />
+		<EventID>1002</EventID>
+		<Version>0</Version>
+		<Level>4</Level>
+		<Task>1002</Task>
+		<Opcode>0</Opcode>
+		<Keywords>0x8000000400000480</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:26.722972600+00:00" />
+		<Correlation ActivityID="{b59fa010-cc0d-ffff-0000-000000000000}" />
+		<Execution ProcessID="8508" ThreadID="7292" ProcessorID="1" KernelTime="15" UserTime="15" />
+		<Channel>Microsoft-Windows-TCPIP/Diagnostic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="Tcb">0xFFFFCC0DB59FA010</Data>
+		<Data Name="LocalAddressLength">      16</Data>
+		<Data Name="LocalAddress">127.0.0.1:53949</Data>
+		<Data Name="RemoteAddressLength">      16</Data>
+		<Data Name="RemoteAddress">127.0.0.1:53948</Data>
+		<Data Name="NewState">       0</Data>
+		<Data Name="RexmitCount">       0</Data>
+	</EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-TCPIP" Guid="{2f07e2ee-15db-40f1-90ef-9d7ba282188a}" />
+		<EventID>1002</EventID>
+		<Version>0</Version>
+		<Level>4</Level>
+		<Task>1002</Task>
+		<Opcode>0</Opcode>
+		<Keywords>0x8000000400000480</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:28.232757400+00:00" />
+		<Correlation ActivityID="{b616f060-cc0d-ffff-0000-000000000000}" />
+		<Execution ProcessID="8508" ThreadID="7292" ProcessorID="1" KernelTime="15" UserTime="15" />
+		<Channel>Microsoft-Windows-TCPIP/Diagnostic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="Tcb">0xFFFFCC0DB616F060</Data>
+		<Data Name="LocalAddressLength">      16</Data>
+		<Data Name="LocalAddress">127.0.0.1:53950</Data>
+		<Data Name="RemoteAddressLength">      16</Data>
+		<Data Name="RemoteAddress">127.0.0.1:53947</Data>
+		<Data Name="NewState">       0</Data>
+		<Data Name="RexmitCount">       0</Data>
+	</EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-TCPIP" Guid="{2f07e2ee-15db-40f1-90ef-9d7ba282188a}" />
+		<EventID>1002</EventID>
+		<Version>0</Version>
+		<Level>4</Level>
+		<Task>1002</Task>
+		<Opcode>0</Opcode>
+		<Keywords>0x8000000400000480</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:28.233238200+00:00" />
+		<Correlation ActivityID="{b68b57c0-cc0d-ffff-0000-000000000000}" />
+		<Execution ProcessID="8508" ThreadID="7292" ProcessorID="1" KernelTime="15" UserTime="15" />
+		<Channel>Microsoft-Windows-TCPIP/Diagnostic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="Tcb">0xFFFFCC0DB68B57C0</Data>
+		<Data Name="LocalAddressLength">      16</Data>
+		<Data Name="LocalAddress">10.1.0.105:53951</Data>
+		<Data Name="RemoteAddressLength">      16</Data>
+		<Data Name="RemoteAddress">192.0.2.1:9</Data>
+		<Data Name="NewState">       0</Data>
+		<Data Name="RexmitCount">       0</Data>
+	</EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-Kernel-Process" Guid="{22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}" />
+		<EventID>1</EventID>
+		<Version>4</Version>
+		<Level>4</Level>
+		<Task>1</Task>
+		<Opcode>1</Opcode>
+		<Keywords>0x8000000000000010</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:29.739961400+00:00" />
+		<Correlation ActivityID="{00000000-0000-0000-0000-000000000000}" />
+		<Execution ProcessID="8508" ThreadID="7292" ProcessorID="3" KernelTime="15" UserTime="15" />
+		<Channel>Microsoft-Windows-Kernel-Process/Analytic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="ProcessID">    7280</Data>
+		<Data Name="ProcessSequenceNumber">639</Data>
+		<Data Name="CreateTime">2026-09-16T15:42:29.739921600Z</Data>
+		<Data Name="ParentProcessID">    8508</Data>
+		<Data Name="ParentProcessSequenceNumber">638</Data>
+		<Data Name="SessionID">       2</Data>
+		<Data Name="Flags">       0</Data>
+		<Data Name="ProcessTokenElevationType">       1</Data>
+		<Data Name="ProcessTokenIsElevated">       1</Data>
+		<Data Name="MandatoryLabel">S-1-16-12288</Data>
+	</EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-TCPIP" Guid="{2f07e2ee-15db-40f1-90ef-9d7ba282188a}" />
+		<EventID>1002</EventID>
+		<Version>0</Version>
+		<Level>4</Level>
+		<Task>1002</Task>
+		<Opcode>0</Opcode>
+		<Keywords>0x8000000400000480</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:29.774656300+00:00" />
+		<Correlation ActivityID="{b5c44b00-cc0d-ffff-0000-000000000000}" />
+		<Execution ProcessID="7280" ThreadID="868" ProcessorID="1" KernelTime="0" UserTime="15" />
+		<Channel>Microsoft-Windows-TCPIP/Diagnostic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="Tcb">0xFFFFCC0DB5C44B00</Data>
+		<Data Name="LocalAddressLength">      16</Data>
+		<Data Name="LocalAddress">127.0.0.1:53952</Data>
+		<Data Name="RemoteAddressLength">      16</Data>
+		<Data Name="RemoteAddress">127.0.0.1:53949</Data>
+		<Data Name="NewState">       0</Data>
+		<Data Name="RexmitCount">       0</Data>
+	</EventData>
+</Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+	<System>
+		<Provider Name="Microsoft-Windows-TCPIP" Guid="{2f07e2ee-15db-40f1-90ef-9d7ba282188a}" />
+		<EventID>1002</EventID>
+		<Version>0</Version>
+		<Level>4</Level>
+		<Task>1002</Task>
+		<Opcode>0</Opcode>
+		<Keywords>0x8000000400000480</Keywords>
+		<TimeCreated SystemTime="2026-09-16T15:42:26.722972600+00:00" />
+		<Correlation ActivityID="{b59fa010-cc0d-ffff-0000-000000000000}" />
+		<Execution ProcessID="1396" ThreadID="7292" ProcessorID="1" KernelTime="15" UserTime="15" />
+		<Channel>Microsoft-Windows-TCPIP/Diagnostic</Channel>
+		<Computer />
+	</System>
+	<EventData>
+		<Data Name="Tcb">0xFFFFCC0DB59FA010</Data>
+		<Data Name="LocalAddressLength">      16</Data>
+		<Data Name="LocalAddress">127.0.0.1:53999</Data>
+		<Data Name="RemoteAddressLength">      16</Data>
+		<Data Name="RemoteAddress">127.0.0.1:1</Data>
+		<Data Name="NewState">       0</Data>
+		<Data Name="RexmitCount">       0</Data>
+	</EventData>
+</Event>
+</Events>

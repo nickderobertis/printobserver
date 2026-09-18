@@ -102,7 +102,7 @@ def scan(root: Path) -> list[Directive]:
         if SKIPPED_DIRECTORIES & set(relative.parts):
             continue
         found.extend(
-            directives_in(path.read_text(encoding="utf-8", errors="replace"), str(relative))
+            directives_in(path.read_text(encoding="utf-8", errors="replace"), relative.as_posix())
         )
     return found
 
@@ -195,11 +195,11 @@ def configured_suppressions(root: Path) -> list[str]:
             ruff = data
             where = "the ruff configuration"
         if isinstance(ruff, dict):
-            findings.extend(f"{relative}: {f}" for f in _ruff_findings(where, ruff))
+            findings.extend(f"{relative.as_posix()}: {f}" for f in _ruff_findings(where, ruff))
         ty = tools.get("ty")
         if isinstance(ty, dict):
             findings.extend(
-                f"{relative}: {f}"
+                f"{relative.as_posix()}: {f}"
                 for f in _levels_set_to_silence("[tool.ty.rules]", ty.get("rules"))
             )
 
@@ -209,10 +209,12 @@ def configured_suppressions(root: Path) -> list[str]:
         workspace = data.get("workspace")
         lints = workspace.get("lints") if isinstance(workspace, dict) else None
         findings.extend(
-            f"{relative}: {f}" for f in _levels_set_to_silence("[workspace.lints]", lints)
+            f"{relative.as_posix()}: {f}"
+            for f in _levels_set_to_silence("[workspace.lints]", lints)
         )
         findings.extend(
-            f"{relative}: {f}" for f in _levels_set_to_silence("[lints]", data.get("lints"))
+            f"{relative.as_posix()}: {f}"
+            for f in _levels_set_to_silence("[lints]", data.get("lints"))
         )
 
     for path in _config_files(root, ("biome.json", "biome.jsonc")):
@@ -221,10 +223,12 @@ def configured_suppressions(root: Path) -> list[str]:
         for section in ("linter", "formatter", "assist"):
             block = data.get(section)
             if isinstance(block, dict) and block.get("enabled") is False:
-                findings.append(f"{relative}: the {section} is disabled, silencing every rule")
+                findings.append(
+                    f"{relative.as_posix()}: the {section} is disabled, silencing every rule"
+                )
             if isinstance(block, dict):
                 findings.extend(
-                    f"{relative}: {f}"
+                    f"{relative.as_posix()}: {f}"
                     for f in _levels_set_to_silence(f"{section}.rules", block.get("rules"))
                 )
 
@@ -283,7 +287,7 @@ def whole_file_directives(root: Path, admitted: Sequence[str]) -> list[str]:
         for number, line in enumerate(lines, start=1):
             for match in WHOLE_FILE_LLMLINT.finditer(line):
                 findings.extend(
-                    f"{relative}:{number} silences `{rule}` for the whole file, and "
+                    f"{relative.as_posix()}:{number} silences `{rule}` for the whole file, and "
                     f"`repo-policy.toml`'s suppressions.whole_file_rules does not name "
                     f"it as a rule that is intrinsically about a whole file. Suppress "
                     f"it at the line it answers instead."
@@ -300,7 +304,7 @@ def file_level_directives(root: Path) -> list[str]:
         del path
         for number, line in enumerate(lines, start=1):
             findings.extend(
-                f"{relative}:{number} carries a file-level {tool} directive, which "
+                f"{relative.as_posix()}:{number} carries a file-level {tool} directive, which "
                 f"silences every line of the file. Suppress at the site that needs "
                 f"it, with an entry naming the rule, the file, the site and a "
                 f"reason — or change the code so the rule has nothing to say."

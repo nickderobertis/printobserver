@@ -64,6 +64,7 @@ from release_artifacts.standin import (
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import host, install_platforms
+from route_proof import ROUTE_PROOF
 
 #: The tokens this journey publishes under, one per registry, under the real
 #: credential names — so that what reaches each registry can be read back.
@@ -308,6 +309,7 @@ def test_a_fail_fast_publish_leaves_the_artifacts_after_the_refusal_unserved(
     )
 
 
+@ROUTE_PROOF
 def test_the_checksum_file_lists_every_platforms_tarball(
     repo: Repo,
     dist: Path,

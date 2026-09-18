@@ -10,6 +10,12 @@ at what baud rate.
 
 from __future__ import annotations
 
+import sys
+
+if sys.platform == "win32":
+    message = "a pseudo-terminal printer needs a pseudo-terminal, which Windows has none of"
+    raise ImportError(message)
+
 import contextlib
 import os
 import pty

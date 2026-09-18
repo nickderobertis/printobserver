@@ -154,11 +154,52 @@ fn bindings(world: &World) -> BTreeMap<&'static str, String> {
         ("IMAGE_ID", world.image_id.clone()),
         ("EVENT_ID", world.event_id.clone()),
         ("FILE", world.printable_file()),
-        (
-            "STATE_DIR",
-            world.root.path().join("state").display().to_string(),
-        ),
+        ("STATE_DIR", state_dir_as_written(world)),
     ])
+}
+
+/// The world's state directory as the server resolved it and writes it.
+///
+/// Resolved rather than as the world named it, because what the server prints
+/// is what it resolved: a temporary directory reached through a link, or named
+/// by a short name, is printed as the path it resolves to.
+fn state_dir_as_written(world: &World) -> String {
+    printobserver_server::plainly_written(
+        world
+            .root
+            .path()
+            .join("state")
+            .canonicalize()
+            .expect("the world's state directory resolves"),
+    )
+    .display()
+    .to_string()
+}
+
+/// Every path under the state directory, with its separators as the documents
+/// write them.
+///
+/// Windows joins a path it prints with `\` — written `\\` inside a JSON
+/// string — where a document shows `/`. Every other platform already prints
+/// what the document shows, so there this changes nothing.
+fn with_document_separators(written: &str) -> String {
+    const PLACEHOLDER: &str = "STATE_DIR";
+    if !cfg!(windows) {
+        return written.to_owned();
+    }
+    let mut out = String::with_capacity(written.len());
+    let mut rest = written;
+    while let Some(at) = rest.find(PLACEHOLDER) {
+        let (before, from) = rest.split_at(at + PLACEHOLDER.len());
+        out.push_str(before);
+        let end = from
+            .find(|letter: char| letter.is_whitespace() || letter == '"' || letter == '\'')
+            .unwrap_or(from.len());
+        out.push_str(&from[..end].replace("\\\\", "/").replace('\\', "/"));
+        rest = &from[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// One command line, with each placeholder replaced by this world's value.
@@ -276,7 +317,12 @@ fn replace_matching(text: &str, matches: fn(&str) -> bool, with: &str) -> String
 
 /// Replace every value this world minted with the placeholder standing for it.
 fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> String {
-    let mut ordered: Vec<(&&str, &String)> = bindings.iter().collect();
+    // Each value as it is printed plainly and as a JSON string escapes it, which
+    // differ for a path carrying a backslash.
+    let mut ordered: Vec<(&str, String)> = bindings
+        .iter()
+        .flat_map(|(name, value)| [(*name, value.clone()), (*name, value.replace('\\', "\\\\"))])
+        .collect();
     // Longest first, so a state directory that is a prefix of an image path is
     // replaced before anything inside it.
     ordered.sort_by_key(|(_, value)| core::cmp::Reverse(value.len()));
@@ -284,6 +330,7 @@ fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> Strin
     for (name, value) in ordered {
         written = written.replace(value.as_str(), name);
     }
+    written = with_document_separators(&written);
     written = replace_matching(&written, is_identifier, "ID");
     replace_matching(&written, is_instant, "TIMESTAMP")
 }

@@ -724,11 +724,21 @@ async fn a_content_type_that_is_not_an_image_is_refused() {
 ///
 /// This is the one failure no served response can produce, so it is the one an
 /// implementation that handled the three refusals above can still lose.
+///
+/// Run under the adapter's own default bounds rather than the prompt ones: a
+/// Windows host retries a refused connection for about two seconds before it
+/// gives up, which the prompt bounds' two-second timeout would report as a
+/// host that took too long rather than one nothing listens on.
 #[tokio::test]
 async fn a_host_nothing_answers_on_is_unreachable() {
     let store = Arc::new(MemoryStore::new());
 
-    let (receipt, body) = post_alert_for(&store, unreachable_url().await, prompt_bounds()).await;
+    let (receipt, body) = post_alert_for(
+        &store,
+        unreachable_url().await,
+        ObicoVisionConfig::default(),
+    )
+    .await;
 
     let failure = receipt
         .image_failure

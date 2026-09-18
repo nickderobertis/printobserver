@@ -110,6 +110,10 @@ impl HarnessSignIn {
     /// That directory, created where it is not there yet, and readable by its
     /// owner alone whether it was just created or was already there.
     ///
+    /// On Unix each level is given mode `0700`. Windows has no modes: a
+    /// directory created there carries the access the state directory grants,
+    /// so on Windows that directory is what keeps the sign-in private.
+    ///
     /// The state directory is the one this program was configured with, which
     /// is resolved where it is configured. Below it, each of the two levels is
     /// created on its own rather than recursively, so neither is ever reached
@@ -123,8 +127,6 @@ impl HarnessSignIn {
     /// error when the state directory is not there, or a level cannot be created
     /// or made private.
     pub fn prepare(&self, state_dir: &Path) -> std::io::Result<PathBuf> {
-        use std::os::unix::fs::PermissionsExt as _;
-
         let directory = self.directory(state_dir);
         for level in [state_dir.join(HARNESS_DIRECTORY), directory.clone()] {
             real_directory(&level)?;
@@ -132,7 +134,11 @@ impl HarnessSignIn {
             // is narrowed by the process's own mask, and a directory that was
             // already there may have been widened since. Only its owner can
             // change its mode, so a directory another user owns is refused.
-            std::fs::set_permissions(&level, std::fs::Permissions::from_mode(0o700))?;
+            #[cfg(unix)]
+            std::fs::set_permissions(
+                &level,
+                std::os::unix::fs::PermissionsExt::from_mode(PRIVATE_DIRECTORY),
+            )?;
         }
         Ok(directory)
     }
@@ -148,28 +154,42 @@ impl HarnessSignIn {
     }
 }
 
+/// The mode each level of a sign-in's directory is kept at, where there are modes.
+#[cfg(unix)]
+const PRIVATE_DIRECTORY: u32 = 0o700;
+
 /// One directory, created with no access for anybody but its owner where it
 /// is not there, and refused where something other than a directory is.
 fn real_directory(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::DirBuilderExt as _;
-
     match std::fs::symlink_metadata(path) {
         Ok(found) if found.is_dir() => Ok(()),
         Ok(_) => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("{} is something other than a directory", path.display()),
         )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::DirBuilder::new().mode(0o700).create(path)
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => create_directory(path),
         Err(error) => Err(error),
     }
 }
 
+/// Create one directory, with no access for anybody but its owner.
+#[cfg(unix)]
+fn create_directory(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt as _;
+
+    std::fs::DirBuilder::new()
+        .mode(PRIVATE_DIRECTORY)
+        .create(path)
+}
+
+/// Create one directory, carrying the access its parent grants.
+#[cfg(not(unix))]
+fn create_directory(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(path)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt as _;
-
     use oneharness_core::io::usage::{CLAUDE_IDENTITY_ENV, CODEX_IDENTITY_ENV};
 
     use super::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
@@ -242,42 +262,46 @@ mod tests {
         let prepared = entry.prepare(&state).expect("the directory is created");
 
         assert_eq!(prepared, state.join(HARNESS_DIRECTORY).join("claude-code"));
-        let mode = std::fs::metadata(&prepared)
-            .expect("the directory is there")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o700, "the directory is mode {mode:o}");
+        assert!(prepared.is_dir(), "no directory was created");
+        #[cfg(unix)]
+        {
+            let mode = mode_of(&prepared);
+            assert_eq!(mode, 0o700, "the directory is mode {mode:o}");
+        }
 
         std::fs::write(prepared.join("signed-in"), "kept").expect("the directory is writable");
-        std::fs::set_permissions(&prepared, std::fs::Permissions::from_mode(0o755))
-            .expect("the directory is widened");
+        #[cfg(unix)]
+        std::fs::set_permissions(
+            &prepared,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .expect("the directory is widened");
         let again = entry.prepare(&state).expect("the directory is there");
-        let narrowed = std::fs::metadata(&again)
-            .map(|found| found.permissions().mode() & 0o777)
-            .expect("the directory is there");
+        #[cfg(unix)]
+        {
+            let narrowed = mode_of(&again);
+            assert_eq!(
+                narrowed, 0o700,
+                "a widened directory was left mode {narrowed:o}"
+            );
+        }
         let kept = std::fs::read_to_string(again.join("signed-in"));
         let assigned = entry.assignment(&again).map(|found| found.to_string());
 
         // A symlink where a directory belongs is refused rather than followed.
         let elsewhere = state.join("elsewhere");
         std::fs::create_dir_all(&elsewhere).expect("a directory to point at");
-        std::os::unix::fs::symlink(&elsewhere, SIGN_INS[1].directory(&state))
-            .expect("a symlink in the directory's place");
+        std::fs::create_dir_all(state.join(HARNESS_DIRECTORY)).expect("the harness level");
+        link_directory(&elsewhere, &SIGN_INS[1].directory(&state));
         let through_a_symlink = SIGN_INS[1].prepare(&state).map_err(|error| error.kind());
 
         // And one at the level every harness's directory is kept in.
         let linked_state = state.join("linked-state");
         std::fs::create_dir_all(&linked_state).expect("a second state directory");
-        std::os::unix::fs::symlink(&elsewhere, linked_state.join(HARNESS_DIRECTORY))
-            .expect("a symlink in the harness level's place");
+        link_directory(&elsewhere, &linked_state.join(HARNESS_DIRECTORY));
         let through_a_linked_level = entry.prepare(&linked_state).map_err(|error| error.kind());
         std::fs::remove_dir_all(&state).expect("the state directory is removable");
 
-        assert_eq!(
-            narrowed, 0o700,
-            "a widened directory was left mode {narrowed:o}"
-        );
         assert_eq!(kept.expect("what it held is kept"), "kept");
         assert_eq!(
             through_a_symlink,
@@ -293,5 +317,26 @@ mod tests {
             assigned.expect("an assignment"),
             format!("{CLAUDE_IDENTITY_ENV}={}", again.display())
         );
+    }
+
+    /// A directory's permission bits.
+    #[cfg(unix)]
+    fn mode_of(path: &std::path::Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        std::fs::metadata(path)
+            .expect("the directory is there")
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    /// A symbolic link to a directory, the way this platform makes one.
+    fn link_directory(target: &std::path::Path, link: &std::path::Path) {
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(target, link);
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(target, link);
+        linked.expect("a symlink where a directory belongs");
     }
 }

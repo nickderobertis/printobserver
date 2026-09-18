@@ -10,6 +10,8 @@ carries the value it found there, and the printer is operational.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from repo_checks.expect import absent, contains, equal, truth
 from world import World
@@ -152,10 +154,11 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
 ) -> None:
     """A command that hangs is one adjustable's failure and not the cleanup's end.
 
-    The fourth request of the feedrate — the one the cancel step makes to put it
-    back — never answers. The four adjustables after it are still put back, the
-    print is still cancelled, and what the run reports first is the verification
-    point that failed rather than the cleanup beneath it.
+    The fourth request of the feedrate — the put-back at the ordinary cancel
+    step — never answers. The unconditional cleanup retries that put-back as
+    request five, then still puts back the four adjustables after it and cancels
+    the print. What the run reports first remains the cancel-step failure rather
+    than the cleanup beneath it.
     """
     found = dict(world.substitute.printer.values)
 
@@ -165,6 +168,12 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
         timeout=600,
     )
 
+    relay = json.loads((world.root / "relay-state.json").read_text(encoding="utf-8"))
+    equal(
+        relay["seen"],
+        5,
+        describing="three journey requests, the hung cancel put-back, and its cleanup retry",
+    )
     equal(run.returncode, 1, describing="the exit of a run whose restoration never answered")
     contains(run.stdout, "never ran to completion", describing="what it said about the command")
     for name in ("flowrate", "tool_target:0", "bed_target", "fan"):

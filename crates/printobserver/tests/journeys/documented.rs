@@ -129,8 +129,12 @@ fn repository_asset_paths_stay_inside_their_root() {
     let root = directory.path();
     std::fs::write(root.join("guide.md"), "A guide.\n").expect("write an inline asset");
     validate_repository_path(root, "guide.md");
-    std::os::unix::fs::symlink(root.parent().expect("a parent"), root.join("escape"))
-        .expect("create an escaping symlink");
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(root.parent().expect("a parent"), root.join("escape"));
+    #[cfg(windows)]
+    let linked =
+        std::os::windows::fs::symlink_dir(root.parent().expect("a parent"), root.join("escape"));
+    linked.expect("create an escaping symlink");
     for value in [root.to_str().expect("a UTF-8 path"), "../outside", "escape"] {
         assert!(
             std::panic::catch_unwind(|| validate_repository_path(root, value)).is_err(),

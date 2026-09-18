@@ -33,7 +33,7 @@ pub const CONFIG_FILE: &str = "config.toml";
 pub fn document(root: &Path, octoprint_url: &str) -> toml::Value {
     let text = format!(
         r#"
-state_dir = "{state}"
+state_dir = {state}
 listen = "127.0.0.1:0"
 
 [octoprint]
@@ -66,7 +66,9 @@ agent = ["pause", "set_feedrate_factor", "set_fan_percent"]
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
 "#,
-        state = root.join("state").display(),
+        // A TOML string rather than the path spliced between quotes: a Windows
+        // path's separators are escapes inside a basic string.
+        state = toml::Value::String(root.join("state").display().to_string()),
     );
     toml::from_str(&text).expect("the base configuration is a document")
 }

@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from repo_checks import commands
+from repo_checks import commands, windows_lint
 from repo_checks.checks_integration import integration_tier
 from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
@@ -23,6 +23,7 @@ COMMANDS = (
     "commit-msg",
     "pr-title",
     "coverage",
+    "lint-windows-target",
     "docs-schemas-write",
 )
 
@@ -62,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
             return commands.docs_schemas_write(repo)
         case "coverage":
             return commands.coverage(repo)
+        case "lint-windows-target":
+            return windows_lint.lint_windows_target(repo)
         case "pr-title":
             return commands.pr_title(repo)
         case "commit-msg":

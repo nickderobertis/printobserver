@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -106,6 +107,15 @@ def run(
         timeout=timeout,
         capture_output=capture,
         text=True,
+        # Every program this repository runs reads and writes UTF-8. Left to
+        # the locale, a Windows host encodes with its ANSI code page, and a
+        # formatter handed a generated file carrying an em dash refuses it as
+        # not UTF-8 at all.
+        encoding="utf-8",
+        # A Windows-native program can still write one diagnostic through its
+        # ANSI console code page. Preserve the rest of that diagnostic instead
+        # of losing the whole stream in subprocess's reader thread.
+        errors="replace",
         check=check,
     )
 
@@ -115,6 +125,7 @@ def start(
     *,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    own_group: bool = False,
 ) -> subprocess.Popen[str]:
     """Start a long-running program by absolute path, and answer it.
 
@@ -129,6 +140,12 @@ def start(
         argv: The program and its arguments. Never a shell string.
         cwd: The directory to run in.
         env: The environment to run under, or the caller's when omitted.
+        own_group: On Windows, start it in a console process group of its own,
+            which is what a `CTRL_BREAK_EVENT` is addressed to: that event is
+            how one process asks another to stop there, and sent to a group
+            this caller shares it would stop the caller too. Every other host
+            addresses a signal to the process alone, so there it changes
+            nothing.
 
     Returns:
         The running process, with both of its streams captured.
@@ -152,4 +169,9 @@ def start(
         cwd=cwd,
         env=without_ambient_git(os.environ if env is None else env),
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=(
+            subprocess.CREATE_NEW_PROCESS_GROUP if own_group and sys.platform == "win32" else 0
+        ),
     )

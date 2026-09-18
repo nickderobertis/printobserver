@@ -99,7 +99,14 @@ def key_from(api_key_file: str) -> str:
 
 
 def running(pid: int) -> bool:
-    """Whether a process a journey started is still there."""
+    """Whether a process a journey started is still there.
+
+    Asked of this suite's own tool rather than of the script. On Windows that is
+    `tasklist`, because `os.kill` there ends the process whatever it is sent.
+    """
+    if sys.platform == "win32":
+        listed = shell_run(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"], timeout=60)
+        return f'"{pid}"' in (listed.stdout or "")
     try:
         os.kill(pid, 0)
     except OSError:

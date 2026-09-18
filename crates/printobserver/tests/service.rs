@@ -16,6 +16,11 @@
 //! out over a socket, because the point is what the installed program answers
 //! rather than what a client library does with it.
 
+// Linux alone. This tier installs and drives the systemd unit the end-user
+// install path states, inside a mount namespace; the Windows service is the
+// `windows-service` node's delivery, and its tier with it.
+#![cfg(target_os = "linux")]
+
 #[path = "support/harness.rs"]
 mod harness;
 

@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -180,6 +182,20 @@ def _commands(script: str) -> list[tuple[int, str]]:
     return found
 
 
+def runnable(path: Path) -> bool:
+    """Whether a script can be run as a program on this host.
+
+    A POSIX host says so in the file's mode. Windows keeps no execute bit: the
+    shell a command reaches a script through there — Git's bash — runs a file as
+    a program when it opens with an interpreter line, so that line is what says
+    it can be run.
+    """
+    if sys.platform == "win32":
+        with path.open("rb") as opened:
+            return opened.read(2) == b"#!"
+    return bool(path.stat().st_mode & 0o111)
+
+
 def service_install(repo: Repo) -> list[str]:
     """The installer sits where the section says, ships that unit, and starts nothing."""
     named, findings = _named(repo)
@@ -195,7 +211,7 @@ def service_install(repo: Repo) -> list[str]:
     script = repo.read(named.installer)
 
     findings = []
-    if not installer_path.stat().st_mode & 0o111:
+    if not runnable(installer_path):
         findings.append(
             f"`{named.installer}` is not executable, so the command "
             f"AGENTS.md's `{ip.SECTION_HEADING}` states could not run it"

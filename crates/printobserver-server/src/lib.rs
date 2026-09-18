@@ -47,7 +47,7 @@ pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,
     OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, ServerConfig, SharedSecret, SignInConfig,
-    SupervisorSection,
+    SupervisorSection, plainly_written,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{

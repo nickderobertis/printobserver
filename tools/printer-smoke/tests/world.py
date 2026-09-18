@@ -7,27 +7,51 @@ command — the supervisor and the machine — which is `machine.Machine`.
 
 The serial device is one the test creates: a pseudo-terminal, which is a real
 character device this user can open, so the device precondition is met by a
-device rather than by a fixture pretending to be one.
+device rather than by a fixture pretending to be one. Windows has no
+pseudo-terminal, and there the device is the null device — see
+`a_serial_device`.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
-from repo_checks.shell import run
+from repo_checks import platforms
+from repo_checks.model import Repo
+from repo_checks.shell import run, start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
 RELAY = Path(__file__).resolve().parent / "relay.py"
-PROGRAM = REPO_ROOT / "target" / "debug" / "printobserver"
+
+#: The device a Windows host names for the smoke: its null device, which the
+#: system's device table carries on every Windows machine.
+WINDOWS_DEVICE = "NUL"
+
+
+def built_program() -> Path:
+    """Where the workspace's debug build leaves the `printobserver` program on this host.
+
+    Returns:
+        That path, under the name this host's platform gives the program — which
+        carries `.exe` on Windows.
+    """
+    return REPO_ROOT / "target" / "debug" / platforms.host(Repo(REPO_ROOT)).program
+
+
+PROGRAM = built_program()
 
 #: What the smoke asks a machine for, and how long this harness lets it wait.
 #: A socket answers at once, so a run against one needs no minute of patience.
@@ -97,7 +121,7 @@ class World:
                 "OCTOPRINT_ENV_STATE_DIR": str(self.state_dir),
                 "PRINTOBSERVER_SERVER": self.substitute.url,
                 "PRINTOBSERVER_CREDENTIAL": CREDENTIAL,
-                "PYTHONPATH": ":".join(
+                "PYTHONPATH": os.pathsep.join(
                     str(REPO_ROOT / part)
                     for part in ("tools/repo-checks/src", "tools/octoprint-env")
                 ),
@@ -152,7 +176,7 @@ class World:
         Returns:
             What this changes about the environment the smoke runs under.
         """
-        relay = self.root / "printobserver-relay"
+        relay = self.root / "printobserver-relay.py"
         relay.write_text(RELAY.read_text(encoding="utf-8"), encoding="utf-8")
         relay.chmod(0o755)
         return {
@@ -182,6 +206,20 @@ class World:
         Returns:
             The completed run, including everything it said while cleaning up.
         """
+        environment = self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s})
+        if os.name == "nt":
+            process = start(
+                [sys.executable, str(SMOKE), "--run"],
+                cwd=REPO_ROOT,
+                env=environment,
+                own_group=True,
+            )
+            time.sleep(after)
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+            stdout, stderr = process.communicate(timeout=300)
+            return subprocess.CompletedProcess(
+                process.args, process.returncode, stdout + stderr, ""
+            )
         return run(
             [
                 "timeout",
@@ -199,19 +237,37 @@ class World:
                 "--run",
             ],
             cwd=REPO_ROOT,
-            env=self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s}),
+            env=environment,
             timeout=300,
         )
 
 
-def open_a_serial_device() -> tuple[str, int, int]:
-    """A character device this user can open, and the two handles holding it there.
+@contextmanager
+def a_serial_device() -> Iterator[str]:
+    """A device this user can open, named the way the smoke's variable names one.
 
-    Returns:
-        The device's path, and the two file descriptors that must stay open.
+    On a POSIX host it is a pseudo-terminal, held open for as long as it is used:
+    a real character device, at a path, with a mode this user can read.
+
+    Windows has no pseudo-terminal, and no serial port a runner can conjure
+    without a driver. What the smoke's device precondition asks of a Windows
+    host is that the system's own device table carries the name, and the null
+    device is a device every Windows machine's table carries — so the
+    precondition is still met by a device rather than by a fixture pretending to
+    be one.
+
+    Yields:
+        The device's name.
     """
+    if sys.platform == "win32":
+        yield WINDOWS_DEVICE
+        return
     controller, device = os.openpty()
-    return os.ttyname(device), controller, device
+    try:
+        yield os.ttyname(device)
+    finally:
+        os.close(controller)
+        os.close(device)
 
 
 def write_the_record(state_dir: Path, url: str, device: str, *, mode: str = "serial") -> None:

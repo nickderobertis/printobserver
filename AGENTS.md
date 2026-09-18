@@ -126,7 +126,22 @@ body would run nothing.
 The gate is strict in all five senses: formatting, linting, type checking and
 tests each fail the build on an issue, coverage is measured on the test run, and
 `just coverage` fails the build below the floors `repo-policy.toml` records (95%
-lines, per ecosystem). There is no warnings-only mode.
+lines, per ecosystem). There is no warnings-only mode, and one exemption from the
+Rust floor: `windows-aarch64`, whose toolchain cannot read the profiles its own
+instrumentation writes ([rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123)).
+
+`just lint` lints every crate twice on a Unix host: natively, and once more for
+the Windows target `repo-policy.toml`'s `toolchain.windows_lint` names, so a
+finding in `cfg(windows)` code — dead code to the native pass — is reported
+before a push rather than by a Windows runner at the end of a two-hour round.
+Clippy for another target still runs every dependency's build script, and two
+of them compile C for it, so the pass hands cargo zig as the cross C compiler
+through `repo_checks`'s own `zig-cc.sh` — obtained through `uv` from the `zig` dependency
+group, off the default set so the Windows runners, whose native lint is that
+pass, never fetch it. `just bootstrap` adds the target's standard library on
+every host that is not Windows; where it is absent the pass fails naming the
+`rustup target add`, because a lint that ran over none of the Windows code is
+not one that passed.
 
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
@@ -257,15 +272,25 @@ from.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 [//]: # (END supported-platforms)
 
 The two Linux entries run under systemd, which is what the unit in the end-user
 install path below is written for. `linux-aarch64` is not optional: the machine
 beside the printer is usually a small ARM board, and it is the worst place to
 discover an architecture was never built for.
+
+Rust 1.97.1's bundled `llvm-profdata` cannot read the profiles its native
+`aarch64-pc-windows-msvc` instrumentation writes: it reports both `malformed
+instrumentation profile data: symbol name is empty` and `no profile can be
+merged` ([rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123)).
+That gate still runs every Rust test, build, lint and end-to-end journey
+natively; `repo-policy.toml` exempts only its unreadable Rust coverage report,
+while the 95% floor remains required everywhere profiles are readable. No code
+is compiled only for Windows aarch64. The exemption is removed when that
+toolchain produces readable profiles.
 
 <!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
 The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
@@ -313,29 +338,45 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `macos-x86_64` on `integration` — bring-up owed; the macOS platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `gate` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `install-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `install-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `install-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `integration` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `gate` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifacts` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `install-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `integration` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `install-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `install-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `prove-registry-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `prove-registry-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
+<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
+- `windows-aarch64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
 [//]: # (END platform-exclusions)
 
 An entry is a cell that **does not run yet**, not one nobody intends to run: it
@@ -907,8 +948,12 @@ and it strands the two contexts branch protection already requires.
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
 - `gate (linux-aarch64)`
+- `gate (windows-x86_64)`
+- `gate (windows-aarch64)`
 - `integration (linux-x86_64, ubuntu-24.04)`
 - `integration (linux-aarch64, ubuntu-24.04-arm)`
+- `integration (windows-x86_64, windows-2025)`
+- `integration (windows-aarch64, windows-11-arm)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)

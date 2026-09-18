@@ -255,6 +255,26 @@ class Platform:
     install_path_reason: str = ""
 
     @property
+    def no_route_proof(self) -> str | None:
+        """Why a proof of an end-user install route is skipped here, or `None`.
+
+        Every proof that installs one of the three routes' artifacts and runs
+        what it installed — the artifact tool's route proofs and the
+        repository's route journeys — reads this rather than the platform's
+        name: the `install path` answer is the record a platform's install-
+        route delivery flips, so flipping it runs those proofs there with
+        nobody editing a test, and a platform the list says the install path
+        targets never skips one. The reason carries the record's own, which
+        names the node that removes the skip.
+        """
+        if self.install_path:
+            return None
+        return (
+            f"a proof of an end-user install route, and AGENTS.md's supported-platform "
+            f"list answers `install path: no` for `{self.id}`: {self.install_path_reason}"
+        )
+
+    @property
     def naming(self) -> Naming:
         """What the registries and a release call this platform.
 

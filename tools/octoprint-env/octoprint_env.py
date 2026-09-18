@@ -32,6 +32,7 @@ timeout everywhere else reads as diagnostics without being any.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import http.client
 import json
 import os
@@ -163,7 +164,7 @@ class Instance:
     @property
     def executable(self) -> Path:
         """The `octoprint` program of that environment."""
-        return self.venv / "bin" / "octoprint"
+        return environment_program(self.venv, "octoprint")
 
     @property
     def basedir(self) -> Path:
@@ -206,6 +207,19 @@ class Instance:
         return self.state_dir / "instance.json"
 
 
+def environment_program(venv: Path, name: str) -> Path:
+    """Where a virtual environment keeps one of its programs on this host.
+
+    Windows keeps them under `Scripts`, each with an `.exe` suffix; every other
+    host keeps them under `bin`, with none. Asking for `bin/octoprint` on Windows
+    finds nothing, so an instance installed there would be installed again on
+    every run and never started.
+    """
+    if sys.platform == "win32":
+        return venv / "Scripts" / f"{name}.exe"
+    return venv / "bin" / name
+
+
 def note(message: str) -> None:
     """Say what is happening, on the stream the JSON answer is not on."""
     print(f"octoprint-env: {message}", file=sys.stderr, flush=True)
@@ -223,12 +237,27 @@ def _spawn(
     Every subprocess this script starts goes through here, so `S603` has one
     reviewable site rather than one per caller, and `S607` cannot be
     reintroduced: every `argv[0]` below is an absolute path.
+
+    Windows has no sessions. A process asked to outlive this script is started
+    there in a process group of its own, detached from this script's console and
+    holding none of its standard streams, so the step that started it can end
+    while it keeps running.
     """
+    creationflags = 0
+    stdin: int | None = None
+    if sys.platform == "win32" and start_new_session:
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        stdin = subprocess.DEVNULL
     return subprocess.Popen(  # noqa: S603
         argv,
         text=True,
+        # What `uv` and OctoPrint say is UTF-8; a Windows host's own code page
+        # would refuse some of it.
+        encoding="utf-8",
         stdout=stdout,
         stderr=stderr,
+        stdin=stdin,
+        creationflags=creationflags,
         start_new_session=start_new_session,
     )
 
@@ -291,7 +320,7 @@ def _install_octoprint(instance: Instance) -> None:
             "pip",
             "install",
             "--python",
-            str(instance.venv / "bin" / "python"),
+            str(environment_program(instance.venv, "python")),
             OCTOPRINT_REQUIREMENT,
         ]
     )
@@ -540,7 +569,10 @@ def claim_device(connection: Connection) -> None:
     if connection.is_virtual:
         return
     try:
-        handle = os.open(connection.device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        if sys.platform == "win32":
+            handle = os.open(windows_device_path(connection.device), os.O_RDWR)
+        else:
+            handle = os.open(connection.device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     except OSError as error:
         raise StartupError(
             "serial-device-unopenable", f"{connection.device} could not be opened: {error}"
@@ -548,8 +580,40 @@ def claim_device(connection: Connection) -> None:
     os.close(handle)
 
 
+def windows_device_path(device: str) -> str:
+    r"""The path a Windows serial device is opened by.
+
+    A port is named `COM3`, and only the device namespace opens every one of
+    them: `COM10` and above are not files at all under their bare name. A path
+    already in that namespace is left as it is.
+    """
+    return device if device.startswith("\\\\.\\") else f"\\\\.\\{device}"
+
+
+# `GetExitCodeProcess`'s answer for a process that has not exited, and the least
+# access a handle needs to ask for it.
+STILL_ACTIVE = 259
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
 def alive(pid: int) -> bool:
-    """Whether a process this script started is still running."""
+    """Whether a process this script started is still running.
+
+    On Windows, `os.kill` with any signal ends the process rather than asking
+    after it, so the question is put to the process table instead.
+    """
+    if sys.platform == "win32":
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except OSError:
@@ -569,7 +633,7 @@ def start_server(instance: Instance, port: int) -> int:
         "--port",
         str(port),
     ]
-    if os.geteuid() == 0:
+    if sys.platform != "win32" and os.geteuid() == 0:
         # Not a recommendation. A container that has nothing but root is
         # somewhere this environment has to come up anyway.
         argv.append("--iknowwhatimdoing")
@@ -689,6 +753,9 @@ def stop(instance: Instance) -> dict[str, Any]:
 
 def _terminate(pid: int) -> None:
     """Signal the session the server was started in, and wait for it to go."""
+    if sys.platform == "win32":
+        _terminate_windows_tree(pid)
+        return
     try:
         group = os.getpgid(pid)
     except OSError:
@@ -700,6 +767,27 @@ def _terminate(pid: int) -> None:
             return
         time.sleep(0.5)
     os.killpg(group, signal.SIGKILL)
+
+
+def _terminate_windows_tree(pid: int) -> None:
+    """End a Windows server and every process it started, and wait for it to go.
+
+    The server was started detached, so it has no console an interrupt could be
+    delivered through, and `taskkill` without `/F` asks a window to close, which
+    a server has none of. So the whole tree is ended outright — which is what
+    leaves no process behind.
+
+    Raises:
+        FileNotFoundError: If `taskkill` is not on PATH.
+    """
+    taskkill = shutil.which("taskkill")
+    if taskkill is None:
+        message = "taskkill is not on PATH; it is what ends the server's process tree"
+        raise FileNotFoundError(message)
+    _run([taskkill, "/PID", str(pid), "/T", "/F"], timeout=60)
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline and alive(pid):
+        time.sleep(0.5)
 
 
 # ~~ the commands

@@ -17,8 +17,10 @@ which is the one thing that section says twice must never happen.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 
+import pytest
 from repo_checks.checks_service import ingress_answer_bound, service_install
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
@@ -237,7 +239,32 @@ def test_a_policy_naming_no_installer_is_refused(tree: Callable[[], Tree]) -> No
 def test_an_installer_that_cannot_be_run_is_refused(tree: Callable[[], Tree]) -> None:
     """The install path's own command runs this file, so it has to be runnable."""
     broken = tree()
-    broken.repo.path(INSTALLER).chmod(0o644)
+    if sys.platform == "win32":
+        broken.write(INSTALLER, broken.read(INSTALLER).split("\n", 1)[1])
+    else:
+        broken.repo.path(INSTALLER).chmod(0o644)
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "is not executable")
+
+
+def test_on_windows_the_committed_installer_is_runnable_by_its_interpreter_line(
+    committed: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows keeps no execute bit; the interpreter line Git's bash runs by is the answer."""
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    accepted(service_install(committed))
+
+
+def test_on_windows_an_installer_with_no_interpreter_line_is_refused(
+    tree: Callable[[], Tree], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A script Git's bash would not run as a program is not one the install path can."""
+    broken = tree()
+    broken.write(INSTALLER, broken.read(INSTALLER).split("\n", 1)[1])
+    monkeypatch.setattr(sys, "platform", "win32")
 
     findings = service_install(broken.repo)
 

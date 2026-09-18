@@ -26,8 +26,9 @@ def test_a_program_is_run_by_absolute_path(tmp_path: Path) -> None:
     """The executable is resolved against PATH, which is what fixes S607."""
     result = run(["git", "rev-parse", "--is-inside-work-tree"], cwd=tmp_path)
 
+    ran = Path(result.args[0])
     truth(
-        result.args[0].startswith("/") and result.args[0].endswith("/git"),
+        ran.is_absolute() and ran.stem.lower() == "git",
         describing=f"git to be run by absolute path, not as {result.args[0]!r}",
     )
 

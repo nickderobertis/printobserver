@@ -8,7 +8,8 @@
  */
 
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { delimiter, dirname, resolve } from "node:path";
 
 /** Where the supervisor is, and what a journey acts on. */
 export interface Supervisor {
@@ -22,7 +23,7 @@ export interface Supervisor {
 }
 
 /** The repository this package is in. */
-const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
  * Only the real-server setup hook's budget. Three warmed runs measured 2660,
@@ -32,14 +33,20 @@ const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../.."
  */
 export const SETUP_TIMEOUT_MS = 10_000;
 
-/** The packages this repository's own tools live in, read from the justfile. */
+/**
+ * The packages this repository's own tools live in, read from the justfile.
+ *
+ * Joined with this host's own separator, as the justfile's export joins them:
+ * a Windows interpreter reads a `:`-joined search path as one entry.
+ */
 function pythonPath(): string {
   for (const line of readFileSync(`${REPO_ROOT}/justfile`, "utf8").split("\n")) {
-    if (line.startsWith("export PYTHONPATH :=")) {
-      return line.split(":=")[1]?.trim().replaceAll('"', "") ?? "";
+    if (line.startsWith("TOOL_PACKAGES :=")) {
+      const listed = line.split(":=")[1]?.trim().replaceAll('"', "") ?? "";
+      return listed.split(":").join(delimiter);
     }
   }
-  throw new Error("the justfile exports no PYTHONPATH, and this tier's world lives on it");
+  throw new Error("the justfile lists no TOOL_PACKAGES, and this tier's world lives on it");
 }
 
 /** A supervisor held up for as long as this is alive. */

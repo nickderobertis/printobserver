@@ -21,13 +21,25 @@ INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
 DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-# The integration job's own copy of that entry: the one that is followed by a
-# checkout taking no `with:` block, which is what tells it apart from the gate's.
-INTEGRATION_AARCH64 = AARCH64 + (
-    "    runs-on: ${{ matrix.platform.runner }}\n"
-    "    steps:\n"
-    "      - uses: actions/checkout@v5\n"
-    "      - uses: extractions/setup-just@v3\n"
+# The two Windows cells, which follow the Linux ones in every matrix carrying them.
+WINDOWS = (
+    "          - id: windows-x86_64\n            runner: windows-2025\n"
+    "          - id: windows-aarch64\n            runner: windows-11-arm\n"
+)
+# The integration job's own copy of that entry: the one whose checkout takes no
+# `with:` block and is followed directly by the Rust toolchain, which is what
+# tells it apart from the gate's.
+INTEGRATION_AARCH64 = (
+    AARCH64
+    + WINDOWS
+    + "    runs-on: ${{ matrix.platform.runner }}\n"
+    + "    # Git's own bash on the Windows runners rather than PowerShell, so that\n"
+    + "    # every cell runs its steps, and `just` finds the bash its recipes name, the\n"
+    + "    # same way.\n"
+    + "    defaults:\n      run:\n        shell: bash\n"
+    + "    steps:\n"
+    + "      - uses: actions/checkout@v5\n"
+    + "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
 )
 # The pypi install job's own copy of that entry: the one followed by a step that
 # sets up Python, which none of the registry proofs ahead of it in that file does.
@@ -46,6 +58,7 @@ GATE_MATRIX = (
             runner: ubuntu-24.04
 """
     + AARCH64
+    + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"

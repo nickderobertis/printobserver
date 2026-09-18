@@ -96,6 +96,10 @@ async fn an_address_already_taken_is_refused_naming_it() {
 }
 
 /// A state directory that will not hold a store is refused naming the store.
+///
+/// Made unwritable through its mode, which Unix alone has; the journey after it
+/// refuses the same start on every platform.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_state_directory_that_will_not_hold_a_store_is_refused() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -116,6 +120,31 @@ async fn a_state_directory_that_will_not_hold_a_store_is_refused() {
 
     let Err(refusal) = started else {
         panic!("a server came up over a state directory that cannot hold a store");
+    };
+    assert!(
+        matches!(refusal, StartError::Store { .. }),
+        "the refusal is not about the store: {refusal}"
+    );
+}
+
+/// A state directory with a directory where its database belongs cannot hold a
+/// store either, and is refused naming the store — on every platform, modes or
+/// none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_state_directory_whose_database_path_is_a_directory_is_refused() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    std::fs::create_dir_all(
+        root.path()
+            .join("state")
+            .join(printobserver_store_sqlite::DATABASE_FILE_NAME),
+    )
+    .expect("a directory where the database belongs");
+
+    let started = started_with(root.path(), &base_url(&answering), |_| {}).await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up over a state directory whose database is a directory");
     };
     assert!(
         matches!(refusal, StartError::Store { .. }),
@@ -349,6 +378,10 @@ async fn a_template_that_is_not_a_template_refuses_the_start() {
 }
 
 /// An assets directory nothing can be written into refuses the start.
+///
+/// Made unwritable through its mode, which Unix alone has; the journey after it
+/// refuses the same start on every platform.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn an_assets_directory_nothing_can_be_written_into_refuses_the_start() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -374,6 +407,34 @@ async fn an_assets_directory_nothing_can_be_written_into_refuses_the_start() {
     assert!(
         matches!(refusal, StartError::State { .. }),
         "the refusal is not about the state directory: {refusal}"
+    );
+}
+
+/// An assets path holding a file refuses the start naming it — on every
+/// platform, modes or none.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_assets_path_holding_a_file_refuses_the_start() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let state = root.path().join("state");
+    std::fs::create_dir_all(&state).expect("a state directory");
+    let assets = state.join(printobserver_server::ASSETS_DIRECTORY);
+    std::fs::write(&assets, "not a directory").expect("a file where the assets belong");
+
+    let started = started_with(root.path(), &base_url(&answering), |_| {}).await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up with a file where the agent's own assets belong");
+    };
+    assert!(
+        matches!(refusal, StartError::State { .. }),
+        "the refusal is not about the state directory: {refusal}"
+    );
+    assert!(
+        refusal
+            .to_string()
+            .contains(printobserver_server::ASSETS_DIRECTORY),
+        "the refusal does not name the assets path: {refusal}"
     );
 }
 
