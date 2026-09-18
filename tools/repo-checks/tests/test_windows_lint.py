@@ -63,7 +63,7 @@ def recorded(record: Path) -> list[dict]:
 
 @pytest.fixture
 def stand_ins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A `PATH` whose `rustup` carries the target and whose `uv` and `cargo` record."""
+    """A `PATH` whose `rustup` carries the target, whose `uv` names a zig, whose `cargo` records."""
     programs = tmp_path / "bin"
     programs.mkdir()
     program(
@@ -71,6 +71,7 @@ def stand_ins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "rustup",
         recording(tmp_path / "rustup", stdout=f"{TARGET}\nx86_64-unknown-linux-gnu\n"),
     )
+    program(tmp_path, "zig", "raise SystemExit(0)\n")
     program(programs, "uv", recording(tmp_path / "uv", stdout=f"{tmp_path / 'zig'}\n"))
     program(programs, "cargo", recording(tmp_path / "cargo"))
     monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
@@ -143,6 +144,18 @@ def test_a_finding_for_the_windows_target_fails_the_pass_naming_the_crate(
     contains(error, f"printobserver-oneharness: clippy for {TARGET} reported findings")
 
 
+def test_a_zig_the_dependency_group_does_not_resolve_to_is_refused_by_name(
+    stand_ins: Path, committed: Repo
+) -> None:
+    """What `uv` answers has to be a program before cargo is pointed at it."""
+    program(stand_ins / "bin", "uv", f"print({str(stand_ins / 'nowhere' / 'zig')!r})\n")
+
+    with pytest.raises(FileNotFoundError, match="not a zig program"):
+        windows_lint.lint_windows_target(committed, host="Linux")
+
+    equal(recorded(stand_ins / "cargo"), [], describing="no clippy run without a zig")
+
+
 def test_a_windows_host_runs_nothing_because_its_native_lint_is_the_pass(
     stand_ins: Path, committed: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -153,13 +166,13 @@ def test_a_windows_host_runs_nothing_because_its_native_lint_is_the_pass(
     contains(capsys.readouterr().out, "the native lint tier is the Windows-target pass")
 
 
-def test_a_host_without_the_target_says_so_and_names_what_installs_it(
+def test_a_host_without_the_target_fails_naming_what_installs_it(
     stand_ins: Path, committed: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Skipped rather than failed, and never silently: the missing target is named."""
+    """A lint that ran over none of the Windows code did not pass; the missing target is named."""
     program(stand_ins / "bin", "rustup", "print('x86_64-unknown-linux-gnu')\n")
 
-    equal(windows_lint.lint_windows_target(committed, host="Linux"), 0)
+    equal(windows_lint.lint_windows_target(committed, host="Linux"), 1)
 
     equal(recorded(stand_ins / "cargo"), [], describing="no clippy run without the target")
     error = capsys.readouterr().err

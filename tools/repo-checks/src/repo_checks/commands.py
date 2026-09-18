@@ -6,9 +6,9 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
 from repo_checks.platforms import PlatformError, descriptor
@@ -227,8 +227,49 @@ def _total_of(report: str, column: int) -> str:
     return "unknown"
 
 
-#: The `gate.coverage.exemptions.<platform>` fields a per-target exemption states.
-EXEMPTION_FIELDS = ("target", "toolchain", "diagnostics", "reference")
+@dataclass(frozen=True, slots=True)
+class ExemptionEntry:
+    """One `gate.coverage.exemptions.<platform>` table, narrowed to its four fields."""
+
+    #: The Rust target of the platform the entry is keyed by.
+    target: str
+    #: The toolchain release whose profile reader refuses.
+    toolchain: str
+    #: Every line that refusal prints.
+    diagnostics: tuple[str, ...]
+    #: The upstream issue describing the refusal on that target.
+    reference: str
+
+    @staticmethod
+    def read(declared: Mapping[str, object], where: str) -> ExemptionEntry | list[str]:
+        """The entry, or every sentence naming what the table lacks."""
+        refusals = [
+            f"{where} states no `{field}`"
+            for field in ("target", "toolchain", "diagnostics", "reference")
+            if not declared.get(field)
+        ]
+        for field in ("target", "toolchain", "reference"):
+            value = declared.get(field)
+            if value and not isinstance(value, str):
+                refusals.append(f"{where} states `{field}` as {value!r} rather than a string")
+        diagnostics = declared.get("diagnostics")
+        lines = (
+            [d for d in diagnostics if isinstance(d, str) and d]
+            if isinstance(diagnostics, list)
+            else []
+        )
+        if diagnostics and (not isinstance(diagnostics, list) or len(lines) != len(diagnostics)):
+            refusals.append(
+                f"{where} states `diagnostics` as {diagnostics!r} rather than a list of strings"
+            )
+        if refusals:
+            return refusals
+        return ExemptionEntry(
+            target=str(declared["target"]),
+            toolchain=str(declared["toolchain"]),
+            diagnostics=tuple(lines),
+            reference=str(declared["reference"]),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +290,7 @@ class Exemption:
         return self.outcome is not None
 
 
-def _exempt(repo: Repo, floors: dict[str, Any], stderr: str) -> Exemption:
+def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
     """Read this platform's coverage exemption against the policy and the report.
 
     An exemption is an entry under `gate.coverage.exemptions` keyed by the
@@ -262,46 +303,31 @@ def _exempt(repo: Repo, floors: dict[str, Any], stderr: str) -> Exemption:
     """
     platform_id = os.environ.get("PRINTOBSERVER_PLATFORM", "")
     exemptions = floors.get("exemptions")
-    exemption = exemptions.get(platform_id) if isinstance(exemptions, dict) else None
-    if not isinstance(exemption, dict):
+    declared = exemptions.get(platform_id) if isinstance(exemptions, dict) else None
+    if not isinstance(declared, dict):
         return Exemption()
     where = f"the coverage exemption for `{platform_id}`"
-    refusals = [
-        f"{where} states no `{field}`" for field in EXEMPTION_FIELDS if not exemption.get(field)
-    ]
-    for field in ("target", "toolchain", "reference"):
-        if exemption.get(field) and not isinstance(exemption[field], str):
-            refusals.append(
-                f"{where} states `{field}` as {exemption[field]!r} rather than a string"
-            )
-    diagnostics = exemption.get("diagnostics")
-    if diagnostics and not (
-        isinstance(diagnostics, list) and all(isinstance(d, str) and d for d in diagnostics)
-    ):
+    entry = ExemptionEntry.read(declared, where)
+    if isinstance(entry, list):
+        return Exemption(refusals=tuple(entry))
+    refusals: list[str] = []
+    if not entry.reference.startswith("https://github.com/"):
         refusals.append(
-            f"{where} states `diagnostics` as {diagnostics!r} rather than a list of strings"
-        )
-    if refusals:
-        return Exemption(refusals=tuple(refusals))
-    reference = str(exemption["reference"])
-    if not reference.startswith("https://github.com/"):
-        refusals.append(
-            f"{where} names `{reference}` as its reference, and an exemption is held to an "
-            f"upstream issue on GitHub"
+            f"{where} names `{entry.reference}` as its reference, and an exemption is held to "
+            f"an upstream issue on GitHub"
         )
     try:
         target = descriptor(repo, platform_id).target
     except PlatformError:
         refusals.append(f"{where} names a platform AGENTS.md's supported-platform list does not")
         return Exemption(refusals=tuple(refusals))
-    if exemption["target"] != target:
+    if entry.target != target:
         refusals.append(
-            f"{where} names target `{exemption['target']}`, and that platform's Rust target "
-            f"is `{target}`"
+            f"{where} names target `{entry.target}`, and that platform's Rust target is `{target}`"
         )
     if refusals:
         return Exemption(refusals=tuple(refusals))
-    missing = [d for d in diagnostics if d not in stderr]
+    missing = [d for d in entry.diagnostics if d not in stderr]
     if missing:
         return Exemption(
             refusals=(
@@ -309,12 +335,8 @@ def _exempt(repo: Repo, floors: dict[str, Any], stderr: str) -> Exemption:
                 f"floor was missed rather than unreadable",
             )
         )
-    return Exemption(
-        outcome=(
-            f"no readable profile on {target}, exempt by policy: "
-            f"{exemption['toolchain']}; {reference}"
-        )
-    )
+    outcome = f"no readable profile on {target}, exempt by policy: {entry.toolchain}; "
+    return Exemption(outcome=outcome + entry.reference)
 
 
 def coverage(repo: Repo) -> int:

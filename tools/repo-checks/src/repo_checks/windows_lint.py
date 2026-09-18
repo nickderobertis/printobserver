@@ -100,8 +100,13 @@ def install_target(repo: Repo, *, host: str | None = None) -> int:
     return run(["rustup", "target", "add", declared.target]).returncode
 
 
-def _zig(repo: Repo) -> str:
-    """The zig program the `zig` dependency group carries, resolved once."""
+def _zig(repo: Repo) -> Path:
+    """The zig program the `zig` dependency group carries, resolved once.
+
+    Raises:
+        FileNotFoundError: If what `uv` answered is not an executable file,
+            which is a dependency group that did not resolve to the program.
+    """
     located = run(
         [
             "uv",
@@ -116,7 +121,11 @@ def _zig(repo: Repo) -> str:
         cwd=repo.root,
         check=True,
     )
-    return located.stdout.strip()
+    zig = Path(located.stdout.strip())
+    if not located.stdout.strip() or not zig.is_file() or not os.access(zig, os.X_OK):
+        msg = f"the `zig` dependency group answered {located.stdout.strip()!r}, not a zig program"
+        raise FileNotFoundError(msg)
+    return zig
 
 
 def crate_lints(repo: Repo) -> list[CrateLint]:
@@ -125,8 +134,11 @@ def crate_lints(repo: Repo) -> list[CrateLint]:
     for project in repo.project_paths:
         if project.parent.parent != repo.path("crates"):
             continue
-        targets = json.loads(project.read_text(encoding="utf-8")).get("targets", {})
-        argv = shlex.split(str(targets.get("lint", {}).get("command", "")))
+        declared = json.loads(project.read_text(encoding="utf-8"))
+        targets = declared.get("targets") if isinstance(declared, dict) else None
+        lint = targets.get("lint") if isinstance(targets, dict) else None
+        command = lint.get("command") if isinstance(lint, dict) else None
+        argv = shlex.split(command) if isinstance(command, str) else []
         if argv[:2] == ["cargo", "clippy"]:
             lints.append(CrateLint(project.parent.name, argv))
     return lints
@@ -136,8 +148,10 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
     """Run every crate's own `lint` target for the Windows target.
 
     On a Windows host the native lint tier is this pass, so nothing runs. On a
-    Unix host without the target's standard library the pass says so and skips,
-    naming what installs it. Otherwise each crate's committed clippy command is
+    Unix host without the target's standard library the pass fails naming what
+    installs it — the gate has no warnings-only mode, and a lint that ran over
+    none of the tree's Windows code is not one that passed. Otherwise each
+    crate's committed clippy command is
     run once more with `--target` inserted before its `--`, so what is linted
     for Windows is exactly what is linted natively, and every crate that
     reports a finding fails the pass with that finding on its own output.
@@ -160,9 +174,9 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
             f"was not linted here. `rustup target add {target}` (what `just bootstrap` runs).",
             file=sys.stderr,
         )
-        return 0
+        return 1
     environment = dict(os.environ)
-    environment[ZIG_ENV] = _zig(repo)
+    environment[ZIG_ENV] = str(_zig(repo))
     environment[ZIG_TARGET_ENV] = declared.zig_target
     suffix = target.replace("-", "_")
     environment[f"CC_{suffix}"] = str(COMPILER)

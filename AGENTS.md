@@ -127,8 +127,8 @@ The gate is strict in all five senses: formatting, linting, type checking and
 tests each fail the build on an issue, coverage is measured on the test run, and
 `just coverage` fails the build below the floors `repo-policy.toml` records (95%
 lines, per ecosystem). There is no warnings-only mode, and one exemption from the
-Rust floor: `windows-aarch64`'s unreadable profiles, stated with their upstream
-reference under "Supported platforms".
+Rust floor: `windows-aarch64`, whose toolchain cannot read the profiles its own
+instrumentation writes ([rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123)).
 
 `just lint` lints every crate twice on a Unix host: natively, and once more for
 the Windows target `repo-policy.toml`'s `toolchain.windows_lint` names, so a
@@ -139,9 +139,9 @@ of them compile C for it, so the pass hands cargo zig as the cross C compiler
 through `repo_checks`'s own `zig-cc.sh` — obtained through `uv` from the `zig` dependency
 group, off the default set so the Windows runners, whose native lint is that
 pass, never fetch it. `just bootstrap` adds the target's standard library on
-every host that is not Windows; where it is absent the pass says so and skips.
-`tests/repo-e2e/tests/test_windows_lint_journey.py` plants a Windows-only
-finding in a copy and proves the recipe fails on it.
+every host that is not Windows; where it is absent the pass fails naming the
+`rustup target add`, because a lint that ran over none of the Windows code is
+not one that passed.
 
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
