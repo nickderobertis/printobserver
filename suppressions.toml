@@ -890,8 +890,6 @@ file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = "BOUNDARY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
-# --- the Windows service --------------------------------------------------------
-
 [[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/src/windows_service.rs"
@@ -922,8 +920,6 @@ file = "scripts/install-service.ps1"
 site = "if ([string]::IsNullOrEmpty($Root))"
 reason = "With no `-Root` the installer writes into the host's own `C:\\Program Files` and `C:\\ProgramData` and registers the service naming them, which on a runner is the machine's own system directories rather than anything a tier can take away again. What that branch returns is the three paths as declared at the head of the script, which `crates/printobserver/src/locations.rs` holds to the program's own copy; every journey takes the same function with the root prefixed, so the one line untaken is `return $Path`."
 
-# --- the Windows installer, driven with the manager stood in for ---------------
-#
 # `tests/repo-e2e/tests/test_windows_service_installer_journey.py` runs the
 # committed PowerShell installer on every platform, and only a Windows host has
 # a service control manager for it to register with. What stands the manager in
@@ -966,8 +962,6 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
 site = "environment[REGISTERED] = \"1\""
 reason = "On Windows a service comes to be registered by the first install, and the second install finds it so through the manager; here the manager is the stand-in, and this is how it is told to answer the second install the way the real one would. The installer itself sees only `sc.exe query` succeeding, exactly as it does on a machine that already has the service."
-
-# --- the service-manager journey -----------------------------------------------
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
