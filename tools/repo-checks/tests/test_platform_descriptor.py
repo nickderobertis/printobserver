@@ -264,6 +264,44 @@ def test_the_install_path_answer_selects_the_platforms_every_install_tier_carrie
     )
 
 
+def test_a_route_proof_is_skipped_exactly_where_the_install_path_answers_no(
+    committed: Repo,
+) -> None:
+    """The skip is read off the record, never off a platform's name, and names the node.
+
+    Over the committed table as it stands: a platform the install path targets
+    skips nothing, and one it does not skips with the record's own reason —
+    which is where the node that flips the answer is named, so a reader of the
+    skip is told what removes it: `windows-install-routes` for the Windows cells.
+    """
+    for platform in supported(committed):
+        skip = platform.no_route_proof
+        if platform.install_path:
+            equal(skip, None, describing=f"a route proof on `{platform.id}`")
+            continue
+        truth(skip, describing=f"a route proof on `{platform.id}` to be skipped")
+        contains(skip or "", f"`{platform.id}`", describing="the platform the skip names")
+        contains(skip or "", platform.install_path_reason, describing="the record's reason")
+        if platform.id.startswith("windows-"):
+            contains(skip or "", "`windows-install-routes` node", describing="what removes it")
+
+
+def test_flipping_the_install_path_answer_runs_the_route_proofs_with_no_test_edited(
+    tree: Callable[[], Tree],
+) -> None:
+    """The Windows entries answered `yes` skip nothing; answered `no`, they skip naming it."""
+    windows = tuple(row for row in TABLE if row.id.startswith("windows-"))
+
+    delivered = supporting(tree(), *windows)
+    for row in windows:
+        equal(descriptor(delivered, row.id).no_route_proof, None, describing=f"`{row.id}`")
+
+    owed = supporting(tree(), *windows, install_path="no — the `later` node delivers the routes")
+    for row in windows:
+        skip = descriptor(owed, row.id).no_route_proof
+        contains(skip or "", "the `later` node delivers the routes", describing=f"`{row.id}`")
+
+
 def test_the_host_this_dispatch_runs_on_is_answered(committed: Repo) -> None:
     """The real host, through the real module, on the tree as it stands."""
     found = host(committed)

@@ -12,16 +12,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 HERE = platforms.host(Repo(REPO_ROOT))
 
 #: A proof of an end-user install route, run where the install path targets this
-#: host's platform and skipped where it does not.
-#:
-#: Keyed off the platform's own `install path` answer rather than off which
-#: platform this is: that answer is the record a platform's install-route
-#: delivery flips, so flipping it runs these proofs there with nobody editing a
-#: test, and a platform the list says the install path targets never skips one.
-ROUTE_PROOF = pytest.mark.skipif(
-    not HERE.install_path,
-    reason=(
-        f"a proof of an end-user install route, and AGENTS.md's supported-platform list "
-        f"answers `install path: no` for `{HERE.id}`: {HERE.install_path_reason}"
-    ),
-)
+#: host's platform and skipped where it does not, for the reason the platform's
+#: own descriptor gives.
+ROUTE_PROOF = pytest.mark.skipif(HERE.no_route_proof is not None, reason=HERE.no_route_proof or "")
