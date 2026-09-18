@@ -44,6 +44,10 @@ INSTALL_TIMEOUT_SECONDS = 900
 #: Every program a Rust toolchain puts on a path.
 TOOLCHAIN = ("cargo", "rustc", "rustup")
 
+#: What the JavaScript registry's launcher reaches for: its first line is
+#: `#!/usr/bin/env node`, so the program runs only where `node` is on the path.
+NODE_RUNTIME = ("node",)
+
 #: How a route's own proof reports what the path it was installed under carried,
 #: and what that report says where it carried nothing. Every route ships a
 #: program already built for the platform, so `none` is the answer on every
@@ -68,6 +72,11 @@ class Installed:
     program: Path | None
     #: What its own consumer runs to reach it, for a client.
     said: str
+    #: The programs that route's own program reaches for on the path it is run
+    #: under — the runtime a launcher's `#!/usr/bin/env` line names — which the
+    #: proof keeps when it takes the toolchain off. Empty for a program that
+    #: runs on its own.
+    runtime: tuple[str, ...] = ()
 
 
 def without_rust(
@@ -271,10 +280,12 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
             *tarballs,
         ],
         cwd=into,
-        env=without_rust(preserve=("node",), preserved_at=environment / ".path"),
+        env=without_rust(preserve=NODE_RUNTIME, preserved_at=environment / ".path"),
         describing="installing the launcher and the program beside it",
     )
-    return Installed(built.target, environment, environment / "bin" / PROGRAM, "")
+    return Installed(
+        built.target, environment, environment / "bin" / PROGRAM, "", runtime=NODE_RUNTIME
+    )
 
 
 def script_route(repo: Repo, built: Built, into: Path) -> Installed:
@@ -384,7 +395,13 @@ def _prove_route(repo: Repo, taken: Installed) -> str:
     if installed is None or not installed.exists():
         msg = f"{taken.target} put no {PROGRAM} on the path it was given"
         raise InstallError(msg)
-    environment = without_rust()
+    # The runtime the program reaches for is kept where the toolchain is taken
+    # off: on the hosted macOS images `node` shares its directory with `cargo`,
+    # and a proof that took that directory off would fail the launcher for a
+    # runtime the machine beside the printer has.
+    environment = without_rust(
+        preserve=taken.runtime, preserved_at=taken.environment / ".path" if taken.runtime else None
+    )
     version = ran(
         [str(installed), "--version"],
         cwd=taken.environment,

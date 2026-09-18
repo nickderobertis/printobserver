@@ -75,7 +75,13 @@ def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
     into: Callable[[str], Path],
     version: str,
 ) -> None:
-    """The real npm route preserves Node before removing a shared tool directory."""
+    """The real npm route preserves Node before removing a shared tool directory.
+
+    The shared directory is the **only** place Node is on the path, as on the
+    hosted macOS images: a host that kept a second Node elsewhere would let the
+    proof run the installed launcher after the shared directory was taken off,
+    and say nothing about a host that does not.
+    """
     shared = tmp_path / "hosted-tool-bin"
     shared.mkdir()
     node = shutil.which("node")
@@ -84,7 +90,12 @@ def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
         pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
     (shared / "node").symlink_to(node)
     (shared / "cargo").symlink_to(cargo)
-    monkeypatch.setenv("PATH", os.pathsep.join((str(shared), os.environ["PATH"])))
+    without_node = [
+        directory
+        for directory in os.environ["PATH"].split(os.pathsep)
+        if directory and not Path(directory, "node").exists()
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *without_node]))
 
     said = prove(repo, "npm:printobserver-cli", into("runner-shaped-npm"), program)
 
