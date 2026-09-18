@@ -321,6 +321,10 @@ may_not_invoke = [
 may_not_set = ["start= auto", "start= delayed-auto", "start= boot", "start= system"]
 starts_at_boot = "-StartupType Automatic"
 restarts_after_crash = "actions= restart"
+# Where the program carries its own copy of the service's name, for the manager
+# to dispatch by: held to the name the pair states, like the installer's.
+program_source = "crates/printobserver/src/windows_service.rs"
+program_constant = "SERVICE_NAME"
 
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable

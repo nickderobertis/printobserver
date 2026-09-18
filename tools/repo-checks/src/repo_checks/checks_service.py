@@ -48,8 +48,8 @@ from repo_checks.platforms import ServiceManager, supported
 # service, per manager: `sudo systemctl enable --now <unit>` on systemd, whose
 # last word is the unit; `Set-Service -Name <service> ...` on Windows.
 ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
-    ServiceManager.SYSTEMD: re.compile(r"\bsystemctl\s+enable\s+--now\s+(?P<unit>\S+)\s*$"),
-    ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<unit>\S+)\b"),
+    ServiceManager.SYSTEMD: re.compile(r"\bsystemctl\s+enable\s+--now\s+(?P<service>\S+)\s*$"),
+    ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<service>\S+)\b"),
 }
 
 # What each manager's activation command has to look like, quoted back at a
@@ -63,14 +63,17 @@ ACTIVATION_SHAPES: dict[str, str] = {
 # in the shell installer, `$ServiceName = '...'` in the PowerShell one.
 NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
     ServiceManager.SYSTEMD: (
-        re.compile(r'^UNIT_NAME="(?P<unit>[^"]+)"\s*$', re.MULTILINE),
+        re.compile(r'^UNIT_NAME="(?P<service>[^"]+)"\s*$', re.MULTILINE),
         'UNIT_NAME="..."',
     ),
     ServiceManager.WINDOWS_SERVICE: (
-        re.compile(r"^\$ServiceName\s*=\s*'(?P<unit>[^']+)'\s*$", re.MULTILINE),
+        re.compile(r"^\$ServiceName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
         "$ServiceName = '...'",
     ),
 }
+
+# `pub const NAME: &str = "...";` in a Rust source.
+STRING_CONSTANT = re.compile(r'pub const (?P<name>[A-Z_]+): &str = "(?P<value>[^"]*)"\s*;')
 
 # `pub const NAME: u64 = 1_000;` in a Rust source.
 CONSTANT = re.compile(
@@ -104,7 +107,7 @@ class Named:
     """What the install-path section names one manager's service by."""
 
     manager: str
-    unit: str
+    service: str
     installer: str
     activation: str
 
@@ -119,6 +122,7 @@ class Rules:
     starts_at_boot: str
     restarts_after_crash: str
     registration_directory: str | None
+    program_name: tuple[str, str] | None
 
 
 def _rules(repo: Repo, manager: str) -> Rules:
@@ -140,6 +144,10 @@ def _rules(repo: Repo, manager: str) -> Rules:
     named = policy_strings(table, ("installer", "starts_at_boot", "restarts_after_crash"), where)
     may_not_set = table.get("may_not_set")
     directory = table.get("registration_directory")
+    program: tuple[str, str] | None = None
+    if "program_source" in table or "program_constant" in table:
+        declared = policy_strings(table, ("program_source", "program_constant"), where)
+        program = (declared["program_source"], declared["program_constant"])
     return Rules(
         named["installer"],
         policy_string_list(table, "may_not_invoke", where),
@@ -149,6 +157,7 @@ def _rules(repo: Repo, manager: str) -> Rules:
         policy_strings(table, ("registration_directory",), where)["registration_directory"]
         if directory is not None
         else None,
+        program,
     )
 
 
@@ -191,12 +200,12 @@ def _named(manager: str, pair: tuple[str, ...], installer: str) -> tuple[Named |
             f"`{manager}` service manager, and nothing here knows how that manager's "
             f"activation command names a service"
         ]
-    unit = ""
+    service = ""
     for command in pair:
         match = activation.search(command)
         if match:
-            unit = match["unit"]
-    if not unit:
+            service = match["service"]
+    if not service:
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{ACTIVATION_SHAPES[manager]}` "
             f"command under `{manager}`, so nothing here names the service this repository "
@@ -209,7 +218,7 @@ def _named(manager: str, pair: tuple[str, ...], installer: str) -> tuple[Named |
         )
     if findings:
         return None, findings
-    return Named(manager, unit, installer, pair[-1]), []
+    return Named(manager, service, installer, pair[-1]), []
 
 
 def _executes(script: str, program: str) -> list[int]:
@@ -383,7 +392,7 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
     if declaration is None:
         findings.append(
             f"nothing here knows how a `{manager}` installer declares the service it "
-            f"registers, so `{named.installer}` cannot be held to `{named.unit}`"
+            f"registers, so `{named.installer}` cannot be held to `{named.service}`"
         )
     else:
         pattern, shape = declaration
@@ -393,11 +402,14 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
                 f"`{named.installer}` carries no `{shape}` line, so nothing here can be "
                 f"held to the service the install path names"
             )
-        elif declared["unit"] != named.unit:
+        elif declared["service"] != named.service:
             findings.append(
-                f"`{named.installer}` installs the service `{declared['unit']}`, and "
-                f"AGENTS.md's `{ip.SECTION_HEADING}` states `{named.unit}` under `{manager}`"
+                f"`{named.installer}` installs the service `{declared['service']}`, and "
+                f"AGENTS.md's `{ip.SECTION_HEADING}` states `{named.service}` under `{manager}`"
             )
+
+    if rules.program_name is not None:
+        findings.extend(_program_name_findings(repo, named, rules.program_name))
 
     if rules.registration_directory is not None and rules.registration_directory not in script:
         findings.append(
@@ -436,6 +448,34 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
 
     findings.extend(_granted_findings(repo, named.installer, script))
     return findings
+
+
+def _program_name_findings(repo: Repo, named: Named, program: tuple[str, str]) -> list[str]:
+    """The program answers the manager under the name the install path states.
+
+    A service manager that dispatches by name hands the process the name it was
+    registered under, so the program carries its own copy of that name — and
+    that copy is held here to the one the manager's pair states.
+    """
+    source, constant = program
+    if not repo.exists(source):
+        return [
+            f"`{source}` is absent: it is where the program names the `{named.manager}` service"
+        ]
+    carried = {
+        match["name"]: match["value"] for match in STRING_CONSTANT.finditer(repo.read(source))
+    }.get(constant)
+    if carried is None:
+        return [
+            f"`{source}` declares no `{constant}`, so nothing holds the name the program "
+            f"answers the `{named.manager}` manager under to the install path"
+        ]
+    if carried != named.service:
+        return [
+            f"`{source}`'s `{constant}` is `{carried}`, and AGENTS.md's "
+            f"`{ip.SECTION_HEADING}` states `{named.service}` under `{named.manager}`"
+        ]
+    return []
 
 
 def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:

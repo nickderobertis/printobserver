@@ -45,7 +45,7 @@ use crate::service::{self, StatusReport, StatusReporter};
 /// ignores this name, so an installer may register the service under another
 /// — a tier does, to keep several apart on one machine — and this program still
 /// answers as that service. It cannot be empty, and it is the name the install
-/// path states.
+/// path states: `just check-repo`'s `service-install` holds it to that name.
 pub const SERVICE_NAME: &str = "printobserver";
 
 /// The configuration path the `server` invocation was given, for

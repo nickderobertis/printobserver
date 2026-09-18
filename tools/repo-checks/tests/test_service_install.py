@@ -426,6 +426,55 @@ def test_the_windows_installer_naming_no_service_is_refused(tree: Callable[[], T
     refused(findings, "carries no `$ServiceName = '...'` line")
 
 
+PROGRAM = "crates/printobserver/src/windows_service.rs"
+PROGRAM_NAME = 'pub const SERVICE_NAME: &str = "printobserver";'
+
+
+def test_a_program_answering_the_manager_under_another_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The name the program dispatches under is the one the install path states."""
+    broken = tree()
+    broken.write(
+        PROGRAM,
+        broken.read(PROGRAM).replace(PROGRAM_NAME, 'pub const SERVICE_NAME: &str = "observer";'),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "`SERVICE_NAME` is `observer`")
+
+
+def test_a_program_carrying_no_service_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """A renamed constant leaves nothing held to the install path."""
+    broken = tree()
+    broken.write(
+        PROGRAM,
+        broken.read(PROGRAM).replace(
+            PROGRAM_NAME, 'pub const REGISTERED_AS: &str = "printobserver";'
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "declares no `SERVICE_NAME`")
+
+
+def test_a_policy_naming_an_absent_program_source_is_refused(tree: Callable[[], Tree]) -> None:
+    """A source that moved is refused rather than read as agreeing."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace(
+            f'program_source = "{PROGRAM}"', 'program_source = "crates/nowhere.rs"'
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "`crates/nowhere.rs` is absent")
+
+
 def test_an_installer_that_registers_no_restart_after_a_crash_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
