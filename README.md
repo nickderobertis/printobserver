@@ -129,9 +129,21 @@ and systemd unit. It deliberately starts nothing.
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
 ```
 
+On Windows, from an elevated PowerShell, the same installer in its Windows form:
+the program under `C:\Program Files\printobserver`, the configuration and the
+private state directory under `C:\ProgramData\printobserver`, and a Windows
+service registered with the service control manager — to start on demand, as
+its own virtual account, and to be brought back if its process dies. It, too,
+starts nothing.
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.ps1 | iex
+```
+
 ### 5. Configure the supervisor
 
-Edit `/etc/printobserver/config.toml`:
+Edit `/etc/printobserver/config.toml` (`C:\ProgramData\printobserver\config.toml` on
+Windows):
 
 - `state_dir` holds the database, images, sessions, and installed agent assets;
   the template uses `/var/lib/printobserver`.
@@ -221,6 +233,15 @@ Then sign it in once, as the service user:
 sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
 ```
 
+On Windows the service's virtual account cannot be signed in to and does not
+need to be — the sign-in lands under the state directory, which the installer
+made the service account's to read — so install the harness with
+`npm install -g` and sign in from the same elevated PowerShell:
+
+```powershell
+& 'C:\Program Files\printobserver\printobserver.exe' sign-in
+```
+
 This reads `state_dir` and `supervisor.harness` from
 `/etc/printobserver/config.toml` and nothing else, so it works before or after
 you fill in the OctoPrint and Obico values. It creates the harness's directory,
@@ -241,8 +262,16 @@ sign-in again if the harness's sign-in expires, or after changing
 sudo systemctl enable --now printobserver.service
 ```
 
+On Windows, the one command that sets the service to start automatically and
+starts it:
+
+```powershell
+Set-Service -Name printobserver -StartupType Automatic -Status Running
+```
+
 Starting is separate because this service commands a 3D printer. Installing
-software must not start a process that can move the machine.
+software must not start a process that can move the machine — at install, or at
+the next reboot.
 
 ### 8. Verify the installation
 

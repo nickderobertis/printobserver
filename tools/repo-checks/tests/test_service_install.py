@@ -10,6 +10,11 @@ which is a failure the continuous-integration job that installs the service
 finds hours later. And an installer that enables the service is one that starts
 a process which can move a 3D printer as a side effect of installing a package,
 which is the one thing that section says twice must never happen.
+
+Both are asked of each service manager's installer in that manager's own terms:
+the shell installer a systemd platform fetches, and the PowerShell installer a
+Windows platform fetches, which registers with the service control manager and
+can enable the service by a setting as easily as by a program.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -22,11 +27,12 @@ from collections.abc import Callable
 
 import pytest
 from repo_checks.checks_service import ingress_answer_bound, service_install
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
 INSTALLER = "scripts/install-service.sh"
+WINDOWS_INSTALLER = "scripts/install-service.ps1"
 AGENTS = "AGENTS.md"
 SOURCE = "crates/printobserver-server/src/config.rs"
 POLICY = "repo-policy.toml"
@@ -226,14 +232,44 @@ def test_a_policy_naming_no_installer_is_refused(tree: Callable[[], Tree]) -> No
     broken.write(
         POLICY,
         broken.read(POLICY).replace(
-            'install_service_script_path = "scripts/install-service.sh"',
+            'installer = "scripts/install-service.sh"',
             "",
         ),
     )
 
     findings = service_install(broken.repo)
 
-    refused(findings, "install_service_script_path")
+    refused(findings, "service.managers.systemd.installer")
+
+
+def test_a_policy_with_no_rules_for_a_stated_manager_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A pair stated for a manager nothing declares rules for is an installer held to nothing."""
+    broken = tree()
+    broken.write(
+        POLICY,
+        broken.read(POLICY).replace("[service.managers.windows-service]", "[service.managers.scm]"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "declares no `service.managers.windows-service` table")
+
+
+def test_a_section_stating_no_pair_at_all_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing names the service this repository installs anywhere."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS)
+        .replace("#### systemd", "#### launchpad")
+        .replace("#### windows-service", "#### scm"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states a pair of commands for no service manager")
 
 
 def test_an_installer_that_cannot_be_run_is_refused(tree: Callable[[], Tree]) -> None:
@@ -284,17 +320,184 @@ def test_an_installer_naming_no_unit_at_all_is_refused(tree: Callable[[], Tree])
     refused(findings, "carries no `UNIT_NAME")
 
 
-def test_a_policy_naming_no_unit_directory_is_refused(tree: Callable[[], Tree]) -> None:
-    """A check that cannot read where units go has nothing to hold."""
+def test_a_policy_naming_an_empty_registration_directory_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A directory declared and left blank is one the check cannot hold the installer to."""
     broken = tree()
     broken.write(
         POLICY,
-        broken.read(POLICY).replace('unit_directory = "/etc/systemd/system"', ""),
+        broken.read(POLICY).replace(
+            'registration_directory = "/etc/systemd/system"', 'registration_directory = ""'
+        ),
     )
 
     findings = service_install(broken.repo)
 
-    refused(findings, "service.unit_directory")
+    refused(findings, "service.managers.systemd.registration_directory")
+
+
+def test_the_windows_installer_that_starts_the_service_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A `Start-Service` the script runs, rather than prints, is refused naming its line."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER) + "\nStart-Service -Name $ServiceName\n",
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "runs `Start-Service`")
+    refused(findings, "starts nothing")
+
+
+def test_the_windows_installer_that_starts_the_service_through_the_manager_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """`sc.exe start`, called through the call operator, is the manager starting it."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER) + '\nMust "starting" { & sc.exe start $ServiceName }\n',
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "runs `sc.exe start`")
+
+
+def test_the_windows_installer_that_registers_an_automatic_start_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A registration the manager starts at the next boot is an enabled service."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace("start= demand", "start= auto"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "writes `start= auto`")
+    refused(findings, "Set-Service -Name printobserver -StartupType Automatic -Status Running")
+
+
+def test_the_windows_installer_that_only_prints_the_next_command_is_accepted(
+    committed: Repo,
+) -> None:
+    """The committed script names `Set-Service` in what it prints and runs it nowhere."""
+    accepted(service_install(committed))
+    contains(
+        committed.read(WINDOWS_INSTALLER),
+        "Set-Service",
+        describing="the command the installer prints for the operator to run next",
+    )
+
+
+def test_the_windows_installer_shipping_another_service_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A service the activation command the install path states cannot name."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace(
+            "$ServiceName = 'printobserver'", "$ServiceName = 'observer'"
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "installs the service `observer`")
+
+
+def test_the_windows_installer_naming_no_service_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing in the script can be held to the name the install path states."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace("$ServiceName = 'printobserver'", "$Name = 'x'"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries no `$ServiceName = '...'` line")
+
+
+def test_an_installer_that_registers_no_restart_after_a_crash_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A service that stays down after its process dies is a program, not a service."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace(
+            "actions= restart/5000/restart/5000/restart/5000", ""
+        ),
+    )
+    broken.write(INSTALLER, broken.read(INSTALLER).replace("Restart=on-failure\n", ""))
+
+    findings = service_install(broken.repo)
+
+    refused(findings, f"`{WINDOWS_INSTALLER}` writes no `actions= restart`")
+    refused(findings, f"`{INSTALLER}` writes no `Restart=on-failure`")
+
+
+def test_a_manager_with_nothing_starting_the_service_at_boot_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Neither the registration nor the activation command makes it come back after a reboot."""
+    broken = tree()
+    broken.write(INSTALLER, broken.read(INSTALLER).replace("WantedBy=multi-user.target\n", ""))
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            "Set-Service -Name printobserver -StartupType Automatic -Status Running",
+            "Set-Service -Name printobserver -Status Running",
+        ),
+    )
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace("-StartupType Automatic", "-Status Running"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "carries `WantedBy=multi-user.target`")
+    refused(findings, "carries `-StartupType Automatic`")
+
+
+def test_a_section_naming_no_windows_service_is_refused(tree: Callable[[], Tree]) -> None:
+    """The activation command has to name the service in the manager's own shape."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            "Set-Service -Name printobserver -StartupType Automatic -Status Running",
+            "Start-Service printobserver",
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states no `Set-Service -Name <service> ...` command under `windows-service`")
+
+
+def test_a_windows_installer_granting_an_action_the_contracts_do_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The same vocabulary rule, over the template the Windows installer writes."""
+    broken = tree()
+    broken.write(
+        WINDOWS_INSTALLER,
+        broken.read(WINDOWS_INSTALLER).replace('"pause", "resume"', '"pause", "reboot"'),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, f"`{WINDOWS_INSTALLER}` grants `reboot`")
 
 
 def test_an_installer_granting_nothing_is_refused(tree: Callable[[], Tree]) -> None:
