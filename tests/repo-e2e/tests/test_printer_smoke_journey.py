@@ -17,7 +17,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -35,15 +37,46 @@ SCRIPT = "tools/printer-smoke/printer_smoke.py"
 UNSELECTED = "not selected"
 
 
-@pytest.fixture
-def a_serial_device() -> Iterator[str]:
-    """A character device this test creates, which is what the variable names."""
+#: The device a Windows host names: its null device, which the system's device
+#: table carries on every Windows machine.
+WINDOWS_DEVICE = "NUL"
+
+
+@contextmanager
+def _a_device() -> Iterator[str]:
+    """A device this host can name, held for as long as it is used.
+
+    A pseudo-terminal on a POSIX host. Windows has none, and its serial devices
+    are names in the system's device table rather than paths — which is what
+    the smoke's device precondition asks that table for — so there it is the
+    null device, which that table always carries.
+    """
+    if sys.platform == "win32":
+        yield WINDOWS_DEVICE
+        return
     controller, device = os.openpty()
     try:
         yield os.ttyname(device)
     finally:
         os.close(controller)
         os.close(device)
+
+
+@pytest.fixture
+def a_serial_device() -> Iterator[str]:
+    """A device this test creates or names, which is what the variable names."""
+    with _a_device() as device:
+        yield device
+
+
+def test_on_windows_the_device_named_is_one_the_device_table_carries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows has no pseudo-terminal, so its journeys name the null device instead."""
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    with _a_device() as device:
+        equal(device, WINDOWS_DEVICE, describing="the device a Windows journey names")
 
 
 def the_recipe(*arguments: str, device: str | None = None) -> subprocess.CompletedProcess[str]:

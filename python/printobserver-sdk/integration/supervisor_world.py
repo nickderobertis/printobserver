@@ -9,6 +9,7 @@ come out the same in all three.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,14 +52,17 @@ class Supervisor:
 def _pythonpath() -> str:
     """The packages this repository's own tools live in, read from the justfile.
 
+    Joined with this host's own separator, as the justfile's export joins them:
+    a Windows interpreter reads a `:`-joined search path as one entry.
+
     Raises:
-        AssertionError: If the justfile exports none, which is a tree these
+        AssertionError: If the justfile lists none, which is a tree these
             tools are not reachable in.
     """
     for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
-        if line.startswith("export PYTHONPATH :="):
-            return line.partition(":=")[2].strip().strip('"')
-    message = "the justfile exports no PYTHONPATH, and this tier's world lives on it"
+        if line.startswith("TOOL_PACKAGES :="):
+            return os.pathsep.join(line.partition(":=")[2].strip().strip('"').split(":"))
+    message = "the justfile lists no TOOL_PACKAGES, and this tier's world lives on it"
     raise AssertionError(message)
 
 
@@ -81,8 +85,6 @@ class Standing:
                 brings the printer environment up: a tier that quietly passed
                 against no printer would prove nothing.
         """
-        import os
-
         self._holding = start(
             [
                 "uv",

@@ -54,7 +54,7 @@ def test_every_required_name_is_a_context_the_workflows_report(committed: Repo) 
 
 
 def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> None:
-    """Two cells, two distinguishable contexts, and the record names both."""
+    """One cell per platform, distinguishable contexts, and the record names every one."""
     required = _required(committed)
     gate = [name for name in required if name.startswith("gate")]
 
@@ -64,6 +64,8 @@ def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> N
             "gate (linux-aarch64)",
             "gate (linux-x86_64)",
             "gate (macos-aarch64)",
+            "gate (windows-aarch64)",
+            "gate (windows-x86_64)",
         ],
         describing="the gate entries of the required record",
     )
@@ -123,6 +125,8 @@ def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
             "integration (linux-aarch64, ubuntu-24.04-arm)",
             "integration (linux-x86_64, ubuntu-24.04)",
             "integration (macos-aarch64, macos-15)",
+            "integration (windows-aarch64, windows-11-arm)",
+            "integration (windows-x86_64, windows-2025)",
         ],
         describing="the contexts the committed integration job reports",
     )

@@ -775,12 +775,37 @@ fn state_directory(named: &Path) -> Result<PathBuf, ConfigError> {
             format!("{} cannot be created: {error}", named.display()),
         )
     })?;
-    named.canonicalize().map_err(|error| {
+    named.canonicalize().map(plainly_written).map_err(|error| {
         ConfigError::about(
             ConfigField::StateDir,
             format!("{} cannot be resolved: {error}", named.display()),
         )
     })
+}
+
+/// A resolved path, written the way its own platform's tools write it.
+///
+/// Resolving a path on Windows answers it in its verbatim form, `\\?\C:\…`:
+/// one this program opens as readily as any other, and one no operator types and
+/// some of the programs a supervision turn runs refuse — and every image path
+/// this server answers is written under it. Where that form names an ordinary
+/// drive path it is written as that path. Any other path, which on every other
+/// platform is every path, is answered as it is.
+#[must_use]
+pub fn plainly_written(path: PathBuf) -> PathBuf {
+    const VERBATIM: &str = r"\\?\";
+    let drive = path
+        .to_str()
+        .and_then(|text| text.strip_prefix(VERBATIM))
+        .filter(|rest| {
+            let bytes = rest.as_bytes();
+            bytes.len() >= 3
+                && bytes[0].is_ascii_alphabetic()
+                && bytes[1] == b':'
+                && bytes[2] == b'\\'
+        })
+        .map(PathBuf::from);
+    drive.unwrap_or(path)
 }
 
 /// The address to serve on, as an address rather than as text.

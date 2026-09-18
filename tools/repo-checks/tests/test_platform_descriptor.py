@@ -256,6 +256,44 @@ def test_the_install_path_answer_selects_the_platforms_every_install_tier_carrie
     )
 
 
+def test_a_route_proof_is_skipped_exactly_where_the_install_path_answers_no(
+    committed: Repo,
+) -> None:
+    """The skip is read off the record, never off a platform's name, and names the node.
+
+    Over the committed table as it stands: a platform the install path targets
+    skips nothing, and one it does not skips with the record's own reason —
+    which is where the node that flips the answer is named, so a reader of the
+    skip is told what removes it: `windows-install-routes` for the Windows cells.
+    """
+    for platform in supported(committed):
+        skip = platform.no_route_proof
+        if platform.install_path:
+            equal(skip, None, describing=f"a route proof on `{platform.id}`")
+            continue
+        truth(skip, describing=f"a route proof on `{platform.id}` to be skipped")
+        contains(skip or "", f"`{platform.id}`", describing="the platform the skip names")
+        contains(skip or "", platform.install_path_reason, describing="the record's reason")
+        if platform.id.startswith("windows-"):
+            contains(skip or "", "`windows-install-routes` node", describing="what removes it")
+
+
+def test_flipping_the_install_path_answer_runs_the_route_proofs_with_no_test_edited(
+    tree: Callable[[], Tree],
+) -> None:
+    """The Windows entries answered `yes` skip nothing; answered `no`, they skip naming it."""
+    windows = tuple(row for row in TABLE if row.id.startswith("windows-"))
+
+    delivered = supporting(tree(), *windows)
+    for row in windows:
+        equal(descriptor(delivered, row.id).no_route_proof, None, describing=f"`{row.id}`")
+
+    owed = supporting(tree(), *windows, install_path="no — the `later` node delivers the routes")
+    for row in windows:
+        skip = descriptor(owed, row.id).no_route_proof
+        contains(skip or "", "the `later` node delivers the routes", describing=f"`{row.id}`")
+
+
 def test_the_host_this_dispatch_runs_on_is_answered(committed: Repo) -> None:
     """The real host, through the real module, on the tree as it stands."""
     found = host(committed)
@@ -496,7 +534,9 @@ def test_a_linux_baseline_is_the_c_library_whatever_program_is_given(
 def test_a_host_reporting_no_baseline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     """A tag stating a version it did not read is a wheel that installs and cannot run."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: None)
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace, and
+    # the host this answers for is the Linux one the lambda above reports.
+    monkeypatch.setattr(os, "confstr", lambda _name: None, raising=False)
 
     with pytest.raises(PlatformError, match="C library"):
         host_baseline()
@@ -543,8 +583,9 @@ def test_this_hosts_own_baseline_is_read_off_the_host(committed: Repo) -> None:
 
     The program read is the interpreter running this suite, which is a real
     program of this host whatever the host is: on macOS it is what the baseline
-    is read off, and on every other platform it is not read at all. The tag is
-    held to this host's own descriptor rather than to one family's spelling.
+    is read off, on Linux the C library is, and on Windows — whose tags state
+    none — nothing is. The tag is held to this host's own descriptor rather
+    than to one family's spelling.
     """
     found = descriptor(committed, host(committed).id)
     baseline = host_baseline(Path(sys.executable).resolve())

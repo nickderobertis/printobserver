@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 from harness import (
@@ -197,6 +198,11 @@ def test_the_bring_down_leaves_no_container_of_the_stack_running(state_dir: str)
 
 def _owned_by_someone_else(where: str) -> list[str]:
     """Every path under a directory that the user running this does not own."""
+    if sys.platform == "win32":
+        # A Windows file carries no numeric owner, and what a container writes
+        # through Docker Desktop's bind mount is the sharing user's: none of it
+        # is someone else's in the sense `sudo` would be needed to delete.
+        return []
     mine = os.getuid()
     return [
         str(path)

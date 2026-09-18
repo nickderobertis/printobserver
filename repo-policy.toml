@@ -40,6 +40,21 @@ rust = 95
 python = 95
 typescript = 95
 
+# One platform whose Rust toolchain cannot read the profiles its own
+# instrumentation writes. The gate there still builds, lints and runs every
+# Rust test and journey natively, uninstrumented where instrumentation is what
+# fails; the floor holds on every platform whose profiles are readable. An
+# exemption names the platform's own Rust target and no other, the toolchain
+# release, the exact refusal text, and an upstream issue describing that
+# refusal on that target — `repo_checks.commands.coverage` refuses one that
+# names no reference or another target. Removed when that toolchain produces
+# readable profiles.
+[gate.coverage.exemptions.windows-aarch64]
+target = "aarch64-pc-windows-msvc"
+toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
+diagnostics = ["malformed instrumentation profile data: symbol name is empty", "no profile can be merged"]
+reference = "https://github.com/rust-lang/rust/issues/150123"
+
 [llmlint]
 # The judged-lint tier. Like the two tiers below it declares a `tier` recipe,
 # which is what the documentation check reads every tier outside the gate off —
@@ -631,20 +646,24 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # job to re-run one, and the hosted macOS runners are a handful of slots shared
 # with other work.
 #
-# Its jobs are copies of the source workflows' platform-matrixed jobs, one cell
-# each, and `just check-repo`'s `platform-dispatch` holds every copy to its
-# source: the trigger set is `workflow_dispatch` alone, `platform_input`'s
+# What turns its two inputs into a job and a runner, and what then runs that
+# job's own `run:` steps off the committed source workflow, is the committed
+# script `repo_checks.dispatching`, reached through the two recipes below —
+# so a test drives it exactly as the workflow does, on a host that is not a
+# runner. `just check-repo`'s `platform-dispatch` holds the workflow to that
+# script: the trigger set is `workflow_dispatch` alone, its inputs are
+# `job_input` and `platform_input` and nothing else, `platform_input`'s
 # options are exactly the supported-platform list, `job_input`'s options are
-# exactly the platform-matrixed jobs of `sources`, each job is selected by
-# `job_input` alone and runs on the runner the list declares for the platform
-# named, and its steps are the source job's own. Every other check that
-# classifies a job by its steps passes this workflow over — classified by
-# their steps its jobs would be a second gate and a second integration tier
-# with no matrix — which is why it is named here rather than found.
+# exactly the platform-matrixed jobs of `sources`, exactly one job runs
+# `resolve_recipe` and publishes the runner it answered, exactly one other
+# needs it, runs on that answer and runs `run_recipe`, and every source job is
+# one the script can run by hand.
 workflow = "platform-dispatch.yml"
 job_input = "job"
 platform_input = "platform"
 sources = ["ci.yml", "install-path.yml"]
+resolve_recipe = "dispatch-resolve"
+run_recipe = "dispatch-run"
 
 [agent]
 # The narrow command allowlist. `just check-repo` derives the set of programs
@@ -666,6 +685,19 @@ allowlist = ".claude/settings.json"
 # which `just check-repo` requires of it. Unheld, the gate ran whichever release
 # a cache restored and the release job whichever a registry served newest, so a
 # journey proving one release-plz proved nothing about the one that releases.
+# The Windows target `just lint` runs clippy for on a Unix host, so a finding
+# in the tree's `cfg(windows)` code is reported before a push rather than by a
+# Windows runner two hours later. The GNU flavour rather than MSVC: it sees the
+# same `cfg(windows)` code, and zig — obtained through `uv` from the `zig`
+# dependency group — carries the mingw-w64 headers its C dependencies compile
+# against, so the pass needs no cross toolchain installed on the host. `just
+# bootstrap` adds the target's standard library on every host that is not
+# Windows; where it is absent the pass says so and skips, and on a Windows host
+# the native lint tier is that pass.
+[toolchain.windows_lint]
+target = "x86_64-pc-windows-gnu"
+zig_target = "x86_64-windows-gnu"
+
 [[toolchain.tool]]
 command = "cargo-nextest"
 install = "cargo install cargo-nextest --locked"

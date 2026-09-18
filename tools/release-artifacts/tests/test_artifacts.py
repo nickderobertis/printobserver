@@ -38,6 +38,7 @@ from release_artifacts.targets import TargetError
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.model import Repo
+from route_proof import ROUTE_PROOF
 
 
 def test_the_declaration_names_the_six_this_tool_assembles(repo: Repo) -> None:
@@ -63,6 +64,7 @@ def test_a_target_release_automation_publishes_is_not_built_here(
         build(repo, "crate:printobserver-types", into("not-built-here"), program)
 
 
+@ROUTE_PROOF
 def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -83,10 +85,35 @@ def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
     truth("none-any" not in wheel.name, describing=f"{wheel.name} not to carry a pure tag")
     with zipfile.ZipFile(wheel) as opened:
         carried = opened.namelist()
-        script = next(name for name in carried if name.endswith(f"/scripts/{PROGRAM}"))
+        script = next(
+            name for name in carried if name.endswith(f"/scripts/{platforms.host(repo).program}")
+        )
         equal(opened.read(script), program.read_bytes(), describing="the program the wheel carries")
 
 
+def test_a_wheel_built_on_windows_carries_the_program_under_the_name_windows_runs(
+    repo: Repo, program: Path, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installer copies a wheel's scripts verbatim, so the `.exe` has to be in the wheel.
+
+    Carried as a bare `printobserver`, the program lands in the environment's
+    `Scripts` under a name a Windows host does not run, and the route proves a
+    program missing. Built with this host answering as Windows, so the Windows
+    answer is asked for on every host.
+    """
+    monkeypatch.setattr(host_platform, "system", lambda: "Windows")
+    monkeypatch.setattr(host_platform, "machine", lambda: "AMD64")
+
+    built = build(repo, "pypi:printobserver-cli", into("windows-python-route"), program)
+
+    wheel = built.paths[0]
+    truth(wheel.name.endswith("-win_amd64.whl"), describing=f"{wheel.name} to be a Windows wheel")
+    with zipfile.ZipFile(wheel) as opened:
+        scripts = [name.rsplit("/", 1)[1] for name in opened.namelist() if "/scripts/" in name]
+    equal(scripts, ["printobserver.exe"], describing="the programs the Windows wheel carries")
+
+
+@ROUTE_PROOF
 def test_the_node_route_resolves_a_per_platform_package(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -110,6 +137,7 @@ def test_the_node_route_resolves_a_per_platform_package(
     )
 
 
+@ROUTE_PROOF
 def test_the_script_route_publishes_an_artifact_and_the_digest_it_is_verified_by(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
@@ -244,6 +272,7 @@ def macos_program(path: Path, identifier: str, minimum: tuple[int, int]) -> Path
     return path
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize(
     ("identifier", "minimum", "tag"),
     [

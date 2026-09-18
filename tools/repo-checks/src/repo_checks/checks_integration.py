@@ -184,16 +184,8 @@ def _cells_not_running_yet(repo: Repo, job_name: str) -> dict[str, str]:
 def _integration_job(
     repo: Repo, bring_up: str
 ) -> tuple[str, str, dict[str, Any], dict[str, Any]] | None:
-    """The committed job that brings the environment up, if there is one.
-
-    The platform-dispatch workflow carries a one-cell copy of it, held to this
-    one by `checks_dispatch.platform_dispatch`, and is passed over here.
-    """
-    from repo_checks.checks_dispatch import dispatch_workflow
-
+    """The committed job that brings the environment up, if there is one."""
     for path in repo.workflow_paths:
-        if path == dispatch_workflow(repo):
-            continue
         workflow = load_workflow(path)
         for job_name, job in jobs_of(workflow).items():
             if f"just {bring_up}" in run_commands(job):

@@ -20,9 +20,10 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import sys
 import tarfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from repo_checks import platforms
 from repo_checks.model import Repo
@@ -55,6 +56,46 @@ NODE_RUNTIME = ("node",)
 #: toolchain the machine beside the printer would have had to carry.
 TOOLCHAIN_REPORT = "Rust toolchain on the install path: {}"
 NO_TOOLCHAIN = TOOLCHAIN_REPORT.format("none")
+
+
+def executable(name: str) -> str:
+    """What a program called `name` is called on disk on this host.
+
+    Windows finds a program by its suffix, and every program a Rust build or a
+    virtual environment puts there carries `.exe`; everywhere else the name is
+    the whole of it. The `printobserver` program itself is not asked about
+    here: `repo_checks.platforms` declares what it is called on every platform,
+    and a caller reads that instead.
+    """
+    return f"{name}.exe" if sys.platform == "win32" else name
+
+
+def programs_in(environment: Path) -> Path:
+    """Where a virtual environment made on this host keeps its programs.
+
+    The layout is the interpreter's own rather than this repository's choice:
+    `Scripts` on Windows and `bin` everywhere else. A route proven against `bin`
+    on a Windows host would report a program missing that the install put one
+    directory over.
+    """
+    return environment / ("Scripts" if sys.platform == "win32" else "bin")
+
+
+def interpreter_in(environment: Path) -> Path:
+    """The Python interpreter of a virtual environment made on this host."""
+    return programs_in(environment) / executable("python")
+
+
+def npm_global_program(prefix: Path, name: str) -> Path:
+    """What `npm install --global --prefix <prefix>` puts on a path for `name`.
+
+    On Windows npm writes a package's programs straight into the prefix, and the
+    one a process can be started from is the `.cmd` shim beside the POSIX and
+    PowerShell ones. Everywhere else it links them into `<prefix>/bin`.
+    """
+    if sys.platform == "win32":
+        return prefix / f"{name}.cmd"
+    return prefix / "bin" / name
 
 
 class InstallError(RuntimeError):
@@ -98,7 +139,8 @@ def without_rust(
     kept = [
         directory
         for directory in environment.get("PATH", "").split(os.pathsep)
-        if directory and not any(Path(directory, program).exists() for program in TOOLCHAIN)
+        if directory
+        and not any(Path(directory, executable(program)).exists() for program in TOOLCHAIN)
     ]
     if preserve:
         if preserved_at is None:
@@ -164,11 +206,11 @@ def python_client(repo: Repo, built: Built, into: Path) -> Installed:
     )
     wheel = _only(built.paths, ".whl", built.target)
     ran(
-        ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
+        ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
         cwd=into,
         describing=f"installing {wheel.name}",
     )
-    return Installed(built.target, environment, None, str(environment / "bin/python"))
+    return Installed(built.target, environment, None, str(interpreter_in(environment)))
 
 
 def node_client(repo: Repo, built: Built, into: Path) -> Installed:
@@ -185,6 +227,34 @@ def node_client(repo: Repo, built: Built, into: Path) -> Installed:
         describing=f"installing {tarball.name}",
     )
     return Installed(built.target, environment, None, "node")
+
+
+def consumer_manifest(inside: PurePath) -> str:
+    """The manifest of a consumer depending on the packaged crate unpacked at `inside`.
+
+    The path is written with forward slashes whatever the host. It sits inside a
+    TOML basic string, where a Windows path's own separators are read as escapes
+    — so written as it stands it is not a path there but a manifest `cargo`
+    refuses to parse — and `cargo` reads a forward-slashed path on Windows as the
+    same directory.
+    """
+    return "\n".join(
+        [
+            "# Written by the install journey, not committed: no manifest in that",
+            "# tree carries a version, and this one has to name the packaged",
+            "# crate's own.",
+            "[package]",
+            'name = "printobserver-sdk-smoke"',
+            'version = "0.0.0"',
+            'edition = "2024"',
+            "",
+            "[dependencies]",
+            f'printobserver-sdk = {{ path = "{inside.as_posix()}" }}',
+            "",
+            "[workspace]",
+            "",
+        ]
+    )
 
 
 def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
@@ -205,33 +275,17 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
     consumer = environment / "consumer"
     (consumer / "src").mkdir(parents=True, exist_ok=True)
     shutil.copy2(repo.path("crates/printobserver-sdk/smoke/main.rs"), consumer / "src/main.rs")
-    (consumer / "Cargo.toml").write_text(
-        "\n".join(
-            [
-                "# Written by the install journey, not committed: no manifest in that",
-                "# tree carries a version, and this one has to name the packaged",
-                "# crate's own.",
-                "[package]",
-                'name = "printobserver-sdk-smoke"',
-                'version = "0.0.0"',
-                'edition = "2024"',
-                "",
-                "[dependencies]",
-                f'printobserver-sdk = {{ path = "{inside}" }}',
-                "",
-                "[workspace]",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    (consumer / "Cargo.toml").write_text(consumer_manifest(inside), encoding="utf-8")
     ran(
         ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
         cwd=consumer,
         describing="building a consumer of the packaged crate",
     )
     return Installed(
-        built.target, environment, None, str(consumer / "target/release/printobserver-sdk-smoke")
+        built.target,
+        environment,
+        None,
+        str(consumer / "target" / "release" / executable("printobserver-sdk-smoke")),
     )
 
 
@@ -245,12 +299,13 @@ def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     )
     wheel = _only(built.paths, ".whl", built.target)
     ran(
-        ["uv", "pip", "install", "--python", str(environment / "bin/python"), str(wheel)],
+        ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
         cwd=into,
         env=without_rust(preserve=("node",), preserved_at=environment / ".path"),
         describing=f"installing {wheel.name}",
     )
-    return Installed(built.target, environment, environment / "bin" / PROGRAM, "")
+    installed = programs_in(environment) / platforms.host(repo).program
+    return Installed(built.target, environment, installed, "")
 
 
 def node_route(repo: Repo, built: Built, into: Path) -> Installed:
@@ -284,7 +339,11 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
         describing="installing the launcher and the program beside it",
     )
     return Installed(
-        built.target, environment, environment / "bin" / PROGRAM, "", runtime=NODE_RUNTIME
+        built.target,
+        environment,
+        npm_global_program(environment, PROGRAM),
+        "",
+        runtime=NODE_RUNTIME,
     )
 
 
@@ -441,33 +500,23 @@ def smoke_check(repo: Repo, taken: Installed) -> list[str]:
     return argv
 
 
-def prove_client(
-    repo: Repo,
-    taken: Installed,
-    binary: Path | None,
-    *,
-    credential: str | None = None,
-) -> str:
+def prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
     """One installed client's own smoke check, against a real supervisor.
 
     Raises:
         InstallError: If that client has no committed smoke check.
     """
     argv = smoke_check(repo, taken)
-    world = World(program(repo, binary), taken.environment / "world", credential=credential)
+    world = World(program(repo, binary), taken.environment / "world")
     try:
         running = world.start()
-        credential_arguments = (
-            [f"--credential={running.credential}"]
-            if taken.target == "pypi:printobserver-sdk"
-            else ["--credential", running.credential]
-        )
         return ran(
             [
                 *argv,
                 "--server",
                 running.server,
-                *credential_arguments,
+                "--credential",
+                running.credential,
                 "--print-id",
                 running.print_id,
                 "--image-id",

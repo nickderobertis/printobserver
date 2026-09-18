@@ -66,7 +66,7 @@ from pathlib import Path
 from typing import NewType, Protocol
 from urllib.parse import urlsplit
 
-from repo_checks import install_path
+from repo_checks import install_path, platforms
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
@@ -80,6 +80,9 @@ from release_artifacts.installing import (
     TOOLCHAIN_REPORT,
     Installed,
     InstallError,
+    executable,
+    npm_global_program,
+    programs_in,
     prove_client,
     ran,
     without_rust,
@@ -1146,7 +1149,7 @@ def _pypi_route(repo: Repo, target: targets.Target, version: str, into: Path, ba
     )
     pinned = f"{target.name}=={version}"
     ran(
-        [str(environment / "bin/pip"), "install", pinned],
+        [str(programs_in(environment) / executable("pip")), "install", pinned],
         cwd=into,
         env=without_rust(
             {
@@ -1158,7 +1161,7 @@ def _pypi_route(repo: Repo, target: targets.Target, version: str, into: Path, ba
         ),
         describing=f"`pip install {pinned}` from {bases.pypi}",
     )
-    return environment / "bin" / PROGRAM
+    return programs_in(environment) / platforms.host(repo).program
 
 
 def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases) -> Path:
@@ -1200,7 +1203,7 @@ def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bas
         ),
         describing=f"`npm install -g {pinned}` from {bases.npm}",
     )
-    return environment / "bin" / PROGRAM
+    return npm_global_program(environment, PROGRAM)
 
 
 def _script_route(

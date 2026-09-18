@@ -18,12 +18,13 @@ import gzip
 import hashlib
 import io
 import os
+import platform as host_platform
 import tarfile
 import tomllib
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
 from repo_checks import install_path
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
@@ -43,8 +44,19 @@ CHECKSUMS = "SHA256SUMS"
 #: stand-in program reports.
 OLDER = "v0.0.1"
 
+
+def _platform() -> str:
+    """The platform this host's own artifact is named for, as the script names it.
+
+    Read through `repo_checks.platforms`, the one place that knows which
+    platform a host is — `os.uname` does not exist on Windows, and a journey
+    that raised on import there could not even say it had nothing to run.
+    """
+    return host(Repo(REPO_ROOT)).id
+
+
 #: Where this host's own artifact is named, as the platform declaration names it.
-PLATFORM = host(Repo(REPO_ROOT)).id
+PLATFORM = _platform()
 
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -98,7 +110,14 @@ def staged(tmp_path: Path) -> Path:
     `latest/download` is what the forge serves for the newest release and
     `download/<tag>` for a pinned one, so a script proven against this is
     proven against the layout it will meet.
+
+    Staged only where the install path targets this platform: the script is
+    the third route, and on a platform whose record answers `install path: no`
+    there is no artifact of this host's for it to stage, so a journey asking
+    for one is skipped naming that record rather than built for.
     """
+    if NO_ROUTE_HERE is not None:
+        pytest.skip(NO_ROUTE_HERE)
     base = tmp_path / "releases"
     real = _program().read_bytes()
     stand_in = f'#!/bin/sh\necho "{PROGRAM} {OLDER.removeprefix("v")}"\n'.encode()
@@ -324,3 +343,14 @@ def test_the_script_is_committed_where_its_own_fetch_url_names() -> None:
         f"main/{SCRIPT} | sh",
         describing="the install path's third route",
     )
+
+
+def test_the_platform_an_artifact_is_named_for_is_read_on_a_host_with_no_uname(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Windows host has no `os.uname`, and this journey still says which platform it is."""
+    monkeypatch.delattr(os, "uname", raising=False)
+    monkeypatch.setattr(host_platform, "system", lambda: "Windows")
+    monkeypatch.setattr(host_platform, "machine", lambda: "AMD64")
+
+    equal(_platform(), "windows-x86_64", describing="the platform a Windows host is")

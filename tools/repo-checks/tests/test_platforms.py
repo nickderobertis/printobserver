@@ -40,6 +40,13 @@ MATRIX = """    strategy:
             runner: macos-15
 """
 
+# The gate's two Windows cells, which follow the Linux ones in its own matrix.
+WINDOWS = """          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
+"""
+
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """Every committed matrix agrees with the list it is derived from."""
@@ -266,7 +273,7 @@ def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
-        MATRIX + "    runs-on: ${{ matrix.platform.runner }}\n",
+        MATRIX + WINDOWS + "    runs-on: ${{ matrix.platform.runner }}\n",
         "    runs-on: ubuntu-24.04\n",
     )
 

@@ -27,13 +27,69 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from journey import GateCopy, capture, clean_environment, output
+from journey import HERE, REPO_ROOT, GateCopy, capture, clean_environment, output
+from repo_checks import platforms
 from repo_checks.expect import absent, contains, passing, truth
+from repo_checks.model import Repo
+from repo_checks.parsing import jobs_of, load_workflow, marker_block
 
 HARNESS_PACKAGE = "@anthropic-ai/claude-code"
+#: The judged tier's job, which is the one that runs the installer these
+#: journeys drive, and the workflow that declares it.
+LLMLINT_JOB = "llmlint"
+CI_WORKFLOW = ".github/workflows/ci.yml"
+
+
+def _installer_platforms() -> list[str]:
+    """The platforms the `llmlint` job runs on, read off its own `runs-on`.
+
+    Resolved through the supported-platform table rather than compared as a
+    runner name, so this journey follows that job wherever the table says its
+    runner is — and so a job that grew a matrix would grow this journey's
+    hosts with it, with nobody editing a test.
+    """
+    job = jobs_of(load_workflow(REPO_ROOT / CI_WORKFLOW))[LLMLINT_JOB]
+    runners = job["runs-on"] if isinstance(job["runs-on"], list) else [job["runs-on"]]
+    return [
+        platform.id
+        for platform in platforms.supported(Repo(REPO_ROOT))
+        if platform.runner in runners
+    ]
+
+
+def _unmatrixed_record() -> str:
+    """AGENTS.md's own line on why the `llmlint` job carries no platform matrix."""
+    for line in marker_block(Repo(REPO_ROOT).agents_md, platforms.UNMATRIXED_BLOCK):
+        match = platforms.UNMATRIXED_LINE.match(line)
+        if match is not None and match["job"] == LLMLINT_JOB:
+            return line
+    message = (
+        f"AGENTS.md records no unmatrixed `{LLMLINT_JOB}` job, and this journey is keyed to it"
+    )
+    raise AssertionError(message)
+
+
+#: These journeys run where the judged tier's job runs, and nowhere else. The
+#: installer they drive is a Unix-shaped shell script — it installs under
+#: `$HOME/.local/bin`, which is where `uv tool` and `npm --prefix` put programs
+#: on Unix and not on Windows — run by that single-platform job and by agent
+#: sessions, and PyPI ships no `win_arm64` wheel of `llmlint-cli` or
+#: `oneharness-cli` at all, so on a Windows cell these journeys could only prove
+#: something this repository never does.
+pytestmark = pytest.mark.skipif(
+    HERE.id not in _installer_platforms(),
+    reason=(
+        f"the judged tier's installer is proven where its job runs, and `{LLMLINT_JOB}` runs "
+        f"on {_installer_platforms()} rather than on `{HERE.id}`; AGENTS.md's record of why "
+        f"that job carries no platform matrix: {_unmatrixed_record()!r}. The installer is a "
+        f"Unix-shaped shell script run only by that job and by agent sessions, and PyPI "
+        f"ships no win_arm64 wheel of llmlint-cli or oneharness-cli"
+    ),
+)
+
 # `uv` is what step 1 of the script installs through, and `bash` and `python3` —
 # which `just` and the chain lookup reach for — live in the system directories.
-# Both supported platforms are Linux, which is where this tier runs.
+# The platforms this runs on are Linux, which is where the `llmlint` job runs.
 #
 # uv is linked onto the host by name rather than reached through the directory
 # it lives in: on a contributor's machine that directory is `~/.local/bin`, which

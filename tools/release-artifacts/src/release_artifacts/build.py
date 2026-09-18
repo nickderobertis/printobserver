@@ -88,7 +88,9 @@ def program(repo: Repo, given: Path | None = None) -> Path:
     if built.returncode != 0:
         msg = f"`cargo build --{PROFILE}` failed:\n{built.stderr}"
         raise BuildError(msg)
-    path = repo.root / "target" / PROFILE / PROGRAM
+    # What the build left is called what the platform calls the program: a
+    # `.exe` on Windows, which a path naming the bare name would find nothing at.
+    path = repo.root / "target" / PROFILE / platforms.host(repo).program
     if not path.is_file():
         msg = f"`cargo build --{PROFILE}` left no program at {path}"
         raise BuildError(msg)
@@ -244,7 +246,9 @@ def python_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -
     platform = platforms.host(repo)
     tag = f"{wheels.INTERPRETER}-{platform.wheel_tag(platforms.host_baseline(binary))}"
     wheel = wheels.Wheel(_distribution(repo, target), tag)
-    wheel.add_script(PROGRAM, binary)
+    # Under the platform's own name, which is the name the installer then puts
+    # on the path: a Windows host finds a program by its `.exe` suffix.
+    wheel.add_script(platform.program, binary)
     return Built(target.id, (wheel.write(into),))
 
 

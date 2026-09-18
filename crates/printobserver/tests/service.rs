@@ -16,6 +16,12 @@
 //! out over a socket, because the point is what the installed program answers
 //! rather than what a client library does with it.
 
+// Unix alone. This tier installs and drives the definition the end-user
+// install path states for this host's service manager — the systemd unit
+// inside a mount namespace, the launchd property list on the host; the Windows
+// service is the `windows-service` node's delivery, and its tier with it.
+#![cfg(unix)]
+
 #[path = "support/harness.rs"]
 mod harness;
 #[path = "support/manager.rs"]

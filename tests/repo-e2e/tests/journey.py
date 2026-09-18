@@ -17,9 +17,22 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+from repo_checks import platforms
+from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+#: This host's own entry in AGENTS.md's supported-platform list.
+HERE = platforms.host(Repo(REPO_ROOT))
+
+#: A journey over an end-user install route, run where the install path targets
+#: this host's platform and skipped where it does not, for the reason the
+#: platform's own descriptor gives — the one the artifact tool's route proofs
+#: read too.
+NO_ROUTE_HERE: str | None = HERE.no_route_proof
+ROUTE_JOURNEY = pytest.mark.skipif(NO_ROUTE_HERE is not None, reason=NO_ROUTE_HERE or "")
 # Every escape sequence a terminal-aware program writes here: a CSI sequence —
 # introducer, numeric and private parameters, intermediates, final byte — and an
 # OSC sequence, which `nx` uses for hyperlinks and which ends at BEL or at ST.
@@ -27,16 +40,17 @@ ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b
 
 
 def pythonpath() -> str:
-    """The packages this repository's own tools live in.
+    """The packages this repository's own tools live in, as a search path.
 
-    Read out of the justfile's own export rather than repeated here, so a
-    package this repository grows is one a journey's subprocesses find without
-    being told.
+    Read out of the justfile's own list rather than repeated here, so a package
+    this repository grows is one a journey's subprocesses find without being
+    told — and joined with this host's own separator, as the justfile's export
+    joins it, because a Windows interpreter reads a `:`-joined path as one entry.
     """
     for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
-        if line.startswith("export PYTHONPATH :="):
-            return line.partition(":=")[2].strip().strip('"')
-    message = "the justfile exports no PYTHONPATH, and these tools live on it"
+        if line.startswith("TOOL_PACKAGES :="):
+            return os.pathsep.join(line.partition(":=")[2].strip().strip('"').split(":"))
+    message = "the justfile lists no TOOL_PACKAGES, and these tools live on it"
     raise AssertionError(message)
 
 
@@ -63,7 +77,11 @@ def copy_tracked(destination: Path) -> Path:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_symlink():
-            target.symlink_to(source.readlink())
+            # Windows keeps file and directory links apart: a link to a
+            # directory made as a file link is one nothing can open there, so
+            # the kind is read off what the link reaches. Elsewhere the flag
+            # is ignored.
+            target.symlink_to(source.readlink(), target_is_directory=source.is_dir())
         else:
             shutil.copy2(source, target)
     return destination

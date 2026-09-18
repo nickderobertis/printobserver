@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -38,11 +39,13 @@ from release_artifacts.world import (
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
+from route_proof import ROUTE_PROOF
 
 #: The three routes an end user gets the program by, each installed for real.
 ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobserver"]
 
 
+@ROUTE_PROOF
 def test_node_is_kept_when_a_runner_installs_it_beside_rust(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -67,6 +70,7 @@ def test_node_is_kept_when_a_runner_installs_it_beside_rust(
     )
 
 
+@ROUTE_PROOF
 def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -110,6 +114,7 @@ def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
     contains(said, NO_TOOLCHAIN, describing="what the npm route was taken with")
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize("identifier", ROUTES)
 def test_each_route_installs_a_program_that_runs(
     identifier: str, repo: Repo, program: Path, into: Callable[[str], Path], version: str
@@ -192,14 +197,34 @@ def test_a_contract_that_is_not_a_closed_vocabulary_is_refused_naming_it(
     contains(str(refused.value), str(contract), describing="the refusal")
 
 
+def _stand_in(root: Path, name: str, code: str) -> Path:
+    """A program called `name` in `root` that runs the Python `code`, and its path.
+
+    A POSIX host runs it by its interpreter line. A Windows host runs no
+    interpreter line and finds a program by its suffix, so there the code sits
+    beside a `.cmd` that hands it to this interpreter, and that is the program.
+    """
+    if sys.platform == "win32":
+        (root / f"{name}.py").write_text(code, encoding="utf-8")
+        launcher = root / f"{name}.cmd"
+        launcher.write_text(f'@"{sys.executable}" "%~dp0{name}.py" %*\r\n', encoding="utf-8")
+        return launcher
+    program = root / name
+    program.write_text(f"#!{sys.executable}\n{code}", encoding="utf-8")
+    program.chmod(0o755)
+    return program
+
+
 def test_a_supervisor_that_stops_before_it_answers_is_said_to_have(
     repo: Repo, into: Callable[[str], Path]
 ) -> None:
     """A world that quietly waited would be a tier nobody could diagnose."""
     root = into("stops")
-    stopping = root / "stops-at-once"
-    stopping.write_text("#!/bin/sh\necho 'it will not start' >&2\nexit 1\n", encoding="utf-8")
-    stopping.chmod(0o755)
+    stopping = _stand_in(
+        root,
+        "stops-at-once",
+        "import sys\nprint('it will not start', file=sys.stderr)\nraise SystemExit(1)\n",
+    )
     world = World(stopping, root)
 
     try:
@@ -218,18 +243,20 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
     state.mkdir(parents=True, exist_ok=True)
     # Port one is privileged and never listened on, so the ingress post below
     # reaches nothing however this host is configured.
-    quiet = root / "answers-nowhere"
-    quiet.write_text(
-        f'#!/bin/sh\nprintf \'[client]\\nserver = "http://127.0.0.1:1"\\n'
-        f'credential = "a-credential-nothing-checks"\\n\' '
-        f'> "{state / CLIENT_CONFIG}"\nsleep 60\n',
-        encoding="utf-8",
+    written = (
+        '[client]\nserver = "http://127.0.0.1:1"\ncredential = "a-credential-nothing-checks"\n'
     )
-    quiet.chmod(0o755)
+    quiet = _stand_in(
+        root,
+        "answers-nowhere",
+        f"import pathlib, time\npathlib.Path({str(state / CLIENT_CONFIG)!r}).write_text("
+        f"{written!r}, encoding='utf-8')\ntime.sleep(60)\n",
+    )
     world = World(quiet, root)
 
     try:
-        with pytest.raises(OSError, match="Connection refused"):
+        # Each platform's own words for a connection nothing accepted.
+        with pytest.raises(OSError, match=r"Connection refused|actively refused"):
             world.start()
     finally:
         world.stop()
@@ -255,11 +282,12 @@ def _writing_client_configuration(root: Path, server: str, credential: str) -> W
         f"[client]\nserver = {quoted(server)}\ncredential = {quoted(credential)}\n",
         encoding="utf-8",
     )
-    writing = root / "writes-a-client-configuration"
-    writing.write_text(
-        f'#!/bin/sh\ncp "{staged}" "{state / CLIENT_CONFIG}"\nsleep 60\n', encoding="utf-8"
+    writing = _stand_in(
+        root,
+        "writes-a-client-configuration",
+        f"import shutil, time\nshutil.copyfile({str(staged)!r}, {str(state / CLIENT_CONFIG)!r})\n"
+        "time.sleep(60)\n",
     )
-    writing.chmod(0o755)
     return World(writing, root)
 
 
@@ -347,6 +375,7 @@ def test_a_publish_with_no_credential_names_the_secret_it_needs(
         publish(repo, dist, {})
 
 
+@ROUTE_PROOF
 def test_the_command_surface_stages_a_release_and_proves_a_route(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:

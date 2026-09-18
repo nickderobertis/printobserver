@@ -242,7 +242,42 @@ fn append(log: &str, line: &str) {
     }
 }
 
+#[cfg(not(windows))]
 fn main() {
     act();
     oneharness::mock_harness::run();
+}
+
+/// Run the exit-oriented harness below a wrapper that can flush its profile.
+///
+/// `mock_harness::run` ends with `process::exit`, which bypasses LLVM's Windows
+/// profile writer. An instrumented responder therefore performs its action in
+/// this normally-returning process and delegates only the harness protocol to
+/// a child. Outside coverage, the responder keeps its ordinary one-process
+/// path.
+#[cfg(windows)]
+fn main() -> std::process::ExitCode {
+    const INNER: &str = "PRINTOBSERVER_RESPONDER_INNER";
+    if std::env::var_os(INNER).is_some() {
+        oneharness::mock_harness::run();
+    }
+    if std::env::var_os("LLVM_PROFILE_FILE").is_none() {
+        act();
+        oneharness::mock_harness::run();
+    }
+
+    act();
+    let status = std::process::Command::new(
+        std::env::current_exe().expect("the responder's executable has a path"),
+    )
+    .args(std::env::args_os().skip(1))
+    .env(INNER, "1")
+    .status()
+    .expect("the responder's harness child runs");
+    std::process::ExitCode::from(
+        status
+            .code()
+            .and_then(|code| u8::try_from(code).ok())
+            .unwrap_or(1),
+    )
 }

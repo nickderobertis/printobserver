@@ -31,9 +31,11 @@ policy and the safety envelope this system exists to put in between.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -335,8 +337,11 @@ class Smoke:
         Returns:
             The exit it earned, the document it printed and everything it said.
         """
+        program = (
+            [sys.executable, self.program] if Path(self.program).suffix == ".py" else [self.program]
+        )
         argv = [
-            self.program,
+            *program,
             command,
             "--print-id",
             self.print_id,
@@ -811,7 +816,9 @@ def _action_ids(events: Sequence[object], kind: str) -> set[str]:
 
 def _command_present(smoke: Smoke) -> str | None:
     """The program this smoke drives is on this host."""
-    if shutil.which(smoke.program) is None:
+    program = Path(smoke.program)
+    python_script = program.suffix.casefold() == ".py" and program.is_file()
+    if not python_script and shutil.which(smoke.program) is None:
         return (
             f"`{smoke.program}` is not on PATH: install this stack's own command, or name "
             f"another with {PROGRAM_ENV}"
@@ -819,8 +826,18 @@ def _command_present(smoke: Smoke) -> str | None:
     return None
 
 
+#: How a Windows program spells a device as a path: `\\.\COM3` is the port `COM3`.
+WINDOWS_DEVICE_NAMESPACE = "\\\\.\\"
+
+#: How many characters the answer naming what a Windows device maps to is given.
+#: A serial port maps to one kernel device path, far shorter than this.
+DOS_DEVICE_CHARACTERS = 1024
+
+
 def _device_readable(smoke: Smoke) -> str | None:
     """The named serial device is there, and this user can read it."""
+    if sys.platform == "win32":
+        return _windows_device_present(smoke)
     device = Path(smoke.device)
     if not device.exists():
         return f"{DEVICE_ENV} names {smoke.device}, which is not there"
@@ -830,6 +847,42 @@ def _device_readable(smoke: Smoke) -> str | None:
             f"and that this user is in the `dialout` group"
         )
     return None
+
+
+def _windows_device_present(smoke: Smoke) -> str | None:
+    r"""On Windows: the named serial device is one the system has a device for.
+
+    A Windows serial port is named `COM3` and opened as `\\.\COM3`, and it is
+    no file: there is nothing to stat and no mode a user's access could be read
+    from. What the system does keep is its table of device names, and that table
+    answers whether `COM3` is a device **without opening the port** — which is
+    the point. Opening a serial port can raise its DTR line, and the controller
+    of a printer on the other end resets when it does; and while `OctoPrint`
+    holds the port, which the next precondition requires, nothing else may open
+    it anyway. So the Windows answer is the device table's, and a name it does
+    not carry is refused exactly as a path that is not there is.
+    """
+    name = smoke.device.removeprefix(WINDOWS_DEVICE_NAMESPACE)
+    # An empty name asks the table for every device it carries, which answers
+    # something for any host — so it is refused before it is asked.
+    if not name or _query_dos_device(name) is None:
+        return f"{DEVICE_ENV} names {smoke.device}, which is not there"
+    return None
+
+
+def _query_dos_device(name: str) -> str | None:
+    """What Windows maps the device name `name` to, or None where it maps it to nothing.
+
+    Raises:
+        OSError: On a host that is not Windows, which keeps no such table.
+    """
+    if sys.platform != "win32":
+        message = f"only Windows keeps a device table to look {name} up in"
+        raise OSError(message)
+    answer = ctypes.create_unicode_buffer(DOS_DEVICE_CHARACTERS)
+    if not ctypes.windll.kernel32.QueryDosDeviceW(name, answer, len(answer)):
+        return None
+    return answer.value
 
 
 def _octoprint_on_the_device(smoke: Smoke) -> str | None:
@@ -1017,6 +1070,11 @@ PRECONDITIONS: tuple[tuple[str, Callable[[Smoke], str | None]], ...] = (
 )
 
 
+def _interrupted(_number: int, _frame: object) -> None:
+    """Enter the ordinary interrupted-run cleanup from a Windows console break."""
+    raise KeyboardInterrupt
+
+
 def smoke_of(environ: dict[str, str], device: str) -> Smoke:
     """One run, configured from the environment it was started in.
 
@@ -1055,6 +1113,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         still holding this run's own values, or over one nothing could see, is
         the worst answer this program could give.
     """
+    if sys.platform == "win32":
+        # A process group on Windows is stopped with CTRL_BREAK_EVENT. Python
+        # exposes that event as SIGBREAK, so turn it into the same interruption
+        # path SIGINT enters on Unix and let the one cleanup sequence run.
+        signal.signal(signal.SIGBREAK, _interrupted)
     arguments = list(sys.argv[1:] if argv is None else argv)
     environ = dict(os.environ)
 

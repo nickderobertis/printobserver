@@ -294,9 +294,17 @@ fn a_ledger_that_cannot_be_read_is_reported() {
     .expect("a file where the ledger directory belongs");
     let blocked_watch = Arc::new(Watch::default());
     let blocked_port = port(answering(&blocked), &blocked_watch);
-    blocked_port
+    let refused = blocked_port
         .recorded_sessions(&PrintId::new())
         .expect_err("a blocked ledger directory answered sessions");
+    #[cfg(not(windows))]
+    let _ = &refused;
+    #[cfg(windows)]
+    assert!(
+        detail(&refused).contains("is something other than a directory"),
+        "the Windows not-found answer hid the blocked ledger directory: {}",
+        detail(&refused)
+    );
 }
 
 /// A ledger that cannot be written is reported rather than lost.

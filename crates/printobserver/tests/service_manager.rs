@@ -30,6 +30,11 @@
 //! to start on a host already carrying anything it would install, and removing
 //! everything it installed afterwards.
 
+// Unix alone. Both service managers this journey asks are Unix ones, and every
+// observation it makes goes through Unix facilities; the Windows service is the
+// `windows-service` node's delivery, and its journey with it.
+#![cfg(unix)]
+
 #[path = "support/manager.rs"]
 mod manager;
 

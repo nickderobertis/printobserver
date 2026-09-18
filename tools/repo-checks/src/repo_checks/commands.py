@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
+from repo_checks.platforms import PlatformError, descriptor
 from repo_checks.shell import run
+from repo_checks.windows_lint import install_target
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
 
@@ -28,6 +33,9 @@ def install_tools(repo: Repo) -> int:
         tools = toolchain_tools(repo)
     except PolicyValueError as malformed:
         print(f"{malformed}. Correct it; nothing was installed.", file=sys.stderr)
+        return 1
+    if install_target(repo) != 0:
+        print("failed to add the Windows target's standard library", file=sys.stderr)
         return 1
     for tool in tools:
         present = shutil.which(tool.command)
@@ -205,8 +213,142 @@ def docs_schemas_write(repo: Repo) -> int:
     return 0
 
 
+def _total_of(report: str, column: int) -> str:
+    """The figure in `column` of a coverage report's `TOTAL` row, or `unknown`.
+
+    `cargo llvm-cov report --summary-only` and `coverage report` both end in a
+    `TOTAL` row; the line-coverage percentage is the ninth figure after the name in the first
+    and the last column of the second.
+    """
+    for line in reversed(report.splitlines()):
+        words = line.split()
+        if words[:1] == ["TOTAL"] and len(words) > column:
+            return words[column]
+    return "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class ExemptionEntry:
+    """One `gate.coverage.exemptions.<platform>` table, narrowed to its four fields."""
+
+    #: The Rust target of the platform the entry is keyed by.
+    target: str
+    #: The toolchain release whose profile reader refuses.
+    toolchain: str
+    #: Every line that refusal prints.
+    diagnostics: tuple[str, ...]
+    #: The upstream issue describing the refusal on that target.
+    reference: str
+
+    @staticmethod
+    def read(declared: Mapping[str, object], where: str) -> ExemptionEntry | list[str]:
+        """The entry, or every sentence naming what the table lacks."""
+        refusals = [
+            f"{where} states no `{field}`"
+            for field in ("target", "toolchain", "diagnostics", "reference")
+            if not declared.get(field)
+        ]
+        for field in ("target", "toolchain", "reference"):
+            value = declared.get(field)
+            if value and not isinstance(value, str):
+                refusals.append(f"{where} states `{field}` as {value!r} rather than a string")
+        diagnostics = declared.get("diagnostics")
+        lines = (
+            [d for d in diagnostics if isinstance(d, str) and d]
+            if isinstance(diagnostics, list)
+            else []
+        )
+        if diagnostics and (not isinstance(diagnostics, list) or len(lines) != len(diagnostics)):
+            refusals.append(
+                f"{where} states `diagnostics` as {diagnostics!r} rather than a list of strings"
+            )
+        if refusals:
+            return refusals
+        return ExemptionEntry(
+            target=str(declared["target"]),
+            toolchain=str(declared["toolchain"]),
+            diagnostics=tuple(lines),
+            reference=str(declared["reference"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Exemption:
+    """Whether a platform's unreadable Rust profile is exempt by policy.
+
+    `outcome` is the one line printed where the exemption applies; `refusals`
+    are the sentences naming what the entry lacks where it does not. Neither,
+    and the floor was missed with no exemption in play.
+    """
+
+    outcome: str | None = None
+    refusals: tuple[str, ...] = ()
+
+    @property
+    def applies(self) -> bool:
+        """Whether the platform's report is exempt."""
+        return self.outcome is not None
+
+
+def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
+    """Read this platform's coverage exemption against the policy and the report.
+
+    An exemption is an entry under `gate.coverage.exemptions` keyed by the
+    platform this gate runs as (`PRINTOBSERVER_PLATFORM`); it names the Rust
+    target `AGENTS.md`'s supported-platform list gives that platform and no
+    other, the toolchain release whose profile reader refuses, every
+    diagnostic that refusal prints, and an upstream issue describing the
+    refusal on that target. A missing platform variable, or a platform with
+    no entry, is no exemption and no refusal: the floor was missed.
+    """
+    platform_id = os.environ.get("PRINTOBSERVER_PLATFORM", "")
+    exemptions = floors.get("exemptions")
+    declared = exemptions.get(platform_id) if isinstance(exemptions, dict) else None
+    if not isinstance(declared, dict):
+        return Exemption()
+    where = f"the coverage exemption for `{platform_id}`"
+    entry = ExemptionEntry.read(declared, where)
+    if isinstance(entry, list):
+        return Exemption(refusals=tuple(entry))
+    refusals: list[str] = []
+    if not entry.reference.startswith("https://github.com/"):
+        refusals.append(
+            f"{where} names `{entry.reference}` as its reference, and an exemption is held to "
+            f"an upstream issue on GitHub"
+        )
+    try:
+        target = descriptor(repo, platform_id).target
+    except PlatformError:
+        refusals.append(f"{where} names a platform AGENTS.md's supported-platform list does not")
+        return Exemption(refusals=tuple(refusals))
+    if entry.target != target:
+        refusals.append(
+            f"{where} names target `{entry.target}`, and that platform's Rust target is `{target}`"
+        )
+    if refusals:
+        return Exemption(refusals=tuple(refusals))
+    missing = [d for d in entry.diagnostics if d not in stderr]
+    if missing:
+        return Exemption(
+            refusals=(
+                f"{where} did not apply: the profile reader did not print {missing!r}, so the "
+                f"floor was missed rather than unreadable",
+            )
+        )
+    outcome = f"no readable profile on {target}, exempt by policy: {entry.toolchain}; "
+    return Exemption(outcome=outcome + entry.reference)
+
+
 def coverage(repo: Repo) -> int:
-    """Fail the build below the line-coverage floors `repo-policy.toml` records."""
+    """Fail the build below the line-coverage floors `repo-policy.toml` records.
+
+    Pass or fail, each ecosystem's per-file table is printed before the floor is
+    ruled on and one line at the end states each measured total beside its
+    floor, so every platform's figures are in its log — a hosted floor miss is
+    read off the table rather than reproduced. A platform whose toolchain cannot
+    read the profiles its own instrumentation writes states that as a distinct
+    outcome, under an exemption `_exempt` holds to policy.
+    """
     floors = repo.policy["gate"]["coverage"]
     failed = False
 
@@ -214,14 +356,23 @@ def coverage(repo: Repo) -> int:
         ["cargo", "llvm-cov", "report", "--summary-only", f"--fail-under-lines={floors['rust']}"],
         cwd=repo.root,
     )
+    print(rust.stdout, end="")
+    rust_total = _total_of(rust.stdout, 9)
     if rust.returncode != 0:
-        print(rust.stdout, file=sys.stderr)
-        print(
-            f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
-            f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
-            file=sys.stderr,
-        )
-        failed = True
+        exempt = _exempt(repo, floors, rust.stderr)
+        if exempt.applies:
+            rust_total = "no readable profile, exempt"
+            print(exempt.outcome)
+        else:
+            print(rust.stderr, file=sys.stderr)
+            for refusal in exempt.refusals:
+                print(refusal, file=sys.stderr)
+            print(
+                f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
+                f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
+                file=sys.stderr,
+            )
+            failed = True
 
     python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
     if python.returncode not in (0, 1):
@@ -231,8 +382,8 @@ def coverage(repo: Repo) -> int:
         ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
         cwd=repo.root,
     )
+    print(report.stdout, end="")
     if report.returncode != 0:
-        print(report.stdout, file=sys.stderr)
         print(
             f"Python line coverage is below the {floors['python']}% floor. Add tests "
             f"that drive the uncovered lines.",
@@ -240,4 +391,8 @@ def coverage(repo: Repo) -> int:
         )
         failed = True
 
+    print(
+        f"coverage: rust lines {rust_total} (floor {floors['rust']}%), "
+        f"python lines {_total_of(report.stdout, -1)} (floor {floors['python']}%)"
+    )
     return 1 if failed else 0

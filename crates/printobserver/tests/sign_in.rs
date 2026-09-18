@@ -19,6 +19,13 @@
 //! so the same recorder is first held over a client command pointed at the same
 //! kind of address, and that one is required to have been recorded.
 
+// Unix alone. Signing in is the step of the end-user install path that runs as
+// the service's own account, and every journey here observes it through Unix
+// facilities — a recorder the dynamic linker loads, `/proc`, `id`, shell
+// stand-ins and file modes. Signing a harness in under the Windows service's
+// account is the `windows-service` node's delivery, and its journeys with it.
+#![cfg(unix)]
+
 #[path = "support/harness.rs"]
 mod harness;
 

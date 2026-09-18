@@ -47,9 +47,17 @@ with open(os.environ["CARGO_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(" ".join(arguments) + "\\n")
 release = arguments[arguments.index("--version") + 1] if "--version" in arguments else "0.0.1"
 release = os.environ.get("CARGO_STANDIN_ANSWERS", release)
-program = pathlib.Path(os.environ["CARGO_STANDIN_INTO"]) / arguments[1]
-program.write_text(f"#!/bin/sh\\necho '{arguments[1]} {release}'\\n", encoding="utf-8")
-program.chmod(0o755)
+into = pathlib.Path(os.environ["CARGO_STANDIN_INTO"])
+answer = f"print({arguments[1] + ' ' + release!r})\\n"
+if sys.platform == "win32":
+    (into / f"{arguments[1]}.py").write_text(answer, encoding="utf-8")
+    (into / f"{arguments[1]}.cmd").write_text(
+        f'@"{sys.executable}" "%~dp0{arguments[1]}.py" %*\\r\\n', encoding="utf-8"
+    )
+else:
+    program = into / arguments[1]
+    program.write_text(f"#!{sys.executable}\\n{answer}", encoding="utf-8")
+    program.chmod(0o755)
 """
 
 POLICY = """
@@ -114,16 +122,32 @@ def test_install_tools_reports_an_install_it_could_not_do(
     contains(capsys.readouterr().err, "Run `false` by hand")
 
 
-def program(directory: Path, name: str, text: str) -> None:
-    """Put an executable `name` in `directory`."""
+def program(directory: Path, name: str, code: str) -> None:
+    """Put a program `name` running the Python `code` in `directory`.
+
+    A POSIX host runs it by its interpreter line. A Windows host finds a program
+    by its suffix and runs no interpreter line, so there the code sits beside a
+    `.cmd` that hands it to this interpreter.
+    """
+    if sys.platform == "win32":
+        (directory / f"{name}.py").write_text(code, encoding="utf-8")
+        (directory / f"{name}.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0{name}.py" %*\r\n', encoding="utf-8"
+        )
+        return
     written = directory / name
-    written.write_text(text, encoding="utf-8")
+    written.write_text(f"#!{sys.executable}\n{code}", encoding="utf-8")
     written.chmod(0o755)
 
 
 def answering(release: str) -> str:
-    """A program's text that answers `--version` the way release-plz does."""
-    return f"#!/bin/sh\necho 'release-plz {release}'\n"
+    """A program's code that answers `--version` the way release-plz does."""
+    return f"print({f'release-plz {release}'!r})\n"
+
+
+def failing_with(status: int) -> str:
+    """A program's code that exits with `status` and says nothing."""
+    return f"raise SystemExit({status})\n"
 
 
 def toolchain(
@@ -132,19 +156,22 @@ def toolchain(
     """A tree carrying the committed toolchain declaration, and a PATH of stand-ins alone.
 
     The PATH holds the stand-in `cargo` and the directory it installs into — the
-    two tools the policy holds at no release already there, so what is decided
-    is release-plz's — and, with `shadow`, a directory ahead of both holding a
-    release-plz answering that release. Returns the tree, the directory installs
-    land in, and the record of what `cargo` was asked.
+    two tools the policy holds at no release already there, and a `rustup`
+    answering that the Windows lint target's standard library is too, so what
+    is decided is release-plz's — and, with `shadow`, a directory ahead of both
+    holding a release-plz answering that release. Returns the tree, the
+    directory installs land in, and the record of what `cargo` was asked.
     """
     root = tmp_path / "tree"
     root.mkdir()
     shutil.copy2(REPO_ROOT / "repo-policy.toml", root / "repo-policy.toml")
     installs = tmp_path / "cargo-bin"
     installs.mkdir()
-    program(installs, "cargo", f"#!{sys.executable}\n{CARGO_STANDIN}")
+    program(installs, "cargo", CARGO_STANDIN)
     for present in ("cargo-nextest", "cargo-llvm-cov"):
-        program(installs, present, f"#!/bin/sh\necho '{present} 0.0.1'\n")
+        program(installs, present, f"print({f'{present} 0.0.1'!r})\n")
+    windows_lint = Repo(REPO_ROOT).policy["toolchain"]["windows_lint"]["target"]
+    program(installs, "rustup", f"print({windows_lint!r})\n")
     record = tmp_path / "cargo-invocations"
     record.touch()
     directories = [installs]
@@ -163,7 +190,7 @@ def toolchain(
     ("stale", "said"),
     [
         (answering(STALE), f"answers {STALE}, not the held {HELD}"),
-        ("#!/bin/sh\nexit 1\n", f"answers no release, not the held {HELD}"),
+        (failing_with(1), f"answers no release, not the held {HELD}"),
     ],
 )
 def test_install_tools_replaces_a_held_tool_on_the_path_at_another_release(
@@ -211,7 +238,7 @@ def test_install_tools_reports_a_replacement_it_could_not_install(
     """A stale copy the install could not replace fails naming the command to run by hand."""
     root, installs, _ = toolchain(tmp_path, monkeypatch)
     program(installs, "release-plz", answering(STALE))
-    program(installs, "cargo", "#!/bin/sh\nexit 101\n")
+    program(installs, "cargo", failing_with(101))
 
     equal(main(["install-tools", "--root", str(root)]), 1)
 
@@ -273,7 +300,7 @@ def test_install_tools_refuses_a_held_tool_a_copy_earlier_on_the_path_shadows(
     equal(main(["install-tools", "--root", str(root)]), 1)
 
     said = capsys.readouterr().err
-    contains(said, f"{tmp_path / 'shadow' / 'release-plz'} still answers {STALE}")
+    contains(said, f"{shutil.which('release-plz')} still answers {STALE}")
     contains(said, "a copy earlier on PATH shadows the one installed")
     equal(
         record.read_text(encoding="utf-8").splitlines(),
@@ -339,4 +366,215 @@ def test_coverage_fails_where_no_coverage_was_measured(
     )
 
     equal(coverage(Repo(root)), 1)
-    contains(capsys.readouterr().err, "below the")
+    error = capsys.readouterr().err
+    contains(error, "could not find `Cargo.toml`")
+    contains(error, "below the")
+
+
+EXEMPTION = """
+[gate.coverage.exemptions.{platform}]
+target = "{target}"
+toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
+diagnostics = {diagnostics}
+{reference}
+"""
+
+#: What the ARM toolchain's own profile reader prints, as the policy lists it.
+DIAGNOSTICS = (
+    '["malformed instrumentation profile data: symbol name is empty", "no profile can be merged"]'
+)
+
+#: What the ARM toolchain's own profile reader prints before it exits non-zero.
+UNREADABLE = (
+    "import sys\n"
+    'print("malformed instrumentation profile data: symbol name is empty", file=sys.stderr)\n'
+    'print("no profile can be merged", file=sys.stderr)\n'
+    "raise SystemExit(1)\n"
+)
+
+
+def exempting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    platform: str = "windows-aarch64",
+    target: str = "aarch64-pc-windows-msvc",
+    diagnostics: str = DIAGNOSTICS,
+    reference: str = 'reference = "https://github.com/rust-lang/rust/issues/150123"',
+    cargo: str = UNREADABLE,
+) -> Repo:
+    """A tree carrying one coverage exemption, on a Windows ARM gate whose reader refuses.
+
+    The supported-platform list is the one `AGENTS.md` block the exemption is
+    read against — it is where a platform's Rust target comes from.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    policy = POLICY.format(command="git", install="false") + EXEMPTION.format(
+        platform=platform, target=target, diagnostics=diagnostics, reference=reference
+    )
+    (root / "repo-policy.toml").write_text(policy, encoding="utf-8")
+    (root / "AGENTS.md").write_text(
+        "[//]: # (BEGIN supported-platforms)\n"
+        "- `windows-aarch64` — runner `windows-11-arm`, Rust target "
+        "`aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — owed\n"
+        "[//]: # (END supported-platforms)\n",
+        encoding="utf-8",
+    )
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(programs, "cargo", cargo)
+    program(programs, "uv", "raise SystemExit(0)\n")
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("PRINTOBSERVER_PLATFORM", platform)
+    return Repo(root)
+
+
+def test_coverage_reports_the_native_windows_arm_toolchain_exemption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The ARM gate names its unreadable native profile instead of a false floor miss."""
+    repo = exempting(tmp_path, monkeypatch)
+
+    equal(coverage(repo), 0)
+
+    out = capsys.readouterr().out
+    contains(
+        out,
+        "no readable profile on aarch64-pc-windows-msvc, exempt by policy: rustc 1.97.1 and "
+        "its bundled llvm-profdata; https://github.com/rust-lang/rust/issues/150123",
+    )
+    contains(out, "coverage: rust lines no readable profile, exempt (floor 95%)")
+
+
+def test_a_coverage_exemption_naming_no_reference_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A toolchain refusal nobody has reported upstream is a floor miss, and says why."""
+    repo = exempting(tmp_path, monkeypatch, reference="")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "the coverage exemption for `windows-aarch64` states no `reference`")
+    contains(error, "below the 95% floor")
+
+
+def test_a_coverage_exemption_naming_another_target_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The exemption is held to the platform's own Rust target, read off the list."""
+    repo = exempting(tmp_path, monkeypatch, target="x86_64-pc-windows-msvc")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(
+        error,
+        "the coverage exemption for `windows-aarch64` names target `x86_64-pc-windows-msvc`, "
+        "and that platform's Rust target is `aarch64-pc-windows-msvc`",
+    )
+
+
+def test_a_coverage_exemption_whose_reference_is_not_an_upstream_issue_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference that is not a GitHub issue is a note, and a note exempts nothing."""
+    repo = exempting(tmp_path, monkeypatch, reference='reference = "see the wiki"')
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "names `see the wiki` as its reference")
+    contains(error, "held to an upstream issue on GitHub")
+
+
+def test_a_coverage_exemption_for_a_platform_the_list_does_not_name_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The gate runs as a listed platform; an entry for any other has no target to hold it to."""
+    repo = exempting(tmp_path, monkeypatch, platform="windows-riscv64")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(
+        error,
+        "the coverage exemption for `windows-riscv64` names a platform AGENTS.md's "
+        "supported-platform list does not",
+    )
+
+
+def test_a_coverage_exemption_whose_diagnostics_are_not_a_list_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One string iterates per character, each trivially printed; it is refused, not matched."""
+    repo = exempting(tmp_path, monkeypatch, diagnostics='"no profile can be merged"')
+
+    equal(coverage(repo), 1)
+
+    contains(
+        capsys.readouterr().err,
+        "states `diagnostics` as 'no profile can be merged' rather than a list of strings",
+    )
+
+
+def test_a_coverage_exemption_does_not_cover_a_readable_profile_below_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A floor genuinely missed on the exempt platform is still a floor missed."""
+    repo = exempting(
+        tmp_path,
+        monkeypatch,
+        cargo='print("TOTAL  13221  1087  91.78%  1455  144  90.10%  9625  517  90.00%  0  0  -")\n'
+        "raise SystemExit(1)\n",
+    )
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "did not apply")
+    contains(error, "so the floor was missed rather than unreadable")
+
+
+def test_coverage_states_each_total_beside_its_floor_on_a_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A passing run still leaves each platform's measured figure in its log."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(
+        programs,
+        "cargo",
+        'print("Filename  Regions  Missed Regions  Cover  Functions  Missed Functions  '
+        'Executed  Lines  Missed Lines  Cover  Branches  Missed Branches  Cover")\n'
+        'print("TOTAL  13221  1087  91.78%  1455  144  90.10%  9625  517  96.63%  0  0  -")\n',
+    )
+    program(
+        programs,
+        "uv",
+        "import sys\n"
+        'if "report" in sys.argv:\n'
+        '    print("Name  Stmts  Miss  Branch  BrPart  Cover")\n'
+        '    print("TOTAL  8386  435  2828  248  97%")\n',
+    )
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+
+    equal(coverage(Repo(root)), 0)
+
+    out = capsys.readouterr().out
+    contains(
+        out, "TOTAL  13221  1087  91.78%", describing="the Rust per-file table, printed on a pass"
+    )
+    contains(
+        out, "TOTAL  8386  435  2828", describing="the Python per-file table, printed on a pass"
+    )
+    equal(
+        out.strip().splitlines()[-1],
+        "coverage: rust lines 96.63% (floor 95%), python lines 97% (floor 95%)",
+    )

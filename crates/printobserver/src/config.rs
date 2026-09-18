@@ -31,8 +31,9 @@ use std::path::{Path, PathBuf};
 /// Where this program looks for its configuration when nothing names one.
 ///
 /// The file the service installer writes, so a caller on the host beside the
-/// printer needs no option at all.
-pub const DEFAULT_CONFIG_PATH: &str = "/etc/printobserver/config.toml";
+/// printer needs no option at all — which is this platform's answer in
+/// [`crate::locations`].
+pub const DEFAULT_CONFIG_PATH: &str = crate::locations::HERE.config;
 
 /// The variable naming the server to talk to.
 pub const SERVER_ENV: &str = "PRINTOBSERVER_SERVER";

@@ -23,6 +23,8 @@ concurrency:
 
 jobs:
   gate:
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
@@ -37,18 +39,29 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
+          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
     runs-on: ${{ matrix.platform.runner }}
+    # Git's own bash on the Windows runners rather than PowerShell, so that
+    # every cell runs its steps, and `just` finds the bash its recipes name, the
+    # same way.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
         with:
           # The end-to-end tier and the suppression check both diff against the
           # base branch, which a shallow checkout omits.
           fetch-depth: 0
-      - uses: extractions/setup-just@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # `just` from the same action as the cargo tools: `extractions/setup-just`
+      # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest,cargo-llvm-cov
+          tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
@@ -77,14 +90,23 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
+          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
     runs-on: ${{ matrix.platform.runner }}
+    # Git's own bash on the Windows runners rather than PowerShell, so that
+    # every cell runs its steps, and `just` finds the bash its recipes name, the
+    # same way.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest,cargo-llvm-cov
+          tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap

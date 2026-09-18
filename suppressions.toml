@@ -555,22 +555,6 @@ file = ".github/workflows/install-path.yml"
 site = "prove-registry-client-node:"
 reason = "The same tier and the same reason as the jobs above it: the JavaScript registry is read anonymously because that is how an application's own `npm install` reads it."
 
-# `.github/workflows/platform-dispatch.yml` carries one-cell copies of the six
-# registry-proof jobs and of the gate. Each copy is held to its source by `just
-# check-repo`'s `platform-dispatch`, and carries the directive its source does.
-
-[[suppression]]
-rule = "live_tier_compiles_and_requires_credential"
-file = ".github/workflows/platform-dispatch.yml"
-site = "llmlint: ignore[live_tier_compiles_and_requires_credential]"
-reason = "Each of these six jobs is a one-cell copy of the job of the same name in install-path.yml, with the same steps, and the same reason holds: there is no credential to require, because what the tier proves is the ANONYMOUS path an end user or a dependent takes, and a registry read authenticated by a token would prove a path nobody in front of a printer has. Nothing skips when something is missing — an unreachable or refusing registry is a non-zero exit naming it, a registry serving nothing for the version under test is `NOT SERVED`, and only `SERVED AND PROVEN` exits zero."
-
-[[suppression]]
-rule = "no_second_broader_sweep_over_an_already_gated_commit"
-file = ".github/workflows/platform-dispatch.yml"
-site = "llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit]"
-reason = "It is not an automatic second sweep: the workflow fires on a manual dispatch alone, never on a change, and runs exactly one job on exactly one platform a person named. That is the whole of what it is for — re-running one hosted cell while a platform is brought up, where a push would start every cell of every job to re-run one — and a cell somebody asks for by hand over a commit the gate already swept is the person's own call, reported under no required check."
-
 # `.github/workflows/platform-probe.yml` carries one trailing directive on each
 # line a rule reads: every tier's `run:` in the steps the three probe jobs share
 # and each tier step's `continue-on-error:`, and each job's `runs-on:` and job-
@@ -787,7 +771,7 @@ reason = "The generator's own copy of the rejection walk's directive in `python/
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/smoke/smoke.py"
-site = 'client = Client(asked.server, "operator", asked.credential)'
+site = 'client = Client(server, "operator", credential)'
 reason = "This smoke check exists to prove the installed `printobserver_sdk` distribution as its consumers use it, and that distribution's `Client` is synchronous and typed and ships no async counterpart. It makes two ordered calls, a status read and then an image read whose answer it checks, from a one-shot program with nothing to run concurrently; an async client would prove a client the distribution does not carry."
 
 [[suppression]]

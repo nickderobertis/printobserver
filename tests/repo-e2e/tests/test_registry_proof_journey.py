@@ -24,7 +24,15 @@ from pathlib import Path
 
 import pytest
 import yaml
-from journey import REPO_ROOT, capture, clean_environment, output, plain, pythonpath
+from journey import (
+    REPO_ROOT,
+    ROUTE_JOURNEY,
+    capture,
+    clean_environment,
+    output,
+    plain,
+    pythonpath,
+)
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
@@ -268,6 +276,7 @@ def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published
         )
 
 
+@ROUTE_JOURNEY
 @pytest.mark.parametrize("recipe", list(ROUTES))
 def test_each_route_is_proven_against_what_its_registry_serves(
     recipe: str, standing_in: Callable[..., Standin]
@@ -321,6 +330,7 @@ def test_an_artifact_that_cannot_be_run_is_reported_apart_from_one_nothing_serve
     truth("NOT SERVED\n" not in said, describing=f"the two outcomes to be told apart: {said}")
 
 
+@ROUTE_JOURNEY
 def test_a_release_run_proves_the_release_it_cut_and_not_whatever_is_newest(
     runs: Runs, standing_in: Callable[..., Standin]
 ) -> None:
@@ -385,6 +395,7 @@ def supervisor() -> Path:
     return built
 
 
+@ROUTE_JOURNEY
 def test_the_tier_recipe_proves_every_route_and_every_client(
     standing_in: Callable[..., Standin], supervisor: Path
 ) -> None:
@@ -424,6 +435,7 @@ def test_a_client_no_registry_serves_does_not_pass(
     contains(said, f"client: {CLIENTS[recipe]}", describing=said)
 
 
+@ROUTE_JOURNEY
 def test_an_artifact_reporting_another_version_does_not_pass(
     standing_in: Callable[..., Standin],
 ) -> None:

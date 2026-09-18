@@ -35,13 +35,13 @@ def tool_packages(committed: Repo) -> str:
         The roots, joined as a search path.
 
     Raises:
-        AssertionError: If the justfile exports none.
+        AssertionError: If the justfile lists none.
     """
     for line in committed.justfile.splitlines():
-        if line.startswith("export PYTHONPATH :="):
+        if line.startswith("TOOL_PACKAGES :="):
             roots = line.partition(":=")[2].strip().strip('"').split(":")
             return os.pathsep.join(str(committed.path(root)) for root in roots)
-    message = "the justfile exports no PYTHONPATH, and the checks' own tools live on it"
+    message = "the justfile lists no TOOL_PACKAGES, and the checks' own tools live on it"
     raise AssertionError(message)
 
 

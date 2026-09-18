@@ -154,11 +154,52 @@ fn bindings(world: &World) -> BTreeMap<&'static str, String> {
         ("IMAGE_ID", world.image_id.clone()),
         ("EVENT_ID", world.event_id.clone()),
         ("FILE", world.printable_file()),
-        (
-            "STATE_DIR",
-            world.root.path().join("state").display().to_string(),
-        ),
+        ("STATE_DIR", state_dir_as_written(world)),
     ])
+}
+
+/// The world's state directory as the server resolved it and writes it.
+///
+/// Resolved rather than as the world named it, because what the server prints
+/// is what it resolved: a temporary directory reached through a link, or named
+/// by a short name, is printed as the path it resolves to.
+fn state_dir_as_written(world: &World) -> String {
+    printobserver_server::plainly_written(
+        world
+            .root
+            .path()
+            .join("state")
+            .canonicalize()
+            .expect("the world's state directory resolves"),
+    )
+    .display()
+    .to_string()
+}
+
+/// Every path under the state directory, with its separators as the documents
+/// write them.
+///
+/// Windows joins a path it prints with `\` — written `\\` inside a JSON
+/// string — where a document shows `/`. Every other platform already prints
+/// what the document shows, so there this changes nothing.
+fn with_document_separators(written: &str) -> String {
+    const PLACEHOLDER: &str = "STATE_DIR";
+    if !cfg!(windows) {
+        return written.to_owned();
+    }
+    let mut out = String::with_capacity(written.len());
+    let mut rest = written;
+    while let Some(at) = rest.find(PLACEHOLDER) {
+        let (before, from) = rest.split_at(at + PLACEHOLDER.len());
+        out.push_str(before);
+        let end = from
+            .find(|letter: char| letter.is_whitespace() || letter == '"' || letter == '\'')
+            .unwrap_or(from.len());
+        out.push_str(&from[..end].replace("\\\\", "/").replace('\\', "/"));
+        rest = &from[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// One command line, with each placeholder replaced by this world's value.
@@ -267,6 +308,7 @@ fn output_abstraction_preserves_malformed_identifiers_and_instants() {
 /// `/private/var`, and the program prints the resolved path. The state
 /// directory here is reached through a link of its own, so the two forms differ
 /// on every host this runs on.
+#[cfg(unix)]
 #[test]
 fn output_abstraction_replaces_a_resolved_state_directory_whole() {
     let root = tempfile::TempDir::new().expect("a scratch tree");
@@ -305,7 +347,10 @@ fn replace_matching(text: &str, matches: fn(&str) -> bool, with: &str) -> String
 fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> String {
     let mut ordered: Vec<(&str, String)> = Vec::new();
     for (name, value) in bindings {
+        // Each value as it is printed plainly and as a JSON string escapes it,
+        // which differ for a path carrying a backslash.
         ordered.push((name, value.clone()));
+        ordered.push((name, value.replace('\\', "\\\\")));
         // A path is also printed as the filesystem resolves it: on macOS the
         // temporary directory is `/var/folders/…` and the program prints
         // `/private/var/folders/…`, which only this form matches whole.
@@ -313,7 +358,9 @@ fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> Strin
             && let Ok(resolved) = std::fs::canonicalize(value)
             && resolved.as_os_str() != value.as_str()
         {
-            ordered.push((name, resolved.display().to_string()));
+            let resolved = resolved.display().to_string();
+            ordered.push((name, resolved.replace('\\', "\\\\")));
+            ordered.push((name, resolved));
         }
     }
     // Longest first, so a state directory that is a prefix of an image path is
@@ -324,6 +371,7 @@ fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> Strin
     for (name, value) in ordered {
         written = written.replace(value.as_str(), name);
     }
+    written = with_document_separators(&written);
     written = replace_matching(&written, is_identifier, "ID");
     replace_matching(&written, is_instant, "TIMESTAMP")
 }

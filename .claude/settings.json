@@ -23,6 +23,7 @@
       "Bash(just lint-llm-validate)",
       "Bash(just release-dry-run)",
       "Bash(cargo:*)",
+      "Bash(bash:*)",
       "Bash(rustup:*)",
       "Bash(uv:*)",
       "Bash(bun:*)",

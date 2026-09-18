@@ -249,7 +249,11 @@ def every_action(contract: Path = ACTION_KINDS) -> list[str]:
 
 
 def _configuration(state: Path, printer: Printer, credential: str | None = None) -> str:
-    """The one configuration file the supervisor reads, as a document."""
+    """The one configuration file the supervisor reads, as a document.
+
+    `credential` is the one the supervisor serves under; given none, the
+    document names none and the supervisor generates its own.
+    """
     document = {
         "state_dir": str(state),
         "listen": "127.0.0.1:0",
@@ -341,6 +345,7 @@ class World:
         program: Path,
         root: Path,
         printer: Printer | None = None,
+        *,
         credential: str | None = None,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
@@ -349,12 +354,17 @@ class World:
         on a real socket is started; given the scripted `OctoPrint`, that is
         what the supervisor drives and the stand-in serves only the snapshot the
         alert below names.
+
+        `credential` is the one the supervisor is configured to serve under.
+        Given none, it generates its own, which is what an installed service
+        does; a journey names one to hold a client to a credential of a
+        particular shape.
         """
         self.program = program
         self.root = root
+        self.credential = credential
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
-        self.credential = credential
         self.state = root / "state"
         self.state.mkdir(parents=True, exist_ok=True)
         self._supervisor: subprocess.Popen[str] | None = None

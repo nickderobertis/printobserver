@@ -8,7 +8,16 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # `repo_checks` is a plain package rather than a distribution, so that no
 # hand-maintained version string enters the tree. This is how the recipes and
 # the graph targets reach it.
-export PYTHONPATH := "tools/repo-checks/src:tools/contract-codegen/src:tools/release-artifacts/src"
+#
+# `TOOL_PACKAGES` is the one list, written with `:`; the export joins it with
+# the separator the interpreter on this host reads. A Windows interpreter splits
+# a search path on `;` and reads a `:`-joined one as a single entry that names
+# nothing, so without this every recipe reaching `repo_checks` fails there
+# before doing anything. The separator is exported too, for a recipe that puts
+# one more entry in front of the path.
+TOOL_PACKAGES := "tools/repo-checks/src:tools/contract-codegen/src:tools/release-artifacts/src"
+export PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
+export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 
 # Show the command surface.
 default:
@@ -34,7 +43,7 @@ install-tools:
 # appends to `GITHUB_OUTPUT` and installs, so the gate's toolchain and the
 # release job run one release and a bump is one edit.
 tool-version TOOL:
-    @uv run -q python -m repo_checks tool-version {{TOOL}}
+    @uv run -q python -m repo_checks tool-version {{quote(TOOL)}}
 
 # The full gate: every tier `repo-policy.toml` declares, end-to-end included.
 check:
@@ -73,10 +82,13 @@ format-check:
     just node-modules
     bunx nx run-many -t format-check --output-style=stream
 
-# Lint every project with its language's linter, failing on any finding.
+# Lint every project with its language's linter, failing on any finding — and
+# every crate once more for the Windows target on a Unix host, so a finding in
+# `cfg(windows)` code is reported here rather than by a Windows runner.
 lint:
     just node-modules
     bunx nx run-many -t lint --output-style=stream
+    uv run -q python -m repo_checks lint-windows-target
 
 # Type-check every project with its language's type checker.
 typecheck:
@@ -202,7 +214,7 @@ prove-registry-client-node:
 # finding nothing unreleased — answers an empty field, and that is what those
 # jobs are gated on. Needs a checkout carrying the commit and its tags.
 release-version COMMIT ROOT:
-    @uv run -q python -m release_artifacts released --commit {{COMMIT}} --root {{ROOT}}
+    @uv run -q python -m release_artifacts released --commit {{quote(COMMIT)}} --root {{quote(ROOT)}}
 
 # What the publishing job released, as `released=<tag>...`, read off ANSWER.
 #
@@ -216,7 +228,7 @@ release-version COMMIT ROOT:
 # that program's is refused rather than read as "none": a publish skipped over
 # an unreadable answer is a release nobody can install and nothing reported.
 release-answer ANSWER:
-    @uv run -q python -m release_artifacts answered --answer {{ANSWER}}
+    @uv run -q python -m release_artifacts answered --answer {{quote(ANSWER)}}
 
 # Which release a hand-dispatched run publishes, as `released=<tag>`, off TAG.
 #
@@ -234,7 +246,7 @@ release-answer ANSWER:
 # refused naming why, and nothing is printed or written: the job fails, and
 # the jobs after it are skipped.
 release-dispatched TAG ROOT RECORD REF:
-    @uv run -q python -m release_artifacts dispatched --tag {{TAG}} --root {{ROOT}} --record {{RECORD}} --ref {{REF}}
+    @uv run -q python -m release_artifacts dispatched --tag {{quote(TAG)}} --root {{quote(ROOT)}} --record {{quote(RECORD)}} --ref {{quote(REF)}}
 
 # Which version a dispatched run recorded, as `version=<version>`, off RECORD.
 #
@@ -245,7 +257,7 @@ release-dispatched TAG ROOT RECORD REF:
 # field, because the route proofs skip on that field and a proof skipped over
 # an unreadable record is a publish nobody checked.
 release-version-dispatched RECORD:
-    @uv run -q python -m release_artifacts recorded --record {{RECORD}}
+    @uv run -q python -m release_artifacts recorded --record {{quote(RECORD)}}
 
 # The registry install-path proof: all three routes and all three clients,
 # which is how a person runs this tier by hand. `AGENTS.md`'s "The registry
@@ -260,10 +272,26 @@ test-install-proof:
     @just prove-registry-client-python
     @just prove-registry-client-node
 
+# Where one job of `ci.yml` or of `install-path.yml` runs for one supported
+# platform, as `runner=<label>` and `source=<workflow>`: what the platform-
+# dispatch workflow's `select` job appends to its outputs. JOB is a platform-
+# matrixed job of either workflow and PLATFORM an identifier from `AGENTS.md`'s
+# supported-platform list; a pair naming neither is refused, exit 2, before
+# anything runs.
+dispatch-resolve JOB PLATFORM:
+    @uv run -q python -m repo_checks.dispatching resolve --job {{quote(JOB)}} --platform {{quote(PLATFORM)}}
+
+# Run that job's own `run:` steps here, off the committed source workflow, as the
+# platform-dispatch workflow's `run` job does on the runner `dispatch-resolve`
+# answered: each step's command under bash, its condition and its waiver read
+# off the source, and the exit the first unwaived failure's.
+dispatch-run JOB PLATFORM:
+    uv run -q python -m repo_checks.dispatching run --job {{quote(JOB)}} --platform {{quote(PLATFORM)}}
+
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:
     uv run -q actionlint
-    uv run -q shellcheck --severity=style scripts/*.sh
+    uv run -q shellcheck --severity=style scripts/*.sh tools/repo-checks/src/repo_checks/*.sh
     uv run -q python -m repo_checks workflows
 
 # Run this repository's own deterministic checks over the committed tree.
@@ -325,7 +353,7 @@ docs-generate:
 # `AGENTS.md`'s "The real-printer smoke test" says what it requires, how to set
 # a host up for it, and what to watch while it runs. Stay next to the machine.
 test-printer-smoke *flags:
-    PYTHONPATH="tools/octoprint-env:$PYTHONPATH" uv run -q python tools/printer-smoke/printer_smoke.py {{flags}}
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/printer-smoke/printer_smoke.py {{flags}}
 
 # Refuse a pull-request title that is not a Conventional Commit subject.
 check-pr-title:

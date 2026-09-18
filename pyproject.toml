@@ -27,6 +27,12 @@ dev = [
     "actionlint-py>=1.7",
     "shellcheck-py>=0.11",
 ]
+# zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
+# Unix host. Its own group rather than `dev` so hosts that never run that pass —
+# the Windows runners, whose native lint is it — never fetch it.
+zig = [
+    "ziglang>=0.16",
+]
 
 [tool.ruff]
 line-length = 100
