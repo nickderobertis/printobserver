@@ -118,6 +118,7 @@ fn serve_as_a_service() -> Exit {
     let handler = move |control: ServiceControl| match control {
         // Stop and shutdown are the manager asking this service to stop: the
         // second is the machine going down, and it is answered the same way.
+        // llmlint: ignore[changed_behavior_has_e2e] The shutdown control is one only the service control manager sends, and only while the machine is going down: no tool sends it to one service, so no journey can drive it without restarting the runner. It shares this one arm with the stop control, whose whole path — the channel, the stop-pending report, `Running::stop`, the stopped report — `test_service_manager_journey.py` drives through the real manager on the Windows cells.
         ServiceControl::Stop | ServiceControl::Shutdown => {
             if let Ok(mut sender) = stop.lock()
                 && let Some(sender) = sender.take()
@@ -146,7 +147,9 @@ fn serve_as_a_service() -> Exit {
         Err(error) => {
             eprintln!("printobserver could not start a runtime: {error}");
             let mut reporter = ManagerReporter { handle };
-            let _ = reporter.report(StatusReport::stopped(Exit::Refused));
+            let _ = reporter.report(StatusReport::Stopped {
+                exit: Exit::Refused,
+            });
             return Exit::Refused;
         }
     };
@@ -178,21 +181,20 @@ impl StatusReporter for ManagerReporter {
 /// own is reported as a service-specific exit code, which is how a manager
 /// records a status that is not one of the operating system's.
 fn status_of(report: StatusReport) -> ServiceStatus {
-    let current_state = match report.state {
+    let current_state = match report.state() {
         service::ServiceState::StartPending => ServiceState::StartPending,
         service::ServiceState::Running => ServiceState::Running,
         service::ServiceState::StopPending => ServiceState::StopPending,
         service::ServiceState::Stopped => ServiceState::Stopped,
     };
-    let controls_accepted = if report.state == service::ServiceState::Running {
+    let controls_accepted = if report == StatusReport::Running {
         ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN
     } else {
         ServiceControlAccept::empty()
     };
-    let exit_code = if report.exit_code == 0 {
-        ServiceExitCode::Win32(0)
-    } else {
-        ServiceExitCode::ServiceSpecific(u32::from(report.exit_code))
+    let exit_code = match report.exit_code() {
+        0 => ServiceExitCode::Win32(0),
+        status => ServiceExitCode::ServiceSpecific(u32::from(status)),
     };
     ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
@@ -200,7 +202,7 @@ fn status_of(report: StatusReport) -> ServiceStatus {
         controls_accepted,
         exit_code,
         checkpoint: 0,
-        wait_hint: report.wait_hint,
+        wait_hint: report.wait_hint(),
         process_id: None,
     }
 }
@@ -215,7 +217,7 @@ mod tests {
 
     use super::{SERVICE_NAME, status_of};
     use crate::failure::Exit;
-    use crate::service::{self, STOP_WAIT_HINT, StatusReport};
+    use crate::service::{STOP_WAIT_HINT, StatusReport};
 
     /// The name is the one the install path states.
     #[test]
@@ -226,7 +228,7 @@ mod tests {
     /// A running service accepts a stop; a service in any other state does not.
     #[test]
     fn a_stop_is_accepted_while_running_and_at_no_other_time() {
-        let running = status_of(StatusReport::running());
+        let running = status_of(StatusReport::Running);
         assert_eq!(running.current_state, ServiceState::Running);
         assert!(
             running
@@ -239,10 +241,9 @@ mod tests {
                 .contains(ServiceControlAccept::SHUTDOWN)
         );
 
-        let starting = status_of(StatusReport::pending(
-            service::ServiceState::StartPending,
-            Duration::from_secs(30),
-        ));
+        let starting = status_of(StatusReport::StartPending {
+            wait_hint: Duration::from_secs(30),
+        });
         assert_eq!(starting.current_state, ServiceState::StartPending);
         assert!(starting.controls_accepted.is_empty());
         assert_eq!(starting.wait_hint, Duration::from_secs(30));
@@ -252,21 +253,24 @@ mod tests {
     /// service-specific code carrying that exit.
     #[test]
     fn an_exit_of_this_programs_own_is_reported_as_service_specific() {
-        let clean = status_of(StatusReport::stopped(Exit::Success));
+        let clean = status_of(StatusReport::Stopped {
+            exit: Exit::Success,
+        });
         assert_eq!(clean.current_state, ServiceState::Stopped);
         assert_eq!(clean.exit_code, ServiceExitCode::Win32(0));
         assert_eq!(clean.service_type, ServiceType::OWN_PROCESS);
 
-        let refused = status_of(StatusReport::stopped(Exit::Unconfigured));
+        let refused = status_of(StatusReport::Stopped {
+            exit: Exit::Unconfigured,
+        });
         assert_eq!(
             refused.exit_code,
             ServiceExitCode::ServiceSpecific(u32::from(Exit::Unconfigured.status()))
         );
 
-        let stopping = status_of(StatusReport::pending(
-            service::ServiceState::StopPending,
-            STOP_WAIT_HINT,
-        ));
+        let stopping = status_of(StatusReport::StopPending {
+            wait_hint: STOP_WAIT_HINT,
+        });
         assert_eq!(stopping.current_state, ServiceState::StopPending);
         assert_eq!(stopping.wait_hint, STOP_WAIT_HINT);
     }

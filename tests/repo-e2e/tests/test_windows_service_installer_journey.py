@@ -23,6 +23,7 @@ brings it back — is `test_service_manager_journey.py`'s, on a host that has on
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import threading
 import tomllib
@@ -62,6 +63,11 @@ GRANTING = "icacls"
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
 
+#: What a program's name may look like before it is written into the fixture
+#: session as a function's name: a cmdlet or a program file, and nothing
+#: PowerShell would read as anything else.
+PROGRAM_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9.-]*$")
+
 
 def _powershell() -> str:
     """The PowerShell on this host, and a next action where there is none.
@@ -81,6 +87,7 @@ def _powershell() -> str:
     raise AssertionError(message)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.fixture(scope="module")
 def program() -> Path:
     """The `printobserver` program built from this tree for this host, built once."""
@@ -95,22 +102,42 @@ def program() -> Path:
     return REPO_ROOT / "target" / "debug" / host(Repo(REPO_ROOT)).program
 
 
-def _rules() -> dict[str, object]:
+@dataclass(frozen=True, slots=True)
+class Rules:
+    """The `windows-service` rules `repo-policy.toml` declares, narrowed."""
+
+    #: Programs the installer may not run, each possibly with a verb.
+    may_not_invoke: tuple[str, ...]
+    #: Settings the installer may not write into what it runs.
+    may_not_set: tuple[str, ...]
+    #: What starts the service at boot, in the manager's vocabulary.
+    starts_at_boot: str
+    #: What brings it back after a crash, in the manager's vocabulary.
+    restarts_after_crash: str
+
+    @property
+    def forbidden_programs(self) -> list[str]:
+        """Every program the installer may not run, by the name PowerShell resolves."""
+        return sorted({entry.split()[0] for entry in self.may_not_invoke})
+
+
+def _strings(table: dict[str, object], key: str) -> tuple[str, ...]:
+    """One list of a policy table, as strings; absent is empty."""
+    value = table.get(key, [])
+    truth(isinstance(value, list), describing=f"`{key}` to be a list")
+    return tuple(str(entry) for entry in value) if isinstance(value, list) else ()
+
+
+def _rules() -> Rules:
     """The `windows-service` rules the policy declares."""
     policy = tomllib.loads((REPO_ROOT / "repo-policy.toml").read_text(encoding="utf-8"))
-    return dict(policy["service"]["managers"][MANAGER.value])
-
-
-def _strings(rules: dict[str, object], key: str) -> list[str]:
-    """One list of the rules, as strings."""
-    value = rules.get(key, [])
-    truth(isinstance(value, list), describing=f"`{key}` to be a list")
-    return [str(entry) for entry in value] if isinstance(value, list) else []
-
-
-def _forbidden_programs() -> list[str]:
-    """Every program the installer may not run, by the name PowerShell resolves."""
-    return sorted({entry.split()[0] for entry in _strings(_rules(), "may_not_invoke")})
+    table = dict(policy["service"]["managers"][MANAGER.value])
+    return Rules(
+        _strings(table, "may_not_invoke"),
+        _strings(table, "may_not_set"),
+        str(table["starts_at_boot"]),
+        str(table["restarts_after_crash"]),
+    )
 
 
 def _activation() -> str:
@@ -158,12 +185,27 @@ def _fixture_session(into: Path) -> Path:
     the installer resolves them before anything on PATH. The stand-in manager
     answers a query as Windows would: the service is not there, unless the
     journey says it is.
+
+    The names written into the session are the policy's own, and each is held
+    to the shape of a program's name before it is written into source; the
+    installer's path is written as a PowerShell literal, its one escape applied.
     """
+    names = [*_rules().forbidden_programs, GRANTING]
+    for name in names:
+        truth(
+            PROGRAM_NAME.match(name) is not None,
+            describing=f"`{name}` to be a program's name and nothing PowerShell reads otherwise",
+        )
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     shims = "\n".join(
         f"function {name} {{ Record ('{name} ' + ($args -join ' ')); $global:LASTEXITCODE = 0 }}"
-        for name in [*_forbidden_programs(), GRANTING]
+        for name in names
         if name != "sc.exe"
     )
+    installer = (REPO_ROOT / INSTALLER).as_posix().replace("'", "''")
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
 {shims}
@@ -175,7 +217,7 @@ function sc.exe {{
         $global:LASTEXITCODE = 0
     }}
 }}
-& '{(REPO_ROOT / INSTALLER).as_posix()}' @args
+& '{installer}' @args
 exit $LASTEXITCODE
 """
     path = into / "fixture-session.ps1"
@@ -205,6 +247,7 @@ def installer(tmp_path: Path) -> Callable[..., Ran]:
             arguments += ["-Binary", str(binary)]
         environment = clean_environment(**{RECORDING: str(recording)})
         if registered:
+            # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
             environment[REGISTERED] = "1"
         if path is not None:
             environment["PATH"] = path
@@ -258,14 +301,14 @@ def test_it_places_four_things_and_starts_nothing(
     forbidden = [
         line
         for line in ran.recorded
-        for entry in _strings(rules, "may_not_invoke")
+        for entry in rules.may_not_invoke
         if " ".join(line.split()).startswith(entry)
     ]
     equal(forbidden, [], describing="programs that start or enable a service, run by the installer")
     written = [
         line
         for line in ran.recorded
-        for setting in _strings(rules, "may_not_set")
+        for setting in rules.may_not_set
         if setting in " ".join(line.split())
     ]
     equal(written, [], describing="settings that enable a service, written by the installer")
@@ -286,19 +329,19 @@ def test_the_registration_carries_the_managers_own_unattended_settings(
     passing((ran.code, ran.said), describing="the installer under the fixture session")
     rules = _rules()
 
-    restarts = [line for line in ran.asked("failure") if str(rules["restarts_after_crash"]) in line]
+    restarts = [line for line in ran.asked("failure") if rules.restarts_after_crash in line]
     equal(
         len(restarts),
         1,
-        describing=f"one registration of `{rules['restarts_after_crash']}`: {ran.recorded}",
+        describing=f"one registration of `{rules.restarts_after_crash}`: {ran.recorded}",
     )
     contains(
         _activation(),
-        str(rules["starts_at_boot"]),
+        rules.starts_at_boot,
         describing="the activation command the install path states",
     )
     truth(
-        not any(str(rules["starts_at_boot"]) in line for line in ran.recorded),
+        not any(rules.starts_at_boot in line for line in ran.recorded),
         describing="the installer leaving the automatic start to the operator's own command",
     )
 

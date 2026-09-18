@@ -837,10 +837,10 @@ puts the service in place and the second starts it, and one subsection below
 states one pair, headed by the service manager it belongs to. Every service
 manager that list names a platform the install path targets under has a pair
 here, and no manager it does not name has one. A manager whose platforms all
-answer `install path: no` may already have one: the `windows-service` pair below
-is stated ahead of the three routes reaching Windows, because the service is
-delivered first and the routes are the next node's, and a pair the routes do not
-yet lead to is still the one they will.
+answer `install path: no` may have one too: a pair is owed once the routes reach
+a platform of that manager and permitted before they do, because a service is
+proven on its platform before that platform's routes are, and the pair is the
+same either way.
 
 **Enabling and starting is a command of its own rather than something the
 installer does, and the reason is that this service commands a 3D printer.**

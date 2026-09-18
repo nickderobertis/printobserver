@@ -59,9 +59,10 @@ function Fail([string]$Message) {
     exit 1
 }
 
-function Note([string]$Message) {
-    [Console]::Error.WriteLine("install-service.ps1: $Message")
-}
+# What a reinstall found and kept, said once, in the one line printed at the
+# end: a reader of that line learns what survived without a second line to
+# find it in.
+$Kept = @()
 
 # Every value this script is given is written into a TOML document, in which a
 # literal string has no escape for a single quote, and into the service's own
@@ -92,18 +93,24 @@ function Under-Root([string]$Path) {
     return Join-Path $Root $relative
 }
 
-# Run one program, and refuse to go on when it fails, naming what it said.
+# Run one program, and refuse to go on when it fails, naming what it said and
+# what to do next.
 #
 # Its own error preference, because Windows PowerShell turns a program's
 # standard error, read here so that it can be quoted back, into a terminating
 # error under `Stop` — before the exit status that says whether it failed.
-function Must([string]$What, [scriptblock]$Command) {
+function Must([string]$What, [string]$Next, [scriptblock]$Command) {
     $ErrorActionPreference = 'Continue'
     $said = & $Command 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
-        Fail "$What failed: $($said.Trim())"
+        Fail "$What failed: $($said.Trim()). $Next"
     }
 }
+
+# The one next action every refusal of the service control manager or the
+# access-control tool shares: both need an elevated PowerShell, and the manager
+# says what it holds when asked.
+$Elevate = "Run this from an elevated PowerShell; ``sc.exe query $ServiceName`` says what the service control manager holds."
 
 if ($Root) { Plain '-Root' $Root }
 if ($Binary) { Plain '-Binary' $Binary }
@@ -147,21 +154,21 @@ $binPath = "\`"$InstalledBinary\`" server --config \`"$InstalledConfig\`""
 $account = "NT SERVICE\$ServiceName"
 sc.exe query $ServiceName *> $null
 if ($LASTEXITCODE -eq 0) {
-    Note "the service $ServiceName is already registered; its program and configuration were updated and its start type was left alone"
-    Must "updating the service registration" { sc.exe config $ServiceName binPath= $binPath obj= $account }
+    $Kept += "the registration of $ServiceName was updated and its start type left as set"
+    Must "updating the service registration" $Elevate { sc.exe config $ServiceName binPath= $binPath obj= $account }
 } else {
-    Must "registering the service" {
+    Must "registering the service" $Elevate {
         sc.exe create $ServiceName binPath= $binPath start= demand obj= $account DisplayName= $ServiceName
     }
 }
-Must "describing the service" {
+Must "describing the service" $Elevate {
     sc.exe description $ServiceName "printobserver, a supervision layer between a 3D printer and an agent"
 }
 # What the manager does when the process ends without having reported that it
 # stopped: bring it back, five seconds later, however often that happens; a
 # day without a failure starts the count again. This is the whole of what
 # makes it a service rather than a program somebody has to restart.
-Must "setting the service's failure actions" {
+Must "setting the service's failure actions" $Elevate {
     sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000
 }
 
@@ -172,17 +179,17 @@ Must "setting the service's failure actions" {
 # Inheritance is cut so that nothing granted further up reaches in. The program
 # directory is left readable as its parent is, and the service account is
 # granted what it needs to run the program from it.
-Must "making the state directory private" {
+Must "making the state directory private" $Elevate {
     icacls $InstalledState /inheritance:r /grant:r "${account}:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"
 }
-Must "letting the service run its program" {
+Must "letting the service run its program" $Elevate {
     icacls (Split-Path $InstalledBinary) /grant "${account}:(OI)(CI)RX"
 }
 
 # An existing configuration is left exactly as it is: a reinstall must not
 # overwrite the operator's own values with a template's.
 if (Test-Path -LiteralPath $InstalledConfig -PathType Leaf) {
-    Note "$InstalledConfig is already there and was left alone"
+    $Kept += "$InstalledConfig was already there and was left alone"
 } else {
     $configuration = @"
 # printobserver's one configuration file.
@@ -249,9 +256,10 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
     } catch {
         Fail "$InstalledConfig could not be written: $_. Run this from an elevated PowerShell, or pass -Root a directory you can write to."
     }
-    Must "making the configuration private" {
+    Must "making the configuration private" $Elevate {
         icacls $InstalledConfig /inheritance:r /grant:r "${account}:R" "*S-1-5-32-544:F" "*S-1-5-18:F"
     }
 }
 
-Note "installed $InstalledBinary, $InstalledConfig, $InstalledState and the service $ServiceName, and started nothing; edit $InstalledConfig, then run: Set-Service -Name $ServiceName -StartupType Automatic -Status Running"
+$kept = if ($Kept.Count -gt 0) { " (" + ($Kept -join '; ') + ")" } else { '' }
+[Console]::Error.WriteLine("install-service.ps1: installed $InstalledBinary, $InstalledConfig, $InstalledState and the service $ServiceName$kept, and started nothing; edit $InstalledConfig, then run: Set-Service -Name $ServiceName -StartupType Automatic -Status Running")

@@ -43,6 +43,7 @@ from typing import Protocol
 import pytest
 from journey import HERE, REPO_ROOT, clean_environment, run
 from repo_checks import install_path as ip
+from repo_checks.checks_service import ACTIVATION_NAMES
 from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
@@ -137,6 +138,32 @@ class Installed:
     state: Path
 
 
+@dataclass(frozen=True, slots=True)
+class Stopped:
+    """How the manager recorded a stop."""
+
+    #: Whether it recorded a clean exit.
+    clean: bool
+    #: What it recorded, in its own words, for a reader of a failure.
+    recorded: str
+
+
+@dataclass(frozen=True, slots=True)
+class Served:
+    """Where the running service said it serves, and what authenticates to it."""
+
+    address: str
+    credential: str
+
+
+@dataclass(frozen=True, slots=True)
+class Answer:
+    """One answer the API gave, and the address it came from."""
+
+    text: str
+    address: str
+
+
 class Manager(Protocol):
     """One service manager, as the journey drives it.
 
@@ -171,7 +198,7 @@ class Manager(Protocol):
     def stop(self) -> None:
         """Ask the manager to stop the service."""
 
-    def stopped_gracefully(self) -> tuple[bool, str]:
+    def stopped_gracefully(self) -> Stopped:
         """Whether the manager recorded a clean exit, and what it recorded."""
 
     def remove(self, installed: Installed | None) -> None:
@@ -190,6 +217,7 @@ class Systemd:
         """A back end over the unit `name`."""
         self.name = name
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _systemctl(self, *arguments: str, check: bool = False) -> str:
         result = shell_run(["sudo", "-n", "systemctl", *arguments], timeout=120)
         if check:
@@ -277,13 +305,13 @@ class Systemd:
         """Ask the manager to stop the unit."""
         self._systemctl("stop", self.name, check=True)
 
-    def stopped_gracefully(self) -> tuple[bool, str]:
+    def stopped_gracefully(self) -> Stopped:
         """`Result=success` with an exit status of zero; a killed unit reads `signal`."""
         recorded = (
             f"Result={self._show('Result')} ExecMainCode={self._show('ExecMainCode')} "
             f"ExecMainStatus={self._show('ExecMainStatus')}"
         )
-        return recorded == "Result=success ExecMainCode=1 ExecMainStatus=0", recorded
+        return Stopped(recorded == "Result=success ExecMainCode=1 ExecMainStatus=0", recorded)
 
     def remove(self, installed: Installed | None) -> None:
         """Disable and unlink the unit, forget its state, and delete the root."""
@@ -321,6 +349,7 @@ class WindowsService:
         message = "this host has neither `pwsh` nor `powershell` on PATH"
         raise AssertionError(message)
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _sc(self, *arguments: str, check: bool = False) -> tuple[int, str]:
         result = shell_run(["sc.exe", *arguments], timeout=120)
         if check:
@@ -409,7 +438,7 @@ class WindowsService:
         """Ask the manager to stop the service."""
         self._sc("stop", self.name, check=True)
 
-    def stopped_gracefully(self) -> tuple[bool, str]:
+    def stopped_gracefully(self) -> Stopped:
         """Both exit codes zero; a killed service reads `1067` while it is down."""
         _, listing = self._sc("query", self.name)
         codes = {
@@ -417,7 +446,7 @@ class WindowsService:
             for field in ("WIN32_EXIT_CODE", "SERVICE_EXIT_CODE")
         }
         recorded = " ".join(f"{field}={' '.join(code)}" for field, code in codes.items())
-        return all(code == ["0"] for code in codes.values()), recorded
+        return Stopped(all(code == ["0"] for code in codes.values()), recorded)
 
     def remove(self, installed: Installed | None) -> None:
         """Stop and delete the service, wait for the manager to forget it, delete the root."""
@@ -442,10 +471,19 @@ class WindowsService:
 
 
 def _activation(manager: ServiceManager) -> str:
-    """The operator's own second command for one manager, as the install path states it."""
+    """The operator's own second command for one manager, as the install path states it.
+
+    Run verbatim, because running what the operator is told to run is the
+    point; held first to the shape `just check-repo` holds that command to, so
+    that what reaches a shell is a command of that manager naming a service.
+    """
     path = ip.parse((REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8"))
     pair = path.commands_for(manager.value)
     equal(len(pair), 2, describing=f"the {manager.value} pair the install path states")
+    truth(
+        ACTIVATION_NAMES[manager].search(pair[1]) is not None,
+        describing=f"`{pair[1]}` to be a {manager.value} activation command naming a service",
+    )
     return pair[1]
 
 
@@ -457,6 +495,7 @@ def _service_name(manager: ServiceManager) -> str:
     return words[words.index(field) + 1]
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.fixture(scope="module")
 def program() -> Path:
     """The `printobserver` program built from this tree for this host, built once."""
@@ -500,7 +539,7 @@ def _fill_in(configuration: Path, octoprint: str) -> None:
     configuration.write_text(filled, encoding="utf-8")
 
 
-def _where_it_serves(state: Path) -> tuple[str, str] | None:
+def _where_it_serves(state: Path) -> Served | None:
     """The address and credential the running service wrote for the clients beside it.
 
     `None` until the service has written them: the manager reports a process
@@ -515,17 +554,19 @@ def _where_it_serves(state: Path) -> tuple[str, str] | None:
     except tomllib.TOMLDecodeError, OSError:
         return None
     server = str(written["client"]["server"]).removeprefix("http://")
-    return server, str(written["client"]["credential"])
+    return Served(server, str(written["client"]["credential"]))
 
 
-def _ask(address: str, credential: str) -> str:
+# llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+def _ask(served: Served) -> str:
     """One question to the API, written out over a socket, and the whole answer."""
-    hostname, _, port = address.rpartition(":")
+    hostname, _, port = served.address.rpartition(":")
     with socket.create_connection((hostname, int(port)), timeout=10) as stream:
         stream.sendall(
             (
-                f"GET {QUESTION} HTTP/1.1\r\nHost: {address}\r\nAccept: application/json\r\n"
-                f"Authorization: Bearer {credential}\r\nConnection: close\r\n\r\n"
+                f"GET {QUESTION} HTTP/1.1\r\nHost: {served.address}\r\n"
+                f"Accept: application/json\r\nAuthorization: Bearer {served.credential}\r\n"
+                f"Connection: close\r\n\r\n"
             ).encode()
         )
         answer = b""
@@ -534,7 +575,7 @@ def _ask(address: str, credential: str) -> str:
     return answer.decode(errors="replace")
 
 
-def _answered(state: Path, *, not_by: str | None = None) -> tuple[str, str]:
+def _answered(state: Path, *, not_by: str | None = None) -> Answer:
     """The API's answer, and the address it came from, once the service answers.
 
     A service the manager has just started, or just brought back, takes a
@@ -543,29 +584,33 @@ def _answered(state: Path, *, not_by: str | None = None) -> tuple[str, str]:
     answers there. `not_by` is that last address, so that an answer is one the
     new process gave rather than one the file still described.
     """
-    latest: dict[str, str] = {}
+    latest: list[Answer] = []
 
     def answers() -> bool:
-        located = _where_it_serves(state)
-        if located is None or located[0] == not_by:
+        served = _where_it_serves(state)
+        if served is None or served.address == not_by:
             return False
-        address, credential = located
         try:
-            answer = _ask(address, credential)
+            answer = _ask(served)
         except OSError:
             return False
-        latest["address"] = address
-        latest["answer"] = answer
+        latest.append(Answer(answer, served.address))
         return "HTTP/1.1 200" in answer
 
     _eventually("a service answering its API", answers)
-    return latest["answer"], latest["address"]
+    return latest[-1]
+
+
+@dataclass(frozen=True, slots=True)
+class Activated:
+    """The service, installed and activated, as the two journeys receive it."""
+
+    manager: Manager
+    installed: Installed
 
 
 @pytest.fixture
-def activated(
-    manager: Manager, program: Path, octoprint: str
-) -> Iterator[tuple[Manager, Installed]]:
+def activated(manager: Manager, program: Path, octoprint: str) -> Iterator[Activated]:
     """The service installed into its own root, filled in, activated by the documented command.
 
     Removed on every exit path, so the host is left as it was found whether or
@@ -580,7 +625,7 @@ def activated(
         truth(not manager.is_running(), describing="the installer to have started nothing")
         _fill_in(installed.configuration, octoprint)
         manager.activate(installed)
-        yield manager, installed
+        yield Activated(manager, installed)
     finally:
         manager.remove(installed)
         truth(
@@ -591,34 +636,41 @@ def activated(
 
 
 def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
-    activated: tuple[Manager, Installed],
+    activated: Activated,
 ) -> None:
     """Started and stopped through the manager: running, answering the API, and a clean exit."""
-    manager, installed = activated
+    manager = activated.manager
 
     _eventually("the service running", manager.is_running)
-    answer, _ = _answered(installed.state)
-    contains(answer, "HTTP/1.1 200", describing=f"the running service's API answering:\n{answer}")
-    contains(answer, "application/json", describing="the answer's type")
+    answer = _answered(activated.installed.state)
+    contains(
+        answer.text,
+        "HTTP/1.1 200",
+        describing=f"the running service's API answering:\n{answer.text}",
+    )
+    contains(answer.text, "application/json", describing="the answer's type")
 
     manager.stop()
     _eventually("the service stopped", lambda: not manager.is_running())
-    clean, recorded = manager.stopped_gracefully()
-    truth(clean, describing=f"a graceful stop recorded by the manager; it recorded {recorded}")
+    stopped = manager.stopped_gracefully()
+    truth(
+        stopped.clean,
+        describing=f"a graceful stop recorded by the manager; it recorded {stopped.recorded}",
+    )
 
 
 def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
-    activated: tuple[Manager, Installed],
+    activated: Activated,
 ) -> None:
     """The manager reports it starts the service by itself, and brings it back after a crash."""
-    manager, installed = activated
+    manager = activated.manager
 
     truth(
         manager.starts_automatically(),
         describing="the manager reporting the service as one it starts automatically",
     )
     _eventually("the service running", manager.is_running)
-    _, address = _answered(installed.state)
+    first = _answered(activated.installed.state)
     before = manager.main_pid()
     truth(before > 0, describing="a process the manager reports as the service's")
 
@@ -628,10 +680,13 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         "the service brought back with a new process",
         lambda: manager.is_running() and manager.main_pid() != before,
     )
-    answer, again = _answered(installed.state, not_by=address)
+    again = _answered(activated.installed.state, not_by=first.address)
     contains(
-        answer,
+        again.text,
         "HTTP/1.1 200",
         describing="the API answering again from the process the manager brought back",
     )
-    truth(again != address, describing="the brought-back service serving on a port of its own")
+    truth(
+        again.address != first.address,
+        describing="the brought-back service serving on a port of its own",
+    )

@@ -33,9 +33,9 @@ impl StatusReporter for PrintingReporter {
         writeln!(
             out,
             "{REPORTED}{} wait-hint-ms={} exit={}",
-            report.state.name(),
-            report.wait_hint.as_millis(),
-            report.exit_code
+            report.state().name(),
+            report.wait_hint().as_millis(),
+            report.exit_code()
         )
         .and_then(|()| out.flush())
         .map_err(|error| error.to_string())

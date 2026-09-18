@@ -52,53 +52,64 @@ impl ServiceState {
     }
 }
 
-/// One report to the manager: the state entered, how long the manager should
-/// wait for the next report, and the exit code the state carries.
+/// One report to the manager: the state entered, and what that state carries.
 ///
-/// The wait hint is meaningful for the two pending states alone and zero for
-/// the other two; the exit code is meaningful for [`ServiceState::Stopped`]
-/// alone and zero for the other three, which is what a manager expects of a
-/// service that has not exited.
+/// A pending state carries how long the manager should wait before treating the
+/// next report as overdue, and nothing else; a stopped state carries the exit
+/// the service stopped with, and nothing else; running carries nothing. Each
+/// state's payload is its own variant, so a report of a running service with a
+/// wait hint, or a starting one with an exit, cannot be written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StatusReport {
-    /// The state the service has entered.
-    pub state: ServiceState,
-    /// How long the manager should wait before treating the next report as
-    /// overdue, for a pending state.
-    pub wait_hint: Duration,
-    /// The status this program exited with, for a stopped state: one of
-    /// [`Exit`]'s, as the console form of the program exits with it.
-    pub exit_code: u8,
+pub enum StatusReport {
+    /// Starting, and how long that may take.
+    StartPending {
+        /// How long the manager should wait for the next report.
+        wait_hint: Duration,
+    },
+    /// Serving.
+    Running,
+    /// Stopping, and how long that may take.
+    StopPending {
+        /// How long the manager should wait for the next report.
+        wait_hint: Duration,
+    },
+    /// Stopped, and how.
+    Stopped {
+        /// What this program exited with, as the console form exits with it.
+        exit: Exit,
+    },
 }
 
 impl StatusReport {
-    /// A report of a pending state, with how long it may take.
+    /// The state this report enters.
     #[must_use]
-    pub const fn pending(state: ServiceState, wait_hint: Duration) -> Self {
-        Self {
-            state,
-            wait_hint,
-            exit_code: 0,
+    pub const fn state(self) -> ServiceState {
+        match self {
+            Self::StartPending { .. } => ServiceState::StartPending,
+            Self::Running => ServiceState::Running,
+            Self::StopPending { .. } => ServiceState::StopPending,
+            Self::Stopped { .. } => ServiceState::Stopped,
         }
     }
 
-    /// The report that the service is running.
+    /// How long the manager should wait for the next report: the pending
+    /// states' own hint, and zero for a state that is not pending, which is
+    /// what a manager expects of one.
     #[must_use]
-    pub const fn running() -> Self {
-        Self {
-            state: ServiceState::Running,
-            wait_hint: Duration::ZERO,
-            exit_code: 0,
+    pub const fn wait_hint(self) -> Duration {
+        match self {
+            Self::StartPending { wait_hint } | Self::StopPending { wait_hint } => wait_hint,
+            Self::Running | Self::Stopped { .. } => Duration::ZERO,
         }
     }
 
-    /// The report that the service has stopped, and how.
+    /// The status the manager records: the stopped state's exit, and zero for
+    /// a service that has not exited.
     #[must_use]
-    pub const fn stopped(exit: Exit) -> Self {
-        Self {
-            state: ServiceState::Stopped,
-            wait_hint: Duration::ZERO,
-            exit_code: exit.status(),
+    pub const fn exit_code(self) -> u8 {
+        match self {
+            Self::Stopped { exit } => exit.status(),
+            Self::StartPending { .. } | Self::Running | Self::StopPending { .. } => 0,
         }
     }
 }
@@ -153,28 +164,42 @@ pub async fn run<R: StatusReporter>(
 ) -> Exit {
     deliver(
         reporter,
-        StatusReport::pending(ServiceState::StartPending, START_WAIT_HINT),
+        StatusReport::StartPending {
+            wait_hint: START_WAIT_HINT,
+        },
     );
     let running: Running = match Server::start(config).await {
         Ok(running) => running,
         Err(error) => {
             eprintln!("printobserver will not start: {error}");
-            deliver(reporter, StatusReport::stopped(Exit::Unconfigured));
+            deliver(
+                reporter,
+                StatusReport::Stopped {
+                    exit: Exit::Unconfigured,
+                },
+            );
             return Exit::Unconfigured;
         }
     };
     eprintln!("printobserver is serving on {}", running.address());
-    deliver(reporter, StatusReport::running());
+    deliver(reporter, StatusReport::Running);
 
     stop.await;
     deliver(
         reporter,
-        StatusReport::pending(ServiceState::StopPending, STOP_WAIT_HINT),
+        StatusReport::StopPending {
+            wait_hint: STOP_WAIT_HINT,
+        },
     );
     // The one shutdown: what `serve_until_signalled` takes once the Unix
     // termination signal arrives, and nothing a service does instead.
     running.stop().await;
-    deliver(reporter, StatusReport::stopped(Exit::Success));
+    deliver(
+        reporter,
+        StatusReport::Stopped {
+            exit: Exit::Success,
+        },
+    );
     Exit::Success
 }
 
@@ -183,7 +208,7 @@ fn deliver<R: StatusReporter>(reporter: &mut R, report: StatusReport) {
     if let Err(refusal) = reporter.report(report) {
         eprintln!(
             "printobserver could not report that it is {}: {refusal}",
-            report.state.name()
+            report.state().name()
         );
     }
 }
@@ -217,19 +242,30 @@ mod tests {
     /// neither; a stopped report carries the exit and no hint.
     #[test]
     fn a_report_carries_what_its_state_means_and_nothing_else() {
-        let pending = StatusReport::pending(ServiceState::StartPending, START_WAIT_HINT);
-        assert_eq!(pending.wait_hint, START_WAIT_HINT);
-        assert_eq!(pending.exit_code, 0);
+        let pending = StatusReport::StartPending {
+            wait_hint: START_WAIT_HINT,
+        };
+        assert_eq!(pending.state(), ServiceState::StartPending);
+        assert_eq!(pending.wait_hint(), START_WAIT_HINT);
+        assert_eq!(pending.exit_code(), 0);
 
-        let running = StatusReport::running();
-        assert_eq!(running.state, ServiceState::Running);
-        assert_eq!(running.wait_hint, Duration::ZERO);
-        assert_eq!(running.exit_code, 0);
+        let running = StatusReport::Running;
+        assert_eq!(running.state(), ServiceState::Running);
+        assert_eq!(running.wait_hint(), Duration::ZERO);
+        assert_eq!(running.exit_code(), 0);
 
-        let stopped = StatusReport::stopped(Exit::Unconfigured);
-        assert_eq!(stopped.state, ServiceState::Stopped);
-        assert_eq!(stopped.wait_hint, Duration::ZERO);
-        assert_eq!(stopped.exit_code, Exit::Unconfigured.status());
+        let stopping = StatusReport::StopPending {
+            wait_hint: STOP_WAIT_HINT,
+        };
+        assert_eq!(stopping.state(), ServiceState::StopPending);
+        assert_eq!(stopping.wait_hint(), STOP_WAIT_HINT);
+
+        let stopped = StatusReport::Stopped {
+            exit: Exit::Unconfigured,
+        };
+        assert_eq!(stopped.state(), ServiceState::Stopped);
+        assert_eq!(stopped.wait_hint(), Duration::ZERO);
+        assert_eq!(stopped.exit_code(), Exit::Unconfigured.status());
     }
 
     /// Both hints are generous rather than tight: a manager on a loaded board
