@@ -82,11 +82,10 @@ case "$system/$machine" in
     Linux/x86_64) platform="linux-x86_64" ;;
     Linux/aarch64 | Linux/arm64) platform="linux-aarch64" ;;
     Darwin/arm64) platform="macos-aarch64" ;;
-    Darwin/x86_64) platform="macos-x86_64" ;;
     *)
         die "this is $system/$machine, which printobserver publishes no program for" \
-            "The platforms it publishes for are linux-x86_64, linux-aarch64, macos-aarch64 \
-and macos-x86_64. On anything else, build it from source with \`cargo install printobserver\`."
+            "The platforms it publishes for are linux-x86_64, linux-aarch64 and macos-aarch64. \
+On anything else, build it from source with \`cargo install printobserver\`."
         ;;
 esac
 

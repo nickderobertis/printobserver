@@ -216,6 +216,25 @@ def test_a_list_that_loses_a_platform_it_carried_at_the_base_is_refused(
     refused(findings, "no longer names `linux-aarch64`")
 
 
+def test_a_platform_recorded_as_retired_may_leave_the_list(tree: Callable[[], Tree]) -> None:
+    """A cut with its reason on record is a decision, and the matrix follows the list."""
+    allowed = tree()
+    run(["git", "init", "-q", "-b", "main"], cwd=allowed.root, check=True)
+    base = _committed(allowed.root, "chore: the committed tree, copied")
+
+    allowed.edit("AGENTS.md", AARCH64_PLATFORM, "")
+    allowed.write(CI, allowed.read(CI).replace(AARCH64_ENTRY, ""))
+    allowed.edit(
+        "repo-policy.toml",
+        "\n[integration]\n",
+        '\n[[platforms.retired]]\nid = "linux-aarch64"\n'
+        'reason = "the arm runner was withdrawn"\n\n[integration]\n',
+    )
+    _committed(allowed.root, "chore: retire the arm platform, on record")
+
+    accepted(integration_tier(allowed.repo, base=base), describing="a list narrowed on record")
+
+
 def test_a_list_that_keeps_every_platform_it_carried_at_the_base_is_accepted(
     tree: Callable[[], Tree],
 ) -> None:

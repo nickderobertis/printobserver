@@ -168,8 +168,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       # The tag's own tree on a dispatch, so what is built is that release's;

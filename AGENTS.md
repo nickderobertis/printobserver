@@ -253,18 +253,21 @@ from.
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: yes
-- `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: yes
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — bring-up owed; the Windows platform node flips this to `yes`
 [//]: # (END supported-platforms)
 
-The two Linux entries run under systemd and the two macOS entries under
-launchd, and the installer in the end-user install path below writes each its
-own service definition. `linux-aarch64` is not optional: the machine beside the
-printer is usually a small ARM board, and it is the worst place to discover an
-architecture was never built for.
+The two Linux entries run under systemd and the macOS entry under launchd, and
+the installer in the end-user install path below writes each its own service
+definition. `linux-aarch64` is not optional: the machine beside the printer is
+usually a small ARM board, and it is the worst place to discover an
+architecture was never built for. Apple silicon is the only macOS platform:
+Intel macOS was cut on 2026-09-18 for hosted-runner cost, and
+`repo-policy.toml`'s `platforms.retired` is where a platform this list once
+named and names no longer is recorded, with its reason — the narrowing checks
+refuse a platform that vanished from the list with no such record.
 
 <!-- llmlint: ignore[agents_md_durable_and_terse] States what the Windows entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
 The Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
@@ -899,11 +902,9 @@ and it strands the two contexts branch protection already requires.
 - `gate (linux-x86_64)`
 - `gate (linux-aarch64)`
 - `gate (macos-aarch64)`
-- `gate (macos-x86_64)`
 - `integration (linux-x86_64, ubuntu-24.04)`
 - `integration (linux-aarch64, ubuntu-24.04-arm)`
 - `integration (macos-aarch64, macos-15)`
-- `integration (macos-x86_64, macos-15-intel)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)

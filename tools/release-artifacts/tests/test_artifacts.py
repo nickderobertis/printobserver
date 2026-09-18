@@ -224,7 +224,7 @@ def pretend_host(monkeypatch: pytest.MonkeyPatch, identifier: str) -> None:
 
 
 #: The Mach-O processor type of each macOS platform, as the format's header spells it.
-MACHO_CPU = {"macos-aarch64": 0x0100000C, "macos-x86_64": 0x01000007}
+MACHO_CPU = {"macos-aarch64": 0x0100000C}
 
 
 def macos_program(path: Path, identifier: str, minimum: tuple[int, int]) -> Path:
@@ -250,10 +250,9 @@ def macos_program(path: Path, identifier: str, minimum: tuple[int, int]) -> Path
         ("linux-x86_64", None, "manylinux_2_39_x86_64"),
         ("linux-aarch64", None, "manylinux_2_39_aarch64"),
         ("macos-aarch64", (11, 0), "macosx_11_0_arm64"),
-        ("macos-x86_64", (10, 12), "macosx_10_12_x86_64"),
         ("macos-aarch64", (13, 4), "macosx_14_0_arm64"),
     ],
-    ids=["linux-x86_64", "linux-aarch64", "macos-aarch64", "macos-x86_64", "macos-minor-rounds-up"],
+    ids=["linux-x86_64", "linux-aarch64", "macos-aarch64", "macos-minor-rounds-up"],
 )
 def test_the_wheel_tag_states_the_floor_the_program_was_built_against(
     repo: Repo,

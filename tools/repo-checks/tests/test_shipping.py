@@ -337,6 +337,84 @@ def test_a_platform_deleted_from_the_install_path_is_refused(tmp_path: Path) -> 
     refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
 
 
+#: The record `repo-policy.toml` carries for a platform cut from the list on
+#: purpose: the one thing that lets the list lose a platform it was cut with.
+RETIRED_AARCH64 = (
+    '\n[[platforms.retired]]\nid = "linux-aarch64"\n'
+    'reason = "the arm runner was withdrawn, and nothing beside the printer is arm"\n'
+)
+
+
+def _retire(tree: Tree, record: str = RETIRED_AARCH64) -> None:
+    """Record one platform as cut, in the copy's own policy."""
+    tree.edit("repo-policy.toml", "\n[integration]\n", f"{record}\n[integration]\n")
+
+
+def test_a_platform_recorded_as_retired_may_leave_the_install_path(tmp_path: Path) -> None:
+    """A cut with its reason on record is a decision rather than a narrowing."""
+    narrowed = Tree(copy_tree(tmp_path / "retired-platform"))
+    _committed(narrowed)
+    narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
+    _retire(narrowed)
+
+    accepted(install_path_not_narrowed(narrowed.repo))
+
+
+def test_a_retired_record_naming_a_platform_the_list_still_carries_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A record saying a platform was cut while it was not is a stale waiver.
+
+    Left standing, the day the list did drop that platform the narrowing check
+    would wave the loss through on it — so the `platforms` check refuses the
+    record the moment it disagrees with the list.
+    """
+    from repo_checks.checks_ci import platforms
+
+    stale = tree()
+    _retire(stale)
+
+    refused_naming(platforms(stale.repo), "`linux-aarch64`", "still names it")
+
+
+def test_a_retired_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
+    """A cut nobody explained is not a record of a cut."""
+    from repo_checks.checks_ci import platforms
+
+    unexplained = tree()
+    unexplained.write(AGENTS, _without_the_platform(unexplained.read(AGENTS)))
+    _retire(unexplained, '\n[[platforms.retired]]\nid = "linux-aarch64"\nreason = ""\n')
+
+    refused_naming(platforms(unexplained.repo), "names no platform `id` and no non-empty")
+
+
+def test_a_retired_record_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """A record nothing can read a platform out of is a finding, not a traceback."""
+    from repo_checks.checks_ci import platforms
+
+    malformed = tree()
+    policy = malformed.read("repo-policy.toml")
+    # The committed records go, so the key can be a string in `[platforms]`
+    # itself rather than a key of one of them.
+    stripped = (
+        policy[: policy.index("[[platforms.retired]]")] + policy[policy.index("[integration]") :]
+    )
+    malformed.write(
+        "repo-policy.toml",
+        stripped.replace(
+            'toolchain = "rust-toolchain.toml"\n',
+            'toolchain = "rust-toolchain.toml"\nretired = "linux-aarch64"\n',
+            1,
+        ),
+    )
+
+    _committed(malformed)
+    malformed.write(AGENTS, _without_the_platform(malformed.read(AGENTS)))
+
+    refused(platforms(malformed.repo), "not an array of tables")
+    refused(install_path_not_narrowed(malformed.repo), "not an array of tables")
+
+
 def test_a_route_deleted_from_the_install_path_is_refused(tmp_path: Path) -> None:
     """A route deleted here is a way to the program nobody has any more."""
     narrowed = Tree(copy_tree(tmp_path / "narrowed-route"))

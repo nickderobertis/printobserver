@@ -112,6 +112,17 @@ launcher = "npm/printobserver-cli/bin/printobserver.mjs"
 # waste, and a rule requiring all of them would mandate it.
 toolchain = "rust-toolchain.toml"
 
+# A platform the supported-platform list once named and names no longer, with
+# the reason it was cut. The two checks that refuse the list narrowing against
+# the commit a change was cut from — `install-path-not-narrowed` and
+# `integration-tier` — admit a platform recorded here and no other, so a
+# platform cannot leave the list quietly: the cut is visible, reasoned, and
+# refused without both. A record naming a platform the list still carries is
+# refused too, because it would say the platform was cut while it was not.
+[[platforms.retired]]
+id = "macos-x86_64"
+reason = "cut on 2026-09-18 for hosted-runner cost: the account holds five concurrent macOS slots shared with other work, and one push here was starting sixteen macOS jobs. Apple silicon is the only macOS platform."
+
 [integration]
 # The printer integration tier, and the two recipes that bracket it. These
 # names are the one source: `just check-repo` holds the committed

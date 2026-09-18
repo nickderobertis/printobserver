@@ -23,8 +23,6 @@ DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", 
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 MACOS = """          - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
 """
 # The integration job's own copy of that entry: the one that is followed by a
 # checkout taking no `with:` block, which is what tells it apart from the gate's.

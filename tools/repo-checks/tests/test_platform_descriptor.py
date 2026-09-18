@@ -95,17 +95,6 @@ TABLE = (
         "macosx_15_0_arm64",
     ),
     Row(
-        "macos-x86_64",
-        "macos-15-intel",
-        "x86_64-apple-darwin",
-        "launchd",
-        ("darwin", "x64"),
-        "printobserver",
-        "printobserver-macos-x86_64.tar.gz",
-        (15, 0),
-        "macosx_15_0_x86_64",
-    ),
-    Row(
         "windows-x86_64",
         "windows-2025",
         "x86_64-pc-windows-msvc",
@@ -285,7 +274,7 @@ def test_a_windows_host_is_answered_with_no_posix_only_interface_present(
     and asking on a host the list carries: code that reached for it would raise
     `AttributeError` here instead of answering.
     """
-    repo = supporting(tree(), TABLE[5])
+    repo = supporting(tree(), TABLE[4])
     monkeypatch.delattr(os, "uname", raising=False)
     monkeypatch.setattr(host_platform, "system", lambda: "Windows")
     monkeypatch.setattr(host_platform, "machine", lambda: "ARM64")
@@ -312,7 +301,10 @@ def test_a_host_the_list_does_not_name_is_refused_by_name(
 
 
 #: The Mach-O processor types a synthesized program is written for, spelled as
-#: the format's own header spells them rather than read from the module.
+#: the format's own header spells them rather than read from the module. The
+#: Intel type is here for the slice a universal file carries beside the one
+#: this host runs, which the reader has to walk past; Intel macOS is no
+#: platform of this repository.
 ARM64 = 0x0100000C
 X86_64 = 0x01000007
 
@@ -382,15 +374,8 @@ def macos_host(monkeypatch: pytest.MonkeyPatch, machine: str) -> None:
     ("row", "machine", "image", "baseline", "tag"),
     [
         (TABLE[2], "arm64", thin(ARM64, UUID, build_version(11, 0)), (11, 0), "macosx_11_0_arm64"),
-        (
-            TABLE[3],
-            "x86_64",
-            thin(X86_64, UUID, build_version(10, 12)),
-            (10, 12),
-            "macosx_10_12_x86_64",
-        ),
         (TABLE[2], "arm64", thin(ARM64, build_version(14, 2)), (14, 2), "macosx_15_0_arm64"),
-        (TABLE[3], "x86_64", thin(X86_64, version_min(10, 9)), (10, 9), "macosx_10_9_x86_64"),
+        (TABLE[2], "arm64", thin(ARM64, version_min(10, 9)), (10, 9), "macosx_10_9_arm64"),
         (
             TABLE[2],
             "arm64",
@@ -402,18 +387,18 @@ def macos_host(monkeypatch: pytest.MonkeyPatch, machine: str) -> None:
             "macosx_12_0_arm64",
         ),
         (
-            TABLE[3],
-            "x86_64",
+            TABLE[2],
+            "arm64",
             universal(
-                (ARM64, thin(ARM64, build_version(11, 0))),
                 (X86_64, thin(X86_64, build_version(10, 13))),
+                (ARM64, thin(ARM64, build_version(11, 0))),
                 wide=True,
             ),
-            (10, 13),
-            "macosx_10_13_x86_64",
+            (11, 0),
+            "macosx_11_0_arm64",
         ),
     ],
-    ids=["arm64", "x86_64", "a-minor-rounds-up", "version-min", "universal", "universal-64"],
+    ids=["arm64", "a-minor-rounds-up", "version-min", "universal", "universal-64"],
 )
 def test_a_macos_host_takes_its_wheel_tag_baseline_from_the_program(
     tree: Callable[[], Tree],

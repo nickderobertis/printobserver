@@ -20,7 +20,6 @@ const PACKAGES = {
   "linux-x64": "@printobserver/cli-linux-x64",
   "linux-arm64": "@printobserver/cli-linux-arm64",
   "darwin-arm64": "@printobserver/cli-darwin-arm64",
-  "darwin-x64": "@printobserver/cli-darwin-x64",
 };
 
 const platform = `${process.platform}-${process.arch}`;

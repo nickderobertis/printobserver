@@ -159,11 +159,13 @@ class Naming:
 
 #: What every platform identifier this repository's plan uses is called.
 #:
-#: Six rather than the two the supported-platform list names today, and
+#: Five rather than the three the supported-platform list names today, and
 #: deliberately: a platform joins that list only once every cell derived from
 #: it is green, and it cannot be brought up in stages if nothing can name it
 #: until it is already supported. Nothing here makes a platform supported —
-#: `descriptor` refuses every identifier the list does not carry.
+#: `descriptor` refuses every identifier the list does not carry. Intel macOS
+#: is named by neither: it was cut as a platform for hosted-runner cost, and
+#: `repo-policy.toml`'s `platforms.retired` records that.
 NAMING: dict[str, Naming] = {
     "linux-x86_64": Naming(
         npm_os="linux",
@@ -190,15 +192,6 @@ NAMING: dict[str, Naming] = {
         asset="printobserver-macos-aarch64.tar.gz",
         wheel_family="macosx",
         wheel_machine="arm64",
-        wheel_versioned=True,
-    ),
-    "macos-x86_64": Naming(
-        npm_os="darwin",
-        npm_cpu="x64",
-        program="printobserver",
-        asset="printobserver-macos-x86_64.tar.gz",
-        wheel_family="macosx",
-        wheel_machine="x86_64",
         wheel_versioned=True,
     ),
     "windows-x86_64": Naming(
@@ -232,7 +225,6 @@ HOSTS = {
     ("Linux", "aarch64"): "linux-aarch64",
     ("Linux", "arm64"): "linux-aarch64",
     ("Darwin", "arm64"): "macos-aarch64",
-    ("Darwin", "x86_64"): "macos-x86_64",
     ("Windows", "AMD64"): "windows-x86_64",
     ("Windows", "x86_64"): "windows-x86_64",
     ("Windows", "ARM64"): "windows-aarch64",
@@ -410,6 +402,71 @@ def supported(repo: Repo) -> list[Platform]:
                 )
             )
     return found
+
+
+def retired(repo: Repo) -> dict[str, str]:
+    """Every platform `repo-policy.toml` records as cut from the list, with its reason.
+
+    The one way a platform leaves the supported-platform list: the two checks
+    that refuse the list narrowing against the commit a change was cut from
+    admit a platform recorded here and no other. An entry that names no
+    platform, or carries no reason, is not a record of a cut and is passed over
+    here — `checks_ci.install_path_not_narrowed` is what reports it.
+
+    Raises:
+        PlatformError: If the table is not a list of tables, which is a record
+            nothing here can read a platform out of.
+    """
+    declared = repo.policy.get("platforms", {}).get("retired", [])
+    if not isinstance(declared, list) or not all(isinstance(one, dict) for one in declared):
+        msg = (
+            "`repo-policy.toml`'s `platforms.retired` is not an array of tables, so "
+            "nothing here can say which platforms were cut from the list"
+        )
+        raise PlatformError(msg)
+    found: dict[str, str] = {}
+    for entry in declared:
+        identifier = entry.get("id")
+        reason = entry.get("reason")
+        if isinstance(identifier, str) and isinstance(reason, str) and reason.strip():
+            found[identifier.strip()] = reason.strip()
+    return found
+
+
+def retired_findings(repo: Repo, declared: list[Platform]) -> list[str]:
+    """Every retired record names a platform, says why, and names one the list has cut.
+
+    A record with no reason is a cut nobody explained; one naming a platform the
+    list still carries says the platform was cut while it was not, and the day
+    the list does drop it the narrowing check would wave the loss through on a
+    stale entry.
+    """
+    try:
+        recorded = retired(repo)
+    except PlatformError as error:
+        return [str(error)]
+    entries = repo.policy.get("platforms", {}).get("retired", [])
+    findings = [
+        f"`repo-policy.toml`'s `platforms.retired` carries an entry that names no "
+        f"platform `id` and no non-empty `reason` ({entry!r}): a platform cut from the "
+        f"list is recorded by name and with why"
+        for entry in entries
+        if isinstance(entry, dict)
+        and (str(entry.get("id", "")).strip() not in recorded or not str(entry.get("id", "")))
+    ]
+    findings.extend(
+        f"`repo-policy.toml`'s `platforms.retired` records `{identifier}` as cut from "
+        f"AGENTS.md's supported-platform list, and that list still names it"
+        for identifier in sorted(recorded)
+        if any(platform.id == identifier for platform in declared)
+    )
+    findings.extend(
+        f"`repo-policy.toml`'s `platforms.retired` records `{identifier}`, which is not "
+        f"shaped like a platform identifier (a family and a processor, as `linux-x86_64` is)"
+        for identifier in sorted(recorded)
+        if not PLATFORM_ID.match(identifier)
+    )
+    return findings
 
 
 def install_platforms(repo: Repo) -> list[Platform]:

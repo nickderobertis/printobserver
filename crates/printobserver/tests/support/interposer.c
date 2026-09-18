@@ -32,10 +32,10 @@
  * The functions wrapped are the ones Rust's standard library and the `libc`
  * crate reach for these operations on each platform: `open`, `openat`, `stat`,
  * `lstat`, `fstatat`, `access`, `faccessat`, `opendir` and `connect`, plus on
- * Linux the large-file and `statx` spellings glibc links them under. On
- * x86_64 macOS the `libc` crate links `stat`, `lstat`, `fstatat` and
- * `opendir` as their `$INODE64` symbols, which is what the SDK's own headers
- * name those functions as in C, so the table below interposes exactly those.
+ * Linux the large-file and `statx` spellings glibc links them under. The
+ * table below names each by its C spelling, so it interposes whatever symbol
+ * the SDK's own headers resolve that name to — on Apple silicon, the one
+ * supported macOS, that is the plain symbol.
  */
 
 #ifndef __APPLE__

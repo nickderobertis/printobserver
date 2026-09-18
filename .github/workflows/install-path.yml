@@ -126,8 +126,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -155,8 +153,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -182,8 +178,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -205,8 +199,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/setup-python@v5
@@ -250,8 +242,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - uses: actions/setup-node@v5
@@ -291,8 +281,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - id: macos-aarch64
             runner: macos-15
-          - id: macos-x86_64
-            runner: macos-15-intel
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh

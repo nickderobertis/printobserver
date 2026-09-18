@@ -29,7 +29,10 @@ from repo_checks.platforms import (
     PLATFORM_LINE,
     PLATFORM_SHAPE,
     Platform,
+    PlatformError,
     ServiceManager,
+    retired,
+    retired_findings,
 )
 from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
@@ -493,6 +496,7 @@ def platforms(repo: Repo) -> list[str]:
         )
     findings.extend(_install_answer_findings(declared))
     findings.extend(_entry_findings(repo, declared))
+    findings.extend(retired_findings(repo, declared))
 
     declared_ids = [item.id for item in declared]
     installed_ids = [item.id for item in declared if item.install_path]
@@ -1491,11 +1495,20 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
         now = {platform.id for platform in platforms_of(repo)}
     except MarkerBlockMissingError as error:
         return [str(error)]
+    # A platform `repo-policy.toml` records as retired, with its reason, left
+    # the list on purpose; one it does not record left it quietly, and that is
+    # the narrowing this refuses.
+    try:
+        cut = retired(repo)
+    except PlatformError as error:
+        return [*findings, str(error)]
     findings.extend(
         f"AGENTS.md's supported-platform list named `{platform}` on {whence} and no "
-        f"longer does: every artifact, matrix and route here is derived from that list, "
-        f"so narrowing it narrows all of them at once"
+        f"longer does, and `repo-policy.toml`'s `platforms.retired` records no reason it "
+        f"was cut: every artifact, matrix and route here is derived from that list, so "
+        f"narrowing it narrows all of them at once"
         for platform in sorted(before - now)
+        if platform not in cut
     )
 
     stated = {route.heading for route in ip.parse(repo.agents_md).routes}

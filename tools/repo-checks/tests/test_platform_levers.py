@@ -29,11 +29,8 @@ EXCLUSIONS_END = "[//]: # (END platform-exclusions)"
 #: The matrix every platform-dependent job of this repository carries.
 MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 
-#: The two macOS cells that follow it in every one of those matrices.
-MATRIX_MACOS = (
-    "          - id: macos-aarch64\n            runner: macos-15\n"
-    "          - id: macos-x86_64\n            runner: macos-15-intel\n"
-)
+#: The macOS cell that follows it in every one of those matrices.
+MATRIX_MACOS = "          - id: macos-aarch64\n            runner: macos-15\n"
 
 
 #: A platform the list carries while its bring-up is owed, answered `install path: no`.

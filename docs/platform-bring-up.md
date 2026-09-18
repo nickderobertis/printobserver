@@ -3,7 +3,8 @@
 A working note, not reference documentation. It records what this repository's
 own deterministic tiers did the first time they ran on the four platforms
 `AGENTS.md`'s supported-platform list gained with every cell of theirs excluded:
-`macos-aarch64`, `macos-x86_64`, `windows-x86_64` and `windows-aarch64`. The
+`macos-aarch64`, Intel macOS (since cut as a platform, and named on that list no
+longer), `windows-x86_64` and `windows-aarch64`. The
 platform nodes that bring those platforms up are written against this record
 instead of against a guess, and the documentation node of that plan deletes this
 file together with the probe once the `platform-exclusions` block is empty.
@@ -11,8 +12,11 @@ file together with the probe once the `platform-exclusions` block is empty.
 ## The probe
 
 `.github/workflows/platform-probe.yml` is **temporary scaffolding**. It runs on
-every pull request and on a manual dispatch, and it cannot fail its run: one job
-per new runner, each naming its runner directly and carrying no platform matrix,
+a manual dispatch alone — it ran on every pull request until the macOS bring-up
+took its runner's cells into the gate, after which a probe of that runner on
+every change was a second macOS job per push saying nothing the gate did not —
+and it cannot fail its run: one job per runner still being brought up, each
+naming its runner directly and carrying no platform matrix,
 each setting the toolchain up, running `just bootstrap`, then running each of the
 gate's deterministic tiers as a step of its own with every step continuing on
 error. Its last step writes every step's `outcome` into the run's summary. It
@@ -37,7 +41,7 @@ from that same step's own log in that job.
   their exclusions. This is the run every entry below is read from.
   - `probe-macos-aarch64` — job
     [104765467330](https://github.com/nickderobertis/printobserver/actions/runs/35087431232/job/104765467330)
-  - `probe-macos-x86_64` — job
+  - the Intel macOS probe job, which the probe no longer carries — job
     [104765467622](https://github.com/nickderobertis/printobserver/actions/runs/35087431232/job/104765467622)
   - `probe-windows-x86_64` — job
     [104765467588](https://github.com/nickderobertis/printobserver/actions/runs/35087431232/job/104765467588)
@@ -165,88 +169,16 @@ repo-e2e: E   KeyError: 'arm64'
 repo-e2e: ERROR tests/repo-e2e/tests/test_install_script_journey.py - KeyError: 'arm64'
 ```
 
-## `macos-x86_64` — runner `macos-15-intel`
+## Intel macOS — runner `macos-15-intel`
 
-Run 2, job
-[104765467622](https://github.com/nickderobertis/printobserver/actions/runs/35087431232/job/104765467622).
-Every setup step came up; `extractions/setup-just` had a build, so the
-from-source step was skipped.
-
-| Tier | Came up |
-| --- | --- |
-| `just bootstrap` | yes |
-| `just format-check` | yes |
-| `just lint` | yes |
-| `just typecheck` | yes |
-| `just test` | **no** |
-| `just coverage` | **no** |
-| `just build` | yes |
-| `just lint-workflows` | yes |
-| `just check-repo` | yes |
-| `just test-e2e` | **no** |
-
-### `just test` — did not come up
-
-The same four failed tasks as on `macos-aarch64` — `printobserver:test`,
-`release-artifacts:test`, `printer-smoke:test` and `repo-checks:test` — in the
-same words. The command-line crate's journeys
-(`printobserver: Summary [ 13.586s] 24/60 tests run: 21 passed, 3 failed`):
-
-```text
-printobserver:     `strace` could not run, and this tier's whole claim about which endpoints an invocation reaches rests on it: No such file or directory (os error 2)
-```
-
-```text
-printobserver:     thread 'every_documented_example_prints_what_the_document_shows' (306194) panicked at crates/printobserver/tests/journeys/documenting.rs:436:5:
-...
-printobserver:     image_path: STATE_DIR/images/10/106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
-printobserver:     and it printed
-...
-printobserver:     image_path: /privateSTATE_DIR/images/10/106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
-```
-
-The release artifacts (`release-artifacts: 13 failed, 189 passed`):
-
-```text
-release-artifacts: FAILED tools/release-artifacts/tests/test_artifacts.py::test_the_node_route_resolves_a_per_platform_package - AssertionError: expected '@printobserver/cli-darwin-x64' in the dict of what the launcher resolves the program through:
-release-artifacts: FAILED tools/release-artifacts/tests/test_artifacts.py::test_the_wheel_tag_states_the_library_the_program_was_built_against - AssertionError: expected 'manylinux_2_39_x86_64'; got 'macosx_2_39_x86_64'
-release-artifacts: FAILED tools/release-artifacts/tests/test_publishing.py::test_the_checksum_file_lists_every_platforms_tarball - AssertionError: expected 2 for one line per tarball; got 3
-```
-
-The smoke test's own suite (`printer-smoke: 1 failed, 48 passed`) and the
-repository checks (`repo-checks: 1 failed, 809 passed`):
-
-```text
-printer-smoke: FAILED tools/printer-smoke/tests/test_cleanup.py::test_an_interrupted_run_leaves_the_machine_as_it_found_it - AssertionError: expected 'interrupted' in the str of what the interrupted run said:
-repo-checks: FAILED tools/repo-checks/tests/test_platform_descriptor.py::test_this_hosts_own_baseline_is_read_off_the_host - AssertionError: expected 'manylinux_' in the str of this Linux host's wheel platform tag:
-```
-
-### `just coverage` — did not come up
-
-```text
-TOTAL                                                13098              1235    90.57%        1437               151    89.49%        9545               609    93.62%           0                 0         -
-
-Rust line coverage is below the 95% floor. Add tests that drive the uncovered lines, or explain the floor change in AGENTS.md.
-```
-
-### `just test-e2e` — did not come up
-
-Unlike on `macos-aarch64`, collection succeeded — this runner's processor is
-reported as `x86_64`, which the install-script journey's own map reads as
-`linux-x86_64` — and the suite ran until the probe's own step bound stopped it,
-with thirteen tests failed (`F`) by then and no failure's text yet printed:
-
-```text
-repo-e2e: . [ 36%]
-...
-repo-e2e: . [ 72%]
-...
-##[error]The action 'Run just test-e2e' has timed out after 60 minutes.
-```
-
-Run 1 ended the same way, `##[error]The action 'Run just test-e2e' has timed
-out after 60 minutes.` (job
-[104734084034](https://github.com/nickderobertis/printobserver/actions/runs/35077754091/job/104734084034)).
+Cut as a platform on 2026-09-18, for hosted-runner cost, before its bring-up
+finished; `repo-policy.toml`'s `platforms.retired` is the record. Run 2, job
+[104765467622](https://github.com/nickderobertis/printobserver/actions/runs/35087431232/job/104765467622),
+said the same as `macos-aarch64` above tier for tier — the same four failed
+tasks under `just test`, in the same words, the same coverage floor under
+`just coverage`, and the same collection error under `just test-e2e` — so
+what that section records is what this runner said too, and nothing of its
+own is kept here.
 
 ## `windows-x86_64` — runner `windows-2025`
 
