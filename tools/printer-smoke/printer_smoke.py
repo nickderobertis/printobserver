@@ -47,6 +47,7 @@ from pathlib import Path
 
 from octoprint_env import DEFAULT_STATE_DIR as OCTOPRINT_STATE_DIR
 from octoprint_env import call as octoprint_call
+from octoprint_env import serial_platform
 from repo_checks.shell import run
 
 # ~~ what selects this test, and what configures it
@@ -59,9 +60,20 @@ DEVICE_ENV = "PRINTOBSERVER_SMOKE_DEVICE"
 
 #: The configuration this smoke reads its safety envelope out of, and points
 #: every command it runs at. On the machine beside the printer this is the
-#: server's own file, which is what the service installer wrote.
+#: server's own file, which is what the service installer wrote — and where
+#: that is depends on the platform. `crates/printobserver/src/locations.rs` is
+#: the one place the three answers are chosen, and its tests hold these three
+#: to it.
 CONFIG_ENV = "PRINTOBSERVER_SMOKE_CONFIG"
-DEFAULT_CONFIG = "/etc/printobserver/config.toml"
+LINUX_CONFIG = "/etc/printobserver/config.toml"
+MACOS_CONFIG = "/etc/printobserver/config.toml"
+WINDOWS_CONFIG = r"C:\ProgramData\printobserver\config.toml"
+DEFAULT_CONFIGS: dict[str, str] = {
+    "linux": LINUX_CONFIG,
+    "darwin": MACOS_CONFIG,
+    "win32": WINDOWS_CONFIG,
+}
+DEFAULT_CONFIG = DEFAULT_CONFIGS.get(sys.platform, LINUX_CONFIG)
 
 #: The print this smoke acts on. A print record is minted by the supervisor
 #: rather than by a caller, so the one to act on is named rather than guessed.
@@ -835,18 +847,32 @@ DOS_DEVICE_CHARACTERS = 1024
 
 
 def _device_readable(smoke: Smoke) -> str | None:
-    """The named serial device is there, and this user can read it."""
+    """The named serial device is there, and this user can read it.
+
+    Answered by each platform's own means — a Windows port is a name in the
+    system's device table, and a Unix one is a file with a mode — and, where
+    the name is not one the platform's serial devices have at all, the
+    refusal says what they are called there instead.
+    """
     if sys.platform == "win32":
         return _windows_device_present(smoke)
     device = Path(smoke.device)
     if not device.exists():
-        return f"{DEVICE_ENV} names {smoke.device}, which is not there"
+        return f"{DEVICE_ENV} names {smoke.device}, which is not there{_naming_hint(smoke)}"
     if not os.access(device, os.R_OK):
         return (
             f"{smoke.device} cannot be read by this user: check that it is a serial device "
-            f"and that this user is in the `dialout` group"
+            f"and that {serial_platform().access}"
         )
     return None
+
+
+def _naming_hint(smoke: Smoke) -> str:
+    """What this platform calls a serial device, when the name is not one it can have."""
+    here = serial_platform()
+    if here.names(smoke.device):
+        return ""
+    return f"; on {here.name} a serial device is {here.shape}"
 
 
 def _windows_device_present(smoke: Smoke) -> str | None:
@@ -866,7 +892,7 @@ def _windows_device_present(smoke: Smoke) -> str | None:
     # An empty name asks the table for every device it carries, which answers
     # something for any host — so it is refused before it is asked.
     if not name or _query_dos_device(name) is None:
-        return f"{DEVICE_ENV} names {smoke.device}, which is not there"
+        return f"{DEVICE_ENV} names {smoke.device}, which is not there{_naming_hint(smoke)}"
     return None
 
 
@@ -889,9 +915,11 @@ def _octoprint_on_the_device(smoke: Smoke) -> str | None:
     """The scripted `OctoPrint` is connected to that device, over a real serial port."""
     record_file = smoke.state_dir / "instance.json"
     if not record_file.is_file():
+        here = serial_platform()
         return (
             f"no scripted OctoPrint is recorded under {smoke.state_dir}: bring one up with "
-            f"`OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE={smoke.device} just octoprint-up`"
+            f"`{here.assignment('OCTOPRINT_ENV_MODE', 'serial')} "
+            f"{here.assignment('OCTOPRINT_ENV_DEVICE', smoke.device)} just octoprint-up`"
         )
     try:
         record = json.loads(record_file.read_text(encoding="utf-8"))
@@ -1126,7 +1154,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         say("not selected — nothing runs this by accident, and two things together run it:")
         for missing in selection.missing:
             say(f"  {missing}")
-        say(f"  select it with `{DEVICE_ENV}=/dev/ttyACM0 just test-printer-smoke {FLAG}`")
+        here = serial_platform()
+        say(
+            f"  select it with `{here.assignment(DEVICE_ENV, here.example)} "
+            f"just test-printer-smoke {FLAG}`"
+        )
         return 0
 
     smoke = smoke_of(environ, selection.device)

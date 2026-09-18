@@ -194,10 +194,19 @@ class World:
     ) -> subprocess.CompletedProcess[str]:
         """Run the smoke and interrupt it part-way, as a person at the machine would.
 
-        The interrupt is a real `SIGINT` from `timeout`, and the bounded
+        The interrupt is a real one. On a Unix it is `SIGINT`, addressed to
+        the smoke itself rather than to its process group: the group is where
+        the `printobserver` commands the smoke is spawning at that instant
+        live, so a run could be interrupted between spawning one and reading
+        it, and what a person's own interrupt reaches is the program they
+        started. On Windows it is the console break event, which is addressed
+        to a group, so the smoke is started in one of its own. The bounded
         intervention is given long enough that the run is waiting it out when
-        the signal lands — so what is interrupted is a run that has already
+        the interrupt lands, so what is interrupted is a run that has already
         started a print and already moved the machine.
+
+        Delivered by this suite rather than by a `timeout` program: that one is
+        GNU's, and macOS has none.
 
         Args:
             after: How long to let it run before interrupting it, in seconds.
@@ -207,39 +216,16 @@ class World:
             The completed run, including everything it said while cleaning up.
         """
         environment = self.environment({"PRINTOBSERVER_SMOKE_DURATION_S": duration_s})
-        if os.name == "nt":
-            process = start(
-                [sys.executable, str(SMOKE), "--run"],
-                cwd=REPO_ROOT,
-                env=environment,
-                own_group=True,
-            )
-            time.sleep(after)
-            process.send_signal(signal.CTRL_BREAK_EVENT)
-            stdout, stderr = process.communicate(timeout=300)
-            return subprocess.CompletedProcess(
-                process.args, process.returncode, stdout + stderr, ""
-            )
-        return run(
-            [
-                "timeout",
-                # Only the smoke itself, rather than a process group. Without
-                # this, `timeout` signals the group — and the group is where the
-                # `printobserver` commands the smoke is spawning at that instant
-                # live, so a run could be interrupted between spawning one and
-                # reading it. What a person's own interrupt reaches is the
-                # program they started, and this is that.
-                "--foreground",
-                "--signal=INT",
-                str(after),
-                sys.executable,
-                str(SMOKE),
-                "--run",
-            ],
+        process = start(
+            [sys.executable, str(SMOKE), "--run"],
             cwd=REPO_ROOT,
             env=environment,
-            timeout=300,
+            own_group=True,
         )
+        time.sleep(after)
+        process.send_signal(signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=300)
+        return subprocess.CompletedProcess(process.args, process.returncode, stdout + stderr, "")
 
 
 @contextmanager
