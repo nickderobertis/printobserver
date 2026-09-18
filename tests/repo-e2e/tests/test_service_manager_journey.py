@@ -560,7 +560,7 @@ def _where_it_serves(state: Path) -> Served | None:
         return None
     try:
         written = tomllib.loads(client.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError, OSError:
+    except tomllib.TOMLDecodeError, OSError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
     table = written.get("client")
     server = table.get("server") if isinstance(table, dict) else None
