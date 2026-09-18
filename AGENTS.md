@@ -126,14 +126,9 @@ body would run nothing.
 The gate is strict in all five senses: formatting, linting, type checking and
 tests each fail the build on an issue, coverage is measured on the test run, and
 `just coverage` fails the build below the floors `repo-policy.toml` records (95%
-lines, per ecosystem). There is no warnings-only mode. The one platform whose
-Rust profiles no toolchain can read — `windows-aarch64`, under
-[rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123), stated
-under "Supported platforms" — reports `no readable profile, exempt` as a
-distinct outcome rather than a figure, and `repo-policy.toml`'s
-`gate.coverage.exemptions` entry for it is refused unless it names that
-platform's own Rust target, the toolchain release, the exact refusal text and
-an upstream issue.
+lines, per ecosystem). There is no warnings-only mode, and one exemption from the
+Rust floor: `windows-aarch64`'s unreadable profiles, stated with their upstream
+reference under "Supported platforms".
 
 `just lint` lints every crate twice on a Unix host: natively, and once more for
 the Windows target `repo-policy.toml`'s `toolchain.windows_lint` names, so a
@@ -141,7 +136,7 @@ finding in `cfg(windows)` code — dead code to the native pass — is reported
 before a push rather than by a Windows runner at the end of a two-hour round.
 Clippy for another target still runs every dependency's build script, and two
 of them compile C for it, so the pass hands cargo zig as the cross C compiler
-through `scripts/zig-cc.sh` — obtained through `uv` from the `zig` dependency
+through `repo_checks`'s own `zig-cc.sh` — obtained through `uv` from the `zig` dependency
 group, off the default set so the Windows runners, whose native lint is that
 pass, never fetch it. `just bootstrap` adds the target's standard library on
 every host that is not Windows; where it is absent the pass says so and skips.

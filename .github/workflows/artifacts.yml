@@ -13,11 +13,11 @@
 # platform and taken on one. `just check-repo` refuses this file if it and that
 # section disagree, so neither set can be narrowed independently of it.
 #
-# It runs on no change: these proofs are of what a release published, against
-# what the registries serve, so they run after a release has published rather
-# than on a pull request or a push to `main` (the user's ruling of 2026-09-18).
-# A manual dispatch is the one trigger left, because Actions refuses a workflow
-# with none; the reshape into a post-release proof hangs off it.
+# It runs on no change. What these jobs prove is a release's concern — that
+# each client and route installs and runs on each platform — and it belongs
+# after a release has published rather than on every pull request and push,
+# where it cost every change six platform builds. A manual dispatch is the one
+# trigger, because Actions refuses a workflow with none.
 
 name: artifacts
 

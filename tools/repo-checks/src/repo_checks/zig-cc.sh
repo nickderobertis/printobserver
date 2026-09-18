@@ -4,7 +4,7 @@
 # cc-rs hands a clang-like compiler the Rust triple as `--target=`, which zig
 # does not read; that argument is dropped and zig's own target named instead.
 # `PRINTOBSERVER_ZIG` is the zig program and `PRINTOBSERVER_ZIG_TARGET` its
-# target, both set by `repo_checks.windows_lint` for the one cargo run it makes.
+# target, both set by `windows_lint.py` beside this file for the cargo runs it makes.
 set -eu
 for arg in "$@"; do
   shift

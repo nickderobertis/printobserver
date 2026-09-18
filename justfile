@@ -252,7 +252,7 @@ test-install-proof:
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:
     uv run -q actionlint
-    uv run -q shellcheck --severity=style scripts/*.sh
+    uv run -q shellcheck --severity=style scripts/*.sh tools/repo-checks/src/repo_checks/*.sh
     uv run -q python -m repo_checks workflows
 
 # Run this repository's own deterministic checks over the committed tree.

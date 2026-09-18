@@ -6,7 +6,9 @@ import os
 import re
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
 from repo_checks.platforms import PlatformError, descriptor
@@ -229,58 +231,89 @@ def _total_of(report: str, column: int) -> str:
 EXEMPTION_FIELDS = ("target", "toolchain", "diagnostics", "reference")
 
 
-def _exempt(repo: Repo, floors: dict, stderr: str) -> str | list[str]:
-    """Whether this platform's unreadable Rust profile is exempt by policy.
+@dataclass(frozen=True, slots=True)
+class Exemption:
+    """Whether a platform's unreadable Rust profile is exempt by policy.
 
-    Answers the one line the exemption prints where it applies, and otherwise
-    the refusals — each a sentence naming what the entry lacks. An exemption
-    is an entry under `gate.coverage.exemptions` keyed by the platform this
-    gate runs as (`PRINTOBSERVER_PLATFORM`); it names the Rust target
-    `AGENTS.md`'s supported-platform list gives that platform and no other, the
-    toolchain release whose profile reader refuses, every diagnostic that
-    refusal prints, and an upstream issue describing the refusal on that
-    target. A missing platform variable, or a platform with no entry, is no
-    exemption and no refusal: the floor was missed.
+    `outcome` is the one line printed where the exemption applies; `refusals`
+    are the sentences naming what the entry lacks where it does not. Neither,
+    and the floor was missed with no exemption in play.
+    """
+
+    outcome: str | None = None
+    refusals: tuple[str, ...] = ()
+
+    @property
+    def applies(self) -> bool:
+        """Whether the platform's report is exempt."""
+        return self.outcome is not None
+
+
+def _exempt(repo: Repo, floors: dict[str, Any], stderr: str) -> Exemption:
+    """Read this platform's coverage exemption against the policy and the report.
+
+    An exemption is an entry under `gate.coverage.exemptions` keyed by the
+    platform this gate runs as (`PRINTOBSERVER_PLATFORM`); it names the Rust
+    target `AGENTS.md`'s supported-platform list gives that platform and no
+    other, the toolchain release whose profile reader refuses, every
+    diagnostic that refusal prints, and an upstream issue describing the
+    refusal on that target. A missing platform variable, or a platform with
+    no entry, is no exemption and no refusal: the floor was missed.
     """
     platform_id = os.environ.get("PRINTOBSERVER_PLATFORM", "")
-    exemption = (floors.get("exemptions") or {}).get(platform_id)
-    if exemption is None:
-        return []
+    exemptions = floors.get("exemptions")
+    exemption = exemptions.get(platform_id) if isinstance(exemptions, dict) else None
+    if not isinstance(exemption, dict):
+        return Exemption()
+    where = f"the coverage exemption for `{platform_id}`"
     refusals = [
-        f"the coverage exemption for `{platform_id}` states no `{field}`"
-        for field in EXEMPTION_FIELDS
-        if not exemption.get(field)
+        f"{where} states no `{field}`" for field in EXEMPTION_FIELDS if not exemption.get(field)
     ]
-    reference = str(exemption.get("reference", ""))
-    if reference and not reference.startswith("https://github.com/"):
+    for field in ("target", "toolchain", "reference"):
+        if exemption.get(field) and not isinstance(exemption[field], str):
+            refusals.append(
+                f"{where} states `{field}` as {exemption[field]!r} rather than a string"
+            )
+    diagnostics = exemption.get("diagnostics")
+    if diagnostics and not (
+        isinstance(diagnostics, list) and all(isinstance(d, str) and d for d in diagnostics)
+    ):
         refusals.append(
-            f"the coverage exemption for `{platform_id}` names `{reference}` as its "
-            f"reference, and an exemption is held to an upstream issue on GitHub"
+            f"{where} states `diagnostics` as {diagnostics!r} rather than a list of strings"
+        )
+    if refusals:
+        return Exemption(refusals=tuple(refusals))
+    reference = str(exemption["reference"])
+    if not reference.startswith("https://github.com/"):
+        refusals.append(
+            f"{where} names `{reference}` as its reference, and an exemption is held to an "
+            f"upstream issue on GitHub"
         )
     try:
         target = descriptor(repo, platform_id).target
     except PlatformError:
+        refusals.append(f"{where} names a platform AGENTS.md's supported-platform list does not")
+        return Exemption(refusals=tuple(refusals))
+    if exemption["target"] != target:
         refusals.append(
-            f"the coverage exemption for `{platform_id}` names a platform AGENTS.md's "
-            f"supported-platform list does not"
-        )
-        return refusals
-    if exemption.get("target") and exemption["target"] != target:
-        refusals.append(
-            f"the coverage exemption for `{platform_id}` names target `{exemption['target']}`, "
-            f"and that platform's Rust target is `{target}`"
+            f"{where} names target `{exemption['target']}`, and that platform's Rust target "
+            f"is `{target}`"
         )
     if refusals:
-        return refusals
-    missing = [d for d in exemption["diagnostics"] if d not in stderr]
+        return Exemption(refusals=tuple(refusals))
+    missing = [d for d in diagnostics if d not in stderr]
     if missing:
-        return [
-            f"the coverage exemption for `{platform_id}` did not apply: the profile reader "
-            f"did not print {missing!r}, so the floor was missed rather than unreadable"
-        ]
-    return (
-        f"no readable profile on {target}, exempt by policy: "
-        f"{exemption['toolchain']}; {exemption['reference']}"
+        return Exemption(
+            refusals=(
+                f"{where} did not apply: the profile reader did not print {missing!r}, so the "
+                f"floor was missed rather than unreadable",
+            )
+        )
+    return Exemption(
+        outcome=(
+            f"no readable profile on {target}, exempt by policy: "
+            f"{exemption['toolchain']}; {reference}"
+        )
     )
 
 
@@ -305,12 +338,12 @@ def coverage(repo: Repo) -> int:
     rust_total = _total_of(rust.stdout, 9)
     if rust.returncode != 0:
         exempt = _exempt(repo, floors, rust.stderr)
-        if isinstance(exempt, str):
+        if exempt.applies:
             rust_total = "no readable profile, exempt"
-            print(exempt)
+            print(exempt.outcome)
         else:
             print(rust.stderr, file=sys.stderr)
-            for refusal in exempt:
+            for refusal in exempt.refusals:
                 print(refusal, file=sys.stderr)
             print(
                 f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "

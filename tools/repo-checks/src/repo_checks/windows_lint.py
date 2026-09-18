@@ -22,25 +22,54 @@ import os
 import platform as host_platform
 import shlex
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
-from repo_checks.model import Repo, policy_table
+from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
 from repo_checks.shell import run
 
-#: The environment `scripts/zig-cc.sh` and `scripts/zig-ar.sh` read.
+#: The environment the two wrappers beside this module read.
 ZIG_ENV = "PRINTOBSERVER_ZIG"
 ZIG_TARGET_ENV = "PRINTOBSERVER_ZIG_TARGET"
 
+#: zig as the C compiler and the archiver cc-rs is handed for the target.
+COMPILER = Path(__file__).with_name("zig-cc.sh")
+ARCHIVER = Path(__file__).with_name("zig-ar.sh")
 
-def _settings(repo: Repo) -> tuple[str, str] | None:
-    """The Rust target the pass lints for and zig's own name for it, or `None`.
 
-    A tree whose policy declares no `toolchain.windows_lint` table has no
-    Windows-target pass: nothing is linted for it and nothing is installed.
+@dataclass(frozen=True, slots=True)
+class WindowsLint:
+    """`toolchain.windows_lint`: the Rust target the pass lints for, and zig's name for it."""
+
+    target: str
+    zig_target: str
+
+
+@dataclass(frozen=True, slots=True)
+class CrateLint:
+    """One crate's committed `lint` target: its name and the clippy command it runs."""
+
+    crate: str
+    argv: list[str]
+
+    def retargeted(self, target: str) -> list[str]:
+        """The same command for `target`: cargo's flag, inserted before clippy's own."""
+        split = self.argv.index("--") if "--" in self.argv else len(self.argv)
+        return [*self.argv[:split], "--target", target, *self.argv[split:]]
+
+
+def settings(repo: Repo) -> WindowsLint | None:
+    """The pass's target, or `None` for a tree whose policy declares none.
+
+    Raises:
+        PolicyValueError: If the table is there and either field is not a
+            non-empty string.
     """
     table = policy_table(repo, "toolchain").get("windows_lint")
     if not table:
         return None
-    return str(table["target"]), str(table["zig_target"])
+    named = policy_strings(table, ("target", "zig_target"), "toolchain.windows_lint")
+    return WindowsLint(named["target"], named["zig_target"])
 
 
 def _target_installed(target: str) -> bool:
@@ -55,14 +84,17 @@ def install_target(repo: Repo, *, host: str | None = None) -> int:
     Part of `just bootstrap`, so that `just lint` covers the tree's Windows
     code on every developer's host rather than only on the runners.
     """
-    settings = _settings(repo)
-    if settings is None or (host or host_platform.system()) == "Windows":
+    try:
+        declared = settings(repo)
+    except PolicyValueError as malformed:
+        print(f"{malformed}. Correct it; no target was added.", file=sys.stderr)
+        return 1
+    if declared is None or (host or host_platform.system()) == "Windows":
         return 0
-    target, _ = settings
-    if _target_installed(target):
+    if _target_installed(declared.target):
         return 0
-    print(f"adding the {target} standard library, for `just lint`'s Windows-target pass")
-    return run(["rustup", "target", "add", target]).returncode
+    print(f"adding the {declared.target} standard library, for `just lint`'s Windows-target pass")
+    return run(["rustup", "target", "add", declared.target]).returncode
 
 
 def _zig(repo: Repo) -> str:
@@ -84,17 +116,16 @@ def _zig(repo: Repo) -> str:
     return located.stdout.strip()
 
 
-def _crate_lints(repo: Repo) -> list[tuple[str, list[str]]]:
-    """Each crate's committed clippy command, as `(crate, argv)`."""
-    lints: list[tuple[str, list[str]]] = []
+def crate_lints(repo: Repo) -> list[CrateLint]:
+    """Each crate's committed clippy command."""
+    lints: list[CrateLint] = []
     for project in repo.project_paths:
         if project.parent.parent != repo.path("crates"):
             continue
         targets = json.loads(project.read_text(encoding="utf-8")).get("targets", {})
-        command = targets.get("lint", {}).get("command", "")
-        argv = shlex.split(command)
+        argv = shlex.split(str(targets.get("lint", {}).get("command", "")))
         if argv[:2] == ["cargo", "clippy"]:
-            lints.append((project.parent.name, argv))
+            lints.append(CrateLint(project.parent.name, argv))
     return lints
 
 
@@ -105,14 +136,18 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
     Unix host without the target's standard library the pass says so and skips,
     naming what installs it. Otherwise each crate's committed clippy command is
     run once more with `--target` inserted before its `--`, so what is linted
-    for Windows is exactly what is linted natively, and the first crate to
-    report a finding fails the pass with that finding on its own output.
+    for Windows is exactly what is linted natively, and every crate that
+    reports a finding fails the pass with that finding on its own output.
     """
-    settings = _settings(repo)
-    if settings is None:
+    try:
+        declared = settings(repo)
+    except PolicyValueError as malformed:
+        print(f"{malformed}. Correct it; nothing was linted for Windows.", file=sys.stderr)
+        return 1
+    if declared is None:
         print("no `toolchain.windows_lint` target declared; nothing linted for Windows")
         return 0
-    target, zig_target = settings
+    target = declared.target
     if (host or host_platform.system()) == "Windows":
         print(f"{target}: this host's own; the native lint tier is the Windows-target pass")
         return 0
@@ -125,18 +160,17 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
         return 0
     environment = dict(os.environ)
     environment[ZIG_ENV] = _zig(repo)
-    environment[ZIG_TARGET_ENV] = zig_target
+    environment[ZIG_TARGET_ENV] = declared.zig_target
     suffix = target.replace("-", "_")
-    environment[f"CC_{suffix}"] = str(repo.path("scripts/zig-cc.sh"))
-    environment[f"AR_{suffix}"] = str(repo.path("scripts/zig-ar.sh"))
+    environment[f"CC_{suffix}"] = str(COMPILER)
+    environment[f"AR_{suffix}"] = str(ARCHIVER)
+    lints = crate_lints(repo)
     failed = False
-    for crate, argv in _crate_lints(repo):
-        split = argv.index("--") if "--" in argv else len(argv)
-        retargeted = [*argv[:split], "--target", target, *argv[split:]]
-        result = run(retargeted, cwd=repo.root, env=environment)
+    for lint in lints:
+        result = run(lint.retargeted(target), cwd=repo.root, env=environment)
         if result.returncode != 0:
             print(result.stderr, file=sys.stderr, end="")
-            print(f"{crate}: clippy for {target} reported findings", file=sys.stderr)
+            print(f"{lint.crate}: clippy for {target} reported findings", file=sys.stderr)
             failed = True
-    print(f"{target}: linted {len(_crate_lints(repo))} crates for the Windows target")
+    print(f"{target}: linted {len(lints)} crates for the Windows target")
     return 1 if failed else 0

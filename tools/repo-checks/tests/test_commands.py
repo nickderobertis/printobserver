@@ -372,15 +372,17 @@ def test_coverage_fails_where_no_coverage_was_measured(
 
 
 EXEMPTION = """
-[gate.coverage.exemptions.windows-aarch64]
+[gate.coverage.exemptions.{platform}]
 target = "{target}"
 toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
-diagnostics = [
-    "malformed instrumentation profile data: symbol name is empty",
-    "no profile can be merged",
-]
+diagnostics = {diagnostics}
 {reference}
 """
+
+#: What the ARM toolchain's own profile reader prints, as the policy lists it.
+DIAGNOSTICS = (
+    '["malformed instrumentation profile data: symbol name is empty", "no profile can be merged"]'
+)
 
 #: What the ARM toolchain's own profile reader prints before it exits non-zero.
 UNREADABLE = (
@@ -395,7 +397,9 @@ def exempting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
+    platform: str = "windows-aarch64",
     target: str = "aarch64-pc-windows-msvc",
+    diagnostics: str = DIAGNOSTICS,
     reference: str = 'reference = "https://github.com/rust-lang/rust/issues/150123"',
     cargo: str = UNREADABLE,
 ) -> Repo:
@@ -407,7 +411,7 @@ def exempting(
     root = tmp_path / "tree"
     root.mkdir()
     policy = POLICY.format(command="git", install="false") + EXEMPTION.format(
-        target=target, reference=reference
+        platform=platform, target=target, diagnostics=diagnostics, reference=reference
     )
     (root / "repo-policy.toml").write_text(policy, encoding="utf-8")
     (root / "AGENTS.md").write_text(
@@ -422,7 +426,7 @@ def exempting(
     program(programs, "cargo", cargo)
     program(programs, "uv", "raise SystemExit(0)\n")
     monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setenv("PRINTOBSERVER_PLATFORM", "windows-aarch64")
+    monkeypatch.setenv("PRINTOBSERVER_PLATFORM", platform)
     return Repo(root)
 
 
@@ -469,6 +473,49 @@ def test_a_coverage_exemption_naming_another_target_is_refused(
         error,
         "the coverage exemption for `windows-aarch64` names target `x86_64-pc-windows-msvc`, "
         "and that platform's Rust target is `aarch64-pc-windows-msvc`",
+    )
+
+
+def test_a_coverage_exemption_whose_reference_is_not_an_upstream_issue_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference that is not a GitHub issue is a note, and a note exempts nothing."""
+    repo = exempting(tmp_path, monkeypatch, reference='reference = "see the wiki"')
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "names `see the wiki` as its reference")
+    contains(error, "held to an upstream issue on GitHub")
+
+
+def test_a_coverage_exemption_for_a_platform_the_list_does_not_name_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The gate runs as a listed platform; an entry for any other has no target to hold it to."""
+    repo = exempting(tmp_path, monkeypatch, platform="windows-riscv64")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(
+        error,
+        "the coverage exemption for `windows-riscv64` names a platform AGENTS.md's "
+        "supported-platform list does not",
+    )
+
+
+def test_a_coverage_exemption_whose_diagnostics_are_not_a_list_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One string iterates per character, each trivially printed; it is refused, not matched."""
+    repo = exempting(tmp_path, monkeypatch, diagnostics='"no profile can be merged"')
+
+    equal(coverage(repo), 1)
+
+    contains(
+        capsys.readouterr().err,
+        "states `diagnostics` as 'no profile can be merged' rather than a list of strings",
     )
 
 

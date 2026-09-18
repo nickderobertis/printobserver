@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform as host_platform
 import shlex
 import stat
 import sys
@@ -19,10 +20,10 @@ from pathlib import Path
 
 import pytest
 from repo_checks import windows_lint
+from repo_checks.commands import install_tools
 from repo_checks.expect import absent, contains, equal
 from repo_checks.model import Repo
 from repo_checks.shell import run
-from treecopy import REPO_ROOT
 
 TARGET = "x86_64-pc-windows-gnu"
 
@@ -96,12 +97,12 @@ def test_each_crates_own_lint_is_run_again_for_the_windows_target(
         equal(argv[-2:], ["-D", "warnings"], describing="the committed lint's own severity")
         equal(
             invocation["env"]["CC_x86_64_pc_windows_gnu"],
-            str(REPO_ROOT / "scripts" / "zig-cc.sh"),
+            str(windows_lint.COMPILER),
             describing="the C compiler cargo's build scripts are handed",
         )
         equal(
             invocation["env"]["AR_x86_64_pc_windows_gnu"],
-            str(REPO_ROOT / "scripts" / "zig-ar.sh"),
+            str(windows_lint.ARCHIVER),
             describing="the archiver cargo's build scripts are handed",
         )
         equal(invocation["env"]["PRINTOBSERVER_ZIG"], str(stand_ins / "zig"))
@@ -194,6 +195,27 @@ def test_bootstrap_adds_the_target_on_a_host_that_is_not_windows(
     equal(recorded(stand_ins / "rustup"), [], describing="rustup never asked on Windows")
 
 
+def test_a_target_that_cannot_be_added_fails_bootstraps_tool_step_by_name(
+    stand_ins: Path, committed: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`install-tools` refuses rather than leaving `just lint` to skip the pass forever after."""
+    program(
+        stand_ins / "bin",
+        "rustup",
+        "import sys\n"
+        "if 'add' in sys.argv:\n"
+        "    print('error: no download', file=sys.stderr)\n"
+        "    raise SystemExit(1)\n"
+        "print('x86_64-unknown-linux-gnu')\n",
+    )
+    if host_platform.system() == "Windows":
+        pytest.skip("on a Windows host bootstrap adds no target: the native lint is the pass")
+
+    equal(install_tools(committed), 1)
+
+    contains(capsys.readouterr().err, "failed to add the Windows target's standard library")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="the wrappers are for a Unix host's cargo")
 def test_the_compiler_wrapper_drops_the_rust_triple_and_names_zigs_own_target(
     tmp_path: Path,
@@ -210,7 +232,7 @@ def test_the_compiler_wrapper_drops_the_rust_triple_and_names_zigs_own_target(
 
     compiled = run(
         [
-            str(REPO_ROOT / "scripts" / "zig-cc.sh"),
+            str(windows_lint.COMPILER),
             "-O0",
             f"--target={TARGET}",
             "-o",
@@ -220,9 +242,7 @@ def test_the_compiler_wrapper_drops_the_rust_triple_and_names_zigs_own_target(
         ],
         env=environment,
     )
-    archived = run(
-        [str(REPO_ROOT / "scripts" / "zig-ar.sh"), "cq", "lib.a", "out.o"], env=environment
-    )
+    archived = run([str(windows_lint.ARCHIVER), "cq", "lib.a", "out.o"], env=environment)
 
     equal(compiled.returncode, 0)
     equal(
