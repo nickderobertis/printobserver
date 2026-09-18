@@ -705,7 +705,9 @@ def open_device(device: str) -> int:
         OSError: If it cannot be opened, with the platform's own reason.
     """
     if sys.platform == "win32":
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         return os.open(windows_device_path(device), os.O_RDWR)
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     return os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 
 

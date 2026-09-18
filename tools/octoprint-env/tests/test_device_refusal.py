@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import octoprint_env
@@ -32,56 +33,67 @@ import pytest
 from environment import said, script
 from repo_checks.expect import failing, refused_naming, truth
 
-#: One name in each platform's own shape, by what `sys.platform` answers there.
-NAMES: dict[str, str] = {
-    "linux": "/dev/ttyACM0",
-    "darwin": "/dev/cu.usbmodem1101",
-    "win32": "COM3",
+
+@dataclass(frozen=True, slots=True)
+class PlatformCase:
+    """One platform as this suite knows it, in its own words rather than the script's.
+
+    A name in that platform's own shape; what the platform calls itself and
+    something a person there would recognise in a next action; and whether it
+    names devices the Windows way. A Unix names its devices under `/dev`, and a
+    `udev` rule may link a printer under any name there, so a Unix refuses a
+    `COM` port and nothing else.
+    """
+
+    key: str
+    name: str
+    device: str
+    recognisable: str
+    windows: bool
+
+    def can_have(self, device: str) -> bool:
+        """Whether `device` is a name this platform's serial devices can have."""
+        return device.upper().startswith("COM") == self.windows
+
+
+#: The three platforms, by what `sys.platform` answers on each.
+PLATFORMS: dict[str, PlatformCase] = {
+    case.key: case
+    for case in (
+        PlatformCase("darwin", "macOS", "/dev/cu.usbmodem1101", "ls /dev/cu.*", windows=False),
+        PlatformCase("linux", "Linux", "/dev/ttyACM0", "dialout", windows=False),
+        PlatformCase("win32", "Windows", "COM3", "Ports (COM & LPT)", windows=True),
+    )
 }
 
-#: What each platform's refusals have to say, in this suite's own words rather
-#: than the script's: the name it calls itself, and something a person there
-#: would recognise in the next action.
-WORDS: dict[str, tuple[str, str]] = {
-    "linux": ("Linux", "dialout"),
-    "darwin": ("macOS", "ls /dev/cu.*"),
-    "win32": ("Windows", "Ports (COM & LPT)"),
-}
-
-#: Whether a Windows name — a bare `COM` port — is one a platform can have. A
-#: Unix names its devices under `/dev`, and a `udev` rule may link a printer
-#: under any name there, so a Unix refuses a `COM` port and nothing else.
-IS_WINDOWS: dict[str, bool] = {"linux": False, "darwin": False, "win32": True}
+#: The platform this host is, as the script will read it.
+HERE: PlatformCase = PLATFORMS.get(sys.platform, PLATFORMS["linux"])
 
 #: The platforms whose way of opening a device this host can perform. A Unix
 #: opens a Windows port by name exactly as Windows does — it is `os.open` on a
 #: device-namespace path either way — but Windows has none of the flags a Unix
 #: opens a device node with.
 OPENABLE_HERE: frozenset[str] = (
-    frozenset({"win32"}) if sys.platform == "win32" else frozenset(NAMES)
+    frozenset({"win32"}) if sys.platform == "win32" else frozenset(PLATFORMS)
 )
 
 
-def _shaped_for(platform: str, device: str) -> bool:
-    """Whether `device` is a name `platform`'s serial devices can have."""
-    return device.upper().startswith("COM") == IS_WINDOWS[platform]
-
-
-def _refuses(platform: str, device: str, lines: list[str], *, state: Path) -> None:
+def _refuses(platform: PlatformCase, device: str, lines: list[str], *, state: Path) -> None:
     """The refusal `platform` owes `device`, by class, by name and by next action.
 
     Raises:
         AssertionError: If it is not the refusal, or if anything was provisioned.
     """
-    name, recognisable = WORDS[platform]
-    if _shaped_for(platform, device):
+    if platform.can_have(device):
         refused_naming(lines, "octoprint-env: failed: serial-device-unopenable")
         refused_naming(lines, "what happened:", device, "could not be opened")
-        refused_naming(lines, "next action:", recognisable)
+        refused_naming(lines, "next action:", platform.recognisable)
     else:
         refused_naming(lines, "octoprint-env: failed: serial-device-misnamed")
-        refused_naming(lines, "what happened:", device, f"not how {name} names a serial device")
-        refused_naming(lines, "next action:", name, NAMES[platform])
+        refused_naming(
+            lines, "what happened:", device, f"not how {platform.name} names a serial device"
+        )
+        refused_naming(lines, "next action:", platform.name, platform.device)
     truth(
         not state.exists(),
         describing=f"no state directory at {state}: nothing provisioned or started for a "
@@ -102,14 +114,14 @@ def _declining_a_present_device(device: str) -> None:
         pytest.skip(f"{device} is a device this host has, and this journey will not open it")
 
 
-@pytest.fixture(params=sorted(NAMES), ids=lambda platform: WORDS[platform][0].lower())
+@pytest.fixture(params=PLATFORMS.values(), ids=lambda case: case.name.lower())
 def device(request: pytest.FixtureRequest) -> Iterator[str]:
     """One device name in one platform's own shape, which nothing on this host answers.
 
     Yields:
         The device name.
     """
-    named = NAMES[str(request.param)]
+    named = str(request.param.device)
     _declining_a_present_device(named)
     yield named
 
@@ -119,41 +131,40 @@ def test_a_device_this_host_cannot_open_is_refused_before_anything_is_provisione
 ) -> None:
     """The committed script, in serial mode, on this host, given each platform's name."""
     state = Path(state_dir("refused"))
-    here = sys.platform if sys.platform in NAMES else "linux"
 
     result = script("up", "--state-dir", str(state), "--mode", "serial", "--device", device)
 
     failing(result, naming="octoprint-env: failed")
-    _refuses(here, device, said(result).splitlines(), state=state)
+    _refuses(HERE, device, said(result).splitlines(), state=state)
 
 
 #: Every platform answering every name, less the pairs this host cannot perform:
 #: a name the platform cannot have is never opened and so is answered anywhere,
 #: while a name it can have is opened by that platform's own means.
-ANSWERED_HERE: list[tuple[str, str]] = [
-    (platform, NAMES[named])
-    for platform in sorted(NAMES)
-    for named in sorted(NAMES)
-    if not _shaped_for(platform, NAMES[named]) or platform in OPENABLE_HERE
+ANSWERED_HERE: list[tuple[PlatformCase, str]] = [
+    (platform, named.device)
+    for platform in PLATFORMS.values()
+    for named in PLATFORMS.values()
+    if not platform.can_have(named.device) or platform.key in OPENABLE_HERE
 ]
 
 
 @pytest.mark.parametrize(
     ("platform", "named"),
     ANSWERED_HERE,
-    ids=[f"{WORDS[platform][0].lower()}-given-{named}" for platform, named in ANSWERED_HERE],
+    ids=[f"{platform.name.lower()}-given-{named}" for platform, named in ANSWERED_HERE],
 )
 def test_each_platform_answers_each_name_in_its_own_words(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    platform: str,
+    platform: PlatformCase,
     named: str,
 ) -> None:
     """The script's entry point, answering as each platform, given each platform's name."""
     _declining_a_present_device(named)
     state = tmp_path / "state"
-    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(sys, "platform", platform.key)
 
     code = octoprint_env.main(
         ["up", "--state-dir", str(state), "--mode", "serial", "--device", named]
@@ -209,5 +220,5 @@ def test_serial_mode_naming_no_device_is_told_what_to_pass_on_each_platform(
     lines = capsys.readouterr().err.splitlines()
     truth(code == 1, describing=f"a start naming no device to exit 1 as {platform}")
     refused_naming(lines, "serial-device-misnamed")
-    refused_naming(lines, "what happened:", f"--device {NAMES[platform]}", assignment)
+    refused_naming(lines, "what happened:", f"--device {PLATFORMS[platform].device}", assignment)
     truth(not (tmp_path / "state").exists(), describing="nothing provisioned for no device")

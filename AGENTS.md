@@ -417,18 +417,14 @@ serves the tier and the board beside the Prusa.
   configuration and differ in the connection alone; the script's
   `CONNECTION_KEYS` names exactly which keys that is, and a journey asserts the
   two configurations differ in those and in nothing else.
-- **A device is named the way the host names one.** `/dev/ttyACM0` on Linux,
-  `/dev/cu.usbmodem1101` on macOS, `COM3` on Windows; the script's
-  `SERIAL_PLATFORMS` is the one table of what each calls a device, where it
-  lists the ones it has, and what lets a user open one. A name the host cannot
-  have at all — a `COM` port on a Unix, a path on Windows — is refused naming
-  the shape it does use, and a name it can have is opened by the host's own
-  means and refused if it cannot be; both before anything is provisioned or
-  started, with the next action in that host's words rather than Linux's. The
-  Unix shape is deliberately just "a path under `/dev`", because a `udev` rule
-  may link a printer under any name there. `tests/test_device_refusal.py`
-  drives the committed script with a name in each shape and is the project's
-  `test` target, so every gate cell proves its own platform's answer.
+- **A device is named the way the host names one.** The script's
+  `SERIAL_PLATFORMS` is the one table of what each platform calls a serial
+  device, where it lists the ones it has, and what lets a user open one. A name
+  the host cannot have at all is refused naming the shape it does use, and one
+  it can have is opened by the host's own means and refused if it cannot be —
+  both before anything is provisioned or started, with the next action in that
+  host's words. The Unix shape is deliberately no tighter than "under `/dev`",
+  because a `udev` rule may link a printer under any name there.
 - **Provisioned, not assumed.** `install` is idempotent and unattended: a
   pinned OctoPrint in a virtual environment of its own (this repository's Python
   is newer than anything OctoPrint supports), the first-run wizard already
@@ -515,15 +511,13 @@ octoprint-up`); upload `tools/printer-smoke/gcode/smoke.gcode` to that instance
 under its own name; put the conservative envelope below into the running
 supervisor's configuration; and set a manifest for that file on the print the
 smoke is to act on, with `printobserver manifest-set`. `PRINTOBSERVER_SMOKE_CONFIG`
-names that configuration file — the server's own by default, which is
-`/etc/printobserver/config.toml` on Linux and macOS and
-`C:\ProgramData\printobserver\config.toml` on Windows, the three answers
-`crates/printobserver/src/locations.rs` chooses and holds the smoke's copies to —
-and `PRINTOBSERVER_SMOKE_PRINT_ID` names the print, because a print record is
-minted by the supervisor rather than by a caller. The device is named the way
-the host names one, exactly as the scripted `OctoPrint` above names it: `COM3`
-on Windows, `/dev/cu.usbmodem1101` on a Mac, and every hint the smoke prints
-about setting a variable is spelled for that host's own shell.
+names that configuration file — by default the server's own, wherever the
+platform's installer writes it, which `crates/printobserver/src/locations.rs`
+chooses and holds the smoke's copies to — and `PRINTOBSERVER_SMOKE_PRINT_ID`
+names the print, because a print record is minted by the supervisor rather than
+by a caller. The device is named the way the host names one, exactly as the
+scripted `OctoPrint` above names it, and every hint the smoke prints about
+setting a variable is spelled for that host's own shell.
 
 **Every precondition fails closed, and refusing is a pass.** Each is checked
 before anything is asked of the machine, an unmet one stops the run naming it,

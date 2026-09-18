@@ -196,6 +196,18 @@ reason = "Every call through this helper reaches an OctoPrint this script itself
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "os.open(windows_device_path(device), os.O_RDWR)"
+reason = "The serial device is opened once and closed at once, to learn the one thing that decides whether the bring-up may go on: whether OctoPrint will be able to open it a moment later. That is a synchronous question the kernel answers in the open call itself — there is no protocol spoken, no answer to type, and nothing else this strictly ordered bring-up could overlap it with — and a serial device has no typed client at all, async or otherwise; the program that speaks to the printer over it is OctoPrint. The boundary this rule is about is the product's, which reaches the printer through OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)"
+reason = "The Unix half of the same one probe as the entry above: the device node is opened without becoming its controlling terminal and without waiting for a carrier, and closed at once, for the same one synchronous answer."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/environment.py"
 site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
