@@ -22,13 +22,14 @@ can enable the service by a setting as easily as by a program.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 
 import pytest
-from repo_checks.checks_service import ingress_answer_bound, service_install
-from repo_checks.expect import accepted, contains, refused
-from repo_checks.model import Repo
+from repo_checks.checks_service import ingress_answer_bound, installer_for, service_install
+from repo_checks.expect import accepted, contains, equal, refused
+from repo_checks.model import PolicyValueError, Repo
 from treecopy import Tree
 
 INSTALLER = "scripts/install-service.sh"
@@ -41,6 +42,23 @@ POLICY = "repo-policy.toml"
 def test_the_committed_installer_is_accepted(committed: Repo) -> None:
     """The installer this repository ships is the one the install path names."""
     accepted(service_install(committed))
+
+
+def test_each_managers_installer_is_the_one_its_policy_table_declares(committed: Repo) -> None:
+    """A journey asks the policy for the installer it drives rather than naming one."""
+    equal(installer_for(committed, "systemd"), INSTALLER, describing="the systemd installer")
+    equal(
+        installer_for(committed, "windows-service"),
+        WINDOWS_INSTALLER,
+        describing="the windows-service installer",
+    )
+
+
+def test_asking_for_the_installer_of_a_manager_with_no_rules_is_refused(committed: Repo) -> None:
+    """A manager the policy has no table for has no installer to hand a journey."""
+    refusal = re.escape("declares no `service.managers.launchd` table")
+    with pytest.raises(PolicyValueError, match=refusal):
+        installer_for(committed, "launchd")
 
 
 def test_the_committed_answer_bound_is_accepted(committed: Repo) -> None:

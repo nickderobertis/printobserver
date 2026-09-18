@@ -161,6 +161,15 @@ def _rules(repo: Repo, manager: str) -> Rules:
     )
 
 
+def installer_for(repo: Repo, manager: str) -> str:
+    """The installer `repo-policy.toml` declares for one manager.
+
+    Raises:
+        PolicyValueError: If the manager has no rules or they name no installer.
+    """
+    return _rules(repo, manager).installer
+
+
 def installers(repo: Repo) -> list[str]:
     """Every installer `repo-policy.toml` declares, one per manager it has rules for."""
     managers = policy_table(repo, "service").get("managers")

@@ -20,7 +20,7 @@ use std::io::{BufRead as _, Write as _};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use printobserver::service::{StatusReport, StatusReporter, run};
+use printobserver::service::{ServiceState, StatusReport, StatusReporter, run};
 use tokio::sync::oneshot;
 
 /// What every report line begins with.
@@ -32,13 +32,13 @@ const REFUSES_REPORT: &str = "PRINTOBSERVER_FIXTURE_REFUSES_REPORT";
 /// The manager, as a line on standard output per report, refusing the report
 /// of the state it was told to refuse.
 struct PrintingReporter {
-    refuses: Option<String>,
+    refuses: Option<ServiceState>,
 }
 
 impl StatusReporter for PrintingReporter {
     fn report(&mut self, report: StatusReport) -> Result<(), String> {
         let state = report.state().name();
-        if self.refuses.as_deref() == Some(state) {
+        if self.refuses == Some(report.state()) {
             return Err(format!("the stand-in manager refused the {state} report"));
         }
         let mut out = std::io::stdout().lock();
@@ -62,9 +62,33 @@ fn configuration() -> Result<PathBuf, String> {
     }
 }
 
+/// The state `PRINTOBSERVER_FIXTURE_REFUSES_REPORT` names, if it is set; a
+/// value naming no state is refused rather than read as refusing nothing.
+fn refused_report() -> Result<Option<ServiceState>, String> {
+    let Some(named) = std::env::var_os(REFUSES_REPORT) else {
+        return Ok(None);
+    };
+    [
+        ServiceState::StartPending,
+        ServiceState::Running,
+        ServiceState::StopPending,
+        ServiceState::Stopped,
+    ]
+    .into_iter()
+    .find(|state| named == state.name())
+    .map(Some)
+    .ok_or_else(|| {
+        format!(
+            "{REFUSES_REPORT} is `{}`, which names no state a service reports",
+            named.to_string_lossy()
+        )
+    })
+}
+
 fn main() -> ExitCode {
-    let config = match configuration() {
-        Ok(config) => config,
+    let (config, refuses) = match configuration().and_then(|config| Ok((config, refused_report()?)))
+    {
+        Ok(read) => read,
         Err(usage) => {
             eprintln!("{usage}");
             return ExitCode::from(2);
@@ -89,9 +113,7 @@ fn main() -> ExitCode {
             return ExitCode::from(7);
         }
     };
-    let mut reporter = PrintingReporter {
-        refuses: std::env::var(REFUSES_REPORT).ok(),
-    };
+    let mut reporter = PrintingReporter { refuses };
     let exit = runtime.block_on(run(&config, &mut reporter, async move {
         let _ = stopped.await;
     }));

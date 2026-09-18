@@ -43,8 +43,9 @@ from typing import Protocol
 import pytest
 from journey import HERE, REPO_ROOT, clean_environment, run
 from repo_checks import install_path as ip
-from repo_checks.checks_service import ACTIVATION_NAMES
+from repo_checks.checks_service import ACTIVATION_NAMES, installer_for
 from repo_checks.expect import contains, equal, passing, truth
+from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
 
@@ -259,7 +260,7 @@ class Systemd:
         result = shell_run(
             [
                 "sh",
-                str(REPO_ROOT / "scripts" / "install-service.sh"),
+                str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.SYSTEMD)),
                 "--root",
                 str(root),
                 "--binary",
@@ -397,7 +398,7 @@ class WindowsService:
                 self._powershell(),
                 "-NoProfile",
                 "-File",
-                str(REPO_ROOT / "scripts" / "install-service.ps1"),
+                str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.WINDOWS_SERVICE)),
                 "-Root",
                 str(root),
                 "-Binary",

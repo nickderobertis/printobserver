@@ -35,17 +35,18 @@ from pathlib import Path
 import pytest
 from journey import REPO_ROOT, clean_environment, run
 from repo_checks import install_path as ip
+from repo_checks.checks_service import installer_for
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager, descriptor, host
 from repo_checks.shell import run as shell_run
 from repo_checks.shell import start
 
-#: The committed installer the `windows-service` pair fetches.
-INSTALLER = "scripts/install-service.ps1"
-
-#: The manager whose pair that is.
+#: The manager whose pair the installer under test belongs to.
 MANAGER = ServiceManager.WINDOWS_SERVICE
+
+#: The committed installer that pair fetches, as `repo-policy.toml` declares it.
+INSTALLER = installer_for(Repo(REPO_ROOT), MANAGER)
 
 #: The variable the fixture session records into.
 RECORDING = "PRINTOBSERVER_FIXTURE_RECORDING"

@@ -284,7 +284,6 @@ fn the_service_reports_each_state_answers_while_running_and_stops_cleanly() {
         "the service said it was running and its API did not answer:\n{answer}"
     );
 
-    // The stop control, as the stand-in manager sends it.
     let mut stdin = child.stdin.take().expect("the fixture's stop control");
     writeln!(stdin, "stop").expect("the stop control is sent");
     drop(stdin);
@@ -374,15 +373,102 @@ fn a_service_that_will_not_start_reports_stopped_with_the_refusal_and_never_runn
     );
 }
 
-/// A manager that refuses one report does not stop the sequence: the refusal is
-/// said on standard error, the service goes on serving, and the stop control
+/// The sentence the service says when the manager refuses the report of `state`.
+fn refusal_said(state: ServiceState) -> String {
+    format!(
+        "printobserver could not report that it is {name}: \
+         the stand-in manager refused the {name} report",
+        name = state.name()
+    )
+}
+
+/// A manager that refuses any one report does not stop the sequence: the
+/// refusal is said on standard error naming that state, every other report
+/// still arrives in order, the service goes on serving, and the stop control
 /// still takes it through the one graceful shutdown to a clean exit.
 #[test]
 fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
+    let sequence = [
+        ServiceState::StartPending,
+        ServiceState::Running,
+        ServiceState::StopPending,
+        ServiceState::Stopped,
+    ];
+    for refused in sequence {
+        let root = TempDir::new().expect("the tier's own root");
+        let octoprint = format!("http://{}", answering_host());
+        let configuration = configuration(root.path(), &octoprint);
+        let mut child = start_refusing(&configuration, Some(refused));
+        let mut reports =
+            BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
+        let expected = |states: &[ServiceState]| -> Vec<String> {
+            states
+                .iter()
+                .filter(|state| **state != refused)
+                .map(|state| state.name().to_owned())
+                .collect()
+        };
+
+        let mut before_stop = Vec::new();
+        for _ in expected(&sequence[..2]) {
+            before_stop.push(next_report(&mut reports).expect("a report").state);
+        }
+        assert_eq!(
+            before_stop,
+            expected(&sequence[..2]),
+            "with the {} report refused, the reports before the stop control were not the rest in order",
+            refused.name()
+        );
+
+        let (address, credential) = once_serving(&root.path().join("state"));
+        let answer = ask(&address, &credential);
+        assert!(
+            answer.contains("HTTP/1.1 200"),
+            "with the {} report refused, the service did not serve:\n{answer}",
+            refused.name()
+        );
+
+        let mut stdin = child.stdin.take().expect("the fixture's stop control");
+        writeln!(stdin, "stop").expect("the stop control is sent");
+        drop(stdin);
+
+        let mut after_stop = Vec::new();
+        while let Some(report) = next_report(&mut reports) {
+            after_stop.push(report.state);
+        }
+        assert_eq!(
+            after_stop,
+            expected(&sequence[2..]),
+            "with the {} report refused, the reports after the stop control were not the rest in order",
+            refused.name()
+        );
+        let status = exits_within(&mut child, STOPS_WITHIN);
+        assert_eq!(
+            status.code(),
+            Some(i32::from(Exit::Success.status())),
+            "with the {} report refused, the service did not exit cleanly: {status}",
+            refused.name()
+        );
+        let said = said(&mut child);
+        assert!(
+            said.contains(&refusal_said(refused)),
+            "the refused {} report was not said on standard error:\n{said}",
+            refused.name()
+        );
+    }
+}
+
+/// A service that will not start, whose manager refuses the report that it
+/// stopped, still says why it would not start and exits with that refusal.
+#[test]
+fn a_refused_stopped_report_after_a_failed_start_still_exits_with_the_refusal() {
     let root = TempDir::new().expect("the tier's own root");
-    let octoprint = format!("http://{}", answering_host());
-    let configuration = configuration(root.path(), &octoprint);
-    let mut child = start_refusing(&configuration, Some(ServiceState::Running));
+    let refusing = format!(
+        "http://{}",
+        host_answering(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    );
+    let configuration = configuration(root.path(), &refusing);
+    let mut child = start_refusing(&configuration, Some(ServiceState::Stopped));
     let mut reports = BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
 
     assert_eq!(
@@ -390,44 +476,50 @@ fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
         Some(ServiceState::StartPending.name().to_owned()),
         "the first report is not that the service is starting"
     );
-
-    let (address, credential) = once_serving(&root.path().join("state"));
-    let answer = ask(&address, &credential);
-    assert!(
-        answer.contains("HTTP/1.1 200"),
-        "the service stopped serving over a refused report:\n{answer}"
-    );
-
-    let mut stdin = child.stdin.take().expect("the fixture's stop control");
-    writeln!(stdin, "stop").expect("the stop control is sent");
-    drop(stdin);
-
-    assert_eq!(
-        next_report(&mut reports).map(|report| report.state),
-        Some(ServiceState::StopPending.name().to_owned()),
-        "the report after the stop control is not that the service is stopping"
-    );
     assert_eq!(
         next_report(&mut reports),
-        Some(Reported {
-            state: ServiceState::Stopped.name().to_owned(),
-            wait_hint_ms: 0,
-            exit: Exit::Success.status(),
-        }),
-        "the last report is not that the service stopped cleanly"
+        None,
+        "a report arrived that the manager refused"
     );
     let status = exits_within(&mut child, STOPS_WITHIN);
     assert_eq!(
         status.code(),
-        Some(i32::from(Exit::Success.status())),
-        "the service did not exit with status zero once stopped: {status}"
+        Some(i32::from(Exit::Unconfigured.status())),
+        "the process did not exit with the refusal it could not report: {status}"
     );
     let said = said(&mut child);
     assert!(
-        said.contains(
-            "printobserver could not report that it is running: \
-             the stand-in manager refused the running report"
-        ),
-        "the refused report was not said on standard error:\n{said}"
+        said.contains("will not start") && said.contains(&refusal_said(ServiceState::Stopped)),
+        "the failed start and the refused report were not both said:\n{said}"
+    );
+}
+
+/// A refusal naming no state is refused, rather than read as refusing nothing
+/// and letting a tier pass that asked for a refusal it never got.
+#[test]
+fn the_fixture_refuses_a_refusal_naming_no_state() {
+    let root = TempDir::new().expect("the tier's own root");
+    let configuration = configuration(root.path(), "http://127.0.0.1:9");
+    let output = Command::new(env!("CARGO_BIN_EXE_printobserver-service-fixture"))
+        .env("PRINTOBSERVER_FIXTURE_REFUSES_REPORT", "runnning")
+        .arg("--config")
+        .arg(&configuration)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the fixture runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the fixture ran over a refusal naming no state"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "the fixture reported over a refusal naming no state"
+    );
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        said.contains("`runnning`, which names no state a service reports"),
+        "the fixture did not say which value named no state:\n{said}"
     );
 }
