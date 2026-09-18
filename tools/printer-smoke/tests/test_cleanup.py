@@ -216,7 +216,11 @@ def test_a_final_read_that_never_answers_is_reported_rather_than_passed_over(
 
     equal(run.returncode, 1, describing="the exit of a run that could not read the machine")
     absent(run.stdout, "passed:", describing="what a run that could not see the machine said")
-    absent(run.stdout, "FAILED at", describing="what it said: no verification point failed")
+    absent(
+        run.stdout,
+        "FAILED at",
+        describing=f"what it said: no verification point failed; it said:\n{run.stdout}",
+    )
     contains(run.stdout, "UNVERIFIED:", describing="what it said")
     contains(run.stdout, "could not be read", describing="what it said")
     equal(

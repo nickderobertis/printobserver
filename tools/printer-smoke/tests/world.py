@@ -60,11 +60,13 @@ SETTLE_S = "4"
 DURATION_S = "1"
 
 #: The bound a relayed command is given. A command that answers needs a Python
-#: relay started, the program run and the machine asked, which is well under
-#: a second on an idle host and has reached two on a runner building the
-#: workspace beside this suite; a bound that stops those is a hang the test
-#: did not ask for.
-RELAY_BOUND_S = "5"
+#: relay started, the program run and the machine asked — well under a second
+#: on an idle host, and almost all of it the interpreter's own start-up, which
+#: is what a loaded host stretches: two seconds on a runner building the
+#: workspace beside this suite, and once past five on a host at four times its
+#: cores. A bound that stops a command meant to answer is a hang the test did
+#: not ask for, and every hang the test did ask for costs the whole bound.
+RELAY_BOUND_S = "10"
 
 #: The manifest the print carries, which is one for the smoke's own payload.
 MANIFEST: dict[str, Any] = {
