@@ -126,7 +126,14 @@ body would run nothing.
 The gate is strict in all five senses: formatting, linting, type checking and
 tests each fail the build on an issue, coverage is measured on the test run, and
 `just coverage` fails the build below the floors `repo-policy.toml` records (95%
-lines, per ecosystem). There is no warnings-only mode.
+lines, per ecosystem). There is no warnings-only mode. The one platform whose
+Rust profiles no toolchain can read — `windows-aarch64`, under
+[rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123), stated
+under "Supported platforms" — reports `no readable profile, exempt` as a
+distinct outcome rather than a figure, and `repo-policy.toml`'s
+`gate.coverage.exemptions` entry for it is refused unless it names that
+platform's own Rust target, the toolchain release, the exact refusal text and
+an upstream issue.
 
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a

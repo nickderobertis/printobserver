@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
+from repo_checks.platforms import PlatformError, descriptor
 from repo_checks.shell import run
 
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
@@ -220,11 +221,72 @@ def _total_of(report: str, column: int) -> str:
     return "unknown"
 
 
+#: The `gate.coverage.exemptions.<platform>` fields a per-target exemption states.
+EXEMPTION_FIELDS = ("target", "toolchain", "diagnostics", "reference")
+
+
+def _exempt(repo: Repo, floors: dict, stderr: str) -> str | list[str]:
+    """Whether this platform's unreadable Rust profile is exempt by policy.
+
+    Answers the one line the exemption prints where it applies, and otherwise
+    the refusals — each a sentence naming what the entry lacks. An exemption
+    is an entry under `gate.coverage.exemptions` keyed by the platform this
+    gate runs as (`PRINTOBSERVER_PLATFORM`); it names the Rust target
+    `AGENTS.md`'s supported-platform list gives that platform and no other, the
+    toolchain release whose profile reader refuses, every diagnostic that
+    refusal prints, and an upstream issue describing the refusal on that
+    target. A missing platform variable, or a platform with no entry, is no
+    exemption and no refusal: the floor was missed.
+    """
+    platform_id = os.environ.get("PRINTOBSERVER_PLATFORM", "")
+    exemption = (floors.get("exemptions") or {}).get(platform_id)
+    if exemption is None:
+        return []
+    refusals = [
+        f"the coverage exemption for `{platform_id}` states no `{field}`"
+        for field in EXEMPTION_FIELDS
+        if not exemption.get(field)
+    ]
+    reference = str(exemption.get("reference", ""))
+    if reference and not reference.startswith("https://github.com/"):
+        refusals.append(
+            f"the coverage exemption for `{platform_id}` names `{reference}` as its "
+            f"reference, and an exemption is held to an upstream issue on GitHub"
+        )
+    try:
+        target = descriptor(repo, platform_id).target
+    except PlatformError:
+        refusals.append(
+            f"the coverage exemption for `{platform_id}` names a platform AGENTS.md's "
+            f"supported-platform list does not"
+        )
+        return refusals
+    if exemption.get("target") and exemption["target"] != target:
+        refusals.append(
+            f"the coverage exemption for `{platform_id}` names target `{exemption['target']}`, "
+            f"and that platform's Rust target is `{target}`"
+        )
+    if refusals:
+        return refusals
+    missing = [d for d in exemption["diagnostics"] if d not in stderr]
+    if missing:
+        return [
+            f"the coverage exemption for `{platform_id}` did not apply: the profile reader "
+            f"did not print {missing!r}, so the floor was missed rather than unreadable"
+        ]
+    return (
+        f"no readable profile on {target}, exempt by policy: "
+        f"{exemption['toolchain']}; {exemption['reference']}"
+    )
+
+
 def coverage(repo: Repo) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
     Pass or fail, one line at the end states each ecosystem's measured total
-    beside its floor, so every platform's figure is in its log.
+    beside its floor, so every platform's figure is in its log. A platform whose
+    toolchain cannot read the profiles its own instrumentation writes states
+    that as a distinct outcome, under an exemption `_exempt` holds to policy.
     """
     floors = repo.policy["gate"]["coverage"]
     failed = False
@@ -235,25 +297,15 @@ def coverage(repo: Repo) -> int:
     )
     rust_total = _total_of(rust.stdout, 9)
     if rust.returncode != 0:
-        platform_id = os.environ.get("PRINTOBSERVER_PLATFORM")
-        exemption = (floors.get("exemptions") or {}).get(platform_id, {})
-        diagnostics = exemption.get("diagnostics", [])
-        valid = (
-            exemption.get("target") == "aarch64-pc-windows-msvc"
-            and platform_id == "windows-aarch64"
-            and str(exemption.get("reference", "")).startswith("https://github.com/")
-            and len(diagnostics) == 2
-            and all(diagnostic in rust.stderr for diagnostic in diagnostics)
-        )
-        if valid:
+        exempt = _exempt(repo, floors, rust.stderr)
+        if isinstance(exempt, str):
             rust_total = "no readable profile, exempt"
-            print(
-                "no readable profile on aarch64-pc-windows-msvc, exempt by policy: "
-                f"{exemption['toolchain']}; {exemption['reference']}"
-            )
+            print(exempt)
         else:
             print(rust.stdout, file=sys.stderr)
             print(rust.stderr, file=sys.stderr)
+            for refusal in exempt:
+                print(refusal, file=sys.stderr)
             print(
                 f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
                 f"drive the uncovered lines, or explain the floor change in AGENTS.md.",

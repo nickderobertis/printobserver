@@ -368,45 +368,123 @@ def test_coverage_fails_where_no_coverage_was_measured(
     contains(error, "below the")
 
 
-def test_coverage_reports_the_native_windows_arm_toolchain_exemption(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The ARM gate names its unreadable native profile instead of a false floor miss."""
-    root = tmp_path / "tree"
-    root.mkdir()
-    policy = (
-        POLICY.format(command="git", install="false")
-        + """
+EXEMPTION = """
 [gate.coverage.exemptions.windows-aarch64]
-target = "aarch64-pc-windows-msvc"
+target = "{target}"
 toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
 diagnostics = [
     "malformed instrumentation profile data: symbol name is empty",
     "no profile can be merged",
 ]
-reference = "https://github.com/rust-lang/rust/issues/150123"
-native_only_lines = []
+{reference}
 """
+
+#: What the ARM toolchain's own profile reader prints before it exits non-zero.
+UNREADABLE = (
+    "import sys\n"
+    'print("malformed instrumentation profile data: symbol name is empty", file=sys.stderr)\n'
+    'print("no profile can be merged", file=sys.stderr)\n'
+    "raise SystemExit(1)\n"
+)
+
+
+def exempting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    target: str = "aarch64-pc-windows-msvc",
+    reference: str = 'reference = "https://github.com/rust-lang/rust/issues/150123"',
+    cargo: str = UNREADABLE,
+) -> Repo:
+    """A tree carrying one coverage exemption, on a Windows ARM gate whose reader refuses.
+
+    The supported-platform list is the one `AGENTS.md` block the exemption is
+    read against — it is where a platform's Rust target comes from.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    policy = POLICY.format(command="git", install="false") + EXEMPTION.format(
+        target=target, reference=reference
     )
     (root / "repo-policy.toml").write_text(policy, encoding="utf-8")
+    (root / "AGENTS.md").write_text(
+        "[//]: # (BEGIN supported-platforms)\n"
+        "- `windows-aarch64` — runner `windows-11-arm`, Rust target "
+        "`aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — owed\n"
+        "[//]: # (END supported-platforms)\n",
+        encoding="utf-8",
+    )
     programs = tmp_path / "bin"
     programs.mkdir()
-    program(
-        programs,
-        "cargo",
-        "import sys\n"
-        'print("malformed instrumentation profile data: symbol name is empty", '
-        "file=sys.stderr)\n"
-        'print("no profile can be merged", file=sys.stderr)\n'
-        "raise SystemExit(1)\n",
-    )
+    program(programs, "cargo", cargo)
     program(programs, "uv", "raise SystemExit(0)\n")
     monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("PRINTOBSERVER_PLATFORM", "windows-aarch64")
+    return Repo(root)
 
-    equal(coverage(Repo(root)), 0)
 
-    contains(capsys.readouterr().out, "no readable profile on aarch64-pc-windows-msvc")
+def test_coverage_reports_the_native_windows_arm_toolchain_exemption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The ARM gate names its unreadable native profile instead of a false floor miss."""
+    repo = exempting(tmp_path, monkeypatch)
+
+    equal(coverage(repo), 0)
+
+    out = capsys.readouterr().out
+    contains(
+        out,
+        "no readable profile on aarch64-pc-windows-msvc, exempt by policy: rustc 1.97.1 and "
+        "its bundled llvm-profdata; https://github.com/rust-lang/rust/issues/150123",
+    )
+    contains(out, "coverage: rust lines no readable profile, exempt (floor 95%)")
+
+
+def test_a_coverage_exemption_naming_no_reference_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A toolchain refusal nobody has reported upstream is a floor miss, and says why."""
+    repo = exempting(tmp_path, monkeypatch, reference="")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "the coverage exemption for `windows-aarch64` states no `reference`")
+    contains(error, "below the 95% floor")
+
+
+def test_a_coverage_exemption_naming_another_target_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The exemption is held to the platform's own Rust target, read off the list."""
+    repo = exempting(tmp_path, monkeypatch, target="x86_64-pc-windows-msvc")
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(
+        error,
+        "the coverage exemption for `windows-aarch64` names target `x86_64-pc-windows-msvc`, "
+        "and that platform's Rust target is `aarch64-pc-windows-msvc`",
+    )
+
+
+def test_a_coverage_exemption_does_not_cover_a_readable_profile_below_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A floor genuinely missed on the exempt platform is still a floor missed."""
+    repo = exempting(
+        tmp_path,
+        monkeypatch,
+        cargo='print("TOTAL  13221  1087  91.78%  1455  144  90.10%  9625  517  90.00%  0  0  -")\n'
+        "raise SystemExit(1)\n",
+    )
+
+    equal(coverage(repo), 1)
+
+    error = capsys.readouterr().err
+    contains(error, "did not apply")
+    contains(error, "so the floor was missed rather than unreadable")
 
 
 def test_coverage_states_each_total_beside_its_floor_on_a_pass(

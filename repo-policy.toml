@@ -40,12 +40,20 @@ rust = 95
 python = 95
 typescript = 95
 
+# One platform whose Rust toolchain cannot read the profiles its own
+# instrumentation writes. The gate there still builds, lints and runs every
+# Rust test and journey natively, uninstrumented where instrumentation is what
+# fails; the floor holds on every platform whose profiles are readable. An
+# exemption names the platform's own Rust target and no other, the toolchain
+# release, the exact refusal text, and an upstream issue describing that
+# refusal on that target — `repo_checks.commands.coverage` refuses one that
+# names no reference or another target. Removed when that toolchain produces
+# readable profiles.
 [gate.coverage.exemptions.windows-aarch64]
 target = "aarch64-pc-windows-msvc"
 toolchain = "rustc 1.97.1 and its bundled llvm-profdata"
 diagnostics = ["malformed instrumentation profile data: symbol name is empty", "no profile can be merged"]
 reference = "https://github.com/rust-lang/rust/issues/150123"
-native_only_lines = []
 
 [llmlint]
 # The judged-lint tier. Like the two tiers below it declares a `tier` recipe,
