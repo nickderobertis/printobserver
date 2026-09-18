@@ -8,6 +8,10 @@
  * paths, failing each with EACCES as a user who may not read them would be
  * failed. `interposer.rs` builds it, loads it and reads what it wrote.
  *
+ * `PRINTOBSERVER_INTERPOSE_SELF`, when set, confines it to the process it was
+ * loaded into: the loader variable is taken out of that process's environment
+ * before it starts anything, so its children carry no recorder.
+ *
  * Three kinds of line are written, one `write` each, appended to the file
  * `PRINTOBSERVER_INTERPOSE_LOG` names:
  *
@@ -85,6 +89,13 @@ static void *po_next(const char *name) {
 
 #define PO_LOG_ENV "PRINTOBSERVER_INTERPOSE_LOG"
 #define PO_WATCH_ENV "PRINTOBSERVER_INTERPOSE_WATCH"
+/* Set, this process alone is observed: see po_loaded. */
+#define PO_SELF_ENV "PRINTOBSERVER_INTERPOSE_SELF"
+#ifdef __APPLE__
+#define PO_LOADER_ENV "DYLD_INSERT_LIBRARIES"
+#else
+#define PO_LOADER_ENV "LD_PRELOAD"
+#endif
 #define PO_PATH_CAP 4096
 
 /* Append one line to the log, leaving errno as the caller had it. */
@@ -102,8 +113,19 @@ static void po_log(const char *line, size_t length) {
     errno = saved;
 }
 
+/*
+ * Asked to observe this process alone, the library takes its own loader
+ * variable out of the environment here, before the program has started
+ * anything, so nothing it starts inherits the library. A journey whose subject
+ * is one program's own calls asks for this: a child of another ABI — the
+ * system shell on Apple Silicon is arm64e where this library is arm64 — would
+ * otherwise be killed by the loader for a library it cannot take.
+ */
 __attribute__((constructor)) static void po_loaded(void) {
     char line[64];
+    if (getenv(PO_SELF_ENV) != NULL) {
+        unsetenv(PO_LOADER_ENV);
+    }
     int length = snprintf(line, sizeof line, "loaded %ld\n", (long)getpid());
     if (length > 0 && (size_t)length < sizeof line) {
         po_log(line, (size_t)length);

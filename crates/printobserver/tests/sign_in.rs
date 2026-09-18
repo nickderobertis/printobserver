@@ -47,6 +47,15 @@ const HARNESS_STATUS: u8 = 23;
 /// The variable the network recorder writes to the file it names.
 const RECORDING_ENV: &str = "PRINTOBSERVER_INTERPOSE_LOG";
 
+/// The variable that confines the recorder to the program it was loaded into.
+///
+/// Its subject here is the program's own calls, never the harness's: the
+/// harness is this journey's own stand-in, and on Apple Silicon it runs under
+/// the system shell, an arm64e program the arm64 recorder cannot be loaded
+/// into — a loader variable it inherited would have it killed rather than
+/// signed in.
+const RECORDER_SELF_ENV: &str = "PRINTOBSERVER_INTERPOSE_SELF";
+
 /// One journey's own root: a state directory, a directory of stand-ins, and
 /// the file every stand-in invocation is appended to.
 struct Host {
@@ -311,17 +320,22 @@ const RECORDER: &str = include_str!("support/interposer.c");
 /// held to it here: a rename on either side is refused before a recording that
 /// would otherwise be empty is read as a program that connected to nothing.
 fn recorder(root: &Path) -> PathBuf {
-    assert!(
-        RECORDER.contains(&format!("#define PO_LOG_ENV \"{RECORDING_ENV}\"")),
-        "the recorder's source does not read its log file from {RECORDING_ENV}"
-    );
+    for (name, value) in [
+        ("PO_LOG_ENV", RECORDING_ENV),
+        ("PO_SELF_ENV", RECORDER_SELF_ENV),
+        ("PO_LOADER_ENV", RECORDER_LOADER_ENV),
+    ] {
+        assert!(
+            RECORDER.contains(&format!("#define {name} \"{value}\"")),
+            "the recorder's source does not read {value} as {name}"
+        );
+    }
     let source = root.join("recorder.c");
     let library = root.join(RECORDER_LIBRARY);
     std::fs::write(&source, RECORDER).expect("the recorder's source is writable");
     let _held = forking();
     let built = Command::new("cc")
         .args(RECORDER_LINKED_AS)
-        .args(RECORDER_ARCHITECTURES)
         .arg("-o")
         .arg(&library)
         .arg(&source)
@@ -346,23 +360,15 @@ const RECORDER_LINKED_AS: &[&str] = &["-dynamiclib"];
 #[cfg(not(target_os = "macos"))]
 const RECORDER_LINKED_AS: &[&str] = &["-shared", "-fPIC"];
 
-// Apple Silicon's system programs use the arm64e ABI while cargo's test
-// binary uses arm64. The loader variable is inherited across the whole process
-// tree, so the inserted library carries a slice for both processes.
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const RECORDER_ARCHITECTURES: &[&str] = &["-arch", "arm64", "-arch", "arm64e"];
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-const RECORDER_ARCHITECTURES: &[&str] = &[];
-
 #[cfg(target_os = "macos")]
 const RECORDER_LINKED_WITH: &[&str] = &[];
 #[cfg(not(target_os = "macos"))]
 const RECORDER_LINKED_WITH: &[&str] = &["-ldl"];
 
-/// Every connection the recorder saw anywhere in the process tree: this
-/// program and the stand-in harness it ran, since a connection carries no
-/// process of its own. The stand-in is this journey's own and reaches nothing,
-/// so a connection anywhere in the tree is one this program made.
+/// Every connection the recorder saw. Confined to the program it was loaded
+/// into, the recorder saw the program's own and nothing the stand-in harness
+/// did — and a connection carries no process of its own, so the name says
+/// what the file holds rather than who made it.
 fn network_calls_of_the_tree(recording: &Path) -> Vec<String> {
     std::fs::read_to_string(recording)
         .unwrap_or_default()
@@ -422,6 +428,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
             .env_remove("PRINTOBSERVER_CREDENTIAL")
             .env(RECORDER_LOADER_ENV, &library)
             .env(RECORDING_ENV, &recording)
+            .env(RECORDER_SELF_ENV, "1")
             .output()
             .expect("the built program runs")
     };
@@ -444,7 +451,11 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         &host,
         &config,
         TYPED,
-        &[(RECORDER_LOADER_ENV, &library), (RECORDING_ENV, &recording)],
+        &[
+            (RECORDER_LOADER_ENV, &library),
+            (RECORDING_ENV, &recording),
+            (RECORDER_SELF_ENV, Path::new("1")),
+        ],
     );
 
     assert_eq!(
@@ -461,6 +472,17 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         network_calls_of_the_tree(&recording),
         Vec::<String>::new(),
         "signing in connected to, bound or listened on something"
+    );
+    // The recorder was in the program and in nothing the program started: the
+    // stand-in harness and every program its shell ran carried no recorder.
+    let loaded_into = std::fs::read_to_string(&recording)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| line.starts_with("loaded "))
+        .count();
+    assert_eq!(
+        loaded_into, 1,
+        "the recorder was loaded into {loaded_into} processes rather than the sign-in alone"
     );
     assert!(!host.state().join(CLIENT_CONFIG_FILE).exists());
 }
