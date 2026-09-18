@@ -40,6 +40,14 @@ pub enum ServiceState {
 }
 
 impl ServiceState {
+    /// Every state, in the order a service reports them.
+    pub const ALL: [Self; 4] = [
+        Self::StartPending,
+        Self::Running,
+        Self::StopPending,
+        Self::Stopped,
+    ];
+
     /// The state's name as a report spells it.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -51,6 +59,20 @@ impl ServiceState {
         }
     }
 }
+
+// A state added to the enum does not compile here until this match counts it,
+// and the count is held to `ServiceState::ALL` as the build runs.
+const _: () = {
+    const fn counted(state: ServiceState) -> usize {
+        match state {
+            ServiceState::StartPending
+            | ServiceState::Running
+            | ServiceState::StopPending
+            | ServiceState::Stopped => 4,
+        }
+    }
+    assert!(counted(ServiceState::Running) == ServiceState::ALL.len());
+};
 
 /// One report to the manager: the state entered, and what that state carries.
 ///
@@ -223,15 +245,10 @@ mod tests {
     /// Every state has a name of its own, spelled the way a report prints it.
     #[test]
     fn every_state_has_a_name_of_its_own() {
-        let names: Vec<&str> = [
-            ServiceState::StartPending,
-            ServiceState::Running,
-            ServiceState::StopPending,
-            ServiceState::Stopped,
-        ]
-        .into_iter()
-        .map(ServiceState::name)
-        .collect();
+        let names: Vec<&str> = ServiceState::ALL
+            .into_iter()
+            .map(ServiceState::name)
+            .collect();
         assert_eq!(
             names,
             ["start-pending", "running", "stop-pending", "stopped"]

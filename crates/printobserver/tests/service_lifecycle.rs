@@ -31,8 +31,8 @@ const CREDENTIAL: &str = "a-credential-this-tier-configures-8c2f4e1d7a";
 /// What every report line the fixture prints begins with.
 const REPORTED: &str = "reported ";
 
-/// How long the service is given to stop once told to.
-const STOPS_WITHIN: Duration = Duration::from_secs(60);
+/// How long the service is given to start serving, and to stop once told to.
+const SETTLES_WITHIN: Duration = Duration::from_secs(60);
 
 /// One report the fixture printed, as the manager would have received it.
 #[derive(Debug, PartialEq, Eq)]
@@ -229,7 +229,7 @@ fn once_serving(state: &Path) -> (String, String) {
             return (server.trim_start_matches("http://").to_owned(), credential);
         }
         assert!(
-            started.elapsed() < STOPS_WITHIN,
+            started.elapsed() < SETTLES_WITHIN,
             "the service never wrote the configuration its clients read"
         );
         std::thread::sleep(Duration::from_millis(50));
@@ -312,7 +312,7 @@ fn the_service_reports_each_state_answers_while_running_and_stops_cleanly() {
         "the service reported after stopping"
     );
 
-    let status = exits_within(&mut child, STOPS_WITHIN);
+    let status = exits_within(&mut child, SETTLES_WITHIN);
     assert_eq!(
         status.code(),
         Some(i32::from(Exit::Success.status())),
@@ -360,7 +360,7 @@ fn a_service_that_will_not_start_reports_stopped_with_the_refusal_and_never_runn
         "the service reported after stopping"
     );
 
-    let status = exits_within(&mut child, STOPS_WITHIN);
+    let status = exits_within(&mut child, SETTLES_WITHIN);
     assert_eq!(
         status.code(),
         Some(i32::from(Exit::Unconfigured.status())),
@@ -388,12 +388,7 @@ fn refusal_said(state: ServiceState) -> String {
 /// still takes it through the one graceful shutdown to a clean exit.
 #[test]
 fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
-    let sequence = [
-        ServiceState::StartPending,
-        ServiceState::Running,
-        ServiceState::StopPending,
-        ServiceState::Stopped,
-    ];
+    let sequence = ServiceState::ALL;
     for refused in sequence {
         let root = TempDir::new().expect("the tier's own root");
         let octoprint = format!("http://{}", answering_host());
@@ -442,7 +437,7 @@ fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
             "with the {} report refused, the reports after the stop control were not the rest in order",
             refused.name()
         );
-        let status = exits_within(&mut child, STOPS_WITHIN);
+        let status = exits_within(&mut child, SETTLES_WITHIN);
         assert_eq!(
             status.code(),
             Some(i32::from(Exit::Success.status())),
@@ -481,7 +476,7 @@ fn a_refused_stopped_report_after_a_failed_start_still_exits_with_the_refusal() 
         None,
         "a report arrived that the manager refused"
     );
-    let status = exits_within(&mut child, STOPS_WITHIN);
+    let status = exits_within(&mut child, SETTLES_WITHIN);
     assert_eq!(
         status.code(),
         Some(i32::from(Exit::Unconfigured.status())),

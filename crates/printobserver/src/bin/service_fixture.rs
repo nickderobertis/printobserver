@@ -68,21 +68,16 @@ fn refused_report() -> Result<Option<ServiceState>, String> {
     let Some(named) = std::env::var_os(REFUSES_REPORT) else {
         return Ok(None);
     };
-    [
-        ServiceState::StartPending,
-        ServiceState::Running,
-        ServiceState::StopPending,
-        ServiceState::Stopped,
-    ]
-    .into_iter()
-    .find(|state| named == state.name())
-    .map(Some)
-    .ok_or_else(|| {
-        format!(
-            "{REFUSES_REPORT} is `{}`, which names no state a service reports",
-            named.to_string_lossy()
-        )
-    })
+    ServiceState::ALL
+        .into_iter()
+        .find(|state| named == state.name())
+        .map(Some)
+        .ok_or_else(|| {
+            format!(
+                "{REFUSES_REPORT} is `{}`, which names no state a service reports",
+                named.to_string_lossy()
+            )
+        })
 }
 
 fn main() -> ExitCode {
