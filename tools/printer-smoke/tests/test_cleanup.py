@@ -167,7 +167,7 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
     )
 
     equal(
-        world.relay_state(run)["seen"],
+        world.relay_state(run).seen,
         5,
         describing="three journey requests, the hung cancel put-back, and its cleanup retry",
     )

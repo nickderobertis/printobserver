@@ -28,6 +28,7 @@ from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
+from relay import RelayState
 from repo_checks import platforms
 from repo_checks.expect import truth
 from repo_checks.model import Repo
@@ -208,14 +209,14 @@ class World:
         """Where the relay `relaying` put in front of the program counts."""
         return self.root / "relay-state.json"
 
-    def relay_state(self, run: subprocess.CompletedProcess[str]) -> dict[str, object]:
-        """What the relay counted over `run`, as the document it left.
+    def relay_state(self, run: subprocess.CompletedProcess[str]) -> RelayState:
+        """What the relay counted over `run`, as the state it left.
 
         Read after the run rather than trusted: the relay is killed by the
         smoke's own bound on every command it hangs, so what it left is the
         evidence that it was let write before it was stopped. A file that holds
-        no JSON document fails naming what it did hold, beside everything the
-        run said, rather than failing inside the decoder with neither.
+        no state fails naming what it did hold, beside everything the run said,
+        rather than failing inside the decoder with neither.
 
         Args:
             run: The completed smoke run the relay was counting over.
@@ -229,15 +230,15 @@ class World:
             else None
         )
         try:
-            document = json.loads(held) if held is not None else None
+            state = RelayState.of(json.loads(held)) if held is not None else None
         except json.JSONDecodeError:
-            document = None
+            state = None
         truth(
-            isinstance(document, dict),
-            describing="the relay to have left a JSON document of what it counted; "
+            state is not None,
+            describing="the relay to have left the state it counted; "
             f"it left {held!r}, and the run said:\n{run.stdout}",
         )
-        return document if isinstance(document, dict) else {}
+        return state if state is not None else RelayState(armed=False, seen=0)
 
     def interrupt_the_smoke(
         self, *, after: float = 8.0, duration_s: str = "30"
