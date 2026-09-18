@@ -83,6 +83,7 @@ from release_artifacts.installing import (
     ran,
     without_rust,
 )
+from release_artifacts.world import WorldError
 
 #: Where every registry is read from when nothing points them elsewhere.
 PRINTOBSERVER_PROOF_REGISTRIES = "PRINTOBSERVER_PROOF_REGISTRIES"
@@ -1609,11 +1610,15 @@ def _prove_client(
         return _refused(
             supervisor_target, selected, forge, served(bases, supervisor_target), preamble
         )
+    # A supervisor the release carries that does not come up, or does not
+    # write the client file the smoke check reads, is an artifact that does
+    # not work as much as a client that does not: both are the release's,
+    # and both are reported as what was served not working here.
     try:
         supervisor = take(repo, supervisor_target, selected.version, into / "supervisor", bases)
         taken = clients(repo)[target.id](repo, target, selected.version, into, bases)
         said = prove_client(repo, taken, supervisor)
-    except InstallError as refused:
+    except (InstallError, WorldError) as refused:
         return Proof(
             target.id,
             Outcome.NOT_PROVEN,

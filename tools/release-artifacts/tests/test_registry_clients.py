@@ -196,6 +196,29 @@ def test_a_client_that_installs_and_cannot_be_used_does_not_pass(
     contains(proof.report, "build to repair", describing=proof.report)
 
 
+def test_a_release_whose_supervisor_does_not_come_up_does_not_pass(
+    version: str, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A supervisor the release carries that cannot serve is the release not working.
+
+    The stand-in's own program answers `--version` and nothing else, so as a
+    supervisor it stops before it answers — as a release carrying a program
+    older than the smoke check's contract does, which starts and never
+    writes the client file the check reads. Either is reported as the served
+    artifact not working, naming what the supervisor did, rather than raised
+    out of the middle of the proof.
+    """
+    registries.serve(version)
+    registries.serve_clients("pypi:printobserver-sdk")
+
+    proof = proving("pypi:printobserver-sdk", version)
+
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing=f"the proof:\n{proof.report}")
+    contains(proof.report, "did not work here", describing=proof.report)
+    contains(proof.report, "the supervisor stopped before it answered", describing=proof.report)
+    contains(proof.report, "supervisor:", describing="where it was taken from")
+
+
 def test_the_clients_taken_are_exactly_the_clients_declared(repo: Repo) -> None:
     """The committed tree's own two copies agree."""
     equal(
