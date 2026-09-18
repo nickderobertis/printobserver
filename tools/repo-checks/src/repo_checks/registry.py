@@ -7,6 +7,7 @@ from collections.abc import Callable
 from repo_checks import (
     checks_ci,
     checks_clients,
+    checks_dispatch,
     checks_docs,
     checks_install_proof,
     checks_integration,
@@ -60,6 +61,7 @@ CHECKS: dict[str, Check] = {
     "platforms": checks_ci.platforms,
     "platform-facts": checks_platforms.platform_facts,
     "unmatrixed-jobs": checks_platforms.unmatrixed_jobs,
+    "platform-dispatch": checks_dispatch.platform_dispatch,
     "install-path": checks_ci.install_path_section,
     "ci": checks_ci.continuous_integration,
     "artifact-jobs": checks_ci.artifact_jobs,

@@ -383,9 +383,16 @@ def unmatrixed_jobs(repo: Repo) -> list[str]:
 
     # `Any` at the deserialization boundary: a workflow's jobs are whatever the
     # YAML reader handed back, and the one thing read out of them here —
-    # whether a job declares a platform matrix — narrows its own values.
+    # whether a job declares a platform matrix — narrows its own values. The
+    # platform-dispatch workflow's jobs are one-cell copies of jobs elsewhere,
+    # under the same names, and are passed over: read here, the copy would
+    # displace the job it stands in for and report it as carrying no matrix.
+    from repo_checks.checks_dispatch import dispatch_workflow
+
     jobs: dict[str, dict[str, Any]] = {}
     for file_path in repo.workflow_paths:
+        if file_path == dispatch_workflow(repo):
+            continue
         for job_name, job in jobs_of(load_workflow(file_path)).items():
             jobs[job_name] = job
 

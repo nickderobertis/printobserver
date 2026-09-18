@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks.checks_dispatch import dispatch_workflow
 from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -48,8 +49,18 @@ HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action")
 
 
 def _workflows(repo: Repo) -> dict[str, dict[str, Any]]:
-    """Every committed workflow, keyed by file name."""
-    return {path.name: load_workflow(path) for path in repo.workflow_paths}
+    """Every committed workflow whose jobs are its own, keyed by file name.
+
+    The platform-dispatch workflow is left out: its jobs are copies of jobs
+    elsewhere, one cell each, and `checks_dispatch.platform_dispatch` holds
+    every copy to its source. Classified by their steps here they would be a
+    second gate and a second integration tier with no platform matrix.
+    """
+    return {
+        path.name: load_workflow(path)
+        for path in repo.workflow_paths
+        if path != dispatch_workflow(repo)
+    }
 
 
 def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:

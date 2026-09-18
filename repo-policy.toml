@@ -624,6 +624,28 @@ install_service_script_path = "scripts/install-service.sh"
 waived_steps = ["install-service", "start-service-systemd", "start-service-launchd"]
 waived_report = "GITHUB_STEP_SUMMARY"
 
+[dispatch]
+# The workflow that runs ONE job of ONE source workflow on ONE supported
+# platform, by hand, and no other job: the lever a platform is brought up with
+# once its cells are in the gate, because a push re-runs every cell of every
+# job to re-run one, and the hosted macOS runners are a handful of slots shared
+# with other work.
+#
+# Its jobs are copies of the source workflows' platform-matrixed jobs, one cell
+# each, and `just check-repo`'s `platform-dispatch` holds every copy to its
+# source: the trigger set is `workflow_dispatch` alone, `platform_input`'s
+# options are exactly the supported-platform list, `job_input`'s options are
+# exactly the platform-matrixed jobs of `sources`, each job is selected by
+# `job_input` alone and runs on the runner the list declares for the platform
+# named, and its steps are the source job's own. Every other check that
+# classifies a job by its steps passes this workflow over — classified by
+# their steps its jobs would be a second gate and a second integration tier
+# with no matrix — which is why it is named here rather than found.
+workflow = "platform-dispatch.yml"
+job_input = "job"
+platform_input = "platform"
+sources = ["ci.yml", "install-path.yml"]
+
 [agent]
 # The narrow command allowlist. `just check-repo` derives the set of programs
 # this repository's own recipes and graph targets invoke and requires the

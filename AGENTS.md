@@ -884,6 +884,15 @@ one runner per supported platform to do it, which on the hosted macOS runners is
 a cost no change should pay. The six proofs a job runs are the registry's, in
 `install-path.yml`, on the triggers above.
 
+**One cell at a time, by hand.** `.github/workflows/platform-dispatch.yml` runs
+exactly one job of `ci.yml` or of `install-path.yml` on exactly one supported
+platform, named as two inputs of a manual dispatch, and no other job: it is how
+a single hosted cell — one macOS runner rather than every job's — is exercised
+on a branch without pushing to it. `just check-repo`'s `platform-dispatch` holds
+its trigger to `workflow_dispatch` alone, its platform input to the
+supported-platform list, its job input to the platform-matrixed jobs of those
+two workflows, and each of its jobs' steps to the source job's own.
+
 ## Commits, releases, and merging
 
 **Merge model.** A change reaches `main` through a pull request, squash-merged,
