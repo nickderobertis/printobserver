@@ -10,8 +10,6 @@ carries the value it found there, and the printer is operational.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from repo_checks.expect import absent, contains, equal, truth
 from world import World
@@ -168,9 +166,8 @@ def test_a_restoration_that_never_answers_costs_neither_the_rest_nor_the_cancel(
         timeout=600,
     )
 
-    relay = json.loads((world.root / "relay-state.json").read_text(encoding="utf-8"))
     equal(
-        relay["seen"],
+        world.relay_state(run)["seen"],
         5,
         describing="three journey requests, the hung cancel put-back, and its cleanup retry",
     )
@@ -213,7 +210,7 @@ def test_a_final_read_that_never_answers_is_reported_rather_than_passed_over(
     """
     run = world.smoke(
         "--run",
-        environment=world.relaying(hang_on="status", armed_by="history", timeout_s="1"),
+        environment=world.relaying(hang_on="status", armed_by="history"),
         timeout=600,
     )
 

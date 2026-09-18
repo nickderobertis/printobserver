@@ -29,6 +29,7 @@ from typing import Any
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
 from repo_checks import platforms
+from repo_checks.expect import truth
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
 
@@ -57,6 +58,13 @@ PROGRAM = built_program()
 #: A socket answers at once, so a run against one needs no minute of patience.
 SETTLE_S = "4"
 DURATION_S = "1"
+
+#: The bound a relayed command is given. A command that answers needs a Python
+#: relay started, the program run and the machine asked, which is well under
+#: a second on an idle host and has reached two on a runner building the
+#: workspace beside this suite; a bound that stops those is a hang the test
+#: did not ask for.
+RELAY_BOUND_S = "5"
 
 #: The manifest the print carries, which is one for the smoke's own payload.
 MANIFEST: dict[str, Any] = {
@@ -158,7 +166,7 @@ class World:
         )
 
     def relaying(
-        self, *, hang_on: str, after: int = 0, armed_by: str = "", timeout_s: str = "2"
+        self, *, hang_on: str, after: int = 0, armed_by: str = "", timeout_s: str = RELAY_BOUND_S
     ) -> dict[str, str]:
         """Put a relay in front of the program, which stops answering on one command.
 
@@ -171,7 +179,11 @@ class World:
             after: How many of that command to answer normally first.
             armed_by: A command that arms the hang, for a run that must reach
                 its cleanup before it meets a machine it cannot read.
-            timeout_s: The bound the smoke gives one command, in seconds.
+            timeout_s: The bound the smoke gives one command, in seconds. Every
+                hang costs the whole of it, so a test that hangs many commands
+                may shorten it — but not below what a command that does answer
+                needs on a loaded host, or the bound stops the ones that were
+                meant to answer.
 
         Returns:
             What this changes about the environment the smoke runs under.
@@ -186,8 +198,44 @@ class World:
             "SMOKE_RELAY_HANG_ON": hang_on,
             "SMOKE_RELAY_AFTER": str(after),
             "SMOKE_RELAY_ARMED_BY": armed_by,
-            "SMOKE_RELAY_STATE": str(self.root / "relay-state.json"),
+            "SMOKE_RELAY_STATE": str(self.relay_state_file),
         }
+
+    @property
+    def relay_state_file(self) -> Path:
+        """Where the relay `relaying` put in front of the program counts."""
+        return self.root / "relay-state.json"
+
+    def relay_state(self, run: subprocess.CompletedProcess[str]) -> dict[str, object]:
+        """What the relay counted over `run`, as the document it left.
+
+        Read after the run rather than trusted: the relay is killed by the
+        smoke's own bound on every command it hangs, so what it left is the
+        evidence that it was let write before it was stopped. A file that holds
+        no JSON document fails naming what it did hold, beside everything the
+        run said, rather than failing inside the decoder with neither.
+
+        Args:
+            run: The completed smoke run the relay was counting over.
+
+        Returns:
+            The relay's state: whether it was armed, and what it had seen.
+        """
+        held = (
+            self.relay_state_file.read_text(encoding="utf-8")
+            if self.relay_state_file.is_file()
+            else None
+        )
+        try:
+            document = json.loads(held) if held is not None else None
+        except json.JSONDecodeError:
+            document = None
+        truth(
+            isinstance(document, dict),
+            describing="the relay to have left a JSON document of what it counted; "
+            f"it left {held!r}, and the run said:\n{run.stdout}",
+        )
+        return document if isinstance(document, dict) else {}
 
     def interrupt_the_smoke(
         self, *, after: float = 8.0, duration_s: str = "30"
