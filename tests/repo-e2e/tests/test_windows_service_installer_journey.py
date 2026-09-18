@@ -488,6 +488,26 @@ def test_a_reinstall_leaves_the_configuration_alone_and_updates_the_registration
     equal(again.asked("create"), [], describing="no second registration of a registered service")
 
 
+def test_with_no_binary_named_it_installs_the_program_on_path(
+    installer: Callable[..., Ran], program: Path, tmp_path: Path
+) -> None:
+    """The documented command names no binary: the one a route put on PATH is the one placed."""
+    routed = tmp_path / "routed"
+    routed.mkdir()
+    shutil.copy2(program, routed / program.name)
+    powershell_home = str(Path(_powershell()).parent)
+
+    ran = installer(binary=None, path=os.pathsep.join([powershell_home, str(routed)]))
+
+    passing((ran.code, ran.said), describing="the installer finding its program on PATH")
+    equal(
+        ran.binary.read_bytes(),
+        program.read_bytes(),
+        describing="the program placed, byte for byte, to be the one on PATH",
+    )
+    truth("started nothing" in ran.said, describing="the install to finish starting nothing")
+
+
 def test_an_installer_that_can_find_no_program_says_so_and_places_nothing(
     installer: Callable[..., Ran], tmp_path: Path
 ) -> None:

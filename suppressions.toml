@@ -916,6 +916,12 @@ file = "scripts/install-service.ps1"
 site = "could not be written"
 reason = "The configuration's directory was created, writable, by this same script a few steps earlier, and the refusals a journey can arrange — a root that is a file, a directory nothing may write, a manager or a grant that refuses — each stop the install before this line. What is left is a disk giving out between two writes, which no journey can arrange on a runner; the branch says what happened in the host's own words and names the same next action every other write refusal here names."
 
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install-service.ps1"
+site = "if ([string]::IsNullOrEmpty($Root))"
+reason = "With no `-Root` the installer writes into the host's own `C:\\Program Files` and `C:\\ProgramData` and registers the service naming them, which on a runner is the machine's own system directories rather than anything a tier can take away again. What that branch returns is the three paths as declared at the head of the script, which `crates/printobserver/src/locations.rs` holds to the program's own copy; every journey takes the same function with the root prefixed, so the one line untaken is `return $Path`."
+
 # --- the Windows installer, driven with the manager stood in for ---------------
 #
 # `tests/repo-e2e/tests/test_windows_service_installer_journey.py` runs the

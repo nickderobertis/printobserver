@@ -88,6 +88,7 @@ function Plain([string]$Name, [string]$Value) {
 # own, so a root on a host that is not Windows holds real directories rather
 # than names with backslashes in them.
 function Under-Root([string]$Path) {
+    # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     if ([string]::IsNullOrEmpty($Root)) {
         return $Path
     }
