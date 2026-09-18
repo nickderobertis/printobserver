@@ -206,16 +206,14 @@ def _fixture_session(into: Path) -> Path:
             PROGRAM_NAME.match(name) is not None,
             describing=f"`{name}` to be a program's name and nothing PowerShell reads otherwise",
         )
-    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
     shims = "\n".join(
         f"function {name} {{ Record ('{name} ' + ($args -join ' ')); Answer '{name}' }}"
         for name in names
         if name != "sc.exe"
     )
     installer = (REPO_ROOT / INSTALLER).as_posix().replace("'", "''")
-    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
 $global:FixtureCalls = @{{}}
