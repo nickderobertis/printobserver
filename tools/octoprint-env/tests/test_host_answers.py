@@ -109,27 +109,53 @@ def test_a_windows_serial_device_is_opened_through_the_device_namespace(
 
 # A process that outlives the one that started it, as the server `up` starts
 # does: started in a group of its own by a launcher that exits at once, so what
-# is left is nobody's child and a stopped one is gone rather than unreaped.
+# is left is nobody's child and a stopped one is gone rather than unreaped. Its
+# argv is handed in as JSON, because `down` reads the command line of whatever
+# holds a recorded id and signals only this instance's own server.
 LAUNCHER = """
-import subprocess, sys
+import json, subprocess, sys
 detached = (
     {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS}
     if sys.platform == "win32"
     else {"start_new_session": True}
 )
 child = subprocess.Popen(
-    [sys.executable, "-c", "import time; time.sleep(300)"],
+    json.loads(sys.argv[1]),
     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **detached
 )
 print(child.pid)
 """
 
 
+def _server_stand_in(state: Path) -> list[str]:
+    """The argv of a process `down` will take for this instance's own server.
+
+    The instance's `octoprint` program, where this host's virtual environment
+    keeps it, run under the interpreter with the `--basedir` and `serve` words
+    `up` starts a server with — the shape `is_this_instances_server` reads a
+    running process's command line for. The program itself only sleeps.
+    """
+    connection = octoprint_env.Connection("virtual", octoprint_env.VIRTUAL_DEVICE, 115200)
+    instance = octoprint_env.Instance(state, connection)
+    instance.executable.parent.mkdir(parents=True)
+    instance.executable.write_text("import time; time.sleep(300)\n", encoding="utf-8")
+    return [
+        sys.executable,
+        *octoprint_env.server_argv_prefix(instance),
+        "--host",
+        octoprint_env.HOST,
+        "--port",
+        "1",
+    ]
+
+
 def test_stopping_a_recorded_instance_leaves_no_process_behind(tmp_path: Path) -> None:
-    """`down` over a running process ends it, by this host's own means."""
+    """`down` over the running server ends it, by this host's own means."""
     state = tmp_path / "state"
     state.mkdir()
-    launched = shell_run([sys.executable, "-c", LAUNCHER], timeout=60)
+    launched = shell_run(
+        [sys.executable, "-c", LAUNCHER, json.dumps(_server_stand_in(state))], timeout=60
+    )
     pid = int((launched.stdout or "").strip())
     (state / "instance.json").write_text(json.dumps({"pid": pid}), encoding="utf-8")
     truth(running(pid), describing=f"process {pid} before it is stopped")

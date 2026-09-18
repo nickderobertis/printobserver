@@ -17,20 +17,21 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import stat
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from repo_checks import dispatching
-from repo_checks.checks_ci import continuous_integration, platforms, status_contexts
+from repo_checks.checks_ci import JobKind, continuous_integration, platforms, status_contexts
 from repo_checks.checks_dispatch import platform_dispatch
 from repo_checks.checks_integration import integration_tier
 from repo_checks.checks_platforms import unmatrixed_jobs
 from repo_checks.dispatching import REFUSED, Declared, DispatchError, matrixed_jobs, resolve
 from repo_checks.expect import absent, accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow
+from repo_checks.parsing import load_workflow
 from repo_checks.platforms import supported
 from treecopy import Tree
 
@@ -84,26 +85,34 @@ def test_each_job_and_platform_choice_resolves_to_that_jobs_source_on_that_runne
             )
     with pytest.raises(DispatchError, match="no platform-matrixed job"):
         resolve(committed, "no-such-job", "linux-x86_64")
-    with pytest.raises(DispatchError, match="no platform AGENTS.md's supported-platform list"):
+    with pytest.raises(
+        DispatchError, match=re.escape("no platform AGENTS.md's supported-platform list")
+    ):
         resolve(committed, "gate", "linux-riscv64")
 
 
 def test_the_step_classifying_checks_read_the_workflow_as_an_ordinary_one(
     committed: Repo,
 ) -> None:
-    """Its two jobs run the script and nothing a classifier reads, so nothing passes it over."""
+    """Its two jobs run the script and nothing a classifier reads, so nothing passes it over.
+
+    Each of the two is read as a job of its own — the kind a classifier answers
+    for a job whose steps run none of the commands it reads — so the matrix
+    rule, the gate rule, the unmatrixed-job record and the integration tier
+    all accept the committed tree with this workflow read like any other.
+    """
     accepted(platforms(committed), describing="the matrix rule")
     accepted(continuous_integration(committed), describing="the gate rule")
     accepted(unmatrixed_jobs(committed), describing="the unmatrixed-job record")
     accepted(integration_tier(committed), describing="the integration tier")
     equal(
-        [
-            context.file
+        sorted(
+            (context.job, context.kind)
             for context in status_contexts(committed)
             if context.file == DISPATCH.rpartition("/")[2]
-        ],
-        [],
-        describing="the status contexts read off the dispatch workflow",
+        ),
+        [("run", JobKind.OTHER), ("select", JobKind.OTHER)],
+        describing="the two jobs read off the dispatch workflow, and what each is taken for",
     )
 
 
@@ -234,7 +243,9 @@ def test_a_running_job_that_runs_elsewhere_than_the_answer_is_refused(
 ) -> None:
     """A `runs-on` of its own is a second place that decides where a dispatch runs."""
     broken = tree()
-    broken.edit(DISPATCH, "    runs-on: ${{ needs.select.outputs.runner }}\n", "    runs-on: macos-15\n")
+    broken.edit(
+        DISPATCH, "    runs-on: ${{ needs.select.outputs.runner }}\n", "    runs-on: macos-15\n"
+    )
 
     refused_naming(platform_dispatch(broken.repo), "job `run`", "does not run on")
 
@@ -277,16 +288,22 @@ def test_a_script_handed_something_other_than_an_input_is_refused(
     text = broken.read(DISPATCH)
     broken.write(
         DISPATCH,
-        text.replace("          PLATFORM: ${{ inputs.platform }}\n", "          PLATFORM: macos-aarch64\n"),
+        text.replace(
+            "          PLATFORM: ${{ inputs.platform }}\n", "          PLATFORM: macos-aarch64\n"
+        ),
     )
 
-    refused_naming(platform_dispatch(broken.repo), "does not hand it `inputs.platform` as `PLATFORM`")
+    refused_naming(
+        platform_dispatch(broken.repo), "does not hand it `inputs.platform` as `PLATFORM`"
+    )
 
 
 def test_a_conditioned_or_matrixed_dispatch_job_is_refused(tree: Callable[[], Tree]) -> None:
     """The one job runs unconditionally on its one runner."""
     broken = tree()
-    broken.edit(DISPATCH, "    needs: select\n", "    needs: select\n    if: inputs.job != 'gate'\n")
+    broken.edit(
+        DISPATCH, "    needs: select\n", "    needs: select\n    if: inputs.job != 'gate'\n"
+    )
 
     refused_naming(platform_dispatch(broken.repo), "job `run` carries a condition or a matrix")
 
@@ -343,7 +360,14 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
             "an `env` that is not a mapping",
         ),
     ],
-    ids=["shell", "expression-env", "expression-waiver", "no-command", "if-not-string", "env-not-mapping"],
+    ids=[
+        "shell",
+        "expression-env",
+        "expression-waiver",
+        "no-command",
+        "if-not-string",
+        "env-not-mapping",
+    ],
 )
 def test_each_shape_the_script_cannot_run_is_refused(
     tree: Callable[[], Tree], old: str, new: str, why: str
@@ -408,7 +432,7 @@ def test_a_declaration_naming_the_workflow_as_its_own_source_is_refused(
 def test_a_tree_with_no_platform_list_is_refused(tree: Callable[[], Tree]) -> None:
     """Without the list there is no runner to resolve a platform to."""
     broken = tree()
-    broken.edit(broken.repo.agents_md_path, "[//]: # (BEGIN supported-platforms)", "")
+    broken.edit("AGENTS.md", "[//]: # (BEGIN supported-platforms)", "")
 
     refused_naming(platform_dispatch(broken.repo), "supported-platforms")
 
@@ -432,6 +456,7 @@ class Recording:
         self.programs = root / "programs"
         self.programs.mkdir()
         self.record = root / "record.txt"
+        self.failing_on = ""
 
     def program(self, name: str, *, failing_on: str = "", exit_code: int = 7) -> None:
         """One stand-in that records `name` and its arguments, and fails on one argument."""
@@ -545,10 +570,18 @@ def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_m
     for name in ("pip", "printobserver", "curl"):
         recording.program(name)
     # `sudo` fails whatever it is asked: neither the installer nor the start
-    # command can succeed unattended, which is why the source waives them.
+    # command can succeed unattended, which is why the source waives them. The
+    # installer reaches it down a pipe, and it reads that pipe out before it
+    # records — as `sh` reads a script before running it — so the record
+    # carries the order the commands finished in rather than the order a
+    # pipeline started them.
     recording.program("sudo", failing_on="sh")
     (tmp_path / "programs" / "sudo").write_text(
-        '#!/bin/sh\necho "sudo $*" >> "$RECORD"\nexit 1\n', encoding="utf-8"
+        "#!/bin/sh\n"
+        "if [ -p /dev/stdin ]; then cat > /dev/null; fi\n"
+        'echo "sudo $*" >> "$RECORD"\n'
+        "exit 1\n",
+        encoding="utf-8",
     )
     summary = tmp_path / "summary.md"
 
@@ -586,12 +619,11 @@ def test_a_job_level_literal_environment_is_carried_and_an_expression_is_not(
 ) -> None:
     """The registry proofs' version is an expression, so a dispatch proves the newest."""
     copy = tree()
-    copy.edit(
-        INSTALL,
-        "      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}\n",
-        "      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}\n"
-        "      PROOF_NOTE: literal\n",
+    version = (
+        "      PRINTOBSERVER_PROOF_VERSION: "
+        "${{ inputs.version || needs.resolve.outputs.version }}\n"
     )
+    copy.edit(INSTALL, version, f"{version}      PROOF_NOTE: literal\n")
     recording = Recording(tmp_path)
     (tmp_path / "programs" / JUST).write_text(
         '#!/bin/sh\necho "just $* version=${PRINTOBSERVER_PROOF_VERSION-unset} '
@@ -632,7 +664,15 @@ def test_the_script_answers_the_runner_and_the_source(
 ) -> None:
     """`resolve` prints what the workflow's `select` job appends to its outputs."""
     code = dispatching.main(
-        ["resolve", "--job", "prove-registry-npm", "--platform", "macos-aarch64", "--root", str(committed.root)]
+        [
+            "resolve",
+            "--job",
+            "prove-registry-npm",
+            "--platform",
+            "macos-aarch64",
+            "--root",
+            str(committed.root),
+        ]
     )
 
     equal(code, 0, describing="the exit of a pair the inputs offer")

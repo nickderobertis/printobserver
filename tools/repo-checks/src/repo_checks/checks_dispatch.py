@@ -219,7 +219,10 @@ def _job_findings(declared: Declared, relative: str, workflow: dict[str, Any]) -
         recipe = declared.resolve_recipe if name == select else declared.run_recipe
         commands = _recipe_steps(job, recipe)
         for command in commands:
-            expected = f"just {recipe} \"${declared.job_input.upper()}\" \"${declared.platform_input.upper()}\""
+            expected = (
+                f'just {recipe} "${declared.job_input.upper()}" '
+                f'"${declared.platform_input.upper()}"'
+            )
             if not command.startswith(expected):
                 findings.append(
                     f"{relative}: job `{name}` runs `{command}`, and the script is handed the "
@@ -252,9 +255,7 @@ def _job_findings(declared: Declared, relative: str, workflow: dict[str, Any]) -
     return findings
 
 
-def _inputs_handed(
-    relative: str, name: str, job: dict[str, Any], declared: Declared
-) -> list[str]:
+def _inputs_handed(relative: str, name: str, job: dict[str, Any], declared: Declared) -> list[str]:
     """The step running the script is handed both inputs, each as its own variable."""
     findings: list[str] = []
     for step in steps_of(job):

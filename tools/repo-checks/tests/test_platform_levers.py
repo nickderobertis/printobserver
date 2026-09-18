@@ -34,8 +34,17 @@ MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.0
 MATRIX_MACOS = "          - id: macos-aarch64\n            runner: macos-15\n"
 
 
-#: A platform the list carries while its bring-up is owed, answered `install path: no`.
+#: A platform the list carries while its bring-up is owed, answered `install path: no`:
+#: the gate and the integration tier carry its cell, and every route's is recorded.
 BEING_BROUGHT_UP = "windows-x86_64"
+
+#: The runner the supported-platform list declares for it.
+BEING_BROUGHT_UP_RUNNER = "windows-2025"
+
+
+def matrix_cell(platform: str, runner: str = BEING_BROUGHT_UP_RUNNER) -> str:
+    """One cell of the matrix every platform-dependent job carries."""
+    return f"          - id: {platform}\n            runner: {runner}\n"
 
 
 def record(copy: Tree, *lines: str) -> None:
@@ -335,14 +344,26 @@ def test_the_committed_tree_owes_no_cell_of_a_platform_still_being_brought_up(
 def test_a_route_job_owes_a_platform_once_the_install_path_targets_it(
     tree: Callable[[], Tree],
 ) -> None:
-    """The first lever, read by the artifact-job check: `yes` makes every route's cell owed."""
+    """The first lever, read by the artifact-job check: `yes` makes every route's cell owed.
+
+    The committed block records each of that platform's route cells as owed, so
+    two of the entries go with the answer: a cell still recorded stays excused,
+    which is the second lever, and the two no longer recorded are what `yes`
+    now demands of the jobs that omit them.
+    """
     broken = tree()
     answer_yes(broken, BEING_BROUGHT_UP)
+    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-npm")
+    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-script")
 
     findings = artifact_jobs(broken.repo)
 
     refused_naming(findings, "job `prove-registry-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
     refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    accepted(
+        [finding for finding in findings if "job `prove-registry-pypi`" in finding],
+        describing="`prove-registry-pypi`, whose cell is still recorded",
+    )
 
 
 def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifact_check(
@@ -379,9 +400,20 @@ def test_a_release_build_omitting_a_cell_no_entry_records_is_refused(
 def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The integration job reads this block beside its virtual-printer one."""
+    """The integration job reads this block beside its virtual-printer one.
+
+    The committed job carries the cell and no entry records it, so the cell is
+    taken out of the job's own matrix — the second occurrence of it in the
+    workflow, the gate's being the first — and nothing excuses the omission.
+    """
     broken = tree()
-    unrecord(broken, BEING_BROUGHT_UP, "integration")
+    text = broken.read(".github/workflows/ci.yml")
+    job = text.index("\n  integration:\n")
+    at = text.index(matrix_cell(BEING_BROUGHT_UP), job)
+    broken.write(
+        ".github/workflows/ci.yml",
+        text[:at] + text[at + len(matrix_cell(BEING_BROUGHT_UP)) :],
+    )
 
     findings = integration_tier(broken.repo)
 
@@ -393,15 +425,15 @@ def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
 def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """An entry says that cell does not run, for the integration job as for any other."""
+    """An entry says that cell does not run, for the integration job as for any other.
+
+    The committed job carries the cell, so recording it as one that does not
+    run is what makes the matrix wrong.
+    """
     broken = tree()
-    text = broken.read(".github/workflows/ci.yml")
-    job = text.index("\n  integration:\n")
-    at = text.index(MATRIX_MACOS, job) + len(MATRIX_MACOS)
-    broken.write(
-        ".github/workflows/ci.yml",
-        f"{text[:at]}          - id: {BEING_BROUGHT_UP}\n"
-        f"            runner: windows-2025\n{text[at:]}",
+    record(
+        broken,
+        f"- `{BEING_BROUGHT_UP}` on `integration` — the virtual printer is being brought up",
     )
 
     findings = integration_tier(broken.repo)

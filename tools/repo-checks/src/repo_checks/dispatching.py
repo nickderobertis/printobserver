@@ -58,6 +58,7 @@ import os
 import re
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -130,9 +131,7 @@ class Declared:
         if not table:
             return "`repo-policy.toml` declares no `[dispatch]` section"
         keys = ("workflow", "job_input", "platform_input", "resolve_recipe", "run_recipe")
-        found = {
-            key: table[key].strip() if isinstance(table.get(key), str) else "" for key in keys
-        }
+        found = {key: table[key].strip() if isinstance(table.get(key), str) else "" for key in keys}
         listed = table.get("sources")
         sources = (
             tuple(str(one).strip() for one in listed)
@@ -356,7 +355,7 @@ def execute(
     *,
     cwd: Path,
     environment: dict[str, str] | None = None,
-    say: Any = print,
+    say: Callable[[str], object] = print,
 ) -> int:
     """Run the source job's steps on this host, and answer the job's exit.
 
