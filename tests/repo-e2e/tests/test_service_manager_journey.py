@@ -561,8 +561,13 @@ def _where_it_serves(state: Path) -> Served | None:
         written = tomllib.loads(client.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError, OSError:
         return None
-    server = str(written["client"]["server"]).removeprefix("http://")
-    return Served(server, str(written["client"]["credential"]))
+    table = written.get("client")
+    server = table.get("server") if isinstance(table, dict) else None
+    credential = table.get("credential") if isinstance(table, dict) else None
+    if not isinstance(server, str) or not isinstance(credential, str):
+        # The file is written in place, so a read can land between its lines.
+        return None
+    return Served(server.removeprefix("http://"), credential)
 
 
 # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
