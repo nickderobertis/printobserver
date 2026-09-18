@@ -71,7 +71,15 @@ def stand_ins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "rustup",
         recording(tmp_path / "rustup", stdout=f"{TARGET}\nx86_64-unknown-linux-gnu\n"),
     )
-    program(tmp_path, "zig", "raise SystemExit(0)\n")
+    # The zig the pass is pointed at has to be an executable file where `uv`
+    # says it is; nothing here runs it, because `cargo` is a stand-in too. A
+    # Windows host names no interpreter line and holds any file executable, so
+    # there the file is written bare rather than through `program`, which
+    # would put a `.cmd` beside a `.py` and nothing at the path itself.
+    if sys.platform == "win32":
+        (tmp_path / "zig").write_text("", encoding="utf-8")
+    else:
+        program(tmp_path, "zig", "raise SystemExit(0)\n")
     program(programs, "uv", recording(tmp_path / "uv", stdout=f"{tmp_path / 'zig'}\n"))
     program(programs, "cargo", recording(tmp_path / "cargo"))
     monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
