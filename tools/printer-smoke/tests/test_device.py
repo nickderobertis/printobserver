@@ -64,9 +64,14 @@ def test_a_name_this_host_cannot_have_is_refused_naming_what_its_devices_are_cal
     contains(str(refusal), PLATFORM_HERE, describing="the refusal")
 
 
-def test_a_name_this_host_can_have_is_refused_without_a_naming_hint(tmp_path: Path) -> None:
-    """A device that is merely not there is not told what its name should have been."""
-    named = str(tmp_path / "not-a-device") if sys.platform == "win32" else "/dev/ttyACM9999"
+def test_a_name_this_host_can_have_is_refused_without_a_naming_hint() -> None:
+    """A device that is merely not there is not told what its name should have been.
+
+    A port nothing is plugged into on Windows, and a device node that is not
+    there on a Unix: each in its host's own shape, so the refusal is about the
+    device being absent and about nothing else.
+    """
+    named = "COM9" if sys.platform == "win32" else "/dev/ttyACM9999"
 
     refusal = DEVICE_PRECONDITION(smoke_of({}, named))
 
