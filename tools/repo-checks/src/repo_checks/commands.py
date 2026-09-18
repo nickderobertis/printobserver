@@ -283,10 +283,12 @@ def _exempt(repo: Repo, floors: dict, stderr: str) -> str | list[str]:
 def coverage(repo: Repo) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
-    Pass or fail, one line at the end states each ecosystem's measured total
-    beside its floor, so every platform's figure is in its log. A platform whose
-    toolchain cannot read the profiles its own instrumentation writes states
-    that as a distinct outcome, under an exemption `_exempt` holds to policy.
+    Pass or fail, each ecosystem's per-file table is printed before the floor is
+    ruled on and one line at the end states each measured total beside its
+    floor, so every platform's figures are in its log — a hosted floor miss is
+    read off the table rather than reproduced. A platform whose toolchain cannot
+    read the profiles its own instrumentation writes states that as a distinct
+    outcome, under an exemption `_exempt` holds to policy.
     """
     floors = repo.policy["gate"]["coverage"]
     failed = False
@@ -295,6 +297,7 @@ def coverage(repo: Repo) -> int:
         ["cargo", "llvm-cov", "report", "--summary-only", f"--fail-under-lines={floors['rust']}"],
         cwd=repo.root,
     )
+    print(rust.stdout, end="")
     rust_total = _total_of(rust.stdout, 9)
     if rust.returncode != 0:
         exempt = _exempt(repo, floors, rust.stderr)
@@ -302,7 +305,6 @@ def coverage(repo: Repo) -> int:
             rust_total = "no readable profile, exempt"
             print(exempt)
         else:
-            print(rust.stdout, file=sys.stderr)
             print(rust.stderr, file=sys.stderr)
             for refusal in exempt:
                 print(refusal, file=sys.stderr)
@@ -321,8 +323,8 @@ def coverage(repo: Repo) -> int:
         ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
         cwd=repo.root,
     )
+    print(report.stdout, end="")
     if report.returncode != 0:
-        print(report.stdout, file=sys.stderr)
         print(
             f"Python line coverage is below the {floors['python']}% floor. Add tests "
             f"that drive the uncovered lines.",

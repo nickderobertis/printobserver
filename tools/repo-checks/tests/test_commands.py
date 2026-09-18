@@ -517,7 +517,14 @@ def test_coverage_states_each_total_beside_its_floor_on_a_pass(
 
     equal(coverage(Repo(root)), 0)
 
+    out = capsys.readouterr().out
+    contains(
+        out, "TOTAL  13221  1087  91.78%", describing="the Rust per-file table, printed on a pass"
+    )
+    contains(
+        out, "TOTAL  8386  435  2828", describing="the Python per-file table, printed on a pass"
+    )
     equal(
-        capsys.readouterr().out.strip().splitlines()[-1],
+        out.strip().splitlines()[-1],
         "coverage: rust lines 96.63% (floor 95%), python lines 97% (floor 95%)",
     )
