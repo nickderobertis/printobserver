@@ -231,6 +231,7 @@ def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_star
     repo = Repo(REPO_ROOT)
     base = tmp_path / "releases"
     for platform in install_platforms(repo):
+        # llmlint: ignore[e2e_not_mocked] one host runs one platform's program; suppressions.toml
         _artifact(
             base / "latest" / "download",
             f'#!/bin/sh\necho "{PROGRAM} for {platform.id}"\n'.encode(),

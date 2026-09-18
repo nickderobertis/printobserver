@@ -899,6 +899,12 @@ reason = "Not a directive over this file's own code: it is the text the emitter 
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_artifact("
+reason = "The release this journey stages carries one program per targeted platform, and a single host can run the program built for its own platform and no other — so the four artifacts are stand-ins that each say which platform they were published for, and what the journey proves is which of the four the committed script chose for each `uname` answer, through the real script run by `sh`, the real checksum verification, the real archive layout and the real installation onto the path. The real built program is what the route journeys in `tools/release-artifacts` install and run through the same script on every platform's own cell, which is where a program that does not run would be found."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "def _uname"
 reason = "What stands in is the host's own answer to `uname`, and nothing else: this journey proves the script maps each `uname` answer the platform declaration names to that platform's artifact and start command, and a single host can only give its own answer, so the macOS answers could never be reached on a Linux runner (nor the Linux ones on a Mac) without supplying them. Everything the script does with the answer is real: the committed script run by `sh`, a staged release in the layout the forge serves, the real checksum verification, the real unpacking and the real installed program reporting which artifact it is. The macOS cells of the gate run the same journey on a real Mac, where the host's own answer is one of those supplied here."
 
