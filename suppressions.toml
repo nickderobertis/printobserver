@@ -537,6 +537,24 @@ file = ".github/workflows/install-path.yml"
 site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
 
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-rust:"
+reason = "The same tier and the same reason as the three route jobs above it: the crate registry is read anonymously because that is how a dependent's own `cargo build` reads it, and the supervisor the smoke check runs against is taken from the forge's release the way the install script takes it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-python:"
+reason = "The same tier and the same reason as the jobs above it: the Python registry is read anonymously because that is how an application's own `pip install` reads it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-node:"
+reason = "The same tier and the same reason as the jobs above it: the JavaScript registry is read anonymously because that is how an application's own `npm install` reads it."
+
 # `.github/workflows/platform-probe.yml` carries one trailing directive on each
 # line a rule reads: every tier's `run:` in the steps the three probe jobs share
 # and each tier step's `continue-on-error:`, and each job's `runs-on:` and job-
@@ -592,6 +610,18 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/release-artifacts/tests/test_registry_clients.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in, beside `test_clients.py`, which builds the same supervisor and starts it for real. What edges this project's `test` target is what it proves rather than what it costs, and moving it out would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/release-artifacts/tests/test_registry_clients.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"

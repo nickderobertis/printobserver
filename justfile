@@ -136,6 +136,11 @@ publish-artifacts:
 # its own version. The three routes are installed with a PATH holding no Rust
 # toolchain at all, which is the whole reason they carry a program already
 # built for the platform.
+#
+# These are a change's own proof of what it built, and the end-to-end tier is
+# what runs them. No continuous-integration job runs one: a job proving a
+# shipped artifact takes it from its registry, with the `prove-registry-*`
+# recipes below, and `just check-repo` refuses a job running one of these.
 prove-client-rust:
     uv run -q python -m release_artifacts prove --target crate:printobserver-sdk --into dist/proof/client-rust
 
@@ -154,12 +159,17 @@ prove-route-npm:
 prove-route-script:
     uv run -q python -m release_artifacts prove --target release:printobserver --into dist/proof/route-script
 
-# Prove one end-user route against what its own registry actually serves.
+# Prove one shipped artifact against what its own registry actually serves.
 #
-# One recipe per route, because the three are alternatives and a reader chasing
-# a failure wants the one that failed. PRINTOBSERVER_PROOF_VERSION names the
-# version to prove and PRINTOBSERVER_PROOF_REGISTRIES points every registry
-# somewhere other than the real ones; each exits zero only on a pass.
+# One recipe per artifact, because the three routes are alternatives, the three
+# clients are separable, and a reader chasing a failure wants the one that
+# failed. PRINTOBSERVER_PROOF_VERSION names the version to prove and
+# PRINTOBSERVER_PROOF_REGISTRIES points every registry somewhere other than the
+# real ones; each exits zero only on a pass. A client is taken from its
+# registry and its own smoke check runs against the supervisor the same
+# release's asset carries, so nothing a proof here reaches is a build of this
+# tree — which is why these, and not the `prove-client-*` and `prove-route-*`
+# recipes above, are what a continuous-integration job runs.
 #
 # `@` because a proof that passed is ONE line — which version was proven, where
 # it came from, what installed it and what the program said — and the echoed
@@ -174,6 +184,15 @@ prove-registry-npm:
 
 prove-registry-script:
     @uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
+
+prove-registry-client-rust:
+    @uv run -q python -m release_artifacts prove --registry --target crate:printobserver-sdk --into dist/proof/registry-client-rust
+
+prove-registry-client-python:
+    @uv run -q python -m release_artifacts prove --registry --target pypi:printobserver-sdk --into dist/proof/registry-client-python
+
+prove-registry-client-node:
+    @uv run -q python -m release_artifacts prove --registry --target npm:@printobserver/sdk --into dist/proof/registry-client-node
 
 # Which release the release-time run at COMMIT cut, as `version=<version>`.
 #
@@ -228,14 +247,18 @@ release-dispatched TAG ROOT RECORD REF:
 release-version-dispatched RECORD:
     @uv run -q python -m release_artifacts recorded --record {{RECORD}}
 
-# The registry install-path proof: all three routes, which is how a person runs
-# this tier by hand. `AGENTS.md`'s "The registry install-path proof" is what it
-# is, why it is not one of `just check`'s tiers, and when it runs.
+# The registry install-path proof: all three routes and all three clients,
+# which is how a person runs this tier by hand. `AGENTS.md`'s "The registry
+# install-path proof" is what it is, why it is not one of `just check`'s tiers,
+# and when it runs.
 # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
 test-install-proof:
     @just prove-registry-pypi
     @just prove-registry-npm
     @just prove-registry-script
+    @just prove-registry-client-rust
+    @just prove-registry-client-python
+    @just prove-registry-client-node
 
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:

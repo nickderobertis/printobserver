@@ -26,7 +26,6 @@ from treecopy import Tree, copy_tree
 
 AGENTS = "AGENTS.md"
 TARGETS = "release-targets.toml"
-ARTIFACTS = ".github/workflows/artifacts.yml"
 RELEASE = ".github/workflows/release-plz.yml"
 INSTALL = ".github/workflows/install-path.yml"
 
@@ -228,12 +227,12 @@ def test_a_publish_naming_an_undeclared_secret_is_refused(tree: Callable[[], Tre
     refused(publish_credentials(broken.repo), "gh-secrets.json does not declare")
 
 
-def test_a_client_with_no_job_of_its_own_is_refused(tree: Callable[[], Tree]) -> None:
-    """An artifact with no job is an artifact nothing builds, installs or proves."""
+def test_a_client_with_no_registry_job_of_its_own_is_refused(tree: Callable[[], Tree]) -> None:
+    """A client no job takes from its registry is one nothing proves a dependent can take."""
     broken = tree()
-    broken.edit(ARTIFACTS, "      - run: just prove-client-python\n", "      - run: true\n")
+    broken.edit(INSTALL, "      - run: just prove-registry-client-python\n", "      - run: true\n")
 
-    refused_naming(artifact_jobs(broken.repo), "prove-client-python", "declares no job")
+    refused_naming(artifact_jobs(broken.repo), "prove-registry-client-python", "declares no job")
 
 
 def test_a_job_that_does_not_prove_what_it_installed_is_refused(
@@ -251,26 +250,63 @@ def test_a_job_that_does_not_prove_what_it_installed_is_refused(
     refused_naming(artifact_jobs(broken.repo), "npm:@printobserver/sdk", "recipe builds it")
 
 
-def test_both_proofs_of_one_route_are_read_rather_than_one_displacing_the_other(
+def test_both_proofs_of_one_artifact_are_asked_for_and_only_the_registry_one_has_a_job(
     tree: Callable[[], Tree],
 ) -> None:
-    """A route is proven twice, and dropping either job is refused.
+    """An artifact is proven twice, and the two are held apart.
 
     One proof is over an artifact built from the committed tree, which a change
-    can run before anything is published; the other is over what that route's
-    own registry serves, which is what a user meets. They answer different
-    questions, so a mapping that kept only one of them would leave this check
-    answering for a proof that had gone.
+    can run before anything is published and the end-to-end tier runs; the
+    other is over what that artifact's own registry serves, which is what a
+    user meets and a job runs. Dropping the tree's recipe is refused, dropping
+    the registry's job is refused, and a job running the tree's recipe is
+    refused too: over a pull request it would report on a build nobody
+    installs, one runner per platform.
     """
     without_local = tree()
-    without_local.edit(ARTIFACTS, "      - run: just prove-route-pypi\n", "      - run: true\n")
+    without_local.edit(
+        "justfile",
+        "prove-route-pypi:\n    uv run -q python -m release_artifacts prove "
+        "--target pypi:printobserver-cli --into dist/proof/route-pypi",
+        "prove-route-pypi:\n    echo nothing",
+    )
 
-    refused_naming(artifact_jobs(without_local.repo), "prove-route-pypi", "declares no job")
+    refused_naming(
+        artifact_jobs(without_local.repo), "pypi:printobserver-cli", "builds it from the committed"
+    )
 
     without_registry = tree()
     without_registry.edit(INSTALL, "      - run: just prove-registry-pypi\n", "      - run: true\n")
 
     refused_naming(artifact_jobs(without_registry.repo), "prove-registry-pypi", "declares no job")
+
+    tree_in_a_job = tree()
+    tree_in_a_job.edit(
+        INSTALL,
+        "      - run: just prove-registry-pypi\n",
+        "      - run: just prove-route-pypi\n      - run: just prove-registry-pypi\n",
+    )
+
+    refused_naming(
+        artifact_jobs(tree_in_a_job.repo), "prove-route-pypi", "build of the working tree"
+    )
+
+
+def test_a_registry_recipe_is_told_from_a_tree_recipe_by_its_own_flag(
+    tree: Callable[[], Tree],
+) -> None:
+    """A registry recipe that stopped passing `--registry` builds from the tree after all."""
+    broken = tree()
+    broken.edit(
+        "justfile",
+        "prove --registry --target npm:printobserver-cli",
+        "prove --target npm:printobserver-cli",
+    )
+
+    findings = artifact_jobs(broken.repo)
+
+    refused_naming(findings, "npm:printobserver-cli", "takes it from its registry")
+    refused_naming(findings, "prove-registry-npm", "build of the working tree")
 
 
 def test_a_platform_a_route_job_omits_is_refused(tree: Callable[[], Tree]) -> None:

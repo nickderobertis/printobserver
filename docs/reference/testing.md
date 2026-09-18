@@ -140,14 +140,19 @@ repairs. The version under test is the one the caller names in
 says `release`, and otherwise the newest the registry itself serves; never the
 number in the committed tree, which is whatever release automation last wrote
 there. `just prove-registry-pypi`, `prove-registry-npm` and
-`prove-registry-script` are the three routes on their own, and
-`just test-install-proof` is all three.
+`prove-registry-script` are the three routes on their own;
+`prove-registry-client-rust`, `prove-registry-client-python` and
+`prove-registry-client-node` take each client from the registry a dependent
+takes it from and run its smoke check against the supervisor the same
+release's asset carries; and `just test-install-proof` is all six.
 
 **Why it is outside the gate.** It reads the real package registries, so over a
 change it could only ever report what was published *before* that change, and it
 can say nothing at all about the artifact under review. What proves an artifact
-built from the committed tree is `just prove-route-*`, in the `artifact-route-*`
-jobs, which run on every change and contact no registry.
+built from the committed tree is `just prove-route-*` and `just prove-client-*`,
+which the end-to-end tier drives inside the gate on every change and which
+contact no registry. No workflow job runs one of those: a job proving a shipped
+artifact takes it from its registry.
 
 **When it runs.** After a release, on a schedule and on a manual invocation, and
 on no trigger that fires on a change. The schedule is the cron `0 6 * * 1`, and

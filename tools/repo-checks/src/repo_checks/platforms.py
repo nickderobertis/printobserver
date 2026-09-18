@@ -39,8 +39,8 @@ from repo_checks.parsing import marker_block
 #: One entry of `AGENTS.md`'s supported-platform list.
 #:
 #: The install-path answer is a lever rather than a note: a platform answered
-#: `no` is kept out of every install-route, registry-proof and artifact-route
-#: matrix, so it carries the reason for the opt-out on the line itself.
+#: `no` is kept out of every install-route matrix and every registry proof of a
+#: route, so it carries the reason for the opt-out on the line itself.
 PLATFORM_LINE = re.compile(
     r"^- `(?P<id>[a-z0-9_-]+)` — runner `(?P<runner>[^`]+)`, Rust target `(?P<target>[^`]+)`, "
     r"service manager `(?P<service_manager>[^`]+)`, install path: (?P<install>yes|no)"
@@ -474,7 +474,7 @@ def install_platforms(repo: Repo) -> list[Platform]:
 
     The `install path` answer is the first of the two levers a platform is
     brought up in stages by: a platform answered `no` is carried by no
-    install-route, registry-proof or artifact-route matrix, and one answered
+    install-route matrix or registry proof of a route, and one answered
     `yes` must be carried by every one of them.
 
     Raises:

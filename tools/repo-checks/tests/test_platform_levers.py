@@ -24,6 +24,7 @@ AARCH64 = (
     "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes"
 )
 EXCLUSIONS_BEGIN = "[//]: # (BEGIN platform-exclusions)"
+INSTALL = ".github/workflows/install-path.yml"
 EXCLUSIONS_END = "[//]: # (END platform-exclusions)"
 
 #: The matrix every platform-dependent job of this repository carries.
@@ -96,7 +97,7 @@ def test_an_install_route_job_carrying_a_platform_answered_no_is_refused(
         "install path: no",
     )
     refused_naming(findings, "job `prove-registry-npm`", "install path: no")
-    refused_naming(findings, "job `artifact-route-script`", "install path: no")
+    refused_naming(findings, "job `prove-registry-script`", "install path: no")
 
 
 def test_a_job_that_does_not_take_a_route_still_carries_a_platform_answered_no(
@@ -122,26 +123,24 @@ def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
     """The answer binds in both directions: a `yes` every install tier must carry."""
     broken = tree()
     broken.edit(
-        ".github/workflows/artifacts.yml",
+        INSTALL,
         MATRIX_AARCH64 + MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
         "    steps:\n      - uses: actions/checkout@v5\n"
         "      - uses: extractions/setup-just@v3\n"
-        "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
         "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: oven-sh/setup-bun@v2\n"
-        "      - run: just bootstrap\n      - run: just prove-route-npm\n",
+        "      - uses: actions/setup-node@v5\n"
+        "      - run: just prove-registry-npm\n",
         MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
         "    steps:\n      - uses: actions/checkout@v5\n"
         "      - uses: extractions/setup-just@v3\n"
-        "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
         "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: oven-sh/setup-bun@v2\n"
-        "      - run: just bootstrap\n      - run: just prove-route-npm\n",
+        "      - uses: actions/setup-node@v5\n"
+        "      - run: just prove-registry-npm\n",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `artifact-route-npm`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `prove-registry-npm`", "omits platform `linux-aarch64`")
 
 
 def test_an_install_path_answer_of_no_with_no_reason_is_refused(
@@ -159,15 +158,15 @@ def test_an_install_path_answer_of_no_with_no_reason_is_refused(
 def test_a_recorded_exclusion_lets_a_job_omit_that_cell(tree: Callable[[], Tree]) -> None:
     """The second lever: a cell recorded as not running is a cell the job no longer owes.
 
-    `Tree.edit` replaces one occurrence, and the first is `artifact-client-rust`'s
-    own matrix — so exactly one cell of one job goes, which is what one entry
-    records.
+    `Tree.edit` replaces one occurrence, and the first in the install-path
+    workflow is `prove-registry-pypi`'s own matrix — so exactly one cell of one
+    job goes, which is what one entry records.
     """
     narrowed = tree()
-    narrowed.edit(".github/workflows/artifacts.yml", MATRIX_AARCH64, "")
+    narrowed.edit(INSTALL, MATRIX_AARCH64, "")
     record(
         narrowed,
-        "- `linux-aarch64` on `artifact-client-rust` — the arm runner is being brought up",
+        "- `linux-aarch64` on `prove-registry-pypi` — the arm runner is being brought up",
     )
 
     accepted(platforms(narrowed.repo), describing="a tree recording the one cell it omits")
@@ -176,24 +175,24 @@ def test_a_recorded_exclusion_lets_a_job_omit_that_cell(tree: Callable[[], Tree]
 def test_a_job_omitting_a_cell_no_entry_names_is_refused(tree: Callable[[], Tree]) -> None:
     """Recording one job's cell does not excuse another job's."""
     broken = tree()
-    broken.edit(".github/workflows/artifacts.yml", MATRIX_AARCH64, "")
-    record(broken, "- `linux-aarch64` on `artifact-route-npm` — a different job's cell")
+    broken.edit(INSTALL, MATRIX_AARCH64, "")
+    record(broken, "- `linux-aarch64` on `prove-registry-npm` — a different job's cell")
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `artifact-client-rust`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `prove-registry-pypi`", "omits platform `linux-aarch64`")
 
 
 def test_a_job_carrying_a_cell_an_entry_excludes_is_refused(tree: Callable[[], Tree]) -> None:
     """An entry says that cell does not run; a matrix that runs it disagrees with it."""
     broken = tree()
-    record(broken, "- `linux-aarch64` on `artifact-route-npm` — the arm runner is coming up")
+    record(broken, "- `linux-aarch64` on `prove-registry-npm` — the arm runner is coming up")
 
     findings = platforms(broken.repo)
 
     refused_naming(
         findings,
-        "job `artifact-route-npm`",
+        "job `prove-registry-npm`",
         "names platform `linux-aarch64`",
         "a cell that does not run",
     )
@@ -202,12 +201,12 @@ def test_a_job_carrying_a_cell_an_entry_excludes_is_refused(tree: Callable[[], T
 def test_an_exclusion_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
     """A cell taken out of a matrix says why, exactly as an opt-out does."""
     broken = tree()
-    broken.edit(".github/workflows/artifacts.yml", MATRIX_AARCH64, "")
-    record(broken, "- `linux-aarch64` on `artifact-client-rust`")
+    broken.edit(INSTALL, MATRIX_AARCH64, "")
+    record(broken, "- `linux-aarch64` on `prove-registry-pypi`")
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "`linux-aarch64`", "`artifact-client-rust`", "no reason")
+    refused_naming(findings, "`linux-aarch64`", "`prove-registry-pypi`", "no reason")
 
 
 def test_an_exclusion_naming_a_platform_that_is_not_there_is_refused(
@@ -215,7 +214,7 @@ def test_an_exclusion_naming_a_platform_that_is_not_there_is_refused(
 ) -> None:
     """An exclusion for a platform nothing supports narrows nothing and hides a typo."""
     broken = tree()
-    record(broken, "- `linux-riscv64` on `artifact-client-rust` — a platform nothing names")
+    record(broken, "- `linux-riscv64` on `prove-registry-client-rust` — a platform nothing names")
 
     findings = platforms(broken.repo)
 
@@ -239,7 +238,7 @@ def test_an_exclusion_that_is_not_of_the_recorded_shape_is_refused(
 ) -> None:
     """A line that starts like an entry and is not one is refused rather than ignored."""
     broken = tree()
-    record(broken, "- linux-aarch64 on artifact-client-rust because the runner is coming up")
+    record(broken, "- linux-aarch64 on prove-registry-client-rust because the runner is coming up")
 
     findings = platforms(broken.repo)
 
@@ -291,13 +290,13 @@ def test_a_cell_recorded_as_not_running_twice_is_refused(tree: Callable[[], Tree
     broken = tree()
     record(
         broken,
-        "- `linux-aarch64` on `artifact-client-rust` — the arm runner is coming up",
-        "- `linux-aarch64` on `artifact-client-rust` — and a second reason for it",
+        "- `linux-aarch64` on `prove-registry-client-rust` — the arm runner is coming up",
+        "- `linux-aarch64` on `prove-registry-client-rust` — and a second reason for it",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "`artifact-client-rust`", "more than once")
+    refused_naming(findings, "`prove-registry-client-rust`", "more than once")
 
 
 def test_a_matrix_naming_one_platform_in_two_cells_is_refused(
@@ -342,7 +341,7 @@ def test_a_route_job_owes_a_platform_once_the_install_path_targets_it(
 
     findings = artifact_jobs(broken.repo)
 
-    refused_naming(findings, "job `artifact-route-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    refused_naming(findings, "job `prove-registry-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
     refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
 
 
@@ -351,12 +350,14 @@ def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifac
 ) -> None:
     """The second lever, read by the artifact-job check: only a recorded cell is excused."""
     broken = tree()
-    unrecord(broken, BEING_BROUGHT_UP, "artifact-client-rust")
+    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-client-rust")
 
     findings = artifact_jobs(broken.repo)
 
-    refused_naming(findings, "job `artifact-client-rust`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
-    for job in ("artifact-client-python", "artifact-client-node"):
+    refused_naming(
+        findings, "job `prove-registry-client-rust`", f"AGENTS.md names `{BEING_BROUGHT_UP}`"
+    )
+    for job in ("prove-registry-client-python", "prove-registry-client-node"):
         accepted(
             [finding for finding in findings if f"job `{job}`" in finding],
             describing=f"`{job}`, whose cell is still recorded",

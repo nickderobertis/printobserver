@@ -280,8 +280,8 @@ set of reviewable ones instead, and neither can be pulled quietly: both are
 visible here and both are refused without a reason.
 
 **`install path: yes|no`** is the first, and it is per platform. A platform
-answered `no` is carried by no install-route, registry-proof or artifact-route
-matrix; one answered `yes` is carried by every one of them. A `no` carries its
+answered `no` is carried by no install-route matrix and by no registry proof of
+a route; one answered `yes` is carried by every one of them. A `no` carries its
 own reason — `install path: no — <reason>` — because a platform taken out of
 every install tier by an unexplained opt-out is one nobody can put back.
 
@@ -293,11 +293,11 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-x86_64` on `gate` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-client-rust` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-client-python` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-x86_64` on `prove-registry-client-node` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-x86_64` on `artifacts` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
@@ -305,11 +305,11 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-aarch64` on `gate` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-rust` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `prove-registry-client-rust` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-python` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `prove-registry-client-python` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-client-node` — bring-up owed; the Windows platform node removes this line
+- `windows-aarch64` on `prove-registry-client-node` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-aarch64` on `artifacts` — bring-up owed; the Windows platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
@@ -851,7 +851,10 @@ sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
 ## The registry install-path proof
 
 The one thing that says this repository is installable: each of the three
-routes above taken from its own registry, and what it installed run.
+routes above taken from its own registry, and what it installed run — and,
+beside them, each of the three clients taken from the registry a dependent
+takes it from, with its own smoke check run against the supervisor the same
+release's asset carries.
 
 ```console
 just test-install-proof
@@ -870,6 +873,16 @@ dispatched run uploads — on a manual invocation, and on this schedule:
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
 [//]: # (END install-proof-schedule)
+
+**No job proves a shipped artifact over a build of the working tree.** A
+change's own proof of what it built — `just prove-client-*` and `just
+prove-route-*`, which build from the committed tree and install into an
+environment holding no copy of these sources — is the end-to-end tier's, inside
+the gate, and `just check-repo`'s `artifact-jobs` refuses a workflow job running
+one: on a pull request such a job reports on a build nobody installs, and starts
+one runner per supported platform to do it, which on the hosted macOS runners is
+a cost no change should pay. The six proofs a job runs are the registry's, in
+`install-path.yml`, on the triggers above.
 
 ## Commits, releases, and merging
 

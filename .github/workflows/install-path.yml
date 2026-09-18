@@ -1,11 +1,23 @@
-# The end-user install path, proven against what the registries actually serve.
+# The end-user install path and the three clients, proven against what the
+# registries actually serve.
 #
 # Two jobs per ROUTE, because the three routes are alternatives to one another.
 # `prove-registry-*` runs the tier `AGENTS.md`'s "The registry install-path
 # proof" records; `install-route-*` runs that path's own stated commands, in the
 # order `AGENTS.md`'s "The end-user install path" states them — and `just
 # check-repo` refuses a step of one of those jobs that section does not state,
-# so this workflow cannot grow an install nobody declared.
+# so this workflow cannot grow an install nobody declared. And one job per
+# CLIENT, `prove-registry-client-*`, each taking that client from the registry
+# a dependent takes it from and running its own smoke check against the
+# supervisor the same release's asset carries.
+#
+# Nothing here runs on a change. Every one of these six proofs takes its
+# artifact from a registry, so over a pull request it could only report what
+# was published before the change — and the six each start one job per
+# supported platform, which on the hosted macOS runners is a cost no change
+# should pay for a proof of somebody else's release. A change's own proof of
+# what it built is the end-to-end tier's `prove-client-*` and `prove-route-*`
+# journey, in the gate.
 #
 # Two things a reader has to know that are not written down elsewhere. The
 # release-time trigger is `release-plz` HAVING FINISHED rather than the release
@@ -184,6 +196,84 @@ jobs:
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just prove-registry-script
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-client-rust:
+    name: prove-registry-client-rust (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      # The one client whose consumer is built: `cargo` resolves the crate the
+      # registry serves and builds the committed smoke check against it. The
+      # supervisor it runs against is still taken with no toolchain on the
+      # path, by the install-script route.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: just prove-registry-client-rust
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-client-python:
+    name: prove-registry-client-python (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just prove-registry-client-python
+
+  # llmlint: ignore[live_tier_compiles_and_requires_credential] suppressions.toml has the reason.
+  prove-registry-client-node:
+    name: prove-registry-client-node (${{ matrix.platform.id }})
+    needs: resolve
+    if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
+    env:
+      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
+      - run: just prove-registry-client-node
 
   install-route-pypi:
     name: install-route-pypi (${{ matrix.platform.id }})
