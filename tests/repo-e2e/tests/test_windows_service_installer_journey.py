@@ -392,8 +392,8 @@ def test_what_it_writes_is_what_the_descriptor_and_the_install_path_say(
             )
 
 
-class _AnswersEverything(BaseHTTPRequestHandler):
-    """An OctoPrint that answers every request with an empty document."""
+class _AnswersEveryRead(BaseHTTPRequestHandler):
+    """An OctoPrint that answers every read with an empty document, and nothing else."""
 
     def do_GET(self) -> None:
         """Answer an empty document."""
@@ -411,7 +411,7 @@ class _AnswersEverything(BaseHTTPRequestHandler):
 @pytest.fixture
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEverything)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEveryRead)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
