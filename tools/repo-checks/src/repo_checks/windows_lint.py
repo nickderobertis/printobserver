@@ -62,12 +62,15 @@ def settings(repo: Repo) -> WindowsLint | None:
     """The pass's target, or `None` for a tree whose policy declares none.
 
     Raises:
-        PolicyValueError: If the table is there and either field is not a
-            non-empty string.
+        PolicyValueError: If the key is there and is not a table, or either of
+            its two fields is not a non-empty string.
     """
     table = policy_table(repo, "toolchain").get("windows_lint")
-    if not table:
+    if table is None:
         return None
+    if not isinstance(table, dict):
+        msg = f"`repo-policy.toml`'s `toolchain.windows_lint` holds {table!r}, which is not a table"
+        raise PolicyValueError(msg)
     named = policy_strings(table, ("target", "zig_target"), "toolchain.windows_lint")
     return WindowsLint(named["target"], named["zig_target"])
 

@@ -195,6 +195,38 @@ def test_bootstrap_adds_the_target_on_a_host_that_is_not_windows(
     equal(recorded(stand_ins / "rustup"), [], describing="rustup never asked on Windows")
 
 
+@pytest.mark.parametrize(
+    ("declared", "naming"),
+    [
+        ('windows_lint = "x86_64-pc-windows-gnu"', "which is not a table"),
+        (
+            '[toolchain.windows_lint]\ntarget = "x86_64-pc-windows-gnu"',
+            "no `toolchain.windows_lint.zig_target` string",
+        ),
+        (
+            '[toolchain.windows_lint]\ntarget = 7\nzig_target = "x"',
+            "no `toolchain.windows_lint.target` string",
+        ),
+    ],
+)
+def test_a_malformed_windows_lint_table_is_refused_by_name(
+    tmp_path: Path, stand_ins: Path, capsys: pytest.CaptureFixture[str], declared: str, naming: str
+) -> None:
+    """A policy entry that is not a table of two strings is refused, not indexed."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        f"schema_version = 1\n\n[toolchain]\n{declared}\n", encoding="utf-8"
+    )
+
+    equal(windows_lint.lint_windows_target(Repo(root), host="Linux"), 1)
+    equal(windows_lint.install_target(Repo(root), host="Linux"), 1)
+
+    error = capsys.readouterr().err
+    contains(error, naming, describing="the refusal naming the malformed entry")
+    equal(recorded(stand_ins / "cargo"), [], describing="nothing linted over a malformed policy")
+
+
 def test_a_target_that_cannot_be_added_fails_bootstraps_tool_step_by_name(
     stand_ins: Path, committed: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
