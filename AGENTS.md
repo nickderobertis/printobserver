@@ -878,6 +878,7 @@ sudo systemctl enable --now printobserver.service
 
 #### windows-service
 
+<!-- llmlint: ignore[instruction_layer_localized] This section is the authoritative statement of the end-user install path, which `just check-repo` reads out of the root file for every service manager and derives the README and CI jobs from; the task requires the Windows pair here, in the per-platform shape, beside the systemd one. suppressions.toml has the full reason. -->
 Both run in an elevated PowerShell — Windows PowerShell or a newer one. The first
 is the Windows form of the same installer, committed at
 `scripts/install-service.ps1`: it puts the program under `Program Files`, the
@@ -923,6 +924,7 @@ sudo npm install -g @openai/codex
 sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
 ```
 
+<!-- llmlint: ignore[instruction_layer_localized] The Windows form of the sign-in step belongs to the same authoritative install-path section, between the same two commands, as the Unix form above it. suppressions.toml has the full reason. -->
 On Windows the service's virtual account cannot be signed in to, and does not
 need to be: the sign-in is kept under the state directory, which the installer
 made the service account's to read, so it is taken from the same elevated

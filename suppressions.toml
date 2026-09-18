@@ -110,6 +110,30 @@ file = "CLAUDE.md"
 site = "The sign-in command exists because"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Both run in an elevated PowerShell"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `service-install` reads each service manager's pair out of the root file, and the README and the install jobs are derived from it. The Windows service task requires the `windows-service` pair to be stated there in the per-platform shape beside the systemd one, so a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Both run in an elevated PowerShell"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "On Windows the service's virtual account"
+reason = "The Windows form of the sign-in step sits in the same authoritative install-path section as the Unix form, between the same two commands it has to come between; stating it anywhere else would split one ordered path across two files, one of which no check reads."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "On Windows the service's virtual account"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]
