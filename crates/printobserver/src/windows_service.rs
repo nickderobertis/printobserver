@@ -115,23 +115,7 @@ fn serve_as_a_service() -> Exit {
     };
     let (stop, stopped) = oneshot::channel::<()>();
     let stop = Mutex::new(Some(stop));
-    let handler = move |control: ServiceControl| match control {
-        // Stop and shutdown are the manager asking this service to stop: the
-        // second is the machine going down, and it is answered the same way.
-        // llmlint: ignore[changed_behavior_has_e2e] The shutdown control is one only the service control manager sends, and only while the machine is going down: no tool sends it to one service, so no journey can drive it without restarting the runner. It shares this one arm with the stop control, whose whole path — the channel, the stop-pending report, `Running::stop`, the stopped report — `test_service_manager_journey.py` drives through the real manager on the Windows cells.
-        ServiceControl::Stop | ServiceControl::Shutdown => {
-            if let Ok(mut sender) = stop.lock()
-                && let Some(sender) = sender.take()
-            {
-                let _ = sender.send(());
-            }
-            ServiceControlHandlerResult::NoError
-        }
-        // The manager asking what state this service is in; it reads the last
-        // status reported, so there is nothing to do but acknowledge.
-        ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-        _ => ServiceControlHandlerResult::NotImplemented,
-    };
+    let handler = move |control: ServiceControl| answer(control, &stop);
     let handle = match service_control_handler::register(SERVICE_NAME, handler) {
         Ok(handle) => handle,
         // llmlint: ignore[changed_behavior_has_e2e] A manager that called this process back and then refuses it a handler is a host whose manager is not behaving as one; nothing can make the real manager do that to prove the branch. What it does is the smallest true thing: say so in the console form's words and exit `Refused`, with no status to report because no handle was granted.
@@ -159,6 +143,34 @@ fn serve_as_a_service() -> Exit {
     runtime.block_on(service::run(&config, &mut reporter, async move {
         let _ = stopped.await;
     }))
+}
+
+/// How this service answers one control from the manager.
+///
+/// Stop and shutdown send the stop the sequence is waiting on, once: a second
+/// arriving while the first is being taken finds nothing left to send and is
+/// acknowledged all the same.
+fn answer(
+    control: ServiceControl,
+    stop: &Mutex<Option<oneshot::Sender<()>>>,
+) -> ServiceControlHandlerResult {
+    match control {
+        // Stop and shutdown are the manager asking this service to stop: the
+        // second is the machine going down, and it is answered the same way.
+        // llmlint: ignore[changed_behavior_has_e2e] The shutdown control is one only the service control manager sends, and only while the machine is going down: no tool sends it to one service, so no journey can drive it without restarting the runner. It shares this one arm with the stop control, whose whole path — the channel, the stop-pending report, `Running::stop`, the stopped report — `test_service_manager_journey.py` drives through the real manager on the Windows cells.
+        ServiceControl::Stop | ServiceControl::Shutdown => {
+            if let Ok(mut sender) = stop.lock()
+                && let Some(sender) = sender.take()
+            {
+                let _ = sender.send(());
+            }
+            ServiceControlHandlerResult::NoError
+        }
+        // The manager asking what state this service is in; it reads the last
+        // status reported, so there is nothing to do but acknowledge.
+        ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+        _ => ServiceControlHandlerResult::NotImplemented,
+    }
 }
 
 /// The manager, as somewhere reports go.
@@ -217,7 +229,13 @@ mod tests {
         ServiceControlAccept, ServiceExitCode, ServiceState, ServiceType,
     };
 
-    use super::{SERVICE_NAME, status_of};
+    use std::sync::Mutex;
+
+    use tokio::sync::oneshot;
+    use windows_service::service::ServiceControl;
+    use windows_service::service_control_handler::ServiceControlHandlerResult;
+
+    use super::{SERVICE_NAME, answer, serve_as_a_service, status_of};
     use crate::failure::Exit;
     use crate::service::{STOP_WAIT_HINT, StatusReport};
 
@@ -275,5 +293,61 @@ mod tests {
         });
         assert_eq!(stopping.current_state, ServiceState::StopPending);
         assert_eq!(stopping.wait_hint, STOP_WAIT_HINT);
+    }
+
+    /// A stop sends the stop the sequence waits on, once; a second stop finds
+    /// it already sent and is acknowledged all the same.
+    #[test]
+    fn a_stop_is_sent_once_and_a_second_is_acknowledged() {
+        let (sender, mut stopped) = oneshot::channel::<()>();
+        let stop = Mutex::new(Some(sender));
+
+        assert!(matches!(
+            answer(ServiceControl::Stop, &stop),
+            ServiceControlHandlerResult::NoError
+        ));
+        assert_eq!(stopped.try_recv(), Ok(()));
+        assert!(matches!(
+            answer(ServiceControl::Stop, &stop),
+            ServiceControlHandlerResult::NoError
+        ));
+    }
+
+    /// The machine going down is answered as a stop.
+    #[test]
+    fn a_shutdown_is_answered_as_a_stop() {
+        let (sender, mut stopped) = oneshot::channel::<()>();
+        let stop = Mutex::new(Some(sender));
+
+        assert!(matches!(
+            answer(ServiceControl::Shutdown, &stop),
+            ServiceControlHandlerResult::NoError
+        ));
+        assert_eq!(stopped.try_recv(), Ok(()));
+    }
+
+    /// An interrogation is acknowledged and stops nothing; a control this
+    /// service does not take is refused and stops nothing.
+    #[test]
+    fn other_controls_stop_nothing() {
+        let (sender, mut stopped) = oneshot::channel::<()>();
+        let stop = Mutex::new(Some(sender));
+
+        assert!(matches!(
+            answer(ServiceControl::Interrogate, &stop),
+            ServiceControlHandlerResult::NoError
+        ));
+        assert!(matches!(
+            answer(ServiceControl::Pause, &stop),
+            ServiceControlHandlerResult::NotImplemented
+        ));
+        assert!(stopped.try_recv().is_err());
+    }
+
+    /// Called back with no configuration path recorded, the service refuses
+    /// before it asks the manager for anything.
+    #[test]
+    fn a_call_back_with_no_configuration_is_refused() {
+        assert_eq!(serve_as_a_service(), Exit::Refused);
     }
 }
