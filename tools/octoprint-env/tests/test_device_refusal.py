@@ -1,10 +1,12 @@
 r"""A serial device this host cannot open is refused before anything is provisioned.
 
-Four names — one in each platform's own shape, `COM3`, `/dev/cu.usbmodem1101`
-and `/dev/ttyACM0`, and the Windows port again in the device namespace every
-port opens under, `\\.\COM3` — and two journeys over them. The first runs the
-committed script in `--mode serial` on whichever host this suite is on, so each
-gate cell proves its own platform's naming and its own way of opening a device:
+Six names — one in each platform's own shape, `COM3`, `/dev/cu.usbmodem1101`
+and `/dev/ttyACM0`; the Windows port again in the device namespace every port
+opens under, `\\.\COM3`; and two at the edge of what any platform can have,
+`COM0` and a name under no device directory — and two journeys over them. The
+first runs the committed script in `--mode serial` on whichever host this suite
+is on, so each gate cell proves its own platform's naming and its own way of
+opening a device:
 the name that host's serial devices have is opened, by that host's means, and
 refused as unopenable because nothing is plugged in there; a name that host
 cannot have is refused by naming what its devices are called instead. The
@@ -42,13 +44,13 @@ class PlatformCase:
 
     A name in that platform's own shape; what the platform calls itself and
     something a person there would recognise in a next action; and whether it
-    names devices the Windows way. A Unix names its devices under `/dev`, and a
-    `udev` rule may link a printer under any name there, so a Unix refuses a
-    `COM` port and nothing else.
+    names devices the Windows way.
 
-    What a Windows port is called is this suite's own statement, `WINDOWS_PORT`,
-    held against the script's by feeding every platform every name in `NAMES`:
-    a name the two disagree over is refused as the wrong class and fails here.
+    Which names a platform's serial devices can have is this suite's own
+    statement — `WINDOWS_PORT`, and `UNIX_DEVICES` for the two Unixes — held
+    against the script's by feeding every platform every name in `NAMES`, the
+    edges of both statements among them: a name the two disagree over is
+    refused as the wrong class and fails here.
     """
 
     key: str
@@ -59,16 +61,27 @@ class PlatformCase:
 
     def can_have(self, device: str) -> bool:
         """Whether `device` is a name this platform's serial devices can have."""
-        return (WINDOWS_PORT.fullmatch(device) is not None) == self.windows
+        if self.windows:
+            return WINDOWS_PORT.fullmatch(device) is not None
+        return device.startswith(UNIX_DEVICES) and device != UNIX_DEVICES
 
 
-#: A Windows port, in this suite's own words: `COM` and a number, bare or
-#: under the `\\.\` device namespace, which is the spelling every port opens
-#: under and the one a person who read the script's own hint would type.
-WINDOWS_PORT = re.compile(r"(\\\\\.\\)?COM[0-9]+", re.IGNORECASE)
+#: A Windows port, in this suite's own words: `COM` and a number counted from
+#: one, bare or under the `\\.\` device namespace, which is the spelling every
+#: port opens under and the one a person who read the script's own hint types.
+WINDOWS_PORT = re.compile(r"(\\\\\.\\)?COM[1-9][0-9]*", re.IGNORECASE)
+
+#: Where a Unix keeps its devices. A `udev` rule may link a printer under any
+#: name there, so a Unix serial device is anything under it and nothing else.
+UNIX_DEVICES = "/dev/"
 
 #: The Windows port again, in the device namespace.
 NAMESPACED_WINDOWS_DEVICE = "\\\\.\\COM3"
+
+#: The names at the edge of both statements, which no platform can have: the
+#: port Windows counts from one past, and a name under no device directory.
+PORT_ZERO = "COM0"
+NOWHERE = "printer0"
 
 
 #: The three platforms, by what `sys.platform` answers on each.
@@ -81,9 +94,15 @@ PLATFORMS: dict[str, PlatformCase] = {
     )
 }
 
-#: Every name every platform is fed: each platform's own, and the Windows port
-#: in the device namespace, which Windows can have and a Unix cannot.
-NAMES: list[str] = [*(case.device for case in PLATFORMS.values()), NAMESPACED_WINDOWS_DEVICE]
+#: Every name every platform is fed: each platform's own, the Windows port in
+#: the device namespace, which Windows can have and a Unix cannot, and the two
+#: names at the edge of the grammar, which no platform can have.
+NAMES: list[str] = [
+    *(case.device for case in PLATFORMS.values()),
+    NAMESPACED_WINDOWS_DEVICE,
+    PORT_ZERO,
+    NOWHERE,
+]
 
 #: The platform this host is, as the script will read it.
 HERE: PlatformCase = PLATFORMS.get(sys.platform, PLATFORMS["linux"])
