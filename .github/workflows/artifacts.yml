@@ -12,13 +12,17 @@
 # and the three CLIENT jobs over the same, because both are built for a
 # platform and taken on one. `just check-repo` refuses this file if it and that
 # section disagree, so neither set can be narrowed independently of it.
+#
+# It runs on no change: these proofs are of what a release published, against
+# what the registries serve, so they run after a release has published rather
+# than on a pull request or a push to `main` (the user's ruling of 2026-09-18).
+# A manual dispatch is the one trigger left, because Actions refuses a workflow
+# with none; the reshape into a post-release proof hangs off it.
 
 name: artifacts
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
