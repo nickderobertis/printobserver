@@ -9,7 +9,9 @@
 //! tier on any platform drives a real server process through exactly the
 //! transitions the Windows service reports, asks it a question while it is
 //! running, sends the stop control, and reads that it stopped the way a service
-//! is required to.
+//! is required to. Naming a state in `PRINTOBSERVER_FIXTURE_REFUSES_REPORT`
+//! makes the stand-in refuse that one report, as a manager whose handle has
+//! gone bad would, so a tier can see the sequence go on past a refusal.
 //!
 //! Built only under the `test-fixtures` feature, so nothing an ordinary
 //! consumer installs carries it.
@@ -24,16 +26,25 @@ use tokio::sync::oneshot;
 /// What every report line begins with.
 const REPORTED: &str = "reported ";
 
-/// The manager, as a line on standard output per report.
-struct PrintingReporter;
+/// The variable naming the one state whose report the stand-in refuses.
+const REFUSES_REPORT: &str = "PRINTOBSERVER_FIXTURE_REFUSES_REPORT";
+
+/// The manager, as a line on standard output per report, refusing the report
+/// of the state it was told to refuse.
+struct PrintingReporter {
+    refuses: Option<String>,
+}
 
 impl StatusReporter for PrintingReporter {
     fn report(&mut self, report: StatusReport) -> Result<(), String> {
+        let state = report.state().name();
+        if self.refuses.as_deref() == Some(state) {
+            return Err(format!("the stand-in manager refused the {state} report"));
+        }
         let mut out = std::io::stdout().lock();
         writeln!(
             out,
-            "{REPORTED}{} wait-hint-ms={} exit={}",
-            report.state().name(),
+            "{REPORTED}{state} wait-hint-ms={} exit={}",
             report.wait_hint().as_millis(),
             report.exit_code()
         )
@@ -78,7 +89,10 @@ fn main() -> ExitCode {
             return ExitCode::from(7);
         }
     };
-    let exit = runtime.block_on(run(&config, &mut PrintingReporter, async move {
+    let mut reporter = PrintingReporter {
+        refuses: std::env::var(REFUSES_REPORT).ok(),
+    };
+    let exit = runtime.block_on(run(&config, &mut reporter, async move {
         let _ = stopped.await;
     }));
     ExitCode::from(exit.status())

@@ -45,6 +45,16 @@ struct Reported {
 /// A host that answers every request with an empty document, which is all the
 /// server asks of its configured `OctoPrint` before it listens.
 fn answering_host() -> SocketAddr {
+    host_answering(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\
+          Connection: close\r\n\r\n{}",
+    )
+}
+
+/// A host that answers every request with the one response given, for as long
+/// as the test runs: the port stays held, so no other test's host or server
+/// running beside this one can be handed it.
+fn host_answering(response: &'static [u8]) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
     let address = listener.local_addr().expect("the bound address");
     std::thread::spawn(move || {
@@ -58,10 +68,7 @@ fn answering_host() -> SocketAddr {
                         Ok(read) => request.extend_from_slice(&buffer[..read]),
                     }
                 }
-                let _ = stream.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\
-                      Connection: close\r\n\r\n{}",
-                );
+                let _ = stream.write_all(response);
             });
         }
     });
@@ -101,7 +108,16 @@ fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
 
 /// Start the fixture over one configuration, its three streams piped.
 fn start(configuration: &Path) -> Child {
-    Command::new(env!("CARGO_BIN_EXE_printobserver-service-fixture"))
+    start_refusing(configuration, None)
+}
+
+/// Start the fixture with its stand-in manager refusing the report of one state.
+fn start_refusing(configuration: &Path, refused: Option<ServiceState>) -> Child {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver-service-fixture"));
+    if let Some(state) = refused {
+        command.env("PRINTOBSERVER_FIXTURE_REFUSES_REPORT", state.name());
+    }
+    command
         .arg("--config")
         .arg(configuration)
         .stdin(Stdio::piped())
@@ -189,6 +205,32 @@ fn exits_within(child: &mut Child, within: Duration) -> std::process::ExitStatus
         assert!(
             started.elapsed() < within,
             "the service did not stop within {within:?} of the stop control"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// The address and credential, once the server has written them whole: with
+/// the running report refused, nothing else says when it is serving, and the
+/// file is written in place rather than renamed into it.
+fn once_serving(state: &Path) -> (String, String) {
+    let started = std::time::Instant::now();
+    loop {
+        let written = std::fs::read_to_string(state.join(CLIENT_CONFIG_FILE))
+            .ok()
+            .and_then(|text| toml::from_str::<toml::Value>(&text).ok());
+        let field = |name: &str| {
+            written
+                .as_ref()
+                .and_then(|document| document.get("client")?.get(name)?.as_str())
+                .map(str::to_owned)
+        };
+        if let (Some(server), Some(credential)) = (field("server"), field("credential")) {
+            return (server.trim_start_matches("http://").to_owned(), credential);
+        }
+        assert!(
+            started.elapsed() < STOPS_WITHIN,
+            "the service never wrote the configuration its clients read"
         );
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -288,14 +330,14 @@ fn the_service_reports_each_state_answers_while_running_and_stops_cleanly() {
 #[test]
 fn a_service_that_will_not_start_reports_stopped_with_the_refusal_and_never_running() {
     let root = TempDir::new().expect("the tier's own root");
-    // An `OctoPrint` address nothing answers at: the server refuses to start.
-    let unanswered = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let nowhere = format!(
+    // An `OctoPrint` that refuses the configured key: the server refuses to
+    // start. A port freed for nothing to answer at would do the same, until a
+    // test running beside this one was handed it and answered in its place.
+    let refusing = format!(
         "http://{}",
-        unanswered.local_addr().expect("the bound address")
+        host_answering(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
     );
-    drop(unanswered);
-    let configuration = configuration(root.path(), &nowhere);
+    let configuration = configuration(root.path(), &refusing);
     let mut child = start(&configuration);
     let mut reports = BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
 
@@ -329,5 +371,63 @@ fn a_service_that_will_not_start_reports_stopped_with_the_refusal_and_never_runn
     assert!(
         said.contains("will not start"),
         "the refusal was not said in the console form's own words:\n{said}"
+    );
+}
+
+/// A manager that refuses one report does not stop the sequence: the refusal is
+/// said on standard error, the service goes on serving, and the stop control
+/// still takes it through the one graceful shutdown to a clean exit.
+#[test]
+fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
+    let root = TempDir::new().expect("the tier's own root");
+    let octoprint = format!("http://{}", answering_host());
+    let configuration = configuration(root.path(), &octoprint);
+    let mut child = start_refusing(&configuration, Some(ServiceState::Running));
+    let mut reports = BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
+
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::StartPending.name().to_owned()),
+        "the first report is not that the service is starting"
+    );
+
+    let (address, credential) = once_serving(&root.path().join("state"));
+    let answer = ask(&address, &credential);
+    assert!(
+        answer.contains("HTTP/1.1 200"),
+        "the service stopped serving over a refused report:\n{answer}"
+    );
+
+    let mut stdin = child.stdin.take().expect("the fixture's stop control");
+    writeln!(stdin, "stop").expect("the stop control is sent");
+    drop(stdin);
+
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::StopPending.name().to_owned()),
+        "the report after the stop control is not that the service is stopping"
+    );
+    assert_eq!(
+        next_report(&mut reports),
+        Some(Reported {
+            state: ServiceState::Stopped.name().to_owned(),
+            wait_hint_ms: 0,
+            exit: Exit::Success.status(),
+        }),
+        "the last report is not that the service stopped cleanly"
+    );
+    let status = exits_within(&mut child, STOPS_WITHIN);
+    assert_eq!(
+        status.code(),
+        Some(i32::from(Exit::Success.status())),
+        "the service did not exit with status zero once stopped: {status}"
+    );
+    let said = said(&mut child);
+    assert!(
+        said.contains(
+            "printobserver could not report that it is running: \
+             the stand-in manager refused the running report"
+        ),
+        "the refused report was not said on standard error:\n{said}"
     );
 }
