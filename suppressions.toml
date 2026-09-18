@@ -955,3 +955,9 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "_uname(shims, system, machine)"
 reason = "The task explicitly requires this real committed-script journey to reach both macOS branches through a fixture on the dispatch's non-macOS host. Supplying `uname` is the sole platform fact a user cannot select; artifact resolution, checksum verification, unpacking, execution, and the emitted service-manager command all remain the public route's real behavior, and the same journey runs with the native answer in each macOS cell."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+site = "JUST_STANDIN = "
+reason = "The layer under test is the committed platform-dispatch workflow and the script it hands its two inputs to, and both run unsubstituted: the workflow's own text under the forge's rules, and the real `just dispatch-resolve` and `just dispatch-run` over a real copy of the tree. What the stand-in records instead of running is every OTHER recipe the dispatched source job's steps reach — `just bootstrap`, the OctoPrint bring-up, the printer tier, the bring-down and the whole gate — because the question is which commands a dispatch runs and on which runner, and running a toolchain install, a real OctoPrint and the gate to answer it would prove nothing more about the dispatch."

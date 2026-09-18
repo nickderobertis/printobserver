@@ -155,6 +155,68 @@ def test_a_job_follows_what_it_needs_and_what_its_condition_reads(tmp_path: Path
         ["one", "two"],
         describing="each cell's own values",
     )
+    equal(
+        run.jobs["cells"].runners,
+        ["ubuntu-24.04", "ubuntu-24.04-arm"],
+        describing="the runner each cell's `runs-on` evaluated to",
+    )
+
+
+#: A job whose runner is another job's answer, and whose steps name `bash`.
+ANSWERED_RUNNER = """
+on: workflow_dispatch
+jobs:
+  select:
+    runs-on: x
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+    steps:
+      - id: pick
+        run: echo "runner=picked-$PICK" >> "$GITHUB_OUTPUT"
+        env:
+          PICK: ${{ inputs.pick }}
+  run:
+    needs: select
+    runs-on: ${{ needs.select.outputs.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: false | true
+"""
+
+
+def test_a_runner_read_off_another_job_is_recorded_and_a_named_bash_fails_a_pipe(
+    tmp_path: Path,
+) -> None:
+    """`runs-on` is evaluated against `needs`, and `shell: bash` carries `pipefail`.
+
+    The forge's default shell lets `false | true` pass; the one it runs a step
+    naming `bash` under does not — so the job fails exactly where a runner's
+    would.
+    """
+    workflow = tmp_path / "answered.yml"
+    workflow.write_text(ANSWERED_RUNNER, encoding="utf-8")
+    (tmp_path / "checkout").mkdir()
+
+    run = Runner(
+        workflow,
+        tmp_path / "checkout",
+        path_first=tmp_path,
+        env=clean_environment(),
+        event=Event("workflow_dispatch", inputs={"pick": "macos"}),
+    ).run()
+
+    equal(run.jobs["run"].runners, ["picked-macos"], describing="the runner the job landed on")
+    equal(run.result("run"), Result.FAILURE, describing="a failing pipe under a named bash")
+
+    unnamed = tmp_path / "unnamed.yml"
+    unnamed.write_text(
+        ANSWERED_RUNNER.replace("    defaults:\n      run:\n        shell: bash\n", ""),
+        encoding="utf-8",
+    )
+    run = Runner(unnamed, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
+    equal(run.result("run"), Result.SUCCESS, describing="the same pipe under the default shell")
 
 
 def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
@@ -269,6 +331,10 @@ def test_a_step_shape_outside_the_modelled_set_is_refused_before_anything_runs(
         ("jobs:\n  odd:\n    steps:\n      - just a string\n", "not a mapping"),
         ("jobs:\n  odd:\n    steps:\n      - name: neither\n", "exactly one of"),
         ("jobs:\n  odd:\n    timeout-minutes: 5\n    steps: []\n", "timeout-minutes"),
+        (
+            "jobs:\n  odd:\n    defaults:\n      run:\n        shell: pwsh\n    steps: []\n",
+            "only a `bash` shell",
+        ),
     ],
 )
 def test_a_document_outside_the_workflow_shape_is_refused_before_anything_runs(

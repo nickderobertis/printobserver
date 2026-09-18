@@ -57,7 +57,13 @@ where a rule modelled here wrongly would show up.
     matches nothing without failing.
   * A job's `outputs:` are its expressions evaluated once its steps are done.
   * A job with a `strategy.matrix` runs once per cell, and succeeds when every
-    cell does.
+    cell does. Each cell's `runs-on` is evaluated as the forge evaluates it —
+    against the cell and what the job needs — and recorded, because which
+    runner a job lands on is the forge's decision this runner cannot make but
+    can report.
+  * A job's `defaults.run.shell` of `bash` runs its steps the way the forge
+    runs a step naming that shell, `bash --noprofile --norc -eo pipefail`;
+    any other default is refused.
 """
 
 from __future__ import annotations
@@ -89,11 +95,25 @@ STEP_KEYS = frozenset({"id", "name", "run", "uses", "with", "env", "if"})
 #: The job keys this runner models, plus `permissions`: what the forge grants
 #: its own token is a boundary here, since nothing a step runs reaches the forge.
 JOB_KEYS = frozenset(
-    {"name", "needs", "if", "runs-on", "outputs", "steps", "strategy", "env", "permissions"}
+    {
+        "name",
+        "needs",
+        "if",
+        "runs-on",
+        "outputs",
+        "steps",
+        "strategy",
+        "env",
+        "permissions",
+        "defaults",
+    }
 )
 
 #: What the forge documents as the default shell for a `run:` step on Linux.
 DEFAULT_SHELL = ("bash", "-e")
+
+#: What the forge documents a step runs under once its shell is named `bash`.
+NAMED_BASH = ("bash", "--noprofile", "--norc", "-eo", "pipefail")
 
 STEP_TIMEOUT_SECONDS = 600
 
@@ -147,6 +167,9 @@ class JobRun:
     outputs: dict[str, str] = field(default_factory=dict)
     steps: list[StepRun] = field(default_factory=list)
     boundaries: list[Boundary] = field(default_factory=list)
+    #: Each cell's `runs-on`, evaluated: the runner label the forge would
+    #: schedule that cell onto.
+    runners: list[str] = field(default_factory=list)
 
     def boundary(self, action: str) -> Boundary:
         """The first boundary using `action`, whatever it is pinned at.
@@ -581,6 +604,7 @@ JOB_SHAPES: dict[str, type | tuple[type, ...]] = {
     "steps": list,
     "strategy": dict,
     "env": dict,
+    "defaults": dict,
 }
 STEP_SHAPES: dict[str, type | tuple[type, ...]] = {
     "id": str,
@@ -617,7 +641,19 @@ def _jobs(workflow: Path) -> dict[str, Declared]:
     for name, job in jobs.items():
         _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
         _shaped(job, JOB_SHAPES, f"job `{name}`")
+        _shell(str(name), job)
     return {str(name): job for name, job in jobs.items()}
+
+
+def _shell(name: str, job: Declared) -> tuple[str, ...]:
+    """What a job's `run:` steps run under: the forge's default, or a named `bash`."""
+    defaults = job.get("defaults")
+    if defaults is None:
+        return DEFAULT_SHELL
+    if defaults == {"run": {"shell": "bash"}}:
+        return NAMED_BASH
+    msg = f"job `{name}` carries `defaults: {defaults!r}`, and only a `bash` shell is modelled"
+    raise UnsupportedError(msg)
 
 
 def _steps(name: str, job: Declared) -> list[Declared]:
@@ -747,6 +783,7 @@ class Runner:
                         runner={"temp": runner_temp},
                     )
 
+                run.runners.append(interpolate(str(job.get("runs-on", "")), seen_by(steps)))
                 for step in _steps(name, job):
                     seen = seen_by(steps)
                     if "if" in step and not _truthy(evaluate(str(step["if"]), seen)):
@@ -841,7 +878,7 @@ class Runner:
             env["RUNNER_TEMP"] = str(runner_temp)
             env.update(_environment(job.get("env"), step.get("env"), contexts=contexts))
             completed = shell_run(
-                [*DEFAULT_SHELL, "-c", command],
+                [*_shell("", job), "-c", command],
                 cwd=self.checkout,
                 env=env,
                 timeout=STEP_TIMEOUT_SECONDS,
