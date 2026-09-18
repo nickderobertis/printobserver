@@ -324,6 +324,30 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
+site = "A device is named the way the host names one"
+reason = "The bullet joins the list that has always been the root's one description of the scripted OctoPrint environment — the section carrying the \"Virtual printer availability\" marker block `repo_checks.checks_integration` reads from AGENTS.md — so the script's device naming is stated beside its two modes and its failure classes rather than in a nested file that would split one script's description in two. It states the constraint and points at the table that owns the platform words."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "A device is named the way the host names one"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "names that configuration file"
+reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke test\" section of AGENTS.md as where the smoke test is described, and `repo_checks.checks_smoke.smoke_selection` reads that section of the root file for the recipe, the flag and the device variable; a nested file is one that check would not read. The sentence states where the smoke's default configuration comes from and points at the module that owns the per-platform answer."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "names that configuration file"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
 

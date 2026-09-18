@@ -417,14 +417,15 @@ serves the tier and the board beside the Prusa.
   configuration and differ in the connection alone; the script's
   `CONNECTION_KEYS` names exactly which keys that is, and a journey asserts the
   two configurations differ in those and in nothing else.
+<!-- llmlint: ignore[instruction_layer_localized] This list is the root's one description of the scripted environment, anchored here by the "Virtual printer availability" block `just check-repo` reads below it; a nested file would split one script's description in two. suppressions.toml has the full reason. -->
 - **A device is named the way the host names one.** The script's
   `SERIAL_PLATFORMS` is the one table of what each platform calls a serial
   device, where it lists the ones it has, and what lets a user open one. A name
   the host cannot have at all is refused naming the shape it does use, and one
   it can have is opened by the host's own means and refused if it cannot be —
   both before anything is provisioned or started, with the next action in that
-  host's words. The Unix shape is deliberately no tighter than "under `/dev`",
-  because a `udev` rule may link a printer under any name there.
+  host's words. The Unix shape is deliberately no tighter than the platform's
+  own, because a `udev` rule may link a printer under any name.
 - **Provisioned, not assumed.** `install` is idempotent and unattended: a
   pinned OctoPrint in a virtual environment of its own (this repository's Python
   is newer than anything OctoPrint supports), the first-run wizard already
@@ -510,7 +511,9 @@ in this order: bring the scripted `OctoPrint` up against the real device
 octoprint-up`); upload `tools/printer-smoke/gcode/smoke.gcode` to that instance
 under its own name; put the conservative envelope below into the running
 supervisor's configuration; and set a manifest for that file on the print the
-smoke is to act on, with `printobserver manifest-set`. `PRINTOBSERVER_SMOKE_CONFIG`
+smoke is to act on, with `printobserver manifest-set`.
+<!-- llmlint: ignore[instruction_layer_localized] `repo-policy.toml`'s `smoke.section` names this section of AGENTS.md as where the smoke test is described, and `just check-repo`'s `smoke-selection` reads it here; a nested file is one that check would not read. suppressions.toml has the full reason. -->
+`PRINTOBSERVER_SMOKE_CONFIG`
 names that configuration file — by default the server's own, wherever the
 platform's installer writes it, which `crates/printobserver/src/locations.rs`
 chooses and holds the smoke's copies to — and `PRINTOBSERVER_SMOKE_PRINT_ID`

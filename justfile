@@ -268,8 +268,8 @@ test-e2e:
 #
 # The virtual printer, a free port and the hold print, under `.octoprint-env`.
 # `OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0` is the same
-# environment against the machine beside the printer — the device named the
-# way that host names one: `/dev/cu.usbmodem*` on a Mac, `COM3` on Windows.
+# environment against the machine beside the printer, the device named the
+# way that host names one; a refusal says what that is.
 octoprint-up:
     uv run -q python tools/octoprint-env/octoprint_env.py up
 
