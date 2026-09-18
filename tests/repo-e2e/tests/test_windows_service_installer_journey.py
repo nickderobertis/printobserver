@@ -53,6 +53,15 @@ RECORDING = "PRINTOBSERVER_FIXTURE_RECORDING"
 #: The variable that makes the stand-in manager answer that the service exists.
 REGISTERED = "PRINTOBSERVER_FIXTURE_REGISTERED"
 
+#: The variable naming one thing the stand-ins refuse: a verb of the manager's
+#: tool, or the granting tool by name. What a refused tool says is what the
+#: real one would: a sentence of its own on standard error, and a non-zero
+#: exit.
+REFUSES = "PRINTOBSERVER_FIXTURE_REFUSES"
+
+#: What a refused stand-in says.
+REFUSAL = "Access is denied, says the stand-in."
+
 #: What the manager answers a query about a service it does not have.
 SERVICE_DOES_NOT_EXIST = 1060
 
@@ -199,7 +208,7 @@ def _fixture_session(into: Path) -> Path:
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     shims = "\n".join(
-        f"function {name} {{ Record ('{name} ' + ($args -join ' ')); $global:LASTEXITCODE = 0 }}"
+        f"function {name} {{ Record ('{name} ' + ($args -join ' ')); Answer '{name}' }}"
         for name in names
         if name != "sc.exe"
     )
@@ -208,13 +217,21 @@ def _fixture_session(into: Path) -> Path:
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
+function Answer([string]$What) {{
+    if ($env:{REFUSES} -eq $What) {{
+        [Console]::Error.WriteLine('{REFUSAL}')
+        $global:LASTEXITCODE = 5
+    }} else {{
+        $global:LASTEXITCODE = 0
+    }}
+}}
 {shims}
 function sc.exe {{
     Record ('sc.exe ' + ($args -join ' '))
     if ($args[0] -eq 'query' -and -not $env:{REGISTERED}) {{
         $global:LASTEXITCODE = {SERVICE_DOES_NOT_EXIST}
     }} else {{
-        $global:LASTEXITCODE = 0
+        Answer $args[0]
     }}
 }}
 & '{installer}' @args
@@ -237,6 +254,7 @@ def installer(tmp_path: Path) -> Callable[..., Ran]:
         binary: Path | None,
         root: Path | None = None,
         registered: bool = False,
+        refuses: str | None = None,
         path: str | None = None,
     ) -> Ran:
         counter["n"] += 1
@@ -249,6 +267,8 @@ def installer(tmp_path: Path) -> Callable[..., Ran]:
         if registered:
             # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
             environment[REGISTERED] = "1"
+        if refuses is not None:
+            environment[REFUSES] = refuses
         if path is not None:
             environment["PATH"] = path
         result = shell_run(
@@ -490,3 +510,87 @@ def test_a_value_carrying_a_quote_is_refused_before_anything_is_placed(
     failing((ran.code, ran.said), naming="carries a quote")
     truth(not ran.root.exists(), describing="nothing to have been placed")
     equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+def test_a_value_carrying_a_newline_is_refused_before_anything_is_placed(
+    installer: Callable[..., Ran], program: Path, tmp_path: Path
+) -> None:
+    """A path a TOML document reads as two settings is refused, naming the next action."""
+    ran = installer(binary=program, root=tmp_path / "two\nlines")
+
+    failing((ran.code, ran.said), naming="carries a newline")
+    contains(ran.said, "on one line", describing="the next action it named")
+    truth(not (tmp_path / "two\nlines").exists(), describing="nothing to have been placed")
+    equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+def test_a_named_program_that_is_not_a_file_is_refused(
+    installer: Callable[..., Ran], tmp_path: Path
+) -> None:
+    """`-Binary` naming nothing is a stop with the next action, before anything is placed."""
+    ran = installer(binary=tmp_path / "nowhere" / "printobserver.exe")
+
+    failing((ran.code, ran.said), naming="is not a file")
+    contains(ran.said, "-Binary", describing="the next action it named")
+    truth(not ran.root.exists(), describing="nothing to have been placed")
+    equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+def test_a_root_that_cannot_hold_a_directory_is_refused_naming_it(
+    installer: Callable[..., Ran], program: Path, tmp_path: Path
+) -> None:
+    """A root that is a file is one no directory can be made under, and the refusal says which."""
+    occupied = tmp_path / "occupied"
+    occupied.write_text("a file where the root should be", encoding="utf-8")
+
+    ran = installer(binary=program, root=occupied)
+
+    failing((ran.code, ran.said), naming="could not be created")
+    contains(ran.said, "-Root", describing="the next action it named")
+    equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="an administrator writes anywhere, so nothing here can refuse the copy"
+)
+def test_a_program_directory_that_cannot_be_written_is_refused_naming_it(
+    installer: Callable[..., Ran], program: Path, tmp_path: Path
+) -> None:
+    """A program that cannot be put in place is a stop naming the copy, before the manager hears."""
+    root = tmp_path / "root-readonly"
+    program_directory = root / "Program Files" / "printobserver"
+    program_directory.mkdir(parents=True)
+    program_directory.chmod(0o555)
+    try:
+        ran = installer(binary=program, root=root)
+    finally:
+        program_directory.chmod(0o755)
+
+    failing((ran.code, ran.said), naming="could not be copied")
+    contains(ran.said, "-Root", describing="the next action it named")
+    equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+def test_a_manager_that_refuses_the_registration_stops_the_install_naming_it(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """The manager's own refusal is quoted back, with what to do next, and nothing after it runs."""
+    ran = installer(binary=program, refuses="create")
+
+    failing((ran.code, ran.said), naming="registering the service failed")
+    contains(ran.said, REFUSAL, describing="the manager's own words, quoted back")
+    contains(ran.said, "elevated PowerShell", describing="the next action it named")
+    equal(ran.asked("failure"), [], describing="nothing asked of the manager after the refusal")
+    truth("started nothing" not in ran.said, describing="no success line after a refusal")
+
+
+def test_a_grant_the_host_refuses_stops_the_install_naming_it(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """A state directory that cannot be made private is not left readable and reported installed."""
+    ran = installer(binary=program, refuses=GRANTING)
+
+    failing((ran.code, ran.said), naming="making the state directory private failed")
+    contains(ran.said, REFUSAL, describing="the granting tool's own words, quoted back")
+    truth(not ran.configuration.exists(), describing="no configuration written after the refusal")
+    truth("started nothing" not in ran.said, describing="no success line after a refusal")

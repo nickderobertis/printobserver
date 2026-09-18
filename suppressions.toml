@@ -874,6 +874,18 @@ file = "crates/printobserver/src/windows_service.rs"
 site = "ServiceControl::Stop | ServiceControl::Shutdown => {"
 reason = "The shutdown control is sent by the service control manager alone, and only while the machine is going down; no tool sends it to one service, so no journey can drive it without restarting the runner it is on. It shares one match arm with the stop control, and every step after that arm — the channel, the stop-pending report, `Running::stop`, the stopped report — is the stop control's path, which `tests/repo-e2e/tests/test_service_manager_journey.py` drives through the real manager on the Windows cells."
 
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/windows_service.rs"
+site = "could not register with the service control manager"
+reason = "A manager that called this process back and then refuses it a handler is a host whose manager is not behaving as one; nothing can make the real manager do that to prove the branch. What it does is the smallest true thing: say so in the console form's words and exit `Refused`, with no status to report because no handle was granted."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/windows_service.rs"
+site = "printobserver could not start a runtime"
+reason = "tokio refusing to build a runtime is a host out of threads or descriptors, which no journey can arrange without taking the runner down with it. The branch mirrors `main.rs`'s console form for the same refusal — the same sentence, `Refused` — and reports the stop to the manager it registered with so the service does not hang in start pending."
+
 # --- the Windows installer, driven with the manager stood in for ---------------
 #
 # `tests/repo-e2e/tests/test_windows_service_installer_journey.py` runs the

@@ -59,6 +59,11 @@ function Fail([string]$Message) {
     exit 1
 }
 
+# What a refusal of the host's own says, as one clause of a sentence here.
+function Why($Error) {
+    return "$Error".Trim().TrimEnd('.')
+}
+
 # What a reinstall found and kept, said once, in the one line printed at the
 # end: a reader of that line learns what survived without a second line to
 # find it in.
@@ -70,14 +75,11 @@ $Kept = @()
 # or a newline, is refused here rather than registering a service that starts
 # something else.
 function Plain([string]$Name, [string]$Value) {
-    if ([string]::IsNullOrEmpty($Value)) {
-        Fail "$Name is empty"
-    }
     if ($Value.Contains('"') -or $Value.Contains("'")) {
-        Fail "$Name carries a quote, which a service's command line and a TOML document have no escape for"
+        Fail "$Name carries a quote, which a service's command line and a TOML document have no escape for. Pass $Name a path with no quote in it — move or rename the directory if its name has one."
     }
     if ($Value.Contains("`n") -or $Value.Contains("`r")) {
-        Fail "$Name carries a newline, which a TOML document reads as the end of a setting"
+        Fail "$Name carries a newline, which a TOML document reads as the end of a setting. Pass $Name a path on one line."
     }
 }
 
@@ -135,14 +137,17 @@ foreach ($directory in @((Split-Path $InstalledBinary), (Split-Path $InstalledCo
     try {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
     } catch {
-        Fail "$directory could not be created: $_. Run this from an elevated PowerShell, or pass -Root a directory you can write to."
+        Fail "$directory could not be created: $(Why $_). Run this from an elevated PowerShell, or pass -Root a directory you can write to."
+    }
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        Fail "$directory could not be created: something that is not a directory is in its way. Pass -Root a directory of its own, or move what is there."
     }
 }
 
 try {
     Copy-Item -LiteralPath $Binary -Destination $InstalledBinary -Force
 } catch {
-    Fail "$Binary could not be copied to ${InstalledBinary}: $_. Run this from an elevated PowerShell, or pass -Root a directory you can write to."
+    Fail "$Binary could not be copied to ${InstalledBinary}: $(Why $_). Run this from an elevated PowerShell, or pass -Root a directory you can write to."
 }
 
 # The registration: this program, started by the service control manager with
@@ -254,7 +259,7 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
     try {
         [IO.File]::WriteAllText($InstalledConfig, $configuration.Replace("`r`n", "`n"))
     } catch {
-        Fail "$InstalledConfig could not be written: $_. Run this from an elevated PowerShell, or pass -Root a directory you can write to."
+        Fail "$InstalledConfig could not be written: $(Why $_). Run this from an elevated PowerShell, or pass -Root a directory you can write to."
     }
     Must "making the configuration private" $Elevate {
         icacls $InstalledConfig /inheritance:r /grant:r "${account}:R" "*S-1-5-32-544:F" "*S-1-5-18:F"

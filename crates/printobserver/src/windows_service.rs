@@ -134,6 +134,7 @@ fn serve_as_a_service() -> Exit {
     };
     let handle = match service_control_handler::register(SERVICE_NAME, handler) {
         Ok(handle) => handle,
+        // llmlint: ignore[changed_behavior_has_e2e] A manager that called this process back and then refuses it a handler is a host whose manager is not behaving as one; nothing can make the real manager do that to prove the branch. What it does is the smallest true thing: say so in the console form's words and exit `Refused`, with no status to report because no handle was granted.
         Err(error) => {
             eprintln!("printobserver could not register with the service control manager: {error}");
             return Exit::Refused;
@@ -144,6 +145,7 @@ fn serve_as_a_service() -> Exit {
         .build()
     {
         Ok(runtime) => runtime,
+        // llmlint: ignore[changed_behavior_has_e2e] tokio refusing to build a runtime is a host out of threads or descriptors, which no journey can arrange without taking the runner down with it. The branch mirrors `main.rs`'s console form for the same refusal — the same sentence, `Refused` — and reports the stop to the manager it registered with so the service does not hang in start pending.
         Err(error) => {
             eprintln!("printobserver could not start a runtime: {error}");
             let mut reporter = ManagerReporter { handle };
