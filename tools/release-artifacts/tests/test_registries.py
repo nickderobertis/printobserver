@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -107,6 +109,49 @@ def test_a_registry_serving_a_working_artifact_is_a_pass(
     equal(proof.outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`")
     equal(proof.exit_status, 0, describing="the exit a pass answers with")
     contains(proof.report, "printobserver 0.4.0", describing="what the installed program reported")
+    contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
+
+
+def test_the_npm_route_is_taken_where_node_shares_a_runner_directory_with_rust(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    registries: Registries,
+    proving: Callable[..., Proof],
+) -> None:
+    """The registry's npm route keeps Node before removing a shared tool directory.
+
+    The layout of the hosted macOS images, made on this host: one directory
+    holding `node`, `npm` and `cargo` together, and the ONLY place `node` and
+    `npm` are on the path. Taking the toolchain's directory off that path
+    without keeping the runtime leaves `npm` unable to run and the installed
+    launcher unable to start — `env: node: No such file or directory` — which
+    is what the `prove-registry-npm (macos-aarch64)` cell reported before
+    this kept it.
+    """
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the registry journey needs the repository's Node and Rust toolchains")
+    npm = Path(node).resolve().parent / "npm"
+    if not npm.exists():
+        pytest.fail(f"the registry journey needs npm beside {node}")
+    (shared / "node").symlink_to(node)
+    (shared / "npm").symlink_to(npm)
+    (shared / "cargo").symlink_to(cargo)
+    elsewhere = [
+        directory
+        for directory in os.environ["PATH"].split(os.pathsep)
+        if directory and not any(Path(directory, name).exists() for name in ("node", "npm"))
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *elsewhere]))
+    registries.serve("0.4.0")
+
+    proof = proving("npm:printobserver-cli")
+
+    equal(proof.outcome, Outcome.PROVEN, describing=f"the npm route's proof:\n{proof.report}")
+    contains(proof.report, "printobserver 0.4.0", describing="what the installed launcher said")
     contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
 
 

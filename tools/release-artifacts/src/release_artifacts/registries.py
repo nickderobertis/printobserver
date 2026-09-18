@@ -74,6 +74,7 @@ from release_artifacts import targets
 from release_artifacts.build import PROGRAM
 from release_artifacts.installing import (
     INSTALL_SCRIPT,
+    NODE_RUNTIME,
     SCRIPT_DIRECTORY,
     TOOLCHAIN,
     TOOLCHAIN_REPORT,
@@ -1164,7 +1165,11 @@ def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bas
     """Route 2, taken from the JavaScript package registry with `npm` itself.
 
     A global install into a prefix of this proof's own, pinned to the version
-    under test, resolving from the registry the caller named.
+    under test, resolving from the registry the caller named. The runtime the
+    launcher reaches for is kept where the toolchain is taken off, as the
+    tree's own proof of this route keeps it: on the hosted macOS images `node`
+    shares its directory with `cargo`, and a path that lost that directory
+    can run neither `npm` nor the launcher it installs.
 
     Raises:
         InstallError: If the install failed.
@@ -1189,7 +1194,9 @@ def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bas
                 "npm_config_registry": bases.npm,
                 "npm_config_cache": str(into / "npm-cache"),
                 "npm_config_update_notifier": "false",
-            }
+            },
+            preserve=NODE_RUNTIME,
+            preserved_at=environment / ".path",
         ),
         describing=f"`npm install -g {pinned}` from {bases.npm}",
     )
@@ -1425,6 +1432,12 @@ ROUTES: dict[str, Route] = {
     "release:printobserver": _script_route,
 }
 
+#: The programs a route's installed program reaches for on the path it is run
+#: under, which the proof keeps when it takes the toolchain off: the launcher
+#: route 2 installs runs under `node`. A route absent here installs a program
+#: that runs on its own.
+RUNTIMES: dict[str, tuple[str, ...]] = {"npm:printobserver-cli": NODE_RUNTIME}
+
 
 def routed(repo: Repo) -> dict[str, Route]:
     """How each declared route is taken, reconciled with the declaration itself.
@@ -1471,8 +1484,12 @@ def take(repo: Repo, target: targets.Target, version: str, into: Path, bases: Ba
     return route(repo, target, version, into, bases)
 
 
-def _reported(program: Path, cwd: Path) -> str:
+def _reported(program: Path, cwd: Path, runtime: tuple[str, ...] = ()) -> str:
     """What the program a route installed says its own version is.
+
+    Run with no Rust toolchain on the path and `runtime` kept on it — the
+    programs the installed program reaches for, which on a host that keeps
+    them beside the toolchain would otherwise go with it.
 
     Raises:
         InstallError: If the route put no program on the path it was given, or
@@ -1484,7 +1501,7 @@ def _reported(program: Path, cwd: Path) -> str:
     return ran(
         [str(program), "--version"],
         cwd=cwd,
-        env=without_rust(),
+        env=without_rust(preserve=runtime, preserved_at=cwd / ".path" if runtime else None),
         describing=f"{program} reporting its own version",
     ).strip()
 
@@ -1549,7 +1566,7 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
         return _prove_client(repo, target, selected, into, bases, preamble)
     try:
         installed = take(repo, target, selected.version, into, bases)
-        version = _reported(installed, into)
+        version = _reported(installed, into, RUNTIMES.get(target.id, ()))
     except InstallError as refused:
         return Proof(
             target.id,
