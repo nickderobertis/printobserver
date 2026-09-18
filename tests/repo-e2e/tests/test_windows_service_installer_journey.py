@@ -217,10 +217,10 @@ def _fixture_session(into: Path) -> Path:
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
-$script:calls = @{{}}
+$global:FixtureCalls = @{{}}
 function Answer([string]$What) {{
-    $script:calls[$What] = 1 + [int]$script:calls[$What]
-    if ($env:{REFUSES} -eq $What -or $env:{REFUSES} -eq "$What#$($script:calls[$What])") {{
+    $global:FixtureCalls[$What] = 1 + [int]$global:FixtureCalls[$What]
+    if ($env:{REFUSES} -eq $What -or $env:{REFUSES} -eq "$What#$($global:FixtureCalls[$What])") {{
         [Console]::Error.WriteLine('{REFUSAL}')
         $global:LASTEXITCODE = 5
     }} else {{

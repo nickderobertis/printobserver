@@ -250,6 +250,11 @@ class Systemd:
     def install(self, root: Path, program: Path) -> Installed:
         """The committed shell installer, as the invoking user, into `root`."""
         shell_run(["sudo", "-n", "mkdir", "-p", str(root)], check=True, timeout=60)
+        # `_manager` hands this back end no Windows host; the check says so to a
+        # type checker reading this file for Windows, where `getuid` is absent.
+        if sys.platform == "win32":
+            message = "the systemd back end was handed a Windows host"
+            raise AssertionError(message)
         shell_run(["sudo", "-n", "chown", str(os.getuid()), str(root)], check=True, timeout=60)
         result = shell_run(
             [
@@ -299,6 +304,9 @@ class Systemd:
 
     def end_abruptly(self, pid: int) -> None:
         """A kill the process cannot answer, as a crash is: it runs as this user."""
+        if sys.platform == "win32":
+            message = "the systemd back end was handed a Windows host"
+            raise AssertionError(message)
         os.kill(pid, signal.SIGKILL)
 
     def stop(self) -> None:
