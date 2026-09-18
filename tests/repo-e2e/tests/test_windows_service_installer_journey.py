@@ -54,9 +54,9 @@ RECORDING = "PRINTOBSERVER_FIXTURE_RECORDING"
 REGISTERED = "PRINTOBSERVER_FIXTURE_REGISTERED"
 
 #: The variable naming one thing the stand-ins refuse: a verb of the manager's
-#: tool, or the granting tool by name. What a refused tool says is what the
-#: real one would: a sentence of its own on standard error, and a non-zero
-#: exit.
+#: tool, or the granting tool by name — either every time, or the `n`th call
+#: alone as `name#n`. What a refused tool says is what the real one would: a
+#: sentence of its own on standard error, and a non-zero exit.
 REFUSES = "PRINTOBSERVER_FIXTURE_REFUSES"
 
 #: What a refused stand-in says.
@@ -217,8 +217,10 @@ def _fixture_session(into: Path) -> Path:
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
+$script:calls = @{{}}
 function Answer([string]$What) {{
-    if ($env:{REFUSES} -eq $What) {{
+    $script:calls[$What] = 1 + [int]$script:calls[$What]
+    if ($env:{REFUSES} -eq $What -or $env:{REFUSES} -eq "$What#$($script:calls[$What])") {{
         [Console]::Error.WriteLine('{REFUSAL}')
         $global:LASTEXITCODE = 5
     }} else {{
@@ -228,7 +230,7 @@ function Answer([string]$What) {{
 {shims}
 function sc.exe {{
     Record ('sc.exe ' + ($args -join ' '))
-    if ($args[0] -eq 'query' -and -not $env:{REGISTERED}) {{
+    if ($args[0] -eq 'query' -and -not $env:{REGISTERED} -and $env:{REFUSES} -ne 'query') {{
         $global:LASTEXITCODE = {SERVICE_DOES_NOT_EXIST}
     }} else {{
         Answer $args[0]
@@ -571,26 +573,62 @@ def test_a_program_directory_that_cannot_be_written_is_refused_naming_it(
     equal(ran.recorded, [], describing="nothing asked of the manager")
 
 
-def test_a_manager_that_refuses_the_registration_stops_the_install_naming_it(
-    installer: Callable[..., Ran], program: Path
+@pytest.mark.parametrize(
+    ("refuses", "registered", "step", "after"),
+    [
+        ("create", False, "registering the service failed", "description"),
+        ("config", True, "updating the service registration failed", "description"),
+        ("description", False, "describing the service failed", "failure"),
+        ("failure", False, "setting the service's failure actions failed", None),
+    ],
+)
+def test_a_manager_that_refuses_a_step_stops_the_install_naming_it(
+    installer: Callable[..., Ran],
+    program: Path,
+    refuses: str,
+    registered: bool,
+    step: str,
+    after: str | None,
 ) -> None:
     """The manager's own refusal is quoted back, with what to do next, and nothing after it runs."""
-    ran = installer(binary=program, refuses="create")
+    ran = installer(binary=program, refuses=refuses, registered=registered)
 
-    failing((ran.code, ran.said), naming="registering the service failed")
+    failing((ran.code, ran.said), naming=step)
     contains(ran.said, REFUSAL, describing="the manager's own words, quoted back")
     contains(ran.said, "elevated PowerShell", describing="the next action it named")
-    equal(ran.asked("failure"), [], describing="nothing asked of the manager after the refusal")
+    if after is not None:
+        equal(ran.asked(after), [], describing="nothing asked of the manager after the refusal")
     truth("started nothing" not in ran.said, describing="no success line after a refusal")
 
 
-def test_a_grant_the_host_refuses_stops_the_install_naming_it(
+def test_a_manager_that_cannot_be_asked_stops_the_install_before_registering(
     installer: Callable[..., Ran], program: Path
 ) -> None:
-    """A state directory that cannot be made private is not left readable and reported installed."""
-    ran = installer(binary=program, refuses=GRANTING)
+    """A query the manager refuses is neither absent nor present: the install stops naming it."""
+    ran = installer(binary=program, refuses="query")
 
-    failing((ran.code, ran.said), naming="making the state directory private failed")
+    failing((ran.code, ran.said), naming="asking the service control manager about printobserver")
+    contains(ran.said, REFUSAL, describing="the manager's own words, quoted back")
+    contains(ran.said, "elevated PowerShell", describing="the next action it named")
+    equal(ran.asked("create"), [], describing="no registration attempted over an unanswered query")
+    equal(ran.asked("config"), [], describing="no update attempted over an unanswered query")
+
+
+@pytest.mark.parametrize(
+    ("call", "step"),
+    [
+        (f"{GRANTING}#1", "making the state directory private failed"),
+        (f"{GRANTING}#2", "letting the service run its program failed"),
+        (f"{GRANTING}#3", "making the configuration private failed"),
+    ],
+)
+def test_a_grant_the_host_refuses_stops_the_install_naming_it(
+    installer: Callable[..., Ran], program: Path, call: str, step: str
+) -> None:
+    """A grant that fails is not left as it fell and reported installed."""
+    ran = installer(binary=program, refuses=call)
+
+    failing((ran.code, ran.said), naming=step)
     contains(ran.said, REFUSAL, describing="the granting tool's own words, quoted back")
-    truth(not ran.configuration.exists(), describing="no configuration written after the refusal")
+    contains(ran.said, "elevated PowerShell", describing="the next action it named")
     truth("started nothing" not in ran.said, describing="no success line after a refusal")

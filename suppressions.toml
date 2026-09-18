@@ -886,6 +886,12 @@ file = "crates/printobserver/src/windows_service.rs"
 site = "printobserver could not start a runtime"
 reason = "tokio refusing to build a runtime is a host out of threads or descriptors, which no journey can arrange without taking the runner down with it. The branch mirrors `main.rs`'s console form for the same refusal — the same sentence, `Refused` — and reports the stop to the manager it registered with so the service does not hang in start pending."
 
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install-service.ps1"
+site = "could not be written"
+reason = "The configuration's directory was created, writable, by this same script a few steps earlier, and the refusals a journey can arrange — a root that is a file, a directory nothing may write, a manager or a grant that refuses — each stop the install before this line. What is left is a disk giving out between two writes, which no journey can arrange on a runner; the branch says what happened in the host's own words and names the same next action every other write refusal here names."
+
 # --- the Windows installer, driven with the manager stood in for ---------------
 #
 # `tests/repo-e2e/tests/test_windows_service_installer_journey.py` runs the

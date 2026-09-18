@@ -157,14 +157,21 @@ try {
 # systemd enablement alone.
 $binPath = "\`"$InstalledBinary\`" server --config \`"$InstalledConfig\`""
 $account = "NT SERVICE\$ServiceName"
-sc.exe query $ServiceName *> $null
+# Whether the manager already holds this service: it answers a query about one
+# it has with success, about one it does not have with 1060, and anything else
+# — access denied, a manager that is not running — is a refusal to go on over
+# rather than evidence of either.
+$ServiceDoesNotExist = 1060
+$asked = sc.exe query $ServiceName 2>&1 | Out-String
 if ($LASTEXITCODE -eq 0) {
     $Kept += "the registration of $ServiceName was updated and its start type left as set"
     Must "updating the service registration" $Elevate { sc.exe config $ServiceName binPath= $binPath obj= $account }
-} else {
+} elseif ($LASTEXITCODE -eq $ServiceDoesNotExist) {
     Must "registering the service" $Elevate {
         sc.exe create $ServiceName binPath= $binPath start= demand obj= $account DisplayName= $ServiceName
     }
+} else {
+    Fail "asking the service control manager about $ServiceName failed: $($asked.Trim()). $Elevate"
 }
 Must "describing the service" $Elevate {
     sc.exe description $ServiceName "printobserver, a supervision layer between a 3D printer and an agent"
@@ -258,6 +265,7 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
 "@
     try {
         [IO.File]::WriteAllText($InstalledConfig, $configuration.Replace("`r`n", "`n"))
+    # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     } catch {
         Fail "$InstalledConfig could not be written: $(Why $_). Run this from an elevated PowerShell, or pass -Root a directory you can write to."
     }
