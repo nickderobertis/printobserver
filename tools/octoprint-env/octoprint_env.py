@@ -677,6 +677,7 @@ def claim_device(connection: Connection) -> None:
     if connection.is_virtual:
         return
     here = serial_platform()
+    # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     if not here.names(connection.device):
         raise StartupError(
             "serial-device-misnamed",
@@ -1063,6 +1064,7 @@ def connection_of(arguments: argparse.Namespace) -> Connection:
         return Connection("virtual", VIRTUAL_DEVICE, arguments.baudrate)
     if not arguments.device:
         here = serial_platform()
+        # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
         raise StartupError(
             "serial-device-misnamed",
             f"`--mode serial` names no device: pass `--device {here.example}`, or set "

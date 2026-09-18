@@ -1,16 +1,17 @@
-"""A serial device this host cannot open is refused before anything is provisioned.
+r"""A serial device this host cannot open is refused before anything is provisioned.
 
-Three names, one in each platform's own shape — `COM3`, `/dev/cu.usbmodem1101`,
-`/dev/ttyACM0` — and two journeys over them. The first runs the committed
-script in `--mode serial` on whichever host this suite is on, so each gate cell
-proves its own platform's naming and its own way of opening a device: the name
-that host's serial devices have is opened, by that host's means, and refused as
-unopenable because nothing is plugged in there; a name that host cannot have is
-refused by naming what its devices are called instead. The second fixes the
-script's answer to `sys.platform` to each of the three in turn and runs its own
-entry point, so every platform's naming — and, where this host can perform it,
-every platform's way of opening a device — is proven on every host rather than
-only on the one the suite happens to be on.
+Four names — one in each platform's own shape, `COM3`, `/dev/cu.usbmodem1101`
+and `/dev/ttyACM0`, and the Windows port again in the device namespace every
+port opens under, `\\.\COM3` — and two journeys over them. The first runs the
+committed script in `--mode serial` on whichever host this suite is on, so each
+gate cell proves its own platform's naming and its own way of opening a device:
+the name that host's serial devices have is opened, by that host's means, and
+refused as unopenable because nothing is plugged in there; a name that host
+cannot have is refused by naming what its devices are called instead. The
+second fixes the script's answer to `sys.platform` to each of the three in turn
+and runs its own entry point, so every platform's naming — and, where this host
+can perform it, every platform's way of opening a device — is proven on every
+host rather than only on the one the suite happens to be on.
 
 Both refusals come before anything is provisioned or started: a device that
 cannot be opened is no reason to install OctoPrint first, and every journey
@@ -23,6 +24,7 @@ the integration tier's.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -43,6 +45,10 @@ class PlatformCase:
     names devices the Windows way. A Unix names its devices under `/dev`, and a
     `udev` rule may link a printer under any name there, so a Unix refuses a
     `COM` port and nothing else.
+
+    What a Windows port is called is this suite's own statement, `WINDOWS_PORT`,
+    held against the script's by feeding every platform every name in `NAMES`:
+    a name the two disagree over is refused as the wrong class and fails here.
     """
 
     key: str
@@ -53,7 +59,16 @@ class PlatformCase:
 
     def can_have(self, device: str) -> bool:
         """Whether `device` is a name this platform's serial devices can have."""
-        return device.upper().startswith("COM") == self.windows
+        return (WINDOWS_PORT.fullmatch(device) is not None) == self.windows
+
+
+#: A Windows port, in this suite's own words: `COM` and a number, bare or
+#: under the `\\.\` device namespace, which is the spelling every port opens
+#: under and the one a person who read the script's own hint would type.
+WINDOWS_PORT = re.compile(r"(\\\\\.\\)?COM[0-9]+", re.IGNORECASE)
+
+#: The Windows port again, in the device namespace.
+NAMESPACED_WINDOWS_DEVICE = "\\\\.\\COM3"
 
 
 #: The three platforms, by what `sys.platform` answers on each.
@@ -65,6 +80,10 @@ PLATFORMS: dict[str, PlatformCase] = {
         PlatformCase("win32", "Windows", "COM3", "Ports (COM & LPT)", windows=True),
     )
 }
+
+#: Every name every platform is fed: each platform's own, and the Windows port
+#: in the device namespace, which Windows can have and a Unix cannot.
+NAMES: list[str] = [*(case.device for case in PLATFORMS.values()), NAMESPACED_WINDOWS_DEVICE]
 
 #: The platform this host is, as the script will read it.
 HERE: PlatformCase = PLATFORMS.get(sys.platform, PLATFORMS["linux"])
@@ -114,14 +133,14 @@ def _declining_a_present_device(device: str) -> None:
         pytest.skip(f"{device} is a device this host has, and this journey will not open it")
 
 
-@pytest.fixture(params=PLATFORMS.values(), ids=lambda case: case.name.lower())
+@pytest.fixture(params=NAMES)
 def device(request: pytest.FixtureRequest) -> Iterator[str]:
     """One device name in one platform's own shape, which nothing on this host answers.
 
     Yields:
         The device name.
     """
-    named = str(request.param.device)
+    named = str(request.param)
     _declining_a_present_device(named)
     yield named
 
@@ -142,10 +161,10 @@ def test_a_device_this_host_cannot_open_is_refused_before_anything_is_provisione
 #: a name the platform cannot have is never opened and so is answered anywhere,
 #: while a name it can have is opened by that platform's own means.
 ANSWERED_HERE: list[tuple[PlatformCase, str]] = [
-    (platform, named.device)
+    (platform, named)
     for platform in PLATFORMS.values()
-    for named in PLATFORMS.values()
-    if not platform.can_have(named.device) or platform.key in OPENABLE_HERE
+    for named in NAMES
+    if not platform.can_have(named) or platform.key in OPENABLE_HERE
 ]
 
 

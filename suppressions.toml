@@ -334,6 +334,18 @@ site = "A device is named the way the host names one"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
+rule = "cli_output_contract"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "if not here.names(connection.device):"
+reason = "The judged tier asked for an exit code of its own for each of the two serial-device classes. The script's contract is one failure exit, `1`, with the failure named on stderr by its class and followed by what happened and the next action — the shape every one of its five pre-existing classes has had since `FAILURE_CLASSES` was declared closed, and what AGENTS.md's description of the scripted environment states. Its consumers are the `just octoprint-up` recipe and a person beside the printer, both of whom read the class by name. An exit of their own for two of seven classes would make the set's contract inconsistent, and one for all seven is a change to that contract, outside a change that adds two classes to it."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "names no device: pass"
+reason = "The same one failure exit as the entry above, at the second place the class is raised: `--mode serial` naming no device at all is refused as a misnamed device, through the same `StartupError` and the same exit `1` with the class named on stderr, so that a person is told what to type rather than given a status to look up."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "names that configuration file"
