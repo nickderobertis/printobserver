@@ -19,7 +19,13 @@ The proofs that reach the supervisor take it by the install-script route, so
 they carry the same `ROUTE_PROOF` mark the route proofs do: run where the
 install path targets this host's platform, and skipped where the platform's
 own descriptor says it does not yet — the record the install-route delivery
-flips, with nobody editing a test.
+flips, with nobody editing a test. On such a host the half of the proof that
+needs no route is driven instead: the client taken from its registry with the
+same `cargo`, `pip` and `npm`, and its smoke check run where it was installed
+against the program this tree builds, standing in for the release's — which is
+what keeps the code the two halves share proven on a host the route does not
+reach yet, and is where a client taken on a Windows host was first found
+looking for its interpreter under `bin`.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from release_artifacts.installing import Installed, InstallError, prove_client
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
@@ -42,10 +49,11 @@ from release_artifacts.registries import (
 )
 from release_artifacts.standin import CRATES_PREFIX, Registries
 from release_artifacts.targets import declared, named
+from repo_checks import platforms
 from repo_checks.expect import contains, equal, passing
 from repo_checks.model import Repo
 from repo_checks.shell import run
-from route_proof import ROUTE_PROOF
+from route_proof import ROUTE_PROOF, WITHOUT_ROUTE_PROOF
 
 #: The three clients a dependent takes as a dependency, each from its registry.
 CLIENTS = ["crate:printobserver-sdk", "pypi:printobserver-sdk", "npm:@printobserver/sdk"]
@@ -55,29 +63,39 @@ BUILD_TIMEOUT_SECONDS = 2400
 
 
 @pytest.fixture(scope="module")
-def supervisor(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The real program the stand-in forge's release carries, built once.
+def built() -> Path:
+    """The real program this tree builds for this host, built once.
 
     The debug build rather than a release one: what the client's proof is
     about is the client, and the program on the other side of the socket is
-    the same program either way. Stripped, in a copy, because every artifact
-    the stand-in serves carries the program's bytes compressed, and a debug
-    build's are mostly debug information nothing here reads.
+    the same program either way. Under the name the platform gives it, which
+    carries `.exe` on Windows.
     """
     repo = Repo(Path(__file__).resolve().parents[3])
-    built = repo.root / "target" / "debug" / "printobserver"
-    if not built.is_file():
+    program = repo.root / "target" / "debug" / platforms.host(repo).program
+    if not program.is_file():
         passing(
             run(
                 ["cargo", "build", "--locked", "-p", "printobserver"],
                 cwd=repo.root,
                 timeout=BUILD_TIMEOUT_SECONDS,
             ),
-            describing="building the supervisor the release stands in with",
+            describing="building the supervisor the clients are proved against",
         )
-    stripped = tmp_path_factory.mktemp("supervisor") / "printobserver"
+    return program
+
+
+@pytest.fixture(scope="module")
+def supervisor(built: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The program the stand-in forge's release carries: the built one, stripped.
+
+    Stripped, in a copy, because every artifact the stand-in serves carries
+    the program's bytes compressed, and a debug build's are mostly debug
+    information nothing here reads.
+    """
+    stripped = tmp_path_factory.mktemp("supervisor") / built.name
     passing(
-        run(["strip", "-o", str(stripped), str(built)], cwd=repo.root, timeout=300),
+        run(["strip", "-o", str(stripped), str(built)], cwd=built.parent, timeout=300),
         describing="stripping the supervisor of its debug information",
     )
     return stripped
@@ -206,6 +224,71 @@ def test_a_client_that_installs_and_cannot_be_used_does_not_pass(
     equal(proof.exit_status, 1, describing="the exit a broken artifact answers with")
     contains(proof.report, "did not work here", describing=proof.report)
     contains(proof.report, "build to repair", describing=proof.report)
+
+
+@pytest.fixture
+def taking(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[[str, str], Installed]:
+    """Take one client from the stand-in registries the way the proof takes it, and no more."""
+
+    def take_client(identifier: str, version: str) -> Installed:
+        into = tmp_path / identifier.replace(":", "-").replace("/", "-")
+        into.mkdir(parents=True, exist_ok=True)
+        bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+        return clients(repo)[identifier](repo, named(repo.root, identifier), version, into, bases)
+
+    return take_client
+
+
+@WITHOUT_ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_where_no_route_reaches_this_host_the_served_client_still_runs_its_check(
+    identifier: str,
+    repo: Repo,
+    version: str,
+    built: Path,
+    registries: Registries,
+    taking: Callable[[str, str], Installed],
+) -> None:
+    """The client the registry serves is taken and its smoke check reaches a real server.
+
+    The server is the program this tree builds, because on this host no route
+    puts the release's own on a path yet: what is proven is the half of the
+    proof that needs none — the client `cargo`, `pip` or `npm` took from the
+    registry, and its committed check run where it was installed, the way the
+    proof by the route runs it once the route is there. The program is the
+    same debug build the stand-in forge's release carries, unstripped.
+    """
+    registries.serve_clients(identifier)
+
+    said = prove_client(repo, taking(identifier, version), built)
+
+    contains(said, "smoke: contract", describing=f"what the installed `{identifier}` said")
+
+
+@WITHOUT_ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_where_no_route_reaches_this_host_a_client_that_cannot_be_used_still_fails(
+    identifier: str,
+    repo: Repo,
+    version: str,
+    built: Path,
+    registries: Registries,
+    taking: Callable[[str, str], Installed],
+) -> None:
+    """A registry serving the name with nothing usable in it is refused naming the client.
+
+    Where it is refused is the client's own: a crate carrying no library stops
+    the consumer's build, and a wheel or a package carrying no module installs
+    and fails the smoke check the moment it is used. Either is the same
+    `InstallError` the proof by the route reports as a build to repair.
+    """
+    registries.serve_clients(identifier, broken=True)
+
+    with pytest.raises(InstallError) as refused:
+        prove_client(repo, taking(identifier, version), built)
+
+    contains(str(refused.value), "failed (", describing="what the refusal says")
+    contains(str(refused.value), named(repo.root, identifier).name, describing="what it names")
 
 
 @ROUTE_PROOF

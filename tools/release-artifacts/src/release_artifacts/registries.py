@@ -81,6 +81,7 @@ from release_artifacts.installing import (
     Installed,
     InstallError,
     executable,
+    interpreter_in,
     npm_global_program,
     programs_in,
     prove_client,
@@ -1264,7 +1265,7 @@ def _python_client(
             "pip",
             "install",
             "--python",
-            str(environment / "bin/python"),
+            str(interpreter_in(environment)),
             "--index-url",
             f"{bases.pypi}/simple",
             "--no-cache",
@@ -1273,7 +1274,7 @@ def _python_client(
         cwd=into,
         describing=f"`pip install {pinned}` from {bases.pypi}",
     )
-    return Installed(target.id, environment, None, str(environment / "bin/python"))
+    return Installed(target.id, environment, None, str(interpreter_in(environment)))
 
 
 def _node_client(
@@ -1360,7 +1361,10 @@ def _rust_client(
         describing=f'building a consumer of `{target.name} = "={version}"` from {bases.crates}',
     )
     return Installed(
-        target.id, environment, None, str(consumer / "target/release/printobserver-sdk-smoke")
+        target.id,
+        environment,
+        None,
+        str(consumer / "target" / "release" / executable("printobserver-sdk-smoke")),
     )
 
 
