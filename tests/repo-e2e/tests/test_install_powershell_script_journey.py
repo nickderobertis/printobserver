@@ -762,6 +762,7 @@ def test_the_systems_own_tar_is_taken_before_one_on_the_path(
         system32 = home / "system-root" / "System32"
         system32.mkdir(parents=True)
         real = shutil.which("tar")
+        truth(real, describing="this host to carry a `tar` for the stood-in SystemRoot to hand on")
         (system32 / "tar.exe").write_text(f'#!/bin/sh\nexec "{real}" "$@"\n', encoding="utf-8")
         (system32 / "tar.exe").chmod(0o755)
         session["SystemRoot"] = str(system32.parent)
