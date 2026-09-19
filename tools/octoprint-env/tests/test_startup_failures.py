@@ -5,7 +5,9 @@ script over it. A declared failure is reported by its class and a concrete next
 action; a failure outside the declared set is reported with the underlying
 error's own text. One diagnosed failure path and a bare timeout everywhere else
 is the shape that reads as diagnostics without being any, and the last two
-journeys here are what refuse it.
+journeys here are what refuse it. The two failures about the serial device —
+a name this platform cannot have, and a device it cannot open — are induced in
+`test_device_refusal.py`, which runs in the gate as well as here.
 
 The closed-set journey reads the script itself: a raise the declared set does
 not name, or one the outside-the-set report in `main` would not catch, is a
@@ -80,19 +82,6 @@ def test_a_listen_port_already_in_use_is_reported_by_name(
     refused_naming(lines, "port-in-use")
     refused_naming(lines, "what happened:", str(port))
     refused_naming(lines, "next action:", "--port")
-
-
-def test_a_serial_device_it_cannot_open_is_reported_by_name(
-    state_dir: Callable[[str], str],
-) -> None:
-    """A device that is not there to be opened."""
-    absent = "/dev/printobserver-no-such-device"
-
-    lines = _reported(state_dir("no-device"), "--mode", "serial", "--device", absent)
-
-    refused_naming(lines, "serial-device-unopenable")
-    refused_naming(lines, "what happened:", absent)
-    refused_naming(lines, "next action:", "dialout")
 
 
 def test_an_instance_that_never_answers_is_reported_by_name(

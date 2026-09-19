@@ -214,6 +214,18 @@ reason = "Every call through this helper reaches an OctoPrint this script itself
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "os.open(windows_device_path(device), os.O_RDWR)"
+reason = "The serial device is opened once and closed at once, to learn the one thing that decides whether the bring-up may go on: whether OctoPrint will be able to open it a moment later. That is a synchronous question the kernel answers in the open call itself — there is no protocol spoken, no answer to type, and nothing else this strictly ordered bring-up could overlap it with — and a serial device has no typed client at all, async or otherwise; the program that speaks to the printer over it is OctoPrint. The boundary this rule is about is the product's, which reaches the printer through OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)"
+reason = "The Unix half of the same one probe as the entry above: the device node is opened without becoming its controlling terminal and without waiting for a carrier, and closed at once, for the same one synchronous answer."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/environment.py"
 site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
@@ -326,6 +338,42 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "removes this line"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "A device is named the way the host names one"
+reason = "The bullet joins the list that has always been the root's one description of the scripted OctoPrint environment — the section carrying the \"Virtual printer availability\" marker block `repo_checks.checks_integration` reads from AGENTS.md — so the script's device naming is stated beside its two modes and its failure classes rather than in a nested file that would split one script's description in two. It states the constraint and points at the table that owns the platform words."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "A device is named the way the host names one"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "if not here.names(connection.device):"
+reason = "The judged tier asked for an exit code of its own for each of the two serial-device classes. The script's contract is one failure exit, `1`, with the failure named on stderr by its class and followed by what happened and the next action — the shape every one of its five pre-existing classes has had since `FAILURE_CLASSES` was declared closed, and what AGENTS.md's description of the scripted environment states. Its consumers are the `just octoprint-up` recipe and a person beside the printer, both of whom read the class by name. An exit of their own for two of seven classes would make the set's contract inconsistent, and one for all seven is a change to that contract, outside a change that adds two classes to it."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "names no device: pass"
+reason = "The same one failure exit as the entry above, at the second place the class is raised: `--mode serial` naming no device at all is refused as a misnamed device, through the same `StartupError` and the same exit `1` with the class named on stderr, so that a person is told what to type rather than given a status to look up."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "names that configuration file"
+reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke test\" section of AGENTS.md as where the smoke test is described, and `repo_checks.checks_smoke.smoke_selection` reads that section of the root file for the recipe, the flag and the device variable; a nested file is one that check would not read. The sentence states where the smoke's default configuration comes from and points at the module that owns the per-platform answer."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "names that configuration file"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
 rule = "instruction_layer_localized"
@@ -979,3 +1027,17 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "answer = _answered(url)"
 reason = "The crate registry is read through the same one synchronous helper every other registry in this module is read through, and the two entries above for `urllib.request.Request(` and `urlopen(` carry the reason the async half does not apply: this is a command-line proof a `just` recipe runs to completion, with no event loop and nothing for an awaited read to overlap — ask the registry, then install what it serves, then run it. The typed half is answered on the lines that follow the call rather than suppressed: the document is refused unless it is a mapping carrying a `versions` list of mappings, and each entry is refused unless its `num` is a string and its `yanked` a boolean, as the crate registry's own protocol serves them — a `yanked` read by truthiness would take a mirror's `\"false\"` as yanked and drop a version a dependent can take, and `tools/release-artifacts/tests/test_registry_clients.py` drives a yanked version and a malformed entry through this boundary against the stand-in registry."
+
+# --- the real-printer smoke test's device precondition: two lookup sites ------
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/printer-smoke/printer_smoke.py"
+site = "if not device.exists():"
+reason = "The device name is used, before its shape is checked, in exactly one way: a read-only lookup — `Path.exists` and `os.access` here, the device table on Windows below — that opens nothing and sends the printer nothing. That order is deliberate. The precondition's question is whether the named device is there and this user can read it, and the platform's shape is appended to a refusal as the hint that says what a device is called here rather than put ahead of the probe as a gate, because the Unix shape is by design no tighter than the platform's own (a `udev` rule links a printer under any name below `/dev`), and because on Windows the smoke's own precondition walk drives the real device table with a device that table carries under a name no printer has — a runner has no port. A name this platform cannot have is still refused, told what its devices are called, and everything after this precondition reaches the device only through the scripted OctoPrint's own instance record, which `octoprint_env.py` refuses to write for a misnamed device before it opens anything."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/printer-smoke/printer_smoke.py"
+site = "if not name or _query_dos_device(name) is None:"
+reason = "The Windows half of the same one probe as the entry above: the name is looked up in the system's device table, which answers whether it is a device without opening it — the point of asking the table, since opening a serial port can reset the printer on the other end. An empty name, the one input that would make the lookup answer something for any host, is refused on the line before it is asked; anything else is a read of a table, and a name the table does not carry is refused naming the shape a Windows port has."
