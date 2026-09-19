@@ -333,6 +333,7 @@ try {
         [Console]::Error.WriteLine("install.ps1: stopped on an error it did not expect: $_")
         [Console]::Error.WriteLine("install.ps1: Nothing was installed unless a line above says so. Report this, with the lines above, at https://github.com/nickderobertis/printobserver/issues.")
     }
+    # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     if ($MyInvocation.MyCommand.Path) {
         exit 1
     }

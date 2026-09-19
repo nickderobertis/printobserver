@@ -923,6 +923,10 @@ def _waived_ids(repo: Repo, job: dict[str, Any], waived: tuple[str, ...]) -> lis
     manager's pair is its own two steps — so the waived ids are suffixed with
     the manager whose command each step runs, `install-service-systemd` beside
     `install-service-windows-service`, and every one of them is owed.
+
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; nothing is read out of it here but by
+    `_job_managers`, which narrows the one thing it reads, the platform matrix.
     """
     return [f"{wanted}-{manager}" for manager in _job_managers(repo, job) for wanted in waived]
 

@@ -1056,6 +1056,12 @@ site = "function Report-Installed"
 reason = "A successful install prints what the shell form of this same route prints, line for line: where the program went and from which release, whether its directory had to be added to the path, and the two commands the operator runs next. `AGENTS.md`'s install path requires the last of those — a successful install says what the caller does after it — and `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads every one of those lines back; a run that installs nothing prints only its two sentences, why it stopped and what to do next."
 
 [[suppression]]
+rule = "cli_output_contract"
+file = "scripts/install.ps1"
+site = "if ($MyInvocation.MyCommand.Path) {"
+reason = "One status for every stop is the exit contract of this route, and the shell form on `main` — `scripts/install.sh`, whose one `die` exits 1 — set it; this is the same route in its Windows form, and `AGENTS.md`'s install path holds the two to doing the same thing. What tells a caller which stop it was is the two sentences on standard error — why it stopped and what to do next — which `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads back for every refusal; a job reads the non-zero, and a caller at the prompt reads the sentences, and neither branches on which non-zero it was. Under `irm ... | iex` there is no process of the script's own to exit, so the one status goes to `$LASTEXITCODE`, which is the only status that form can leave."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
 site = "def _built_here"
