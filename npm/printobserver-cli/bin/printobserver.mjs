@@ -15,11 +15,25 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
-/** What each supported platform's package is called, by what Node reports. */
+/**
+ * What each supported platform's package is called, by what Node reports.
+ *
+ * `just check-repo`'s `platform-facts` holds this map to AGENTS.md's
+ * supported-platform list in both directions: a platform the install path
+ * targets is here, and nothing else is.
+ */
 const PACKAGES = {
   "linux-x64": "@printobserver/cli-linux-x64",
   "linux-arm64": "@printobserver/cli-linux-arm64",
+  "win32-x64": "@printobserver/cli-win32-x64",
+  "win32-arm64": "@printobserver/cli-win32-arm64",
 };
+
+/**
+ * What the program's own file is called inside its package: Windows finds a
+ * program by its suffix, and a file with none is one it will not run.
+ */
+const PROGRAM = process.platform === "win32" ? "printobserver.exe" : "printobserver";
 
 const platform = `${process.platform}-${process.arch}`;
 const name = PACKAGES[platform];
@@ -35,7 +49,7 @@ if (name === undefined) {
 const require = createRequire(import.meta.url);
 let program;
 try {
-  program = require.resolve(`${name}/bin/printobserver`);
+  program = require.resolve(`${name}/bin/${PROGRAM}`);
 } catch {
   process.stderr.write(
     `printobserver: the program for ${platform} is not installed. Its package is ` +

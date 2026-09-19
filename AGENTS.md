@@ -271,10 +271,8 @@ from.
 - `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: yes
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: yes
 [//]: # (END supported-platforms)
 
 The two Linux entries run under systemd, which is what the unit in the end-user
@@ -293,7 +291,7 @@ is compiled only for Windows aarch64. The exemption is removed when that
 toolchain produces readable profiles.
 
 <!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
-The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
+The macOS entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what the macOS and Windows runners first said.
 
 ### The two levers a platform is brought up in stages by
 
@@ -337,46 +335,6 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 - `macos-x86_64` on `artifacts` — bring-up owed; the macOS platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `macos-x86_64` on `integration` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `install-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `install-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `install-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `prove-registry-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `prove-registry-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `install-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `install-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `install-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `prove-registry-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `prove-registry-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
 [//]: # (END platform-exclusions)
 
 An entry is a cell that **does not run yet**, not one nobody intends to run: it
@@ -815,11 +773,19 @@ npm install -g printobserver-cli
 
 #### Route 3 — the bundled install script
 
-`scripts/install.sh`, committed in this repository beside the artifacts it
-downloads and fetched by this one-line command. It detects the caller's
-platform, downloads the prebuilt release artifact for it, verifies what it
-downloaded, and puts the program on the caller's path. This is the route for a
-machine that has neither package manager. Made executable by the `sdks` node.
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads route 3's scripts, the platforms each reaches and their fetch commands out of it, and the README is derived from it. suppressions.toml has the full reasons. -->
+One route, with one committed script per family of platform behind it: the
+shell script for Linux and macOS, and the PowerShell script for Windows, each
+fetched by the one-line command its own platform runs. Both do the same thing
+against the same artifact and the same checksum file: work out the caller's
+platform, refuse one the release publishes nothing for rather than guess,
+download the prebuilt release artifact for it **and** the release's checksum
+file, verify the digest before anything reaches a path, unpack into a directory
+of their own, put the program where the caller asked, and say what to do next.
+This is the route for a machine that has neither package manager.
+
+`scripts/install.sh` is the shell form, for every Linux and macOS platform the
+list names:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
@@ -830,6 +796,22 @@ pinned release and an install directory:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
+```
+
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads route 3's fetch commands out of it, and the README is derived from it and held to it. suppressions.toml has the full reasons. -->
+`scripts/install.ps1` is the PowerShell form, for every Windows platform the
+list names, fetched the way PowerShell — Windows PowerShell or a newer one —
+fetches and runs a script:
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+```
+
+It takes the same two options, passed the way PowerShell passes options to a
+fetched script:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1))) -Version v0.1.0 -To C:\Tools\printobserver
 ```
 
 ### Then, check what you installed

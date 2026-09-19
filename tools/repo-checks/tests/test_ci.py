@@ -14,9 +14,11 @@ from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
 INSTALL = ".github/workflows/install-path.yml"
-#: The install-service step of the first install job, as the workflow spells it.
+#: The systemd install-service step of the first install job, as the workflow
+#: spells it: the waived id carries the manager whose command the step runs.
 SERVICE_STEP = (
-    "      - id: install-service\n"
+    "      - id: install-service-systemd\n"
+    "        if: runner.os != 'Windows'\n"
     "        continue-on-error: true\n"
     "        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/"
     "printobserver/main/scripts/install-service.sh | sudo sh\n"
@@ -24,9 +26,19 @@ SERVICE_STEP = (
 
 #: The step that starts it, as the workflow spells it.
 START_STEP = (
-    "      - id: start-service\n"
+    "      - id: start-service-systemd\n"
+    "        if: runner.os != 'Windows'\n"
     "        continue-on-error: true\n"
     "        run: sudo systemctl enable --now printobserver.service\n"
+)
+
+#: The Windows pair of the same job, as the workflow spells it.
+WINDOWS_START_STEP = (
+    "      - id: start-service-windows-service\n"
+    "        if: runner.os == 'Windows'\n"
+    "        continue-on-error: true\n"
+    "        shell: pwsh\n"
+    "        run: Set-Service -Name printobserver -StartupType Automatic -Status Running\n"
 )
 
 FOURTH_ROUTE = """
@@ -261,11 +273,47 @@ def test_an_install_job_whose_waived_step_carries_no_id_is_refused(
 ) -> None:
     """Nothing of the run can report what a step it cannot name reached."""
     broken = tree()
-    broken.edit(INSTALL, "      - id: install-service\n", "      - id: installs-the-service\n")
+    broken.edit(
+        INSTALL, "      - id: install-service-systemd\n", "      - id: installs-the-service\n"
+    )
 
     findings = continuous_integration(broken.repo)
 
-    refused(findings, "declares no `install-service` step")
+    refused(findings, "declares no `install-service-systemd` step")
+
+
+def test_an_install_job_whose_windows_waived_step_is_fatal_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Each manager the job's matrix spans has its own pair, and each pair is waived."""
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        WINDOWS_START_STEP,
+        WINDOWS_START_STEP.replace("        continue-on-error: true\n", ""),
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "step `start-service-windows-service` is fatal")
+
+
+def test_an_install_job_reporting_only_one_managers_outcomes_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A summary naming one pair's outcomes says nothing about the other manager's cells."""
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        "          INSTALLED: ${{ runner.os == 'Windows' && "
+        "steps.install-service-windows-service.outcome || "
+        "steps.install-service-systemd.outcome }}\n",
+        "          INSTALLED: ${{ steps.install-service-systemd.outcome }}\n",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "writes not every outcome")
 
 
 def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) -> None:

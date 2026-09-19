@@ -617,10 +617,11 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # what it is called. `just check-repo` holds these to AGENTS.md's
 # supported-platform list and refuses a platform matrix on any other job.
 platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
-# The install script the `sdks` node commits, and the path the install-path
-# section's third route fetches. The service installers a fetch URL may name are
-# `service.managers.<manager>.installer`.
-install_script_path = "scripts/install.sh"
+# The install scripts behind the install-path section's third route, one per
+# family of platform — the shell one for Linux and macOS, the PowerShell one
+# for Windows — and the paths that route's fetch commands may name. The service
+# installers a fetch URL may name are `service.managers.<manager>.installer`.
+install_script_paths = ["scripts/install.sh", "scripts/install.ps1"]
 
 # The two commands after the routes are the ONLY steps of an install job whose
 # failure does not fail it, and the price of that waiver is that the run says
@@ -635,11 +636,15 @@ install_script_path = "scripts/install.sh"
 # nothing about whether the service was ever established — and a
 # credential-dependent failure that nobody can see has disappeared.
 #
-# So `just check-repo` requires each of them to carry the step id below, and
-# requires a step of that job to write BOTH of their outcomes into the run's
-# own summary. `outcome` and not `conclusion`: `continue-on-error` is what
-# makes `conclusion` read `success` for a step that failed, so a report reading
-# it would say every route's service came up every time.
+# So `just check-repo` requires each of them to carry the step id below,
+# suffixed with the service manager whose command the step runs —
+# `install-service-systemd`, `install-service-windows-service` — once per
+# manager the job's matrix spans, because each manager's pair is its own two
+# steps of the one job; and requires a step of that job to write EVERY one of
+# their outcomes into the run's own summary. `outcome` and not `conclusion`:
+# `continue-on-error` is what makes `conclusion` read `success` for a step that
+# failed, so a report reading it would say every route's service came up every
+# time.
 waived_steps = ["install-service", "start-service"]
 waived_report = "GITHUB_STEP_SUMMARY"
 

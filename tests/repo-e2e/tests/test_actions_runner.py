@@ -222,6 +222,54 @@ def test_an_output_line_that_names_nothing_is_refused_by_its_text(
     contains(str(refused.value), written, describing="what it named")
 
 
+def test_a_job_defaulting_to_the_shell_this_runner_uses_runs_as_it_would_without(
+    tmp_path: Path,
+) -> None:
+    """`defaults.run.shell: bash` is what a Windows cell needs, and on Linux it changes nothing."""
+    workflow = tmp_path / "defaulted.yml"
+    workflow.write_text(
+        "jobs:\n  defaulted:\n    runs-on: x\n    defaults:\n      run:\n        shell: bash\n"
+        '    steps:\n      - run: echo "said=$0" >> "$GITHUB_OUTPUT"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "checkout").mkdir()
+
+    run = Runner(
+        workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()
+    ).run()
+
+    equal(run.result("defaulted"), Result.SUCCESS, describing="a job defaulting to bash")
+
+
+@pytest.mark.parametrize(
+    ("defaults", "named"),
+    [
+        # A shell this runner does not run is not run some other way.
+        ("      run:\n        shell: pwsh\n", "pwsh"),
+        # A working directory would move every step; it is refused rather than dropped.
+        (
+            "      run:\n        shell: bash\n        working-directory: elsewhere\n",
+            "working-directory",
+        ),
+    ],
+)
+def test_a_default_outside_the_one_shell_is_refused_by_name(
+    defaults: str, named: str, tmp_path: Path
+) -> None:
+    """Anything under `defaults` but the shell every step already runs under is refused."""
+    workflow = tmp_path / "odd.yml"
+    workflow.write_text(
+        f"jobs:\n  odd:\n    runs-on: x\n    defaults:\n{defaults}    steps:\n      - run: true\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "checkout").mkdir()
+
+    with pytest.raises(UnsupportedError) as refused:
+        Runner(workflow, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
+
+    contains(str(refused.value), named, describing="what it named")
+
+
 def test_a_step_construct_outside_the_modelled_set_is_refused_by_name(tmp_path: Path) -> None:
     """`continue-on-error` changes what a failure means, so it is refused rather than dropped."""
     workflow = tmp_path / "odd.yml"

@@ -89,11 +89,29 @@ STEP_KEYS = frozenset({"id", "name", "run", "uses", "with", "env", "if"})
 #: The job keys this runner models, plus `permissions`: what the forge grants
 #: its own token is a boundary here, since nothing a step runs reaches the forge.
 JOB_KEYS = frozenset(
-    {"name", "needs", "if", "runs-on", "outputs", "steps", "strategy", "env", "permissions"}
+    {
+        "name",
+        "needs",
+        "if",
+        "runs-on",
+        "outputs",
+        "steps",
+        "strategy",
+        "env",
+        "permissions",
+        "defaults",
+    }
 )
 
 #: What the forge documents as the default shell for a `run:` step on Linux.
 DEFAULT_SHELL = ("bash", "-e")
+
+#: The one `defaults:` a job may carry: the shell every `run:` step is given,
+#: and only the shell this runner already runs them under. A job naming it is
+#: one whose Windows cells would otherwise run PowerShell, and on the Linux
+#: this runner models it changes nothing — so it is read, held to that, and
+#: anything else under `defaults` is refused rather than dropped.
+DEFAULT_SHELL_NAME = "bash"
 
 STEP_TIMEOUT_SECONDS = 600
 
@@ -581,7 +599,34 @@ JOB_SHAPES: dict[str, type | tuple[type, ...]] = {
     "steps": list,
     "strategy": dict,
     "env": dict,
+    "defaults": dict,
 }
+
+
+def _defaults(name: str, job: Declared) -> None:
+    """A job's `defaults:` names the shell this runner runs `run:` steps under, and nothing else.
+
+    Raises:
+        UnsupportedError: If it carries any other key, or names another shell.
+    """
+    declared = job.get("defaults")
+    if declared is None:
+        return
+    _refuse_unknown(declared, frozenset({"run"}), f"job `{name}`'s `defaults`")
+    run = declared.get("run")
+    if not isinstance(run, dict):
+        msg = f"job `{name}`'s `defaults.run` is {run!r}, which is not the mapping the forge reads"
+        raise UnsupportedError(msg)
+    _refuse_unknown(run, frozenset({"shell"}), f"job `{name}`'s `defaults.run`")
+    shell = run.get("shell")
+    if shell != DEFAULT_SHELL_NAME:
+        msg = (
+            f"job `{name}` runs its steps under `{shell}`, and this runner runs them under "
+            f"`{DEFAULT_SHELL_NAME}` only"
+        )
+        raise UnsupportedError(msg)
+
+
 STEP_SHAPES: dict[str, type | tuple[type, ...]] = {
     "id": str,
     "run": str,
@@ -617,6 +662,7 @@ def _jobs(workflow: Path) -> dict[str, Declared]:
     for name, job in jobs.items():
         _refuse_unknown(job, JOB_KEYS, f"job `{name}`")
         _shaped(job, JOB_SHAPES, f"job `{name}`")
+        _defaults(str(name), job)
     return {str(name): job for name, job in jobs.items()}
 
 

@@ -87,10 +87,14 @@ pytestmark = pytest.mark.skipif(
     ),
 )
 
-# `uv` is what step 1 of the script installs through, and `bash` and `python3` —
-# which `just` and the chain lookup reach for — live in the system directories.
-# The platforms this runs on are Linux, which is where the `llmlint` job runs.
-UV_DIRECTORY = str(Path(shutil.which("uv") or "uv").parent)
+# `uv` is what step 1 of the script installs through, and it is linked into the
+# host's own programs rather than reached through its directory: a developer's
+# `~/.local/bin` holds `uv` beside the agents they have installed, and a PATH
+# carrying that directory would hand every host here an agent the journey never
+# gave it. `bash` and `python3` — which `just` and the chain lookup reach for —
+# live in the system directories. The platforms this runs on are Linux, which
+# is where the `llmlint` job runs.
+UV = Path(shutil.which("uv") or "uv")
 SYSTEM_DIRECTORIES = "/usr/bin:/bin"
 # `oneharness detect` probes a harness by running it, so one that is installed
 # has to answer for a version. Both the agent this host starts out carrying and
@@ -128,6 +132,7 @@ class HarnessHost:
         self.home.mkdir(parents=True)
         self.programs.mkdir(parents=True)
         self.github_path.write_text("", encoding="utf-8")
+        (self.programs / "uv").symlink_to(UV)
         if npm:
             self._program("npm", NPM_RECORDER)
         if harness:
@@ -164,7 +169,7 @@ class HarnessHost:
         environment.pop("CLAUDE_ENV_FILE", None)
         environment.update(
             HOME=str(self.home),
-            PATH=f"{self.programs}:{UV_DIRECTORY}:{SYSTEM_DIRECTORIES}",
+            PATH=f"{self.programs}:{SYSTEM_DIRECTORIES}",
             NPM_CALLS=str(self.npm_calls),
             HARNESS_SOURCE=HARNESS_BINARY,
             GITHUB_PATH=str(self.github_path),

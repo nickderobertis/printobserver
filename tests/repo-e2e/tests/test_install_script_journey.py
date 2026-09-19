@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
 from repo_checks import platforms
+from repo_checks.checks_platforms import SCRIPT_PLATFORM
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
@@ -57,6 +58,16 @@ def _platform() -> str:
 #: Where this host's own artifact is named, as the script names it.
 PLATFORM = _platform()
 
+#: Why this journey has nothing to drive on this host, or `None`: the shell
+#: form reaches the platforms its own `uname` arms name, and a host outside
+#: them — Windows — is reached by the PowerShell form and its own journey.
+#: Read off the committed script's arms, as `just check-repo` reads them.
+NOT_REACHED: str | None = (
+    None
+    if PLATFORM in set(SCRIPT_PLATFORM.findall((REPO_ROOT / SCRIPT).read_text(encoding="utf-8")))
+    else f"{SCRIPT} has no arm for `{PLATFORM}`, which another install script reaches"
+)
+
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
 
@@ -82,8 +93,12 @@ def _program() -> Path:
     return built
 
 
-def _artifact(into: Path, program: bytes) -> Path:
-    """One release artifact, in the shape release automation publishes it."""
+def _artifact(into: Path, program: bytes, platform: str = PLATFORM) -> Path:
+    """One release artifact, in the shape release automation publishes it.
+
+    For this host's own platform unless another is named; its digest joins
+    the release's checksum file beside any already there.
+    """
     into.mkdir(parents=True, exist_ok=True)
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode="w") as archive:
@@ -91,11 +106,10 @@ def _artifact(into: Path, program: bytes) -> Path:
         info.size = len(program)
         info.mode = 0o755
         archive.addfile(info, io.BytesIO(program))
-    target = into / f"{PROGRAM}-{PLATFORM}.tar.gz"
+    target = into / f"{PROGRAM}-{platform}.tar.gz"
     target.write_bytes(gzip.compress(raw.getvalue(), mtime=0))
-    (into / CHECKSUMS).write_text(
-        f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n", encoding="utf-8"
-    )
+    with (into / CHECKSUMS).open("a", encoding="utf-8") as digests:
+        digests.write(f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n")
     return target
 
 
@@ -107,13 +121,17 @@ def staged(tmp_path: Path) -> Path:
     `download/<tag>` for a pinned one, so a script proven against this is
     proven against the layout it will meet.
 
-    Staged only where the install path targets this platform: the script is
-    the third route, and on a platform whose record answers `install path: no`
-    there is no artifact of this host's for it to stage, so a journey asking
-    for one is skipped naming that record rather than built for.
+    Staged only where the install path targets this platform and this script
+    reaches it: the script is the third route's shell form, and on a platform
+    whose record answers `install path: no` there is no artifact of this host's
+    for it to stage, while a Windows host is reached by the PowerShell form
+    and its own journey — so a journey asking for one is skipped naming which
+    rather than built for.
     """
     if NO_ROUTE_HERE is not None:
         pytest.skip(NO_ROUTE_HERE)
+    if NOT_REACHED is not None:
+        pytest.skip(NOT_REACHED)
     base = tmp_path / "releases"
     real = _program().read_bytes()
     stand_in = f'#!/bin/sh\necho "{PROGRAM} {OLDER.removeprefix("v")}"\n'.encode()
@@ -230,6 +248,45 @@ def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(
 
     failing((result.returncode, said), naming="publishes no program for")
     contains(said, "build it from source", describing="the next action it named")
+
+
+# llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
+def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects(
+    staged: Path, tmp_path: Path
+) -> None:
+    """`Darwin/arm64` resolves `macos-aarch64`, and the artifact under that name is what installs.
+
+    Reached the way the script reads the host — through `uname` — with the
+    two answers a Mac gives, so the arm is driven here rather than left to
+    the platform's own runner; what the artifact carries is a stand-in, since
+    a program built for a Mac cannot be run to read its version here.
+    """
+    home = tmp_path / "home-macos"
+    home.mkdir()
+    shims = home / "shims"
+    shims.mkdir()
+    (shims / "uname").write_text(
+        '#!/bin/sh\ncase "$1" in\n  -s) echo Darwin ;;\n  -m) echo arm64 ;;\n'
+        "  *) echo Darwin ;;\nesac\n",
+        encoding="utf-8",
+    )
+    (shims / "uname").chmod(0o755)
+    mac = platforms.descriptor(Repo(REPO_ROOT), "macos-aarch64")
+    stand_in = f'#!/bin/sh\necho "{PROGRAM} for {mac.id}"\n'.encode()
+    _artifact(staged / "latest" / "download", stand_in, platform=mac.id)
+    environment = clean_environment(
+        HOME=str(home),
+        PRINTOBSERVER_RELEASE_BASE=str(staged),
+        PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
+    )
+
+    result = shell_run(["sh", str(REPO_ROOT / SCRIPT)], cwd=home, env=environment, timeout=600)
+    said = (result.stdout or "") + (result.stderr or "")
+
+    passing((result.returncode, said), describing="the install script on a Mac")
+    installed = home / ".local/bin" / PROGRAM
+    contains(_reports(installed), f"for {mac.id}", describing="the artifact it installed")
+    contains(said, f"installed {installed}", describing="what the run said")
 
 
 def test_a_download_that_cannot_be_obtained_stops_with_a_next_action(

@@ -1,8 +1,9 @@
 #!/bin/sh
 # Put the printobserver program on your path, already built for your platform.
 #
-# The third of the three ALTERNATIVE routes AGENTS.md's "The end-user install
-# path" section states; `just check-repo` refuses a tree in which this path
+# The shell form of the third of the three ALTERNATIVE routes AGENTS.md's "The
+# end-user install path" section states — `scripts/install.ps1` is the same
+# route on Windows — and `just check-repo` refuses a tree in which this path
 # differs from what that section's fetch URL names. It is the route for a
 # machine that has neither package manager — nothing here needs Python, Node or
 # a Rust toolchain, and nothing here compiles anything: the host this runs on is
@@ -81,9 +82,11 @@ machine="$(uname -m)"
 case "$system/$machine" in
     Linux/x86_64) platform="linux-x86_64" ;;
     Linux/aarch64 | Linux/arm64) platform="linux-aarch64" ;;
+    Darwin/arm64) platform="macos-aarch64" ;;
     *)
         die "this is $system/$machine, which printobserver publishes no program for" \
-            "The platforms it publishes for are linux-x86_64 and linux-aarch64. On \
+            "The platforms this script installs for are linux-x86_64, linux-aarch64 and \
+macos-aarch64; on Windows, run scripts/install.ps1 from PowerShell instead. On \
 anything else, build it from source with \`cargo install printobserver\`."
         ;;
 esac

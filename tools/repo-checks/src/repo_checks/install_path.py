@@ -76,9 +76,19 @@ SEQUENCE_MARKERS = (
 # Anything a reader would have to reconstruct rather than paste.
 PLACEHOLDER_MARKERS = ("...", "…", "<", ">", "TODO", "TBD", "PLACEHOLDER", "YOUR_", "${")
 
-PINNED_VERSION = re.compile(r"--version\s+v\d+\.\d+\.\d+(?:\s|$)")
-PINNED_DIRECTORY = re.compile(r"--to\s+(?:~|/)\S+")
-RAW_URL = re.compile(r"https://raw\.githubusercontent\.com/\S+")
+# The pinned form of a script route's command: a concrete release tag and a
+# concrete install directory, in whichever shell the script is fetched by — the
+# shell form's `--version vX.Y.Z --to DIR`, the PowerShell form's
+# `-Version vX.Y.Z -To DIR`. A directory is concrete when it is absolute on its
+# own platform: rooted at `~` or `/`, or at a drive letter.
+PINNED_VERSION = re.compile(r"(?:--version|-Version)\s+v\d+\.\d+\.\d+(?:\s|$)")
+PINNED_DIRECTORY = re.compile(r"(?:--to|-To)\s+(?:~|/|[A-Za-z]:\\)\S+")
+# What marks a command as the pinned form at all.
+PINNED_OPTION = re.compile(r"(?:^|\s)(?:--version|-Version)(?:\s|$)")
+# A fetch of a file of this repository. Ends before a closing parenthesis as
+# well as at whitespace, because PowerShell's pinned form wraps the fetch in
+# `([scriptblock]::Create((irm ...)))`.
+RAW_URL = re.compile(r"https://raw\.githubusercontent\.com/[^\s)]+")
 # A command that starts or enables a service, in any manager's vocabulary the
 # section states a pair in: systemd's `start`, `enable` and `--now`, and the
 # service control manager's `Start-Service`, `-Status Running` and an automatic
@@ -100,6 +110,31 @@ class Route:
     def command(self) -> str:
         """The route's own command — the one a reader pastes."""
         return self.commands[0] if self.commands else ""
+
+    @property
+    def fetches(self) -> dict[str, str]:
+        """The one command that fetches each script behind this route, by script.
+
+        A route with a script behind it states one fetch command per script —
+        the shell one for the platforms a shell reaches, the PowerShell one for
+        Windows — and each is a command some install job has to run. The
+        pinned form of the same fetch is the same script and is not a second
+        one.
+        """
+        found: dict[str, str] = {}
+        for command in self.commands:
+            match = RAW_URL.search(command)
+            if match is None:
+                continue
+            script = match.group(0).partition("/main/")[2]
+            if script and script not in found:
+                found[script] = command
+        return found
+
+    @property
+    def pinned(self) -> tuple[str, ...]:
+        """Every command of this route that names a release to install."""
+        return tuple(command for command in self.commands if PINNED_OPTION.search(command))
 
 
 @dataclass(frozen=True, slots=True)

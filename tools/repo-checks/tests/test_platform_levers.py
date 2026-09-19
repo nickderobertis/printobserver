@@ -118,22 +118,15 @@ def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
 ) -> None:
     """The answer binds in both directions: a `yes` every install tier must carry."""
     broken = tree()
-    broken.edit(
+    # Anchored on the whole of the npm route job after its matrix, because
+    # every artifact job of that workflow carries the same matrix: what this
+    # narrows is that one job's own.
+    text = broken.read(".github/workflows/artifacts.yml")
+    job = text.index("\n  artifact-route-npm:\n")
+    start = text.index(MATRIX_AARCH64, job)
+    broken.write(
         ".github/workflows/artifacts.yml",
-        MATRIX_AARCH64 + "    runs-on: ${{ matrix.platform.runner }}\n"
-        "    steps:\n      - uses: actions/checkout@v5\n"
-        "      - uses: extractions/setup-just@v3\n"
-        "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
-        "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: oven-sh/setup-bun@v2\n"
-        "      - run: just bootstrap\n      - run: just prove-route-npm\n",
-        "    runs-on: ${{ matrix.platform.runner }}\n"
-        "    steps:\n      - uses: actions/checkout@v5\n"
-        "      - uses: extractions/setup-just@v3\n"
-        "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
-        "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: oven-sh/setup-bun@v2\n"
-        "      - run: just bootstrap\n      - run: just prove-route-npm\n",
+        text[:start] + text[start + len(MATRIX_AARCH64) :],
     )
 
     findings = platforms(broken.repo)
