@@ -81,9 +81,11 @@ def test_a_write_interrupted_before_its_move_costs_the_count_nothing(tmp_path: P
         describing="the count, carried on from the last completed write",
     )
     equal(leftover.exists(), False, describing="whether the leftover survived the next write")
+    # Compared as the text it printed rather than decoded: an answer that is
+    # not JSON is then named by the comparison instead of raised by the decoder.
     equal(
-        json.loads(answered.stdout),
-        [COUNTED, "--json"],
+        answered.stdout.strip(),
+        json.dumps([COUNTED, "--json"]),
         describing="what the program was run with, which the relay passes through whole",
     )
 
