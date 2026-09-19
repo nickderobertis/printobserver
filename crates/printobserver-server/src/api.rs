@@ -31,9 +31,10 @@
 //! built without the credential it is checked against.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
@@ -109,12 +110,28 @@ pub fn router(state: ApiState) -> Router {
             Arc::clone(&state.credential),
             authenticate,
         ))
+        .layer(DefaultBodyLimit::max(BODY_BOUND))
         .with_state(state);
     Router::new().nest(VERSION_PREFIX, api)
 }
 
 /// The scheme the credential is presented under.
 const BEARER: &[u8] = b"Bearer ";
+
+/// How much of a request's body this server reads, admitted or refused.
+///
+/// One bound for both: the router's body limit is set from it, so it is what
+/// every extractor reads an admitted body to, and what [`authenticate`] drains
+/// a refused one to — a body the server would have taken is one it drains,
+/// and a larger one is left where it is either way.
+pub const BODY_BOUND: usize = 2 * 1024 * 1024;
+
+/// How long [`authenticate`] waits for a refused request's body to arrive.
+///
+/// A caller that sent a head and then nothing would otherwise hold its refusal
+/// open for as long as it liked; after this the refusal goes out over whatever
+/// arrived, and the connection ends as it did before there was a drain.
+pub const DRAIN_BOUND: Duration = Duration::from_secs(2);
 
 /// Admit a request that presented the credential in force, and refuse every
 /// other before anything reads it.
@@ -123,6 +140,14 @@ const BEARER: &[u8] = b"Bearer ";
 /// credential. Two headers, another scheme, another spelling of this one, and a
 /// credential that is not the one in force are all the same refusal, which says
 /// what to present and nothing about what was presented.
+///
+/// The refusal is decided on the head alone, and the body is then drained, up
+/// to [`BODY_BOUND`], before it is answered. Nothing reads what is
+/// drained: a connection closed with a body still unread on it is closed with
+/// a reset rather than an end, and a caller on Windows — where a reset discards
+/// everything received and not yet read — then reads the abort in place of the
+/// `401` that was already on its way. Linux hands over what was queued first,
+/// which is why the same race is only ever seen there.
 pub async fn authenticate(
     State(credential): State<Arc<ApiCredential>>,
     request: Request,
@@ -146,6 +171,14 @@ pub async fn authenticate(
             header::WWW_AUTHENTICATE,
             header::HeaderValue::from_static("Bearer"),
         );
+        // A body past the bound, or one that has not arrived inside
+        // `DRAIN_BOUND`, is left where it is: the refusal is the answer either
+        // way, and what a caller then meets on the connection is its own doing.
+        let _ = tokio::time::timeout(
+            DRAIN_BOUND,
+            axum::body::to_bytes(request.into_body(), BODY_BOUND),
+        )
+        .await;
         return refused;
     }
     next.run(request).await

@@ -22,11 +22,21 @@ SERVICE_STEP = (
     "printobserver/main/scripts/install-service.sh | sudo sh\n"
 )
 
-#: The step that starts it, as the workflow spells it.
+#: The step that starts it on a systemd platform, as the workflow spells it.
 START_STEP = (
-    "      - id: start-service\n"
+    "      - id: start-service-systemd\n"
+    "        if: runner.os == 'Linux'\n"
     "        continue-on-error: true\n"
     "        run: sudo systemctl enable --now printobserver.service\n"
+)
+
+#: The step that starts it on a launchd platform, as the workflow spells it.
+LAUNCHD_START_STEP = (
+    "      - id: start-service-launchd\n"
+    "        if: runner.os == 'macOS'\n"
+    "        continue-on-error: true\n"
+    "        run: sudo launchctl bootstrap system "
+    "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist\n"
 )
 
 FOURTH_ROUTE = """
@@ -197,7 +207,11 @@ def test_an_install_job_checking_after_the_service_commands_is_refused(
     """A program that does not run must not reach a service before anything looked."""
     broken = tree()
     broken.edit(INSTALL, "      - run: printobserver --version\n", "")
-    broken.edit(INSTALL, START_STEP, START_STEP + "      - run: printobserver --version\n")
+    broken.edit(
+        INSTALL,
+        LAUNCHD_START_STEP,
+        LAUNCHD_START_STEP + "      - run: printobserver --version\n",
+    )
 
     findings = continuous_integration(broken.repo)
 
@@ -214,11 +228,45 @@ def test_an_install_job_running_the_two_commands_out_of_order_is_refused(
     nobody documented.
     """
     broken = tree()
-    broken.edit(INSTALL, SERVICE_STEP + START_STEP, START_STEP + SERVICE_STEP)
+    broken.edit(
+        INSTALL,
+        SERVICE_STEP + START_STEP,
+        START_STEP + SERVICE_STEP,
+    )
 
     findings = continuous_integration(broken.repo)
 
     refused(findings, "out of the order AGENTS.md states")
+
+
+def test_an_install_job_starting_launchd_before_the_installer_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Each service manager's pair is held to its own order.
+
+    The two managers share their installer command, so the order owed is the
+    order within each pair: a job that loads the property list before anything
+    wrote it is refused whatever the systemd pair beside it does.
+    """
+    broken = tree()
+    broken.edit(INSTALL, LAUNCHD_START_STEP, "")
+    broken.edit(INSTALL, SERVICE_STEP, LAUNCHD_START_STEP + SERVICE_STEP)
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "out of the order AGENTS.md states")
+
+
+def test_an_install_job_on_a_launchd_platform_omitting_its_start_command_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A job carrying a macOS cell owes the launchd pair, not only the systemd one."""
+    broken = tree()
+    broken.edit(INSTALL, LAUNCHD_START_STEP, "")
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "omits `sudo launchctl bootstrap system")
 
 
 def test_an_install_job_that_swallows_the_service_commands_silently_is_refused(
@@ -273,7 +321,7 @@ def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) 
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'waived_steps = ["install-service", "start-service"]',
+        'waived_steps = ["install-service", "start-service-systemd", "start-service-launchd"]',
         "waived_steps = []",
     )
 

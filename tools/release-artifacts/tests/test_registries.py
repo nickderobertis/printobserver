@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -109,6 +111,50 @@ def test_a_registry_serving_a_working_artifact_is_a_pass(
     equal(proof.outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`")
     equal(proof.exit_status, 0, describing="the exit a pass answers with")
     contains(proof.report, "printobserver 0.4.0", describing="what the installed program reported")
+    contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
+
+
+@ROUTE_PROOF
+def test_the_npm_route_is_taken_where_node_shares_a_runner_directory_with_rust(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    registries: Registries,
+    proving: Callable[..., Proof],
+) -> None:
+    """The registry's npm route keeps Node before removing a shared tool directory.
+
+    The layout of the hosted macOS images, made on this host: one directory
+    holding `node`, `npm` and `cargo` together, and the ONLY place `node` and
+    `npm` are on the path. Taking the toolchain's directory off that path
+    without keeping the runtime leaves `npm` unable to run and the installed
+    launcher unable to start — `env: node: No such file or directory` — which
+    is what the `prove-registry-npm (macos-aarch64)` cell reported before
+    this kept it.
+    """
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the registry journey needs the repository's Node and Rust toolchains")
+    npm = Path(node).resolve().parent / "npm"
+    if not npm.exists():
+        pytest.fail(f"the registry journey needs npm beside {node}")
+    (shared / "node").symlink_to(node)
+    (shared / "npm").symlink_to(npm)
+    (shared / "cargo").symlink_to(cargo)
+    elsewhere = [
+        directory
+        for directory in os.environ["PATH"].split(os.pathsep)
+        if directory and not any(Path(directory, name).exists() for name in ("node", "npm"))
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *elsewhere]))
+    registries.serve("0.4.0")
+
+    proof = proving("npm:printobserver-cli")
+
+    equal(proof.outcome, Outcome.PROVEN, describing=f"the npm route's proof:\n{proof.report}")
+    contains(proof.report, "printobserver 0.4.0", describing="what the installed launcher said")
     contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
 
 
@@ -385,15 +431,18 @@ def test_the_real_registries_are_where_a_run_with_no_stand_in_reads(repo: Repo) 
     equal(bases.npm, "https://registry.npmjs.org", describing="where route 2 is taken from")
     contains(bases.listing, "api.github.com", describing="where releases are listed")
     contains(bases.releases, "/releases", describing="where a release is downloaded from")
-    equal(bases.of("crate"), "", describing="a registry no route is taken from")
+    equal(bases.of("crate"), "https://crates.io/api/v1/crates", describing="the crate registry")
+    equal(bases.crates_index, "sparse+https://index.crates.io/", describing="its index")
+    equal(bases.of("brew"), "", describing="a registry nothing is taken from")
 
 
 def test_a_stand_in_address_points_every_registry_at_it(repo: Repo) -> None:
-    """One address covers all three: a proof reading one of each would prove neither."""
+    """One address covers all four: a proof reading one of each would prove neither."""
     bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: "http://127.0.0.1:9/"})
 
-    for where in (bases.pypi, bases.npm, bases.listing, bases.releases):
+    for where in (bases.pypi, bases.npm, bases.listing, bases.releases, bases.crates):
         contains(where, "http://127.0.0.1:9/", describing="where a registry is read from")
+    contains(bases.crates_index, "sparse+http://127.0.0.1:9/", describing="the crate index")
 
 
 def test_a_registry_that_cannot_be_reached_is_neither_outcome(repo: Repo, tmp_path: Path) -> None:
@@ -433,12 +482,15 @@ def test_a_registry_answering_something_other_than_its_protocol_is_refused(
     contains(str(refused.value), "other than the JSON", describing="what it said")
 
 
-def test_nothing_here_asks_a_registry_no_route_is_taken_from(repo: Repo) -> None:
-    """A crate is not a route, and a proof of one is refused rather than invented."""
+def test_nothing_here_asks_a_registry_no_artifact_is_taken_from(repo: Repo) -> None:
+    """A registry nothing here reads is refused rather than asked some default way."""
+    from release_artifacts.targets import Target
+
     bases = Bases.read(repo, {})
+    elsewhere = Target("brew:printobserver", "a fourth channel", "", "", "release-artifacts")
 
     with pytest.raises(RegistryError) as refused:
-        served(bases, named(repo.root, "crate:printobserver-sdk"))
+        served(bases, elsewhere)
 
     contains(str(refused.value), "knows how to ask", describing="what it said")
 

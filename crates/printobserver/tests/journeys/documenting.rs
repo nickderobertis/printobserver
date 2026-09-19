@@ -301,6 +301,34 @@ fn output_abstraction_preserves_malformed_identifiers_and_instants() {
     );
 }
 
+/// A state directory the program prints as the filesystem resolves it reads as
+/// the placeholder, whole, as does one it prints as it was given.
+///
+/// On macOS the temporary directory is reached through `/var`, a link to
+/// `/private/var`, and the program prints the resolved path. The state
+/// directory here is reached through a link of its own, so the two forms differ
+/// on every host this runs on.
+#[cfg(unix)]
+#[test]
+fn output_abstraction_replaces_a_resolved_state_directory_whole() {
+    let root = tempfile::TempDir::new().expect("a scratch tree");
+    let resolved_root = std::fs::canonicalize(root.path()).expect("the scratch tree resolves");
+    let actual = resolved_root.join("actual-state");
+    std::fs::create_dir_all(&actual).expect("a state directory");
+    let linked = root.path().join("linked-state");
+    std::os::unix::fs::symlink(&actual, &linked).expect("a link to the state directory");
+    let given = linked.display().to_string();
+    let printed = format!(
+        "image_path: {}/images/10/digest\nstate: {given}/images\n",
+        actual.display()
+    );
+
+    assert_eq!(
+        abstracted(&printed, &BTreeMap::from([("STATE_DIR", given)])),
+        "image_path: STATE_DIR/images/10/digest\nstate: STATE_DIR/images\n"
+    );
+}
+
 /// Replace every whitespace-separated word one rule matches.
 fn replace_matching(text: &str, matches: fn(&str) -> bool, with: &str) -> String {
     text.split_inclusive(char::is_whitespace)
@@ -317,14 +345,27 @@ fn replace_matching(text: &str, matches: fn(&str) -> bool, with: &str) -> String
 
 /// Replace every value this world minted with the placeholder standing for it.
 fn abstracted(printed: &str, bindings: &BTreeMap<&'static str, String>) -> String {
-    // Each value as it is printed plainly and as a JSON string escapes it, which
-    // differ for a path carrying a backslash.
-    let mut ordered: Vec<(&str, String)> = bindings
-        .iter()
-        .flat_map(|(name, value)| [(*name, value.clone()), (*name, value.replace('\\', "\\\\"))])
-        .collect();
+    let mut ordered: Vec<(&str, String)> = Vec::new();
+    for (name, value) in bindings {
+        // Each value as it is printed plainly and as a JSON string escapes it,
+        // which differ for a path carrying a backslash.
+        ordered.push((name, value.clone()));
+        ordered.push((name, value.replace('\\', "\\\\")));
+        // A path is also printed as the filesystem resolves it: on macOS the
+        // temporary directory is `/var/folders/…` and the program prints
+        // `/private/var/folders/…`, which only this form matches whole.
+        if Path::new(value).is_absolute()
+            && let Ok(resolved) = std::fs::canonicalize(value)
+            && resolved.as_os_str() != value.as_str()
+        {
+            let resolved = resolved.display().to_string();
+            ordered.push((name, resolved.replace('\\', "\\\\")));
+            ordered.push((name, resolved));
+        }
+    }
     // Longest first, so a state directory that is a prefix of an image path is
-    // replaced before anything inside it.
+    // replaced before anything inside it, and a resolved path before the path
+    // it is a suffix of.
     ordered.sort_by_key(|(_, value)| core::cmp::Reverse(value.len()));
     let mut written = printed.to_owned();
     for (name, value) in ordered {

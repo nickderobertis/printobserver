@@ -213,6 +213,24 @@ site = "urllib.request.urlopen(request"
 reason = "The second half of the same one site: S310 flags both building the request and opening it, and this stand-in posts through exactly one `urlopen`."
 
 [[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "return command.startswith(prefix) or after_the_interpreter.startswith(prefix)"
+reason = "The judged tier's fifth pass over this change objected that a prefix comparison admits a command line that merely extends the prefix. The prefix is the program's absolute path in this instance's own virtual environment, `--basedir` naming this instance's own directory, and the `serve` command — the whole of the argv `start_server` starts a server under, before the address it listens on — so the only command line that extends it is that server's own, with its address after `serve`; and the one word admitted before it is the interpreter the kernel puts first when it runs the console script's shebang, whose own spelling adds nothing to an identity the program's path inside the instance's state directory already carries. What the check refuses is what the pass before asked it to: a process whose command line mentions the directory anywhere without being that server, which the decoy journey in `tests/test_startup_failures.py` drives."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "bare = parts.hostname and parts.port is not None and parts.username is None"
+reason = "The same pass objected that the host's own spelling is not validated here. Every value this narrows is one this script wrote as `http://127.0.0.1:<port>`, and the one reader of it — `_already_running` — hands it to `http.client`, which refuses a host it cannot spell as `InvalidURL`, an `HTTPException` that reader already catches and answers as no running instance. Validating the spelling of a host name here would restate the HTTP client's own rule for a value it is about to check anyway; what this boundary holds is the shape the record promises, `http://host:port` and nothing beyond it, each departure driven through the script by the parametrized journey in `tests/test_startup_failures.py`."
+
+[[suppression]]
+rule = "S603"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "decoy = subprocess.Popen("
+reason = "The one process this suite starts outside `repo_checks.shell`, and for a reason that helper cannot give it: the decoy stands in for an unrelated program holding a stale record's process id, and it has to sit in a session of its own so that a bring-down which wrongly signalled it would take the decoy rather than the whole test session it would otherwise share a process group with. The executable is resolved with `shutil.which` first, the arguments are a list, and nothing runs through a shell."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "http.client.HTTPConnection"
@@ -313,7 +331,7 @@ reason = "The immutable array carries literal bundled paths rather than caller-c
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
 site = "flips this to `yes`"
-reason = "Required content rather than a roadmap. `repo_checks.checks_ci.platforms` refuses an `install path: no` answer that states no reason, and the reason an answer is `no` for these four platforms is that their bring-up is owed and which node flips it; a durable-sounding reason would be a false one. Each reason is deleted by the change that flips its answer to `yes`."
+reason = "Required content rather than a roadmap. `repo_checks.checks_ci.platforms` refuses an `install path: no` answer that states no reason, and the reason an answer is `no` for the platforms still carrying one is that their bring-up is owed and which node flips it; a durable-sounding reason would be a false one. Each reason is deleted by the change that flips its answer to `yes`."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
@@ -324,13 +342,13 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
-site = "The macOS and Windows entries are being brought up"
-reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming four platforms with every cell excluded needs one sentence saying why and where the record of their runners is. It goes when the bring-up finishes."
+site = "The Windows entries are being brought up"
+reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming platforms whose cells are still excluded needs one sentence saying why and where the record of their runners is. The macOS bring-up narrowed it to the two Windows entries; it goes when theirs finishes."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
-site = "The macOS and Windows entries are being brought up"
+site = "The Windows entries are being brought up"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
@@ -410,6 +428,12 @@ rule = "tool_output_is_signal"
 file = "justfile"
 site = "test-install-proof:"
 reason = "A passing `just test-install-proof` prints three lines, and they are three independent proofs rather than one proof said three times: each of the three route recipes it runs proves a different route against a different registry, and its one line carries which version that registry served, where that version was selected from, what installed it and what the installed program answered — the evidence this tier exists to produce, and one a summary line cannot carry for three routes at once. `tests/repo-e2e/tests/test_registry_proof_journey.py::test_the_tier_recipe_proves_every_route` asserts exactly those three lines and nothing beside them. A route that fails still prints its whole report on the other stream and stops the tier there, so a failed run is not three lines either."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "crates/printobserver/AGENTS.md"
+site = "# printobserver"
+reason = "The same ground the `tools/release-artifacts/AGENTS.md` entry below states, met at this crate's own nested file: `.github/CODEOWNERS` assigns every path with `* @nickderobertis`, and the judged tier reads a diff that does not carry that unchanged file — run `20260917T165131Z-e8507` failed this file's service-manager passage for the repository having no CODEOWNERS, while the file has stood since before this change."
 
 [[suppression]]
 rule = "instruction_layer_localized"
@@ -557,6 +581,12 @@ reason = "The forge's scheduling rules are documented prose with no machine-read
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/world.py"
+site = "http.client.HTTPConnection"
+reason = "The one HTTP request this world makes itself: the alert that opens the print every client proof then drives, posted to the ingress of the supervisor this same world just started on loopback. It is a step of a strictly ordered stand-up — start the supervisor, post the alert, wait until the print it opened is recorded — whose answer is acted on before the next step, so there is nothing for an awaited client to overlap, and the program around it is the same synchronous command-line proof the `registries.py` entries below describe. The typed half is answered where the answer is consumed: the status is narrowed to the accepted set and any other refused naming it, and the body is read and discarded because the print is confirmed by reading the supervisor back rather than by trusting the acknowledgement. The product's own boundary to this ingress is Obico's webhook plugin, which posts exactly this way."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "urllib.request.Request("
 reason = "The typed half is answered rather than suppressed: every answer a registry gives is narrowed at this boundary and a body that is not the document its own protocol serves is refused there. The async half does not apply to this program. It is a command-line tool a `just` recipe runs to completion, with no event loop anywhere in it: every subprocess, every install and every read it makes goes through `repo_checks.shell.run` synchronously and in order, because a proof of one route is a sequence — ask, install, run, read back. One awaited read inside it would need a loop this program has no reason to have, and would not make the proof any more concurrent, because there is nothing to overlap it with."
@@ -579,8 +609,26 @@ file = ".github/workflows/install-path.yml"
 site = "prove-registry-script:"
 reason = "The same tier and the same reason as the two jobs above it: the forge's releases and their artifacts are read anonymously because that is how the committed install script reads them on the machine beside the printer."
 
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-rust:"
+reason = "The same tier and the same reason as the three route jobs above it: the crate registry is read anonymously because that is how a dependent's own `cargo build` reads it, and the supervisor the smoke check runs against is taken from the forge's release the way the install script takes it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-python:"
+reason = "The same tier and the same reason as the jobs above it: the Python registry is read anonymously because that is how an application's own `pip install` reads it."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = ".github/workflows/install-path.yml"
+site = "prove-registry-client-node:"
+reason = "The same tier and the same reason as the jobs above it: the JavaScript registry is read anonymously because that is how an application's own `npm install` reads it."
+
 # `.github/workflows/platform-probe.yml` carries one trailing directive on each
-# line a rule reads: every tier's `run:` in the steps the four probe jobs share
+# line a rule reads: every tier's `run:` in the steps the three probe jobs share
 # and each tier step's `continue-on-error:`, and each job's `runs-on:` and job-
 # level `continue-on-error:`. The probe is temporary scaffolding whose whole
 # task is to report what each tier does on a runner no gate has run on yet, and
@@ -597,7 +645,7 @@ reason = "Running the gate's tiers one step each is what the probe is for: `just
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/platform-probe.yml"
 site = "run: just "
-reason = "It is not a second sweep of what the gate already ran: the gate runs on the two Linux runners, and this runs the same tiers once on each of the four macOS and Windows runners no gate reaches yet, to record what they say there. It is removed once those platforms' gate cells run."
+reason = "It is not a second sweep of what the gate already ran: it fires on a manual dispatch alone, never on a change, and runs the same tiers once on each of the runners still being brought up, to record what they say there. It is removed once those platforms' gate cells run."
 
 [[suppression]]
 rule = "diagnostics_error_or_absent"
@@ -634,6 +682,18 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/release-artifacts/tests/test_registry_clients.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in, beside `test_clients.py`, which builds the same supervisor and starts it for real. What edges this project's `test` target is what it proves rather than what it costs, and moving it out would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/release-artifacts/tests/test_registry_clients.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -939,6 +999,60 @@ site = "BOUNDARY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
 [[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_artifact("
+reason = "The release this journey stages carries one program per targeted platform, and a single host can run the program built for its own platform and no other — so the four artifacts are stand-ins that each say which platform they were published for, and what the journey proves is which of the four the committed script chose for each `uname` answer, through the real script run by `sh`, the real checksum verification, the real archive layout and the real installation onto the path. The real built program is what the route journeys in `tools/release-artifacts` install and run through the same script on every platform's own cell, which is where a program that does not run would be found."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "def _uname"
+reason = "What stands in is the host's own answer to `uname`, and nothing else: this journey proves the script maps each `uname` answer the platform declaration names to that platform's artifact and start command, and a single host can only give its own answer, so the macOS answers could never be reached on a Linux runner (nor the Linux ones on a Mac) without supplying them. Everything the script does with the answer is real: the committed script run by `sh`, a staged release in the layout the forge serves, the real checksum verification, the real unpacking and the real installed program reporting which artifact it is. The macOS cells of the gate run the same journey on a real Mac, where the host's own answer is one of those supplied here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "@pytest.mark.parametrize"
+reason = "The same `uname` answers as the entry for `def _uname` above, supplied to the one parametrized journey that walks every targeted platform; that entry carries the reason."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_uname(shims, system, machine)"
+reason = "The call site that supplies the `uname` answers justified by the `def _uname` entry above. The task explicitly requires the committed install script's macOS branch to be reached through a fixture on this host; the helper's entry explains why this is the only substituted host fact and which real boundaries the journey continues to drive."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "_uname(shims, system, machine)"
+reason = "The task explicitly requires this real committed-script journey to reach both macOS branches through a fixture on the dispatch's non-macOS host. Supplying `uname` is the sole platform fact a user cannot select; artifact resolution, checksum verification, unpacking, execution, and the emitted service-manager command all remain the public route's real behavior, and the same journey runs with the native answer in each macOS cell."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+site = "JUST_STANDIN = "
+reason = "The layer under test is the committed platform-dispatch workflow and the script it hands its two inputs to, and both run unsubstituted: the workflow's own text under the forge's rules, and the real `just dispatch-resolve` and `just dispatch-run` over a real copy of the tree. What the stand-in records instead of running is every OTHER recipe the dispatched source job's steps reach — `just bootstrap`, the OctoPrint bring-up, the printer tier, the bring-down and the whole gate — because the question is which commands a dispatch runs and on which runner, and running a toolchain install, a real OctoPrint and the gate to answer it would prove nothing more about the dispatch."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+site = "run = Runner("
+reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`, and it cannot be fired from a journey for a reason stronger than the release-workflow journey's: the forge dispatches a workflow only from the default branch, so the committed workflow has no hosted run at all until the change adding it merges (`gh workflow run platform-dispatch.yml --ref <branch>` answers `workflow platform-dispatch.yml not found on the default branch`). So the journey runs the committed workflow's own text under the forge's documented rules (`actions.py`) as a `workflow_dispatch` carrying the two inputs a person would type, and everything the workflow then does is real: `select` runs the real `just dispatch-resolve` over a real copy and `run` lands on the runner it answered and runs the real `just dispatch-run`, which runs the source job's own commands. What is asserted is what the two jobs did and where — by the workflow's own job keys and the source job's own commands — not anything of the runner's internals."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/platform-dispatch.yml"
+site = "- gate"
+reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `gate` is the same recipe `ci.yml` runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "answer = _answered(url)"
+reason = "The crate registry is read through the same one synchronous helper every other registry in this module is read through, and the two entries above for `urllib.request.Request(` and `urlopen(` carry the reason the async half does not apply: this is a command-line proof a `just` recipe runs to completion, with no event loop and nothing for an awaited read to overlap — ask the registry, then install what it serves, then run it. The typed half is answered on the lines that follow the call rather than suppressed: the document is refused unless it is a mapping carrying a `versions` list of mappings, and each entry is refused unless its `num` is a string and its `yanked` a boolean, as the crate registry's own protocol serves them — a `yanked` read by truthiness would take a mirror's `\"false\"` as yanked and drop a version a dependent can take, and `tools/release-artifacts/tests/test_registry_clients.py` drives a yanked version and a malformed entry through this boundary against the stand-in registry."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/src/windows_service.rs"
 site = "ServiceControl::Stop | ServiceControl::Shutdown => {"
@@ -1048,3 +1162,51 @@ rule = "boundary_inputs_validated"
 file = "tools/printer-smoke/printer_smoke.py"
 site = "if not name or _query_dos_device(name) is None:"
 reason = "The Windows half of the same one probe as the entry above: the name is looked up in the system's device table, which answers whether it is a device without opening it — the point of asking the table, since opening a serial port can reset the printer on the other end. An empty name, the one input that would make the lookup answer something for any host, is refused on the line before it is asked; anything else is a read of a table, and a name the table does not carry is refused naming the shape a Windows port has."
+
+[[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "README.md"
+site = "See [`AGENTS.md`](./AGENTS.md) for repository development"
+reason = "The README is the forge's landing page, read by a person in a browser or a fresh clone who is handed no instruction file by any harness; the pointer is how that reader finds the development and release rules at all. The line predates this branch and is outside its diff — the judge read it as context of the install-path section the branch edits."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = 'call(record_url(record), api_key(instance), "/api/version", timeout=5.0)'
+reason = "The first step of the same strictly ordered bring-up the `http.client.HTTPConnection` entry above describes: one blocking question to an OctoPrint this script itself started, on loopback, whose answer decides whether anything else is started at all. The judge reached it through a rename on the line above it; the helper it calls carries the reason for every call through it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "JOB_KEYS = frozenset("
+reason = "The same ground as the entry for `Runner` above: the job keys the forge accepts are documented prose with no machine-readable schema to generate from, and the drift gate is the forge itself — the same workflow text runs on GitHub on every push and every dispatch. What keeps the set honest is that it is a refusal list rather than an approximation: a workflow carrying a job key outside it fails the journey by name, and `test_actions_runner.py` pins the modelled keys over a workflow small enough to read against the forge's documentation."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "NAMED_BASH = "
+reason = "The same ground as the entries above it: the invocation the forge gives a `run:` step whose shell is named `bash` is documented prose (`bash --noprofile --norc -eo pipefail {0}`) with no machine-readable source, and the drift gate is the forge, where the platform-dispatch workflow's `run` job — the one job here that names that shell — runs on its first dispatch after the merge; `test_actions_runner.py` pins the invocation over a workflow small enough to read against the documentation, and any other named shell is refused rather than modelled."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "return reported.strip().replace('\"', \"\")"
+reason = "What comes back is never split into arguments or run: it is compared, as one string, against the prefix this script itself composed for the server it started, to decide whether a recorded process identifier still names that server before it is signalled. Windows quotes an argument carrying a space where `ps` would not, and a Windows path cannot carry a quote at all, so dropping the quotes is what makes the two spellings of one command line comparable and loses nothing the comparison reads. A process whose stripped command line starts with this instance's own interpreter and its own `octoprint serve` arguments is this instance's server, which is the one question asked."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/repo-checks/src/repo_checks/dispatching.py"
+site = "REFUSED = 2"
+reason = "The exit of a job that ran is that job's own by design — `test_platform_dispatch.py` holds a failed tier's exit to the failure's, because the dispatch workflow's `run` job reports what the source job would have — and a refusal exits 2 having run nothing. A source job that itself exits 2 is told from a refusal by the `platform-dispatch: refused:` line every refusal prints to stderr and no job does, which is the output contract; the workflow's `select` job resolves the pair before `run` exists, so a refusal there stops the dispatch before any source command runs at all."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver/tests/service_manager.rs"
+site = "\"--privileged\","
+reason = "The container runs systemd as PID 1 to activate, kill and restart the installed service through the real manager, and systemd as PID 1 mounts its own cgroup hierarchy, mounts the tmpfs under `/run`, and starts units as other users — capabilities that a narrower `--cap-add` set does not reliably cover across the Docker and kernel versions the hosted runners carry. The grant is to a throwaway container of this journey's own, on a private cgroup namespace, removed on every exit path, and the journey is the only thing that starts it."

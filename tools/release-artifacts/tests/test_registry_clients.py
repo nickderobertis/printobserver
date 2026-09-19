@@ -1,0 +1,440 @@
+"""Proving each client against a registry, driven against registries stood up here.
+
+The three routes are proven from their registries in `test_registries.py`;
+these are the three clients a dependent takes as a dependency, each taken from
+the registry that serves it — a crate registry with a real sparse index, a
+Python index serving a real wheel, a JavaScript registry serving a real package
+— with the same `cargo`, `pip` and `npm` a dependent runs, and proven where it
+was installed by its own committed smoke check against a **real supervisor**:
+the program the forge's release asset carries, taken by the install-script
+route at the same version, so nothing a proof reaches is a build of the tree.
+
+Every direction is falsified: a registry serving nothing for the version under
+test does not pass and says it was not served, a forge serving no release for
+the supervisor to come from does not pass and names the forge, a registry
+serving a client that installs and cannot be used does not pass and says so
+distinctly, and one serving the real client passes.
+
+The proofs that reach the supervisor take it by the install-script route, so
+they carry the same `ROUTE_PROOF` mark the route proofs do: run where the
+install path targets this host's platform, and skipped where the platform's
+own descriptor says it does not yet — the record the install-route delivery
+flips, with nobody editing a test. On such a host the half of the proof that
+needs no route is driven instead: the client taken from its registry with the
+same `cargo`, `pip` and `npm`, and its smoke check run where it was installed
+against the program this tree builds, standing in for the release's — which is
+what keeps the code the two halves share proven on a host the route does not
+reach yet, and is where a client taken on a Windows host was first found
+looking for its interpreter under `bin`.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable, Iterator
+from pathlib import Path
+
+import pytest
+from release_artifacts.installing import Installed, InstallError, prove_client
+from release_artifacts.registries import (
+    PRINTOBSERVER_PROOF_REGISTRIES,
+    PRINTOBSERVER_PROOF_VERSION,
+    Bases,
+    Outcome,
+    Proof,
+    RegistryError,
+    clients,
+    prove,
+    served,
+)
+from release_artifacts.standin import CRATES_PREFIX, Registries
+from release_artifacts.targets import declared, named
+from repo_checks import platforms
+from repo_checks.expect import contains, equal, passing
+from repo_checks.model import Repo
+from repo_checks.shell import run
+from route_proof import ROUTE_PROOF, WITHOUT_ROUTE_PROOF
+
+#: The clients a dependent takes as a dependency, each from its registry: the
+#: ones the proof takes, which `clients` holds to what `release-targets.toml`
+#: declares, so a client declared and not proven fails there rather than here.
+CLIENTS = list(clients(Repo(Path(__file__).resolve().parents[3])))
+
+#: How long the one program build these share is given.
+BUILD_TIMEOUT_SECONDS = 2400
+
+
+@pytest.fixture(scope="module")
+def built() -> Path:
+    """The real program this tree builds for this host, built once.
+
+    The debug build rather than a release one: what the client's proof is
+    about is the client, and the program on the other side of the socket is
+    the same program either way. Under the name the platform gives it, which
+    carries `.exe` on Windows.
+    """
+    repo = Repo(Path(__file__).resolve().parents[3])
+    program = repo.root / "target" / "debug" / platforms.host(repo).program
+    if not program.is_file():
+        passing(
+            run(
+                ["cargo", "build", "--locked", "-p", "printobserver"],
+                cwd=repo.root,
+                timeout=BUILD_TIMEOUT_SECONDS,
+            ),
+            describing="building the supervisor the clients are proved against",
+        )
+    return program
+
+
+@pytest.fixture(scope="module")
+def supervisor(built: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The program the stand-in forge's release carries: the built one, stripped.
+
+    Stripped, in a copy, because every artifact the stand-in serves carries
+    the program's bytes compressed, and a debug build's are mostly debug
+    information nothing here reads.
+    """
+    stripped = tmp_path_factory.mktemp("supervisor") / built.name
+    passing(
+        run(["strip", "-o", str(stripped), str(built)], cwd=built.parent, timeout=300),
+        describing="stripping the supervisor of its debug information",
+    )
+    return stripped
+
+
+@pytest.fixture  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] see suppressions.toml
+def registries(  # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] see suppressions.toml
+    repo: Repo, tmp_path: Path
+) -> Iterator[Registries]:
+    """The registries, answering on one address, serving nothing yet."""
+    standing_in = Registries(repo, tmp_path / "served")
+    try:
+        yield standing_in
+    finally:
+        standing_in.stop()
+
+
+@pytest.fixture
+def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[..., Proof]:
+    """Take one client from the stand-in registries and prove what they served."""
+
+    def prove_client(identifier: str, wanted: str = "") -> Proof:
+        into = tmp_path / identifier.replace(":", "-").replace("/", "-") / (wanted or "newest")
+        return prove(
+            repo,
+            identifier,
+            into,
+            {
+                PRINTOBSERVER_PROOF_REGISTRIES: registries.base,
+                PRINTOBSERVER_PROOF_VERSION: wanted,
+            },
+        )
+
+    return prove_client
+
+
+@ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_a_registry_serving_the_client_is_a_pass_against_the_releases_own_supervisor(
+    identifier: str,
+    version: str,
+    supervisor: Path,
+    registries: Registries,
+    proving: Callable[..., Proof],
+) -> None:
+    """The client the registry serves is installed, and its smoke check reaches a real server.
+
+    The server is the program the forge's release carries, taken by the
+    install script; the check reads a status, materializes an image and opens
+    the file the server answered — which a check that reached no server, or
+    reached a build of this tree, would say nothing about.
+    """
+    registries.serve(version, program=supervisor)
+    registries.serve_clients(identifier)
+
+    proof = proving(identifier)
+
+    equal(proof.outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`:\n{proof.report}")
+    equal(proof.exit_status, 0, describing="the exit a pass answers with")
+    contains(proof.report, "smoke: contract", describing="what the installed client said")
+    contains(proof.report, version, describing="the version proven")
+    contains(proof.report, "release's own supervisor", describing="what the check ran against")
+    contains(
+        " ".join(registries.asked),
+        "/forge/releases/download/v",
+        describing="the release the supervisor was taken from",
+    )
+
+
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_a_registry_serving_nothing_for_the_client_is_not_served(
+    identifier: str, version: str, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A publish that did not happen is reported as that rather than as a broken client.
+
+    The release is served with the stand-in's own program: the client's
+    registry is asked before anything is taken, and it is that answer which
+    stops the run.
+    """
+    registries.serve(version)
+
+    proof = proving(identifier, version)
+
+    equal(proof.outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 3, describing="the exit a version nothing serves answers with")
+    contains(proof.report, "publish that did not happen", describing=proof.report)
+    contains(proof.report, f"client: {identifier}", describing=proof.report)
+
+
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_a_forge_serving_no_release_for_the_supervisor_names_the_forge(
+    identifier: str, version: str, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """The client is there and the program it would run against is not: the forge is named.
+
+    Nothing is installed, because the repair is the release's publish rather
+    than the client — and a proof that took the client first would report a
+    client that works as one that does not.
+    """
+    registries.serve_clients(identifier)
+
+    proof = proving(identifier, version)
+
+    equal(proof.outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
+    contains(proof.report, "release:printobserver", describing="the target nothing serves")
+    contains(proof.report, "supervisor:", describing=proof.report)
+    contains(proof.report, "/forge/releases", describing="the forge, named")
+
+
+@ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_a_client_that_installs_and_cannot_be_used_does_not_pass(
+    identifier: str,
+    version: str,
+    supervisor: Path,
+    registries: Registries,
+    proving: Callable[..., Proof],
+) -> None:
+    """A registry serving the name with nothing usable in it is a build to repair."""
+    registries.serve(version, program=supervisor)
+    registries.serve_clients(identifier, broken=True)
+
+    proof = proving(identifier, version)
+
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing=f"the proof of `{identifier}`")
+    equal(proof.exit_status, 1, describing="the exit a broken artifact answers with")
+    contains(proof.report, "did not work here", describing=proof.report)
+    contains(proof.report, "build to repair", describing=proof.report)
+
+
+@pytest.fixture
+def taking(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[[str, str], Installed]:
+    """Take one client from the stand-in registries the way the proof takes it, and no more."""
+
+    def take_client(identifier: str, version: str) -> Installed:
+        into = tmp_path / identifier.replace(":", "-").replace("/", "-")
+        into.mkdir(parents=True, exist_ok=True)
+        bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+        return clients(repo)[identifier](repo, named(repo.root, identifier), version, into, bases)
+
+    return take_client
+
+
+@WITHOUT_ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_where_no_route_reaches_this_host_the_served_client_still_runs_its_check(
+    identifier: str,
+    repo: Repo,
+    version: str,
+    built: Path,
+    registries: Registries,
+    taking: Callable[[str, str], Installed],
+) -> None:
+    """The client the registry serves is taken and its smoke check reaches a real server.
+
+    The server is the program this tree builds, because on this host no route
+    puts the release's own on a path yet: what is proven is the half of the
+    proof that needs none — the client `cargo`, `pip` or `npm` took from the
+    registry, and its committed check run where it was installed, the way the
+    proof by the route runs it once the route is there. The program is the
+    same debug build the stand-in forge's release carries, unstripped.
+    """
+    registries.serve_clients(identifier)
+
+    said = prove_client(repo, taking(identifier, version), built)
+
+    contains(said, "smoke: contract", describing=f"what the installed `{identifier}` said")
+
+
+@WITHOUT_ROUTE_PROOF
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_where_no_route_reaches_this_host_a_client_that_cannot_be_used_still_fails(
+    identifier: str,
+    repo: Repo,
+    version: str,
+    built: Path,
+    registries: Registries,
+    taking: Callable[[str, str], Installed],
+) -> None:
+    """A registry serving the name with nothing usable in it is refused naming the client.
+
+    Where it is refused is the client's own: a crate carrying no library stops
+    the consumer's build, and a wheel or a package carrying no module installs
+    and fails the smoke check the moment it is used. Either is the same
+    `InstallError` the proof by the route reports as a build to repair.
+    """
+    registries.serve_clients(identifier, broken=True)
+
+    with pytest.raises(InstallError) as refused:
+        prove_client(repo, taking(identifier, version), built)
+
+    contains(str(refused.value), "failed (", describing="what the refusal says")
+    contains(str(refused.value), named(repo.root, identifier).name, describing="what it names")
+
+
+@ROUTE_PROOF
+def test_a_release_whose_supervisor_does_not_come_up_does_not_pass(
+    version: str, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A supervisor the release carries that cannot serve is the release not working.
+
+    The stand-in's own program answers `--version` and nothing else, so as a
+    supervisor it stops before it answers — as a release carrying a program
+    older than the smoke check's contract does, which starts and never
+    writes the client file the check reads. Either is reported as the served
+    artifact not working, naming what the supervisor did, rather than raised
+    out of the middle of the proof.
+    """
+    registries.serve(version)
+    registries.serve_clients("pypi:printobserver-sdk")
+
+    proof = proving("pypi:printobserver-sdk", version)
+
+    equal(proof.outcome, Outcome.NOT_PROVEN, describing=f"the proof:\n{proof.report}")
+    contains(proof.report, "did not work here", describing=proof.report)
+    contains(proof.report, "the supervisor stopped before it answered", describing=proof.report)
+    contains(proof.report, "supervisor:", describing="where it was taken from")
+
+
+def test_a_yanked_crate_version_is_never_the_newest(
+    repo: Repo, version: str, registries: Registries
+) -> None:
+    """A yanked version is one `cargo` refuses a new dependent, so it is not one served."""
+    registries.serve_clients("crate:printobserver-sdk")
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps(
+            {
+                "crate": {"name": "printobserver-sdk", "max_version": "9.9.9"},
+                "versions": [
+                    {"num": "9.9.9", "yanked": True},
+                    {"num": version, "yanked": False},
+                    {"num": "0.0.1-rc1", "yanked": False},
+                ],
+            }
+        ).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(
+        served(bases, named(repo.root, "crate:printobserver-sdk")),
+        (version,),
+        describing="the versions the crate registry serves a dependent",
+    )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"num": 1, "yanked": False},
+        {"num": "0.2.0", "yanked": "false"},
+        {"yanked": False},
+    ],
+    ids=["num-not-a-string", "yanked-not-a-boolean", "no-num"],
+)
+def test_a_crate_version_entry_of_another_shape_is_refused(
+    repo: Repo, registries: Registries, entry: dict[str, object]
+) -> None:
+    """A version list that is not the protocol's is a stop, not an empty registry.
+
+    Read by truthiness, a `"false"` some mirror answered for `yanked` would
+    drop a version a dependent can take, and a number where a string belongs
+    is a document this proof does not describe; either is refused naming the
+    entry rather than read as `NOT SERVED`.
+    """
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps({"crate": {"name": "printobserver-sdk"}, "versions": [entry]}).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "crate:printobserver-sdk"))
+
+    contains(str(refused.value), "string `num` and a boolean `yanked`", describing="what it said")
+
+
+def test_a_crate_document_with_no_version_list_is_refused(
+    repo: Repo, registries: Registries
+) -> None:
+    """A crate document carrying something other than a list of versions is refused too."""
+    registries.answers(
+        f"{CRATES_PREFIX}/api/v1/crates/printobserver-sdk",
+        json.dumps({"crate": {"name": "printobserver-sdk"}, "versions": "all of them"}).encode(),
+    )
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    with pytest.raises(RegistryError) as refused:
+        served(bases, named(repo.root, "crate:printobserver-sdk"))
+
+    contains(str(refused.value), "with a `versions` list in it", describing="what it said")
+
+
+def test_the_clients_taken_are_exactly_the_clients_declared(repo: Repo) -> None:
+    """The committed tree's own two copies agree."""
+    equal(
+        sorted(clients(repo)),
+        sorted(
+            target.id
+            for target in declared(repo.root)
+            if not target.route and target.built_by == "release-artifacts"
+        ),
+        describing="the clients this proof takes",
+    )
+
+
+def test_a_client_declared_that_nothing_here_takes_is_refused(repo: Repo, tmp_path: Path) -> None:
+    """A fourth client would be one this tier reports nothing at all about."""
+    tree = tmp_path / "fourth"
+    tree.mkdir()
+    declaration = (repo.root / "release-targets.toml").read_text(encoding="utf-8")
+    (tree / "release-targets.toml").write_text(
+        declaration + '\n[[target]]\nid = "gem:printobserver-sdk"\n'
+        'description = "A fourth client."\nbuilt_by = "release-artifacts"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistryError) as refused:
+        clients(Repo(tree))
+
+    contains(str(refused.value), "gem:printobserver-sdk", describing="the client nothing takes")
+    contains(str(refused.value), "nothing here takes it", describing="what it said")
+
+
+def test_a_client_taken_here_that_nothing_declares_is_refused(repo: Repo, tmp_path: Path) -> None:
+    """And the other direction: an entry beside a client nobody publishes is dead."""
+    tree = tmp_path / "undeclared"
+    tree.mkdir()
+    declaration = (repo.root / "release-targets.toml").read_text(encoding="utf-8")
+    start = declaration.index('[[target]]\nid = "npm:@printobserver/sdk"')
+    end = declaration.index("[[target]]", start + 1)
+    (tree / "release-targets.toml").write_text(
+        declaration[:start] + declaration[end:], encoding="utf-8"
+    )
+
+    with pytest.raises(RegistryError) as refused:
+        clients(Repo(tree))
+
+    contains(str(refused.value), "npm:@printobserver/sdk", describing="the client nothing declares")
+    contains(str(refused.value), "declared as no client", describing="what it said")

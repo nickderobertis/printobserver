@@ -36,6 +36,8 @@ MATRIX = """    strategy:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
 """
 
 # The gate's two Windows cells, which follow the Linux ones in its own matrix.
@@ -290,8 +292,10 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
     broken.edit(
         ".github/workflows/install-path.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: macos-aarch64\n            runner: macos-15\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
         "      - uses: actions/setup-python@v5\n",
+        "          - id: macos-aarch64\n            runner: macos-15\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
         "      - uses: actions/setup-python@v5\n",
     )

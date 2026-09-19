@@ -14,21 +14,27 @@ that writes its clients an address or a credential none of them can use.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.installing import NO_TOOLCHAIN, prove
+from release_artifacts.installing import NO_TOOLCHAIN, TOOLCHAIN, prove, without_rust
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.world import (
+    ACTION_KINDS,
     CLIENT_CONFIG,
     INGRESS_WORD,
     Machine,
+    Printer,
     World,
     WorldError,
     _as_toml,
+    _configuration,
+    every_action,
     scripted_printer,
 )
 from repo_checks.expect import absent, contains, equal, truth
@@ -37,6 +43,75 @@ from route_proof import ROUTE_PROOF
 
 #: The three routes an end user gets the program by, each installed for real.
 ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobserver"]
+
+
+@ROUTE_PROOF
+def test_node_is_kept_when_a_runner_installs_it_beside_rust(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The npm route keeps its runtime when a hosted runner shares a tool directory."""
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
+    (shared / "node").symlink_to(node)
+    (shared / "cargo").symlink_to(cargo)
+    monkeypatch.setenv("PATH", os.pathsep.join((str(shared), os.environ["PATH"])))
+
+    environment = without_rust(preserve=("node",), preserved_at=tmp_path / "route-path")
+
+    truth(shutil.which("node", path=environment["PATH"]), describing="the npm runtime on PATH")
+    equal(
+        [name for name in TOOLCHAIN if shutil.which(name, path=environment["PATH"])],
+        [],
+        describing="the Rust programs reachable from the install path",
+    )
+
+
+@ROUTE_PROOF
+def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    version: str,
+) -> None:
+    """The real npm route preserves Node before removing a shared tool directory.
+
+    The shared directory holds `node`, `npm` and `cargo` together and is the
+    **only** place `node` and `npm` are on the path, as on the hosted macOS
+    images: a host that kept a second Node elsewhere would let the proof run
+    the installed launcher after the shared directory was taken off, and say
+    nothing about a host that does not.
+    """
+    shared = tmp_path / "hosted-tool-bin"
+    shared.mkdir()
+    node = shutil.which("node")
+    cargo = shutil.which("cargo")
+    if node is None or cargo is None:
+        pytest.fail("the artifact journey needs the repository's Node and Rust toolchains")
+    # The npm beside the real node rather than a version manager's shim of it,
+    # which is what a hosted image's tool directory holds.
+    npm = Path(node).resolve().parent / "npm"
+    if not npm.exists():
+        pytest.fail(f"the artifact journey needs npm beside {node}")
+    (shared / "node").symlink_to(node)
+    (shared / "npm").symlink_to(npm)
+    (shared / "cargo").symlink_to(cargo)
+    elsewhere = [
+        directory
+        for directory in os.environ["PATH"].split(os.pathsep)
+        if directory and not any(Path(directory, name).exists() for name in ("node", "npm"))
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join([str(shared), *elsewhere]))
+
+    said = prove(repo, "npm:printobserver-cli", into("runner-shaped-npm"), program)
+
+    contains(said, f"printobserver {version}", describing="what the npm route installed")
+    contains(said, NO_TOOLCHAIN, describing="what the npm route was taken with")
 
 
 @ROUTE_PROOF
@@ -87,6 +162,39 @@ def test_the_configuration_a_supervisor_is_started_under_is_toml_it_reads() -> N
     contains(written, '"tool_target:0" = { min = 0.0, max = 260.0 }', describing=written)
     contains(written, 'operator = ["pause"]', describing=written)
     truth(INGRESS_WORD, describing="the ingress to have a word of its own")
+
+
+def test_the_operator_is_granted_every_action_the_contract_declares(repo: Repo) -> None:
+    """The grant is read off `ActionKind.json` rather than copied beside it."""
+    contract = json.loads(repo.read("schemas/printobserver-core/ActionKind.json"))
+    declared = [variant["const"] for variant in contract["oneOf"]]
+    printer = Printer("http://127.0.0.1:1", "a-provisioned-key", scripted=False)
+    written = json.loads(_configuration(Path("/var/lib/printobserver"), printer))
+
+    equal(ACTION_KINDS, repo.path("schemas/printobserver-core/ActionKind.json"))
+    equal(written["safety"]["actions"]["operator"], declared, describing="the operator's grant")
+    truth(len(declared) >= 10, describing="the contract to be the closed vocabulary it was")
+
+
+@pytest.mark.parametrize(
+    ("document", "why"),
+    [
+        ("{}", "does not declare a closed vocabulary"),
+        ('{"oneOf": [{"const": "pause"}, {"const": 7}]}', "does not declare a closed vocabulary"),
+        ("not json", "could not be read"),
+    ],
+)
+def test_a_contract_that_is_not_a_closed_vocabulary_is_refused_naming_it(
+    tmp_path: Path, document: str, why: str
+) -> None:
+    """A world started from a damaged contract stops before granting anything."""
+    contract = tmp_path / "ActionKind.json"
+    contract.write_text(document, encoding="utf-8")
+
+    with pytest.raises(WorldError, match=why) as refused:
+        every_action(contract)
+
+    contains(str(refused.value), str(contract), describing="the refusal")
 
 
 def _stand_in(root: Path, name: str, code: str) -> Path:

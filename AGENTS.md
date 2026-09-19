@@ -267,20 +267,22 @@ from.
 [//]: # (BEGIN supported-platforms)
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
-- `macos-x86_64` — runner `macos-15-intel`, Rust target `x86_64-apple-darwin`, service manager `launchd`, install path: no — bring-up owed; the macOS platform node flips this to `yes`
+- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: yes
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever refuses `install path: no` without this reason, and the bring-up deletes it -->
 - `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: no — the `windows-install-routes` node delivers the three install routes and flips this to `yes`
 [//]: # (END supported-platforms)
 
-The two Linux entries run under systemd, which is what the unit in the end-user
-install path below is written for. `linux-aarch64` is not optional: the machine
-beside the printer is usually a small ARM board, and it is the worst place to
-discover an architecture was never built for.
+The two Linux entries run under systemd and the macOS entry under launchd, and
+the installer in the end-user install path below writes each its own service
+definition. `linux-aarch64` is not optional: the machine beside the printer is
+usually a small ARM board, and it is the worst place to discover an
+architecture was never built for. Apple silicon is the only macOS platform:
+Intel macOS was cut on 2026-09-18 for hosted-runner cost, and
+`repo-policy.toml`'s `platforms.retired` is where a platform this list once
+named and names no longer is recorded, with its reason — the narrowing checks
+refuse a platform that vanished from the list with no such record.
 
 Rust 1.97.1's bundled `llvm-profdata` cannot read the profiles its native
 `aarch64-pc-windows-msvc` instrumentation writes: it reports both `malformed
@@ -292,8 +294,8 @@ while the 95% floor remains required everywhere profiles are readable. No code
 is compiled only for Windows aarch64. The exemption is removed when that
 toolchain produces readable profiles.
 
-<!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
-The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
+<!-- llmlint: ignore[agents_md_durable_and_terse] States what the Windows entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
+The Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
 
 ### The two levers a platform is brought up in stages by
 
@@ -303,8 +305,8 @@ set of reviewable ones instead, and neither can be pulled quietly: both are
 visible here and both are refused without a reason.
 
 **`install path: yes|no`** is the first, and it is per platform. A platform
-answered `no` is carried by no install-route, registry-proof or artifact-route
-matrix; one answered `yes` is carried by every one of them. A `no` carries its
+answered `no` is carried by no install-route matrix and by no registry proof of
+a route; one answered `yes` is carried by every one of them. A `no` carries its
 own reason — `install path: no — <reason>` — because a platform taken out of
 every install tier by an unexplained opt-out is one nobody can put back.
 
@@ -313,30 +315,6 @@ platform-dependent job that does not run on a platform this list names, with the
 reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 
 [//]: # (BEGIN platform-exclusions)
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `gate` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `artifacts` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-aarch64` on `integration` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `gate` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `artifact-client-rust` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `artifact-client-python` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `artifact-client-node` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `artifacts` — bring-up owed; the macOS platform node removes this line
-<!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `macos-x86_64` on `integration` — bring-up owed; the macOS platform node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-x86_64` on `install-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
@@ -350,11 +328,11 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-x86_64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-x86_64` on `prove-registry-client-rust` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-x86_64` on `prove-registry-client-python` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-x86_64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-x86_64` on `prove-registry-client-node` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-x86_64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
@@ -370,11 +348,11 @@ reason it does not, in the shape `- \`<platform>\` on \`<job>\` — <reason>`.
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-aarch64` on `prove-registry-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-pypi` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-aarch64` on `prove-registry-client-rust` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-npm` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-aarch64` on `prove-registry-client-python` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
-- `windows-aarch64` on `artifact-route-script` — an end-user install route, owed; the `windows-install-routes` node removes this line
+- `windows-aarch64` on `prove-registry-client-node` — the supervisor it runs against is taken by an end-user install route, owed; the `windows-install-routes` node removes this line
 <!-- llmlint: ignore[agents_md_durable_and_terse] the lever requires this cell's reason, and its bring-up deletes the line -->
 - `windows-aarch64` on `artifacts` — the release artifacts the end-user install routes take, owed; the `windows-install-routes` node removes this line
 [//]: # (END platform-exclusions)
@@ -891,6 +869,22 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 sudo systemctl enable --now printobserver.service
 ```
 
+#### launchd
+
+The first is the same installer, which on macOS puts the binary, the state
+directory, the configuration and a launchd property list in place, and loads
+none of them. The second loads the property list into the system domain, which
+starts the service and has launchd start it at every boot after; its label is
+`io.github.nickderobertis.printobserver`. Made executable by the `server` node.
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+```
+
+```console
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+```
+
 #### windows-service
 
 <!-- llmlint: ignore[instruction_layer_localized] This section is the authoritative statement of the end-user install path, which `just check-repo` reads out of the root file for every service manager and derives the README and CI jobs from; the task requires the Windows pair here, in the per-platform shape, beside the systemd one. suppressions.toml has the full reason. -->
@@ -953,7 +947,10 @@ with `npm install -g`, as above and without `sudo`, and then:
 ## The registry install-path proof
 
 The one thing that says this repository is installable: each of the three
-routes above taken from its own registry, and what it installed run.
+routes above taken from its own registry, and what it installed run — and,
+beside them, each of the three clients taken from the registry a dependent
+takes it from, with its own smoke check run against the supervisor the same
+release's asset carries.
 
 ```console
 just test-install-proof
@@ -972,6 +969,29 @@ dispatched run uploads — on a manual invocation, and on this schedule:
 [//]: # (BEGIN install-proof-schedule)
 - cron: `0 6 * * 1`
 [//]: # (END install-proof-schedule)
+
+**No job proves a shipped artifact over a build of the working tree.** A
+change's own proof of what it built — `just prove-client-*` and `just
+prove-route-*`, which build from the committed tree and install into an
+environment holding no copy of these sources — is the end-to-end tier's, inside
+the gate, and `just check-repo`'s `artifact-jobs` refuses a workflow job running
+one: on a pull request such a job reports on a build nobody installs, and starts
+one runner per supported platform to do it, which on the hosted macOS runners is
+a cost no change should pay. The six proofs a job runs are the registry's, in
+`install-path.yml`, on the triggers above.
+
+**One cell at a time, by hand.** `.github/workflows/platform-dispatch.yml` runs
+exactly one job of `ci.yml` or of `install-path.yml` on exactly one supported
+platform, named as the two inputs of a manual dispatch, and no other job — one
+hosted macOS runner rather than every job's, on a branch, without pushing to it.
+What runs where is decided by the committed script `repo_checks.dispatching`
+(`just dispatch-resolve`, `just dispatch-run`) rather than by the workflow's own
+expressions, so `tests/repo-e2e` drives the selection on a host that is not a
+runner; the forge dispatches a workflow only from the default branch, so the
+workflow's own first run exists only after it merges. `just check-repo`'s
+`platform-dispatch` holds the workflow to that shape: `workflow_dispatch` alone,
+the two inputs, the platform input to the supported-platform list, and the job
+input to the platform-matrixed jobs of those two workflows.
 
 ## Commits, releases, and merging
 
@@ -1003,10 +1023,12 @@ and it strands the two contexts branch protection already requires.
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
 - `gate (linux-aarch64)`
+- `gate (macos-aarch64)`
 - `gate (windows-x86_64)`
 - `gate (windows-aarch64)`
 - `integration (linux-x86_64, ubuntu-24.04)`
 - `integration (linux-aarch64, ubuntu-24.04-arm)`
+- `integration (macos-aarch64, macos-15)`
 - `integration (windows-x86_64, windows-2025)`
 - `integration (windows-aarch64, windows-11-arm)`
 - `llmlint`

@@ -51,6 +51,7 @@ base64 = "0.22"
 jsonschema ={ version = "0.34", default-features = false }
 oneharness-core = "0.12.3"
 oneharness = "0.11.4"
+plist = { version = "1.10.1", default-features = false }
 printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.2.0" }
 printobserver-types = { path = "crates/printobserver-types", version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }

@@ -3,7 +3,7 @@
 A wheel is a zip with a manifest, and this writes one rather than driving a
 build backend. Two reasons, and both are about the artifact rather than about
 convenience: the command-line distribution's wheel has to carry a **platform
-tag stating the C library its program was built against**, which no pure-Python
+tag stating the baseline its program was built against**, which no pure-Python
 backend produces; and the same code writing both distributions means the
 client's wheel and the program's wheel cannot come to be assembled two
 different ways.

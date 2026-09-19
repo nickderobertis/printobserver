@@ -26,7 +26,6 @@ from treecopy import Tree, copy_tree
 
 AGENTS = "AGENTS.md"
 TARGETS = "release-targets.toml"
-ARTIFACTS = ".github/workflows/artifacts.yml"
 RELEASE = ".github/workflows/release-plz.yml"
 INSTALL = ".github/workflows/install-path.yml"
 
@@ -228,12 +227,12 @@ def test_a_publish_naming_an_undeclared_secret_is_refused(tree: Callable[[], Tre
     refused(publish_credentials(broken.repo), "gh-secrets.json does not declare")
 
 
-def test_a_client_with_no_job_of_its_own_is_refused(tree: Callable[[], Tree]) -> None:
-    """An artifact with no job is an artifact nothing builds, installs or proves."""
+def test_a_client_with_no_registry_job_of_its_own_is_refused(tree: Callable[[], Tree]) -> None:
+    """A client no job takes from its registry is one nothing proves a dependent can take."""
     broken = tree()
-    broken.edit(ARTIFACTS, "      - run: just prove-client-python\n", "      - run: true\n")
+    broken.edit(INSTALL, "      - run: just prove-registry-client-python\n", "      - run: true\n")
 
-    refused_naming(artifact_jobs(broken.repo), "prove-client-python", "declares no job")
+    refused_naming(artifact_jobs(broken.repo), "prove-registry-client-python", "declares no job")
 
 
 def test_a_job_that_does_not_prove_what_it_installed_is_refused(
@@ -251,26 +250,63 @@ def test_a_job_that_does_not_prove_what_it_installed_is_refused(
     refused_naming(artifact_jobs(broken.repo), "npm:@printobserver/sdk", "recipe builds it")
 
 
-def test_both_proofs_of_one_route_are_read_rather_than_one_displacing_the_other(
+def test_both_proofs_of_one_artifact_are_asked_for_and_only_the_registry_one_has_a_job(
     tree: Callable[[], Tree],
 ) -> None:
-    """A route is proven twice, and dropping either job is refused.
+    """An artifact is proven twice, and the two are held apart.
 
     One proof is over an artifact built from the committed tree, which a change
-    can run before anything is published; the other is over what that route's
-    own registry serves, which is what a user meets. They answer different
-    questions, so a mapping that kept only one of them would leave this check
-    answering for a proof that had gone.
+    can run before anything is published and the end-to-end tier runs; the
+    other is over what that artifact's own registry serves, which is what a
+    user meets and a job runs. Dropping the tree's recipe is refused, dropping
+    the registry's job is refused, and a job running the tree's recipe is
+    refused too: over a pull request it would report on a build nobody
+    installs, one runner per platform.
     """
     without_local = tree()
-    without_local.edit(ARTIFACTS, "      - run: just prove-route-pypi\n", "      - run: true\n")
+    without_local.edit(
+        "justfile",
+        "prove-route-pypi:\n    uv run -q python -m release_artifacts prove "
+        "--target pypi:printobserver-cli --into dist/proof/route-pypi",
+        "prove-route-pypi:\n    echo nothing",
+    )
 
-    refused_naming(artifact_jobs(without_local.repo), "prove-route-pypi", "declares no job")
+    refused_naming(
+        artifact_jobs(without_local.repo), "pypi:printobserver-cli", "builds it from the committed"
+    )
 
     without_registry = tree()
     without_registry.edit(INSTALL, "      - run: just prove-registry-pypi\n", "      - run: true\n")
 
     refused_naming(artifact_jobs(without_registry.repo), "prove-registry-pypi", "declares no job")
+
+    tree_in_a_job = tree()
+    tree_in_a_job.edit(
+        INSTALL,
+        "      - run: just prove-registry-pypi\n",
+        "      - run: just prove-route-pypi\n      - run: just prove-registry-pypi\n",
+    )
+
+    refused_naming(
+        artifact_jobs(tree_in_a_job.repo), "prove-route-pypi", "build of the working tree"
+    )
+
+
+def test_a_registry_recipe_is_told_from_a_tree_recipe_by_its_own_flag(
+    tree: Callable[[], Tree],
+) -> None:
+    """A registry recipe that stopped passing `--registry` builds from the tree after all."""
+    broken = tree()
+    broken.edit(
+        "justfile",
+        "prove --registry --target npm:printobserver-cli",
+        "prove --target npm:printobserver-cli",
+    )
+
+    findings = artifact_jobs(broken.repo)
+
+    refused_naming(findings, "npm:printobserver-cli", "takes it from its registry")
+    refused_naming(findings, "prove-registry-npm", "build of the working tree")
 
 
 def test_a_platform_a_route_job_omits_is_refused(tree: Callable[[], Tree]) -> None:
@@ -335,6 +371,106 @@ def test_a_platform_deleted_from_the_install_path_is_refused(tmp_path: Path) -> 
     narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
 
     refused(install_path_not_narrowed(narrowed.repo), "linux-aarch64")
+
+
+#: The record `repo-policy.toml` carries for a platform cut from the list on
+#: purpose: the one thing that lets the list lose a platform it was cut with.
+RETIRED_AARCH64 = (
+    '\n[[platforms.retired]]\nid = "linux-aarch64"\n'
+    'reason = "the arm runner was withdrawn, and nothing beside the printer is arm"\n'
+)
+
+
+def _retire(tree: Tree, record: str = RETIRED_AARCH64) -> None:
+    """Record one platform as cut, in the copy's own policy."""
+    tree.edit("repo-policy.toml", "\n[integration]\n", f"{record}\n[integration]\n")
+
+
+def test_a_platform_recorded_as_retired_may_leave_the_install_path(tmp_path: Path) -> None:
+    """A cut with its reason on record is a decision rather than a narrowing."""
+    narrowed = Tree(copy_tree(tmp_path / "retired-platform"))
+    _committed(narrowed)
+    narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
+    _retire(narrowed)
+
+    accepted(install_path_not_narrowed(narrowed.repo))
+
+
+def test_a_retired_record_naming_a_platform_the_list_still_carries_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A record saying a platform was cut while it was not is a stale waiver.
+
+    Left standing, the day the list did drop that platform the narrowing check
+    would wave the loss through on it — so the `platforms` check refuses the
+    record the moment it disagrees with the list.
+    """
+    from repo_checks.checks_ci import platforms
+
+    stale = tree()
+    _retire(stale)
+
+    refused_naming(platforms(stale.repo), "`linux-aarch64`", "still names it")
+
+
+def test_a_retired_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
+    """A cut nobody explained is not a record of a cut."""
+    from repo_checks.checks_ci import platforms
+
+    unexplained = tree()
+    unexplained.write(AGENTS, _without_the_platform(unexplained.read(AGENTS)))
+    _retire(unexplained, '\n[[platforms.retired]]\nid = "linux-aarch64"\nreason = ""\n')
+
+    refused_naming(platforms(unexplained.repo), "names no platform `id` and no non-empty")
+
+
+def test_a_platform_retired_twice_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two records of one cut carry two reasons, and neither is the one on record.
+
+    Read past, the later would replace the earlier and both would be accepted;
+    so every reader of the record refuses it — the `platforms` check and the
+    narrowing check alike — naming the platform recorded twice.
+    """
+    from repo_checks.checks_ci import platforms
+
+    doubled = tree()
+    _committed(doubled)
+    doubled.write(AGENTS, _without_the_platform(doubled.read(AGENTS)))
+    _retire(doubled)
+    _retire(
+        doubled,
+        '\n[[platforms.retired]]\nid = "linux-aarch64"\nreason = "a second reason"\n',
+    )
+
+    refused_naming(platforms(doubled.repo), "records `linux-aarch64` twice")
+    refused_naming(install_path_not_narrowed(doubled.repo), "records `linux-aarch64` twice")
+
+
+def test_a_retired_record_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """A record nothing can read a platform out of is a finding, not a traceback."""
+    from repo_checks.checks_ci import platforms
+
+    malformed = tree()
+    policy = malformed.read("repo-policy.toml")
+    # The committed records go, so the key can be a string in `[platforms]`
+    # itself rather than a key of one of them.
+    stripped = (
+        policy[: policy.index("[[platforms.retired]]")] + policy[policy.index("[integration]") :]
+    )
+    malformed.write(
+        "repo-policy.toml",
+        stripped.replace(
+            'toolchain = "rust-toolchain.toml"\n',
+            'toolchain = "rust-toolchain.toml"\nretired = "linux-aarch64"\n',
+            1,
+        ),
+    )
+
+    _committed(malformed)
+    malformed.write(AGENTS, _without_the_platform(malformed.read(AGENTS)))
+
+    refused(platforms(malformed.repo), "not an array of tables")
+    refused(install_path_not_narrowed(malformed.repo), "not an array of tables")
 
 
 def test_a_route_deleted_from_the_install_path_is_refused(tmp_path: Path) -> None:

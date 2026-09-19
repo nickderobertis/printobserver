@@ -20,9 +20,15 @@ from repo_checks.shell import start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-#: How long the world is given to come up, which includes a release build of
-#: the program it runs the first time this tier is driven.
-STARTUP_TIMEOUT_SECONDS = 2400
+#: How long the shared world is given to come up, read from the same committed
+#: value as the Node journey rather than copied between two clients.
+_STARTUP_TIMEOUT_TEXT = (
+    REPO_ROOT / "tools/release-artifacts/world-startup-timeout-seconds"
+).read_text(encoding="utf-8")
+STARTUP_TIMEOUT_SECONDS = int(_STARTUP_TIMEOUT_TEXT)
+if STARTUP_TIMEOUT_SECONDS <= 0:
+    message = "the shared world startup timeout must be a positive whole number of seconds"
+    raise ValueError(message)
 
 
 #: The API credential a supervisor serves under, as a request presents it.

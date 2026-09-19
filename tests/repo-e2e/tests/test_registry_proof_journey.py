@@ -46,13 +46,22 @@ from repo_checks.shell import run, start
 #: out of, rather than restated here.
 WORKFLOW = ".github/workflows/install-path.yml"
 
-#: The recipe that proves every route, and the one per route beneath it.
+#: The recipe that proves every route and every client, and the one per route
+#: and per client beneath it.
 TIER = "test-install-proof"
 ROUTES = {
     "prove-registry-pypi": "pypi:printobserver-cli",
     "prove-registry-npm": "npm:printobserver-cli",
     "prove-registry-script": "release:printobserver",
 }
+CLIENTS = {
+    "prove-registry-client-rust": "crate:printobserver-sdk",
+    "prove-registry-client-python": "pypi:printobserver-sdk",
+    "prove-registry-client-node": "npm:@printobserver/sdk",
+}
+
+#: How long the one supervisor build the tier journey needs is given.
+BUILD_TIMEOUT_SECONDS = 2400
 
 #: A version the stand-in registries serve. Deliberately not the one the
 #: workspace declares: what a user gets is what the registry serves,
@@ -365,19 +374,66 @@ def test_a_release_run_whose_publish_failed_is_an_observable_failure(
     contains(said, "publish that did not happen", describing=said)
 
 
+@pytest.fixture(scope="module")
+def supervisor() -> Path:
+    """The real program the stand-in forge's release carries for the client proofs.
+
+    The debug build, once: a client's smoke check is about the client, and
+    the program on the other side of the socket is the same program either
+    way.
+    """
+    built = REPO_ROOT / "target" / "debug" / "printobserver"
+    if not built.is_file():
+        passing(
+            run(
+                ["cargo", "build", "--locked", "-p", "printobserver"],
+                cwd=REPO_ROOT,
+                timeout=BUILD_TIMEOUT_SECONDS,
+            ),
+            describing="building the supervisor the stand-in release carries",
+        )
+    return built
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @ROUTE_JOURNEY
-def test_the_tier_recipe_proves_every_route(standing_in: Callable[..., Standin]) -> None:
-    """A run of the tier by hand takes all three routes, not one of them."""
-    registries = standing_in("--serves", SERVED)
+def test_the_tier_recipe_proves_every_route_and_every_client(
+    standing_in: Callable[..., Standin], supervisor: Path
+) -> None:
+    """A run of the tier by hand takes all three routes and all three clients.
+
+    The routes are served at `SERVED`; the clients at the workspace's own
+    version, which is the one the real builders write, with a release at that
+    version carrying the real supervisor their smoke checks run against.
+    """
+    registries = standing_in("--serves", SERVED, "--clients", str(supervisor))
 
     code, said = _recipe(TIER, registries.base)
 
     passing((code, said), describing=f"`just {TIER}`")
-    for identifier in ROUTES.values():
+    for identifier in (*ROUTES.values(), *CLIENTS.values()):
         contains(plain(said), f"{identifier}: SERVED AND PROVEN", describing=said)
-    # Three routes, three lines, and nothing else: a tier of proofs that all
-    # passed is as quiet as the three recipes it is made of.
-    equal(len(said.strip().splitlines()), len(ROUTES), describing=f"what `just {TIER}` said")
+    # Six proofs, six lines, and nothing else: a tier of proofs that all
+    # passed is as quiet as the six recipes it is made of.
+    equal(
+        len(said.strip().splitlines()),
+        len(ROUTES) + len(CLIENTS),
+        describing=f"what `just {TIER}` said",
+    )
+
+
+@pytest.mark.parametrize("recipe", list(CLIENTS))
+def test_a_client_no_registry_serves_does_not_pass(
+    recipe: str, standing_in: Callable[..., Standin]
+) -> None:
+    """A client the registry does not serve is a publish that did not happen, through its recipe."""
+    registries = standing_in("--serves", SERVED)
+
+    code, said = _recipe(recipe, registries.base)
+
+    failing((code, said), naming="NOT SERVED")
+    equal(code, 3, describing="the exit a client nothing serves answers with")
+    contains(said, f"client: {CLIENTS[recipe]}", describing=said)
 
 
 @ROUTE_JOURNEY

@@ -23,6 +23,10 @@ INSTALLER = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.sh | sudo sh"
 )
+LAUNCHD_START = (
+    "sudo launchctl bootstrap system "
+    "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist"
+)
 WINDOWS_INSTALLER = (
     "irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.ps1 | iex"
@@ -58,9 +62,10 @@ def test_the_section_states_three_routes_and_two_commands_per_manager(committed:
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands), 4)
+    equal(len(path.commands), 6)
     equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
-    equal(path.commands[3], WINDOWS_ACTIVATION)
+    equal(path.commands[3], LAUNCHD_START)
+    equal(path.commands[5], WINDOWS_ACTIVATION)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
@@ -68,18 +73,18 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 ) -> None:
     """One pair per service manager, and a platform's pair is its own manager's.
 
-    Every platform the install path targets today is a `systemd` platform. The
-    `windows-service` pair is stated ahead of the routes reaching Windows — the
-    service is delivered before the routes are — so a Windows platform is held
-    to that pair and not to systemd's, whatever its `install path` answer. The
-    `launchd` platforms answer `install path: no` and no pair is stated for them
-    yet.
+    The install path targets `systemd` and `launchd` platforms, so the section
+    states one pair for each — and what a consumer asks for is the pair belonging
+    to a platform, not whichever pair came first. The `windows-service` pair is
+    stated ahead of the routes reaching Windows — the service is delivered before
+    the routes are — so a Windows platform is held to that pair and not to
+    another's, whatever its `install path` answer.
     """
     path = ip.parse(committed.agents_md)
 
     equal(
         sorted(path.service_commands),
-        ["systemd", "windows-service"],
+        ["launchd", "systemd", "windows-service"],
         describing="the managers stated",
     )
     equal(
@@ -88,18 +93,22 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
         describing="the systemd pair, in installer-then-start order",
     )
     equal(
+        path.commands_for("launchd"),
+        (INSTALLER, LAUNCHD_START),
+        describing="the launchd pair, in installer-then-start order",
+    )
+    equal(
         path.commands_for("windows-service"),
         (WINDOWS_INSTALLER, WINDOWS_ACTIVATION),
         describing="the windows-service pair, in installer-then-start order",
     )
-    equal(path.commands_for("launchd"), (), describing="the pair launchd is held to")
     for platform in supported(committed):
         pair = path.commands_for(platform.service_manager)
         if platform.install_path:
             equal(len(pair), 2, describing=f"the pair {platform.id} is held to")
         equal(
             bool(pair),
-            platform.service_manager != "launchd",
+            True,
             describing=f"whether {platform.id} has a pair to be held to",
         )
 
@@ -107,17 +116,29 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair(
     tree: Callable[[], Tree],
 ) -> None:
-    """Flipping a platform to `install path: yes` is what makes its manager's pair owed."""
+    """Flipping a platform to `install path: yes` is what makes its manager's pair owed.
+
+    The `windows-service` pair is stated ahead of the routes reaching Windows,
+    so it is taken out of the copy first: with no pair and no platform the
+    install path targets under that manager, nothing is owed and the section
+    is accepted — and flipping one of those platforms is what changes that.
+    """
     broken = tree()
     text = broken.read("AGENTS.md")
-    start = text.index("- `macos-aarch64` — ")
+    pair_start = text.index("\n#### windows-service\n")
+    pair_end = text.index("\n### Between the two commands", pair_start)
+    broken.edit("AGENTS.md", text[pair_start:pair_end], "")
+    accepted(install_path_section(broken.repo))
+
+    text = broken.read("AGENTS.md")
+    start = text.index("- `windows-x86_64` — ")
     end = text.index("\n", start)
     entry = text[start:end]
     broken.edit("AGENTS.md", entry, entry[: entry.index("install path: no")] + "install path: yes")
 
     findings = install_path_section(broken.repo)
 
-    refused(findings, "states no pair of commands for the `launchd` service manager")
+    refused(findings, "states no pair of commands for the `windows-service` service manager")
 
 
 def test_a_service_manager_the_list_names_and_the_section_states_no_pair_for_is_refused(
@@ -161,6 +182,26 @@ def test_a_pair_whose_first_command_starts_the_service_is_refused(
     findings = install_path_section(broken.repo)
 
     refused(findings, "starts or enables the service")
+
+
+def test_a_launchd_pair_whose_first_command_loads_the_service_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Loading a property list starts what it defines, so it may not come first either."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    launchd = text.index("\n#### launchd\n")
+    installer = text.index(f"```console\n{INSTALLER}\n```", launchd)
+    broken.write(
+        "AGENTS.md",
+        text[:installer]
+        + f"```console\n{LAUNCHD_START}\n```"
+        + text[installer + len(f"```console\n{INSTALLER}\n```") :],
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "the first command of the `launchd` pair")
 
 
 def test_a_fourth_route_is_refused(tree: Callable[[], Tree]) -> None:

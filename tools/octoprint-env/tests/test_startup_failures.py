@@ -17,18 +17,29 @@ failure path a caller would meet as a bare error, and it fails here.
 from __future__ import annotations
 
 import ast
+import json
+import os
 import shutil
 import socket
+import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from environment import SCRIPT, answer, said, script
-from repo_checks.expect import contains, failing, passing, refused_naming, truth
+from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
 
 # What the server is replaced with to induce an instance that starts and never
 # answers: a program that runs, and says nothing.
 SILENT_SERVER = "#!/bin/sh\nsleep 300\n"
+
+# How long that start is given, and how long its stop may take beyond that: well
+# under the script's own thirty-second kill grace, which a stop only waits out
+# when it mistakes an exited server for a running one.
+START_TIMEOUT_S = 15
+STOP_WITHIN_S = 20
 
 # Raising one of these would leave `main`'s outside-the-set report — which
 # catches `Exception` — with nothing to report.
@@ -90,9 +101,19 @@ def test_an_instance_that_never_answers_is_reported_by_name(
         server.write_text(SILENT_SERVER, encoding="utf-8")
         server.chmod(0o755)
 
-    lines = _reported(state, "--start-timeout", "15")
+    started = time.monotonic()
+    lines = _reported(state, "--start-timeout", str(START_TIMEOUT_S))
+    took = time.monotonic() - started
 
     refused_naming(lines, "never-answered")
+    # The stub it stopped is this script's own child. Reaped as it exits, the
+    # stop is over in moments; counted as running while it is a zombie, the stop
+    # waits out the whole kill grace and then signals a group holding nothing
+    # but that zombie, which macOS refuses outright.
+    truth(
+        took < START_TIMEOUT_S + STOP_WITHIN_S,
+        describing=f"the failed start to be over in {took:.0f}s",
+    )
     refused_naming(lines, "what happened:", "server.log")
     refused_naming(lines, "next action:", "read the server log")
 
@@ -113,6 +134,127 @@ def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_te
     # FileExistsError renders its filename with repr(), which escapes Windows separators.
     rendered_path = repr(str(occupied))[1:-1]
     contains(report, rendered_path, describing="the path the underlying error names")
+
+
+@pytest.mark.parametrize(("command", "document"), [("down", "[17]"), ("up", '"17"')])
+def test_a_persisted_record_that_is_not_an_object_is_refused(
+    tmp_path: Path, command: str, document: str
+) -> None:
+    """Both record readers narrow the decoded document before reading a PID off it."""
+    state = tmp_path / command
+    state.mkdir()
+    (state / "instance.json").write_text(document + "\n", encoding="utf-8")
+    if command == "up":
+        (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script(command, "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        "instance record must be a JSON object, not",
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        17,
+        "ftp://127.0.0.1:5000",
+        "http://127.0.0.1",
+        "http://user@127.0.0.1:5000",
+        "http://127.0.0.1:5000/api",
+        "http://127.0.0.1:5000?key=1",
+        "http://127.0.0.1:5000#top",
+    ],
+)
+def test_a_persisted_url_that_is_not_an_http_address_is_refused(
+    tmp_path: Path, url: object
+) -> None:
+    """The existing-instance path narrows the recorded address before asking at it.
+
+    Exactly `http://host:port`: a value of another type, another scheme, no
+    port, or anything carried beyond the address is refused naming it.
+    """
+    state = tmp_path / "up"
+    state.mkdir()
+    (state / "instance.json").write_text(
+        json.dumps({"pid": os.getpid(), "url": url}) + "\n", encoding="utf-8"
+    )
+    (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script("up", "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        f"instance record url must be an http://host:port address, not {url!r}",
+    )
+
+
+@pytest.mark.parametrize("mentions_the_instance", [False, True])
+def test_a_persisted_pid_naming_another_program_is_not_signalled(
+    tmp_path: Path, mentions_the_instance: bool
+) -> None:
+    """A record that outlived its server names whatever holds the id now.
+
+    That is a sleeping interpreter in a session of its own here, so a
+    bring-down that signalled it would take the decoy rather than this suite —
+    and in one case its command line mentions the instance's own directory, as
+    an editor or a shell open in it would, which is not what makes a process
+    this instance's OctoPrint.
+    """
+    state = tmp_path / "down"
+    state.mkdir()
+    sleeping = "import time; time.sleep(300)"
+    if mentions_the_instance:
+        sleeping = f"{sleeping}  # {state / 'instance'}"
+    # Started directly rather than through `repo_checks.shell`, which cannot
+    # give it a session of its own; `suppressions.toml` carries the reason.
+    decoy = subprocess.Popen(  # noqa: S603
+        [sys.executable, "-c", sleeping], start_new_session=True
+    )
+    try:
+        (state / "instance.json").write_text(
+            json.dumps({"pid": decoy.pid, "url": "http://127.0.0.1:1"}) + "\n", encoding="utf-8"
+        )
+
+        result = script("down", "--state-dir", str(state))
+
+        passing(result)
+        equal(answer(result)["stopped"], False, describing="what the bring-down did")
+        equal(answer(result)["pid"], decoy.pid, describing="the process it read")
+        contains(said(result), f"process {decoy.pid} is not this instance's OctoPrint")
+        contains(said(result), "nothing was signalled")
+        truth(not (state / "instance.json").exists(), describing="the stale record to be removed")
+        time.sleep(0.5)
+        equal(decoy.poll(), None, describing="the unrelated process, which must still be running")
+    finally:
+        decoy.kill()
+        decoy.wait()
+
+
+@pytest.mark.parametrize(("command", "pid"), [("down", 0), ("up", -1)])
+def test_a_persisted_pid_that_could_name_more_than_one_process_is_refused(
+    tmp_path: Path, command: str, pid: int
+) -> None:
+    """Both record readers stop before handing unsafe PID semantics to the OS."""
+    state = tmp_path / command
+    state.mkdir()
+    (state / "instance.json").write_text(json.dumps({"pid": pid}) + "\n", encoding="utf-8")
+    if command == "up":
+        (state / "api-key").write_text("fixture-key\n", encoding="utf-8")
+
+    result = script(command, "--state-dir", str(state))
+
+    failing(result, naming="outside the declared failure classes")
+    refused_naming(
+        said(result).splitlines(),
+        "ValueError",
+        f"instance record pid must be a positive integer, not {pid}",
+    )
 
 
 def test_the_script_can_reach_no_failure_path_the_declared_set_does_not_cover() -> None:

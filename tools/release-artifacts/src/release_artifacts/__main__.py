@@ -26,7 +26,7 @@ from release_artifacts.registries import (
 )
 from release_artifacts.registries import prove as prove_registry
 from release_artifacts.standin import Registries, StandinError
-from release_artifacts.targets import TargetError, declared
+from release_artifacts.targets import TargetError, declared, workspace
 from release_artifacts.world import World, WorldError, scripted_printer
 
 
@@ -83,6 +83,17 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         metavar="TAG",
         help="a release the stand-in forge lists, whether or not anything serves it",
+    )
+    parser.add_argument(
+        "--clients",
+        type=Path,
+        default=None,
+        metavar="SUPERVISOR",
+        help=(
+            "serve the three clients from the stand-in registries, at the workspace's own "
+            "version, with a release at that version whose asset carries SUPERVISOR — the "
+            "real program a client's smoke check runs against"
+        ),
     )
     parser.add_argument(
         "--octoprint",
@@ -423,11 +434,33 @@ def _standin(repo: Repo, arguments: argparse.Namespace) -> int:
             registries.serve(served, reported=reported)
         for tag in released:
             registries.release(f"v{tag}")
+        if arguments.clients is not None:
+            # The clients are built at the workspace's own version, so the
+            # release their supervisor is taken from is listed at that version
+            # too, carrying the caller's program rather than the stand-in's.
+            registries.serve(
+                workspace(repo.root)["version"], program=_supervisor(arguments.clients)
+            )
+            registries.serve_clients()
         print(json.dumps({"base": registries.base}), flush=True)
         sys.stdin.read()
     finally:
         registries.stop()
     return 0
+
+
+def _supervisor(given: Path) -> Path:
+    """The program a stand-in release is to carry, checked to be one.
+
+    Raises:
+        StandinError: If it is not a file: a release carrying nothing would
+            leave every client proof reporting the release rather than the
+            client.
+    """
+    if not given.is_file():
+        msg = f"`--clients` names {given}, which is not a program a release can carry"
+        raise StandinError(msg)
+    return given
 
 
 def _world(repo: Repo, arguments: argparse.Namespace) -> int:

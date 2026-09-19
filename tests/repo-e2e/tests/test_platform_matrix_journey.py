@@ -21,7 +21,10 @@ INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
 DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-# The two Windows cells, which follow the Linux ones in every matrix carrying them.
+MACOS = """          - id: macos-aarch64
+            runner: macos-15
+"""
+# The two Windows cells, which follow the macOS one in every matrix carrying them.
 WINDOWS = (
     "          - id: windows-x86_64\n            runner: windows-2025\n"
     "          - id: windows-aarch64\n            runner: windows-11-arm\n"
@@ -31,6 +34,7 @@ WINDOWS = (
 # tells it apart from the gate's.
 INTEGRATION_AARCH64 = (
     AARCH64
+    + MACOS
     + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
     + "    # Git's own bash on the Windows runners rather than PowerShell, so that\n"
@@ -43,10 +47,14 @@ INTEGRATION_AARCH64 = (
 )
 # The pypi install job's own copy of that entry: the one followed by a step that
 # sets up Python, which none of the registry proofs ahead of it in that file does.
-INSTALL_ROUTE_AARCH64 = AARCH64 + (
-    "    runs-on: ${{ matrix.platform.runner }}\n"
-    "    steps:\n"
-    "      - uses: actions/setup-python@v5\n"
+INSTALL_ROUTE_AARCH64 = (
+    AARCH64
+    + MACOS
+    + (
+        "    runs-on: ${{ matrix.platform.runner }}\n"
+        "    steps:\n"
+        "      - uses: actions/setup-python@v5\n"
+    )
 )
 # The gate's whole matrix, down to the line that reads a cell out of it.
 GATE_MATRIX = (
@@ -58,6 +66,7 @@ GATE_MATRIX = (
             runner: ubuntu-24.04
 """
     + AARCH64
+    + MACOS
     + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )

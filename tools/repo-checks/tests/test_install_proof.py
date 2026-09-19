@@ -116,6 +116,40 @@ def test_a_route_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> 
     refused(install_proof(broken.repo), "no `prove-registry-` recipe proves what")
 
 
+def test_a_client_with_no_registry_proof_is_refused(tree: Callable[[], Tree]) -> None:
+    """A client nothing proves against its own registry is one nothing proves a dependent gets."""
+    broken = tree()
+    broken.edit(
+        JUSTFILE,
+        "prove-registry-client-node:\n    @uv run -q python -m release_artifacts prove "
+        "--registry --target npm:@printobserver/sdk --into dist/proof/registry-client-node",
+        "prove-registry-client-node:\n    echo nothing",
+    )
+
+    refused(
+        install_proof(broken.repo),
+        "client `npm:@printobserver/sdk` is taken from its registry by a dependent, and no",
+    )
+
+
+def test_a_tier_that_leaves_one_client_out_is_refused(tree: Callable[[], Tree]) -> None:
+    """A run of the tier by hand takes all six, the three clients included."""
+    broken = tree()
+    broken.edit(JUSTFILE, "    @just prove-registry-client-python\n", "")
+
+    refused(install_proof(broken.repo), "does not invoke `just prove-registry-client-python`")
+
+
+def test_a_client_proof_with_no_job_is_refused(tree: Callable[[], Tree]) -> None:
+    """A client recipe nothing runs is a client nothing proves."""
+    broken = tree()
+    broken.edit(WORKFLOW, "      - run: just prove-registry-client-rust\n", "      - run: true\n")
+
+    refused(
+        install_proof(broken.repo), "declares no job that runs `just prove-registry-client-rust`"
+    )
+
+
 def test_a_tier_that_leaves_one_route_out_is_refused(tree: Callable[[], Tree]) -> None:
     """A run of the tier by hand takes all three routes, not two of them."""
     broken = tree()

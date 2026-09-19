@@ -70,11 +70,32 @@ PUBLISH = "publish"
 #: version, and the three proving a route with it. The three installing a route
 #: are left out by name, because their steps reach the real registries.
 RESOLVE = "resolve"
-PROVING = ("prove-registry-pypi", "prove-registry-npm", "prove-registry-script")
+PROVING = (
+    "prove-registry-pypi",
+    "prove-registry-npm",
+    "prove-registry-script",
+    "prove-registry-client-rust",
+    "prove-registry-client-python",
+    "prove-registry-client-node",
+)
 
 #: The recipes the two downstream jobs run, recorded rather than run — and the
-#: three route proofs, which would otherwise read the real registries.
+#: six registry proofs, which would otherwise read the real registries.
 RECORDED = ("bootstrap", "build-artifacts", "publish-artifacts", *PROVING)
+
+
+def cells(job: str) -> int:
+    """How many platform cells one job of the proof workflow carries.
+
+    Read off the committed matrix rather than counted here: the supported-
+    platform list is what that matrix is derived from, and a number written
+    here would be a second copy of it.
+    """
+    from repo_checks.parsing import jobs_of, load_workflow
+
+    matrix = jobs_of(load_workflow(REPO_ROOT / PROOF_WORKFLOW))[job]["strategy"]["matrix"]
+    return len(matrix["platform"])
+
 
 #: What `repo-policy.toml` declares the record crosses between the two
 #: workflows as. Read rather than restated: it is what `just check-repo` holds
@@ -661,7 +682,7 @@ def test_the_proof_after_a_dispatched_run_proves_the_version_that_run_recorded(
         equal(proof.run.result(job), Result.SUCCESS, describing=f"the `{job}` job")
         equal(
             [entry.proof_version for entry in proof.handed(job)],
-            [version, version],
+            [version] * cells(job),
             describing=f"the {PRINTOBSERVER_PROOF_VERSION} each cell of `{job}` proves",
         )
 
@@ -689,7 +710,7 @@ def test_the_proof_after_a_push_shaped_run_reads_the_version_off_the_tag_as_befo
     for job in PROVING:
         equal(
             [entry.proof_version for entry in proof.handed(job)],
-            [version, version],
+            [version] * cells(job),
             describing=f"the {PRINTOBSERVER_PROOF_VERSION} each cell of `{job}` proves",
         )
 

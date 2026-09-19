@@ -24,10 +24,11 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
-from repo_checks import platforms
+from journey import NO_ROUTE_HERE, REPO_ROOT, ROUTE_JOURNEY, clean_environment, run
+from repo_checks import install_path
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
+from repo_checks.platforms import HOSTS, host, install_platforms
 from repo_checks.shell import run as shell_run
 
 #: The committed script the third route fetches and runs.
@@ -51,10 +52,10 @@ def _platform() -> str:
     platform a host is — `os.uname` does not exist on Windows, and a journey
     that raised on import there could not even say it had nothing to run.
     """
-    return platforms.host(Repo(REPO_ROOT)).id
+    return host(Repo(REPO_ROOT)).id
 
 
-#: Where this host's own artifact is named, as the script names it.
+#: Where this host's own artifact is named, as the platform declaration names it.
 PLATFORM = _platform()
 
 #: How long the program build is given the first time this tier runs.
@@ -82,8 +83,12 @@ def _program() -> Path:
     return built
 
 
-def _artifact(into: Path, program: bytes) -> Path:
-    """One release artifact, in the shape release automation publishes it."""
+def _artifact(into: Path, program: bytes, platform: str = PLATFORM) -> Path:
+    """One release artifact, in the shape release automation publishes it.
+
+    Its digest is added to the checksum file beside it rather than replacing
+    what that file already lists, so one release can carry several platforms'.
+    """
     into.mkdir(parents=True, exist_ok=True)
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode="w") as archive:
@@ -91,11 +96,10 @@ def _artifact(into: Path, program: bytes) -> Path:
         info.size = len(program)
         info.mode = 0o755
         archive.addfile(info, io.BytesIO(program))
-    target = into / f"{PROGRAM}-{PLATFORM}.tar.gz"
+    target = into / f"{PROGRAM}-{platform}.tar.gz"
     target.write_bytes(gzip.compress(raw.getvalue(), mtime=0))
-    (into / CHECKSUMS).write_text(
-        f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n", encoding="utf-8"
-    )
+    with (into / CHECKSUMS).open("a", encoding="utf-8") as listing:
+        listing.write(f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n")
     return target
 
 
@@ -204,6 +208,83 @@ def test_an_altered_artifact_is_refused_before_anything_reaches_a_path(
         describing="nothing to have been installed at the directory it was given",
     )
     contains(said, "Nothing was installed", describing="what the refusal said")
+
+
+#: Every `uname` answer the platform declaration maps to a platform the install
+#: path targets, read from that declaration rather than restated here.
+TARGETED = [
+    (system, machine, identifier)
+    for (system, machine), identifier in HOSTS.items()
+    if identifier in {platform.id for platform in install_platforms(Repo(REPO_ROOT))}
+]
+
+
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+def _uname(shims: Path, system: str, machine: str) -> None:
+    """A `uname` on the path answering one system and one processor."""
+    shims.mkdir(parents=True, exist_ok=True)
+    (shims / "uname").write_text(
+        f'#!/bin/sh\ncase "$1" in\n  -s) echo {system} ;;\n  -m) echo {machine} ;;\n'
+        f"  *) echo {system} ;;\nesac\n",
+        encoding="utf-8",
+    )
+    (shims / "uname").chmod(0o755)
+
+
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+@pytest.mark.parametrize(
+    ("system", "machine", "identifier"),
+    TARGETED,
+    ids=[f"{system}-{machine}" for system, machine, _ in TARGETED],
+)
+@ROUTE_JOURNEY
+def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_start_command(
+    tmp_path: Path, system: str, machine: str, identifier: str
+) -> None:
+    """Each `uname` answer is mapped to the identifier the platform list names.
+
+    The release carries one stand-in program per targeted platform, each saying
+    which platform it was published for, so what the installed program reports
+    is which artifact the script chose. What it prints next is that platform's
+    own start command, as the install path states it for its service manager.
+
+    A route journey like the rest of this module, so it is skipped on a host
+    the install path does not target: what it drives is the third route's own
+    shell script, and the stand-in it installs is a shell script too, so a
+    host that cannot take that route cannot run either — the script's `sh`
+    there hands a drive-lettered release directory to `curl` as a URL.
+    """
+    repo = Repo(REPO_ROOT)
+    base = tmp_path / "releases"
+    for platform in install_platforms(repo):
+        # llmlint: ignore[e2e_not_mocked] one host runs one platform's program; suppressions.toml
+        _artifact(
+            base / "latest" / "download",
+            f'#!/bin/sh\necho "{PROGRAM} for {platform.id}"\n'.encode(),
+            platform.id,
+        )
+    home = tmp_path / "home"
+    shims = home / "shims"
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
+    _uname(shims, system, machine)
+    environment = clean_environment(
+        HOME=str(home),
+        PRINTOBSERVER_RELEASE_BASE=str(base),
+        PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
+    )
+
+    result = shell_run(["sh", str(REPO_ROOT / SCRIPT)], cwd=home, env=environment, timeout=600)
+    said = (result.stdout or "") + (result.stderr or "")
+
+    passing((result.returncode, said), describing=f"the install script on {system}/{machine}")
+    equal(
+        _reports(home / ".local/bin" / PROGRAM),
+        f"{PROGRAM} for {identifier}",
+        describing=f"the artifact installed for {system}/{machine}",
+    )
+    manager = next(one for one in install_platforms(repo) if one.id == identifier).service_manager
+    start = install_path.parse(repo.agents_md).commands_for(manager)[1]
+    contains(said, start, describing=f"the start command it names on {system}/{machine}")
 
 
 def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(

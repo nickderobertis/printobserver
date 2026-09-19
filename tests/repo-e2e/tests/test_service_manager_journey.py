@@ -531,8 +531,8 @@ def manager() -> Manager:
     if HERE.service_manager == ServiceManager.SYSTEMD:
         return Systemd(_service_name(ServiceManager.SYSTEMD))
     pytest.skip(
-        f"this host's service manager is `{HERE.service_manager}`, and the install path "
-        f"states no pair for it yet; its back end comes with its platform node"
+        f"this host's service manager is `{HERE.service_manager}`, whose back end of this "
+        f"journey is `crates/printobserver/tests/service_manager.rs`'s, beside its systemd one"
     )
 
 

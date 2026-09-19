@@ -123,7 +123,8 @@ printobserver --version
 ### 4. Install the service files
 
 This installs the program, private state directory, configuration template,
-and systemd unit. It deliberately starts nothing.
+and service definition: a systemd unit on Linux, a launchd property list on
+macOS. It deliberately starts nothing.
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
@@ -258,8 +259,16 @@ sign-in again if the harness's sign-in expires, or after changing
 
 ### 7. Enable and start the service
 
+On Linux:
+
 ```console
 sudo systemctl enable --now printobserver.service
+```
+
+On macOS:
+
+```console
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
 On Windows, the one command that sets the service to start automatically and
@@ -268,6 +277,9 @@ starts it:
 ```powershell
 Set-Service -Name printobserver -StartupType Automatic -Status Running
 ```
+
+On every platform the service manager starts it again at every boot, and
+again if it ends abruptly.
 
 Starting is separate because this service commands a 3D printer. Installing
 software must not start a process that can move the machine — at install, or at
@@ -345,6 +357,7 @@ just check       # the whole gate
 just --list      # available recipes
 ```
 
+<!-- llmlint: ignore[no_redundant_instruction_pointers] the README is the forge's landing page for a person, who is handed no instruction file by any harness -->
 See [`AGENTS.md`](./AGENTS.md) for repository development and release rules.
 
 ## License

@@ -42,7 +42,7 @@ from repo_checks.parsing import (
     run_commands,
     steps_of,
 )
-from repo_checks.platforms import PLATFORM_LINE, Platform
+from repo_checks.platforms import PLATFORM_LINE, Platform, PlatformError, retired
 from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
 
@@ -347,12 +347,20 @@ def _narrowing_findings(repo: Repo, base: str | None, declared: list[Platform]) 
     except MarkerBlockMissingError:
         return []
     named = {platform.id for platform in declared}
+    # A platform recorded as retired left the list on purpose, with its reason
+    # beside it; one nothing records left it quietly, and that is the narrowing
+    # this refuses.
+    try:
+        cut = retired(repo)
+    except PlatformError as error:
+        return [str(error)]
     return [
         f"AGENTS.md's supported-platform list no longer names `{lost}`, which it named "
-        f"at {revision}: the list is the source the integration job's matrix is derived "
+        f"at {revision}, and `repo-policy.toml`'s `platforms.retired` records no reason "
+        f"it was cut: the list is the source the integration job's matrix is derived "
         f"from, and narrowing both together is not narrowing neither"
         for lost in previously
-        if lost not in named
+        if lost not in named and lost not in cut
     ]
 
 

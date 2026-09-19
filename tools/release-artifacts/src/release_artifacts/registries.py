@@ -1,4 +1,4 @@
-"""Proving each end-user route against what its own registry actually serves.
+"""Proving each shipped artifact against what its own registry actually serves.
 
 `installing.py` proves an artifact **built from the committed tree**, which is
 the proof a change can run before anything is published. This module proves the
@@ -6,6 +6,14 @@ other half, and it is the half a user meets: that the registry the install-path
 section points them at is serving the version under test, that what it serves
 installs on a host with no Rust toolchain, and that the program the install put
 on a path runs and reports that version.
+
+The three clients are proven here the same way, from the registry a dependent
+takes each of them from: the crate registry, the Python registry and the
+JavaScript registry, at the version under test. A client is proven by its own
+committed smoke check, run where it was installed against a **real supervisor
+taken from the same release** — the program the forge's release asset for this
+host carries, by the install-script route — so nothing a client proof reaches
+is a build of the working tree.
 
 Three outcomes, and only the first is a pass:
 
@@ -47,6 +55,7 @@ works — which `standin.py` stands up.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import urllib.error
@@ -65,16 +74,21 @@ from release_artifacts import targets
 from release_artifacts.build import PROGRAM
 from release_artifacts.installing import (
     INSTALL_SCRIPT,
+    NODE_RUNTIME,
     SCRIPT_DIRECTORY,
     TOOLCHAIN,
     TOOLCHAIN_REPORT,
+    Installed,
     InstallError,
     executable,
+    interpreter_in,
     npm_global_program,
     programs_in,
+    prove_client,
     ran,
     without_rust,
 )
+from release_artifacts.world import WorldError
 
 #: Where every registry is read from when nothing points them elsewhere.
 PRINTOBSERVER_PROOF_REGISTRIES = "PRINTOBSERVER_PROOF_REGISTRIES"
@@ -181,6 +195,19 @@ UPLOADED = "uploaded"
 STANDIN_PYPI = "/pypi"
 STANDIN_NPM = "/npm"
 STANDIN_FORGE = "/forge/releases"
+STANDIN_CRATES = "/crates"
+
+#: The crate registry's own two addresses: the API a version list is read
+#: off, and the sparse index `cargo` resolves a dependency through. The index
+#: is what `cargo` is pointed at, so it is written the way `cargo` names one.
+CRATES_API = "https://crates.io/api/v1/crates"
+CRATES_INDEX = "sparse+https://index.crates.io/"
+
+#: The name a stand-in crate registry is configured under for `cargo`, and the
+#: variable that configuration travels in. The real registry needs neither: a
+#: dependency naming no registry is one `cargo` resolves from crates.io.
+STANDIN_CRATES_NAME = "printobserver-standin"
+STANDIN_CRATES_INDEX_VARIABLE = "CARGO_REGISTRIES_PRINTOBSERVER_STANDIN_INDEX"
 
 #: Where a stand-in takes a wheel: the legacy multipart form, on the path the
 #: real registry serves it at under its own upload host.
@@ -212,9 +239,9 @@ UNREADABLE = 4
 #: start it has stopped one step short of being any use — and this tier is read
 #: by somebody chasing a broken release, who has the least time to work it out.
 NEXT_BUILD = (
-    "Next: this is a build to repair rather than a release. `just prove-route-*` proves "
-    "the same route over an artifact built from the committed tree, which reproduces this "
-    "without waiting for a publish."
+    "Next: this is a build to repair rather than a release. `just prove-route-*` and "
+    "`just prove-client-*` prove the same artifact built from the committed tree, which "
+    "reproduces this without waiting for a publish."
 )
 NEXT_PUBLISH = (
     "Next: the `release-plz` run that cut v{version} is where this was to be published — "
@@ -314,6 +341,10 @@ class Bases:
     uploads: str
     #: Where the install script downloads a release's artifacts from.
     releases: str
+    #: The crate registry's API, which lists what it serves under a name.
+    crates: str
+    #: The sparse index `cargo` resolves a crate dependency through.
+    crates_index: str
 
     @classmethod
     def read(cls, repo: Repo, environment: dict[str, str]) -> Bases:
@@ -343,6 +374,8 @@ class Bases:
                 listing=f"{standing_in}{STANDIN_FORGE}",
                 uploads=f"{standing_in}{STANDIN_FORGE}",
                 releases=f"{standing_in}{STANDIN_FORGE}",
+                crates=f"{standing_in}{STANDIN_CRATES}/api/v1/crates",
+                crates_index=f"sparse+{standing_in}{STANDIN_CRATES}/index/",
             )
         return cls(
             pypi="https://pypi.org",
@@ -351,11 +384,18 @@ class Bases:
             listing=f"https://api.github.com/repos/{owner}/{name}/releases",
             uploads=f"https://uploads.github.com/repos/{owner}/{name}/releases",
             releases=f"https://github.com/{owner}/{name}/releases",
+            crates=CRATES_API,
+            crates_index=CRATES_INDEX,
         )
 
     def of(self, registry: str) -> str:
         """The address the registry serving one target answers on."""
-        return {"pypi": self.pypi, "npm": self.npm, "release": self.listing}.get(registry, "")
+        return {
+            "pypi": self.pypi,
+            "npm": self.npm,
+            "release": self.listing,
+            "crate": self.crates,
+        }.get(registry, "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -814,14 +854,58 @@ def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
             versions = _versions(f"{bases.npm}/{target.name}", "versions")
         case "release":
             versions = list(released(bases))
+        case "crate":
+            versions = _crate_versions(f"{bases.crates}/{target.name}")
         case _:
             msg = (
                 f"nothing here knows how to ask what serves `{target.id}`. Next: "
                 f"`release-targets.toml` declares that target's `registry`, and the "
-                f"registries this proof reads are `pypi`, `npm` and `release`."
+                f"registries this proof reads are `pypi`, `npm`, `crate` and `release`."
             )
             raise RegistryError(msg)
     return tuple(sorted(set(versions), key=ordered))
+
+
+def _crate_versions(url: str) -> list[str]:
+    """The versions the crate registry's API lists under a name, yanked ones left out.
+
+    That registry's document lists its versions as a list of objects rather
+    than as a mapping, each carrying `num` and `yanked`; a yanked version is
+    one `cargo` refuses to resolve a new dependency to, so it is not one a
+    dependent can take.
+
+    Raises:
+        RegistryError: If the registry could not be asked, or answered
+            something other than a document with that list in it.
+    """
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    answer = _answered(url)
+    if answer is None:
+        return []
+    listed = answer.get("versions") if isinstance(answer, dict) else None
+    if not isinstance(listed, list) or not all(isinstance(entry, dict) for entry in listed):
+        msg = (
+            f"{url} answered something other than the crate document its protocol serves, "
+            f"with a `versions` list in it. "
+            f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+        )
+        raise RegistryError(msg)
+    found: list[str] = []
+    for entry in listed:
+        number, yanked = entry.get("num"), entry.get("yanked", False)
+        # Each field is the type the protocol serves or the document is
+        # refused: a `yanked` read by truthiness would take a `"false"` some
+        # mirror answered as yanked and drop a version a dependent can take.
+        if not isinstance(number, str) or not isinstance(yanked, bool):
+            msg = (
+                f"{url} lists {entry!r}, which is not a version with a string `num` and "
+                f"a boolean `yanked` as its protocol serves. "
+                f"{NEXT_MALFORMED.format(standin=PRINTOBSERVER_PROOF_REGISTRIES)}"
+            )
+            raise RegistryError(msg)
+        if not yanked and supported_version(number):
+            found.append(supported_version(number))
+    return found
 
 
 def released(bases: Bases) -> tuple[str, ...]:
@@ -1086,7 +1170,11 @@ def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bas
     """Route 2, taken from the JavaScript package registry with `npm` itself.
 
     A global install into a prefix of this proof's own, pinned to the version
-    under test, resolving from the registry the caller named.
+    under test, resolving from the registry the caller named. The runtime the
+    launcher reaches for is kept where the toolchain is taken off, as the
+    tree's own proof of this route keeps it: on the hosted macOS images `node`
+    shares its directory with `cargo`, and a path that lost that directory
+    can run neither `npm` nor the launcher it installs.
 
     Raises:
         InstallError: If the install failed.
@@ -1111,7 +1199,9 @@ def _npm_route(repo: Repo, target: targets.Target, version: str, into: Path, bas
                 "npm_config_registry": bases.npm,
                 "npm_config_cache": str(into / "npm-cache"),
                 "npm_config_update_notifier": "false",
-            }
+            },
+            preserve=NODE_RUNTIME,
+            preserved_at=environment / ".path",
         ),
         describing=f"`npm install -g {pinned}` from {bases.npm}",
     )
@@ -1150,6 +1240,187 @@ def _script_route(
     return directory / PROGRAM
 
 
+def _python_client(
+    repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+) -> Installed:
+    """The Python client, taken from the Python package registry the way an application takes it.
+
+    A virtual environment of this proof's own, and the client pinned to the
+    version under test installed into it from the registry the caller named.
+
+    Raises:
+        InstallError: If the environment could not be made or the install
+            failed.
+    """
+    environment = into / "env"
+    ran(
+        ["uv", "venv", "--clear", str(environment)],
+        cwd=into,
+        describing="making a Python environment holding no copy of these sources",
+    )
+    pinned = f"{target.name}=={version}"
+    ran(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(interpreter_in(environment)),
+            "--index-url",
+            f"{bases.pypi}/simple",
+            "--no-cache",
+            pinned,
+        ],
+        cwd=into,
+        describing=f"`pip install {pinned}` from {bases.pypi}",
+    )
+    return Installed(target.id, environment, None, str(interpreter_in(environment)))
+
+
+def _node_client(
+    repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+) -> Installed:
+    """The Node client, taken from the JavaScript registry the way an application takes it.
+
+    Raises:
+        InstallError: If the install failed.
+    """
+    environment = into / "env"
+    environment.mkdir(parents=True, exist_ok=True)
+    (environment / "package.json").write_text(
+        '{ "name": "a-consumer", "private": true, "type": "module" }\n', encoding="utf-8"
+    )
+    pinned = f"{target.name}@{version}"
+    ran(
+        ["npm", "install", "--no-audit", "--no-fund", pinned],
+        cwd=environment,
+        env={
+            **os.environ,
+            "npm_config_registry": bases.npm,
+            "npm_config_cache": str(into / "npm-cache"),
+            "npm_config_update_notifier": "false",
+        },
+        describing=f"`npm install {pinned}` from {bases.npm}",
+    )
+    return Installed(target.id, environment, None, "node")
+
+
+def _rust_client(
+    repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+) -> Installed:
+    """The Rust client, taken from the crate registry the way a dependent takes it.
+
+    A consumer crate of this proof's own depends on the client pinned to the
+    version under test, and `cargo` resolves, downloads and verifies it from
+    the registry — crates.io where nothing stands in, which a dependency naming
+    no registry resolves from, or the stand-in's own sparse index otherwise,
+    configured for `cargo` under `STANDIN_CRATES_NAME`. What is built against
+    is what the registry served, and the consumer is the client's own committed
+    smoke check.
+
+    Raises:
+        InstallError: If the consumer would not build.
+    """
+    environment = into / "env"
+    consumer = environment / "consumer"
+    (consumer / "src").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(repo.path("crates/printobserver-sdk/smoke/main.rs"), consumer / "src/main.rs")
+    standing_in = bases.crates_index != CRATES_INDEX
+    dependency = (
+        f'printobserver-sdk = {{ version = "={version}", registry = "{STANDIN_CRATES_NAME}" }}'
+        if standing_in
+        else f'printobserver-sdk = "={version}"'
+    )
+    (consumer / "Cargo.toml").write_text(
+        "\n".join(
+            [
+                "# Written by the registry proof, not committed: no manifest in that",
+                "# tree carries a version, and this one has to name the version under",
+                "# test.",
+                "[package]",
+                'name = "printobserver-sdk-smoke"',
+                'version = "0.0.0"',
+                'edition = "2024"',
+                "",
+                "[dependencies]",
+                dependency,
+                "",
+                "[workspace]",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    environment_variables = dict(os.environ)
+    if standing_in:
+        environment_variables[STANDIN_CRATES_INDEX_VARIABLE] = bases.crates_index
+    ran(
+        ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
+        cwd=consumer,
+        env=environment_variables,
+        describing=f'building a consumer of `{target.name} = "={version}"` from {bases.crates}',
+    )
+    return Installed(
+        target.id,
+        environment,
+        None,
+        str(consumer / "target" / "release" / executable("printobserver-sdk-smoke")),
+    )
+
+
+class Client(Protocol):
+    """How one client is taken from its own registry."""
+
+    def __call__(
+        self, repo: Repo, target: targets.Target, version: str, into: Path, bases: Bases
+    ) -> Installed:
+        """Take it, and answer the environment it was installed into."""
+
+
+#: How each client is taken from its own registry, by the target it is. As
+#: with `ROUTES`, which identifiers belong here is the declaration's to say:
+#: `clients` below holds these keys to the targets `release-targets.toml`
+#: declares as assembled here and backing no route.
+CLIENTS: dict[str, Client] = {
+    "crate:printobserver-sdk": _rust_client,
+    "pypi:printobserver-sdk": _python_client,
+    "npm:@printobserver/sdk": _node_client,
+}
+
+#: The route a client's supervisor is taken by: the release asset for this host,
+#: by the committed install script, which needs no toolchain and carries the
+#: program at exactly the version under test.
+SUPERVISOR_ROUTE = "release:printobserver"
+
+
+def clients(repo: Repo) -> dict[str, Client]:
+    """How each declared client is taken, reconciled with the declaration itself.
+
+    The same reconciliation `routed` makes, over the other three targets this
+    tool assembles: a client declared that nothing here takes is a client this
+    tier says nothing about, and a key here no declaration names is dead.
+
+    Raises:
+        RegistryError: If the two disagree, naming which side is missing what.
+    """
+    declared = {
+        target.id
+        for target in targets.declared(repo.root)
+        if not target.route and target.built_by == "release-artifacts"
+    }
+    untaken = sorted(declared - set(CLIENTS))
+    undeclared = sorted(set(CLIENTS) - declared)
+    if untaken or undeclared:
+        msg = (
+            f"the clients this proof takes and the clients `release-targets.toml` declares "
+            f"disagree: {', '.join(untaken) or 'nothing'} is declared as a client and "
+            f"nothing here takes it, and {', '.join(undeclared) or 'nothing'} is taken "
+            f"here and declared as no client"
+        )
+        raise RegistryError(msg)
+    return CLIENTS
+
+
 class Route(Protocol):
     """How one route is taken from its own registry."""
 
@@ -1168,6 +1439,12 @@ ROUTES: dict[str, Route] = {
     "npm:printobserver-cli": _npm_route,
     "release:printobserver": _script_route,
 }
+
+#: The programs a route's installed program reaches for on the path it is run
+#: under, which the proof keeps when it takes the toolchain off: the launcher
+#: route 2 installs runs under `node`. A route absent here installs a program
+#: that runs on its own.
+RUNTIMES: dict[str, tuple[str, ...]] = {"npm:printobserver-cli": NODE_RUNTIME}
 
 
 def routed(repo: Repo) -> dict[str, Route]:
@@ -1215,8 +1492,12 @@ def take(repo: Repo, target: targets.Target, version: str, into: Path, bases: Ba
     return route(repo, target, version, into, bases)
 
 
-def _reported(program: Path, cwd: Path) -> str:
+def _reported(program: Path, cwd: Path, runtime: tuple[str, ...] = ()) -> str:
     """What the program a route installed says its own version is.
+
+    Run with no Rust toolchain on the path and `runtime` kept on it — the
+    programs the installed program reaches for, which on a host that keeps
+    them beside the toolchain would otherwise go with it.
 
     Raises:
         InstallError: If the route put no program on the path it was given, or
@@ -1228,7 +1509,7 @@ def _reported(program: Path, cwd: Path) -> str:
     return ran(
         [str(program), "--version"],
         cwd=cwd,
-        env=without_rust(),
+        env=without_rust(preserve=runtime, preserved_at=cwd / ".path" if runtime else None),
         describing=f"{program} reporting its own version",
     ).strip()
 
@@ -1271,13 +1552,16 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
     # never takes a route and would never otherwise look at whether the set it
     # can take is still the set that is declared.
     routed(repo)
+    taken_as_client = target.id in clients(repo)
     bases = Bases.read(repo, environment)
     where = bases.of(target.registry)
     selected = select(bases, target, environment.get(PRINTOBSERVER_PROOF_VERSION, ""))
     stated = _stated_command(repo, target)
     preamble = [
         f"version under test: {selected.version or '(none)'} ({selected.whence})",
-        f"route: {target.route or target.id} — `{stated}`" if stated else f"route: {target.id}",
+        f"route: {target.route or target.id} — `{stated}`"
+        if stated
+        else f"{'client' if taken_as_client else 'route'}: {target.id}",
         f"registry: {where}",
     ]
 
@@ -1286,9 +1570,11 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
         return _refused(target, selected, where, available, preamble)
 
     into.mkdir(parents=True, exist_ok=True)
+    if taken_as_client:
+        return _prove_client(repo, target, selected, into, bases, preamble)
     try:
         installed = take(repo, target, selected.version, into, bases)
-        version = _reported(installed, into)
+        version = _reported(installed, into, RUNTIMES.get(target.id, ()))
     except InstallError as refused:
         return Proof(
             target.id,
@@ -1333,6 +1619,63 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
         f"{target.id}: {Outcome.PROVEN} {selected.version} ({selected.whence}): "
         f"`{stated or target.id}` installed {version} — "
         f"{TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}",
+    )
+
+
+def _prove_client(
+    repo: Repo,
+    target: targets.Target,
+    selected: Selected,
+    into: Path,
+    bases: Bases,
+    preamble: list[str],
+) -> Proof:
+    """Take one client from its registry and run its smoke check against the release's program.
+
+    The supervisor the check reaches is taken from the forge's release at the
+    same version, by the install-script route: a client proven against a
+    program built from the working tree would be proven against a supervisor
+    nobody installed. A release the forge does not serve for this host is
+    `NOT SERVED`, naming the forge, before the client is taken at all — the
+    client may be fine, and what is missing is the publish beside it.
+    """
+    supervisor_target = targets.named(repo.root, SUPERVISOR_ROUTE)
+    forge = bases.of(supervisor_target.registry)
+    preamble = [*preamble, f"supervisor: `{SUPERVISOR_ROUTE}` {selected.version} from {forge}"]
+    if selected.version not in served(bases, supervisor_target):
+        return _refused(
+            supervisor_target, selected, forge, served(bases, supervisor_target), preamble
+        )
+    # A supervisor the release carries that does not come up, or does not
+    # write the client file the smoke check reads, is an artifact that does
+    # not work as much as a client that does not: both are the release's,
+    # and both are reported as what was served not working here.
+    try:
+        supervisor = take(repo, supervisor_target, selected.version, into / "supervisor", bases)
+        taken = clients(repo)[target.id](repo, target, selected.version, into, bases)
+        said = prove_client(repo, taken, supervisor)
+    except (InstallError, WorldError) as refused:
+        return Proof(
+            target.id,
+            Outcome.NOT_PROVEN,
+            _rendered(
+                target,
+                Outcome.NOT_PROVEN,
+                [
+                    *preamble,
+                    f"{bases.of(target.registry)} serves {selected.version}, and what it "
+                    f"serves did not work here:",
+                    str(refused),
+                    NEXT_BUILD,
+                ],
+            ),
+        )
+    return Proof(
+        target.id,
+        Outcome.PROVEN,
+        f"{target.id}: {Outcome.PROVEN} {selected.version} ({selected.whence}): "
+        f"its smoke check ran where it was installed, against the release's own "
+        f"supervisor — {said.splitlines()[0] if said else 'and said nothing'}",
     )
 
 

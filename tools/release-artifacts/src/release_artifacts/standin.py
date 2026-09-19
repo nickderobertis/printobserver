@@ -39,8 +39,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import json
+import tarfile
 import threading
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from email.parser import BytesParser
@@ -59,6 +62,7 @@ from release_artifacts.build import CHECKSUMS, LAUNCHER, PROGRAM
 # serve a newest the proof selecting from it disagreed about.
 from release_artifacts.publishing import CREDENTIALS
 from release_artifacts.registries import (
+    STANDIN_CRATES,
     STANDIN_FORGE,
     STANDIN_NPM,
     STANDIN_PYPI,
@@ -99,6 +103,12 @@ PYPI_PREFIX = STANDIN_PYPI
 NPM_PREFIX = STANDIN_NPM
 FORGE_PREFIX = STANDIN_FORGE
 PYPI_UPLOAD = STANDIN_PYPI_UPLOAD
+CRATES_PREFIX = STANDIN_CRATES
+
+#: The index of the crate registry a dependency of another registry's crate is
+#: resolved from, as a sparse index entry names it: the crate registry's own
+#: canonical spelling, which `cargo` reads as crates.io itself.
+CRATES_IO = "https://github.com/rust-lang/crates.io-index"
 
 #: The state an interrupted upload leaves an asset in, beside `UPLOADED` — the
 #: forge's own, read from the module that reads a release document.
@@ -215,6 +225,9 @@ class Registries:
         #: the forge's own numbering of releases and of assets.
         self._assets: dict[str, dict[str, _Asset]] = {}
         self._release_ids: dict[str, ReleaseId] = {}
+        #: Every crate this serves, by name and then by version: the index
+        #: line `cargo` reads for each.
+        self._crates: dict[str, dict[str, dict[str, object]]] = {}
         self._next_id = 1
         #: What a write of one artifact is refused with, by registry and name.
         self._refusals: dict[tuple[str, str], _Refusal] = {}
@@ -251,11 +264,16 @@ class Registries:
         listed: bool = True,
         carries_program: bool = True,
         platform_package: bool = True,
+        program: Path | None = None,
     ) -> None:
         """Serve one version from every registry, and list its release.
 
         Args:
             version: The version each registry serves it as.
+            program: A program of the caller's for every artifact to carry, in
+                place of the stand-in's own. A client's registry proof takes
+                the supervisor it runs against off the release this serves, so
+                a journey of that proof serves the real program here.
             reported: What the program it carries says its own version is,
                 which is `version` unless a caller asks for a mislabelled one.
             says: The whole line that program answers `--version` with, where
@@ -283,10 +301,11 @@ class Registries:
         """
         answer = says or f"{PROGRAM} {reported or version}"
         body = BROKEN if broken else STAND_IN.format(PROGRAM=PROGRAM, answer=answer)
-        program = self.into / f"program-{version}" / PROGRAM
-        program.parent.mkdir(parents=True, exist_ok=True)
-        program.write_text(body, encoding="utf-8")
-        program.chmod(0o755)
+        if program is None:
+            program = self.into / f"program-{version}" / PROGRAM
+            program.parent.mkdir(parents=True, exist_ok=True)
+            program.write_text(body, encoding="utf-8")
+            program.chmod(0o755)
 
         carried = program if carries_program else None
         self._serve_wheel(version, carried)
@@ -315,6 +334,122 @@ class Registries:
             ).encode(),
         )
         self._serve_release_document(tag)
+
+    def serve_clients(self, *only: str, broken: bool = False) -> dict[str, Path]:
+        """Serve the clients from their registries, built by the real builders.
+
+        At the workspace's own version, because that is the version every
+        builder writes into what it assembles. The crate is served through a
+        sparse index of this stand-in's own beside the download it names, the
+        wheel and the package through the same documents route 1 and route 2
+        are served through.
+
+        Args:
+            only: The clients to serve, by target identifier; every declared
+                client where none is named.
+            broken: Serve each client's name with nothing usable inside it —
+                a wheel, a package and a crate carrying no module, no entry
+                point and no library — which is what a registry serving a
+                client that installs and cannot be used looks like from the
+                outside.
+
+        Returns:
+            What was built, by target identifier.
+        """
+        from release_artifacts.build import ASSEMBLED_HERE, build, manifest_of
+
+        built: dict[str, Path] = {}
+        for target in targets.declared(self.repo.root):
+            if target.route or target.built_by != ASSEMBLED_HERE:
+                continue
+            if only and target.id not in only:
+                continue
+            into = self.into / "clients" / target.registry
+            paths = (
+                _hollow(self.repo, target, into)
+                if broken
+                else build(self.repo, target.id, into).paths
+            )
+            (artifact,) = paths
+            built[target.id] = artifact
+            match target.registry:
+                case "pypi":
+                    self._serve_file(
+                        pypi_name(target.name),
+                        _wheel_version(artifact),
+                        artifact.name,
+                        artifact.read_bytes(),
+                    )
+                case "npm":
+                    manifest = manifest_of(artifact)
+                    self._serve_version(
+                        target.name,
+                        str(manifest["version"]),
+                        manifest,
+                        artifact.name,
+                        artifact.read_bytes(),
+                    )
+                case "crate":
+                    self._serve_crate(target.name, artifact)
+        return built
+
+    def _serve_crate(self, name: str, package: Path) -> None:
+        """Serve one packaged crate as the crate registry serves it.
+
+        Three documents, each the real registry's own: the API document a
+        version list is read off, the sparse index `cargo` resolves the
+        dependency through — its `config.json` naming where a download is,
+        and the one line per version under the index's own path for the
+        name — and the download itself, whose digest the index line carries
+        and `cargo` verifies.
+        """
+        manifest = _packaged_manifest(package)
+        package_table = manifest.get("package")
+        if not isinstance(package_table, dict) or "version" not in package_table:
+            msg = f"{package} carries a Cargo.toml naming no package version"
+            raise StandinError(msg)
+        version = str(package_table["version"])
+        raw = package.read_bytes()
+        served = self._crates.setdefault(name, {})
+        served[version] = {
+            "name": name,
+            "vers": version,
+            "deps": [
+                _index_dependency(dependency, declared)
+                for kind in ("dependencies", "build-dependencies")
+                for dependency, declared in _table(manifest, kind).items()
+            ],
+            "cksum": hashlib.sha256(raw).hexdigest(),
+            "features": manifest.get("features", {}),
+            "yanked": False,
+            "links": None,
+            "v": 2,
+        }
+        self.answers(
+            f"{CRATES_PREFIX}/dl/{name}/{version}/download",
+            raw,
+            content_type="application/octet-stream",
+        )
+        self.answers(
+            f"{CRATES_PREFIX}/index/config.json",
+            json.dumps(
+                {"dl": f"{self.base}{CRATES_PREFIX}/dl", "api": f"{self.base}{CRATES_PREFIX}"}
+            ).encode(),
+        )
+        self.answers(
+            f"{CRATES_PREFIX}/index/{_index_path(name)}",
+            "".join(f"{json.dumps(entry)}\n" for entry in served.values()).encode(),
+            content_type="text/plain",
+        )
+        self.answers(
+            f"{CRATES_PREFIX}/api/v1/crates/{name}",
+            json.dumps(
+                {
+                    "crate": {"name": name, "max_version": _newest(served)},
+                    "versions": [{"num": one, "yanked": False} for one in served],
+                }
+            ).encode(),
+        )
 
     def refuse(
         self,
@@ -756,6 +891,126 @@ class Registries:
         )
 
 
+def _packaged_manifest(package: Path) -> dict[str, object]:
+    """The normalized `Cargo.toml` a packaged crate carries.
+
+    Raises:
+        StandinError: If the package carries none.
+    """
+    with tarfile.open(package, "r:gz") as archive:
+        for member in archive.getmembers():
+            if member.name.count("/") == 1 and member.name.endswith("/Cargo.toml"):
+                handle = archive.extractfile(member)
+                if handle is not None:
+                    return tomllib.loads(handle.read().decode("utf-8"))
+    msg = f"{package} carries no Cargo.toml, so nothing here can index it"
+    raise StandinError(msg)
+
+
+def _table(manifest: dict[str, object], key: str) -> dict[str, object]:
+    """One table of a manifest, or an empty one where it declares none."""
+    found = manifest.get(key)
+    return found if isinstance(found, dict) else {}
+
+
+def _index_dependency(name: str, declared: object) -> dict[str, object]:
+    """One dependency of a packaged crate, as a sparse index line spells it.
+
+    Every dependency of a crate this stand-in serves comes from crates.io, and
+    an index entry of another registry has to say so by name: left unsaid, the
+    dependency is read as one of this registry's own, which serves no `serde`.
+    """
+    table = declared if isinstance(declared, dict) else {"version": declared}
+    return {
+        "name": name,
+        "req": str(table.get("version", "*")),
+        "features": list(table.get("features", [])),
+        "optional": bool(table.get("optional", False)),
+        "default_features": bool(table.get("default-features", True)),
+        "target": table.get("target"),
+        "kind": "normal",
+        "registry": CRATES_IO,
+        "package": table.get("package"),
+    }
+
+
+def _index_path(name: str) -> str:
+    """Where a sparse index keeps the line for one crate name, by the index's own rule."""
+    lowered = name.lower()
+    match len(lowered):
+        case 1:
+            return f"1/{lowered}"
+        case 2:
+            return f"2/{lowered}"
+        case 3:
+            return f"3/{lowered[0]}/{lowered}"
+        case _:
+            return f"{lowered[:2]}/{lowered[2:4]}/{lowered}"
+
+
+def _wheel_version(wheel: Path) -> str:
+    """The version a wheel's own file name states."""
+    return wheel.name.split("-")[1]
+
+
+def _hollow(repo: Repo, target: targets.Target, into: Path) -> tuple[Path, ...]:
+    """A client's artifact with nothing usable in it, under its own name and version.
+
+    A wheel carrying no module, a package carrying no entry point, a crate
+    carrying no library: each installs, and each fails the client's own smoke
+    check the moment it is used, which is the registry serving something that
+    does not work.
+    """
+    from release_artifacts import wheels
+    from release_artifacts.build import REQUIRES_PYTHON
+
+    version = targets.workspace(repo.root)["version"]
+    into.mkdir(parents=True, exist_ok=True)
+    match target.registry:
+        case "pypi":
+            wheel = wheels.Wheel(
+                wheels.Distribution(
+                    name=target.name,
+                    version=version,
+                    summary="a client carrying nothing",
+                    requires_python=REQUIRES_PYTHON,
+                    license="MIT",
+                    homepage="https://example.invalid",
+                ),
+                wheels.PURE_TAG,
+            )
+            return (wheel.write(into),)
+        case "npm":
+            package = packages.NodePackage(
+                name=target.name,
+                version=version,
+                description="a client carrying nothing",
+                license="MIT",
+                repository="https://example.invalid",
+            )
+            manifest = package.manifest(type="module", main="dist/index.js", files=["dist"])
+            return (packages.packed(package, manifest, packages.Archive(), into),)
+        case "crate":
+            name = target.name
+            root = f"{name}-{version}"
+            archive = into / f"{root}.crate"
+            with tarfile.open(archive, "w:gz") as opened:
+                for member, content in (
+                    (
+                        f"{root}/Cargo.toml",
+                        f'[package]\nname = "{name}"\nversion = "{version}"\nedition = "2024"\n',
+                    ),
+                    (f"{root}/src/lib.rs", "// a client carrying nothing\n"),
+                ):
+                    info = tarfile.TarInfo(member)
+                    encoded = content.encode()
+                    info.size = len(encoded)
+                    opened.addfile(info, io.BytesIO(encoded))
+            return (archive,)
+    msg = f"nothing here hollows out `{target.id}`"
+    raise StandinError(msg)
+
+
 def _served_path(path: str) -> str:
     """The path one request names, as it is served here."""
     return unquote(urlsplit(path).path).rstrip("/") or "/"
@@ -836,6 +1091,10 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
             """Answer whatever an installer asked for."""
             self._answer(registries.answer(self.path))
 
+        def do_HEAD(self) -> None:
+            """Answer the headers alone, which is how `uv` sizes a file before fetching it."""
+            self._answer(registries.answer(self.path), body=False)
+
         def do_POST(self) -> None:
             """Take a wheel's legacy upload form, or one release asset's bytes."""
             self._take("POST")
@@ -860,13 +1119,14 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
             headers = {name.lower(): value for name, value in self.headers.items()}
             self._answer(registries.take(method, self.path, headers, body))
 
-        def _answer(self, answer: Answer) -> None:
+        def _answer(self, answer: Answer, *, body: bool = True) -> None:
             """Answer, declaring the length every client reads the body by."""
             self.send_response(answer.status)
             self.send_header("Content-Type", answer.content_type)
             self.send_header("Content-Length", str(len(answer.body)))
             self.end_headers()
-            self.wfile.write(answer.body)
+            if body:
+                self.wfile.write(answer.body)
 
         def log_message(self, format: str, *args: object) -> None:
             """Say nothing: a stand-in whose log is the output is not signal."""

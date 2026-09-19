@@ -21,14 +21,16 @@
 //! file a person could leave behind refuses the start naming the file and never
 //! what it holds.
 
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use base64::Engine as _;
 use printobserver_core::store::{HistoryQuery, Stores};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{
-    API_CREDENTIAL_FILE, ApiCredential, CLIENT_CONFIG_FILE, ConfigField,
+    API_CREDENTIAL_FILE, ApiCredential, BODY_BOUND, CLIENT_CONFIG_FILE, ConfigField, DRAIN_BOUND,
     GENERATED_CREDENTIAL_BYTES, MEDIA_TYPE, Method, OPERATIONS, Operation, Ports, REDACTED,
     Running, Server, ServerConfig, StartError, TOKEN_HEADER,
 };
@@ -335,6 +337,173 @@ async fn a_refused_request_reads_nothing_from_the_store() {
         );
     }
     server.stop().await;
+}
+
+/// One refused request over one plain connection, sent the way the responder
+/// sends one: the head, then `sent` of a body declared as `declared` bytes
+/// long, then the answer read to the end of the connection.
+///
+/// What comes back is the answer and the socket's own record of what followed
+/// it: a reset the server sends after its end reaches this side a moment after
+/// the end does, and is recorded on the socket rather than read.
+fn refused_exchange(
+    address: std::net::SocketAddr,
+    path: &str,
+    declared: usize,
+    sent: &str,
+) -> std::io::Result<(String, Option<std::io::Error>)> {
+    let mut stream = std::net::TcpStream::connect(address)?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+    write!(
+        stream,
+        "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: {MEDIA_TYPE}\r\n\
+         Content-Length: {declared}\r\nAuthorization: Bearer {SECRET}\r\nConnection: close\r\n\r\n"
+    )?;
+    stream.write_all(sent.as_bytes())?;
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer)?;
+    std::thread::sleep(Duration::from_millis(200));
+    Ok((answer, stream.take_error()?))
+}
+
+/// The action's own body, padded with the whitespace JSON allows to `length`.
+fn padded_action(length: usize) -> String {
+    let operation = printobserver_server::operation("set_feedrate_factor")
+        .expect("the feedrate operation is declared");
+    let mut body = printobserver_types::serde_json::to_string(&body_for(operation))
+        .expect("an action body renders");
+    body.push_str(&" ".repeat(length.saturating_sub(body.len())));
+    body
+}
+
+/// The path the feedrate action of one print is asked at.
+fn feedrate_path(print_id: PrintId) -> String {
+    printobserver_server::operation("set_feedrate_factor")
+        .expect("the feedrate operation is declared")
+        .full_path()
+        .replace("{print_id}", &print_id.to_string())
+}
+
+/// Assert one answer read back is the refusal, whole.
+fn assert_the_refusal_was_read(answer: &str) {
+    assert!(
+        answer.starts_with("HTTP/1.1 401 "),
+        "the answer read back was not the refusal: {answer:?}"
+    );
+    assert!(
+        answer.contains("presented as `Authorization: Bearer <credential>`"),
+        "the refusal read back carried no body: {answer:?}"
+    );
+}
+
+/// A refused request is answered whole even when its body is still arriving.
+///
+/// The refusal is decided on the head alone. A server that then closed the
+/// connection with the body still unread on it would close it with a reset
+/// rather than an end, and a caller on Windows — where a reset discards
+/// everything received and not yet read — would read the abort in place of
+/// the `401`; Linux hands over what was queued first, so the same race was
+/// only ever seen there. So the body is drained before the refusal goes out.
+///
+/// Sent with a body larger than the server reads before it decides, so that a
+/// server which did not drain it closes on a body still unread. The server
+/// ends its side before it closes, so on Linux the end is read before the
+/// reset arrives and the read itself stays clean; the reset is still recorded
+/// on the socket, and that record is what is read here. The body stays under
+/// the bound the server drains a refused body to.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_request_is_answered_whole_while_its_body_is_still_arriving() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    world.printer.forget();
+    let path = feedrate_path(print_id);
+    let address = world.server.address();
+    let body = padded_action(BODY_BOUND / 2);
+
+    let exchange =
+        tokio::task::spawn_blocking(move || refused_exchange(address, &path, body.len(), &body))
+            .await
+            .expect("the exchange finishes");
+
+    let (answer, reset) = exchange.expect("the request is sent whole and the refusal read whole");
+    assert!(
+        reset.is_none(),
+        "the connection was reset after the refusal, which a Windows caller reads in place \
+         of it: {reset:?}"
+    );
+    assert_the_refusal_was_read(&answer);
+    assert!(
+        world.printer.calls().is_empty(),
+        "a refused action reached the machine: {:?}",
+        world.printer.calls()
+    );
+    world.server.stop().await;
+}
+
+/// A refused request whose body is past the bound is still answered the refusal.
+///
+/// The drain reads to the bound and no further, so the refusal goes out over
+/// a body still arriving — which is the case the drain does not cover, and
+/// the one thing asked here is that the refusal is still what comes back,
+/// whole, rather than the drain's own limit or nothing at all. What the
+/// caller then meets on the connection is its own doing and is not asserted.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_request_past_the_body_bound_is_still_answered_the_refusal() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    world.printer.forget();
+    let path = feedrate_path(print_id);
+    let address = world.server.address();
+    let body = padded_action(BODY_BOUND + 1);
+
+    let exchange =
+        tokio::task::spawn_blocking(move || refused_exchange(address, &path, body.len(), &body))
+            .await
+            .expect("the exchange finishes");
+
+    let (answer, _) = exchange.expect("the request is sent and the refusal read");
+    assert_the_refusal_was_read(&answer);
+    assert!(
+        world.printer.calls().is_empty(),
+        "a refused action reached the machine: {:?}",
+        world.printer.calls()
+    );
+    world.server.stop().await;
+}
+
+/// A refused request whose body never arrives is answered inside the drain's bound.
+///
+/// A caller that sends a head declaring a body and then nothing would otherwise
+/// hold its refusal open for as long as it liked. The refusal comes back after
+/// `DRAIN_BOUND` rather than never, and inside the caller's own patience.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_request_whose_body_never_arrives_is_answered_inside_the_bound() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    world.printer.forget();
+    let path = feedrate_path(print_id);
+    let address = world.server.address();
+    let started = std::time::Instant::now();
+
+    let exchange = tokio::task::spawn_blocking(move || refused_exchange(address, &path, 64, ""))
+        .await
+        .expect("the exchange finishes");
+
+    let (answer, _) = exchange.expect("the refusal is read though no body was sent");
+    let waited = started.elapsed();
+    assert_the_refusal_was_read(&answer);
+    assert!(
+        waited >= DRAIN_BOUND && waited < DRAIN_BOUND + Duration::from_secs(10),
+        "the refusal over a body that never arrived came after {waited:?}, and the drain's \
+         bound is {DRAIN_BOUND:?}"
+    );
+    assert!(
+        world.printer.calls().is_empty(),
+        "a refused action reached the machine: {:?}",
+        world.printer.calls()
+    );
+    world.server.stop().await;
 }
 
 /// The ingress admits a post by its shared secret alone.

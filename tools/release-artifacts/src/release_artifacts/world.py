@@ -60,6 +60,12 @@ IMAGE = bytes.fromhex(
 #: The statuses the ingress answers a post it took under.
 ACCEPTED = (200, 202)
 
+#: The contract naming every action there is, in the tree this module is in.
+#: The operator is granted the whole vocabulary below, and reading it from
+#: here rather than copying it is what grants a variant the contracts gain
+#: without anybody spelling its name a second time.
+ACTION_KINDS = Path(__file__).resolve().parents[4] / "schemas/printobserver-core/ActionKind.json"
+
 #: How long the supervisor is given to answer at the address it bound.
 STARTUP_TIMEOUT_SECONDS = 60.0
 
@@ -223,59 +229,67 @@ def _machine_handler(machine: Machine) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def _configuration(state: Path, printer: Printer, credential: str | None) -> str:
+def every_action(contract: Path = ACTION_KINDS) -> list[str]:
+    """Every action kind the contract declares, in the order it declares them.
+
+    Raises:
+        WorldError: If the contract is not the closed vocabulary its schema is.
+    """
+    try:
+        document = json.loads(contract.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        msg = f"the action contract at {contract} could not be read: {error}"
+        raise WorldError(msg) from error
+    variants = document.get("oneOf") if isinstance(document, dict) else None
+    kinds = [one.get("const") for one in variants] if isinstance(variants, list) else []
+    if not kinds or not all(isinstance(kind, str) and kind for kind in kinds):
+        msg = f"the action contract at {contract} does not declare a closed vocabulary of names"
+        raise WorldError(msg)
+    return kinds
+
+
+def _configuration(state: Path, printer: Printer, credential: str | None = None) -> str:
     """The one configuration file the supervisor reads, as a document.
 
     `credential` is the one the supervisor serves under; given none, the
     document names none and the supervisor generates its own.
     """
-    return json.dumps(
-        {
-            "state_dir": str(state),
-            "listen": "127.0.0.1:0",
-            **({"api": {"credential": credential}} if credential is not None else {}),
-            "octoprint": {
-                "url": printer.url,
-                "api_key": printer.api_key,
-                "fan": "commandable",
+    document = {
+        "state_dir": str(state),
+        "listen": "127.0.0.1:0",
+        "octoprint": {
+            "url": printer.url,
+            "api_key": printer.api_key,
+            "fan": "commandable",
+        },
+        "supervisor": {"harness": "claude-code"},
+        "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
+        "safety": {
+            "agent_min_interval_s": 0,
+            "allowed": {
+                "feedrate": {"min": 0.5, "max": 1.5},
+                "flowrate": {"min": 0.9, "max": 1.1},
+                "fan": {"min": 0.0, "max": 100.0},
+                "bed_target": {"min": 0.0, "max": 110.0},
+                "tool_target:0": {"min": 0.0, "max": 260.0},
             },
-            "supervisor": {"harness": "claude-code"},
-            "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
-            "safety": {
-                "agent_min_interval_s": 0,
-                "allowed": {
-                    "feedrate": {"min": 0.5, "max": 1.5},
-                    "flowrate": {"min": 0.9, "max": 1.1},
-                    "fan": {"min": 0.0, "max": 100.0},
-                    "bed_target": {"min": 0.0, "max": 110.0},
-                    "tool_target:0": {"min": 0.0, "max": 260.0},
-                },
-                "actions": {
-                    "operator": [
-                        "pause",
-                        "resume",
-                        "cancel",
-                        "start_print",
-                        "set_feedrate_factor",
-                        "set_flowrate_factor",
-                        "set_tool_target_c",
-                        "set_bed_target_c",
-                        "set_fan_percent",
-                        "acknowledge_failure",
-                    ],
-                    # Nothing at all, and deliberately: the all-operation walk
-                    # needs one refusal per action method, and the grant is the
-                    # one rejection the policy takes before it looks at the
-                    # state, the interval or the bounds — so a client acting as
-                    # an agent is refused every action from wherever the
-                    # machine happens to be.
-                    "agent": [],
-                    "system": ["pause"],
-                },
+            "actions": {
+                # Every action there is, read from the contract that names them.
+                "operator": every_action(),
+                # Nothing at all, and deliberately: the all-operation walk
+                # needs one refusal per action method, and the grant is the
+                # one rejection the policy takes before it looks at the
+                # state, the interval or the bounds — so a client acting as
+                # an agent is refused every action from wherever the
+                # machine happens to be.
+                "agent": [],
+                "system": ["pause"],
             },
         },
-        indent=2,
-    )
+    }
+    if credential is not None:
+        document["api"] = {"credential": credential}
+    return json.dumps(document, indent=2)
 
 
 #: Where `just octoprint-up` keeps what it started, and the two files this
@@ -485,6 +499,7 @@ class World:
                 "img_url": f"{self.machine.url}/snapshot.jpg",
             }
         )
+        # llmlint: ignore[async_typed_clients_at_boundaries] one post in a sequential proof
         connection = http.client.HTTPConnection(urlsplit(server).netloc, timeout=30)
         connection.request(
             "POST",

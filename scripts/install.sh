@@ -81,10 +81,11 @@ machine="$(uname -m)"
 case "$system/$machine" in
     Linux/x86_64) platform="linux-x86_64" ;;
     Linux/aarch64 | Linux/arm64) platform="linux-aarch64" ;;
+    Darwin/arm64) platform="macos-aarch64" ;;
     *)
         die "this is $system/$machine, which printobserver publishes no program for" \
-            "The platforms it publishes for are linux-x86_64 and linux-aarch64. On \
-anything else, build it from source with \`cargo install printobserver\`."
+            "The platforms it publishes for are linux-x86_64, linux-aarch64 and macos-aarch64. \
+On anything else, build it from source with \`cargo install printobserver\`."
         ;;
 esac
 
@@ -169,14 +170,17 @@ mv -f "$work/$PROGRAM" "$DIRECTORY/$PROGRAM" || die \
     "$PROGRAM could not be put in $DIRECTORY" \
     "Nothing was installed. Pass \`--to\` a directory you can write to."
 
-echo "install.sh: installed $DIRECTORY/$PROGRAM from $which" >&2
+case "$system" in
+    Darwin) start="sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.$PROGRAM.plist" ;;
+    *) start="sudo systemctl enable --now $PROGRAM.service" ;;
+esac
+path_note=""
 case ":$PATH:" in
     *":$DIRECTORY:"*) ;;
     *)
-        echo "install.sh: $DIRECTORY is not on your PATH. Add it, or run \
-$DIRECTORY/$PROGRAM by its whole name." >&2
+        path_note="; $DIRECTORY is not on your PATH, so add it or run $DIRECTORY/$PROGRAM by its whole name"
         ;;
 esac
-echo "install.sh: next, put the service in place and then start it:" >&2
-echo "  curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh" >&2
-echo "  sudo systemctl enable --now $PROGRAM.service" >&2
+echo "install.sh: installed $DIRECTORY/$PROGRAM from $which; next, put the service in \
+place with \`curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.sh | sudo sh\` \
+and then start it with \`$start\`$path_note" >&2

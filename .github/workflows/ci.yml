@@ -37,6 +37,8 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -86,6 +88,8 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
+          - id: macos-aarch64
+            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64

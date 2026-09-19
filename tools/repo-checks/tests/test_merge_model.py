@@ -63,6 +63,7 @@ def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> N
         [
             "gate (linux-aarch64)",
             "gate (linux-x86_64)",
+            "gate (macos-aarch64)",
             "gate (windows-aarch64)",
             "gate (windows-x86_64)",
         ],
@@ -123,6 +124,7 @@ def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
         [
             "integration (linux-aarch64, ubuntu-24.04-arm)",
             "integration (linux-x86_64, ubuntu-24.04)",
+            "integration (macos-aarch64, macos-15)",
             "integration (windows-aarch64, windows-11-arm)",
             "integration (windows-x86_64, windows-2025)",
         ],

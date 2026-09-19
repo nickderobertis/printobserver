@@ -30,7 +30,10 @@ from repo_checks.platforms import (
     PLATFORM_LINE,
     PLATFORM_SHAPE,
     Platform,
+    PlatformError,
     ServiceManager,
+    retired,
+    retired_findings,
 )
 from repo_checks.platforms import supported as platforms_of
 from repo_checks.shell import run
@@ -352,7 +355,7 @@ def route_commands(repo: Repo) -> frozenset[str]:
     it answers `yes` for must be proven on every one of them.
 
     Read off the routed targets `release-targets.toml` declares rather than off
-    a list of job names, so the artifact-route proof and the registry proof of
+    a list of job names, so the tree's own proof and the registry proof of
     one route are both found by being that route's own.
     """
     proven = proving(repo)
@@ -409,7 +412,7 @@ def _install_answer_findings(declared: list[Platform]) -> list[str]:
     return [
         f"AGENTS.md's supported-platform list answers `install path: no` for "
         f"`{platform.id}` and states no reason: a platform taken out of every "
-        f"install-route, registry-proof and artifact-route matrix says why it is"
+        f"install-route matrix and every registry proof of a route says why it is"
         for platform in declared
         if not platform.install_path and not platform.install_path_reason
     ]
@@ -494,6 +497,7 @@ def platforms(repo: Repo) -> list[str]:
         )
     findings.extend(_install_answer_findings(declared))
     findings.extend(_entry_findings(repo, declared))
+    findings.extend(retired_findings(repo, declared))
 
     declared_ids = [item.id for item in declared]
     installed_ids = [item.id for item in declared if item.install_path]
@@ -963,12 +967,17 @@ def _reporting_findings(
     return findings
 
 
-def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any]) -> tuple[str, ...]:
-    """The commands after the routes an install job owes, for the platforms it runs on.
+def _job_service_pairs(
+    repo: Repo, path: ip.InstallPath, job: dict[str, Any]
+) -> tuple[tuple[str, ...], ...]:
+    """The pairs of commands after the routes an install job owes, one per service manager.
 
     Read through the service-manager column of the platforms the job's own
     matrix names, so a job is held to the pair belonging to its platforms rather
-    than to whichever pair the section happened to state first.
+    than to whichever pair the section happened to state first. Kept as pairs
+    rather than flattened: two managers may share their installer command, and
+    the order owed is the order within each pair, which a flattened sequence
+    repeating that command could never satisfy.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
     that deserialization boundary; the one thing read out of it here is its
@@ -979,14 +988,14 @@ def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any])
     try:
         declared = platforms_of(repo)
     except MarkerBlockMissingError:
-        return path.commands
+        return tuple(path.service_commands.values())
     managers: list[str] = []
     for platform in declared:
         if named and platform.id not in named:
             continue
         if platform.service_manager not in managers:
             managers.append(platform.service_manager)
-    return tuple(command for manager in managers for command in path.commands_for(manager))
+    return tuple(path.commands_for(manager) for manager in managers)
 
 
 def _install_job_findings(
@@ -1014,19 +1023,26 @@ def _install_job_findings(
             if command not in path.canonical and not (summary and summary in command)
         )
         findings.extend(_reporting_findings(repo, file_name, job_name, job))
-        stated_after = _job_service_commands(repo, path, job)
-        positions = [commands.index(c) if c in commands else -1 for c in stated_after]
-        for stated, position in zip(stated_after, positions, strict=True):
-            if position < 0:
-                findings.append(
-                    f"{file_name}: install job `{job_name}` omits `{stated}`, which "
-                    f"AGENTS.md states after the routes"
-                )
-        if all(position >= 0 for position in positions) and positions != sorted(positions):
-            findings.append(
-                f"{file_name}: install job `{job_name}` runs the two commands after the "
-                f"routes out of the order AGENTS.md states"
+        positions: list[int] = []
+        omitted: list[str] = []
+        for pair in _job_service_pairs(repo, path, job):
+            placed = [commands.index(c) if c in commands else -1 for c in pair]
+            positions.extend(placed)
+            omitted.extend(
+                stated
+                for stated, position in zip(pair, placed, strict=True)
+                if position < 0 and stated not in omitted
             )
+            if all(position >= 0 for position in placed) and placed != sorted(placed):
+                findings.append(
+                    f"{file_name}: install job `{job_name}` runs the two commands after the "
+                    f"routes out of the order AGENTS.md states"
+                )
+        findings.extend(
+            f"{file_name}: install job `{job_name}` omits `{stated}`, which "
+            f"AGENTS.md states after the routes"
+            for stated in omitted
+        )
         findings.extend(_checked_findings(path, file_name, job_name, commands, positions))
     return findings
 
@@ -1260,11 +1276,12 @@ def proving(repo: Repo) -> dict[str, tuple[str, ...]]:
     of a list beside it, so a recipe pointed at another artifact is one this
     stops finding for the artifact it used to prove.
 
-    Every one of them, rather than the last one read: a route is proven twice
-    and the two answer different questions — one over an artifact built from
-    the committed tree, which a change can run before anything is published,
-    and one over what its own registry serves, which is what a user meets. A
-    mapping that kept one would leave this answering for a proof that had gone.
+    Every one of them, rather than the last one read: an artifact is proven
+    twice and the two answer different questions — one over an artifact built
+    from the committed tree, which a change can run before anything is
+    published, and one over what its own registry serves, which is what a user
+    meets. A mapping that kept one would leave this answering for a proof that
+    had gone. `from_registry` tells the two apart.
     """
     from repo_checks.parsing import recipes as parse_recipes
 
@@ -1282,15 +1299,35 @@ def proving(repo: Repo) -> dict[str, tuple[str, ...]]:
     return {identifier: tuple(names) for identifier, names in found.items()}
 
 
-def artifact_jobs(repo: Repo) -> list[str]:
-    """One job per shipped artifact, taking it the way its own consumer does.
+#: The flag a proof recipe passes to take an artifact from its registry rather
+#: than build it from the committed tree.
+FROM_REGISTRY = "--registry"
 
-    Each of the three clients has a job that builds it, installs it and runs
-    that client's own smoke check; each of the three end-user routes has one
-    that builds its artifact and takes it the way that route's own command
-    takes it, once per platform `AGENTS.md`'s install-path section names. That
-    section is the authority for both sets rather than the matrix beside them,
-    because a check reading the matrix is satisfied by narrowing the matrix.
+
+def from_registry(repo: Repo, recipe: str) -> bool:
+    """Whether one proof recipe takes its artifact from the registry rather than the tree."""
+    from repo_checks.parsing import recipes as parse_recipes
+
+    declared = parse_recipes(repo.justfile).get(recipe)
+    return declared is not None and any(FROM_REGISTRY in line.split() for line in declared.body)
+
+
+def artifact_jobs(repo: Repo) -> list[str]:
+    """Every shipped artifact is proven twice, and a job takes it from its registry.
+
+    Each of the six — the three clients a dependent takes as a dependency and
+    the three end-user routes — has one recipe that builds it from the
+    committed tree, installs it and proves what it installed, which is a
+    change's own proof and the end-to-end tier's to run; and one that takes it
+    from the registry its consumer takes it from and proves what that served,
+    which is what a user meets. A job runs the second, once per platform
+    `AGENTS.md` names — every one for a client, and those the install path
+    targets for a route — and no job runs the first: a job proving a shipped
+    artifact over a build of the working tree reports on a tree nobody
+    installs, and each such job starts one runner per platform for it. The
+    supported-platform list is the authority for the matrix rather than the
+    matrix itself, because a check reading the matrix is satisfied by
+    narrowing the matrix.
     """
     try:
         declared = platforms_of(repo)
@@ -1321,17 +1358,35 @@ def artifact_jobs(repo: Repo) -> list[str]:
         # A route is taken only on the platforms the install path targets, which
         # is the first lever; a cell the exclusions block records is the second.
         wanted = targeted if str(target.get("route", "")).strip() else everywhere
-        for recipe in proven_by.get(identifier, ()) or [""]:
-            if not recipe:
+        recipes = proven_by.get(identifier, ())
+        built_here = [recipe for recipe in recipes if not from_registry(repo, recipe)]
+        served = [recipe for recipe in recipes if from_registry(repo, recipe)]
+        if not built_here:
+            findings.append(
+                f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
+                f"recipe builds it from the committed tree, installs it and proves what it "
+                f"installed"
+            )
+        if not served:
+            findings.append(
+                f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
+                f"recipe takes it from its registry (`{FROM_REGISTRY}`) and proves what "
+                f"that served"
+            )
+        for recipe in built_here:
+            if recipe in jobs:
+                file_name, job_name, _ = jobs[recipe]
                 findings.append(
-                    f"release-targets.toml declares `{identifier}`, and no `{PROVE_PREFIX}` "
-                    f"recipe builds it, installs it and proves what it installed"
+                    f"{file_name}: job `{job_name}` runs `just {recipe}`, which proves "
+                    f"`{identifier}` over a build of the working tree: a job proving a "
+                    f"shipped artifact takes it from its registry, and a change's own "
+                    f"proof of what it built is the end-to-end tier's"
                 )
-                continue
+        for recipe in served:
             if recipe not in jobs:
                 findings.append(
                     f"the committed configuration declares no job running `just {recipe}`, "
-                    f"so nothing proves `{identifier}` that way"
+                    f"so nothing proves `{identifier}` against its registry"
                 )
                 continue
             file_name, job_name, job = jobs[recipe]
@@ -1479,11 +1534,20 @@ def install_path_not_narrowed(repo: Repo) -> list[str]:
         now = {platform.id for platform in platforms_of(repo)}
     except MarkerBlockMissingError as error:
         return [str(error)]
+    # A platform `repo-policy.toml` records as retired, with its reason, left
+    # the list on purpose; one it does not record left it quietly, and that is
+    # the narrowing this refuses.
+    try:
+        cut = retired(repo)
+    except PlatformError as error:
+        return [*findings, str(error)]
     findings.extend(
         f"AGENTS.md's supported-platform list named `{platform}` on {whence} and no "
-        f"longer does: every artifact, matrix and route here is derived from that list, "
-        f"so narrowing it narrows all of them at once"
+        f"longer does, and `repo-policy.toml`'s `platforms.retired` records no reason it "
+        f"was cut: every artifact, matrix and route here is derived from that list, so "
+        f"narrowing it narrows all of them at once"
         for platform in sorted(before - now)
+        if platform not in cut
     )
 
     stated = {route.heading for route in ip.parse(repo.agents_md).routes}

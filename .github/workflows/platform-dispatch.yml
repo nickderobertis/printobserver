@@ -1,0 +1,111 @@
+# One job of `ci.yml` or of `install-path.yml`, on one supported platform, by
+# hand — and no other job.
+#
+# A push starts every job of every workflow that fires on it, one cell per
+# platform each, and the hosted macOS runners are a handful of slots shared
+# with other work. Bringing a platform up means running one cell over and over
+# while it is red, and a pull request is the wrong lever for that: it starts
+# every cell to re-run one. So this workflow takes the name of a job and the
+# name of a platform as the two inputs of a manual dispatch and runs exactly
+# that job's steps on exactly that platform's runner.
+#
+# Nothing here decides what runs where. `select` hands the two inputs to the
+# committed script (`just dispatch-resolve`, `repo_checks.dispatching`), which
+# answers the runner `AGENTS.md`'s supported-platform list declares for the
+# platform and refuses a pair that names no job or no platform before anything
+# runs; `run` runs on that answer and hands the same two inputs to the same
+# script (`just dispatch-run`), which runs the source job's own `run:` steps
+# off the committed source workflow — each step's command, its condition and
+# whether its failure is waived. `tests/repo-e2e` drives that script exactly as
+# these two jobs do, and `just check-repo`'s `platform-dispatch` holds this
+# file to that shape: the trigger set, the two inputs and their options, and
+# that these two jobs are the whole of it.
+#
+# `run` sets up every tool any source job's actions set up, once: an action is
+# a step only Actions can run, so the script passes `uses:` steps over and the
+# toolchain has to be there already. The jobs proving a registry carry no
+# version here, so each proves the newest its registry serves; the source jobs
+# read the release their run cut, which no dispatch has.
+
+name: platform-dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: The job to run, by its name in `ci.yml` or `install-path.yml`.
+        required: true
+        type: choice
+        options:
+          # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+          - gate
+          - integration
+          - prove-registry-pypi
+          - prove-registry-npm
+          - prove-registry-script
+          - prove-registry-client-rust
+          - prove-registry-client-python
+          - prove-registry-client-node
+          - install-route-pypi
+          - install-route-npm
+          - install-route-script
+      platform:
+        description: The platform to run it on, as `AGENTS.md`'s supported-platform list names it.
+        required: true
+        type: choice
+        options:
+          - linux-x86_64
+          - linux-aarch64
+          - macos-aarch64
+          - windows-x86_64
+          - windows-aarch64
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: select
+    runs-on: ubuntu-24.04
+    outputs:
+      runner: ${{ steps.resolve.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - id: resolve
+        env:
+          JOB: ${{ inputs.job }}
+          PLATFORM: ${{ inputs.platform }}
+        run: just dispatch-resolve "$JOB" "$PLATFORM" >> "$GITHUB_OUTPUT"
+
+  run:
+    name: ${{ inputs.job }} (${{ inputs.platform }})
+    needs: select
+    runs-on: ${{ needs.select.outputs.runner }}
+    # Git's own bash on the Windows runners rather than PowerShell, so that the
+    # script — and every step it runs, which it runs under bash — runs the same
+    # way on every platform.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The end-to-end tier and the suppression check both diff against the
+          # base branch, which a shallow checkout omits.
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # `just` from the same action as the cargo tools: `extractions/setup-just`
+      # has no build for the `windows-11-arm` runner.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v5
+      - uses: actions/setup-python@v5
+      - env:
+          JOB: ${{ inputs.job }}
+          PLATFORM: ${{ inputs.platform }}
+        run: just dispatch-run "$JOB" "$PLATFORM"

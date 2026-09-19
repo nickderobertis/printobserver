@@ -728,11 +728,18 @@ STILL_ACTIVE = 259
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
-def alive(pid: int) -> bool:
-    """Whether a process this script started is still running.
+def alive_after_reaping(pid: int) -> bool:
+    """Whether a process this script started is still running, once an exited child is reaped.
 
     On Windows, `os.kill` with any signal ends the process rather than asking
     after it, so the question is put to the process table instead.
+
+    Elsewhere a child of this very process that has exited is reaped here —
+    the side effect the name carries — rather than counted as running: until
+    it is, it stays a zombie that still answers a signal, so a stop would wait
+    out its whole grace period for a server that is already gone — and macOS
+    then refuses the final `killpg` to a group holding nothing but that zombie
+    with `EPERM`, where Linux lets it through.
     """
     if sys.platform == "win32":
         kernel32 = ctypes.windll.kernel32
@@ -747,6 +754,12 @@ def alive(pid: int) -> bool:
         finally:
             kernel32.CloseHandle(handle)
     try:
+        reaped, _ = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        reaped = 0
+    if reaped == pid:
+        return False
+    try:
         os.kill(pid, 0)
     except OSError:
         return False
@@ -755,16 +768,7 @@ def alive(pid: int) -> bool:
 
 def start_server(instance: Instance, port: int) -> int:
     """Start the server in a session of its own, and answer with its process id."""
-    argv = [
-        str(instance.executable),
-        "--basedir",
-        str(instance.basedir),
-        "serve",
-        "--host",
-        HOST,
-        "--port",
-        str(port),
-    ]
+    argv = [*server_argv_prefix(instance), "--host", HOST, "--port", str(port)]
     if sys.platform != "win32" and os.geteuid() == 0:
         # Not a recommendation. A container that has nothing but root is
         # somewhere this environment has to come up anyway.
@@ -784,7 +788,7 @@ def wait_for_api(instance: Instance, url: str, pid: int, timeout: float) -> None
     key = api_key(instance)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not alive_after_reaping(pid):
             raise StartupError(
                 "never-answered",
                 f"the server exited before it answered; read {instance.server_log}",
@@ -875,12 +879,112 @@ def stop(instance: Instance) -> dict[str, Any]:
         note(f"no instance is recorded under {instance.state_dir}")
         return {"state_dir": str(instance.state_dir), "stopped": False, "pid": None}
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    pid = int(record["pid"])
-    if alive(pid):
+    pid = record_pid(record)
+    if alive_after_reaping(pid):
+        # A record outlives the process it names — across a reboot, or once the
+        # id is handed to something else — so what is running under that id is
+        # read before its whole session is signalled.
+        command = command_of(pid)
+        if not is_this_instances_server(instance, command):
+            instance.record.unlink()
+            note(
+                f"process {pid} is not this instance's OctoPrint (it runs `{command}`); "
+                f"the stale record was removed and nothing was signalled"
+            )
+            return {"state_dir": str(instance.state_dir), "stopped": False, "pid": pid}
         _terminate(pid)
     instance.record.unlink()
     note(f"stopped process {pid}")
     return {"state_dir": str(instance.state_dir), "stopped": True, "pid": pid}
+
+
+def server_argv_prefix(instance: Instance) -> list[str]:
+    """How every server this script starts begins its argv.
+
+    The program, its base directory and the `serve` command, before the address
+    it listens on.
+    """
+    return [str(instance.executable), "--basedir", str(instance.basedir), "serve"]
+
+
+def server_command_prefix(instance: Instance) -> str:
+    """The same prefix as `ps` reports a command line, words joined by spaces."""
+    return " ".join(server_argv_prefix(instance))
+
+
+def is_this_instances_server(instance: Instance, command: str) -> bool:
+    """Whether a command line `ps` reported is this instance's own OctoPrint.
+
+    It begins with the argv the server was started under — or, because that
+    program is a console script, with the one word the kernel puts first when
+    it runs the script's shebang, the interpreter, followed by that argv:
+    `<python> <venv>/bin/octoprint --basedir <instance> serve ...`. The argv
+    alone is the identity, since the program it names lives inside this
+    instance's own state directory; a command line that merely mentions that
+    directory is neither.
+    """
+    prefix = server_command_prefix(instance)
+    _, _, after_the_interpreter = command.partition(" ")
+    # llmlint: ignore[boundary_inputs_validated] the prefix runs through `serve`
+    return command.startswith(prefix) or after_the_interpreter.startswith(prefix)
+
+
+def command_of(pid: int) -> str:
+    """The command line a running process was started with, as the host reports it.
+
+    `ps` everywhere it exists; on Windows, the process table read through
+    PowerShell, whose answer quotes an argument carrying a space where `ps`
+    would not, so the quotes are dropped to leave the words alone.
+    """
+    if sys.platform == "win32":
+        powershell = shutil.which("powershell")
+        if powershell is None:
+            message = "powershell is not on PATH; it is what says which process a record names"
+            raise FileNotFoundError(message)
+        query = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine"
+        reported = _run([powershell, "-NoProfile", "-Command", query], timeout=30).stdout
+        # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
+        return reported.strip().replace('"', "")
+    ps = shutil.which("ps")
+    if ps is None:
+        message = "ps is not on PATH; it is what says which process a record names"
+        raise FileNotFoundError(message)
+    return _run([ps, "-o", "command=", "-p", str(pid)], timeout=30).stdout.strip()
+
+
+def record_pid(record: object) -> int:
+    """Read the positive process identifier written into an instance record.
+
+    The record is whatever `instance.json` decoded to, narrowed here rather
+    than trusted: a file somebody edited can hold any document at all.
+
+    Raises:
+        ValueError: If the record is not an object carrying a positive integer PID.
+    """
+    if not isinstance(record, dict):
+        raise ValueError(f"instance record must be a JSON object, not {type(record).__name__}")
+    value = record.get("pid")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"instance record pid must be a positive integer, not {value!r}")
+    return value
+
+
+def record_url(record: object) -> str:
+    """Read the address written into an instance record, narrowed like its PID.
+
+    Raises:
+        ValueError: If the record does not carry an `http://host:port` address.
+    """
+    value = record.get("url") if isinstance(record, dict) else None
+    if not isinstance(value, str):
+        raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
+    parts = urllib.parse.urlsplit(value)
+    # An address and nothing more: no user, no path, no query, no fragment.
+    # llmlint: ignore[boundary_inputs_validated] the host's spelling is the client's to refuse
+    bare = parts.hostname and parts.port is not None and parts.username is None
+    if parts.scheme != "http" or not bare or parts.path or parts.query or parts.fragment:
+        raise ValueError(f"instance record url must be an http://host:port address, not {value!r}")
+    return value
 
 
 def _terminate(pid: int) -> None:
@@ -895,7 +999,7 @@ def _terminate(pid: int) -> None:
     os.killpg(group, signal.SIGTERM)
     deadline = time.monotonic() + 30.0
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not alive_after_reaping(pid):
             return
         time.sleep(0.5)
     os.killpg(group, signal.SIGKILL)
@@ -918,7 +1022,7 @@ def _terminate_windows_tree(pid: int) -> None:
         raise FileNotFoundError(message)
     _run([taskkill, "/PID", str(pid), "/T", "/F"], timeout=60)
     deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline and alive(pid):
+    while time.monotonic() < deadline and alive_after_reaping(pid):
         time.sleep(0.5)
 
 
@@ -981,10 +1085,11 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not instance.record.is_file() or not instance.api_key_file.is_file():
         return None
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    if not alive(int(record["pid"])):
+    if not alive_after_reaping(record_pid(record)):
         return None
     try:
-        status, _ = call(str(record["url"]), api_key(instance), "/api/version", timeout=5.0)
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+        status, _ = call(record_url(record), api_key(instance), "/api/version", timeout=5.0)
     except OSError, http.client.HTTPException:
         return None
     return record if status == 200 else None

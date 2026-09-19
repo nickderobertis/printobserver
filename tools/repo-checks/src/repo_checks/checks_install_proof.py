@@ -1,17 +1,20 @@
 """The registry install-path proof: its recipes, its triggers, and the gate's silence.
 
-The three `artifact-route-*` jobs prove an artifact **built from the committed
-tree**, and they are the only proof a change can run before anything is
-published. They are also green over a repository nothing can install, which is
-the state this one was in for two days: the one workflow that did read the real
-registries only installed, never ran what it installed, and had failed every
-cell of its only run with nobody looking.
+The end-to-end tier's `prove-route-*` and `prove-client-*` journeys prove an
+artifact **built from the committed tree**, and they are the only proof a
+change can run before anything is published. They are also green over a
+repository nothing can install, which is the state this one was in for two
+days: the one workflow that did read the real registries only installed, never
+ran what it installed, and had failed every cell of its only run with nobody
+looking.
 
 So this check holds four sources to each other:
 
-* the recipe set, which is where the tier and the one recipe per route live;
+* the recipe set, which is where the tier and the one recipe per route — and
+  per client — live;
 * `release-targets.toml` beside `AGENTS.md`'s install-path section, so every
-  route that section states has a recipe proving the target that backs it;
+  route that section states has a recipe proving the target that backs it,
+  and every client the declaration assembles has one too;
 * the committed workflow, whose triggers must be a release's own proof, a
   schedule and a manual invocation — and nothing that fires on a change, which
   over this tier could only ever report what was published before that change;
@@ -199,6 +202,17 @@ def _routed(repo: Repo) -> dict[str, str]:
     }
 
 
+def _clients(repo: Repo) -> list[str]:
+    """Every client `release-targets.toml` declares: assembled here, backing no route."""
+    from repo_checks.checks_ci import _shipped
+
+    return [
+        str(target.get("id", ""))
+        for target in _shipped(repo)
+        if not str(target.get("route", "")).strip()
+    ]
+
+
 def _invocations(body: tuple[str, ...]) -> set[str]:
     """Which recipes one recipe's body invokes with `just`.
 
@@ -249,6 +263,12 @@ def _recipe_findings(repo: Repo, policy: Declared) -> list[str]:
                 f"`{identifier}`, and no `{policy.recipe_prefix}` recipe proves what "
                 f"that registry serves"
             )
+    findings.extend(
+        f"client `{identifier}` is taken from its registry by a dependent, and no "
+        f"`{policy.recipe_prefix}` recipe proves what that registry serves"
+        for identifier in _clients(repo)
+        if identifier not in proofs
+    )
 
     if tier in declared:
         invoked = _invocations(declared[tier].body)

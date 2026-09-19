@@ -2,13 +2,17 @@
 # runners, and fails nothing. `docs/platform-bring-up.md` says what it is, what
 # it found and which node deletes it.
 #
+# A manual dispatch alone. It ran on every pull request while no gate reached
+# these runners; now that the gate carries the macOS cell, a probe of that
+# runner on every change is a second macOS job per push that says nothing the
+# gate does not, and the account's macOS runners are shared with other work.
+#
 # Summaries read `outcome`, not `conclusion`: `continue-on-error` makes a failed
 # step's `conclusion` read `success`.
 
 name: platform-probe
 
 on:
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -20,7 +24,7 @@ concurrency:
 
 defaults:
   run:
-    # Git Bash on the Windows runners, so every step is one script on all four.
+    # Git Bash on the Windows runners, so every step is one script on all three.
     shell: bash
 
 jobs:
@@ -121,15 +125,6 @@ jobs:
           printf -v report '%s\n\n<details><summary>steps context</summary>\n<pre>\n%s\n</pre>\n</details>' "$report" "$STEPS"
           echo "$report"
           echo "$report" >> "$GITHUB_STEP_SUMMARY"
-
-  probe-macos-x86_64:
-    name: probe-macos-x86_64
-    runs-on: macos-15-intel  # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] a job that is no platform-dependent kind may carry no platform matrix to derive this from
-    continue-on-error: true  # llmlint: ignore[diagnostics_error_or_absent] this job reports each tier's outcome in the summary rather than gating on it
-    # Under the six-hour default, so the summary step is reached even when
-    # every tier runs out its own step timeout.
-    timeout-minutes: 330
-    steps: *probe-steps
 
   probe-windows-x86_64:
     name: probe-windows-x86_64

@@ -46,9 +46,14 @@ from repo_checks.platforms import ServiceManager, supported
 
 # How the activation command — the second of a manager's pair — names the
 # service, per manager: `sudo systemctl enable --now <unit>` on systemd, whose
-# last word is the unit; `Set-Service -Name <service> ...` on Windows.
+# last word is the unit; `sudo launchctl bootstrap system <dir>/<label>.plist`
+# on launchd, whose label is the property list's own name; `Set-Service -Name
+# <service> ...` on Windows.
 ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
     ServiceManager.SYSTEMD: re.compile(r"\bsystemctl\s+enable\s+--now\s+(?P<service>\S+)\s*$"),
+    ServiceManager.LAUNCHD: re.compile(
+        r"\blaunchctl\s+bootstrap\s+system\s+(?P<directory>\S*)/(?P<service>[^/\s]+)\.plist\s*$"
+    ),
     ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<service>\S+)\b"),
 }
 
@@ -56,21 +61,32 @@ ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
 # section that states none of that shape.
 ACTIVATION_SHAPES: dict[str, str] = {
     ServiceManager.SYSTEMD: "systemctl enable --now <unit>",
+    ServiceManager.LAUNCHD: "launchctl bootstrap system <directory>/<label>.plist",
     ServiceManager.WINDOWS_SERVICE: "Set-Service -Name <service> ...",
 }
 
 # How each manager's installer declares the name it registers: `UNIT_NAME="..."`
-# in the shell installer, `$ServiceName = '...'` in the PowerShell one.
+# and `LAUNCHD_LABEL="..."` in the shell installer, which serves both of those
+# managers, `$ServiceName = '...'` in the PowerShell one.
 NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
     ServiceManager.SYSTEMD: (
         re.compile(r'^UNIT_NAME="(?P<service>[^"]+)"\s*$', re.MULTILINE),
         'UNIT_NAME="..."',
+    ),
+    ServiceManager.LAUNCHD: (
+        re.compile(r'^LAUNCHD_LABEL="(?P<service>[^"]+)"\s*$', re.MULTILINE),
+        'LAUNCHD_LABEL="..."',
     ),
     ServiceManager.WINDOWS_SERVICE: (
         re.compile(r"^\$ServiceName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
         "$ServiceName = '...'",
     ),
 }
+
+# A shell line that only assigns one double-quoted string with no command
+# substitution in it. It runs nothing, whatever words its value spells: the
+# shell installer remembers the start command this way, to print it at the end.
+PLAIN_ASSIGNMENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*="[^"`$]*(\$[A-Za-z_{][^"`$]*)*"$')
 
 # `pub const NAME: &str = "...";` in a Rust source.
 STRING_CONSTANT = re.compile(r'pub const (?P<name>[A-Z_]+): &str = "(?P<value>[^"]*)"\s*;')
@@ -85,6 +101,10 @@ RECORDED_TIMEOUT = re.compile(r"^-\s*posting timeout:\s*`(?P<milliseconds>[0-9_]
 
 # A shell line that opens a heredoc, and the delimiter it ends at.
 HEREDOC_OPEN = re.compile(r"<<-?(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)")
+
+# The line that closes a heredoc: its delimiter alone, which the installer
+# spells in capitals.
+HEREDOC_CLOSE = re.compile(r"^[A-Z_]+$")
 
 # What PowerShell reads as text rather than as a command: a here-string of
 # either kind, a single-quoted string, a double-quoted string with its backtick
@@ -110,6 +130,10 @@ class Named:
     service: str
     installer: str
     activation: str
+    #: Where the activation command loads the definition from, where it names
+    #: a path: launchd's does, and a definition loaded from anywhere but the
+    #: directory the manager reads at boot is one it forgets at the next one.
+    loads_from: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,10 +234,12 @@ def _named(manager: str, pair: tuple[str, ...], installer: str) -> tuple[Named |
             f"activation command names a service"
         ]
     service = ""
+    loads_from: str | None = None
     for command in pair:
         match = activation.search(command)
         if match:
             service = match["service"]
+            loads_from = match.groupdict().get("directory")
     if not service:
         findings.append(
             f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{ACTIVATION_SHAPES[manager]}` "
@@ -227,18 +253,19 @@ def _named(manager: str, pair: tuple[str, ...], installer: str) -> tuple[Named |
         )
     if findings:
         return None, findings
-    return Named(manager, service, installer, pair[-1]), []
+    return Named(manager, service, installer, pair[-1], loads_from), []
 
 
 def _executes(script: str, program: str) -> list[int]:
     """The line numbers on which a shell `script` runs `program` as a command.
 
     A line inside a heredoc is what the script *prints*, a line beginning with
-    `echo` or `printf` is what it *says*, and a comment is what it explains — so
-    none of the three is a command it runs. The installer names the command that
-    starts the service in exactly those places and runs it nowhere, which is the
-    whole point of the separation, so a check that could not tell them apart
-    would refuse the correct script.
+    `echo` or `printf` is what it *says*, a comment is what it explains, and a
+    line assigning one plain quoted string is what it *remembers* to say later —
+    so none of the four is a command it runs. The installer names the command
+    that starts the service in exactly those places and runs it nowhere, which
+    is the whole point of the separation, so a check that could not tell them
+    apart would refuse the correct script.
 
     A line ending in a backslash continues into the next, and both are one
     command: they are joined before any of that is decided, so the second half
@@ -247,7 +274,7 @@ def _executes(script: str, program: str) -> list[int]:
     """
     found: list[int] = []
     for number, command in _commands(script):
-        if command.startswith(("#", "echo ", "printf ")):
+        if command.startswith(("#", "echo ", "printf ")) or PLAIN_ASSIGNMENT.match(command):
             continue
         if re.search(rf"(^|[;&|]\s*|\bsudo\s+){re.escape(program)}\b", command):
             found.append(number)
@@ -329,8 +356,20 @@ def _sets(script: str, setting: str, powershell: bool) -> list[int]:
     return [
         number
         for number, command in _commands(script)
-        if not command.startswith(("#", "echo ", "printf ")) and pattern.search(command)
+        if not command.startswith(("#", "echo ", "printf "))
+        and not PLAIN_ASSIGNMENT.match(command)
+        and pattern.search(command)
     ]
+
+
+def _carries(text: str, setting: str) -> bool:
+    """Whether `text` carries `setting`, with any whitespace between its words.
+
+    A unit's setting is one line, and a property list's is an element and the
+    value under it, laid out over several — so the policy states each on one
+    line and it is matched here however the file that carries it is indented.
+    """
+    return " ".join(setting.split()) in " ".join(text.split())
 
 
 def runnable(path: Path) -> bool:
@@ -426,6 +465,17 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             f"`{rules.registration_directory}`, which is where the service manager reads "
             f"units from"
         )
+    if (
+        named.loads_from is not None
+        and rules.registration_directory is not None
+        and named.loads_from != rules.registration_directory
+    ):
+        findings.append(
+            f"the `{manager}` activation command loads the definition from "
+            f"`{named.loads_from}`, which is not the directory the manager loads at boot, "
+            f"`{rules.registration_directory}`: a definition loaded from anywhere else is one "
+            f"it forgets at the next boot"
+        )
 
     executes = _executes_powershell if powershell else _executes
     for program in rules.may_not_invoke:
@@ -443,12 +493,14 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             for number in _sets(script, setting, powershell)
         )
 
-    if rules.restarts_after_crash not in script:
+    if not _carries(script, rules.restarts_after_crash):
         findings.append(
             f"`{named.installer}` writes no `{rules.restarts_after_crash}`, so the service it "
             f"registers stays down after its process ends abruptly"
         )
-    if rules.starts_at_boot not in script and rules.starts_at_boot not in named.activation:
+    if not _carries(script, rules.starts_at_boot) and not _carries(
+        named.activation, rules.starts_at_boot
+    ):
         findings.append(
             f"neither `{named.installer}` nor the `{manager}` activation command carries "
             f"`{rules.starts_at_boot}`, so nothing makes the service start at boot once the "
@@ -522,7 +574,9 @@ def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:
 
     granted: set[str] = set()
     for line in script[script.index(table) + len(table) :].splitlines():
-        if line.startswith("["):
+        # The table ends where the next one opens or where the heredoc writing it
+        # does, whichever comes first.
+        if line.startswith("[") or HEREDOC_CLOSE.match(line):
             break
         granted.update(QUOTED_NAME.findall(line))
     if not granted:

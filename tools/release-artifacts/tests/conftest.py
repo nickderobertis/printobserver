@@ -17,6 +17,7 @@ from release_artifacts import targets
 from release_artifacts.__main__ import main
 from repo_checks.expect import equal
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -25,14 +26,69 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 #: The version is the workspace's own rather than a number written here: release
 #: automation moves that one, and a copy kept by hand is stale the first time it
 #: does.
-STAND_IN = """#!/bin/sh
-if [ "${{1:-}}" = "--version" ]; then
-    echo "printobserver {version}"
-    exit 0
-fi
-echo "printobserver: a stand-in program, which does nothing" >&2
-exit 1
+#:
+#: Compiled rather than a script, because a route's artifact states what the
+#: program inside it was built against, and on macOS that floor is read out of
+#: the program's own Mach-O load commands — which a shell script does not have.
+#: Compiled on every host, so the stand-in this host's journeys carry is built
+#: the same way as the one a macOS runner's carry.
+STAND_IN = """fn main() {{
+    if std::env::args().nth(1).as_deref() == Some("--version") {{
+        println!("printobserver {version}");
+        return;
+    }}
+    eprintln!("printobserver: a stand-in program, which does nothing");
+    std::process::exit(1);
+}}
 """
+
+
+def compiled_stand_in(into: Path) -> Path:
+    """The stand-in program, compiled for this host into `into`.
+
+    Compiled from the repository root so the toolchain `rust-toolchain.toml`
+    pins is the one that builds it, and stripped so the artifacts carrying it
+    stay small.
+
+    Raises:
+        AssertionError: If it would not compile.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    source = into / "stand_in.rs"
+    source.write_text(
+        STAND_IN.format(version=targets.workspace(REPO_ROOT)["version"]), encoding="utf-8"
+    )
+    program = into / "printobserver"
+    compiled = run(
+        [
+            "rustc",
+            "--edition",
+            "2021",
+            "-C",
+            "opt-level=s",
+            "-C",
+            "strip=symbols",
+            "-C",
+            "panic=abort",
+            "-o",
+            str(program),
+            str(source),
+        ],
+        cwd=REPO_ROOT,
+        timeout=300,
+    )
+    equal(
+        compiled.returncode,
+        0,
+        describing=f"compiling the stand-in program:\n{compiled.stdout}{compiled.stderr}",
+    )
+    return program
+
+
+@pytest.fixture(scope="session")
+def stand_in(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The stand-in program, compiled once for the whole session."""
+    return compiled_stand_in(tmp_path_factory.mktemp("stand-in"))
 
 
 @pytest.fixture
@@ -48,12 +104,9 @@ def version() -> str:
 
 
 @pytest.fixture
-def program(tmp_path: Path, version: str) -> Path:
+def program(tmp_path: Path, stand_in: Path) -> Path:
     """A runnable program a route's artifact can carry, reporting the tree's version."""
-    path = tmp_path / "printobserver"
-    path.write_text(STAND_IN.format(version=version), encoding="utf-8")
-    path.chmod(0o755)
-    return path
+    return Path(shutil.copy2(stand_in, tmp_path / "printobserver"))
 
 
 @pytest.fixture
@@ -69,7 +122,7 @@ def into(tmp_path: Path) -> Callable[[str], Path]:
 
 
 @pytest.fixture(scope="module")
-def built(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def built(tmp_path_factory: pytest.TempPathFactory, stand_in: Path) -> Path:
     """Every artifact the tool assembles from the committed tree, built once per module.
 
     What `just build-artifacts` leaves in `dist`, carrying the stand-in
@@ -78,11 +131,7 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> Path:
     packages the Rust one, and a journey that publishes it takes a copy.
     """
     root = tmp_path_factory.mktemp("built")
-    program = root / "printobserver"
-    program.write_text(
-        STAND_IN.format(version=targets.workspace(REPO_ROOT)["version"]), encoding="utf-8"
-    )
-    program.chmod(0o755)
+    program = Path(shutil.copy2(stand_in, root / "printobserver"))
     dist = root / "dist"
     equal(
         main(

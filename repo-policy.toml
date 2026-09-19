@@ -127,6 +127,17 @@ launcher = "npm/printobserver-cli/bin/printobserver.mjs"
 # waste, and a rule requiring all of them would mandate it.
 toolchain = "rust-toolchain.toml"
 
+# A platform the supported-platform list once named and names no longer, with
+# the reason it was cut. The two checks that refuse the list narrowing against
+# the commit a change was cut from — `install-path-not-narrowed` and
+# `integration-tier` — admit a platform recorded here and no other, so a
+# platform cannot leave the list quietly: the cut is visible, reasoned, and
+# refused without both. A record naming a platform the list still carries is
+# refused too, because it would say the platform was cut while it was not.
+[[platforms.retired]]
+id = "macos-x86_64"
+reason = "cut on 2026-09-18 for hosted-runner cost: the account holds five concurrent macOS slots shared with other work, and one push here was starting sixteen macOS jobs. Apple silicon is the only macOS platform."
+
 [integration]
 # The printer integration tier, and the two recipes that bracket it. These
 # names are the one source: `just check-repo` holds the committed
@@ -299,6 +310,18 @@ registration_directory = "/etc/systemd/system"
 may_not_invoke = ["systemctl", "service", "systemd-run"]
 starts_at_boot = "WantedBy=multi-user.target"
 restarts_after_crash = "Restart=on-failure"
+
+# launchd loads every property list under this directory at boot, and starts
+# the ones that say `RunAtLoad`; `KeepAlive` with `SuccessfulExit` false brings
+# one back after its process ends abruptly and leaves one that exited cleanly
+# down. The installer writes both into the property list and loads nothing: the
+# activation command's `bootstrap` is what loads it.
+[service.managers.launchd]
+installer = "scripts/install-service.sh"
+registration_directory = "/Library/LaunchDaemons"
+may_not_invoke = ["launchctl"]
+starts_at_boot = "<key>RunAtLoad</key> <true/>"
+restarts_after_crash = "<key>KeepAlive</key> <dict> <key>SuccessfulExit</key> <false/> </dict>"
 
 # The service control manager keeps no declaration apart from its record, and a
 # registration reading `start= auto` is one it starts at the next boot whether
@@ -491,6 +514,7 @@ schema_lock = "printobserver-schemas.lock"
 schema_lock_holders = [
     "crates/printobserver-supervisor-api/tests/schemas.rs",
     "crates/printobserver-oneharness/tests/supervision/support.rs",
+    "tools/repo-checks/tests/treecopy.py",
 ]
 
 [clients]
@@ -640,8 +664,34 @@ install_script_path = "scripts/install.sh"
 # own summary. `outcome` and not `conclusion`: `continue-on-error` is what
 # makes `conclusion` read `success` for a step that failed, so a report reading
 # it would say every route's service came up every time.
-waived_steps = ["install-service", "start-service"]
+waived_steps = ["install-service", "start-service-systemd", "start-service-launchd"]
 waived_report = "GITHUB_STEP_SUMMARY"
+
+[dispatch]
+# The workflow that runs ONE job of ONE source workflow on ONE supported
+# platform, by hand, and no other job: the lever a platform is brought up with
+# once its cells are in the gate, because a push re-runs every cell of every
+# job to re-run one, and the hosted macOS runners are a handful of slots shared
+# with other work.
+#
+# What turns its two inputs into a job and a runner, and what then runs that
+# job's own `run:` steps off the committed source workflow, is the committed
+# script `repo_checks.dispatching`, reached through the two recipes below —
+# so a test drives it exactly as the workflow does, on a host that is not a
+# runner. `just check-repo`'s `platform-dispatch` holds the workflow to that
+# script: the trigger set is `workflow_dispatch` alone, its inputs are
+# `job_input` and `platform_input` and nothing else, `platform_input`'s
+# options are exactly the supported-platform list, `job_input`'s options are
+# exactly the platform-matrixed jobs of `sources`, exactly one job runs
+# `resolve_recipe` and publishes the runner it answered, exactly one other
+# needs it, runs on that answer and runs `run_recipe`, and every source job is
+# one the script can run by hand.
+workflow = "platform-dispatch.yml"
+job_input = "job"
+platform_input = "platform"
+sources = ["ci.yml", "install-path.yml"]
+resolve_recipe = "dispatch-resolve"
+run_recipe = "dispatch-run"
 
 [agent]
 # The narrow command allowlist. `just check-repo` derives the set of programs

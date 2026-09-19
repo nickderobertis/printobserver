@@ -12,9 +12,10 @@ a process which can move a 3D printer as a side effect of installing a package,
 which is the one thing that section says twice must never happen.
 
 Both are asked of each service manager's installer in that manager's own terms:
-the shell installer a systemd platform fetches, and the PowerShell installer a
-Windows platform fetches, which registers with the service control manager and
-can enable the service by a setting as easily as by a program.
+the shell installer a systemd or a launchd platform fetches, which writes a
+unit or a property list, and the PowerShell installer a Windows platform
+fetches, which registers with the service control manager and can enable the
+service by a setting as easily as by a program.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -28,7 +29,7 @@ from collections.abc import Callable
 
 import pytest
 from repo_checks.checks_service import ingress_answer_bound, installer_for, service_install
-from repo_checks.expect import accepted, contains, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused, truth
 from repo_checks.model import PolicyValueError, Repo
 from treecopy import Tree
 
@@ -47,6 +48,7 @@ def test_the_committed_installer_is_accepted(committed: Repo) -> None:
 def test_each_managers_installer_is_the_one_its_policy_table_declares(committed: Repo) -> None:
     """A journey asks the policy for the installer it drives rather than naming one."""
     equal(installer_for(committed, "systemd"), INSTALLER, describing="the systemd installer")
+    equal(installer_for(committed, "launchd"), INSTALLER, describing="the launchd installer")
     equal(
         installer_for(committed, "windows-service"),
         WINDOWS_INSTALLER,
@@ -56,9 +58,9 @@ def test_each_managers_installer_is_the_one_its_policy_table_declares(committed:
 
 def test_asking_for_the_installer_of_a_manager_with_no_rules_is_refused(committed: Repo) -> None:
     """A manager the policy has no table for has no installer to hand a journey."""
-    refusal = re.escape("declares no `service.managers.launchd` table")
+    refusal = re.escape("declares no `service.managers.openrc` table")
     with pytest.raises(PolicyValueError, match=refusal):
-        installer_for(committed, "launchd")
+        installer_for(committed, "openrc")
 
 
 def test_the_committed_answer_bound_is_accepted(committed: Repo) -> None:
@@ -281,7 +283,8 @@ def test_a_section_stating_no_pair_at_all_is_refused(tree: Callable[[], Tree]) -
     broken.write(
         AGENTS,
         broken.read(AGENTS)
-        .replace("#### systemd", "#### launchpad")
+        .replace("#### systemd", "#### initd")
+        .replace("#### launchd", "#### launchpad")
         .replace("#### windows-service", "#### scm"),
     )
 
@@ -504,12 +507,18 @@ def test_an_installer_that_registers_no_restart_after_a_crash_is_refused(
             "actions= restart/5000/restart/5000/restart/5000", ""
         ),
     )
-    broken.write(INSTALLER, broken.read(INSTALLER).replace("Restart=on-failure\n", ""))
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER)
+        .replace("Restart=on-failure\n", "")
+        .replace("<key>SuccessfulExit</key>", "<key>Crashed</key>"),
+    )
 
     findings = service_install(broken.repo)
 
     refused(findings, f"`{WINDOWS_INSTALLER}` writes no `actions= restart`")
     refused(findings, f"`{INSTALLER}` writes no `Restart=on-failure`")
+    refused(findings, f"`{INSTALLER}` writes no `<key>KeepAlive</key>")
 
 
 def test_a_manager_with_nothing_starting_the_service_at_boot_is_refused(
@@ -517,7 +526,12 @@ def test_a_manager_with_nothing_starting_the_service_at_boot_is_refused(
 ) -> None:
     """Neither the registration nor the activation command makes it come back after a reboot."""
     broken = tree()
-    broken.write(INSTALLER, broken.read(INSTALLER).replace("WantedBy=multi-user.target\n", ""))
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER)
+        .replace("WantedBy=multi-user.target\n", "")
+        .replace("<key>RunAtLoad</key>", "<key>RunLater</key>"),
+    )
     broken.write(
         AGENTS,
         broken.read(AGENTS).replace(
@@ -533,6 +547,7 @@ def test_a_manager_with_nothing_starting_the_service_at_boot_is_refused(
     findings = service_install(broken.repo)
 
     refused(findings, "carries `WantedBy=multi-user.target`")
+    refused(findings, "carries `<key>RunAtLoad</key> <true/>`")
     refused(findings, "carries `-StartupType Automatic`")
 
 
@@ -692,3 +707,95 @@ def test_a_source_declaring_neither_constant_is_refused(tree: Callable[[], Tree]
 
     refused(findings, "ships no stated default")
     refused(findings, "carries no copy of the producer's own timeout")
+
+
+LAUNCHD_START = (
+    "sudo launchctl bootstrap system "
+    "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist"
+)
+
+
+def test_an_installer_shipping_another_launchd_label_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A property list the install path's own launchd command cannot load."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace(
+            'LAUNCHD_LABEL="io.github.nickderobertis.printobserver"',
+            'LAUNCHD_LABEL="com.example.observer"',
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "installs the service `com.example.observer`")
+
+
+def test_a_section_that_names_no_launchd_service_is_refused(tree: Callable[[], Tree]) -> None:
+    """A macOS platform the install path targets is owed a command naming its service."""
+    broken = tree()
+    broken.write(AGENTS, broken.read(AGENTS).replace(LAUNCHD_START, "sudo start-it-on-a-mac"))
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "states no `launchctl bootstrap system")
+
+
+def test_a_launchd_command_loading_from_outside_the_boot_directory_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A property list loaded from anywhere else is one launchd forgets at the next boot."""
+    broken = tree()
+    broken.write(
+        AGENTS,
+        broken.read(AGENTS).replace(
+            LAUNCHD_START, LAUNCHD_START.replace("/Library/LaunchDaemons", "/Users/Shared")
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "loads the definition from `/Users/Shared`")
+    refused(findings, "forgets at the next boot")
+
+
+def test_an_installer_that_loads_the_property_list_is_refused(tree: Callable[[], Tree]) -> None:
+    """Loading a launchd definition starts it, which installing must never do."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER) + '\nlaunchctl bootstrap system "$INSTALLED_DEFINITION"\n',
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "runs `launchctl`")
+
+
+def test_an_assignment_naming_the_start_command_is_not_running_it(
+    committed: Repo,
+) -> None:
+    """The installer remembers each manager's start command to print it, and runs neither."""
+    script = committed.read(INSTALLER)
+
+    truth(
+        'START_COMMAND="sudo launchctl bootstrap system' in script
+        and 'START_COMMAND="sudo systemctl enable --now' in script,
+        describing="the installer to hold both start commands only as strings it prints",
+    )
+    accepted(service_install(committed))
+
+
+def test_a_policy_declaring_no_launchd_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """Nothing states the rules the macOS installer is held to."""
+    broken = tree()
+    text = broken.read(POLICY)
+    start = text.index("[service.managers.launchd]\n")
+    end = text.index("\n\n", start)
+    broken.write(POLICY, text[:start] + text[end:])
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "declares no `service.managers.launchd` table")

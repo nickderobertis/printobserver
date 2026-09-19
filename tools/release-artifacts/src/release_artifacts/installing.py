@@ -18,6 +18,7 @@ a source install are what the end user gets.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import sys
 import tarfile
@@ -43,6 +44,10 @@ INSTALL_TIMEOUT_SECONDS = 900
 
 #: Every program a Rust toolchain puts on a path.
 TOOLCHAIN = ("cargo", "rustc", "rustup")
+
+#: What the JavaScript registry's launcher reaches for: its first line is
+#: `#!/usr/bin/env node`, so the program runs only where `node` is on the path.
+NODE_RUNTIME = ("node",)
 
 #: How a route's own proof reports what the path it was installed under carried,
 #: and what that report says where it carried nothing. Every route ships a
@@ -108,9 +113,19 @@ class Installed:
     program: Path | None
     #: What its own consumer runs to reach it, for a client.
     said: str
+    #: The programs that route's own program reaches for on the path it is run
+    #: under — the runtime a launcher's `#!/usr/bin/env` line names — which the
+    #: proof keeps when it takes the toolchain off. Empty for a program that
+    #: runs on its own.
+    runtime: tuple[str, ...] = ()
 
 
-def without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
+def without_rust(
+    extra: dict[str, str] | None = None,
+    *,
+    preserve: tuple[str, ...] = (),
+    preserved_at: Path | None = None,
+) -> dict[str, str]:
     """The caller's environment, minus every place a Rust toolchain lives.
 
     Not a claim in a comment: the directories carrying `cargo` and `rustc` are
@@ -118,12 +133,29 @@ def without_rust(extra: dict[str, str] | None = None) -> dict[str, str]:
     here rather than passing on this host's toolchain.
     """
     environment = dict(os.environ)
+    preserved = {
+        program: shutil.which(program, path=environment.get("PATH")) for program in preserve
+    }
     kept = [
         directory
         for directory in environment.get("PATH", "").split(os.pathsep)
         if directory
         and not any(Path(directory, executable(program)).exists() for program in TOOLCHAIN)
     ]
+    if preserve:
+        if preserved_at is None:
+            msg = "a directory is required when preserving programs on the toolchain-free path"
+            raise InstallError(msg)
+        preserved_at.mkdir(parents=True, exist_ok=True)
+        for name, source in preserved.items():
+            if source is None:
+                raise InstallError(f"cannot preserve `{name}` because it is not on PATH")
+            destination = preserved_at / name
+            destination.write_text(
+                f'#!/bin/sh\nexec {shlex.quote(source)} "$@"\n', encoding="utf-8"
+            )
+            destination.chmod(0o755)
+        kept.insert(0, str(preserved_at))
     environment["PATH"] = os.pathsep.join(kept)
     environment.pop("CARGO_HOME", None)
     environment.pop("RUSTUP_HOME", None)
@@ -269,7 +301,7 @@ def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     ran(
         ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
         cwd=into,
-        env=without_rust(),
+        env=without_rust(preserve=("node",), preserved_at=environment / ".path"),
         describing=f"installing {wheel.name}",
     )
     installed = programs_in(environment) / platforms.host(repo).program
@@ -303,10 +335,16 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
             *tarballs,
         ],
         cwd=into,
-        env=without_rust(),
+        env=without_rust(preserve=NODE_RUNTIME, preserved_at=environment / ".path"),
         describing="installing the launcher and the program beside it",
     )
-    return Installed(built.target, environment, npm_global_program(environment, PROGRAM), "")
+    return Installed(
+        built.target,
+        environment,
+        npm_global_program(environment, PROGRAM),
+        "",
+        runtime=NODE_RUNTIME,
+    )
 
 
 def script_route(repo: Repo, built: Built, into: Path) -> Installed:
@@ -416,7 +454,13 @@ def _prove_route(repo: Repo, taken: Installed) -> str:
     if installed is None or not installed.exists():
         msg = f"{taken.target} put no {PROGRAM} on the path it was given"
         raise InstallError(msg)
-    environment = without_rust()
+    # The runtime the program reaches for is kept where the toolchain is taken
+    # off: on the hosted macOS images `node` shares its directory with `cargo`,
+    # and a proof that took that directory off would fail the launcher for a
+    # runtime the machine beside the printer has.
+    environment = without_rust(
+        preserve=taken.runtime, preserved_at=taken.environment / ".path" if taken.runtime else None
+    )
     version = ran(
         [str(installed), "--version"],
         cwd=taken.environment,
