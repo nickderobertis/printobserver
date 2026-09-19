@@ -208,7 +208,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         # to rather than a drive.
         $tar = ''
         if ($env:SystemRoot) {
-            $own = Join-Path $env:SystemRoot 'System32\tar.exe'
+            $own = Join-Path (Join-Path $env:SystemRoot 'System32') 'tar.exe'
             if (Test-Path -LiteralPath $own -PathType Leaf) {
                 $tar = $own
             }
