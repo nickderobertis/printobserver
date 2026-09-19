@@ -248,7 +248,9 @@ def pretend_host(monkeypatch: pytest.MonkeyPatch, identifier: str) -> None:
     monkeypatch.setattr(host_platform, "system", lambda: system)
     monkeypatch.setattr(host_platform, "machine", lambda: machine)
     monkeypatch.setattr(host_platform, "mac_ver", lambda: ("15.7", ("", "", ""), machine))
-    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39")
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace, and
+    # the host this answers for is the one `system` reports.
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39", raising=False)
 
 
 #: The Mach-O processor type of each macOS platform, as the format's header spells it.

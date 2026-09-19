@@ -14,6 +14,12 @@ test does not pass and says it was not served, a forge serving no release for
 the supervisor to come from does not pass and names the forge, a registry
 serving a client that installs and cannot be used does not pass and says so
 distinctly, and one serving the real client passes.
+
+The proofs that reach the supervisor take it by the install-script route, so
+they carry the same `ROUTE_PROOF` mark the route proofs do: run where the
+install path targets this host's platform, and skipped where the platform's
+own descriptor says it does not yet — the record the install-route delivery
+flips, with nobody editing a test.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing
 from repo_checks.model import Repo
 from repo_checks.shell import run
+from route_proof import ROUTE_PROOF
 
 #: The three clients a dependent takes as a dependency, each from its registry.
 CLIENTS = ["crate:printobserver-sdk", "pypi:printobserver-sdk", "npm:@printobserver/sdk"]
@@ -107,6 +114,7 @@ def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[...,
     return prove_client
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize("identifier", CLIENTS)
 def test_a_registry_serving_the_client_is_a_pass_against_the_releases_own_supervisor(
     identifier: str,
@@ -179,6 +187,7 @@ def test_a_forge_serving_no_release_for_the_supervisor_names_the_forge(
     contains(proof.report, "/forge/releases", describing="the forge, named")
 
 
+@ROUTE_PROOF
 @pytest.mark.parametrize("identifier", CLIENTS)
 def test_a_client_that_installs_and_cannot_be_used_does_not_pass(
     identifier: str,
@@ -199,6 +208,7 @@ def test_a_client_that_installs_and_cannot_be_used_does_not_pass(
     contains(proof.report, "build to repair", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_a_release_whose_supervisor_does_not_come_up_does_not_pass(
     version: str, registries: Registries, proving: Callable[..., Proof]
 ) -> None:

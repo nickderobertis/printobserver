@@ -114,6 +114,7 @@ def test_a_registry_serving_a_working_artifact_is_a_pass(
     contains(proof.report, "Rust toolchain on the install path: none", describing=proof.report)
 
 
+@ROUTE_PROOF
 def test_the_npm_route_is_taken_where_node_shares_a_runner_directory_with_rust(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

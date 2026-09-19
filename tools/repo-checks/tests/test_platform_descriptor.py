@@ -523,7 +523,8 @@ def test_a_linux_baseline_is_the_c_library_whatever_program_is_given(
 ) -> None:
     """A Linux wheel states the C library it was built against, as it always has."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39")
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace.
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.39", raising=False)
     program = tmp_path / "printobserver"
     program.write_bytes(thin(ARM64, build_version(11, 0)))
 
@@ -608,7 +609,8 @@ def test_a_host_reporting_a_baseline_that_is_not_a_version_is_refused(
 ) -> None:
     """`manylinux_` and a word is a tag no installer can compare; it is refused instead."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: "glibc two")
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace.
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc two", raising=False)
 
     with pytest.raises(PlatformError, match="C library"):
         host_baseline()
@@ -648,7 +650,8 @@ def test_a_host_reporting_a_minor_that_is_not_a_number_is_refused(
 ) -> None:
     """Reading it as zero would put a version on a wheel that nothing reported."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.beta")
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace.
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 2.beta", raising=False)
 
     with pytest.raises(PlatformError, match=re.escape("2.beta")):
         host_baseline()
@@ -659,6 +662,7 @@ def test_a_baseline_written_with_no_minor_reads_it_as_zero(
 ) -> None:
     """A platform that writes `3` means `3.0`, which is a version and not a defect."""
     monkeypatch.setattr(host_platform, "system", lambda: "Linux")
-    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 3")
+    # `raising=False`: a Windows interpreter carries no `confstr` to replace.
+    monkeypatch.setattr(os, "confstr", lambda _name: "glibc 3", raising=False)
 
     equal(host_baseline(), (3, 0), describing="a version written with no minor component")
