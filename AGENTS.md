@@ -773,6 +773,7 @@ npm install -g printobserver-cli
 
 #### Route 3 — the bundled install script
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads route 3's scripts, the platforms each reaches and their fetch commands out of it, and the README is derived from it. suppressions.toml has the full reasons. -->
 One route, with one committed script per family of platform behind it: the
 shell script for Linux and macOS, and the PowerShell script for Windows, each
 fetched by the one-line command its own platform runs. Both do the same thing
@@ -781,9 +782,7 @@ platform, refuse one the release publishes nothing for rather than guess,
 download the prebuilt release artifact for it **and** the release's checksum
 file, verify the digest before anything reaches a path, unpack into a directory
 of their own, put the program where the caller asked, and say what to do next.
-This is the route for a machine that has neither package manager. Made
-executable by the `sdks` node for Linux and by the `windows-install-routes`
-node for Windows.
+This is the route for a machine that has neither package manager.
 
 `scripts/install.sh` is the shell form, for every Linux and macOS platform the
 list names:

@@ -95,6 +95,21 @@ def _version() -> str:
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def _built_here(platform: platforms.Platform) -> bytes:
+    """The `printobserver` program this repository builds for this host, built once."""
+    built = REPO_ROOT / "target" / "release" / platform.program
+    if not built.is_file():
+        passing(
+            run(
+                ["cargo", "build", "--release", "--locked", "-p", "printobserver"],
+                REPO_ROOT,
+                timeout=BUILD_TIMEOUT_SECONDS,
+            ),
+            describing="building the program a release carries",
+        )
+    return built.read_bytes()
+
+
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 def _program(identifier: str, root: Path) -> bytes:
     """The bytes the newest release's artifact carries for one platform.
@@ -106,17 +121,7 @@ def _program(identifier: str, root: Path) -> bytes:
     """
     here = platforms.host(REPO)
     if here.id == identifier:
-        built = REPO_ROOT / "target" / "release" / here.program
-        if not built.is_file():
-            passing(
-                run(
-                    ["cargo", "build", "--release", "--locked", "-p", "printobserver"],
-                    REPO_ROOT,
-                    timeout=BUILD_TIMEOUT_SECONDS,
-                ),
-                describing="building the program a release carries",
-            )
-        return built.read_bytes()
+        return _built_here(here)
     return stand_in_program(
         REPO, root / "newest" / "printobserver.exe", f"printobserver {_version()}"
     ).read_bytes()
@@ -139,6 +144,7 @@ def _artifact(into: Path, program: bytes, identifier: str) -> Path:
     return target
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 @pytest.fixture
 def staged(tmp_path: Path) -> Callable[[str], Path]:
     """A release directory holding two releases for one platform, as the forge serves them.

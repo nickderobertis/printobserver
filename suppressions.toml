@@ -1058,7 +1058,7 @@ reason = "A successful install prints what the shell form of this same route pri
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
-site = "def _program"
+site = "def _built_here"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."
 
 # `tests/repo-e2e/tests/test_install_powershell_script_journey.py` drives the
@@ -1119,4 +1119,34 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "`scripts/install.ps1` is the PowerShell form"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "The same ground as the entry for the PowerShell paragraph below it: this section is the one authoritative source of the install path, `just check-repo`'s `platform-facts` reads which scripts route 3 has behind it and which platforms each reaches out of the route's own fetch commands here, and the README is derived from it. What the paragraph states — one route, two scripts, the same artifact and verification — is the contract those checks and the two journeys hold the scripts to."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "Durable content: the paragraph states what route 3 is — one route with a script per family of platform, the same artifact, the same checksum file, verification before anything reaches a path — which is exactly what `tests/repo-e2e/tests/test_install_script_journey.py` and `test_install_powershell_script_journey.py` hold the two scripts to and what `just check-repo`'s `platform-facts` holds the section to. Nothing in it names a session or a plan."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def staged"
+reason = "The older release the staged directory carries is a stand-in that reports a version of its own, for the reason the shell form's journey stages the same: what the pinned-release assertions are about is which release the script chose, and two artifacts carrying the same program could not tell a reader that. The newest release carries the real program wherever this host can run it — `_program` above — and the script's own download, verification and install run unchanged over either."
 
