@@ -728,18 +728,18 @@ STILL_ACTIVE = 259
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
-def alive(pid: int) -> bool:
-    """Whether a process this script started is still running.
+def alive_after_reaping(pid: int) -> bool:
+    """Whether a process this script started is still running, once an exited child is reaped.
 
     On Windows, `os.kill` with any signal ends the process rather than asking
     after it, so the question is put to the process table instead.
 
-    Elsewhere a child of this very process that has exited is reaped here
-    rather than counted as running: until it is, it stays a zombie that still
-    answers a signal, so a stop would wait out its whole grace period for a
-    server that is already gone — and macOS then refuses the final `killpg` to
-    a group holding nothing but that zombie with `EPERM`, where Linux lets it
-    through.
+    Elsewhere a child of this very process that has exited is reaped here —
+    the side effect the name carries — rather than counted as running: until
+    it is, it stays a zombie that still answers a signal, so a stop would wait
+    out its whole grace period for a server that is already gone — and macOS
+    then refuses the final `killpg` to a group holding nothing but that zombie
+    with `EPERM`, where Linux lets it through.
     """
     if sys.platform == "win32":
         kernel32 = ctypes.windll.kernel32
@@ -788,7 +788,7 @@ def wait_for_api(instance: Instance, url: str, pid: int, timeout: float) -> None
     key = api_key(instance)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not alive_after_reaping(pid):
             raise StartupError(
                 "never-answered",
                 f"the server exited before it answered; read {instance.server_log}",
@@ -880,7 +880,7 @@ def stop(instance: Instance) -> dict[str, Any]:
         return {"state_dir": str(instance.state_dir), "stopped": False, "pid": None}
     record = json.loads(instance.record.read_text(encoding="utf-8"))
     pid = record_pid(record)
-    if alive(pid):
+    if alive_after_reaping(pid):
         # A record outlives the process it names — across a reboot, or once the
         # id is handed to something else — so what is running under that id is
         # read before its whole session is signalled.
@@ -998,7 +998,7 @@ def _terminate(pid: int) -> None:
     os.killpg(group, signal.SIGTERM)
     deadline = time.monotonic() + 30.0
     while time.monotonic() < deadline:
-        if not alive(pid):
+        if not alive_after_reaping(pid):
             return
         time.sleep(0.5)
     os.killpg(group, signal.SIGKILL)
@@ -1021,7 +1021,7 @@ def _terminate_windows_tree(pid: int) -> None:
         raise FileNotFoundError(message)
     _run([taskkill, "/PID", str(pid), "/T", "/F"], timeout=60)
     deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline and alive(pid):
+    while time.monotonic() < deadline and alive_after_reaping(pid):
         time.sleep(0.5)
 
 
@@ -1084,7 +1084,7 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not instance.record.is_file() or not instance.api_key_file.is_file():
         return None
     record = json.loads(instance.record.read_text(encoding="utf-8"))
-    if not alive(record_pid(record)):
+    if not alive_after_reaping(record_pid(record)):
         return None
     try:
         status, _ = call(record_url(record), api_key(instance), "/api/version", timeout=5.0)
