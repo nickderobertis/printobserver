@@ -20,6 +20,7 @@ import io
 import os
 import re
 import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from repo_checks.expect import absent, accepted, contains, equal, refused, refus
 from repo_checks.model import Repo
 from repo_checks.parsing import load_workflow
 from repo_checks.platforms import supported
+from repo_checks.shell import run as shell_run
 from treecopy import Tree
 
 DISPATCH = ".github/workflows/platform-dispatch.yml"
@@ -517,7 +519,13 @@ class Recording:
         self.failing_on = ""
 
     def program(self, name: str, *, failing_on: str = "", exit_code: int = 7) -> None:
-        """One stand-in that records `name` and its arguments, and fails on one argument."""
+        """One stand-in that records `name` and its arguments, and fails on one argument.
+
+        A shell script, which is what a step under `bash` runs on every host;
+        on Windows a batch twin beside it too, because a step under `pwsh`
+        there runs a program by a suffix `PATHEXT` names and a bare script by
+        none.
+        """
         script = self.programs / name
         script.write_text(
             "#!/bin/sh\n"
@@ -527,6 +535,14 @@ class Recording:
             encoding="utf-8",
         )
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if sys.platform == "win32":
+            (self.programs / f"{name}.cmd").write_text(
+                "@echo off\r\n"
+                f'echo {name} %*>> "%RECORD%"\r\n'
+                f'if not "%FAIL_ON%"=="" if "%~1"=="%FAIL_ON%" exit /b {exit_code}\r\n'
+                "exit /b 0\r\n",
+                encoding="utf-8",
+            )
         self.failing_on = failing_on
 
     def pipe_reader(self, name: str, *, exit_code: int = 0) -> None:
@@ -546,31 +562,58 @@ class Recording:
         )
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
+    #: What the stand-in profile defines: `irm`, `iex` and `Set-Service`, each
+    #: recording what it was given. The fetch answers its own address as the
+    #: script it fetched, the service installer and the start refuse as they do
+    #: unattended, and anything else runs.
+    POWERSHELL_PROFILE = (
+        "Remove-Item Alias:irm -Force\n"
+        "Remove-Item Alias:iex -Force\n"
+        "function irm { param([string]$Uri)"
+        ' Add-Content -LiteralPath $env:RECORD -Value "irm $Uri"; $Uri }\n'
+        "function iex { param([Parameter(ValueFromPipeline)]$Command) process {"
+        ' Add-Content -LiteralPath $env:RECORD -Value "iex $Command";'
+        " if ($Command -like '*install-service*') { throw 'cannot run unattended' } } }\n"
+        "function Set-Service {"
+        ' Add-Content -LiteralPath $env:RECORD -Value "Set-Service $args";'
+        " throw 'no service control manager here' }\n"
+    )
+
     def powershell_commands(self) -> None:
         """Stand-ins for the commands the Windows pair runs, in PowerShell's own vocabulary.
 
         `irm` and `iex` are aliases and `Set-Service` a cmdlet, none of them a
         program on a path, so they are stood in for where PowerShell reads its
         commands from: a profile of this recording's own, which `pwsh -command`
-        loads exactly as it does for a caller at a prompt. Each records what it
-        was given; the fetch answers its own address as the script it fetched,
-        the service installer and the start refuse as they do unattended, and
-        anything else runs.
+        loads exactly as it does for a caller at a prompt. Written where each
+        host's PowerShell reads one — under the configuration directory on
+        Linux and macOS, under the profile's documents on Windows — with the
+        environment `environment` hands every step naming this recording's
+        root as both; and PowerShell is asked, under that environment, where
+        it will read its profile from, so a host that reads it from somewhere
+        this recording does not own is refused rather than run against the
+        caller's own profile.
+
+        Raises:
+            AssertionError: If this host's PowerShell reads its profile from
+                outside this recording's root.
         """
-        profile = self.programs.parent / "config" / "powershell"
-        profile.mkdir(parents=True)
-        (profile / "Microsoft.PowerShell_profile.ps1").write_text(
-            "Remove-Item Alias:irm -Force\n"
-            "Remove-Item Alias:iex -Force\n"
-            "function irm { param([string]$Uri)"
-            ' Add-Content -LiteralPath $env:RECORD -Value "irm $Uri"; $Uri }\n'
-            "function iex { param([Parameter(ValueFromPipeline)]$Command) process {"
-            ' Add-Content -LiteralPath $env:RECORD -Value "iex $Command";'
-            " if ($Command -like '*install-service*') { throw 'cannot run unattended' } } }\n"
-            "function Set-Service {"
-            ' Add-Content -LiteralPath $env:RECORD -Value "Set-Service $args";'
-            " throw 'no service control manager here' }\n",
-            encoding="utf-8",
+        root = self.programs.parent
+        for directory in (root / "config" / "powershell", root / "Documents" / "PowerShell"):
+            directory.mkdir(parents=True)
+            (directory / "Microsoft.PowerShell_profile.ps1").write_text(
+                self.POWERSHELL_PROFILE, encoding="utf-8"
+            )
+        asked = shell_run(
+            ["pwsh", "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost"],
+            cwd=root,
+            env=self.environment(),
+            timeout=60,
+        )
+        reads = Path(asked.stdout.strip())
+        truth(
+            asked.returncode == 0 and reads.is_file() and reads.is_relative_to(root),
+            describing=f"pwsh to read its profile from under {root}, not from `{reads}`",
         )
 
     def environment(self, **extra: str) -> dict[str, str]:
@@ -579,10 +622,13 @@ class Recording:
         environment["PATH"] = os.pathsep.join([str(self.programs), environment.get("PATH", "")])
         environment["RECORD"] = str(self.record)
         environment["FAIL_ON"] = self.failing_on
-        # Where `pwsh` reads its profile from on this host, and a home of this
-        # recording's own beside it, so the profile it loads is the one above.
-        environment["XDG_CONFIG_HOME"] = str(self.programs.parent / "config")
-        environment["HOME"] = str(self.programs.parent)
+        # A home of this recording's own, and where `pwsh` reads its profile
+        # from relative to one on each host: the configuration directory on
+        # Linux and macOS, the profile's documents on Windows.
+        root = self.programs.parent
+        environment["HOME"] = str(root)
+        environment["USERPROFILE"] = str(root)
+        environment["XDG_CONFIG_HOME"] = str(root / "config")
         environment.update(extra)
         return environment
 

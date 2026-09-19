@@ -31,6 +31,8 @@ looking for its interpreter under `bin`.
 from __future__ import annotations
 
 import json
+import shutil
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -93,9 +95,15 @@ def supervisor(built: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     Stripped, in a copy, because every artifact the stand-in serves carries
     the program's bytes compressed, and a debug build's are mostly debug
-    information nothing here reads.
+    information nothing here reads. Not on Windows: the MSVC targets keep a
+    debug build's information in a `.pdb` beside the program rather than in
+    it, so there is nothing in the program to strip — and the `strip` a
+    Windows runner carries reads no ARM64 program anyway.
     """
     stripped = tmp_path_factory.mktemp("supervisor") / built.name
+    if sys.platform == "win32":
+        shutil.copy2(built, stripped)
+        return stripped
     passing(
         run(["strip", "-o", str(stripped), str(built)], cwd=built.parent, timeout=300),
         describing="stripping the supervisor of its debug information",
