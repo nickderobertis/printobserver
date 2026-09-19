@@ -633,6 +633,27 @@ def test_an_archive_naming_a_place_outside_its_own_directory_is_refused(
     truth(not (home / TEMPORARY / "escaped.exe").exists(), describing="nothing to have escaped")
 
 
+def test_an_archive_carrying_a_link_is_refused_before_anything_is_unpacked(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A link lands wherever it points, so a member that is not a plain file is refused unread."""
+    home = _home(tmp_path, "home-linked")
+    base = staged(WINDOWS[0])
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as archive:
+        link = tarfile.TarInfo("printobserver.exe")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "../../somewhere-else.exe"
+        archive.addfile(link)
+    _served_as_the_newest(base, WINDOWS[0], gzip.compress(raw.getvalue(), mtime=0))
+
+    code, said = _script(base, home, WINDOWS[0])
+
+    failing((code, said), naming="is not a plain file")
+    contains(said, "Nothing was installed", describing="what the refusal said")
+    truth(not _default(home).exists(), describing="nothing to have been installed")
+
+
 def test_a_destination_nothing_can_write_is_refused_naming_the_option(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -688,3 +709,35 @@ def test_this_windows_host_resolves_itself_with_nothing_stood_in(
 
     passing((code, said), describing=f"the install script on {here.id} itself")
     contains(_reports(_default(home)), _version(), describing="what the real program reports")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows keeps a user's own PATH")
+def test_the_directory_is_on_the_users_own_path_for_the_next_window(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A fresh PowerShell — the next window — finds the directory on the user's PATH.
+
+    Read back through a new process rather than through the run's prose, and
+    taken off again afterwards so the host is left as it was found.
+    """
+    home = _home(tmp_path, "home-persisted")
+    into = home / "persisted"
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    read = "[System.Environment]::GetEnvironmentVariable('Path', 'User')"
+
+    code, said = _run(home, environment, "-To", str(into))
+
+    passing((code, said), describing="the install whose directory is persisted")
+    try:
+        fresh = shell_run([powershell(), "-NoProfile", "-Command", read], cwd=home, timeout=120)
+        contains(
+            (fresh.stdout or "").split(os.pathsep),
+            str(into),
+            describing="the user's own PATH, read by a fresh PowerShell",
+        )
+    finally:
+        restore = (
+            f"$kept = ({read} -split ';') | Where-Object {{ $_ -ne '{into}' }}; "
+            "[System.Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')"
+        )
+        shell_run([powershell(), "-NoProfile", "-Command", restore], cwd=home, timeout=120)

@@ -1052,7 +1052,7 @@ reason = "The Windows half of the same one probe as the entry above: the name is
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/install.ps1"
-site = "Say \"installed $installed from $which\""
+site = "function Report-Installed"
 reason = "A successful install prints what the shell form of this same route prints, line for line: where the program went and from which release, whether its directory had to be added to the path, and the two commands the operator runs next. `AGENTS.md`'s install path requires the last of those — a successful install says what the caller does after it — and `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads every one of those lines back; a run that installs nothing prints only its two sentences, why it stopped and what to do next."
 
 [[suppression]]

@@ -93,8 +93,12 @@ def _program() -> Path:
     return built
 
 
-def _artifact(into: Path, program: bytes) -> Path:
-    """One release artifact, in the shape release automation publishes it."""
+def _artifact(into: Path, program: bytes, platform: str = PLATFORM) -> Path:
+    """One release artifact, in the shape release automation publishes it.
+
+    For this host's own platform unless another is named; its digest joins
+    the release's checksum file beside any already there.
+    """
     into.mkdir(parents=True, exist_ok=True)
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode="w") as archive:
@@ -102,11 +106,10 @@ def _artifact(into: Path, program: bytes) -> Path:
         info.size = len(program)
         info.mode = 0o755
         archive.addfile(info, io.BytesIO(program))
-    target = into / f"{PROGRAM}-{PLATFORM}.tar.gz"
+    target = into / f"{PROGRAM}-{platform}.tar.gz"
     target.write_bytes(gzip.compress(raw.getvalue(), mtime=0))
-    (into / CHECKSUMS).write_text(
-        f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n", encoding="utf-8"
-    )
+    with (into / CHECKSUMS).open("a", encoding="utf-8") as digests:
+        digests.write(f"{hashlib.sha256(target.read_bytes()).hexdigest()}  {target.name}\n")
     return target
 
 
@@ -245,6 +248,44 @@ def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(
 
     failing((result.returncode, said), naming="publishes no program for")
     contains(said, "build it from source", describing="the next action it named")
+
+
+def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects(
+    staged: Path, tmp_path: Path
+) -> None:
+    """`Darwin/arm64` resolves `macos-aarch64`, and the artifact under that name is what installs.
+
+    Reached the way the script reads the host — through `uname` — with the
+    two answers a Mac gives, so the arm is driven here rather than left to
+    the platform's own runner; what the artifact carries is a stand-in, since
+    a program built for a Mac cannot be run to read its version here.
+    """
+    home = tmp_path / "home-macos"
+    home.mkdir()
+    shims = home / "shims"
+    shims.mkdir()
+    (shims / "uname").write_text(
+        '#!/bin/sh\ncase "$1" in\n  -s) echo Darwin ;;\n  -m) echo arm64 ;;\n'
+        "  *) echo Darwin ;;\nesac\n",
+        encoding="utf-8",
+    )
+    (shims / "uname").chmod(0o755)
+    mac = platforms.descriptor(Repo(REPO_ROOT), "macos-aarch64")
+    stand_in = f'#!/bin/sh\necho "{PROGRAM} for {mac.id}"\n'.encode()
+    _artifact(staged / "latest" / "download", stand_in, platform=mac.id)
+    environment = clean_environment(
+        HOME=str(home),
+        PRINTOBSERVER_RELEASE_BASE=str(staged),
+        PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
+    )
+
+    result = shell_run(["sh", str(REPO_ROOT / SCRIPT)], cwd=home, env=environment, timeout=600)
+    said = (result.stdout or "") + (result.stderr or "")
+
+    passing((result.returncode, said), describing="the install script on a Mac")
+    installed = home / ".local/bin" / PROGRAM
+    contains(_reports(installed), f"for {mac.id}", describing="the artifact it installed")
+    contains(said, f"installed {installed}", describing="what the run said")
 
 
 def test_a_download_that_cannot_be_obtained_stops_with_a_next_action(

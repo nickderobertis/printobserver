@@ -199,19 +199,28 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
                 "Nothing was installed. Windows 10 and later carry one at C:\Windows\System32\tar.exe; put it on your PATH, or unpack $asset by hand and verify it against $from/$CHECKSUMS."
         }
         # What is in it, before any of it reaches the filesystem: a member
-        # naming a place outside the directory of this script's own is not
-        # one this installs, whatever the digest said.
+        # naming a place outside the directory of this script's own, or one
+        # that is not a plain file — a link would land wherever it points —
+        # is not one this installs, whatever the digest said. The verbose
+        # listing's first character is the member's kind, `-` for a file.
         $members = @(& tar -tzf (Join-Path $work $asset) 2>$null)
         if ($LASTEXITCODE -ne 0) {
             Stop-Install "$asset could not be unpacked" `
                 'Nothing was installed. The download may be incomplete; try again.'
         }
+        $kinds = @(& tar -tvzf (Join-Path $work $asset) 2>$null)
         # `$entry` rather than `$name`: PowerShell's variables are
         # case-insensitive, so `$name` here would be `$NAME` above.
         foreach ($member in $members) {
             $entry = "$member".Trim()
             if ($entry -match '^([A-Za-z]:|[\\/])' -or ($entry -split '[\\/]') -contains '..') {
                 Stop-Install "$asset carries ``$entry``, which names a place outside where it is unpacked" `
+                    "Nothing was installed. Report this against ${which}: the artifact is not the one this script installs."
+            }
+        }
+        foreach ($kind in $kinds) {
+            if (-not ("$kind".TrimStart().StartsWith('-'))) {
+                Stop-Install "$asset carries ``$("$kind".Trim())``, which is not a plain file" `
                     "Nothing was installed. Report this against ${which}: the artifact is not the one this script installs."
             }
         }
@@ -241,9 +250,6 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
-    Say "installed $installed from $which"
-
     # On the path of this session, and of every session after it: Windows has
     # no profile a shell reads a directory onto its path from, so the user's
     # own PATH is where a directory is put for the next window. The session's
@@ -258,6 +264,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         }
         return $false
     }
+    $added = $false
     if (-not (Test-OnPath $env:Path)) {
         $env:Path = "$To$separator$env:Path"
         $persistent = [System.Environment]::GetEnvironmentVariable('Path', 'User')
@@ -265,11 +272,24 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
             $joined = if ($persistent) { "$persistent$separator$To" } else { $To }
             [System.Environment]::SetEnvironmentVariable('Path', $joined, 'User')
         }
-        Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+        $added = $true
     }
-    Say 'next, in an elevated PowerShell, put the service in place and then start it:'
-    [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
-    [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
+
+    # What a successful install says, and all of it: where the program went
+    # and from which release, that its directory is now on the path where it
+    # was not, and the two commands the operator runs next — the same lines,
+    # line for line, that the shell form of this route prints.
+    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+    function Report-Installed {
+        Say "installed $installed from $which"
+        if ($added) {
+            Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+        }
+        Say 'next, in an elevated PowerShell, put the service in place and then start it:'
+        [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
+        [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
+    }
+    Report-Installed
 }
 
 # The status a caller reads. Run as a file, it is the process's own exit
