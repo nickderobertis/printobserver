@@ -103,13 +103,13 @@ oneharness_binary() {
 # so this script cannot drift from the file that decides what the tier drives.
 # `--format json` names the programmatic contract: oneharness 0.15 made the bare
 # `config` a text view for a reader, which no parser can take the chain out of.
-# A oneharness older than that knows no `--format`, so its bare answer — JSON,
-# there — is taken where the option is refused.
+# The oneharness step 1 installs beside llmlint is always current, so one too old
+# to know the option is a stale one on PATH; it refuses, the chain goes unread,
+# and the caller below installs a harness — the safe side of that question.
 configured_chain() {
-  local python report
+  local python
   python=$(command -v python3 2>/dev/null) || python=$(command -v python 2>/dev/null) || return 1
-  report=$("$1" config --format json 2>/dev/null) || report=$("$1" config 2>/dev/null) || return 1
-  printf '%s' "$report" | "$python" -c 'import json, sys
+  "$1" config --format json 2>/dev/null | "$python" -c 'import json, sys
 print(" ".join(json.load(sys.stdin)["harnesses"]["value"] or []))' 2>/dev/null
 }
 
