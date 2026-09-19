@@ -24,7 +24,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
+from journey import NO_ROUTE_HERE, REPO_ROOT, ROUTE_JOURNEY, clean_environment, run
 from repo_checks import install_path
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
@@ -237,6 +237,7 @@ def _uname(shims: Path, system: str, machine: str) -> None:
     TARGETED,
     ids=[f"{system}-{machine}" for system, machine, _ in TARGETED],
 )
+@ROUTE_JOURNEY
 def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_start_command(
     tmp_path: Path, system: str, machine: str, identifier: str
 ) -> None:
@@ -246,6 +247,12 @@ def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_star
     which platform it was published for, so what the installed program reports
     is which artifact the script chose. What it prints next is that platform's
     own start command, as the install path states it for its service manager.
+
+    A route journey like the rest of this module, so it is skipped on a host
+    the install path does not target: what it drives is the third route's own
+    shell script, and the stand-in it installs is a shell script too, so a
+    host that cannot take that route cannot run either — the script's `sh`
+    there hands a drive-lettered release directory to `curl` as a URL.
     """
     repo = Repo(REPO_ROOT)
     base = tmp_path / "releases"
