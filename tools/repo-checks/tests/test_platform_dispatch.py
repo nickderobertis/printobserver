@@ -465,8 +465,6 @@ def test_a_tree_with_no_platform_list_is_refused(tree: Callable[[], Tree]) -> No
     refused_naming(platform_dispatch(broken.repo), "supported-platforms")
 
 
-# ~~ the script, driven
-
 #: The one program every step of the gate and the integration tier runs.
 JUST = "just"
 
