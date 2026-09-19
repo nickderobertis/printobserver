@@ -263,9 +263,10 @@ def plan(source: Source, runner_os: str) -> list[Step]:
     """The steps `run` executes for one source job, in order.
 
     Raises:
-        DispatchError: If a step carries a shape this executor cannot run,
-            naming the step and the shape.
+        DispatchError: If the job's own `env` or a step carries a shape this
+            executor cannot run, naming the job or the step and the shape.
     """
+    job_environment(source)
     planned: list[Step] = []
     for position, step in enumerate(steps_of(source.job), start=1):
         where = f"{source.workflow}'s job `{source.name}`, step {position}"
@@ -325,13 +326,8 @@ def _step_environment(where: str, declared: object, runner_os: str) -> dict[str,
     because the outcome it names is not known until then; a literal is kept as
     a literal. Anything else is refused.
     """
-    if declared is None:
-        return {}
-    if not isinstance(declared, dict):
-        raise DispatchError(f"{where} carries an `env` that is not a mapping")
     environment: dict[str, str] = {}
-    for name, value in declared.items():
-        text = str(value)
+    for name, text in _scalar_environment(where, declared).items():
         if EXPRESSION.search(text) and not (
             OUTCOME.match(text.strip()) or OS_CHOICE.match(text.strip())
         ):
@@ -340,20 +336,45 @@ def _step_environment(where: str, declared: object, runner_os: str) -> dict[str,
                 f"environment as a literal, as `steps.<id>.outcome`, or as a `runner.os` "
                 f"choice between two outcomes"
             )
-        environment[str(name)] = text
+        environment[name] = text
+    return environment
+
+
+def _scalar_environment(where: str, declared: object) -> dict[str, str]:
+    """An `env:` mapping as written, each value a scalar rendered as text.
+
+    Raises:
+        DispatchError: If it is not a mapping, or a value is not a scalar —
+            a list or a mapping is nothing a process environment can carry,
+            and rendering one as text would hand a step a value nobody wrote.
+    """
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict):
+        raise DispatchError(f"{where} carries an `env` that is not a mapping")
+    environment: dict[str, str] = {}
+    for name, value in declared.items():
+        if not isinstance(value, str | int | float | bool):
+            raise DispatchError(f"{where} sets `{name}` to something other than a scalar")
+        environment[str(name)] = str(value)
     return environment
 
 
 def job_environment(source: Source) -> dict[str, str]:
-    """The job-level `env:` values a dispatch carries: the literal ones."""
-    declared = source.job.get("env")
-    if not isinstance(declared, dict):
-        return {}
-    return {
-        str(name): str(value)
-        for name, value in declared.items()
-        if not EXPRESSION.search(str(value))
-    }
+    """The job-level `env:` values a dispatch carries: the literal ones.
+
+    An expression at job level is left out rather than refused, because the
+    one the committed workflows carry names the version a release published,
+    and a dispatch by hand proves the newest instead. What the job declares is
+    held to the same shape as a step's: a mapping of scalars, or a refusal
+    naming the job.
+
+    Raises:
+        DispatchError: If the job's `env` is not a mapping of scalars.
+    """
+    where = f"{source.workflow}'s job `{source.name}`"
+    declared = _scalar_environment(where, source.job.get("env"))
+    return {name: text for name, text in declared.items() if not EXPRESSION.search(text)}
 
 
 def _value(text: str, outcomes: dict[str, Outcome], runner_os: str) -> str:

@@ -387,6 +387,21 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
             "      - run: just check\n        env: [A]\n",
             "an `env` that is not a mapping",
         ),
+        (
+            "      - run: just check\n",
+            "      - run: just check\n        env:\n          WHEN: [now]\n",
+            "sets `WHEN` to something other than a scalar",
+        ),
+        (
+            "  gate:\n    env:\n      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}\n",
+            "  gate:\n    env: [A]\n",
+            "an `env` that is not a mapping",
+        ),
+        (
+            "  gate:\n    env:\n",
+            "  gate:\n    env:\n      WHEN: [now]\n",
+            "sets `WHEN` to something other than a scalar",
+        ),
     ],
     ids=[
         "shell",
@@ -395,6 +410,9 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
         "no-command",
         "if-not-string",
         "env-not-mapping",
+        "env-not-scalar",
+        "job-env-not-mapping",
+        "job-env-not-scalar",
     ],
 )
 def test_each_shape_the_script_cannot_run_is_refused(
