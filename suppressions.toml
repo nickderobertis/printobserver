@@ -324,13 +324,13 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
-site = "The macOS and Windows entries are being brought up"
-reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming four platforms with every cell excluded needs one sentence saying why and where the record of their runners is. It goes when the bring-up finishes."
+site = "The macOS entries are being brought up"
+reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming platforms with every cell excluded needs one sentence saying why and where the record of their runners is. It goes when the bring-up finishes."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
-site = "The macOS and Windows entries are being brought up"
+site = "The macOS entries are being brought up"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]

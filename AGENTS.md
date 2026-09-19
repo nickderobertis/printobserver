@@ -291,7 +291,7 @@ is compiled only for Windows aarch64. The exemption is removed when that
 toolchain produces readable profiles.
 
 <!-- llmlint: ignore[agents_md_durable_and_terse] States what the four entries above are and where their record is, which the list is unreadable without. suppressions.toml has the full reason. -->
-The macOS and Windows entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what their runners first said.
+The macOS entries are being brought up as first-class platforms, through the two levers below; `docs/platform-bring-up.md` records what the macOS and Windows runners first said.
 
 ### The two levers a platform is brought up in stages by
 
