@@ -63,6 +63,7 @@ def dispatched(
     real_just = shutil.which("just")
     truth(real_just is not None, describing="`just` to be on the PATH")
 
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     run = Runner(
         copy.root / WORKFLOW,
         copy.root,

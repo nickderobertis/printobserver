@@ -961,3 +961,21 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
 site = "JUST_STANDIN = "
 reason = "The layer under test is the committed platform-dispatch workflow and the script it hands its two inputs to, and both run unsubstituted: the workflow's own text under the forge's rules, and the real `just dispatch-resolve` and `just dispatch-run` over a real copy of the tree. What the stand-in records instead of running is every OTHER recipe the dispatched source job's steps reach — `just bootstrap`, the OctoPrint bring-up, the printer tier, the bring-down and the whole gate — because the question is which commands a dispatch runs and on which runner, and running a toolchain install, a real OctoPrint and the gate to answer it would prove nothing more about the dispatch."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+site = "run = Runner("
+reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`, and it cannot be fired from a journey for a reason stronger than the release-workflow journey's: the forge dispatches a workflow only from the default branch, so the committed workflow has no hosted run at all until the change adding it merges (`gh workflow run platform-dispatch.yml --ref <branch>` answers `workflow platform-dispatch.yml not found on the default branch`). So the journey runs the committed workflow's own text under the forge's documented rules (`actions.py`) as a `workflow_dispatch` carrying the two inputs a person would type, and everything the workflow then does is real: `select` runs the real `just dispatch-resolve` over a real copy and `run` lands on the runner it answered and runs the real `just dispatch-run`, which runs the source job's own commands. What is asserted is what the two jobs did and where — by the workflow's own job keys and the source job's own commands — not anything of the runner's internals."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/platform-dispatch.yml"
+site = "- gate"
+reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `gate` is the same recipe `ci.yml` runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/registries.py"
+site = "answer = _answered(url)"
+reason = "The crate registry is read through the same one synchronous helper every other registry in this module is read through, and the two entries above for `urllib.request.Request(` and `urlopen(` carry the reason the async half does not apply: this is a command-line proof a `just` recipe runs to completion, with no event loop and nothing for an awaited read to overlap — ask the registry, then install what it serves, then run it. The typed half is answered on the lines that follow the call rather than suppressed: the document is refused unless it is a mapping carrying a `versions` list of mappings, and each entry is refused unless its `num` is a string and its `yanked` a boolean, as the crate registry's own protocol serves them — a `yanked` read by truthiness would take a mirror's `\"false\"` as yanked and drop a version a dependent can take, and `tools/release-artifacts/tests/test_registry_clients.py` drives a yanked version and a malformed entry through this boundary against the stand-in registry."

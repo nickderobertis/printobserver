@@ -877,6 +877,7 @@ def _crate_versions(url: str) -> list[str]:
         RegistryError: If the registry could not be asked, or answered
             something other than a document with that list in it.
     """
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     answer = _answered(url)
     if answer is None:
         return []
