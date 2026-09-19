@@ -1248,7 +1248,7 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
 /// credential the service serves under is in neither.
 fn carries_no_credential(installed: &Installed, credential: &str) {
     for (what, path) in [
-        ("unit", installed.definition_file()),
+        ("service definition", installed.definition_file()),
         ("configuration", installed.configuration()),
     ] {
         assert!(
