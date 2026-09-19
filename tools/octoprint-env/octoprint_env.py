@@ -943,6 +943,7 @@ def command_of(pid: int) -> str:
             raise FileNotFoundError(message)
         query = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine"
         reported = _run([powershell, "-NoProfile", "-Command", query], timeout=30).stdout
+        # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
         return reported.strip().replace('"', "")
     ps = shutil.which("ps")
     if ps is None:

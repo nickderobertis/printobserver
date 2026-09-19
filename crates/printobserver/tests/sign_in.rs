@@ -372,11 +372,10 @@ const RECORDER_LINKED_WITH: &[&str] = &[];
 #[cfg(not(target_os = "macos"))]
 const RECORDER_LINKED_WITH: &[&str] = &["-ldl"];
 
-/// Every connection the recorder saw. Confined to the program it was loaded
-/// into, the recorder saw the program's own and nothing the stand-in harness
-/// did — and a connection carries no process of its own, so the name says
-/// what the file holds rather than who made it.
-fn network_calls_of_the_tree(recording: &Path) -> Vec<String> {
+/// Every connection the recorder wrote down: the program's own, since the
+/// recorder is confined to the program it was loaded into and sees nothing
+/// the stand-in harness does.
+fn connections_recorded(recording: &Path) -> Vec<String> {
     std::fs::read_to_string(recording)
         .unwrap_or_default()
         .lines()
@@ -444,7 +443,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         Some(i32::from(Exit::Unreachable.status()))
     );
     assert!(
-        network_calls_of_the_tree(&recording)
+        connections_recorded(&recording)
             .iter()
             .any(|line| line.starts_with("connected ")),
         "the recorder did not record a command that connects, so it says nothing \
@@ -476,7 +475,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         "the harness was not signed in"
     );
     assert_eq!(
-        network_calls_of_the_tree(&recording),
+        connections_recorded(&recording),
         Vec::<String>::new(),
         "signing in connected to, bound or listened on something"
     );

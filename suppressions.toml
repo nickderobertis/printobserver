@@ -1192,3 +1192,21 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/repo-e2e/tests/actions.py"
 site = "NAMED_BASH = "
 reason = "The same ground as the entries above it: the invocation the forge gives a `run:` step whose shell is named `bash` is documented prose (`bash --noprofile --norc -eo pipefail {0}`) with no machine-readable source, and the drift gate is the forge, where the platform-dispatch workflow's `run` job — the one job here that names that shell — runs on its first dispatch after the merge; `test_actions_runner.py` pins the invocation over a workflow small enough to read against the documentation, and any other named shell is refused rather than modelled."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "return reported.strip().replace('\"', \"\")"
+reason = "What comes back is never split into arguments or run: it is compared, as one string, against the prefix this script itself composed for the server it started, to decide whether a recorded process identifier still names that server before it is signalled. Windows quotes an argument carrying a space where `ps` would not, and a Windows path cannot carry a quote at all, so dropping the quotes is what makes the two spellings of one command line comparable and loses nothing the comparison reads. A process whose stripped command line starts with this instance's own interpreter and its own `octoprint serve` arguments is this instance's server, which is the one question asked."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/repo-checks/src/repo_checks/dispatching.py"
+site = "REFUSED = 2"
+reason = "The exit of a job that ran is that job's own by design — `test_platform_dispatch.py` holds a failed tier's exit to the failure's, because the dispatch workflow's `run` job reports what the source job would have — and a refusal exits 2 having run nothing. A source job that itself exits 2 is told from a refusal by the `platform-dispatch: refused:` line every refusal prints to stderr and no job does, which is the output contract; the workflow's `select` job resolves the pair before `run` exists, so a refusal there stops the dispatch before any source command runs at all."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver/tests/service_manager.rs"
+site = "\"--privileged\","
+reason = "The container runs systemd as PID 1 to activate, kill and restart the installed service through the real manager, and systemd as PID 1 mounts its own cgroup hierarchy, mounts the tmpfs under `/run`, and starts units as other users — capabilities that a narrower `--cap-add` set does not reliably cover across the Docker and kernel versions the hosted runners carry. The grant is to a throwaway container of this journey's own, on a private cgroup namespace, removed on every exit path, and the journey is the only thing that starts it."

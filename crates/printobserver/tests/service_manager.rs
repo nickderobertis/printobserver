@@ -128,6 +128,12 @@ impl Environment {
                 "--detach",
                 "--name",
                 &name,
+                // systemd as the container's PID 1 mounts its own cgroup
+                // hierarchy and the tmpfs under `/run`, and starts units as
+                // other users; the capabilities that takes are the ones
+                // `--privileged` grants, on a throwaway container of this
+                // journey's own that is removed on every exit path.
+                // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
                 "--privileged",
                 "--cgroupns=private",
                 "--network=host",

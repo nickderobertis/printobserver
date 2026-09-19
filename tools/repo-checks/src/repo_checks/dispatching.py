@@ -70,7 +70,10 @@ from repo_checks.platforms import Platform, ServiceManager, supported
 from repo_checks.shell import run as shell_run
 
 #: The exit a refused pair or an unrunnable source job answers with, apart from
-#: the exit of a job that ran and failed.
+#: the exit of a job that ran and failed, which is that job's own and is not
+#: rewritten — so a job that itself exits 2 is told from a refusal by the
+#: `platform-dispatch: refused:` line a refusal prints and a job does not.
+# llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
 REFUSED = 2
 
 #: The name `runner.os` answers for each family, keyed by the service manager
