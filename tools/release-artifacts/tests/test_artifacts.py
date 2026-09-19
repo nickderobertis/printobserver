@@ -23,7 +23,6 @@ from release_artifacts import targets, wheels
 from release_artifacts.build import (
     CONTRACT_FIELD,
     CONTRACT_FILE,
-    PROGRAM,
     BuildError,
     assembled,
     build,
@@ -91,25 +90,44 @@ def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
         equal(opened.read(script), program.read_bytes(), describing="the program the wheel carries")
 
 
+@pytest.mark.parametrize(
+    ("machine", "tag"),
+    [("AMD64", "win_amd64"), ("ARM64", "win_arm64")],
+    ids=["windows-x86_64", "windows-aarch64"],
+)
 def test_a_wheel_built_on_windows_carries_the_program_under_the_name_windows_runs(
-    repo: Repo, program: Path, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+    machine: str,
+    tag: str,
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An installer copies a wheel's scripts verbatim, so the `.exe` has to be in the wheel.
 
     Carried as a bare `printobserver`, the program lands in the environment's
     `Scripts` under a name a Windows host does not run, and the route proves a
-    program missing. Built with this host answering as Windows, so the Windows
-    answer is asked for on every host.
+    program missing. And the tag is the platform's own — `win_amd64` or
+    `win_arm64`, the two that carry no version component — read off the
+    descriptor rather than composed. Built with this host answering as each
+    Windows platform in turn, so both answers are asked for on every host.
     """
     monkeypatch.setattr(host_platform, "system", lambda: "Windows")
-    monkeypatch.setattr(host_platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(host_platform, "machine", lambda: machine)
 
-    built = build(repo, "pypi:printobserver-cli", into("windows-python-route"), program)
+    built = build(repo, "pypi:printobserver-cli", into(f"windows-python-route-{tag}"), program)
 
     wheel = built.paths[0]
-    truth(wheel.name.endswith("-win_amd64.whl"), describing=f"{wheel.name} to be a Windows wheel")
+    truth(wheel.name.endswith(f"-{tag}.whl"), describing=f"{wheel.name} to be a `{tag}` wheel")
+    truth("none-any" not in wheel.name, describing=f"{wheel.name} not to carry a pure tag")
     with zipfile.ZipFile(wheel) as opened:
         scripts = [name.rsplit("/", 1)[1] for name in opened.namelist() if "/scripts/" in name]
+        carried = next(
+            name for name in opened.namelist() if name.endswith("/scripts/printobserver.exe")
+        )
+        equal(
+            opened.read(carried), program.read_bytes(), describing="the program the wheel carries"
+        )
     equal(scripts, ["printobserver.exe"], describing="the programs the Windows wheel carries")
 
 
@@ -150,7 +168,11 @@ def test_the_script_route_publishes_an_artifact_and_the_digest_it_is_verified_by
     digests = next(path for path in built.paths if path.name.endswith("SHA256SUMS"))
     contains(digests.read_text(encoding="utf-8"), digest_of(archive), describing="the digests")
     with tarfile.open(archive, "r:gz") as opened:
-        equal(opened.getnames(), [PROGRAM], describing="what the release artifact carries")
+        equal(
+            opened.getnames(),
+            [platforms.host(repo).program],
+            describing="what the release artifact carries: the program under its own name here",
+        )
 
 
 def test_a_staged_release_has_the_shape_the_forge_serves(
@@ -282,8 +304,17 @@ def macos_program(path: Path, identifier: str, minimum: tuple[int, int]) -> Path
         ("linux-aarch64", None, "manylinux_2_39_aarch64"),
         ("macos-aarch64", (11, 0), "macosx_11_0_arm64"),
         ("macos-aarch64", (13, 4), "macosx_14_0_arm64"),
+        ("windows-x86_64", None, "win_amd64"),
+        ("windows-aarch64", None, "win_arm64"),
     ],
-    ids=["linux-x86_64", "linux-aarch64", "macos-aarch64", "macos-minor-rounds-up"],
+    ids=[
+        "linux-x86_64",
+        "linux-aarch64",
+        "macos-aarch64",
+        "macos-minor-rounds-up",
+        "windows-x86_64",
+        "windows-aarch64",
+    ],
 )
 def test_the_wheel_tag_states_the_floor_the_program_was_built_against(
     repo: Repo,
@@ -300,7 +331,8 @@ def test_the_wheel_tag_states_the_floor_the_program_was_built_against(
     host built against, and macOS the minimum release recorded in the program the
     wheel carries — spelled as an installer generates it, so a minor release
     from 11 on rounds up rather than claiming a host older than the program
-    needs, and never the release of the host that happened to build it.
+    needs, and never the release of the host that happened to build it. The two
+    Windows tags carry no version component, and a Windows host states none.
     """
     pretend_host(monkeypatch, identifier)
     carried = program if minimum is None else macos_program(program, identifier, minimum)

@@ -11,7 +11,13 @@ from typing import Any
 
 from repo_checks import install_path as ip
 from repo_checks.checks_service import installers
-from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
+from repo_checks.model import (
+    PolicyValueError,
+    Repo,
+    policy_string_list,
+    policy_strings,
+    policy_table,
+)
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     fenced_commands,
@@ -733,9 +739,9 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
             policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
         )
         expected = {
-            policy_strings(policy_table(repo, "workflows"), ("install_script_path",), "workflows")[
-                "install_script_path"
-            ],
+            *policy_string_list(
+                policy_table(repo, "workflows"), "install_script_paths", "workflows"
+            ),
             *installers(repo),
         }
     except PolicyValueError as error:
@@ -766,24 +772,25 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
 
 
 def _pinned_form_findings(path: ip.InstallPath) -> list[str]:
-    """The script route's pinned form carries concrete values, not metavariables."""
+    """Every pinned form of a script route carries concrete values, not metavariables.
+
+    Every one, because the route states one per script behind it, and a
+    reader on Windows pastes the PowerShell one.
+    """
+    findings: list[str] = []
     for route in path.routes:
-        if len(route.commands) < 2:
-            continue
-        pinned = route.commands[1]
-        findings = []
-        if not ip.PINNED_VERSION.search(pinned):
-            findings.append(
-                f"the pinned form `{pinned}` carries no concrete release tag "
-                f"(expected `--version vX.Y.Z`)"
-            )
-        if not ip.PINNED_DIRECTORY.search(pinned):
-            findings.append(
-                f"the pinned form `{pinned}` carries no concrete install directory "
-                f"(expected `--to <an absolute or ~ path>`)"
-            )
-        return findings
-    return []
+        for pinned in route.pinned:
+            if not ip.PINNED_VERSION.search(pinned):
+                findings.append(
+                    f"the pinned form `{pinned}` carries no concrete release tag "
+                    f"(expected `--version vX.Y.Z` or `-Version vX.Y.Z`)"
+                )
+            if not ip.PINNED_DIRECTORY.search(pinned):
+                findings.append(
+                    f"the pinned form `{pinned}` carries no concrete install directory "
+                    f"(expected `--to` or `-To` with an absolute, `~` or drive-rooted path)"
+                )
+    return findings
 
 
 def _verification_findings(path: ip.InstallPath) -> list[str]:
@@ -1004,11 +1011,16 @@ def _install_job_findings(
     """One job per route, each running that route and then the two commands, in order."""
     findings: list[str] = []
     for route in path.routes:
-        if not any(route.command in run_commands(job) for _, _, job in install):
-            findings.append(
-                f"AGENTS.md names route `{route.heading}` (`{route.command}`), for which "
-                f"the committed configuration declares no install job"
-            )
+        # A route with scripts behind it is taken by every one of its fetch
+        # commands, so each is owed a job; a route with none is taken by its
+        # one command.
+        owed = list(route.fetches.values()) or [route.command]
+        findings.extend(
+            f"AGENTS.md names route `{route.heading}` (`{command}`), for which "
+            f"the committed configuration declares no install job"
+            for command in owed
+            if not any(command in run_commands(job) for _, _, job in install)
+        )
     _, summary = _waived(repo)
     for file_name, job_name, job in install:
         commands = run_commands(job)

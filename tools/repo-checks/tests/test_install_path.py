@@ -118,16 +118,28 @@ def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair
 ) -> None:
     """Flipping a platform to `install path: yes` is what makes its manager's pair owed.
 
-    The `windows-service` pair is stated ahead of the routes reaching Windows,
-    so it is taken out of the copy first: with no pair and no platform the
-    install path targets under that manager, nothing is owed and the section
-    is accepted — and flipping one of those platforms is what changes that.
+    A pair is permitted before the routes reach a platform of its manager and
+    owed once they do. So the `windows-service` pair is taken out of the copy
+    and both Windows platforms are answered `no`: with no pair and no platform
+    the install path targets under that manager, nothing is owed and the
+    section is accepted — and flipping one of those platforms back is what
+    changes that.
     """
     broken = tree()
     text = broken.read("AGENTS.md")
     pair_start = text.index("\n#### windows-service\n")
     pair_end = text.index("\n### Between the two commands", pair_start)
     broken.edit("AGENTS.md", text[pair_start:pair_end], "")
+    for platform in ("windows-x86_64", "windows-aarch64"):
+        text = broken.read("AGENTS.md")
+        start = text.index(f"- `{platform}` — ")
+        end = text.index("\n", start)
+        entry = text[start:end]
+        broken.edit(
+            "AGENTS.md",
+            entry,
+            entry[: entry.index("install path: yes")] + "install path: no — the routes are owed",
+        )
     accepted(install_path_section(broken.repo))
 
     text = broken.read("AGENTS.md")

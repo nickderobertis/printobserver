@@ -328,42 +328,6 @@ site = "pub const DEFAULT_REFERENCES:"
 reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."
 
 [[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "AGENTS.md"
-site = "flips this to `yes`"
-reason = "Required content rather than a roadmap. `repo_checks.checks_ci.platforms` refuses an `install path: no` answer that states no reason, and the reason an answer is `no` for the platforms still carrying one is that their bring-up is owed and which node flips it; a durable-sounding reason would be a false one. Each reason is deleted by the change that flips its answer to `yes`."
-
-[[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "CLAUDE.md"
-site = "flips this to `yes`"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
-
-[[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "AGENTS.md"
-site = "The Windows entries are being brought up"
-reason = "Required content rather than session narration: the task that entered these four platforms had to replace the paragraph saying macOS and Windows were deliberately absent, and a reader of a list naming platforms whose cells are still excluded needs one sentence saying why and where the record of their runners is. The macOS bring-up narrowed it to the two Windows entries; it goes when theirs finishes."
-
-[[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "CLAUDE.md"
-site = "The Windows entries are being brought up"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
-
-[[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "AGENTS.md"
-site = "removes this line"
-reason = "Required content rather than a ledger: `repo_checks.checks_ci.platforms` refuses a platform-dependent job omitting a listed platform unless this block records that cell with a reason, and the lever's contract is that each entry names the bring-up owed and what removes it. The block is meant to end empty, and each line is deleted by the change that brings its cell up."
-
-[[suppression]]
-rule = "agents_md_durable_and_terse"
-file = "CLAUDE.md"
-site = "removes this line"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
-
-[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "A device is named the way the host names one"
@@ -1210,3 +1174,98 @@ rule = "least_privilege_grants"
 file = "crates/printobserver/tests/service_manager.rs"
 site = "\"--privileged\","
 reason = "The container runs systemd as PID 1 to activate, kill and restart the installed service through the real manager, and systemd as PID 1 mounts its own cgroup hierarchy, mounts the tmpfs under `/run`, and starts units as other users — capabilities that a narrower `--cap-add` set does not reliably cover across the Docker and kernel versions the hosted runners carry. The grant is to a throwaway container of this journey's own, on a private cgroup namespace, removed on every exit path, and the journey is the only thing that starts it."
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install.ps1"
+site = "function Report-Installed"
+reason = "A successful install prints what the shell form of this same route prints, line for line: where the program went and from which release, whether its directory had to be added to the path, and the two commands the operator runs next. `AGENTS.md`'s install path requires the last of those — a successful install says what the caller does after it — and `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads every one of those lines back; a run that installs nothing prints only its two sentences, why it stopped and what to do next."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "scripts/install.ps1"
+site = "if ($MyInvocation.MyCommand.Path) {"
+reason = "One status for every stop is the exit contract of this route, and the shell form on `main` — `scripts/install.sh`, whose one `die` exits 1 — set it; this is the same route in its Windows form, and `AGENTS.md`'s install path holds the two to doing the same thing. What tells a caller which stop it was is the two sentences on standard error — why it stopped and what to do next — which `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads back for every refusal; a job reads the non-zero, and a caller at the prompt reads the sentences, and neither branches on which non-zero it was. Under `irm ... | iex` there is no process of the script's own to exit, so the one status goes to `$LASTEXITCODE`, which is the only status that form can leave."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _built_here"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."
+
+# `tests/repo-e2e/tests/test_install_powershell_script_journey.py` drives the
+# committed PowerShell install script on every platform, and only a Windows
+# host answers as one. The entries below are for the two things the journey
+# stands in for and the one thing it cannot: the host, and a program built for
+# another machine.
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _environment"
+reason = "Nothing of the script is stood in for. What the journey sets is the environment the script reads the host from — `OS` and `PROCESSOR_ARCHITECTURE`, the variables every Windows sets — which is how the Windows answers are reached on the host that runs the suite most often, as the task that added this route required; a Windows host of the gate runs the same journey with those variables its own, in `test_this_windows_host_resolves_itself_with_nothing_stood_in`. The release is a staged directory for the same reason the shell form's journey stages one: nothing here may reach the network, a release carrying Windows artifacts does not exist until this lands, and the route against the real forge is the registry-proof tier's."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _environment"
+reason = "A caller runs this script on Windows, where `OS` and `PROCESSOR_ARCHITECTURE` are set by the system; the journey sets the same two variables so the script's own resolution runs the way it does there, through the same code and the same reads. The branches reached are the ones a Windows caller reaches — an x86-64 machine, an ARM64 one, an emulated PowerShell on one — and the run on a Windows host reaches them with nothing set."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _program"
+reason = "A program built for a Windows machine cannot be run here to read its version, and what this journey is about is the script around it — the platform it resolves, the digest it verifies, where it puts what it verified. The stand-in is the same one every route proof of the artifact tool carries; on a Windows host of the platform under test, this same function stages the real program the tree builds and the journey runs it."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path`, `install-script` and `platform-facts` read route 3's fetch commands out of the root file — which scripts the route has behind it, which platforms each reaches, and that each is committed where its own URL names — and the README and the install jobs are derived from it and held to it by `drifted_statements`. The PowerShell form is stated beside the shell form under the one route heading the task requires; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "The two PowerShell commands are the route's contract rather than user documentation duplicated here: this section is where the install path is stated once, `just check-repo`'s `install-path` refuses a route stating no pasteable command and a pinned form with no concrete tag and directory, and the README's copy is the derived one, refused where it differs. They are as durable as the shell form's two commands beside them."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "The same ground as the entry for the PowerShell paragraph below it: this section is the one authoritative source of the install path, `just check-repo`'s `platform-facts` reads which scripts route 3 has behind it and which platforms each reaches out of the route's own fetch commands here, and the README is derived from it. What the paragraph states — one route, two scripts, the same artifact and verification — is the contract those checks and the two journeys hold the scripts to."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "Durable content: the paragraph states what route 3 is — one route with a script per family of platform, the same artifact, the same checksum file, verification before anything reaches a path — which is exactly what `tests/repo-e2e/tests/test_install_script_journey.py` and `test_install_powershell_script_journey.py` hold the two scripts to and what `just check-repo`'s `platform-facts` holds the section to. Nothing in it names a session or a plan."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "One route, with one committed script per family of platform behind it"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def staged"
+reason = "The older release the staged directory carries is a stand-in that reports a version of its own, for the reason the shell form's journey stages the same: what the pinned-release assertions are about is which release the script chose, and two artifacts carrying the same program could not tell a reader that. The newest release carries the real program wherever this host can run it — `_program` above — and the script's own download, verification and install run unchanged over either."
+

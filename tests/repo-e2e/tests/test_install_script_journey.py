@@ -24,8 +24,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from journey import NO_ROUTE_HERE, REPO_ROOT, ROUTE_JOURNEY, clean_environment, run
+from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
 from repo_checks import install_path
+from repo_checks.checks_platforms import SCRIPT_PLATFORM
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import HOSTS, host, install_platforms
@@ -57,6 +58,23 @@ def _platform() -> str:
 
 #: Where this host's own artifact is named, as the platform declaration names it.
 PLATFORM = _platform()
+
+#: The platforms the shell form reaches: its own `uname` arms, read off the
+#: committed script the way `just check-repo` reads them. A platform the
+#: install path targets that is not among them — Windows — is reached by the
+#: PowerShell form and its own journey.
+REACHED = frozenset(SCRIPT_PLATFORM.findall((REPO_ROOT / SCRIPT).read_text(encoding="utf-8")))
+
+#: Why this journey has nothing to drive on this host, or `None`: a host the
+#: install path does not target, or one this script has no arm for.
+NOT_HERE: str | None = (
+    NO_ROUTE_HERE
+    if NO_ROUTE_HERE is not None
+    else None
+    if PLATFORM in REACHED
+    else f"{SCRIPT} has no arm for `{PLATFORM}`, which the PowerShell form reaches instead"
+)
+SHELL_ROUTE_JOURNEY = pytest.mark.skipif(NOT_HERE is not None, reason=NOT_HERE or "")
 
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -111,13 +129,15 @@ def staged(tmp_path: Path) -> Path:
     `download/<tag>` for a pinned one, so a script proven against this is
     proven against the layout it will meet.
 
-    Staged only where the install path targets this platform: the script is
-    the third route, and on a platform whose record answers `install path: no`
-    there is no artifact of this host's for it to stage, so a journey asking
-    for one is skipped naming that record rather than built for.
+    Staged only where the install path targets this platform and this script
+    reaches it: the script is the third route's shell form, and on a platform
+    whose record answers `install path: no` there is no artifact of this
+    host's for it to stage, while a Windows host is reached by the PowerShell
+    form and its own journey — so a journey asking for one is skipped naming
+    which rather than built for.
     """
-    if NO_ROUTE_HERE is not None:
-        pytest.skip(NO_ROUTE_HERE)
+    if NOT_HERE is not None:
+        pytest.skip(NOT_HERE)
     base = tmp_path / "releases"
     real = _program().read_bytes()
     stand_in = f'#!/bin/sh\necho "{PROGRAM} {OLDER.removeprefix("v")}"\n'.encode()
@@ -211,11 +231,13 @@ def test_an_altered_artifact_is_refused_before_anything_reaches_a_path(
 
 
 #: Every `uname` answer the platform declaration maps to a platform the install
-#: path targets, read from that declaration rather than restated here.
+#: path targets and this script has an arm for, read from that declaration and
+#: the script's own arms rather than restated here.
 TARGETED = [
     (system, machine, identifier)
     for (system, machine), identifier in HOSTS.items()
     if identifier in {platform.id for platform in install_platforms(Repo(REPO_ROOT))}
+    and identifier in REACHED
 ]
 
 
@@ -237,7 +259,7 @@ def _uname(shims: Path, system: str, machine: str) -> None:
     TARGETED,
     ids=[f"{system}-{machine}" for system, machine, _ in TARGETED],
 )
-@ROUTE_JOURNEY
+@SHELL_ROUTE_JOURNEY
 def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_start_command(
     tmp_path: Path, system: str, machine: str, identifier: str
 ) -> None:

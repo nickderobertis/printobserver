@@ -15,74 +15,35 @@ from pathlib import Path
 import pytest
 from release_artifacts import targets
 from release_artifacts.__main__ import main
+from release_artifacts.stand_in import stand_in_program
+from repo_checks import platforms
 from repo_checks.expect import equal
 from repo_checks.model import Repo
-from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-#: A program every route's artifact carries, in place of the real one. It runs,
-#: and it says which version it is, which is what a route's own assertion is.
-#: The version is the workspace's own rather than a number written here: release
-#: automation moves that one, and a copy kept by hand is stale the first time it
-#: does.
-#:
-#: Compiled rather than a script, because a route's artifact states what the
-#: program inside it was built against, and on macOS that floor is read out of
-#: the program's own Mach-O load commands — which a shell script does not have.
-#: Compiled on every host, so the stand-in this host's journeys carry is built
-#: the same way as the one a macOS runner's carry.
-STAND_IN = """fn main() {{
-    if std::env::args().nth(1).as_deref() == Some("--version") {{
-        println!("printobserver {version}");
-        return;
-    }}
-    eprintln!("printobserver: a stand-in program, which does nothing");
-    std::process::exit(1);
-}}
-"""
+#: What the stand-in program every route's artifact carries, in place of the
+#: real one, answers `--version` with. It runs, and it says which version it
+#: is, which is what a route's own assertion is. The version is the workspace's
+#: own rather than a number written here: release automation moves that one,
+#: and a copy kept by hand is stale the first time it does.
+ANSWER = "printobserver {version}"
 
 
 def compiled_stand_in(into: Path) -> Path:
     """The stand-in program, compiled for this host into `into`.
 
-    Compiled from the repository root so the toolchain `rust-toolchain.toml`
-    pins is the one that builds it, and stripped so the artifacts carrying it
-    stay small.
-
-    Raises:
-        AssertionError: If it would not compile.
+    The compiled form from `release_artifacts.stand_in`, on every host — a
+    route's artifact states what the program inside it was built against, and
+    on macOS that floor is read out of the program's own load commands, which
+    a shell script does not have — under the name this host calls the program
+    by, `printobserver.exe` on Windows.
     """
-    into.mkdir(parents=True, exist_ok=True)
-    source = into / "stand_in.rs"
-    source.write_text(
-        STAND_IN.format(version=targets.workspace(REPO_ROOT)["version"]), encoding="utf-8"
+    repo = Repo(REPO_ROOT)
+    version = targets.workspace(REPO_ROOT)["version"]
+    return stand_in_program(
+        repo, into / platforms.host(repo).program, ANSWER.format(version=version), compiled=True
     )
-    program = into / "printobserver"
-    compiled = run(
-        [
-            "rustc",
-            "--edition",
-            "2021",
-            "-C",
-            "opt-level=s",
-            "-C",
-            "strip=symbols",
-            "-C",
-            "panic=abort",
-            "-o",
-            str(program),
-            str(source),
-        ],
-        cwd=REPO_ROOT,
-        timeout=300,
-    )
-    equal(
-        compiled.returncode,
-        0,
-        describing=f"compiling the stand-in program:\n{compiled.stdout}{compiled.stderr}",
-    )
-    return program
 
 
 @pytest.fixture(scope="session")
@@ -106,7 +67,7 @@ def version() -> str:
 @pytest.fixture
 def program(tmp_path: Path, stand_in: Path) -> Path:
     """A runnable program a route's artifact can carry, reporting the tree's version."""
-    return Path(shutil.copy2(stand_in, tmp_path / "printobserver"))
+    return Path(shutil.copy2(stand_in, tmp_path / stand_in.name))
 
 
 @pytest.fixture
@@ -131,7 +92,7 @@ def built(tmp_path_factory: pytest.TempPathFactory, stand_in: Path) -> Path:
     packages the Rust one, and a journey that publishes it takes a copy.
     """
     root = tmp_path_factory.mktemp("built")
-    program = Path(shutil.copy2(stand_in, root / "printobserver"))
+    program = Path(shutil.copy2(stand_in, root / stand_in.name))
     dist = root / "dist"
     equal(
         main(
