@@ -101,10 +101,15 @@ oneharness_binary() {
 # oneharness rather than listing the harnesses here keeps `oneharness.toml` — and
 # any ONEHARNESS_HARNESSES override layered over it — the one source of the chain,
 # so this script cannot drift from the file that decides what the tier drives.
+# `--format json` names the programmatic contract: oneharness 0.15 made the bare
+# `config` a text view for a reader, which no parser can take the chain out of.
+# A oneharness older than that knows no `--format`, so its bare answer — JSON,
+# there — is taken where the option is refused.
 configured_chain() {
-  local python
+  local python report
   python=$(command -v python3 2>/dev/null) || python=$(command -v python 2>/dev/null) || return 1
-  "$1" config 2>/dev/null | "$python" -c 'import json, sys
+  report=$("$1" config --format json 2>/dev/null) || report=$("$1" config 2>/dev/null) || return 1
+  printf '%s' "$report" | "$python" -c 'import json, sys
 print(" ".join(json.load(sys.stdin)["harnesses"]["value"] or []))' 2>/dev/null
 }
 
