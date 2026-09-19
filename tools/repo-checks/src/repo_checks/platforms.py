@@ -435,7 +435,10 @@ def retired(repo: Repo) -> dict[str, str]:
 
     Raises:
         PlatformError: If the table is not a list of tables, which is a record
-            nothing here can read a platform out of.
+            nothing here can read a platform out of; or if one platform is
+            recorded twice, which is a record nothing here can read one reason
+            out of — read past, the later entry would replace the earlier and
+            two conflicting reasons would both be accepted.
     """
     declared = repo.policy.get("platforms", {}).get("retired", [])
     if not isinstance(declared, list) or not all(isinstance(one, dict) for one in declared):
@@ -448,8 +451,16 @@ def retired(repo: Repo) -> dict[str, str]:
     for entry in declared:
         identifier = entry.get("id")
         reason = entry.get("reason")
-        if isinstance(identifier, str) and isinstance(reason, str) and reason.strip():
-            found[identifier.strip()] = reason.strip()
+        if not (isinstance(identifier, str) and isinstance(reason, str) and reason.strip()):
+            continue
+        if identifier.strip() in found:
+            msg = (
+                f"`repo-policy.toml`'s `platforms.retired` records `{identifier.strip()}` "
+                f"twice, so nothing here can say which reason it was cut for: a platform "
+                f"cut from the list is recorded once"
+            )
+            raise PlatformError(msg)
+        found[identifier.strip()] = reason.strip()
     return found
 
 

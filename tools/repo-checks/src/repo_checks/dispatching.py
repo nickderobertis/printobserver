@@ -170,6 +170,12 @@ def matrixed_jobs(repo: Repo, sources: tuple[str, ...]) -> dict[str, Source]:
 
     `Any` at the deserialization boundary: a job is whatever the YAML reader
     handed back, and what this reads out of one is narrowed where it is read.
+
+    Raises:
+        DispatchError: If two source workflows both carry a platform-matrixed
+            job of one name. A dispatch names a job by that name alone, so the
+            pair would run whichever source is listed first and say nothing
+            about the other — refused here rather than resolved by order.
     """
     from repo_checks.checks_ci import _matrix_platforms
 
@@ -179,8 +185,16 @@ def matrixed_jobs(repo: Repo, sources: tuple[str, ...]) -> dict[str, Source]:
         if not path.is_file():
             continue
         for name, job in jobs_of(load_workflow(path)).items():
-            if _matrix_platforms(job) is not None:
-                found[name] = Source(source, name, job)
+            if _matrix_platforms(job) is None:
+                continue
+            if name in found:
+                msg = (
+                    f"`{name}` is a platform-matrixed job of both {found[name].workflow} and "
+                    f"{source}, so a dispatch naming it would run whichever the sources list "
+                    f"first; a job a dispatch can name is a job of exactly one source workflow"
+                )
+                raise DispatchError(msg)
+            found[name] = Source(source, name, job)
     return found
 
 

@@ -424,6 +424,28 @@ def test_a_retired_record_with_no_reason_is_refused(tree: Callable[[], Tree]) ->
     refused_naming(platforms(unexplained.repo), "names no platform `id` and no non-empty")
 
 
+def test_a_platform_retired_twice_is_refused(tree: Callable[[], Tree]) -> None:
+    """Two records of one cut carry two reasons, and neither is the one on record.
+
+    Read past, the later would replace the earlier and both would be accepted;
+    so every reader of the record refuses it — the `platforms` check and the
+    narrowing check alike — naming the platform recorded twice.
+    """
+    from repo_checks.checks_ci import platforms
+
+    doubled = tree()
+    _committed(doubled)
+    doubled.write(AGENTS, _without_the_platform(doubled.read(AGENTS)))
+    _retire(doubled)
+    _retire(
+        doubled,
+        '\n[[platforms.retired]]\nid = "linux-aarch64"\nreason = "a second reason"\n',
+    )
+
+    refused_naming(platforms(doubled.repo), "records `linux-aarch64` twice")
+    refused_naming(install_path_not_narrowed(doubled.repo), "records `linux-aarch64` twice")
+
+
 def test_a_retired_record_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
     """A record nothing can read a platform out of is a finding, not a traceback."""
     from repo_checks.checks_ci import platforms

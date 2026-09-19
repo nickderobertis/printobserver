@@ -87,7 +87,10 @@ def platform_dispatch(repo: Repo) -> list[str]:
     inputs = triggers.get("workflow_dispatch")
     inputs = inputs.get("inputs") if isinstance(inputs, dict) else None
     inputs = inputs if isinstance(inputs, dict) else {}
-    sources = matrixed_jobs(repo, declared.sources)
+    try:
+        sources = matrixed_jobs(repo, declared.sources)
+    except DispatchError as error:
+        return [*findings, f"{relative} cannot offer its `{declared.job_input}` input: {error}"]
     findings.extend(
         f"{relative} takes a `{extra}` input, and a dispatch names a job and a platform "
         f"and nothing else"

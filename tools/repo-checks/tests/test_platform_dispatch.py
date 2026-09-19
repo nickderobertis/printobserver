@@ -185,6 +185,34 @@ def test_a_job_input_offering_a_job_no_source_matrixes_is_refused(
     refused_naming(platform_dispatch(broken.repo), "`job` input offers `llmlint`")
 
 
+def test_a_job_two_sources_both_matrix_is_refused_before_anything_runs(
+    tree: Callable[[], Tree], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One name in two sources is ambiguous, and order is no way to resolve it.
+
+    A dispatch names a job by name alone, so a name both source workflows
+    carry would run whichever the sources list first and say nothing about the
+    other. The check refuses the tree, the resolver refuses the pair, and the
+    script exits refused with nothing run — rather than any of them picking one.
+    """
+    broken = tree()
+    broken.edit(INSTALL, "\n  install-route-script:\n", "\n  gate:\n")
+    recording = Recording(tmp_path)
+    recording.program(JUST)
+
+    refused_naming(
+        platform_dispatch(broken.repo), "`gate` is a platform-matrixed job of both ci.yml and"
+    )
+    with pytest.raises(DispatchError, match=re.escape("both ci.yml and install-path.yml")):
+        resolve(broken.repo, "gate", "linux-x86_64")
+    code = dispatching.main(
+        ["resolve", "--job", "gate", "--platform", "linux-x86_64", "--root", str(broken.root)]
+    )
+    equal(code, REFUSED, describing="the exit of `resolve` over an ambiguous job")
+    contains(capsys.readouterr().err, "refused: `gate` is a platform-matrixed job of both")
+    equal(recording.recorded(), [], describing="what ran before the refusal")
+
+
 def test_a_job_input_missing_a_matrixed_job_of_a_source_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
