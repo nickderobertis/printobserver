@@ -21,7 +21,6 @@ from release_artifacts import targets
 from release_artifacts.build import (
     CONTRACT_FIELD,
     CONTRACT_FILE,
-    PROGRAM,
     BuildError,
     assembled,
     build,
@@ -164,7 +163,11 @@ def test_the_script_route_publishes_an_artifact_and_the_digest_it_is_verified_by
     digests = next(path for path in built.paths if path.name.endswith("SHA256SUMS"))
     contains(digests.read_text(encoding="utf-8"), digest_of(archive), describing="the digests")
     with tarfile.open(archive, "r:gz") as opened:
-        equal(opened.getnames(), [PROGRAM], describing="what the release artifact carries")
+        equal(
+            opened.getnames(),
+            [platforms.host(repo).program],
+            describing="what the release artifact carries: the program under its own name here",
+        )
 
 
 def test_a_staged_release_has_the_shape_the_forge_serves(

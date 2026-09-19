@@ -202,8 +202,24 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         }
 
         # The same archive every platform's route unpacks, and Windows has
-        # carried a `tar` that reads it since Windows 10.
-        if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
+        # carried a `tar` that reads it since Windows 10 — the system's own,
+        # taken by its path where it is there, because another `tar` ahead of
+        # it on PATH (Git's, on a runner) reads `C:\...` as a host to connect
+        # to rather than a drive.
+        $tar = ''
+        if ($env:SystemRoot) {
+            $own = Join-Path $env:SystemRoot 'System32\tar.exe'
+            if (Test-Path -LiteralPath $own -PathType Leaf) {
+                $tar = $own
+            }
+        }
+        if (-not $tar) {
+            $found = Get-Command tar -ErrorAction SilentlyContinue
+            if ($found) {
+                $tar = $found.Source
+            }
+        }
+        if (-not $tar) {
             Stop-Install 'this machine has no tar, so nothing here can unpack what it downloaded' `
                 "Nothing was installed. Windows 10 and later carry one at C:\Windows\System32\tar.exe; put it on your PATH, or unpack $asset by hand and verify it against $from/$CHECKSUMS."
         }
@@ -212,12 +228,12 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         # that is not a plain file — a link would land wherever it points —
         # is not one this installs, whatever the digest said. The verbose
         # listing's first character is the member's kind, `-` for a file.
-        $members = @(& tar -tzf (Join-Path $work $asset) 2>$null)
+        $members = @(& $tar -tzf (Join-Path $work $asset) 2>$null)
         if ($LASTEXITCODE -ne 0) {
             Stop-Install "$asset could not be unpacked" `
                 'Nothing was installed. The download may be incomplete; try again.'
         }
-        $kinds = @(& tar -tvzf (Join-Path $work $asset) 2>$null)
+        $kinds = @(& $tar -tvzf (Join-Path $work $asset) 2>$null)
         # `$entry` rather than `$name`: PowerShell's variables are
         # case-insensitive, so `$name` here would be `$NAME` above.
         foreach ($member in $members) {
@@ -233,7 +249,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
                     "Nothing was installed. Report this against ${which}: the artifact is not the one this script installs."
             }
         }
-        & tar -xzf (Join-Path $work $asset) -C $work
+        & $tar -xzf (Join-Path $work $asset) -C $work
         if ($LASTEXITCODE -ne 0) {
             Stop-Install "$asset could not be unpacked" `
                 'Nothing was installed. The download may be incomplete; try again.'
