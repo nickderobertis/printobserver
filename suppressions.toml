@@ -1096,3 +1096,27 @@ file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects"
 reason = "A Mac caller reaches this arm through `uname -s` and `uname -m` answering `Darwin` and `arm64`, and that is exactly what the shimmed `uname` answers: the script runs its own resolution, its own download and its own verification unchanged. The shortcut is in where the two answers come from, not in what the script does with them."
 
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path`, `install-script` and `platform-facts` read route 3's fetch commands out of the root file — which scripts the route has behind it, which platforms each reaches, and that each is committed where its own URL names — and the README and the install jobs are derived from it and held to it by `drifted_statements`. The PowerShell form is stated beside the shell form under the one route heading the task requires; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "The two PowerShell commands are the route's contract rather than user documentation duplicated here: this section is where the install path is stated once, `just check-repo`'s `install-path` refuses a route stating no pasteable command and a pinned form with no concrete tag and directory, and the README's copy is the derived one, refused where it differs. They are as durable as the shell form's two commands beside them."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "`scripts/install.ps1` is the PowerShell form"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+

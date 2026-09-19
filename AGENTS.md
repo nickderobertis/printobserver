@@ -799,6 +799,7 @@ pinned release and an install directory:
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads route 3's fetch commands out of it, and the README is derived from it and held to it. suppressions.toml has the full reasons. -->
 `scripts/install.ps1` is the PowerShell form, for every Windows platform the
 list names, fetched the way PowerShell — Windows PowerShell or a newer one —
 fetches and runs a script:
