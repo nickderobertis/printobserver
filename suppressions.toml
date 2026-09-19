@@ -913,3 +913,17 @@ rule = "boundary_inputs_validated"
 file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = "BOUNDARY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+# --- the real-printer smoke test's device precondition: two lookup sites ------
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/printer-smoke/printer_smoke.py"
+site = "if not device.exists():"
+reason = "The device name is used, before its shape is checked, in exactly one way: a read-only lookup — `Path.exists` and `os.access` here, the device table on Windows below — that opens nothing and sends the printer nothing. That order is deliberate. The precondition's question is whether the named device is there and this user can read it, and the platform's shape is appended to a refusal as the hint that says what a device is called here rather than put ahead of the probe as a gate, because the Unix shape is by design no tighter than the platform's own (a `udev` rule links a printer under any name below `/dev`), and because on Windows the smoke's own precondition walk drives the real device table with a device that table carries under a name no printer has — a runner has no port. A name this platform cannot have is still refused, told what its devices are called, and everything after this precondition reaches the device only through the scripted OctoPrint's own instance record, which `octoprint_env.py` refuses to write for a misnamed device before it opens anything."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "tools/printer-smoke/printer_smoke.py"
+site = "if not name or _query_dos_device(name) is None:"
+reason = "The Windows half of the same one probe as the entry above: the name is looked up in the system's device table, which answers whether it is a device without opening it — the point of asking the table, since opening a serial port can reset the printer on the other end. An empty name, the one input that would make the lookup answer something for any host, is refused on the line before it is asked; anything else is a read of a table, and a name the table does not carry is refused naming the shape a Windows port has."

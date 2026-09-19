@@ -857,6 +857,7 @@ def _device_readable(smoke: Smoke) -> str | None:
     if sys.platform == "win32":
         return _windows_device_present(smoke)
     device = Path(smoke.device)
+    # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
     if not device.exists():
         return f"{DEVICE_ENV} names {smoke.device}, which is not there{_naming_hint(smoke)}"
     if not os.access(device, os.R_OK):
@@ -891,6 +892,7 @@ def _windows_device_present(smoke: Smoke) -> str | None:
     name = smoke.device.removeprefix(WINDOWS_DEVICE_NAMESPACE)
     # An empty name asks the table for every device it carries, which answers
     # something for any host — so it is refused before it is asked.
+    # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
     if not name or _query_dos_device(name) is None:
         return f"{DEVICE_ENV} names {smoke.device}, which is not there{_naming_hint(smoke)}"
     return None
