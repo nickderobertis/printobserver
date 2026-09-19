@@ -1180,3 +1180,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = 'call(record_url(record), api_key(instance), "/api/version", timeout=5.0)'
 reason = "The first step of the same strictly ordered bring-up the `http.client.HTTPConnection` entry above describes: one blocking question to an OctoPrint this script itself started, on loopback, whose answer decides whether anything else is started at all. The judge reached it through a rename on the line above it; the helper it calls carries the reason for every call through it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "JOB_KEYS = frozenset("
+reason = "The same ground as the entry for `Runner` above: the job keys the forge accepts are documented prose with no machine-readable schema to generate from, and the drift gate is the forge itself — the same workflow text runs on GitHub on every push and every dispatch. What keeps the set honest is that it is a refusal list rather than an approximation: a workflow carrying a job key outside it fails the journey by name, and `test_actions_runner.py` pins the modelled keys over a workflow small enough to read against the forge's documentation."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/repo-e2e/tests/actions.py"
+site = "NAMED_BASH = "
+reason = "The same ground as the entries above it: the invocation the forge gives a `run:` step whose shell is named `bash` is documented prose (`bash --noprofile --norc -eo pipefail {0}`) with no machine-readable source, and the drift gate is the forge, where the platform-dispatch workflow's `run` job — the one job here that names that shell — runs on its first dispatch after the merge; `test_actions_runner.py` pins the invocation over a workflow small enough to read against the documentation, and any other named shell is refused rather than modelled."

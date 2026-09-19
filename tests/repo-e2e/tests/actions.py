@@ -94,6 +94,7 @@ STEP_KEYS = frozenset({"id", "name", "run", "uses", "with", "env", "if"})
 
 #: The job keys this runner models, plus `permissions`: what the forge grants
 #: its own token is a boundary here, since nothing a step runs reaches the forge.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 JOB_KEYS = frozenset(
     {
         "name",
@@ -113,6 +114,7 @@ JOB_KEYS = frozenset(
 DEFAULT_SHELL = ("bash", "-e")
 
 #: What the forge documents a step runs under once its shell is named `bash`.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 NAMED_BASH = ("bash", "--noprofile", "--norc", "-eo", "pipefail")
 
 STEP_TIMEOUT_SECONDS = 600

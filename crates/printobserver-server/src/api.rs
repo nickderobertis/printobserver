@@ -31,6 +31,7 @@
 //! built without the credential it is checked against.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
@@ -125,6 +126,13 @@ const BEARER: &[u8] = b"Bearer ";
 /// and a larger one is left where it is either way.
 pub const BODY_BOUND: usize = 2 * 1024 * 1024;
 
+/// How long [`authenticate`] waits for a refused request's body to arrive.
+///
+/// A caller that sent a head and then nothing would otherwise hold its refusal
+/// open for as long as it liked; after this the refusal goes out over whatever
+/// arrived, and the connection ends as it did before there was a drain.
+pub const DRAIN_BOUND: Duration = Duration::from_secs(2);
+
 /// Admit a request that presented the credential in force, and refuse every
 /// other before anything reads it.
 ///
@@ -163,9 +171,14 @@ pub async fn authenticate(
             header::WWW_AUTHENTICATE,
             header::HeaderValue::from_static("Bearer"),
         );
-        // A body past the bound, or one that stops arriving, is left as it is:
-        // the refusal is the answer either way.
-        let _ = axum::body::to_bytes(request.into_body(), BODY_BOUND).await;
+        // A body past the bound, or one that has not arrived inside
+        // `DRAIN_BOUND`, is left where it is: the refusal is the answer either
+        // way, and what a caller then meets on the connection is its own doing.
+        let _ = tokio::time::timeout(
+            DRAIN_BOUND,
+            axum::body::to_bytes(request.into_body(), BODY_BOUND),
+        )
+        .await;
         return refused;
     }
     next.run(request).await
