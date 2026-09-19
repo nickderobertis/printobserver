@@ -8,6 +8,7 @@
     "format-check": { "command": "uv run -q ruff format --check tools/octoprint-env" },
     "lint": { "command": "uv run -q ruff check tools/octoprint-env" },
     "typecheck": { "command": "uv run -q ty check tools/octoprint-env" },
+    "test": { "command": "uv run -q pytest tools/octoprint-env/tests/test_device_refusal.py" },
     "test-integration": { "command": "uv run -q pytest tools/octoprint-env/tests" }
   }
 }

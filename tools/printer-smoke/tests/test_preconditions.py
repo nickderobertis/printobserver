@@ -14,6 +14,7 @@ before it started has asked the machine for something.
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -153,6 +154,28 @@ def test_a_state_directory_naming_no_octoprint_is_refused(world: World, tmp_path
     equal(run.returncode, 0, describing="the exit of a run a precondition refused")
     contains(run.stdout, "refused: the precondition `octoprint-serial-mode`", describing="it")
     contains(run.stdout, "just octoprint-up", describing="the next action it names")
+    bring_up = (
+        f"$env:OCTOPRINT_ENV_MODE='serial'; $env:OCTOPRINT_ENV_DEVICE='{world.device}';"
+        if sys.platform == "win32"
+        else f"OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE={world.device}"
+    )
+    contains(run.stdout, bring_up, describing="the bring-up, spelled for this host's shell")
+
+
+def test_the_configuration_read_by_default_is_this_platforms_own(world: World) -> None:
+    """Nothing naming a file, the run reads where this platform's installer writes one."""
+    expected = (
+        "C:\\ProgramData\\printobserver\\config.toml"
+        if sys.platform == "win32"
+        else "/etc/printobserver/config.toml"
+    )
+
+    run = world.smoke("--run", environment={"PRINTOBSERVER_SMOKE_CONFIG": ""})
+
+    equal(run.returncode, 0, describing="the exit of a run a precondition refused")
+    contains(run.stdout, "refused: the precondition `supervisor-binding`", describing="it")
+    contains(run.stdout, expected, describing="the configuration the refusal names")
+    equal(world.substitute.commands, [], describing="the commands that reached the printer")
 
 
 def test_a_record_naming_another_device_is_refused(world: World) -> None:
