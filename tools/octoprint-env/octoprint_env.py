@@ -1087,6 +1087,7 @@ def _already_running(instance: Instance) -> dict[str, Any] | None:
     if not alive_after_reaping(record_pid(record)):
         return None
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         status, _ = call(record_url(record), api_key(instance), "/api/version", timeout=5.0)
     except OSError, http.client.HTTPException:
         return None

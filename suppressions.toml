@@ -1053,3 +1053,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = 'call(record_url(record), api_key(instance), "/api/version", timeout=5.0)'
+reason = "The first step of the same strictly ordered bring-up the `http.client.HTTPConnection` entry above describes: one blocking question to an OctoPrint this script itself started, on loopback, whose answer decides whether anything else is started at all. The judge reached it through a rename on the line above it; the helper it calls carries the reason for every call through it."
