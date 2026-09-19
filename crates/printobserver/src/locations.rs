@@ -8,9 +8,9 @@
 //!
 //! This module is the one place those answers are spelled. [`HERE`] is the one
 //! this build answers with, chosen by its target; every other copy — the Linux
-//! installer's own paths and the real-printer smoke test's configuration
-//! defaults among them — is held to [`LINUX`], [`MACOS`] or [`WINDOWS`] by this
-//! crate's tests.
+//! and Windows installers' own paths and the real-printer smoke test's
+//! configuration defaults among them — is held to [`LINUX`], [`MACOS`] or
+//! [`WINDOWS`] by this crate's tests.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +124,40 @@ mod tests {
         };
         assert_eq!(HERE, expected);
         assert_eq!(crate::config::DEFAULT_CONFIG_PATH, expected.config);
+    }
+
+    /// The value one assignment in the Windows installer makes, as it writes it:
+    /// `$Name = 'value'`.
+    fn windows_installer_value(installer: &str, variable: &str) -> String {
+        installer
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("${variable} = '")))
+            .and_then(|rest| rest.strip_suffix('\''))
+            .unwrap_or_else(|| panic!("the Windows installer assigns no {variable}"))
+            .to_owned()
+    }
+
+    /// The Windows installer writes the service to exactly the Windows answer.
+    #[test]
+    fn the_windows_installer_writes_the_windows_answer() {
+        let installer = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/install-service.ps1"
+        ))
+        .expect("the committed Windows installer reads");
+
+        assert_eq!(
+            windows_installer_value(&installer, "ConfigPath"),
+            WINDOWS.config
+        );
+        assert_eq!(
+            windows_installer_value(&installer, "StateDirectory"),
+            WINDOWS.state
+        );
+        assert_eq!(
+            windows_installer_value(&installer, "ProgramDirectory"),
+            WINDOWS.home
+        );
     }
 
     /// The value one module-level assignment in the smoke test makes, as it

@@ -33,7 +33,21 @@ from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
 from repo_checks.shell import run
 
 SCANNED_SUFFIXES = frozenset(
-    {".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".sh", ".toml", ".yml", ".yaml", ".json", ".md"}
+    {
+        ".rs",
+        ".py",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".mjs",
+        ".sh",
+        ".ps1",
+        ".toml",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".md",
+    }
 )
 SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 # Build products and provisioned environments: nothing under them is committed,

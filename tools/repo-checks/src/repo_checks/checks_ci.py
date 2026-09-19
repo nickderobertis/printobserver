@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks.checks_service import installers
 from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -727,13 +728,12 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
         repository = policy_strings(
             policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
         )
-        expected = set(
-            policy_strings(
-                policy_table(repo, "workflows"),
-                ("install_script_path", "install_service_script_path"),
-                "workflows",
-            ).values()
-        )
+        expected = {
+            policy_strings(policy_table(repo, "workflows"), ("install_script_path",), "workflows")[
+                "install_script_path"
+            ],
+            *installers(repo),
+        }
     except PolicyValueError as error:
         return [str(error)]
     prefix = (

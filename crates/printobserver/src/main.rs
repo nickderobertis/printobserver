@@ -61,7 +61,16 @@ fn main() -> ExitCode {
             print!("{}", version());
             return ExitCode::SUCCESS;
         }
-        Invocation::Serve { config } => return ExitCode::from(run_server(config).status()),
+        Invocation::Serve { config } => {
+            // On Windows the service control manager may have started this
+            // process; if it did, this is the service until it stops, and the
+            // console form below is never entered.
+            #[cfg(windows)]
+            if let Some(exit) = printobserver::windows_service::run_if_service(config.clone()) {
+                return ExitCode::from(exit.status());
+            }
+            return ExitCode::from(run_server(config).status());
+        }
         Invocation::SignIn { config } => match sign_in(&config) {
             Ok(status) => return ExitCode::from(status),
             Err(failure) => refusal(&failure),

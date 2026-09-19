@@ -266,24 +266,65 @@ section = "The Obico ingress answer bound"
 required_block_keys = ["posting timeout", "source", "release", "retries"]
 
 [service]
-# The service this repository installs. NEITHER of these is declared here: the
-# unit's name and the installer's path are read out of `AGENTS.md`'s
-# "The end-user install path" section, which is the authoritative source of both,
-# and `just check-repo` holds the tree to what that section states. What is
-# declared here is where the installer writes the unit, and the fact that it must
-# start nothing.
-unit_directory = "/etc/systemd/system"
-# Programs the installer may not invoke. Installing must not, as a side effect,
-# start a process that can move a 3D printer, so the installer names the command
-# that starts the service only in what it prints.
-may_not_invoke = ["systemctl", "service", "systemd-run"]
-# The configuration template the installer writes grants each actor class a set
-# of actions, and those names are the CONTRACTS' vocabulary rather than this
+# The service this repository installs, one installer per service manager the
+# supported-platform list names a pair of commands for. The service's name is
+# NOT declared here: it is read out of `AGENTS.md`'s "The end-user install
+# path" section, off each manager's own activation command, which is the
+# authoritative source of it, and `just check-repo` holds each installer to what
+# that section states under its manager.
+#
+# The configuration template every installer writes grants each actor class a
+# set of actions, and those names are the CONTRACTS' vocabulary rather than the
 # script's. `just check-repo` reads the generated action schema
 # (`supervisor.action_schema`) and refuses a template naming an action the
 # contracts do not declare, so a vocabulary that moves cannot leave an installed
 # configuration granting something that no longer exists.
 granting_table = "[safety.actions]"
+
+# One table per service manager, keyed by the manager's own name as the
+# supported-platform list spells it. `installer` is the committed script the
+# manager's pair fetches. `may_not_invoke` are the programs it may not run and
+# `may_not_set` the settings it may not write: installing must not, as a side
+# effect, start a process that can move a 3D printer — at install or at the
+# next boot — so the installer names the command that starts the service only
+# in what it prints. `starts_at_boot` and `restarts_after_crash` are, in the
+# manager's own vocabulary, what makes the installed service unattended: the
+# second is in the registration the installer writes, and the first is there
+# too, or in the operator's own activation command where the manager has no
+# way to declare it without enabling it.
+[service.managers.systemd]
+installer = "scripts/install-service.sh"
+# Where the installer writes the unit: the directory the manager reads units from.
+registration_directory = "/etc/systemd/system"
+may_not_invoke = ["systemctl", "service", "systemd-run"]
+starts_at_boot = "WantedBy=multi-user.target"
+restarts_after_crash = "Restart=on-failure"
+
+# The service control manager keeps no declaration apart from its record, and a
+# registration reading `start= auto` is one it starts at the next boot whether
+# or not anybody ran the second command. So the installer registers the
+# service on demand, and `-StartupType Automatic` is the activation command's.
+[service.managers.windows-service]
+installer = "scripts/install-service.ps1"
+may_not_invoke = [
+    "Start-Service",
+    "Set-Service",
+    "Restart-Service",
+    "Resume-Service",
+    "New-Service",
+    "Start-Process",
+    "sc.exe start",
+    "sc start",
+    "net start",
+    "net.exe start",
+]
+may_not_set = ["start= auto", "start= delayed-auto", "start= boot", "start= system"]
+starts_at_boot = "-StartupType Automatic"
+restarts_after_crash = "actions= restart"
+# Where the program carries its own copy of the service's name, for the manager
+# to dispatch by: held to the name the pair states, like the installer's.
+program_source = "crates/printobserver/src/windows_service.rs"
+program_constant = "SERVICE_NAME"
 
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable
@@ -577,9 +618,9 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # supported-platform list and refuses a platform matrix on any other job.
 platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
 # The install script the `sdks` node commits, and the path the install-path
-# section's fetch URL must name.
+# section's third route fetches. The service installers a fetch URL may name are
+# `service.managers.<manager>.installer`.
 install_script_path = "scripts/install.sh"
-install_service_script_path = "scripts/install-service.sh"
 
 # The two commands after the routes are the ONLY steps of an install job whose
 # failure does not fail it, and the price of that waiver is that the run says
