@@ -942,24 +942,16 @@ a cost no change should pay. The six proofs a job runs are the registry's, in
 
 **One cell at a time, by hand.** `.github/workflows/platform-dispatch.yml` runs
 exactly one job of `ci.yml` or of `install-path.yml` on exactly one supported
-platform, named as two inputs of a manual dispatch, and no other job: it is how
-a single hosted cell — one macOS runner rather than every job's — is exercised
-on a branch without pushing to it. Nothing in that file decides what runs
-where: its `select` job hands the two inputs to the committed script
-`repo_checks.dispatching` (`just dispatch-resolve`), which answers the runner
-the supported-platform list declares and refuses a pair naming no job or no
-platform before anything runs, and its `run` job runs on that answer and hands
-the same two inputs to the same script (`just dispatch-run`), which runs the
-source job's own `run:` steps off the committed source workflow. That is so
-`tests/repo-e2e` can drive the script exactly as the workflow does, on a host
-that is not a runner — a workflow whose selection lived in its own expressions
-could be run only by the forge, and the forge dispatches a workflow only from
-the default branch, so its first run can exist only after it merges. `just
-check-repo`'s `platform-dispatch` holds the workflow's trigger to
-`workflow_dispatch` alone, its inputs to `job` and `platform`, the platform
-input to the supported-platform list, the job input to the platform-matrixed
-jobs of those two workflows, its two jobs to that shape, and every source job
-to what the script can run by hand.
+platform, named as the two inputs of a manual dispatch, and no other job — one
+hosted macOS runner rather than every job's, on a branch, without pushing to it.
+What runs where is decided by the committed script `repo_checks.dispatching`
+(`just dispatch-resolve`, `just dispatch-run`) rather than by the workflow's own
+expressions, so `tests/repo-e2e` drives the selection on a host that is not a
+runner; the forge dispatches a workflow only from the default branch, so the
+workflow's own first run exists only after it merges. `just check-repo`'s
+`platform-dispatch` holds the workflow to that shape: `workflow_dispatch` alone,
+the two inputs, the platform input to the supported-platform list, and the job
+input to the platform-matrixed jobs of those two workflows.
 
 ## Commits, releases, and merging
 
