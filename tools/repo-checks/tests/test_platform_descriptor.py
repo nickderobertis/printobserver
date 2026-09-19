@@ -118,9 +118,9 @@ TABLE = (
     ),
 )
 
-#: The six the supported-platform list names today, which is the set every
-#: other assertion here has to leave exactly as it found. The four macOS and
-#: Windows entries answer `install path: no` while they are brought up.
+#: The five the supported-platform list names today, which is the set every
+#: other assertion here has to leave exactly as it found; every one of them
+#: answers `install path: yes`.
 CARRIED_TODAY = tuple(row.id for row in TABLE)
 
 #: Identifiers shaped like platforms that the list does not carry.
@@ -264,7 +264,7 @@ def test_a_route_proof_is_skipped_exactly_where_the_install_path_answers_no(
     Over the committed table as it stands: a platform the install path targets
     skips nothing, and one it does not skips with the record's own reason —
     which is where the node that flips the answer is named, so a reader of the
-    skip is told what removes it: `windows-install-routes` for the Windows cells.
+    skip is told what removes it.
     """
     for platform in supported(committed):
         skip = platform.no_route_proof
@@ -274,8 +274,6 @@ def test_a_route_proof_is_skipped_exactly_where_the_install_path_answers_no(
         truth(skip, describing=f"a route proof on `{platform.id}` to be skipped")
         contains(skip or "", f"`{platform.id}`", describing="the platform the skip names")
         contains(skip or "", platform.install_path_reason, describing="the record's reason")
-        if platform.id.startswith("windows-"):
-            contains(skip or "", "`windows-install-routes` node", describing="what removes it")
 
 
 def test_flipping_the_install_path_answer_runs_the_route_proofs_with_no_test_edited(
