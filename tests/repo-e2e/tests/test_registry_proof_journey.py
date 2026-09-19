@@ -395,6 +395,7 @@ def supervisor() -> Path:
     return built
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @ROUTE_JOURNEY
 def test_the_tier_recipe_proves_every_route_and_every_client(
     standing_in: Callable[..., Standin], supervisor: Path

@@ -328,6 +328,7 @@ just check       # the whole gate
 just --list      # available recipes
 ```
 
+<!-- llmlint: ignore[no_redundant_instruction_pointers] the README is the forge's landing page for a person, who is handed no instruction file by any harness -->
 See [`AGENTS.md`](./AGENTS.md) for repository development and release rules.
 
 ## License

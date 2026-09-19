@@ -1041,3 +1041,15 @@ rule = "boundary_inputs_validated"
 file = "tools/printer-smoke/printer_smoke.py"
 site = "if not name or _query_dos_device(name) is None:"
 reason = "The Windows half of the same one probe as the entry above: the name is looked up in the system's device table, which answers whether it is a device without opening it — the point of asking the table, since opening a serial port can reset the printer on the other end. An empty name, the one input that would make the lookup answer something for any host, is refused on the line before it is asked; anything else is a read of a table, and a name the table does not carry is refused naming the shape a Windows port has."
+
+[[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "README.md"
+site = "See [`AGENTS.md`](./AGENTS.md) for repository development"
+reason = "The README is the forge's landing page, read by a person in a browser or a fresh clone who is handed no instruction file by any harness; the pointer is how that reader finds the development and release rules at all. The line predates this branch and is outside its diff — the judge read it as context of the install-path section the branch edits."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
