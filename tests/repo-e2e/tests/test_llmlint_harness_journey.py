@@ -232,8 +232,13 @@ def test_a_host_that_already_carries_an_agent_installs_none(
 
     passing(result)
     # The no-op itself first, so a detection that stopped working fails on the
-    # install it made rather than on the line it did not log.
-    absent(host.npm_installs(), HARNESS_PACKAGE)
+    # install it made rather than on the line it did not log — beside everything
+    # the script said, which is where the reason it installed one is.
+    absent(
+        host.npm_installs(),
+        HARNESS_PACKAGE,
+        describing=f"what the script installed; it said:\n{output(result)}",
+    )
     contains(output(result), "harness `claude-code` is installed")
 
 

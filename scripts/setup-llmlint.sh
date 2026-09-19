@@ -101,10 +101,14 @@ oneharness_binary() {
 # oneharness rather than listing the harnesses here keeps `oneharness.toml` — and
 # any ONEHARNESS_HARNESSES override layered over it — the one source of the chain,
 # so this script cannot drift from the file that decides what the tier drives.
+# The JSON form is asked for by name: it is the programmatic contract, and the
+# default became the human-readable view in oneharness-cli 0.15.0, which read
+# through this pipe as a chain of nothing and installed a harness beside the one
+# the host carried.
 configured_chain() {
   local python
   python=$(command -v python3 2>/dev/null) || python=$(command -v python 2>/dev/null) || return 1
-  "$1" config 2>/dev/null | "$python" -c 'import json, sys
+  "$1" config --format json 2>/dev/null | "$python" -c 'import json, sys
 print(" ".join(json.load(sys.stdin)["harnesses"]["value"] or []))' 2>/dev/null
 }
 
