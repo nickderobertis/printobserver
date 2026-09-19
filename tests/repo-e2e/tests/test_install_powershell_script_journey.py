@@ -271,6 +271,33 @@ def _script(staged: Path, home: Path, identifier: str | None, *arguments: str) -
     return _run(home, _environment(staged, home, identifier), *arguments)
 
 
+def _run_in_session(
+    home: Path, environment: dict[str, str], session: dict[str, str]
+) -> tuple[int, str]:
+    """Run the committed script with `session`'s variables set after PowerShell started.
+
+    PowerShell's own startup reads `SystemRoot`, and the windows-11-arm
+    runner's does not start under one that names no Windows — its lockdown
+    policy check fails to load a module there before the script runs a line,
+    where the windows-2025 runner's starts and runs it. So a variable the
+    journey moves for the script's sake is set in the session, once PowerShell
+    is up under the host's own, and the script — run as a file, so its exit
+    is the process's — reads the journey's.
+    """
+    text = str(REPO_ROOT / SCRIPT).replace("'", "''")
+    assignments = "; ".join(
+        f"${{env:{variable}}} = '{value.replace(chr(39), chr(39) * 2)}'"
+        for variable, value in session.items()
+    )
+    result = shell_run(
+        [powershell(), "-NoProfile", "-Command", f"{assignments}; & '{text}'"],
+        cwd=home,
+        env=environment,
+        timeout=600,
+    )
+    return result.returncode, (result.stdout or "") + (result.stderr or "")
+
+
 def _piped(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
     """Run the script the way the route's own command runs it: its text piped into `iex`.
 
@@ -690,16 +717,18 @@ def test_a_machine_with_no_tar_is_told_where_windows_keeps_one(
 
     The script takes the system's own `tar` by its path under `SystemRoot`
     before it looks on PATH, so a machine with none is one whose `SystemRoot`
-    holds none and whose PATH names none, and both are this journey's here.
+    holds none and whose PATH names none, and both are this journey's here —
+    handed to the session rather than to PowerShell's own startup, which on
+    the windows-11-arm runner does not survive a `SystemRoot` holding no
+    Windows. Off Windows the host's `tar` is on PATH, so a session whose PATH
+    the script did not read would install rather than refuse.
     """
     home = _home(tmp_path, "home-no-tar")
     empty = home / "empty-path"
     empty.mkdir()
     environment = _environment(staged(_first()), home, _first())
-    environment["PATH"] = str(empty)
-    environment["SystemRoot"] = str(empty)
 
-    code, said = _run(home, environment)
+    code, said = _run_in_session(home, environment, {"PATH": str(empty), "SystemRoot": str(empty)})
 
     failing((code, said), naming="has no tar")
     contains(said, "tar.exe", describing="where it said Windows keeps one")
@@ -715,7 +744,9 @@ def test_the_systems_own_tar_is_taken_before_one_on_the_path(
     here the one on PATH refuses everything, and the install still succeeds
     because the system's own under `SystemRoot` is taken first. A Windows
     host's own `SystemRoot` holds one; any other host is given one that is
-    the host's `tar` under that name.
+    the host's `tar` under that name, handed to the session the way the
+    no-`tar` journey hands its — which is what proves, off Windows, that a
+    `SystemRoot` set there is the one the script reads.
     """
     home = _home(tmp_path, "home-two-tars")
     ahead = home / "ahead-on-path"
@@ -726,16 +757,16 @@ def test_the_systems_own_tar_is_taken_before_one_on_the_path(
         (ahead / "tar").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         (ahead / "tar").chmod(0o755)
     environment = _environment(staged(_first()), home, _first())
-    environment["PATH"] = os.pathsep.join([str(ahead), environment["PATH"]])
+    session = {"PATH": os.pathsep.join([str(ahead), environment["PATH"]])}
     if sys.platform != "win32":
         system32 = home / "system-root" / "System32"
         system32.mkdir(parents=True)
         real = shutil.which("tar")
         (system32 / "tar.exe").write_text(f'#!/bin/sh\nexec "{real}" "$@"\n', encoding="utf-8")
         (system32 / "tar.exe").chmod(0o755)
-        environment["SystemRoot"] = str(system32.parent)
+        session["SystemRoot"] = str(system32.parent)
 
-    code, said = _run(home, environment)
+    code, said = _run_in_session(home, environment, session)
 
     passing((code, said), describing="the install with a refusing tar ahead on PATH")
     contains(_reports(_default(home)), _version(), describing="what the installed program reports")
