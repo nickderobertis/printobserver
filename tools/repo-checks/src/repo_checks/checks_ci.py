@@ -11,7 +11,13 @@ from typing import Any
 
 from repo_checks import install_path as ip
 from repo_checks.checks_service import installers
-from repo_checks.model import PolicyValueError, Repo, policy_strings, policy_table
+from repo_checks.model import (
+    PolicyValueError,
+    Repo,
+    policy_string_list,
+    policy_strings,
+    policy_table,
+)
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     fenced_commands,
@@ -729,9 +735,9 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
             policy_table(repo, "repository"), ("owner", "name", "base_branch"), "repository"
         )
         expected = {
-            policy_strings(policy_table(repo, "workflows"), ("install_script_path",), "workflows")[
-                "install_script_path"
-            ],
+            *policy_string_list(
+                policy_table(repo, "workflows"), "install_script_paths", "workflows"
+            ),
             *installers(repo),
         }
     except PolicyValueError as error:
@@ -762,24 +768,25 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
 
 
 def _pinned_form_findings(path: ip.InstallPath) -> list[str]:
-    """The script route's pinned form carries concrete values, not metavariables."""
+    """Every pinned form of a script route carries concrete values, not metavariables.
+
+    Every one, because the route states one per script behind it, and a
+    reader on Windows pastes the PowerShell one.
+    """
+    findings: list[str] = []
     for route in path.routes:
-        if len(route.commands) < 2:
-            continue
-        pinned = route.commands[1]
-        findings = []
-        if not ip.PINNED_VERSION.search(pinned):
-            findings.append(
-                f"the pinned form `{pinned}` carries no concrete release tag "
-                f"(expected `--version vX.Y.Z`)"
-            )
-        if not ip.PINNED_DIRECTORY.search(pinned):
-            findings.append(
-                f"the pinned form `{pinned}` carries no concrete install directory "
-                f"(expected `--to <an absolute or ~ path>`)"
-            )
-        return findings
-    return []
+        for pinned in route.pinned:
+            if not ip.PINNED_VERSION.search(pinned):
+                findings.append(
+                    f"the pinned form `{pinned}` carries no concrete release tag "
+                    f"(expected `--version vX.Y.Z` or `-Version vX.Y.Z`)"
+                )
+            if not ip.PINNED_DIRECTORY.search(pinned):
+                findings.append(
+                    f"the pinned form `{pinned}` carries no concrete install directory "
+                    f"(expected `--to` or `-To` with an absolute, `~` or drive-rooted path)"
+                )
+    return findings
 
 
 def _verification_findings(path: ip.InstallPath) -> list[str]:
@@ -909,10 +916,21 @@ def _waived(repo: Repo) -> tuple[tuple[str, ...], str]:
     return named, str(declared.get("waived_report", "")).strip()
 
 
+def _waived_ids(repo: Repo, job: dict[str, Any], waived: tuple[str, ...]) -> list[str]:
+    """The ids the waived steps carry in one job: one per manager its platforms run under.
+
+    A job's matrix may span platforms of more than one service manager, and each
+    manager's pair is its own two steps — so the waived ids are suffixed with
+    the manager whose command each step runs, `install-service-systemd` beside
+    `install-service-windows-service`, and every one of them is owed.
+    """
+    return [f"{wanted}-{manager}" for manager in _job_managers(repo, job) for wanted in waived]
+
+
 def _reporting_findings(
     repo: Repo, file_name: str, job_name: str, job: dict[str, Any]
 ) -> list[str]:
-    """The two waived commands carry their ids, and the run says what they reached.
+    """The waived commands carry their ids, and the run says what each of them reached.
 
     Their failure not failing the job is the waiver, and this is its price: a
     completed run has to tell a route whose service came up from one whose did
@@ -930,7 +948,8 @@ def _reporting_findings(
     where = f"{file_name}: install job `{job_name}`"
     findings: list[str] = []
     carried = {str(step.get("id", "")): step for step in steps_of(job)}
-    for wanted in waived:
+    owed = _waived_ids(repo, job, waived)
+    for wanted in owed:
         step = carried.get(wanted)
         if step is None:
             findings.append(
@@ -952,15 +971,39 @@ def _reporting_findings(
     reporting = [
         command
         for command in run_commands(job)
-        if summary in command and all(f"{wanted}.outcome" in str(job) for wanted in waived)
+        if summary in command and all(f"{wanted}.outcome" in str(job) for wanted in owed)
     ]
     if not reporting:
         findings.append(
-            f"{where} lets {', '.join(f'`{step}`' for step in waived)} fail without failing "
-            f"it, and writes neither outcome into `${summary}`: a reader of a green run "
+            f"{where} lets {', '.join(f'`{step}`' for step in owed)} fail without failing "
+            f"it, and writes not every outcome into `${summary}`: a reader of a green run "
             f"cannot then tell a route whose service was established from one whose was not"
         )
     return findings
+
+
+def _job_managers(repo: Repo, job: dict[str, Any]) -> list[str]:
+    """The service managers the platforms one job's matrix names run under, in list order.
+
+    A job naming no matrix at all is read as every manager the list names.
+
+    `job` is the mapping the YAML reader handed back, so its values are `Any` at
+    that deserialization boundary; the one thing read out of it here is its
+    platform matrix, whose cells `_matrix_platforms` narrows.
+    """
+    entries = _matrix_platforms(job) or []
+    named = {str(entry["id"]) for entry in entries if "id" in entry}
+    try:
+        declared = platforms_of(repo)
+    except MarkerBlockMissingError:
+        return []
+    managers: list[str] = []
+    for platform in declared:
+        if named and platform.id not in named:
+            continue
+        if platform.service_manager not in managers:
+            managers.append(platform.service_manager)
+    return managers
 
 
 def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any]) -> tuple[str, ...]:
@@ -974,19 +1017,13 @@ def _job_service_commands(repo: Repo, path: ip.InstallPath, job: dict[str, Any])
     that deserialization boundary; the one thing read out of it here is its
     platform matrix, whose cells `_matrix_platforms` narrows.
     """
-    entries = _matrix_platforms(job) or []
-    named = {str(entry["id"]) for entry in entries if "id" in entry}
     try:
-        declared = platforms_of(repo)
+        platforms_of(repo)
     except MarkerBlockMissingError:
         return path.commands
-    managers: list[str] = []
-    for platform in declared:
-        if named and platform.id not in named:
-            continue
-        if platform.service_manager not in managers:
-            managers.append(platform.service_manager)
-    return tuple(command for manager in managers for command in path.commands_for(manager))
+    return tuple(
+        command for manager in _job_managers(repo, job) for command in path.commands_for(manager)
+    )
 
 
 def _install_job_findings(
@@ -995,11 +1032,16 @@ def _install_job_findings(
     """One job per route, each running that route and then the two commands, in order."""
     findings: list[str] = []
     for route in path.routes:
-        if not any(route.command in run_commands(job) for _, _, job in install):
-            findings.append(
-                f"AGENTS.md names route `{route.heading}` (`{route.command}`), for which "
-                f"the committed configuration declares no install job"
-            )
+        # A route with scripts behind it is taken by every one of its fetch
+        # commands, so each is owed a job; a route with none is taken by its
+        # one command.
+        owed = list(route.fetches.values()) or [route.command]
+        findings.extend(
+            f"AGENTS.md names route `{route.heading}` (`{command}`), for which "
+            f"the committed configuration declares no install job"
+            for command in owed
+            if not any(command in run_commands(job) for _, _, job in install)
+        )
     _, summary = _waived(repo)
     for file_name, job_name, job in install:
         commands = run_commands(job)

@@ -43,10 +43,12 @@ INTEGRATION_AARCH64 = (
 )
 # The pypi install job's own copy of that entry: the one followed by a step that
 # sets up Python, which none of the registry proofs ahead of it in that file does.
-INSTALL_ROUTE_AARCH64 = AARCH64 + (
-    "    runs-on: ${{ matrix.platform.runner }}\n"
-    "    steps:\n"
-    "      - uses: actions/setup-python@v5\n"
+INSTALL_ROUTE_AARCH64 = (
+    AARCH64
+    + WINDOWS
+    + "    runs-on: ${{ matrix.platform.runner }}\n"
+    + "    steps:\n"
+    + "      - uses: actions/setup-python@v5\n"
 )
 # The gate's whole matrix, down to the line that reads a cell out of it.
 GATE_MATRIX = (

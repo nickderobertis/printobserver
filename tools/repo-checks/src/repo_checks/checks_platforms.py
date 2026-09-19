@@ -61,16 +61,19 @@ LAUNCHER_MAP_CLOSE = "};"
 #: in, and the only thing here that says which platforms that script reaches.
 SCRIPT_PLATFORM = re.compile(r"""platform\s*=\s*["'](?P<id>[a-z0-9_-]+)["']""")
 
-#: A literal assignment an install script makes — `PROGRAM="printobserver"` —
-#: which is where the name of the program it puts on a path is written.
+#: A literal assignment an install script makes — `PROGRAM="printobserver"` in
+#: the shell form, `$PROGRAM = 'printobserver.exe'` in the PowerShell one —
+#: which is where the name of the program it puts on a path is written. Both
+#: shells spell a variable's sigil the same way inside a string, so the one
+#: template below is composed out of these the same way for either.
 SCRIPT_LITERAL = re.compile(
-    r"""^\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*["'](?P<value>[^"'$]*)["']\s*$""",
+    r"""^\s*\$?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*["'](?P<value>[^"'$]*)["']\s*$""",
     re.MULTILINE,
 )
 
 #: How an install script composes the name of the asset it downloads, out of
 #: the values it has already settled.
-SCRIPT_ASSET = re.compile(r"""^\s*asset\s*=\s*["'](?P<template>[^"']+)["']\s*$""", re.MULTILINE)
+SCRIPT_ASSET = re.compile(r"""^\s*\$?asset\s*=\s*["'](?P<template>[^"']+)["']\s*$""", re.MULTILINE)
 
 #: The variable an install script holds the program's own file name in, and the
 #: one it holds the platform it settled on in. Naming them here is what lets the
@@ -189,13 +192,7 @@ def install_scripts(path: ip.InstallPath) -> list[str]:
     """
     found: list[str] = []
     for route in path.routes:
-        for command in route.commands:
-            match = ip.RAW_URL.search(command)
-            if match is None:
-                continue
-            script = match.group(0).partition("/main/")[2]
-            if script and script not in found:
-                found.append(script)
+        found.extend(script for script in route.fetches if script not in found)
     return found
 
 
@@ -283,19 +280,25 @@ def _named_findings(repo: Repo, script: str, covered: list[Platform]) -> list[st
         if program != platform.program
     ]
     findings.extend(
-        f"`{script}` downloads `{_composed(template['template'], program, platform.id)}` for "
+        f"`{script}` downloads `{_composed(template['template'], literals, platform.id)}` for "
         f"`{platform.id}`, and the platform declaration names `{platform.asset}`"
         for platform in covered
-        if _composed(template["template"], program, platform.id) != platform.asset
+        if _composed(template["template"], literals, platform.id) != platform.asset
     )
     return findings
 
 
-def _composed(template: str, program: str, identifier: str) -> str:
-    """One asset name, as the script's own template composes it."""
-    return template.replace(f"${SCRIPT_PROGRAM_VARIABLE}", program).replace(
-        f"${SCRIPT_PLATFORM_VARIABLE}", identifier
-    )
+def _composed(template: str, literals: dict[str, str], identifier: str) -> str:
+    """One asset name, as the script's own template composes it.
+
+    Every literal the script settled is substituted, the longest name first so
+    that one that is a prefix of another (`$NAME` inside `$NAME_OF`) cannot be
+    read out of the wrong one; the platform is the one being asked about.
+    """
+    composed = template.replace(f"${SCRIPT_PLATFORM_VARIABLE}", identifier)
+    for name in sorted(literals, key=len, reverse=True):
+        composed = composed.replace(f"${name}", literals[name])
+    return composed
 
 
 def _toolchain_findings(repo: Repo, declared: list[Platform]) -> list[str]:

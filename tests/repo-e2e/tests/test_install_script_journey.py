@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
 from repo_checks import platforms
+from repo_checks.checks_platforms import SCRIPT_PLATFORM
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
@@ -56,6 +57,16 @@ def _platform() -> str:
 
 #: Where this host's own artifact is named, as the script names it.
 PLATFORM = _platform()
+
+#: Why this journey has nothing to drive on this host, or `None`: the shell
+#: form reaches the platforms its own `uname` arms name, and a host outside
+#: them — Windows — is reached by the PowerShell form and its own journey.
+#: Read off the committed script's arms, as `just check-repo` reads them.
+NOT_REACHED: str | None = (
+    None
+    if PLATFORM in set(SCRIPT_PLATFORM.findall((REPO_ROOT / SCRIPT).read_text(encoding="utf-8")))
+    else f"{SCRIPT} has no arm for `{PLATFORM}`, which another install script reaches"
+)
 
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -107,13 +118,17 @@ def staged(tmp_path: Path) -> Path:
     `download/<tag>` for a pinned one, so a script proven against this is
     proven against the layout it will meet.
 
-    Staged only where the install path targets this platform: the script is
-    the third route, and on a platform whose record answers `install path: no`
-    there is no artifact of this host's for it to stage, so a journey asking
-    for one is skipped naming that record rather than built for.
+    Staged only where the install path targets this platform and this script
+    reaches it: the script is the third route's shell form, and on a platform
+    whose record answers `install path: no` there is no artifact of this host's
+    for it to stage, while a Windows host is reached by the PowerShell form
+    and its own journey — so a journey asking for one is skipped naming which
+    rather than built for.
     """
     if NO_ROUTE_HERE is not None:
         pytest.skip(NO_ROUTE_HERE)
+    if NOT_REACHED is not None:
+        pytest.skip(NOT_REACHED)
     base = tmp_path / "releases"
     real = _program().read_bytes()
     stand_in = f'#!/bin/sh\necho "{PROGRAM} {OLDER.removeprefix("v")}"\n'.encode()

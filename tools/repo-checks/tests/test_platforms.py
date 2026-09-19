@@ -290,8 +290,12 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
     broken.edit(
         ".github/workflows/install-path.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: windows-x86_64\n            runner: windows-2025\n"
+        "          - id: windows-aarch64\n            runner: windows-11-arm\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
         "      - uses: actions/setup-python@v5\n",
+        "          - id: windows-x86_64\n            runner: windows-2025\n"
+        "          - id: windows-aarch64\n            runner: windows-11-arm\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
         "      - uses: actions/setup-python@v5\n",
     )

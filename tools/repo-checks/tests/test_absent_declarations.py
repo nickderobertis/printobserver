@@ -462,7 +462,8 @@ def test_the_install_job_check_without_the_platform_list_falls_back_to_every_pai
     _drop_block(broken, "supported-platforms")
     broken.edit(
         ".github/workflows/install-path.yml",
-        "      - id: start-service\n        continue-on-error: true\n"
+        "      - id: start-service-systemd\n        if: runner.os != 'Windows'\n"
+        "        continue-on-error: true\n"
         "        run: sudo systemctl enable --now printobserver.service\n",
         "",
     )

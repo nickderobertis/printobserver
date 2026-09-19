@@ -72,9 +72,10 @@ def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
     built = build(repo, "pypi:printobserver-cli", dist, program)
 
     wheel = built.paths[0]
+    here = platforms.host(repo)
     truth(
-        "manylinux" in wheel.name and platforms.host(repo).id.split("-")[1] in wheel.name,
-        describing=f"{wheel.name} to state the platform it was built for",
+        wheel.name.endswith(f"-{here.wheel_tag(platforms.host_baseline())}.whl"),
+        describing=f"{wheel.name} to state the platform it was built for, as `{here.id}` tags one",
     )
     truth("none-any" not in wheel.name, describing=f"{wheel.name} not to carry a pure tag")
     with zipfile.ZipFile(wheel) as opened:
@@ -85,25 +86,44 @@ def test_the_python_route_carries_a_platform_tag_and_a_runnable_program(
         equal(opened.read(script), program.read_bytes(), describing="the program the wheel carries")
 
 
+@pytest.mark.parametrize(
+    ("machine", "tag"),
+    [("AMD64", "win_amd64"), ("ARM64", "win_arm64")],
+    ids=["windows-x86_64", "windows-aarch64"],
+)
 def test_a_wheel_built_on_windows_carries_the_program_under_the_name_windows_runs(
-    repo: Repo, program: Path, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+    machine: str,
+    tag: str,
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An installer copies a wheel's scripts verbatim, so the `.exe` has to be in the wheel.
 
     Carried as a bare `printobserver`, the program lands in the environment's
     `Scripts` under a name a Windows host does not run, and the route proves a
-    program missing. Built with this host answering as Windows, so the Windows
-    answer is asked for on every host.
+    program missing. And the tag is the platform's own — `win_amd64` or
+    `win_arm64`, the two that carry no version component — read off the
+    descriptor rather than composed. Built with this host answering as each
+    Windows platform in turn, so both answers are asked for on every host.
     """
     monkeypatch.setattr(host_platform, "system", lambda: "Windows")
-    monkeypatch.setattr(host_platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(host_platform, "machine", lambda: machine)
 
-    built = build(repo, "pypi:printobserver-cli", into("windows-python-route"), program)
+    built = build(repo, "pypi:printobserver-cli", into(f"windows-python-route-{tag}"), program)
 
     wheel = built.paths[0]
-    truth(wheel.name.endswith("-win_amd64.whl"), describing=f"{wheel.name} to be a Windows wheel")
+    truth(wheel.name.endswith(f"-{tag}.whl"), describing=f"{wheel.name} to be a `{tag}` wheel")
+    truth("none-any" not in wheel.name, describing=f"{wheel.name} not to carry a pure tag")
     with zipfile.ZipFile(wheel) as opened:
         scripts = [name.rsplit("/", 1)[1] for name in opened.namelist() if "/scripts/" in name]
+        carried = next(
+            name for name in opened.namelist() if name.endswith("/scripts/printobserver.exe")
+        )
+        equal(
+            opened.read(carried), program.read_bytes(), describing="the program the wheel carries"
+        )
     equal(scripts, ["printobserver.exe"], describing="the programs the Windows wheel carries")
 
 
@@ -227,18 +247,31 @@ def test_a_platform_nothing_here_names_is_refused(repo: Repo) -> None:
 
 
 @ROUTE_PROOF
-def test_the_wheel_tag_states_the_library_the_program_was_built_against(
+def test_the_wheel_tag_states_the_baseline_the_program_was_built_against(
     repo: Repo,
 ) -> None:
-    """A wheel claiming an older one would install where it cannot run."""
-    platform = platforms.host(repo)
+    """A wheel claiming an older one would install where it cannot run.
 
-    equal(platform.wheel_tag((2, 39)), f"manylinux_2_39_{platform.id.split('-')[1]}")
-    version = platforms.host_baseline()
-    truth(
-        version is not None and version[0] >= 2,
-        describing="this host to report a C library",
-    )
+    Every platform states its floor in its own terms — the C library on Linux,
+    the system release on macOS — and the two Windows tags state none, so a
+    Windows host reports no baseline and its tag carries no version.
+    """
+    platform = platforms.host(repo)
+    naming = platform.naming
+    baseline = platforms.host_baseline()
+
+    if naming.wheel_versioned:
+        equal(
+            platform.wheel_tag((2, 39)),
+            f"{naming.wheel_family}_2_39_{naming.wheel_machine}",
+        )
+        truth(
+            baseline is not None and baseline[0] >= 2,
+            describing="this host to report the baseline its wheels are built against",
+        )
+    else:
+        equal(platform.wheel_tag(baseline), f"{naming.wheel_family}_{naming.wheel_machine}")
+        equal(baseline, None, describing="a Windows host's baseline, which its tags state none of")
 
 
 def test_the_tool_says_what_it_refused_rather_than_stopping_silently(

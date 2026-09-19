@@ -35,8 +35,15 @@ from release_artifacts.world import World
 #: Where an install script route is told to put it.
 SCRIPT_DIRECTORY = "bin"
 
-#: The committed script that route drives.
+#: The committed scripts that route drives: the shell form, for every platform
+#: a shell reaches, and the PowerShell form, for Windows. One route, and the
+#: one of the two this host's own platform is reached by.
 INSTALL_SCRIPT = "scripts/install.sh"
+INSTALL_SCRIPT_WINDOWS = "scripts/install.ps1"
+
+#: The PowerShells a Windows host may carry, in the order one is taken: the
+#: cross-platform one where it is installed, and Windows PowerShell otherwise.
+POWERSHELLS = ("pwsh", "powershell")
 
 #: How long any one install is given.
 INSTALL_TIMEOUT_SECONDS = 900
@@ -79,6 +86,46 @@ def programs_in(environment: Path) -> Path:
 def interpreter_in(environment: Path) -> Path:
     """The Python interpreter of a virtual environment made on this host."""
     return programs_in(environment) / executable("python")
+
+
+def powershell() -> str:
+    """The PowerShell this host runs a script with.
+
+    Raises:
+        InstallError: If it carries none, naming what to install.
+    """
+    for candidate in POWERSHELLS:
+        found = shutil.which(candidate)
+        if found:
+            return found
+    msg = (
+        "the PowerShell form of the install script is driven under PowerShell, and this host "
+        "has neither `pwsh` nor `powershell` on PATH; install PowerShell 7 "
+        "(https://github.com/PowerShell/PowerShell/releases) and put `pwsh` on PATH"
+    )
+    raise InstallError(msg)
+
+
+def install_script_argv(repo: Repo, *, version: str, into: Path) -> list[str]:
+    """How this host runs the committed install script that reaches its own platform.
+
+    Exactly as the install-path section's own one-line command runs it: with
+    `sh` where that command pipes into `sh`, and under PowerShell where it
+    pipes into `iex`. `version` pins a release and is empty for the newest;
+    `into` is the directory the program is put in.
+
+    Raises:
+        InstallError: If this is a Windows host with no PowerShell on it.
+    """
+    if sys.platform == "win32":
+        argv = [powershell(), "-NoProfile", "-File", str(repo.path(INSTALL_SCRIPT_WINDOWS))]
+        if version:
+            argv += ["-Version", version]
+        return [*argv, "-To", str(into)]
+    argv = ["sh", str(repo.path(INSTALL_SCRIPT))]
+    if version:
+        argv += ["--version", version]
+    return [*argv, "--to", str(into)]
 
 
 def npm_global_program(prefix: Path, name: str) -> Path:
@@ -312,34 +359,36 @@ def node_route(repo: Repo, built: Built, into: Path) -> Installed:
 def script_route(repo: Repo, built: Built, into: Path) -> Installed:
     """The install-script route, driven against a release staged here.
 
-    The script is driven exactly as the install-path section's own one-line
-    command drives it — with `sh` — against a release directory this stages in
+    The script this host's platform is reached by is driven exactly as the
+    install-path section's own one-line command drives it — with `sh`, or
+    under PowerShell on Windows — against a release directory this stages in
     the shape release automation publishes. There is no network and no
     published release: a route provable only against a release that does not
     exist yet is one nothing could prove at all.
     """
     environment = into / "env"
     directory = environment / SCRIPT_DIRECTORY
-    staged = staged_release(repo, into / "release", _built_program(built))
+    staged = staged_release(repo, into / "release", _built_program(repo, built))
     ran(
-        ["sh", str(repo.path(INSTALL_SCRIPT)), "--to", str(directory)],
+        install_script_argv(repo, version="", into=directory),
         cwd=into,
         env=without_rust({"PRINTOBSERVER_RELEASE_BASE": str(staged)}),
         describing="running the committed install script",
     )
-    return Installed(built.target, environment, directory / PROGRAM, "")
+    return Installed(built.target, environment, directory / platforms.host(repo).program, "")
 
 
-def _built_program(built: Built) -> Path:
+def _built_program(repo: Repo, built: Built) -> Path:
     """The program one route's own artifact carries, unpacked from it."""
     archive = _only(built.paths, ".tar.gz", built.target)
     into = archive.parent / "unpacked"
     into.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "r:gz") as opened:
         opened.extractall(into, filter="data")
-    program = into / PROGRAM
+    name = platforms.host(repo).program
+    program = into / name
     if not program.is_file():
-        msg = f"{archive} carries no {PROGRAM}"
+        msg = f"{archive} carries no {name}"
         raise InstallError(msg)
     program.chmod(0o755)
     return program

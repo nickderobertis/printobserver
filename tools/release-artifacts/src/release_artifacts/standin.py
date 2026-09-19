@@ -69,28 +69,16 @@ from release_artifacts.registries import (
     ordered,
     pypi_name,
 )
+from release_artifacts.stand_in import stand_in_program
 
-#: The program a served package carries: it runs, and it answers `--version`
-#: with whatever the caller asked it to, which is the whole of what a route's
-#: own proof reads back from it. The answer is a caller's rather than composed
-#: here, because a route is proven by the program giving the ONE answer its
-#: command line contracts to give — and a stand-in that could only ever give
-#: that answer could not falsify the comparison that reads it.
-STAND_IN = """#!/bin/sh
-if [ "${{1:-}}" = "--version" ]; then
-    echo "{answer}"
-    exit 0
-fi
-echo "{PROGRAM}: a stand-in program, which does nothing else" >&2
-exit 1
-"""
-
-#: A program that installs and does not run, which is what a registry serving a
-#: broken artifact looks like from the outside.
-BROKEN = f"""#!/bin/sh
-echo "{PROGRAM}: this program cannot run on this host" >&2
-exit 1
-"""
+#: What the program a served package carries answers `--version` with, where
+#: a caller asked for nothing in particular: `printobserver <version>`. It is
+#: the program `release_artifacts.stand_in` writes — the shell form on a POSIX
+#: host and a compiled one on Windows — and its answer is a caller's rather
+#: than composed here, because a route is proven by the program giving the ONE
+#: answer its command line contracts to give, and a stand-in that could only
+#: ever give that answer could not falsify the comparison that reads it.
+ANSWER = "{program} {version}"
 
 #: Where each registry answers under the one base, and where the Python one
 #: takes an upload — the addresses `Bases` composes a stand-in's from, so that
@@ -281,12 +269,13 @@ class Registries:
                 `npm` skips: the install reports success, and what it left on
                 the path cannot run.
         """
-        answer = says or f"{PROGRAM} {reported or version}"
-        body = BROKEN if broken else STAND_IN.format(PROGRAM=PROGRAM, answer=answer)
-        program = self.into / f"program-{version}" / PROGRAM
-        program.parent.mkdir(parents=True, exist_ok=True)
-        program.write_text(body, encoding="utf-8")
-        program.chmod(0o755)
+        answer = says or ANSWER.format(program=PROGRAM, version=reported or version)
+        program = stand_in_program(
+            self.repo,
+            self.into / f"program-{version}" / platforms.host(self.repo).program,
+            answer,
+            broken=broken,
+        )
 
         carried = program if carries_program else None
         self._serve_wheel(version, carried)
@@ -549,7 +538,10 @@ class Registries:
         )
         wheel = wheels.Wheel(distribution, wheels.PURE_TAG)
         if program is not None:
-            wheel.add_script(PROGRAM, program)
+            # Under the platform's own name, as the build writes it: an
+            # installer copies a wheel's scripts verbatim, and a Windows host
+            # runs `printobserver.exe`.
+            wheel.add_script(platforms.host(self.repo).program, program)
         written = wheel.write(self.into / "pypi")
         self._serve_file(pypi_name(name), version, written.name, written.read_bytes())
 
@@ -615,15 +607,18 @@ class Registries:
             for platform in supported:
                 system, processor = platform.npm
                 carried = packages.Archive()
+                # Under the platform's own name, as the build writes it: the
+                # launcher resolves `bin/printobserver.exe` on Windows.
                 carried.add(
-                    f"{packages.PACKAGE_ROOT}/bin/{PROGRAM}", program.read_bytes(), executable=True
+                    f"{packages.PACKAGE_ROOT}/bin/{platform.program}",
+                    program.read_bytes(),
+                    executable=True,
                 )
                 self._publish(
                     self._package(platform.npm_package, version),
                     carried,
                     os=[system],
                     cpu=[processor],
-                    bin={PROGRAM: f"bin/{PROGRAM}"},
                     files=["bin"],
                 )
 

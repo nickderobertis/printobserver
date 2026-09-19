@@ -15,24 +15,33 @@ from pathlib import Path
 import pytest
 from release_artifacts import targets
 from release_artifacts.__main__ import main
+from release_artifacts.stand_in import stand_in_program
+from repo_checks import platforms
 from repo_checks.expect import equal
 from repo_checks.model import Repo
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-#: A program every route's artifact carries, in place of the real one. It runs,
-#: and it says which version it is, which is what a route's own assertion is.
-#: The version is the workspace's own rather than a number written here: release
-#: automation moves that one, and a copy kept by hand is stale the first time it
-#: does.
-STAND_IN = """#!/bin/sh
-if [ "${{1:-}}" = "--version" ]; then
-    echo "printobserver {version}"
-    exit 0
-fi
-echo "printobserver: a stand-in program, which does nothing" >&2
-exit 1
-"""
+#: What the stand-in program every route's artifact carries answers `--version`
+#: with. It runs, and it says which version it is, which is what a route's own
+#: assertion is. The version is the workspace's own rather than a number
+#: written here: release automation moves that one, and a copy kept by hand is
+#: stale the first time it does.
+ANSWER = "printobserver {version}"
+
+
+def _stand_in(root: Path) -> Path:
+    """A runnable program a route's artifact can carry, reporting the tree's version.
+
+    Under the name this host calls the program by — `printobserver.exe` on
+    Windows — and in the form this host runs one: the shell form on a POSIX
+    host, the compiled form on Windows, from `release_artifacts.stand_in`.
+    """
+    repo = Repo(REPO_ROOT)
+    version = targets.workspace(REPO_ROOT)["version"]
+    return stand_in_program(
+        repo, root / platforms.host(repo).program, ANSWER.format(version=version)
+    )
 
 
 @pytest.fixture
@@ -48,12 +57,9 @@ def version() -> str:
 
 
 @pytest.fixture
-def program(tmp_path: Path, version: str) -> Path:
+def program(tmp_path: Path) -> Path:
     """A runnable program a route's artifact can carry, reporting the tree's version."""
-    path = tmp_path / "printobserver"
-    path.write_text(STAND_IN.format(version=version), encoding="utf-8")
-    path.chmod(0o755)
-    return path
+    return _stand_in(tmp_path)
 
 
 @pytest.fixture
@@ -78,11 +84,7 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> Path:
     packages the Rust one, and a journey that publishes it takes a copy.
     """
     root = tmp_path_factory.mktemp("built")
-    program = root / "printobserver"
-    program.write_text(
-        STAND_IN.format(version=targets.workspace(REPO_ROOT)["version"]), encoding="utf-8"
-    )
-    program.chmod(0o755)
+    program = _stand_in(root)
     dist = root / "dist"
     equal(
         main(

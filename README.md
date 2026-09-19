@@ -102,7 +102,7 @@ With Node:
 npm install -g printobserver-cli
 ```
 
-Or with the bundled installer:
+Or with the bundled installer — on Linux and macOS:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
@@ -112,6 +112,18 @@ It also accepts a release and destination:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
+```
+
+On Windows, the same installer in its PowerShell form, from any PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+```
+
+It takes the same two options:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1))) -Version v0.1.0 -To C:\Tools\printobserver
 ```
 
 Check the program:

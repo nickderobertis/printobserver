@@ -47,15 +47,18 @@ def _taking_the_waiver() -> tuple[str, ...]:
     Read from the steps that carry the waived ids rather than from the ones
     that carry a report: a job is asked for a report BECAUSE it took the
     waiver, so a set derived from the reports could never notice the job that
-    dropped one.
+    dropped one. A waived id is carried suffixed with the service manager
+    whose command the step runs — `install-service-systemd` — one per manager
+    the job's matrix spans.
     """
     workflow = yaml.safe_load((REPO_ROOT / WORKFLOW).read_text(encoding="utf-8"))
     waived, _ = _declared()
-    return tuple(
-        name
-        for name, job in workflow["jobs"].items()
-        if set(waived) <= {str(step.get("id", "")) for step in job.get("steps", [])}
-    )
+    taking: list[str] = []
+    for name, job in workflow["jobs"].items():
+        carried = {str(step.get("id", "")) for step in job.get("steps", [])}
+        if all(any(found.startswith(f"{wanted}-") for found in carried) for wanted in waived):
+            taking.append(name)
+    return tuple(taking)
 
 
 def _reports() -> dict[str, str]:
