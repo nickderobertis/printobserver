@@ -9,7 +9,6 @@ that journey holds it — waits for it to go.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import threading
 import time
@@ -24,7 +23,7 @@ ASSESSMENT_SCHEMA = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 def test_a_copy_started_while_a_schema_is_being_rewritten_waits_for_it(tmp_path: Path) -> None:
     """The copy neither starts over a half-written tree nor carries one."""
     rewriting = SchemaTreeLock()
-    fcntl.flock(rewriting.file.fileno(), fcntl.LOCK_EX)
+    rewriting.lock(exclusive=True)
     copied: list[Path] = []
     copying = threading.Thread(target=lambda: copied.append(copy_tree(tmp_path / "copy")))
     try:
