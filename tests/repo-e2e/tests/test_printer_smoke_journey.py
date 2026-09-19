@@ -36,6 +36,10 @@ SCRIPT = "tools/printer-smoke/printer_smoke.py"
 #: How the recipe answers when the two inputs did not select it.
 UNSELECTED = "not selected"
 
+#: How it then says to select it: a device named the way this host names one,
+#: set the way this host's own shell sets a variable.
+SELECTION_HINT = f"$env:{DEVICE_ENV}='COM3'" if sys.platform == "win32" else f"{DEVICE_ENV}=/dev/"
+
 
 #: The device a Windows host names: its null device, which the system's device
 #: table carries on every Windows machine.
@@ -96,6 +100,7 @@ def test_neither_input_leaves_it_unselected() -> None:
     contains(run.stdout, UNSELECTED, describing="what it said")
     contains(run.stdout, f"the `{FLAG}` flag was not given", describing="what it said")
     contains(run.stdout, f"{DEVICE_ENV} names no serial device", describing="what it said")
+    contains(run.stdout, SELECTION_HINT, describing="the hint, spelled for this host's shell")
 
 
 def test_the_flag_alone_leaves_it_unselected(a_serial_device: str) -> None:

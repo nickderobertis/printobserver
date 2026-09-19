@@ -8,8 +8,9 @@
 //!
 //! This module is the one place those answers are spelled. [`HERE`] is the one
 //! this build answers with, chosen by its target; every other copy — the Linux
-//! and Windows installers' own paths among them — is held to [`LINUX`],
-//! [`MACOS`] or [`WINDOWS`] by this crate's tests.
+//! and Windows installers' own paths and the real-printer smoke test's
+//! configuration defaults among them — is held to [`LINUX`], [`MACOS`] or
+//! [`WINDOWS`] by this crate's tests.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,6 +158,34 @@ mod tests {
             windows_installer_value(&installer, "ProgramDirectory"),
             WINDOWS.home
         );
+
+    /// The value one module-level assignment in the smoke test makes, as it
+    /// writes it: a plain or a raw Python string literal.
+    fn smoke_value(smoke: &str, constant: &str) -> String {
+        smoke
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{constant} = ")))
+            .and_then(|rest| rest.strip_prefix('r').or(Some(rest)))
+            .and_then(|rest| rest.strip_prefix('"'))
+            .and_then(|rest| rest.strip_suffix('"'))
+            .unwrap_or_else(|| panic!("the smoke test assigns no {constant}"))
+            .to_owned()
+    }
+
+    /// The real-printer smoke test reads the supervisor's own configuration,
+    /// so the file it defaults to on each platform is the one that platform's
+    /// installer writes.
+    #[test]
+    fn the_smoke_test_defaults_to_each_platforms_own_configuration() {
+        let smoke = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tools/printer-smoke/printer_smoke.py"
+        ))
+        .expect("the committed smoke test reads");
+
+        assert_eq!(smoke_value(&smoke, "LINUX_CONFIG"), LINUX.config);
+        assert_eq!(smoke_value(&smoke, "MACOS_CONFIG"), MACOS.config);
+        assert_eq!(smoke_value(&smoke, "WINDOWS_CONFIG"), WINDOWS.config);
     }
 
     /// The Linux installer writes the service to exactly the Linux answer.

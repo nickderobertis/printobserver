@@ -36,6 +36,7 @@ import ctypes
 import http.client
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -82,9 +83,104 @@ CONNECTION_KEYS: tuple[tuple[str, ...], ...] = (
     ("plugins", "virtual_printer", "enabled"),
 )
 
+
+@dataclass(frozen=True, slots=True)
+class SerialPlatform:
+    r"""How one operating system names a serial device, and what opening one needs.
+
+    A person reading a refusal is standing next to a printer, so every answer
+    here is in that platform's own words: what a device is called there, where
+    the ones this host has are listed, and what lets this user open one. The
+    shape is deliberately no tighter than the platform itself: a Linux `udev`
+    rule may link a printer under any name below `/dev`, so what is refused is a
+    name the platform cannot have at all — a `COM` port on a Unix, a path on
+    Windows — rather than one this script has not seen before.
+    """
+
+    name: str
+    example: str
+    shape: str
+    listing: str
+    access: str
+    pattern: re.Pattern[str]
+
+    def names(self, device: str) -> bool:
+        """Whether `device` is a name a serial device can have on this platform."""
+        return self.pattern.match(device) is not None
+
+    def assignment(self, variable: str, value: str) -> str:
+        """One environment variable set for one command, the way this platform's shell spells it."""
+        if self is WINDOWS:
+            return f"$env:{variable}='{value}';"
+        return f"{variable}={value}"
+
+    @property
+    def words(self) -> dict[str, str]:
+        """This platform's words, for a next action written as a template."""
+        return {
+            "platform": self.name,
+            "example": self.example,
+            "shape": self.shape,
+            "listing": self.listing,
+            "access": self.access,
+        }
+
+
+LINUX = SerialPlatform(
+    name="Linux",
+    example="/dev/ttyACM0",
+    shape=(
+        "a path under `/dev`: `/dev/ttyACM0` or `/dev/ttyUSB0` for a USB printer, or its "
+        "link under `/dev/serial/by-id/`"
+    ),
+    listing="`ls -l /dev/serial/by-id/`",
+    access="this user is in the `dialout` group",
+    pattern=re.compile(r"^/dev/.+"),
+)
+MACOS = SerialPlatform(
+    name="macOS",
+    example="/dev/cu.usbmodem1101",
+    shape=(
+        "a path under `/dev`: `/dev/cu.usbmodem*` or `/dev/cu.usbserial-*` for a USB "
+        "printer, the `cu.` device rather than the `tty.` one, which waits for a carrier"
+    ),
+    listing="`ls /dev/cu.*`",
+    access="no other program holds it open — macOS needs no group for a serial device",
+    pattern=re.compile(r"^/dev/.+"),
+)
+WINDOWS = SerialPlatform(
+    name="Windows",
+    example="COM3",
+    shape="a port name, `COM3`, or the same port in the device namespace, `\\\\.\\COM3`",
+    listing="Device Manager under `Ports (COM & LPT)`, or `mode` at a command prompt",
+    access=(
+        "no other program holds it open — a Windows port opens for one program at a time, "
+        "so close any other program on it"
+    ),
+    pattern=re.compile(r"^(\\\\\.\\)?COM[1-9][0-9]*$", re.IGNORECASE),
+)
+
+# Every platform this script names devices for, by what `sys.platform` answers.
+# Any other Unix is given the Linux answer.
+SERIAL_PLATFORMS: dict[str, SerialPlatform] = {
+    "linux": LINUX,
+    "darwin": MACOS,
+    "win32": WINDOWS,
+}
+
+
+def serial_platform() -> SerialPlatform:
+    """How the host this script is running on names and opens a serial device."""
+    return SERIAL_PLATFORMS.get(sys.platform, LINUX)
+
+
 # Every way starting this environment can fail, and the next action for each.
 # The set is closed: `up` reaches no other diagnosed exit, and anything outside
 # it is reported with the underlying error's own text.
+#
+# A next action is a template over the host's own `SerialPlatform.words`, filled
+# in when the failure is raised: the person reading it is beside a printer on
+# this host, and `dialout` means nothing to them on a Mac.
 FAILURE_CLASSES: dict[str, str] = {
     "config-unreadable": (
         "read the file the message names, fix or delete it, and run `install` again — "
@@ -94,9 +190,13 @@ FAILURE_CLASSES: dict[str, str] = {
         "pass a different `--port`, or `--port auto` to be given a free one; "
         "`ss -ltnp` names what is holding the one that was asked for"
     ),
+    "serial-device-misnamed": (
+        "name the device the way {platform} does, `--device {example}` for one: {listing} "
+        "shows the ones this host has"
+    ),
     "serial-device-unopenable": (
-        "check the device path (`ls -l /dev/serial/by-id/`), that the printer is "
-        "plugged in and powered, and that this user is in the `dialout` group"
+        "check the device name ({listing} shows what this host has), that the printer is "
+        "plugged in and powered, and that {access}"
     ),
     "never-answered": (
         "read the server log the message names: OctoPrint started but never answered "
@@ -130,7 +230,7 @@ class StartupError(Exception):
         """
         self.failure_class = failure_class
         self.detail = detail
-        self.next_action = FAILURE_CLASSES[failure_class]
+        self.next_action = FAILURE_CLASSES[failure_class].format(**serial_platform().words)
         super().__init__(f"{failure_class}: {detail}")
 
 
@@ -561,23 +661,55 @@ def claim_port(port: int) -> None:
 
 
 def claim_device(connection: Connection) -> None:
-    """Refuse a serial device that cannot be opened, before anything is started.
+    """Refuse a serial device this host cannot open, before anything is started.
+
+    Two refusals, in order. A name the platform cannot have is refused by
+    naming the shape it does use, because a person who typed `COM3` on a Mac
+    or `/dev/ttyACM0` on Windows is told what to type instead rather than that
+    a file was not found. A name it can have is then opened, by the platform's
+    own means, and closed again: that is the one question that says whether
+    OctoPrint will be able to open it a moment later.
 
     Raises:
-        StartupError: If the named device cannot be opened.
+        StartupError: If the named device is no name this platform's serial
+            devices have, or cannot be opened.
     """
     if connection.is_virtual:
         return
+    here = serial_platform()
+    # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
+    if not here.names(connection.device):
+        raise StartupError(
+            "serial-device-misnamed",
+            f"`{connection.device}` is not how {here.name} names a serial device, which is "
+            f"{here.shape}",
+        )
     try:
-        if sys.platform == "win32":
-            handle = os.open(windows_device_path(connection.device), os.O_RDWR)
-        else:
-            handle = os.open(connection.device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        handle = open_device(connection.device)
     except OSError as error:
         raise StartupError(
             "serial-device-unopenable", f"{connection.device} could not be opened: {error}"
         ) from error
     os.close(handle)
+
+
+def open_device(device: str) -> int:
+    r"""Open a serial device the way this host opens one, answering the descriptor.
+
+    A Unix opens the device node without becoming its controlling terminal and
+    without waiting for a carrier — which on macOS a `tty.` device would do,
+    and which on both is what makes an unplugged printer an error rather than a
+    hang. Windows has no such flags: a port is opened by its name in the device
+    namespace, `\.\COM3`, which is the only spelling every port opens under.
+
+    Raises:
+        OSError: If it cannot be opened, with the platform's own reason.
+    """
+    if sys.platform == "win32":
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+        return os.open(windows_device_path(device), os.O_RDWR)
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    return os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 
 
 def windows_device_path(device: str) -> str:
@@ -931,10 +1063,12 @@ def connection_of(arguments: argparse.Namespace) -> Connection:
     if arguments.mode == "virtual":
         return Connection("virtual", VIRTUAL_DEVICE, arguments.baudrate)
     if not arguments.device:
+        here = serial_platform()
+        # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
         raise StartupError(
-            "serial-device-unopenable",
-            "`--mode serial` names no device: pass `--device /dev/ttyACM0`, or set "
-            "OCTOPRINT_ENV_DEVICE",
+            "serial-device-misnamed",
+            f"`--mode serial` names no device: pass `--device {here.example}`, or set "
+            f"{here.assignment('OCTOPRINT_ENV_DEVICE', here.example)}",
         )
     return Connection("serial", arguments.device, arguments.baudrate)
 

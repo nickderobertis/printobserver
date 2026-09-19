@@ -1,12 +1,12 @@
 """What the scripted environment answers on each host it is run on.
 
-Two of the script's answers depend on the host: where a virtual environment
-keeps its programs, and how a serial device is opened. Each journey here runs
-the script's own entry point with the host's answer to `sys.platform` fixed —
-Windows', and this suite's own for contrast — over a state directory laid out
-the way that host lays one out, and reads back what the script said. So both
-answers are proven on whichever host the suite runs, rather than only on the one
-the tier happens to be on.
+One of the script's answers depends on the host: where a virtual environment
+keeps its programs. The journey here runs the script's own entry point with the
+host's answer to `sys.platform` fixed — Windows', and this suite's own for
+contrast — over a state directory laid out the way that host lays one out, and
+reads back what the script said. So the answer is proven on whichever host the
+suite runs, rather than only on the one the tier happens to be on. How a serial
+device is named and opened on each host is `test_device_refusal.py`'s.
 
 The last journey is the one no fixture can reach: stopping a real process, which
 on Windows goes through the process table and `taskkill` rather than signals. It
@@ -78,32 +78,6 @@ def test_an_installed_instance_is_found_where_the_host_keeps_its_programs(
         json.loads(said.out)["api_key_file"],
         str(state.resolve() / "api-key"),
         describing="the key file the install named",
-    )
-
-
-def test_a_windows_serial_device_is_opened_through_the_device_namespace(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    r"""`COM250` is opened as `\\.\COM250`, the only name every COM port opens under."""
-    monkeypatch.setattr(sys, "platform", "win32")
-
-    code = octoprint_env.main(
-        ["up", "--state-dir", str(tmp_path / "state"), "--mode", "serial", "--device", "COM250"]
-    )
-
-    said = capsys.readouterr().err
-    equal(code, 1, describing=f"starting against a port nothing is plugged into: {said}")
-    contains(said, "serial-device-unopenable", describing="the failure class reported")
-    contains(
-        said,
-        repr("\\\\.\\COM250")[1:-1],
-        describing="the device-namespace path the open was refused on",
-    )
-    truth(
-        not (tmp_path / "state").exists(),
-        describing="nothing provisioned for a device that cannot be opened",
     )
 
 
