@@ -79,9 +79,15 @@ PLACEHOLDER_MARKERS = ("...", "…", "<", ">", "TODO", "TBD", "PLACEHOLDER", "YO
 PINNED_VERSION = re.compile(r"--version\s+v\d+\.\d+\.\d+(?:\s|$)")
 PINNED_DIRECTORY = re.compile(r"--to\s+(?:~|/)\S+")
 RAW_URL = re.compile(r"https://raw\.githubusercontent\.com/\S+")
+# A command that starts or enables a service, in any manager's vocabulary the
+# section states a pair in: systemd's `start`, `enable` and `--now`, launchd's
+# `bootstrap`, `load`, `kickstart`, `enable` and `start`, and the service
+# control manager's `Start-Service`, `-Status Running` and an automatic start
+# type.
 STARTS_SERVICE = re.compile(
     r"\bsystemctl\b.*\b(start|enable)\b|--now\b"
     r"|\blaunchctl\b.*\b(bootstrap|load|kickstart|enable|start)\b"
+    r"|\bStart-Service\b|-Status\s+Running\b|-StartupType\s+Automatic"
 )
 
 

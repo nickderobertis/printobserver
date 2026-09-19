@@ -51,6 +51,23 @@ def test_the_scanner_finds_the_directives_this_repository_carries(
 
     contains(found, ("scripts/session-setup.sh", "tool_output_is_signal"))
     contains(found, ("AGENTS.md", "instruction_layer_localized"))
+    contains(found, ("scripts/install-service.ps1", "changed_behavior_has_e2e"))
+
+
+def test_a_directive_in_the_powershell_installer_with_no_entry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The Windows installer's directives are held to the allowlist as the shell one's are."""
+    broken = tree()
+    directive = "# llmlint: " + "ignore[tool_output_is_signal] a reason."
+    broken.write(
+        "scripts/install-service.ps1",
+        broken.read("scripts/install-service.ps1") + f"\n{directive}\nWrite-Output 'planted'\n",
+    )
+
+    findings = suppressions(broken.repo)
+
+    refused(findings, "with no entry in suppressions.toml")
 
 
 def test_a_directive_with_no_entry_is_refused(tree: Callable[[], Tree]) -> None:

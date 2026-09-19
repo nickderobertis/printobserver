@@ -29,6 +29,17 @@
 //! environment, and a credential reaching this program is rendered by nothing:
 //! see [`config::Credential`].
 //!
+//! # Under a service manager, one shutdown
+//!
+//! `printobserver server` runs until the operating system asks it to stop, and
+//! on Windows it may be started by the service control manager rather than from
+//! a console. [`service`] is the sequence a service reports to such a manager,
+//! over the real server and independent of any manager, and `windows_service`
+//! — compiled for Windows alone — is the manager's own vocabulary for it. The
+//! stop control a manager sends enters the same graceful shutdown the Unix
+//! termination signal does, and nothing about the program run from a console
+//! changes.
+//!
 //! # Images are a path, never bytes
 //!
 //! The server answers an absolute path on **its own** filesystem and no route
@@ -43,9 +54,12 @@ pub mod failure;
 pub mod locations;
 pub mod parse;
 pub mod render;
+pub mod service;
 pub mod sign_in;
 pub mod surface;
 pub mod transport;
+#[cfg(windows)]
+pub mod windows_service;
 
 pub use client::{Outcome, Produced, perform, present, produce, refusal};
 pub use config::{

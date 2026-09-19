@@ -44,7 +44,7 @@ use tempfile::TempDir;
 
 #[cfg(target_os = "linux")]
 use harness::{ANSWERED, SIGN_IN_SEEN};
-use manager::{Manager, policy, repo_root};
+use manager::{Manager, repo_root};
 
 use harness::{
     SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking, recorded, stand_in,
@@ -72,13 +72,19 @@ fn system_of(manager: Manager) -> &'static str {
     }
 }
 
-/// The programs the installer must not invoke, each shimmed to record being run.
+/// The programs the installer must not invoke under either manager it serves,
+/// each shimmed to record being run.
 fn must_not_invoke() -> Vec<String> {
-    policy()["service"]["may_not_invoke"]
-        .as_array()
-        .expect("the policy names what the installer may not invoke")
-        .iter()
-        .map(|program| program.as_str().expect("a program name").to_owned())
+    MANAGERS
+        .into_iter()
+        .flat_map(|manager| {
+            manager.policy()["may_not_invoke"]
+                .as_array()
+                .expect("the policy names what the installer may not invoke")
+                .iter()
+                .map(|program| program.as_str().expect("a program name").to_owned())
+                .collect::<Vec<_>>()
+        })
         .collect()
 }
 
@@ -233,41 +239,32 @@ impl Definition {
         }
     }
 
-    /// Whether it carries one setting `repo-policy.toml` states as a
-    /// `{ key, value }`, in its own manager's vocabulary: a `Key=value` line of
-    /// a unit, or a key of a property list holding that value.
-    fn carries(&self, setting: &toml::Value) -> bool {
-        let key = setting["key"].as_str().expect("a setting names its key");
+    /// Whether it carries one setting `repo-policy.toml` states in its own
+    /// manager's vocabulary: a `Key=value` line of a unit, or a `<key>` and the
+    /// value under it of a property list, parsed as the fragment it is and
+    /// looked for in the list that was written.
+    fn carries(&self, setting: &str) -> bool {
         match &self.list {
-            None => {
-                let value = setting["value"]
-                    .as_str()
-                    .expect("a unit's value is a string");
-                self.text
-                    .lines()
-                    .any(|line| line.trim() == format!("{key}={value}"))
+            None => self.text.lines().any(|line| line.trim() == setting),
+            Some(list) => {
+                let stated = as_plist(setting);
+                stated
+                    .iter()
+                    .all(|(key, value)| list.get(key).is_some_and(|found| found == value))
             }
-            Some(list) => list
-                .get(key)
-                .is_some_and(|found| *found == as_plist(&setting["value"])),
         }
     }
 }
 
-/// One `repo-policy.toml` value as the property list value it states.
-fn as_plist(value: &toml::Value) -> plist::Value {
-    match value {
-        toml::Value::Boolean(flag) => plist::Value::Boolean(*flag),
-        toml::Value::Integer(number) => plist::Value::Integer((*number).into()),
-        toml::Value::String(text) => plist::Value::String(text.clone()),
-        toml::Value::Table(table) => plist::Value::Dictionary(
-            table
-                .iter()
-                .map(|(key, value)| (key.clone(), as_plist(value)))
-                .collect(),
-        ),
-        other => panic!("the policy states a setting no property list carries: {other}"),
-    }
+/// One property-list fragment `repo-policy.toml` states, as the entries it holds.
+fn as_plist(fragment: &str) -> plist::Dictionary {
+    let document = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>{fragment}</dict></plist>"
+    );
+    plist::Value::from_reader_xml(document.as_bytes())
+        .unwrap_or_else(|error| panic!("the policy states no property-list fragment: {error}"))
+        .into_dictionary()
+        .expect("a property list's top level is a dictionary")
 }
 
 /// Run the committed installer against a root this journey owns.
@@ -871,7 +868,7 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
             "the {spelled} installer started or enabled something: {}",
             std::fs::read_to_string(&installed.recording).unwrap_or_default()
         );
-        let directory = manager.policy()["unit_directory"]
+        let directory = manager.policy()["registration_directory"]
             .as_str()
             .expect("a directory")
             .to_owned();
@@ -938,8 +935,11 @@ fn assert_the_definition_says_what_is_stated(installed: &Installed, invoking: &s
             "the property list's label is not the name the start command loads"
         );
     }
-    for behaviour in ["at_boot", "restart"] {
-        let setting = &manager.policy()[behaviour];
+    for behaviour in ["starts_at_boot", "restarts_after_crash"] {
+        let policy = manager.policy();
+        let setting = policy[behaviour]
+            .as_str()
+            .expect("a setting is stated as text");
         assert!(
             definition.carries(setting),
             "the {spelled} definition does not carry `{setting}`, the setting \

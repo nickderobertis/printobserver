@@ -1,6 +1,6 @@
 //! The service managers the installer writes a definition for, and what the
 //! tree states about each: the pair of commands `AGENTS.md`'s install path gives
-//! it, and its table of `repo-policy.toml`'s `[service]`.
+//! it, and its table of `repo-policy.toml`'s `[service.managers]`.
 //!
 //! Read from those two files rather than restated, so a test holding the
 //! installer or the running service to them is held to what the tree says.
@@ -42,9 +42,9 @@ impl Manager {
         }
     }
 
-    /// This manager's table of `repo-policy.toml`'s `[service]`.
+    /// This manager's table of `repo-policy.toml`'s `[service.managers]`.
     pub fn policy(self) -> toml::Value {
-        policy()["service"][self.spelled()].clone()
+        policy()["service"]["managers"][self.spelled()].clone()
     }
 
     /// The pair of commands `AGENTS.md`'s install path states for this manager.
@@ -83,7 +83,7 @@ impl Manager {
         let file = Path::new(named)
             .file_name()
             .expect("the start command names a file or a unit");
-        let directory = self.policy()["unit_directory"]
+        let directory = self.policy()["registration_directory"]
             .as_str()
             .expect("the policy states where the definition is written")
             .trim_start_matches('/')

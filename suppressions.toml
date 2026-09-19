@@ -110,6 +110,30 @@ file = "CLAUDE.md"
 site = "The sign-in command exists because"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Both run in an elevated PowerShell"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `service-install` reads each service manager's pair out of the root file, and the README and the install jobs are derived from it. The Windows service task requires the `windows-service` pair to be stated there in the per-platform shape beside the systemd one, so a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Both run in an elevated PowerShell"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "On Windows the service's virtual account"
+reason = "The Windows form of the sign-in step sits in the same authoritative install-path section as the Unix form, between the same two commands it has to come between; stating it anywhere else would split one ordered path across two files, one of which no check reads."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "On Windows the service's virtual account"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]
@@ -1027,6 +1051,103 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "answer = _answered(url)"
 reason = "The crate registry is read through the same one synchronous helper every other registry in this module is read through, and the two entries above for `urllib.request.Request(` and `urlopen(` carry the reason the async half does not apply: this is a command-line proof a `just` recipe runs to completion, with no event loop and nothing for an awaited read to overlap — ask the registry, then install what it serves, then run it. The typed half is answered on the lines that follow the call rather than suppressed: the document is refused unless it is a mapping carrying a `versions` list of mappings, and each entry is refused unless its `num` is a string and its `yanked` a boolean, as the crate registry's own protocol serves them — a `yanked` read by truthiness would take a mirror's `\"false\"` as yanked and drop a version a dependent can take, and `tools/release-artifacts/tests/test_registry_clients.py` drives a yanked version and a malformed entry through this boundary against the stand-in registry."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/windows_service.rs"
+site = "ServiceControl::Stop | ServiceControl::Shutdown => {"
+reason = "The shutdown control is sent by the service control manager alone, and only while the machine is going down; no tool sends it to one service, so no journey can drive it without restarting the runner it is on. It shares one match arm with the stop control, and every step after that arm — the channel, the stop-pending report, `Running::stop`, the stopped report — is the stop control's path, which `tests/repo-e2e/tests/test_service_manager_journey.py` drives through the real manager on the Windows cells."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/windows_service.rs"
+site = "could not register with the service control manager"
+reason = "A manager that called this process back and then refuses it a handler is a host whose manager is not behaving as one; nothing can make the real manager do that to prove the branch. What it does is the smallest true thing: say so in the console form's words and exit `Refused`, with no status to report because no handle was granted."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/windows_service.rs"
+site = "printobserver could not start a runtime"
+reason = "tokio refusing to build a runtime is a host out of threads or descriptors, which no journey can arrange without taking the runner down with it. The branch mirrors `main.rs`'s console form for the same refusal — the same sentence, `Refused` — and reports the stop to the manager it registered with so the service does not hang in start pending."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install-service.ps1"
+site = "could not be written"
+reason = "The configuration's directory was created, writable, by this same script a few steps earlier, and the refusals a journey can arrange — a root that is a file, a directory nothing may write, a manager or a grant that refuses — each stop the install before this line. What is left is a disk giving out between two writes, which no journey can arrange on a runner; the branch says what happened in the host's own words and names the same next action every other write refusal here names."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install-service.ps1"
+site = "if ([string]::IsNullOrEmpty($Root))"
+reason = "With no `-Root` the installer writes into the host's own `C:\\Program Files` and `C:\\ProgramData` and registers the service naming them, which on a runner is the machine's own system directories rather than anything a tier can take away again. What that branch returns is the three paths as declared at the head of the script, which `crates/printobserver/src/locations.rs` holds to the program's own copy; every journey takes the same function with the root prefixed, so the one line untaken is `return $Path`."
+
+# `tests/repo-e2e/tests/test_windows_service_installer_journey.py` runs the
+# committed PowerShell installer on every platform, and only a Windows host has
+# a service control manager for it to register with. What stands the manager in
+# is the one thing about the journey that is not real, and it is the one thing
+# that cannot be: the entries below are that, said once each for the two rules
+# that read it as a mock and as a departure from an operator's use.
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "def program() -> Path:"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The build is `cargo build` of a program every other journey in the tier has already built, so on any run but the first it costs nothing."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "shims = "
+reason = "The programs stood in for are the ones `repo-policy.toml` forbids the installer to run — `Start-Service` and the rest — and the granting tool; an installer that ran one would leave a line in the recording, which is what the journey asserts on. Nothing here fakes a boundary the installer is meant to cross: crossing one of these is the defect, and the real tool would have started a service on the tester's machine to prove it."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "shims = "
+reason = "An operator's run of the installer never calls these programs either — they are the ones it may not run — so a session in which each records being called and does nothing is the installer's real usage with a witness attached. The installer itself is the committed script, run by the interpreter the install path runs it with, with the options the install path documents."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "script = f\"\"\""
+reason = "The one boundary stood in for on purpose: the service control manager exists on Windows alone, and this journey is what proves the installer's placements, its registration and its refusals on every other platform before a Windows runner sees the script. The stand-in answers a query as the manager does and records what it was asked, and what is asserted is the registration the installer handed it, which is the contract between the two. The real manager takes the same registration in `test_service_manager_journey.py`, on the Windows cells."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "script = f\"\"\""
+reason = "The installer is run as an operator runs it — the committed script, by path, under PowerShell, with `-Root` and `-Binary` — and the manager it registers with is stood in for because a host that is not Windows has none. Its registration is read as the manager would have received it, argument for argument."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "environment[REGISTERED] = \"1\""
+reason = "On Windows a service comes to be registered by the first install, and the second install finds it so through the manager; here the manager is the stand-in, and this is how it is told to answer the second install the way the real one would. The installer itself sees only `sc.exe query` succeeding, exactly as it does on a machine that already has the service."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _systemctl("
+reason = "The boundary is systemd's own command-line tool, driven as an operator drives it — `systemctl` under `sudo`, one command at a time, each answer asserted on before the next is issued. There is no official typed client of systemd for Python, no concurrency for an async one to win, and the journey's whole point is that the manager's own tool reports what the operator would see."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _sc("
+reason = "The boundary is the service control manager's own command-line tool, `sc.exe`, driven as an operator drives it, one command at a time with each answer asserted on before the next; its listings are read field by field. There is no typed client of the manager for Python to adopt and nothing here to overlap."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _ask("
+reason = "The one question this journey asks the API is written out over a socket on purpose, as `crates/printobserver/tests/service.rs` writes its own: the point is what the service the manager started answers, not what a client library does with it, and a typed client between the two would be a second thing under test. It is one sequential request whose answer is asserted on before anything else happens."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def program() -> Path:"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs beyond a build every other journey shares is the service manager restarting a process, about twenty seconds, which is the thing under test."
 
 # --- the real-printer smoke test's device precondition: two lookup sites ------
 

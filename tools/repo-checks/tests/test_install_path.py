@@ -27,6 +27,11 @@ LAUNCHD_START = (
     "sudo launchctl bootstrap system "
     "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist"
 )
+WINDOWS_INSTALLER = (
+    "irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install-service.ps1 | iex"
+)
+WINDOWS_ACTIVATION = "Set-Service -Name printobserver -StartupType Automatic -Status Running"
 #: The systemd pair with its installer replaced by the command that starts the
 #: service, which leaves a pair whose first command starts a 3D printer's
 #: supervisor.
@@ -47,8 +52,8 @@ def test_the_committed_section_is_accepted(committed: Repo) -> None:
     accepted(install_path_section(committed))
 
 
-def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> None:
-    """Three alternatives to the program, then two commands in order."""
+def test_the_section_states_three_routes_and_two_commands_per_manager(committed: Repo) -> None:
+    """Three alternatives to the program, then two commands in order per service manager."""
     path = ip.parse(committed.agents_md)
 
     equal(len(path.routes), 3)
@@ -57,25 +62,31 @@ def test_the_section_states_three_routes_and_two_commands(committed: Repo) -> No
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands_for("systemd")), 2)
-    equal(path.commands_for("systemd")[1], "sudo systemctl enable --now printobserver.service")
-    equal(len(path.commands_for("launchd")), 2)
-    equal(path.commands_for("launchd")[1], LAUNCHD_START)
+    equal(len(path.commands), 6)
+    equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
+    equal(path.commands[3], LAUNCHD_START)
+    equal(path.commands[5], WINDOWS_ACTIVATION)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
     committed: Repo,
 ) -> None:
-    """One pair per service manager the install path targets a platform under.
+    """One pair per service manager, and a platform's pair is its own manager's.
 
     The install path targets `systemd` and `launchd` platforms, so the section
     states one pair for each — and what a consumer asks for is the pair belonging
-    to a platform, not whichever pair came first. The `windows-service` platforms
-    answer `install path: no`, so no pair is stated for that manager yet.
+    to a platform, not whichever pair came first. The `windows-service` pair is
+    stated ahead of the routes reaching Windows — the service is delivered before
+    the routes are — so a Windows platform is held to that pair and not to
+    another's, whatever its `install path` answer.
     """
     path = ip.parse(committed.agents_md)
 
-    equal(sorted(path.service_commands), ["launchd", "systemd"], describing="the managers stated")
+    equal(
+        sorted(path.service_commands),
+        ["launchd", "systemd", "windows-service"],
+        describing="the managers stated",
+    )
     equal(
         path.commands_for("systemd"),
         (INSTALLER, "sudo systemctl enable --now printobserver.service"),
@@ -86,19 +97,39 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
         (INSTALLER, LAUNCHD_START),
         describing="the launchd pair, in installer-then-start order",
     )
+    equal(
+        path.commands_for("windows-service"),
+        (WINDOWS_INSTALLER, WINDOWS_ACTIVATION),
+        describing="the windows-service pair, in installer-then-start order",
+    )
     for platform in supported(committed):
+        pair = path.commands_for(platform.service_manager)
+        if platform.install_path:
+            equal(len(pair), 2, describing=f"the pair {platform.id} is held to")
         equal(
-            bool(path.commands_for(platform.service_manager)),
-            platform.install_path,
-            describing=f"whether {platform.id} is held to a pair",
+            bool(pair),
+            True,
+            describing=f"whether {platform.id} has a pair to be held to",
         )
 
 
 def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair(
     tree: Callable[[], Tree],
 ) -> None:
-    """Flipping a platform to `install path: yes` is what makes its manager's pair owed."""
+    """Flipping a platform to `install path: yes` is what makes its manager's pair owed.
+
+    The `windows-service` pair is stated ahead of the routes reaching Windows,
+    so it is taken out of the copy first: with no pair and no platform the
+    install path targets under that manager, nothing is owed and the section
+    is accepted — and flipping one of those platforms is what changes that.
+    """
     broken = tree()
+    text = broken.read("AGENTS.md")
+    pair_start = text.index("\n#### windows-service\n")
+    pair_end = text.index("\n### Between the two commands", pair_start)
+    broken.edit("AGENTS.md", text[pair_start:pair_end], "")
+    accepted(install_path_section(broken.repo))
+
     text = broken.read("AGENTS.md")
     start = text.index("- `windows-x86_64` — ")
     end = text.index("\n", start)
@@ -381,6 +412,7 @@ def test_a_check_that_does_not_ask_which_version_it_is_is_refused(
 
 
 SIGN_IN = "sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in"
+WINDOWS_SIGN_IN = "& 'C:\\Program Files\\printobserver\\printobserver.exe' sign-in"
 
 
 def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> None:
@@ -393,6 +425,7 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
             "sudo npm install -g @anthropic-ai/claude-code",
             "sudo npm install -g @openai/codex",
             SIGN_IN,
+            WINDOWS_SIGN_IN,
         ),
     )
     for command in path.sign_in:

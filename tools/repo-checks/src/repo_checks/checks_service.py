@@ -3,12 +3,18 @@
 Two things this node's server has to be held to are facts about the tree that a
 running system would only reveal after it was too late.
 
-The first is the pair of names in `AGENTS.md`'s install-path section — the unit
-the operator enables, and the path the installer is fetched from. That section
+The first is the pair of names in `AGENTS.md`'s install-path section — the
+service the operator activates, and the path the installer is fetched from —
+stated once per service manager the supported-platform list names. That section
 is the authoritative source of both, and the other party to the contract is a
-continuous-integration job that installs the service on a real machine, so a
-tree whose installer writes a differently named unit is one nothing catches
-until that job runs.
+job that installs the service on a real machine of that platform, so a tree
+whose installer registers a differently named service is one nothing catches
+until that job runs. Each manager's installer is read against that manager's
+own rules, which `repo-policy.toml`'s `service.managers.<manager>` declares:
+the programs it may not run and the settings it may not write, because
+installing must start nothing; and the two settings, in the manager's own
+vocabulary, that make the service come back — at boot once the operator has
+activated it, and after its process ends abruptly.
 
 The second is the ingress answer bound. `Obico` posts best-effort with a short
 timeout and does not retry, so the bound this repository ships has to be below
@@ -26,7 +32,6 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -39,27 +44,52 @@ from repo_checks.model import (
 from repo_checks.parsing import MarkerBlockMissingError, marker_block, section
 from repo_checks.platforms import ServiceManager, supported
 
-#: How each service manager's start command in the install path names the
-#: definition it starts: the unit's name for systemd, and the property list's
-#: path for launchd — whose file name is the label and whose directory is the one
-#: that manager loads system-wide daemons from.
-START_COMMANDS: dict[ServiceManager, re.Pattern[str]] = {
-    ServiceManager.SYSTEMD: re.compile(r"\bsystemctl\s+enable\s+--now\s+(?P<name>\S+)\s*$"),
-    ServiceManager.LAUNCHD: re.compile(r"\blaunchctl\s+bootstrap\s+system\s+(?P<name>\S+)\s*$"),
+# How the activation command — the second of a manager's pair — names the
+# service, per manager: `sudo systemctl enable --now <unit>` on systemd, whose
+# last word is the unit; `sudo launchctl bootstrap system <dir>/<label>.plist`
+# on launchd, whose label is the property list's own name; `Set-Service -Name
+# <service> ...` on Windows.
+ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
+    ServiceManager.SYSTEMD: re.compile(r"\bsystemctl\s+enable\s+--now\s+(?P<service>\S+)\s*$"),
+    ServiceManager.LAUNCHD: re.compile(
+        r"\blaunchctl\s+bootstrap\s+system\s+(?P<directory>\S*)/(?P<service>[^/\s]+)\.plist\s*$"
+    ),
+    ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<service>\S+)\b"),
 }
 
-#: What each manager's start command is expected to look like, for a finding.
-START_SHAPES: dict[ServiceManager, str] = {
+# What each manager's activation command has to look like, quoted back at a
+# section that states none of that shape.
+ACTIVATION_SHAPES: dict[str, str] = {
     ServiceManager.SYSTEMD: "systemctl enable --now <unit>",
     ServiceManager.LAUNCHD: "launchctl bootstrap system <directory>/<label>.plist",
+    ServiceManager.WINDOWS_SERVICE: "Set-Service -Name <service> ...",
 }
 
-# `NAME="value"` in the installer.
-ASSIGNMENT = r'^{name}="(?P<value>[^"]+)"\s*$'
+# How each manager's installer declares the name it registers: `UNIT_NAME="..."`
+# and `LAUNCHD_LABEL="..."` in the shell installer, which serves both of those
+# managers, `$ServiceName = '...'` in the PowerShell one.
+NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
+    ServiceManager.SYSTEMD: (
+        re.compile(r'^UNIT_NAME="(?P<service>[^"]+)"\s*$', re.MULTILINE),
+        'UNIT_NAME="..."',
+    ),
+    ServiceManager.LAUNCHD: (
+        re.compile(r'^LAUNCHD_LABEL="(?P<service>[^"]+)"\s*$', re.MULTILINE),
+        'LAUNCHD_LABEL="..."',
+    ),
+    ServiceManager.WINDOWS_SERVICE: (
+        re.compile(r"^\$ServiceName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
+        "$ServiceName = '...'",
+    ),
+}
 
-# A line that only assigns one double-quoted string with no command substitution
-# in it. It runs nothing, whatever words its value spells.
-PLAIN_ASSIGNMENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*="[^"`]*"$')
+# A shell line that only assigns one double-quoted string with no command
+# substitution in it. It runs nothing, whatever words its value spells: the
+# shell installer remembers the start command this way, to print it at the end.
+PLAIN_ASSIGNMENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*="[^"`$]*(\$[A-Za-z_{][^"`$]*)*"$')
+
+# `pub const NAME: &str = "...";` in a Rust source.
+STRING_CONSTANT = re.compile(r'pub const (?P<name>[A-Z_]+): &str = "(?P<value>[^"]*)"\s*;')
 
 # `pub const NAME: u64 = 1_000;` in a Rust source.
 CONSTANT = re.compile(
@@ -72,96 +102,170 @@ RECORDED_TIMEOUT = re.compile(r"^-\s*posting timeout:\s*`(?P<milliseconds>[0-9_]
 # A shell line that opens a heredoc, and the delimiter it ends at.
 HEREDOC_OPEN = re.compile(r"<<-?(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)")
 
-# A line closing a heredoc: its delimiter alone.
+# The line that closes a heredoc: its delimiter alone, which the installer
+# spells in capitals.
 HEREDOC_CLOSE = re.compile(r"^[A-Z_]+$")
+
+# What PowerShell reads as text rather than as a command: a here-string of
+# either kind, a single-quoted string, a double-quoted string with its backtick
+# escapes, and a comment to the end of its line. Matched in this order so that a
+# `#` inside a string is text and a quote inside a comment is a comment.
+POWERSHELL_TEXT = re.compile(
+    r"@\"\r?\n.*?\r?\n\"@|@'\r?\n.*?\r?\n'@|'[^']*'|\"(?:[^\"`]|`.)*\"|#[^\r\n]*",
+    re.DOTALL,
+)
 
 # `"pause"` and the rest, as the configuration template's grants spell them.
 QUOTED_NAME = re.compile(r'"([a-z_]+)"')
 
+# The installer whose interpreter runs it by path rather than by its mode.
+POWERSHELL_SUFFIX = ".ps1"
+
 
 @dataclass(frozen=True, slots=True)
 class Named:
-    """What the install-path section names one service manager's service by."""
+    """What the install-path section names one manager's service by."""
 
-    manager: ServiceManager
-    #: The unit's name, or the property list's path.
-    name: str
+    manager: str
+    service: str
     installer: str
+    activation: str
+    #: Where the activation command loads the definition from, where it names
+    #: a path: launchd's does, and a definition loaded from anywhere but the
+    #: directory the manager reads at boot is one it forgets at the next one.
+    loads_from: str | None = None
 
 
-def _named(repo: Repo) -> tuple[list[Named], list[str]]:
-    """Every manager's definition name and the installer's path, read out of the section.
+@dataclass(frozen=True, slots=True)
+class Rules:
+    """One manager's rules, as `service.managers.<manager>` declares them."""
 
-    Read through the service-manager column rather than off whichever pair the
-    section states first: each manager a platform the install path targets runs
-    under is read against that manager's own pair.
+    installer: str
+    may_not_invoke: tuple[str, ...]
+    may_not_set: tuple[str, ...]
+    starts_at_boot: str
+    restarts_after_crash: str
+    registration_directory: str | None
+    program_name: tuple[str, str] | None
+
+
+def _rules(repo: Repo, manager: str) -> Rules:
+    """The rules `repo-policy.toml` declares for one manager.
+
+    Raises:
+        PolicyValueError: If the table is absent or a required field is not a
+            non-empty string or list.
     """
-    path = ip.parse(repo.agents_md)
-    try:
-        installer = policy_strings(
-            policy_table(repo, "workflows"), ("install_service_script_path",), "workflows"
-        )["install_service_script_path"]
-        managers = _targeted(repo)
-    except PolicyValueError as error:
-        return [], [str(error)]
-    except MarkerBlockMissingError as error:
-        return [], [str(error)]
-    named: list[Named] = []
-    findings: list[str] = []
-    for manager in managers:
-        pair = path.commands_for(manager)
-        pattern = START_COMMANDS.get(manager)
-        if pattern is None:
-            findings.append(
-                f"AGENTS.md's supported-platform list targets the install path at a "
-                f"`{manager.value}` platform, and nothing here knows how that manager's "
-                f"start command names the service"
-            )
-            continue
-        found = [match["name"] for command in pair if (match := pattern.search(command))]
-        if not found:
-            findings.append(
-                f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{START_SHAPES[manager]}` "
-                f"command under `{manager.value}`, so nothing here names the service this "
-                f"repository installs"
-            )
-        if not any(installer in command for command in pair):
-            findings.append(
-                f"AGENTS.md's `{ip.SECTION_HEADING}` states no command fetching "
-                f"`{installer}` under `{manager.value}`, which is the installer this "
-                f"repository ships"
-            )
-        if found:
-            named.append(Named(manager, found[-1], installer))
-    return named, findings
+    where = f"service.managers.{manager}"
+    managers = policy_table(repo, "service").get("managers")
+    table = managers.get(manager) if isinstance(managers, dict) else None
+    if not isinstance(table, dict):
+        msg = (
+            f"`repo-policy.toml` declares no `{where}` table, so nothing states the rules "
+            f"the `{manager}` installer is held to"
+        )
+        raise PolicyValueError(msg)
+    named = policy_strings(table, ("installer", "starts_at_boot", "restarts_after_crash"), where)
+    may_not_set = table.get("may_not_set")
+    directory = table.get("registration_directory")
+    program: tuple[str, str] | None = None
+    if "program_source" in table or "program_constant" in table:
+        declared = policy_strings(table, ("program_source", "program_constant"), where)
+        program = (declared["program_source"], declared["program_constant"])
+    return Rules(
+        named["installer"],
+        policy_string_list(table, "may_not_invoke", where),
+        policy_string_list(table, "may_not_set", where) if may_not_set is not None else (),
+        named["starts_at_boot"],
+        named["restarts_after_crash"],
+        policy_strings(table, ("registration_directory",), where)["registration_directory"]
+        if directory is not None
+        else None,
+        program,
+    )
 
 
-def _targeted(repo: Repo) -> list[ServiceManager]:
-    """Every service manager a platform the install path targets runs under, in order.
+def installer_for(repo: Repo, manager: str) -> str:
+    """The installer `repo-policy.toml` declares for one manager.
+
+    Raises:
+        PolicyValueError: If the manager has no rules or they name no installer.
+    """
+    return _rules(repo, manager).installer
+
+
+def installers(repo: Repo) -> list[str]:
+    """Every installer `repo-policy.toml` declares, one per manager it has rules for."""
+    managers = policy_table(repo, "service").get("managers")
+    if not isinstance(managers, dict):
+        return []
+    return [
+        str(table["installer"])
+        for table in managers.values()
+        if isinstance(table, dict) and isinstance(table.get("installer"), str)
+    ]
+
+
+def _service_managers(repo: Repo) -> list[str]:
+    """Every service manager the supported-platform list names, in order.
 
     Raises:
         MarkerBlockMissingError: If `AGENTS.md` carries no supported-platform list.
     """
-    managers: list[ServiceManager] = []
+    named: list[str] = []
     for platform in supported(repo):
-        if not platform.install_path or platform.service_manager not in ServiceManager:
-            continue
-        manager = ServiceManager(platform.service_manager)
-        if manager not in managers:
-            managers.append(manager)
-    return managers
+        if platform.service_manager not in named:
+            named.append(platform.service_manager)
+    return named
+
+
+def _named(manager: str, pair: tuple[str, ...], installer: str) -> tuple[Named | None, list[str]]:
+    """The service's name and the installer's path, read out of one manager's pair.
+
+    The name is read off the activation command in that manager's own shape,
+    and the installer is required to be the one the pair fetches.
+    """
+    findings: list[str] = []
+    activation = ACTIVATION_NAMES.get(manager)
+    if activation is None:
+        return None, [
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states a pair of commands for the "
+            f"`{manager}` service manager, and nothing here knows how that manager's "
+            f"activation command names a service"
+        ]
+    service = ""
+    loads_from: str | None = None
+    for command in pair:
+        match = activation.search(command)
+        if match:
+            service = match["service"]
+            loads_from = match.groupdict().get("directory")
+    if not service:
+        findings.append(
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{ACTIVATION_SHAPES[manager]}` "
+            f"command under `{manager}`, so nothing here names the service this repository "
+            f"installs there"
+        )
+    if not any(installer in command for command in pair):
+        findings.append(
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states no command fetching `{installer}` "
+            f"under `{manager}`, which is the installer this repository ships for it"
+        )
+    if findings:
+        return None, findings
+    return Named(manager, service, installer, pair[-1], loads_from), []
 
 
 def _executes(script: str, program: str) -> list[int]:
-    """The line numbers on which `script` runs `program` as a command.
+    """The line numbers on which a shell `script` runs `program` as a command.
 
     A line inside a heredoc is what the script *prints*, a line beginning with
     `echo` or `printf` is what it *says*, a comment is what it explains, and a
     line assigning one plain quoted string is what it *remembers* to say later —
-    so none of the four is a command it runs. The installer names the command that
-    starts the service in exactly those places and runs it nowhere, which is the
-    whole point of the separation, so a check that could not tell them apart
-    would refuse the correct script.
+    so none of the four is a command it runs. The installer names the command
+    that starts the service in exactly those places and runs it nowhere, which
+    is the whole point of the separation, so a check that could not tell them
+    apart would refuse the correct script.
 
     A line ending in a backslash continues into the next, and both are one
     command: they are joined before any of that is decided, so the second half
@@ -178,7 +282,7 @@ def _executes(script: str, program: str) -> list[int]:
 
 
 def _commands(script: str) -> list[tuple[int, str]]:
-    """Every command a script runs, with the line it starts on.
+    """Every command a shell script runs, with the line it starts on.
 
     Heredoc bodies are dropped — they are what the script writes rather than
     what it runs — and a line continued with a backslash is joined to the one
@@ -208,6 +312,66 @@ def _commands(script: str) -> list[tuple[int, str]]:
     return found
 
 
+def _powershell_code(script: str) -> str:
+    """A PowerShell script with everything it says or explains blanked out.
+
+    Every string and here-string is what the script writes or prints, and a
+    comment is what it explains; each is replaced by spaces of the same shape,
+    newlines kept, so that what remains is what the script *runs* and every
+    line number still means what it did.
+    """
+    return POWERSHELL_TEXT.sub(
+        lambda match: "".join("\n" if char == "\n" else " " for char in match.group(0)), script
+    )
+
+
+def _executes_powershell(script: str, program: str) -> list[int]:
+    """The line numbers on which a PowerShell `script` runs `program` as a command.
+
+    A command is a program named at the head of a statement: at the start of a
+    line, after `;`, `|`, `{` or `(`, or after the call operator `&`. Strings
+    and comments are blanked out first, so the command the installer prints for
+    the operator to run next is not read as one it ran. A multi-word entry
+    matches with any whitespace between its words.
+    """
+    words = r"\s+".join(re.escape(word) for word in program.split())
+    pattern = re.compile(rf"(?:^|[;|{{(]\s*|&\s*)['\"]?{words}\b", re.MULTILINE)
+    code = _powershell_code(script)
+    return sorted({code.count("\n", 0, match.start()) + 1 for match in pattern.finditer(code)})
+
+
+def _sets(script: str, setting: str, powershell: bool) -> list[int]:
+    """The line numbers on which a script writes `setting` into something it runs.
+
+    A setting is a fragment of a program's arguments rather than a program —
+    `start= auto`, which hands the manager a registration it will start at the
+    next boot — so it is looked for anywhere in what the script runs, with any
+    whitespace between its words.
+    """
+    words = r"\s+".join(re.escape(word) for word in setting.split())
+    pattern = re.compile(words)
+    if powershell:
+        code = _powershell_code(script)
+        return sorted({code.count("\n", 0, match.start()) + 1 for match in pattern.finditer(code)})
+    return [
+        number
+        for number, command in _commands(script)
+        if not command.startswith(("#", "echo ", "printf "))
+        and not PLAIN_ASSIGNMENT.match(command)
+        and pattern.search(command)
+    ]
+
+
+def _carries(text: str, setting: str) -> bool:
+    """Whether `text` carries `setting`, with any whitespace between its words.
+
+    A unit's setting is one line, and a property list's is an element and the
+    value under it, laid out over several — so the policy states each on one
+    line and it is matched here however the file that carries it is indented.
+    """
+    return " ".join(setting.split()) in " ".join(text.split())
+
+
 def runnable(path: Path) -> bool:
     """Whether a script can be run as a program on this host.
 
@@ -223,135 +387,156 @@ def runnable(path: Path) -> bool:
 
 
 def service_install(repo: Repo) -> list[str]:
-    """The installer sits where the section says, ships each definition, and starts nothing."""
-    named, findings = _named(repo)
-    if not named:
-        return findings or [
-            "AGENTS.md's supported-platform list targets the install path at no platform, "
-            "so nothing names a service this repository installs"
-        ]
-    installer = named[0].installer
-
-    if not repo.exists(installer):
-        return [
-            *findings,
-            f"AGENTS.md's `{ip.SECTION_HEADING}` states the service installer is "
-            f"`{installer}`, and the tree holds no such file",
-        ]
-    installer_path = repo.path(installer)
-    script = repo.read(installer)
-
-    if not runnable(installer_path):
+    """Each installer sits where its pair says, registers that service, and starts nothing."""
+    path = ip.parse(repo.agents_md)
+    try:
+        managers = _service_managers(repo)
+    except MarkerBlockMissingError as error:
+        return [str(error)]
+    findings: list[str] = []
+    stated = 0
+    for manager in managers:
+        pair = path.commands_for(manager)
+        if not pair:
+            continue
+        stated += 1
+        findings.extend(_one_manager(repo, manager, pair))
+    if not stated:
         findings.append(
-            f"`{installer}` is not executable, so the command "
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states a pair of commands for no service "
+            f"manager its supported-platform list names, so nothing here names the service "
+            f"this repository installs"
+        )
+    return findings
+
+
+def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
+    """One manager's installer, held to its pair and to its own rules."""
+    try:
+        rules = _rules(repo, manager)
+    except PolicyValueError as error:
+        return [str(error)]
+    named, findings = _named(manager, pair, rules.installer)
+    if named is None:
+        return findings
+
+    if not repo.exists(named.installer):
+        return [
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states the `{manager}` service installer is "
+            f"`{named.installer}`, and the tree holds no such file"
+        ]
+    installer_path = repo.path(named.installer)
+    script = repo.read(named.installer)
+    powershell = named.installer.endswith(POWERSHELL_SUFFIX)
+
+    findings = []
+    if not powershell and not runnable(installer_path):
+        findings.append(
+            f"`{named.installer}` is not executable, so the command "
             f"AGENTS.md's `{ip.SECTION_HEADING}` states could not run it"
         )
 
-    try:
-        service = policy_table(repo, "service")
-        forbidden = policy_string_list(service, "may_not_invoke", "service")
-    except PolicyValueError as error:
-        return [*findings, str(error)]
-
-    for one in named:
-        findings.extend(_definition_findings(service, one, script))
-
-    for program in forbidden:
-        for number in _executes(script, program):
+    declaration = NAME_DECLARATIONS.get(manager)
+    if declaration is None:
+        findings.append(
+            f"nothing here knows how a `{manager}` installer declares the service it "
+            f"registers, so `{named.installer}` cannot be held to `{named.service}`"
+        )
+    else:
+        pattern, shape = declaration
+        declared = pattern.search(script)
+        if not declared:
             findings.append(
-                f"{installer}:{number} runs `{program}`. The installer places "
-                f"the service and starts nothing: this service commands a 3D printer, "
-                f"so installing must not start a process that can move a machine"
+                f"`{named.installer}` carries no `{shape}` line, so nothing here can be "
+                f"held to the service the install path names"
+            )
+        elif declared["service"] != named.service:
+            findings.append(
+                f"`{named.installer}` installs the service `{declared['service']}`, and "
+                f"AGENTS.md's `{ip.SECTION_HEADING}` states `{named.service}` under `{manager}`"
             )
 
-    findings.extend(_granted_findings(repo, installer, script))
+    if rules.program_name is not None:
+        findings.extend(_program_name_findings(repo, named, rules.program_name))
+
+    if rules.registration_directory is not None and rules.registration_directory not in script:
+        findings.append(
+            f"`{named.installer}` does not write the registration into "
+            f"`{rules.registration_directory}`, which is where the service manager reads "
+            f"units from"
+        )
+    if (
+        named.loads_from is not None
+        and rules.registration_directory is not None
+        and named.loads_from != rules.registration_directory
+    ):
+        findings.append(
+            f"the `{manager}` activation command loads the definition from "
+            f"`{named.loads_from}`, which is not the directory the manager loads at boot, "
+            f"`{rules.registration_directory}`: a definition loaded from anywhere else is one "
+            f"it forgets at the next boot"
+        )
+
+    executes = _executes_powershell if powershell else _executes
+    for program in rules.may_not_invoke:
+        findings.extend(
+            f"{named.installer}:{number} runs `{program}`. The installer places the service "
+            f"and starts nothing: this service commands a 3D printer, so installing must not "
+            f"start a process that can move a machine"
+            for number in executes(script, program)
+        )
+    for setting in rules.may_not_set:
+        findings.extend(
+            f"{named.installer}:{number} writes `{setting}`, which registers a service the "
+            f"manager starts by itself. The installer enables nothing: starting the service "
+            f"at boot is the operator's own command, `{named.activation}`"
+            for number in _sets(script, setting, powershell)
+        )
+
+    if not _carries(script, rules.restarts_after_crash):
+        findings.append(
+            f"`{named.installer}` writes no `{rules.restarts_after_crash}`, so the service it "
+            f"registers stays down after its process ends abruptly"
+        )
+    if not _carries(script, rules.starts_at_boot) and not _carries(
+        named.activation, rules.starts_at_boot
+    ):
+        findings.append(
+            f"neither `{named.installer}` nor the `{manager}` activation command carries "
+            f"`{rules.starts_at_boot}`, so nothing makes the service start at boot once the "
+            f"operator has activated it"
+        )
+
+    findings.extend(_granted_findings(repo, named.installer, script))
     return findings
 
 
-def _definition_findings(service: dict[str, Any], named: Named, script: str) -> list[str]:
-    """One manager's definition is written where it loads, under the name its command uses.
+def _program_name_findings(repo: Repo, named: Named, program: tuple[str, str]) -> list[str]:
+    """The program answers the manager under the name the install path states.
 
-    `service` is the `[service]` table the TOML reader handed back, so its values
-    are `Any` at that deserialization boundary; each value read out of it is
-    narrowed by `policy_strings` or checked for its shape here.
+    A service manager that dispatches by name hands the process the name it was
+    registered under, so the program carries its own copy of that name — and
+    that copy is held here to the one the manager's pair states.
     """
-    manager = named.manager.value
-    where = f"service.{manager}"
-    table = service.get(manager)
-    if not isinstance(table, dict):
+    source, constant = program
+    if not repo.exists(source):
         return [
-            f"`repo-policy.toml` declares no `[{where}]` table, so nothing states where the "
-            f"installer writes the `{manager}` definition"
+            f"`{source}` is absent: it is where the program names the `{named.manager}` service"
         ]
-    try:
-        declared = policy_strings(table, ("unit_directory", "name_variable"), where)
-    except PolicyValueError as error:
-        return [str(error)]
-    findings: list[str] = []
-    variable = declared["name_variable"]
-    assigned = re.search(ASSIGNMENT.format(name=re.escape(variable)), script, re.MULTILINE)
-    expected = named.name
-    if named.manager == ServiceManager.LAUNCHD:
-        directory, _, file_name = named.name.rpartition("/")
-        if directory != declared["unit_directory"]:
-            findings.append(
-                f"AGENTS.md's `{ip.SECTION_HEADING}` loads `{named.name}`, which is not in "
-                f"`{declared['unit_directory']}`, the directory launchd loads daemons from "
-                f"at boot"
-            )
-        expected = file_name.removesuffix(".plist")
-    if assigned is None:
-        findings.append(
-            f'`{named.installer}` carries no `{variable}="..."` line, so nothing here can '
-            f"be held to the `{manager}` service the install path names"
-        )
-    elif assigned["value"] != expected:
-        findings.append(
-            f"`{named.installer}` installs the `{manager}` service `{assigned['value']}`, "
-            f"and AGENTS.md's `{ip.SECTION_HEADING}` states `{expected}`"
-        )
-    if declared["unit_directory"] not in script:
-        findings.append(
-            f"`{named.installer}` does not write the `{manager}` definition into "
-            f"`{declared['unit_directory']}`, which is where the service manager reads units from"
-        )
-    findings.extend(_unattended_findings(table, named, script, where))
-    return findings
-
-
-def _unattended_findings(table: dict[str, Any], named: Named, script: str, where: str) -> list[str]:
-    """The definition carries the settings that start it at boot and after it ends abruptly.
-
-    Read as that manager spells a setting: `Key=value` in a systemd unit, and a
-    `<key>` element in a property list, whose value the command's own service
-    tests read back from what the installer actually wrote.
-    """
-    findings: list[str] = []
-    for behaviour, meaning in (("at_boot", "at boot"), ("restart", "after it ends abruptly")):
-        setting = table.get(behaviour)
-        if not (
-            isinstance(setting, dict)
-            and isinstance(setting.get("key"), str)
-            and setting["key"]
-            and "value" in setting
-        ):
-            findings.append(
-                f"`repo-policy.toml`'s `[{where}]` declares no `{behaviour}` "
-                f"{{ key, value }}, so nothing states which setting starts the service {meaning}"
-            )
-            continue
-        key = setting["key"]
-        spelled = (
-            f"{key}={setting['value']}"
-            if named.manager == ServiceManager.SYSTEMD
-            else f"<key>{key}</key>"
-        )
-        if spelled not in script:
-            findings.append(
-                f"`{named.installer}`'s `{named.manager.value}` definition carries no "
-                f"`{spelled}`, which is the setting that starts the service {meaning}"
-            )
-    return findings
+    carried = {
+        match["name"]: match["value"] for match in STRING_CONSTANT.finditer(repo.read(source))
+    }.get(constant)
+    if carried is None:
+        return [
+            f"`{source}` declares no `{constant}`, so nothing holds the name the program "
+            f"answers the `{named.manager}` manager under to the install path"
+        ]
+    if carried != named.service:
+        return [
+            f"`{source}`'s `{constant}` is `{carried}`, and AGENTS.md's "
+            f"`{ip.SECTION_HEADING}` states `{named.service}` under `{named.manager}`"
+        ]
+    return []
 
 
 def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:

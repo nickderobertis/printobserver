@@ -829,9 +829,11 @@ supported-platform list's service-manager column names it. The first of a pair
 puts the service in place and the second starts it, and one subsection below
 states one pair, headed by the service manager it belongs to. Every service
 manager that list names a platform the install path targets under has a pair
-here, and no manager it does not name has one; a manager whose platforms all
-answer `install path: no` has none yet, because there is no install path there
-to state it for.
+here, and no manager it does not name has one. A manager whose platforms all
+answer `install path: no` may have one too: a pair is owed once the routes reach
+a platform of that manager and permitted before they do, because a service is
+proven on its platform before that platform's routes are, and the pair is the
+same either way.
 
 **Enabling and starting is a command of its own rather than something the
 installer does, and the reason is that this service commands a 3D printer.**
@@ -841,10 +843,12 @@ something that happens while they are installing. Do not fold these two steps
 back together, in any pair.
 
 `just check-repo`'s `service-install` reads this section beside the tree and
-refuses one in which the unit's name or the installer's path differs from what is
-written below, or in which that installer enables or starts anything. What it
-reads for a platform is that platform's own service-manager column, so a second
-service manager here is read against its own pair rather than against systemd's.
+refuses one in which the service's name or the installer's path differs from
+what is written below, or in which that installer enables or starts anything.
+What it reads for a platform is that platform's own service-manager column, so
+each service manager here is read against its own pair and its own rules —
+`repo-policy.toml`'s `service.managers.<manager>` — rather than against
+systemd's.
 
 What makes the three routes executable is the `sdks` node, and what makes the two
 commands executable is the `server` node — each held to this section.
@@ -881,6 +885,31 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
+#### windows-service
+
+<!-- llmlint: ignore[instruction_layer_localized] This section is the authoritative statement of the end-user install path, which `just check-repo` reads out of the root file for every service manager and derives the README and CI jobs from; the task requires the Windows pair here, in the per-platform shape, beside the systemd one. suppressions.toml has the full reason. -->
+Both run in an elevated PowerShell — Windows PowerShell or a newer one. The first
+is the Windows form of the same installer, committed at
+`scripts/install-service.ps1`: it puts the program under `Program Files`, the
+state directory and the configuration under `ProgramData`, and the service's
+registration with the service control manager in place — registered to start
+**on demand**, as its own virtual account `NT SERVICE\printobserver`, and to be
+brought back by the manager five seconds after its process ends abruptly. The
+second sets the service, whose name is `printobserver`, to start automatically
+and starts it; it is the one command that enables anything, because the service
+control manager has no way to declare an automatic start without taking it, and a
+registration the installer wrote as automatic would start the supervisor at the
+next reboot whether or not anybody ran this command. Made executable by the
+`windows-service` node.
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.ps1 | iex
+```
+
+```powershell
+Set-Service -Name printobserver -StartupType Automatic -Status Running
+```
+
 ### Between the two commands, sign in the agent's harness
 
 On every event the service runs the harness `supervisor.harness` names, as its
@@ -902,6 +931,17 @@ sudo npm install -g @openai/codex
 
 ```console
 sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
+```
+
+<!-- llmlint: ignore[instruction_layer_localized] The Windows form of the sign-in step belongs to the same authoritative install-path section, between the same two commands, as the Unix form above it. suppressions.toml has the full reason. -->
+On Windows the service's virtual account cannot be signed in to, and does not
+need to be: the sign-in is kept under the state directory, which the installer
+made the service account's to read, so it is taken from the same elevated
+PowerShell the two commands run in — the harness installed for every account
+with `npm install -g`, as above and without `sudo`, and then:
+
+```powershell
+& 'C:\Program Files\printobserver\printobserver.exe' sign-in
 ```
 
 ## The registry install-path proof

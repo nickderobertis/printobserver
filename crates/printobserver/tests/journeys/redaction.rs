@@ -358,6 +358,11 @@ fn the_server_command(world: &World, credential: &str) -> Vec<(String, String)> 
 }
 
 /// A second supervisor, started and stopped, and everything it said.
+///
+/// Stopped once it has said it is serving rather than after a fixed pause: a
+/// loaded runner has taken longer than any pause to bring a coverage-
+/// instrumented program to its first line, and a supervisor killed before it
+/// printed anything says nothing about what it prints.
 fn a_second_server(world: &World, credential: &str) -> String {
     let configuration = world.second_server_config();
     let mut child = Command::new(running::program())
@@ -369,16 +374,26 @@ fn a_second_server(world: &World, credential: &str) -> String {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the command that runs the server runs");
-    std::thread::sleep(core::time::Duration::from_millis(800));
-    let _ = child.kill();
-    let said = child.wait_with_output().expect("the server exits");
-    let printed =
-        String::from_utf8_lossy(&said.stdout).into_owned() + &String::from_utf8_lossy(&said.stderr);
+    let mut printed = String::new();
+    let mut lines = BufReader::new(child.stderr.take().expect("the server's own output"));
+    while !printed.contains("is serving on") {
+        let mut line = String::new();
+        if lines.read_line(&mut line).expect("the output reads") == 0 {
+            break;
+        }
+        printed.push_str(&line);
+    }
     assert!(
         printed.contains("is serving on"),
         "the second supervisor did not start, so this says nothing about what it prints: \
          {printed}"
     );
+    let _ = child.kill();
+    let said = child.wait_with_output().expect("the server exits");
+    lines
+        .read_to_string(&mut printed)
+        .expect("the rest of the output reads");
+    printed.push_str(&String::from_utf8_lossy(&said.stdout));
     world.wants(Reports::Printing);
     printed
 }

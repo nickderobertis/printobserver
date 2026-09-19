@@ -12,10 +12,20 @@ authors.workspace = true
 printobserver-sdk = { path = "../printobserver-sdk", version = "0.2.0" }
 printobserver-server = { path = "../printobserver-server", version = "0.2.0" }
 printobserver-types.workspace = true
-tokio = { version = "1", features = ["rt-multi-thread"] }
+# `sync` for the one channel the Windows service's stop control is handed to
+# the server through.
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 # The one document format this program's own configuration is written in. It
 # reads a file the operator wrote, which may be the server's own.
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+
+# The Windows service control manager, for `printobserver server` started by it.
+# Windows alone: no other target's build carries either, and the sequence the
+# service reports is `service.rs`'s, which every platform compiles and drives.
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+# The one error code that tells a console start from a service start.
+windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
 
 [features]
 # Test-only. Builds `printobserver-tainted`, which is this program's own library
@@ -34,9 +44,22 @@ name = "printobserver-tainted"
 path = "src/bin/tainted.rs"
 required-features = ["test-fixtures"]
 
+# Test-only too: the supervisor run as a service, with the service control
+# manager stood in for by two streams, so the sequence a Windows service
+# reports is driven over a real server on every platform.
+[[bin]]
+name = "printobserver-service-fixture"
+path = "src/bin/service_fixture.rs"
+required-features = ["test-fixtures"]
+
 [[test]]
 name = "journeys"
 path = "tests/journeys.rs"
+required-features = ["test-fixtures"]
+
+[[test]]
+name = "service_lifecycle"
+path = "tests/service_lifecycle.rs"
 required-features = ["test-fixtures"]
 
 [dev-dependencies]
