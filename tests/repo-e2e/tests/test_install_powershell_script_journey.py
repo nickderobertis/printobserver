@@ -95,6 +95,7 @@ def _version() -> str:
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 def _program(identifier: str, root: Path) -> bytes:
     """The bytes the newest release's artifact carries for one platform.
 
@@ -163,6 +164,7 @@ def staged(tmp_path: Path) -> Callable[[str], Path]:
     return stage
 
 
+# llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
 def _environment(staged: Path, home: Path, identifier: str | None) -> dict[str, str]:
     """The environment one run is given: a Windows host of `identifier`, or this host's own.
 

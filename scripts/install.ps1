@@ -83,6 +83,16 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     if (-not $releaseBase) {
         $releaseBase = "https://github.com/$OWNER/$REPOSITORY/releases"
     }
+    # A directory is what a test, a mirror on a shared filesystem and an
+    # air-gapped install all look like; everything else is fetched.
+    $localBase = $releaseBase
+    if ($localBase.StartsWith('file://')) {
+        $localBase = $localBase.Substring(7)
+    }
+    $isLocal = Test-Path -LiteralPath $localBase -PathType Container
+    if ($isLocal) {
+        $releaseBase = $localBase
+    }
 
     # The platform, as the release artifacts name it — read the way Windows
     # itself names the host: `OS` is `Windows_NT` on every Windows, and the
@@ -136,38 +146,37 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     try {
         # One way of obtaining a file, whichever kind of place the release is
-        # in. A directory is what a test, a mirror on a shared filesystem and an
-        # air-gapped install all look like; everything else is fetched.
+        # in: copied out of a directory, fetched from anywhere else. Answers
+        # nothing when the file is in hand, and otherwise why it is not, in the
+        # words of whatever refused — so the stop can carry the exact cause.
         function Get-Published([string]$FileName, [string]$Into) {
-            $local = $from
-            if ($local.StartsWith('file://')) {
-                $local = $local.Substring(7)
-            }
-            if (Test-Path -LiteralPath $local -PathType Container) {
-                $source = Join-Path $local $FileName
+            if ($isLocal) {
+                $source = Join-Path $from $FileName
                 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-                    return $false
+                    return "$source is not there"
                 }
                 Copy-Item -LiteralPath $source -Destination $Into
-                return $true
+                return ''
             }
             try {
                 if ([System.Net.ServicePointManager]::SecurityProtocol -ne [System.Net.SecurityProtocolType]::SystemDefault) {
                     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
                 }
                 Invoke-WebRequest -Uri "$from/$FileName" -OutFile $Into -UseBasicParsing
-                return $true
+                return ''
             } catch {
-                return $false
+                return "$($_.Exception.Message)".Trim()
             }
         }
 
-        if (-not (Get-Published $asset (Join-Path $work $asset))) {
-            Stop-Install "$which has no $asset to download from $from" `
-                "Check that $which publishes a program for $platform, or pass -Version a release that does."
+        $refused = Get-Published $asset (Join-Path $work $asset)
+        if ($refused) {
+            Stop-Install "$which has no $asset to download from $from ($refused)" `
+                "Check that $which publishes a program for $platform and that $from is reachable from here, or pass -Version a release that does."
         }
-        if (-not (Get-Published $CHECKSUMS (Join-Path $work $CHECKSUMS))) {
-            Stop-Install "$which publishes no $CHECKSUMS, so what was downloaded cannot be verified" `
+        $refused = Get-Published $CHECKSUMS (Join-Path $work $CHECKSUMS)
+        if ($refused) {
+            Stop-Install "$which publishes no $CHECKSUMS, so what was downloaded cannot be verified ($refused)" `
                 "Nothing was installed. Check that $from serves $CHECKSUMS beside its artifacts."
         }
 
@@ -302,9 +311,11 @@ try {
     $global:LASTEXITCODE = 0
 } catch {
     # A stop of this script's own has already said why and what to do next;
-    # anything else is unexpected and is left to say so in its own words.
+    # anything else is a failure this script did not foresee, said in the
+    # host's own words with the one next action there is for it.
     if ("$_" -notlike 'install.ps1: *') {
-        throw
+        [Console]::Error.WriteLine("install.ps1: stopped on an error it did not expect: $_")
+        [Console]::Error.WriteLine("install.ps1: Nothing was installed unless a line above says so. Report this, with the lines above, at https://github.com/nickderobertis/printobserver/issues.")
     }
     if ($MyInvocation.MyCommand.Path) {
         exit 1

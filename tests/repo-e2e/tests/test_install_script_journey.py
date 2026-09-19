@@ -250,6 +250,7 @@ def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(
     contains(said, "build it from source", describing="the next action it named")
 
 
+# llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
 def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects(
     staged: Path, tmp_path: Path
 ) -> None:

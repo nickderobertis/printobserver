@@ -1060,3 +1060,39 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
 site = "def _program"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."
+
+# `tests/repo-e2e/tests/test_install_powershell_script_journey.py` drives the
+# committed PowerShell install script on every platform, and only a Windows
+# host answers as one. The entries below are for the two things the journey
+# stands in for and the one thing it cannot: the host, and a program built for
+# another machine.
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _environment"
+reason = "Nothing of the script is stood in for. What the journey sets is the environment the script reads the host from — `OS` and `PROCESSOR_ARCHITECTURE`, the variables every Windows sets — which is how the Windows answers are reached on the host that runs the suite most often, as the task that added this route required; a Windows host of the gate runs the same journey with those variables its own, in `test_this_windows_host_resolves_itself_with_nothing_stood_in`. The release is a staged directory for the same reason the shell form's journey stages one: nothing here may reach the network, a release carrying Windows artifacts does not exist until this lands, and the route against the real forge is the registry-proof tier's."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _environment"
+reason = "A caller runs this script on Windows, where `OS` and `PROCESSOR_ARCHITECTURE` are set by the system; the journey sets the same two variables so the script's own resolution runs the way it does there, through the same code and the same reads. The branches reached are the ones a Windows caller reaches — an x86-64 machine, an ARM64 one, an emulated PowerShell on one — and the run on a Windows host reaches them with nothing set."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _program"
+reason = "A program built for a Windows machine cannot be run here to read its version, and what this journey is about is the script around it — the platform it resolves, the digest it verifies, where it puts what it verified. The stand-in is the same one every route proof of the artifact tool carries; on a Windows host of the platform under test, this same function stages the real program the tree builds and the journey runs it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects"
+reason = "The script reads the host through `uname`, and a `uname` answering `Darwin`/`arm64` on PATH is how the Mac answers are reached on the host that runs the suite — the same shape this module already uses to reach a host nothing publishes for. A program built for a Mac cannot be run here, so the artifact under the Mac's own name carries a stand-in that says which artifact it is; the macOS platform node's own runner takes the arm with nothing shimmed once its record answers `install path: yes`."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "def test_a_macos_host_takes_its_own_artifact_through_the_arm_its_uname_selects"
+reason = "A Mac caller reaches this arm through `uname -s` and `uname -m` answering `Darwin` and `arm64`, and that is exactly what the shimmed `uname` answers: the script runs its own resolution, its own download and its own verification unchanged. The shortcut is in where the two answers come from, not in what the script does with them."
+
