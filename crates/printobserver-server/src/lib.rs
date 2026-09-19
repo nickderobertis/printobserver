@@ -42,7 +42,7 @@ pub mod reconcile;
 pub mod server;
 pub mod wire;
 
-pub use api::{ApiState, REFUSED_BODY_BOUND, router};
+pub use api::{ApiState, BODY_BOUND, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,

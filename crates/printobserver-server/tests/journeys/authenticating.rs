@@ -30,9 +30,9 @@ use base64::Engine as _;
 use printobserver_core::store::{HistoryQuery, Stores};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{
-    API_CREDENTIAL_FILE, ApiCredential, CLIENT_CONFIG_FILE, ConfigField,
+    API_CREDENTIAL_FILE, ApiCredential, BODY_BOUND, CLIENT_CONFIG_FILE, ConfigField,
     GENERATED_CREDENTIAL_BYTES, MEDIA_TYPE, Method, OPERATIONS, Operation, Ports, REDACTED,
-    REFUSED_BODY_BOUND, Running, Server, ServerConfig, StartError, TOKEN_HEADER,
+    Running, Server, ServerConfig, StartError, TOKEN_HEADER,
 };
 use printobserver_types::PrintId;
 use printobserver_types::serde_json::Value;
@@ -369,7 +369,7 @@ async fn a_refused_request_is_answered_whole_while_its_body_is_still_arriving() 
     let address = world.server.address();
     let mut body = printobserver_types::serde_json::to_string(&body_for(operation))
         .expect("an action body renders");
-    body.push_str(&" ".repeat(REFUSED_BODY_BOUND / 2));
+    body.push_str(&" ".repeat(BODY_BOUND / 2));
 
     let exchange = tokio::task::spawn_blocking(move || {
         let mut stream = std::net::TcpStream::connect(address)?;

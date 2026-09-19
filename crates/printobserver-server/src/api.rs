@@ -33,7 +33,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
@@ -109,6 +109,7 @@ pub fn router(state: ApiState) -> Router {
             Arc::clone(&state.credential),
             authenticate,
         ))
+        .layer(DefaultBodyLimit::max(BODY_BOUND))
         .with_state(state);
     Router::new().nest(VERSION_PREFIX, api)
 }
@@ -116,12 +117,13 @@ pub fn router(state: ApiState) -> Router {
 /// The scheme the credential is presented under.
 const BEARER: &[u8] = b"Bearer ";
 
-/// How much of a refused request's body is read before the refusal goes out.
+/// How much of a request's body this server reads, admitted or refused.
 ///
-/// The same two mebibytes axum's own `Json` extractor reads an admitted body
-/// to, so a body the server would have taken is one it drains, and a larger
-/// one is left where it is.
-pub const REFUSED_BODY_BOUND: usize = 2 * 1024 * 1024;
+/// One bound for both: the router's body limit is set from it, so it is what
+/// every extractor reads an admitted body to, and what [`authenticate`] drains
+/// a refused one to — a body the server would have taken is one it drains,
+/// and a larger one is left where it is either way.
+pub const BODY_BOUND: usize = 2 * 1024 * 1024;
 
 /// Admit a request that presented the credential in force, and refuse every
 /// other before anything reads it.
@@ -132,7 +134,7 @@ pub const REFUSED_BODY_BOUND: usize = 2 * 1024 * 1024;
 /// what to present and nothing about what was presented.
 ///
 /// The refusal is decided on the head alone, and the body is then drained, up
-/// to [`REFUSED_BODY_BOUND`], before it is answered. Nothing reads what is
+/// to [`BODY_BOUND`], before it is answered. Nothing reads what is
 /// drained: a connection closed with a body still unread on it is closed with
 /// a reset rather than an end, and a caller on Windows — where a reset discards
 /// everything received and not yet read — then reads the abort in place of the
@@ -163,7 +165,7 @@ pub async fn authenticate(
         );
         // A body past the bound, or one that stops arriving, is left as it is:
         // the refusal is the answer either way.
-        let _ = axum::body::to_bytes(request.into_body(), REFUSED_BODY_BOUND).await;
+        let _ = axum::body::to_bytes(request.into_body(), BODY_BOUND).await;
         return refused;
     }
     next.run(request).await
