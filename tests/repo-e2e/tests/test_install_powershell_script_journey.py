@@ -143,8 +143,8 @@ def _first() -> str:
     return _stood_in()[0]
 
 
-def _second() -> str:
-    """A second platform for the tests that vary it, or the first where this host has no other."""
+def _other() -> str:
+    """Another platform for the tests that vary it; the first again where the host has no other."""
     return _stood_in()[-1]
 
 
@@ -430,7 +430,7 @@ def test_an_install_directory_is_the_one_installed_into(
     home = _home(tmp_path, "home-elsewhere")
     elsewhere = home / "tools" / "printobserver"
 
-    code, said = _script(staged(_second()), home, _second(), "-To", str(elsewhere))
+    code, said = _script(staged(_other()), home, _other(), "-To", str(elsewhere))
 
     passing((code, said), describing="the install script with an install directory")
     installed = elsewhere / "printobserver.exe"
@@ -515,10 +515,10 @@ def test_a_release_publishing_no_digests_is_refused(
 ) -> None:
     """What cannot be verified is not installed."""
     home = _home(tmp_path, "home-nodigest")
-    base = staged(_second())
+    base = staged(_other())
     (base / "latest" / "download" / CHECKSUMS).unlink()
 
-    code, said = _script(base, home, _second())
+    code, said = _script(base, home, _other())
 
     failing((code, said), naming="cannot be verified")
     contains(said, "Nothing was installed", describing="what the refusal said")
@@ -617,7 +617,7 @@ def test_the_pinned_form_passes_both_options_through_a_script_block(
 
     code, said = _piped(
         home,
-        _environment(staged(_second()), home, _second()),
+        _environment(staged(_other()), home, _other()),
         "-Version",
         OLDER,
         "-To",
