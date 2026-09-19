@@ -1048,3 +1048,15 @@ rule = "boundary_inputs_validated"
 file = "tools/printer-smoke/printer_smoke.py"
 site = "if not name or _query_dos_device(name) is None:"
 reason = "The Windows half of the same one probe as the entry above: the name is looked up in the system's device table, which answers whether it is a device without opening it — the point of asking the table, since opening a serial port can reset the printer on the other end. An empty name, the one input that would make the lookup answer something for any host, is refused on the line before it is asked; anything else is a read of a table, and a name the table does not carry is refused naming the shape a Windows port has."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install.ps1"
+site = "Say \"installed $installed from $which\""
+reason = "A successful install prints what the shell form of this same route prints, line for line: where the program went and from which release, whether its directory had to be added to the path, and the two commands the operator runs next. `AGENTS.md`'s install path requires the last of those — a successful install says what the caller does after it — and `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads every one of those lines back; a run that installs nothing prints only its two sentences, why it stopped and what to do next."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _program"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."

@@ -110,6 +110,10 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     }
 
     $asset = "$NAME-$platform.tar.gz"
+    if ($Version -and $Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.]+)*$') {
+        Stop-Install "-Version was given ``$Version``, which is not a release tag" `
+            'Pass it a tag of the form v0.1.0, or leave it out for the newest release.'
+    }
     if ($Version) {
         $from = "$releaseBase/download/$Version"
         $which = "release $Version"
@@ -194,6 +198,23 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
             Stop-Install 'this machine has no tar, so nothing here can unpack what it downloaded' `
                 "Nothing was installed. Windows 10 and later carry one at C:\Windows\System32\tar.exe; put it on your PATH, or unpack $asset by hand and verify it against $from/$CHECKSUMS."
         }
+        # What is in it, before any of it reaches the filesystem: a member
+        # naming a place outside the directory of this script's own is not
+        # one this installs, whatever the digest said.
+        $members = @(& tar -tzf (Join-Path $work $asset) 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            Stop-Install "$asset could not be unpacked" `
+                'Nothing was installed. The download may be incomplete; try again.'
+        }
+        # `$entry` rather than `$name`: PowerShell's variables are
+        # case-insensitive, so `$name` here would be `$NAME` above.
+        foreach ($member in $members) {
+            $entry = "$member".Trim()
+            if ($entry -match '^([A-Za-z]:|[\\/])' -or ($entry -split '[\\/]') -contains '..') {
+                Stop-Install "$asset carries ``$entry``, which names a place outside where it is unpacked" `
+                    "Nothing was installed. Report this against ${which}: the artifact is not the one this script installs."
+            }
+        }
         & tar -xzf (Join-Path $work $asset) -C $work
         if ($LASTEXITCODE -ne 0) {
             Stop-Install "$asset could not be unpacked" `
@@ -220,6 +241,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
 
+    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     Say "installed $installed from $which"
 
     # On the path of this session, and of every session after it: Windows has
@@ -250,8 +272,14 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
 }
 
+# The status a caller reads. Run as a file, it is the process's own exit
+# status. Under `irm ... | iex` there is no process of the script's own to
+# exit — an `exit` here would close the caller's window — so the status goes
+# where a session reads a program's: `$LASTEXITCODE`, which is what a caller
+# checks after a native command, and what a CI step's PowerShell reads back.
 try {
     Install-Printobserver -Version $Version -To $To -Help ([bool]$Help)
+    $global:LASTEXITCODE = 0
 } catch {
     # A stop of this script's own has already said why and what to do next;
     # anything else is unexpected and is left to say so in its own words.
@@ -261,5 +289,6 @@ try {
     if ($MyInvocation.MyCommand.Path) {
         exit 1
     }
+    $global:LASTEXITCODE = 1
     return
 }

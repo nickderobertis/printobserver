@@ -27,7 +27,6 @@ import gzip
 import hashlib
 import io
 import os
-import shutil
 import sys
 import tarfile
 import tomllib
@@ -36,9 +35,10 @@ from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, clean_environment, run
+from release_artifacts.installing import powershell
 from release_artifacts.stand_in import stand_in_program
 from repo_checks import platforms
-from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 
@@ -52,8 +52,16 @@ CHECKSUMS = "SHA256SUMS"
 #: stand-in program reports.
 OLDER = "v0.0.1"
 
-#: The two Windows platforms, as the supported-platform list names them.
-WINDOWS = ["windows-x86_64", "windows-aarch64"]
+REPO = Repo(REPO_ROOT)
+
+#: The Windows platforms, read off the supported-platform list by the service
+#: manager their column names rather than restated: the ones this script is
+#: the route for.
+WINDOWS = [
+    platform.id
+    for platform in platforms.supported(REPO)
+    if platform.service_manager == platforms.ServiceManager.WINDOWS_SERVICE
+]
 
 #: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -65,26 +73,6 @@ DEFAULT_DIRECTORY = ("AppData", "Local", "Programs", "printobserver")
 #: The temporary directory a run is given, so that what the script left there
 #: is this journey's to read.
 TEMPORARY = "temp"
-
-REPO = Repo(REPO_ROOT)
-
-
-def _powershell() -> str:
-    """The PowerShell on this host, and a next action where there is none.
-
-    Raises:
-        AssertionError: If neither `pwsh` nor `powershell` is on PATH.
-    """
-    for candidate in ("pwsh", "powershell"):
-        found = shutil.which(candidate)
-        if found:
-            return found
-    message = (
-        "this journey drives the PowerShell install script under PowerShell, and this host "
-        "has neither `pwsh` nor `powershell` on PATH; install PowerShell 7 "
-        "(https://github.com/PowerShell/PowerShell/releases) and put `pwsh` on PATH"
-    )
-    raise AssertionError(message)
 
 
 def _machine(identifier: str) -> str:
@@ -106,6 +94,7 @@ def _version() -> str:
         return str(tomllib.load(handle)["workspace"]["package"]["version"])
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _program(identifier: str, root: Path) -> bytes:
     """The bytes the newest release's artifact carries for one platform.
 
@@ -198,12 +187,44 @@ def _environment(staged: Path, home: Path, identifier: str | None) -> dict[str, 
     return environment
 
 
+def _run(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
+    """Run the committed script as a file under this host's PowerShell."""
+    result = shell_run(
+        [powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), *arguments],
+        cwd=home,
+        env=environment,
+        timeout=600,
+    )
+    return result.returncode, (result.stdout or "") + (result.stderr or "")
+
+
 def _script(staged: Path, home: Path, identifier: str | None, *arguments: str) -> tuple[int, str]:
     """Run the committed script under PowerShell, as a host of `identifier`."""
+    return _run(home, _environment(staged, home, identifier), *arguments)
+
+
+def _piped(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
+    """Run the script the way the route's own command runs it: its text piped into `iex`.
+
+    With arguments, the way the pinned form passes them — a script block made
+    of the same text. The session goes on after it and says what status the
+    script left it, which is what a caller at the prompt reads.
+    """
+    text = str(REPO_ROOT / SCRIPT).replace("'", "''")
+    invoked = (
+        f"& ([scriptblock]::Create((Get-Content -LiteralPath '{text}' -Raw))) {' '.join(arguments)}"
+        if arguments
+        else f"Get-Content -LiteralPath '{text}' -Raw | iex"
+    )
     result = shell_run(
-        [_powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), *arguments],
+        [
+            powershell(),
+            "-NoProfile",
+            "-Command",
+            f'{invoked}; Write-Output "the session goes on, LASTEXITCODE=$LASTEXITCODE"',
+        ],
         cwd=home,
-        env=_environment(staged, home, identifier),
+        env=environment,
         timeout=600,
     )
     return result.returncode, (result.stdout or "") + (result.stderr or "")
@@ -311,15 +332,10 @@ def test_a_processor_it_publishes_nothing_for_stops_with_a_next_action(
     home = _home(tmp_path, "home-processor")
     environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
     environment["PROCESSOR_ARCHITECTURE"] = "x86"
-    result = shell_run(
-        [_powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT)],
-        cwd=home,
-        env=environment,
-        timeout=600,
-    )
-    said = (result.stdout or "") + (result.stderr or "")
 
-    failing((result.returncode, said), naming="publishes no program for")
+    code, said = _run(home, environment)
+
+    failing((code, said), naming="publishes no program for")
     contains(said, "windows/x86", describing="the host it named")
     for identifier in WINDOWS:
         contains(said, identifier, describing="the platforms it does publish for")
@@ -335,15 +351,9 @@ def test_a_host_that_is_not_windows_is_sent_to_the_shell_form(
     environment = _environment(staged(WINDOWS[0]), home, None)
     environment["OS"] = "Haiku"
 
-    result = shell_run(
-        [_powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT)],
-        cwd=home,
-        env=environment,
-        timeout=600,
-    )
-    said = (result.stdout or "") + (result.stderr or "")
+    code, said = _run(home, environment)
 
-    failing((result.returncode, said), naming="the Windows form of the install script")
+    failing((code, said), naming="the Windows form of the install script")
     contains(said, "scripts/install.sh | sh", describing="the shell form it sent the caller to")
     truth(not _default(home).exists(), describing="nothing to have been installed")
 
@@ -426,6 +436,241 @@ def test_the_script_is_committed_where_its_own_fetch_url_names() -> None:
     )
 
 
+def test_the_piped_form_installs_and_leaves_the_session_with_a_zero_status(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """`irm ... | iex` is how the route states it, and a success leaves `$LASTEXITCODE` zero."""
+    home = _home(tmp_path, "home-piped")
+
+    code, said = _piped(home, _environment(staged(WINDOWS[0]), home, WINDOWS[0]))
+
+    passing((code, said), describing="the session the script was piped into")
+    contains(said, "the session goes on, LASTEXITCODE=0", describing="what the session said after")
+    contains(_reports(_default(home)), _version(), describing="what the installed program reports")
+
+
+def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A stop under `iex` must not close the caller's window, and must still read as one.
+
+    An `exit` there would take the window and both sentences with it; what a
+    caller — or a CI step's PowerShell — reads instead is `$LASTEXITCODE`.
+    """
+    home = _home(tmp_path, "home-piped-stop")
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    environment["PROCESSOR_ARCHITECTURE"] = "x86"
+
+    code, said = _piped(home, environment)
+
+    equal(code, 0, describing=f"the session's own status, which a stop must not end: {said}")
+    contains(said, "publishes no program for", describing="the stop's own sentence")
+    contains(said, "the session goes on, LASTEXITCODE=1", describing="what the session read")
+    truth(not _default(home).exists(), describing="nothing to have been installed")
+
+
+def test_the_pinned_form_passes_both_options_through_a_script_block(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """The install path's pinned form is a script block made of the fetched text, with options."""
+    home = _home(tmp_path, "home-piped-pinned")
+    elsewhere = home / "pinned"
+
+    code, said = _piped(
+        home,
+        _environment(staged(WINDOWS[1]), home, WINDOWS[1]),
+        "-Version",
+        OLDER,
+        "-To",
+        f"'{elsewhere}'",
+    )
+
+    passing((code, said), describing="the pinned form")
+    contains(said, "the session goes on, LASTEXITCODE=0", describing="what the session said after")
+    contains(
+        _reports(elsewhere / "printobserver.exe"),
+        OLDER.removeprefix("v"),
+        describing="the pinned program, where it was asked for",
+    )
+
+
+def test_help_says_the_two_options_and_installs_nothing(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """`-Help` is the one run that is not an install."""
+    home = _home(tmp_path, "home-help")
+
+    code, said = _script(staged(WINDOWS[0]), home, WINDOWS[0], "-Help")
+
+    passing((code, said), describing="the script asked for help")
+    contains(said, "-Version", describing="the options it names")
+    contains(said, "-To", describing="the options it names")
+    truth(not _default(home).exists(), describing="nothing to have been installed")
+
+
+def test_an_emulated_session_installs_for_the_machine_rather_than_the_process(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A 64-bit x86 PowerShell emulated on an ARM64 machine still installs on an ARM64 machine.
+
+    Windows tells an emulated process the machine's own processor in
+    `PROCESSOR_ARCHITEW6432`, and that is what the script reads first.
+    """
+    home = _home(tmp_path, "home-emulated")
+    arm = next(identifier for identifier in WINDOWS if _machine(identifier) == "ARM64")
+    x64 = next(identifier for identifier in WINDOWS if _machine(identifier) == "AMD64")
+    environment = _environment(staged(arm), home, x64)
+    environment["PROCESSOR_ARCHITEW6432"] = _machine(arm)
+
+    code, said = _run(home, environment)
+
+    passing((code, said), describing="the script under an emulated PowerShell")
+    contains(_reports(_default(home)), _version(), describing="the program for the machine")
+
+
+def test_a_release_tag_that_is_not_one_is_refused_before_anything_is_fetched(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """`-Version` reaches a path and a URL, so it is held to the shape of a tag first."""
+    home = _home(tmp_path, "home-not-a-tag")
+
+    code, said = _script(staged(WINDOWS[0]), home, WINDOWS[0], "-Version", "../latest")
+
+    failing((code, said), naming="is not a release tag")
+    contains(said, "v0.1.0", describing="the shape it asked for")
+    truth(not _default(home).exists(), describing="nothing to have been installed")
+
+
+def test_a_session_with_no_local_application_data_is_told_to_name_a_directory(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """With no default to install into, the script asks for `-To` rather than guessing."""
+    home = _home(tmp_path, "home-no-localappdata")
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    del environment["LOCALAPPDATA"]
+
+    code, said = _run(home, environment)
+
+    failing((code, said), naming="no LOCALAPPDATA")
+    contains(said, "Pass -To", describing="the next action it named")
+
+
+def test_a_file_url_names_a_release_directory_too(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A mirror named as `file://` is the same directory as one named by its path."""
+    home = _home(tmp_path, "home-file-url")
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    environment["PRINTOBSERVER_RELEASE_BASE"] = (
+        "file://" + environment["PRINTOBSERVER_RELEASE_BASE"]
+    )
+
+    code, said = _run(home, environment)
+
+    passing((code, said), describing="the script against a file:// release base")
+    contains(_reports(_default(home)), _version(), describing="what the installed program reports")
+
+
+def test_a_machine_with_no_tar_is_told_where_windows_keeps_one(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Unpacking needs `tar`, and a session whose path has none is told so before unpacking."""
+    home = _home(tmp_path, "home-no-tar")
+    empty = home / "empty-path"
+    empty.mkdir()
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    environment["PATH"] = str(empty)
+
+    code, said = _run(home, environment)
+
+    failing((code, said), naming="has no tar")
+    contains(said, "tar.exe", describing="where it said Windows keeps one")
+    contains(said, "Nothing was installed", describing="what the refusal said")
+
+
+def _served_as_the_newest(base: Path, identifier: str, content: bytes) -> None:
+    """Replace the newest release's artifact with `content`, digest and all."""
+    into = base / "latest" / "download"
+    asset = into / platforms.descriptor(REPO, identifier).asset
+    asset.write_bytes(content)
+    (into / CHECKSUMS).write_text(
+        f"{hashlib.sha256(content).hexdigest()}  {asset.name}\n", encoding="utf-8"
+    )
+
+
+def test_an_artifact_that_is_not_an_archive_is_refused_after_its_digest_matched(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A verified download that will not unpack is still nothing to install."""
+    home = _home(tmp_path, "home-not-an-archive")
+    base = staged(WINDOWS[0])
+    _served_as_the_newest(base, WINDOWS[0], b"not a gzip archive at all")
+
+    code, said = _script(base, home, WINDOWS[0])
+
+    failing((code, said), naming="could not be unpacked")
+    contains(said, "Nothing was installed", describing="what the refusal said")
+    truth(not _default(home).exists(), describing="nothing to have been installed")
+
+
+def test_an_archive_naming_a_place_outside_its_own_directory_is_refused(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A member that would land outside the script's directory is read before any member lands."""
+    home = _home(tmp_path, "home-escaping")
+    base = staged(WINDOWS[0])
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as archive:
+        info = tarfile.TarInfo("../escaped.exe")
+        info.size = 0
+        archive.addfile(info, io.BytesIO(b""))
+    _served_as_the_newest(base, WINDOWS[0], gzip.compress(raw.getvalue(), mtime=0))
+
+    code, said = _script(base, home, WINDOWS[0])
+
+    failing((code, said), naming="names a place outside where it is unpacked")
+    truth(not (home / "escaped.exe").exists(), describing="nothing to have escaped")
+    truth(not (home / TEMPORARY / "escaped.exe").exists(), describing="nothing to have escaped")
+
+
+def test_a_destination_nothing_can_write_is_refused_naming_the_option(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A destination under a file is one nothing can make or move into; pass another.
+
+    Which of the two steps refuses it is the host's: one PowerShell refuses to
+    make the directory, another makes nothing and refuses the move. Either
+    way the caller is told the same next action, and nothing was installed.
+    """
+    home = _home(tmp_path, "home-uncreatable")
+    blocking = home / "a-file"
+    blocking.write_text("", encoding="utf-8")
+
+    code, said = _script(staged(WINDOWS[0]), home, WINDOWS[0], "-To", str(blocking / "bin"))
+
+    failing((code, said), naming="Pass -To a directory you can write to")
+    contains(said, "could not be", describing="what the refusal said")
+    contains(said, "Nothing was installed", describing="what the refusal said")
+    truth(blocking.is_file(), describing="the file the destination was under, left as it was")
+
+
+def test_a_directory_already_on_the_path_is_left_as_it_is(
+    staged: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Nothing is added to a path already carrying the directory, and the run says nothing of it."""
+    home = _home(tmp_path, "home-on-path")
+    environment = _environment(staged(WINDOWS[0]), home, WINDOWS[0])
+    # `Path` is the variable Windows keeps its path under, and the one the
+    # script reads; on a POSIX host it is a variable of the journey's own.
+    environment["Path"] = os.pathsep.join([str(_default(home).parent), environment["PATH"]])
+
+    code, said = _run(home, environment)
+
+    passing((code, said), describing="the script installing onto a path already carrying it")
+    absent(said, "was added to your PATH", describing="what the run said about the path")
+    contains(_reports(_default(home)), _version(), describing="what the installed program reports")
+
+
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the host's own answers are Windows's only there"
 )
@@ -439,13 +684,7 @@ def test_this_windows_host_resolves_itself_with_nothing_stood_in(
     for name in ("OS", "PROCESSOR_ARCHITECTURE"):
         environment[name] = os.environ[name]
 
-    result = shell_run(
-        [_powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT)],
-        cwd=home,
-        env=environment,
-        timeout=600,
-    )
-    said = (result.stdout or "") + (result.stderr or "")
+    code, said = _run(home, environment)
 
-    passing((result.returncode, said), describing=f"the install script on {here.id} itself")
+    passing((code, said), describing=f"the install script on {here.id} itself")
     contains(_reports(_default(home)), _version(), describing="what the real program reports")
