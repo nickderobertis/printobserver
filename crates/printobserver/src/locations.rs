@@ -158,6 +158,7 @@ mod tests {
             windows_installer_value(&installer, "ProgramDirectory"),
             WINDOWS.home
         );
+    }
 
     /// The value one module-level assignment in the smoke test makes, as it
     /// writes it: a plain or a raw Python string literal.
