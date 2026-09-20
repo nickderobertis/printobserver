@@ -194,8 +194,8 @@ fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     );
 }
 
-/// Small beside [`MARGIN`], so the record is in hand within a hundredth of
-/// the margin of the supervisor sending it.
+/// The sleep between two looks at the proxy's record: an eightieth of
+/// [`MARGIN`], small beside the window the record is waited for in.
 const PROXY_POLL: Duration = Duration::from_millis(5);
 
 /// Long enough for the traced program to start and be answered on the
@@ -509,8 +509,8 @@ fn micros(margin: Duration) -> i64 {
     i64::try_from(margin.as_micros()).expect("a margin")
 }
 
-/// Short beside [`MARGIN`], so a wait ends within a fortieth of the margin it
-/// was scheduled by.
+/// The longest sleep one wait asks for at a time: a fortieth of [`MARGIN`],
+/// so the wall clock is looked at between sleeps at least that often.
 const WAIT_SLICE: Duration = Duration::from_millis(10);
 
 /// Wait until the wall clock reaches one instant, in microseconds since the
