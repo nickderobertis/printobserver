@@ -37,7 +37,12 @@ edition = "2024"
 
 
 def _metadata_target(cwd: Path, **environment: str) -> Path:
-    """Where cargo, asked from `cwd`, says it will build."""
+    """Where cargo, asked from `cwd`, says it will build.
+
+    `--no-deps` so the answer costs no resolution, and resolved because
+    pytest's temporary directory may sit behind a symbolic link cargo has
+    already followed.
+    """
     result = capture(
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
         cwd,
@@ -55,7 +60,6 @@ def _metadata_target(cwd: Path, **environment: str) -> Path:
 
 
 def _planted_beside(copy: GateCopy) -> Path:
-    """Plant the non-member crate in the copy and hand back its directory."""
     copy.write(f"{BESIDE}/Cargo.toml", BESIDE_MANIFEST)
     copy.write(f"{BESIDE}/src/lib.rs", "//! A crate outside the workspace.\n")
     return copy.root / BESIDE
@@ -78,7 +82,6 @@ def _unit(cwd: Path, command: list[str], crate: str) -> str:
 
 
 def _check(copy: GateCopy, *flags: str) -> str:
-    """The workspace crate's `rustc` invocation under a verbose check with `flags`."""
     return _unit(copy.root, ["cargo", "check", "-v", "-p", CRATE, *flags], CRATE)
 
 
