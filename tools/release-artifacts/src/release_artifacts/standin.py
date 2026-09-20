@@ -47,7 +47,7 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from email.parser import BytesParser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import NewType
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -74,6 +74,7 @@ from release_artifacts.registries import (
     pypi_name,
 )
 from release_artifacts.stand_in import stand_in_program
+from release_artifacts.world import QuietServer
 
 #: What the program a served package carries answers `--version` with, where
 #: a caller asked for nothing in particular: `printobserver <version>`. It is
@@ -219,7 +220,7 @@ class Registries:
         self._next_id = 1
         #: What a write of one artifact is refused with, by registry and name.
         self._refusals: dict[tuple[str, str], _Refusal] = {}
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
+        self._server = QuietServer(("127.0.0.1", 0), _handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

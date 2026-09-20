@@ -19,17 +19,38 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import tomllib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socket import socket
 from types import TracebackType
 from typing import NewType
 from urllib.parse import urlsplit
 
 from repo_checks.shell import start
+
+
+class QuietServer(ThreadingHTTPServer):
+    """A server whose peers may go away mid-connection without a traceback for it.
+
+    The supervisor keeps its connections to the stand-in machine open, and
+    stopping it closes them from its end. On Windows that reaches the handler
+    thread as `ConnectionResetError` rather than as the end of the stream, and
+    the default `handle_error` prints a traceback to standard error for each
+    — which is nothing a reader of a proof's output needs, and on a tier whose
+    pass is one line per proof, it is noise the journeys refuse.
+    """
+
+    def handle_error(self, request: socket | tuple[bytes, socket], client_address: object) -> None:
+        """Say nothing of a peer that went away; report anything else as the base does."""
+        if isinstance(sys.exc_info()[1], ConnectionResetError):
+            return
+        super().handle_error(request, client_address)
+
 
 #: The shared word the ingress requires of every post.
 INGRESS_WORD = "a-shared-word-for-a-smoke-check"
@@ -141,7 +162,7 @@ class Machine:
     def __init__(self) -> None:
         """Start answering on a port the operating system chooses."""
         self.asked: list[str] = []
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _machine_handler(self))
+        self._server = QuietServer(("127.0.0.1", 0), _machine_handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 
