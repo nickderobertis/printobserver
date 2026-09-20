@@ -93,8 +93,10 @@ def consumer_program(consumer: Path, name: str, env: dict[str, str] | None = Non
     builds beside its own manifest. `--no-deps` so the answer resolves nothing.
 
     Raises:
-        InstallError: If `cargo` would not answer where it builds.
+        InstallError: If `cargo` would not answer where it builds, or answered
+            something that names no target directory.
     """
+    asking = f"asking where the consumer at {consumer} builds"
     asked = run(
         [
             "cargo",
@@ -110,10 +112,18 @@ def consumer_program(consumer: Path, name: str, env: dict[str, str] | None = Non
         timeout=INSTALL_TIMEOUT_SECONDS,
     )
     if asked.returncode != 0:
-        asking = f"asking where the consumer at {consumer} builds"
         msg = f"{asking} failed ({asked.returncode}):\n{asked.stderr}"
         raise InstallError(msg)
-    return release_program(Path(json.loads(asked.stdout)["target_directory"]), name)
+    try:
+        metadata = json.loads(asked.stdout)
+    except json.JSONDecodeError as error:
+        msg = f"{asking} answered something other than JSON ({error}):\n{asked.stdout}"
+        raise InstallError(msg) from error
+    directory = metadata.get("target_directory") if isinstance(metadata, dict) else None
+    if not isinstance(directory, str) or not directory:
+        msg = f"{asking} answered no `target_directory`:\n{asked.stdout}"
+        raise InstallError(msg)
+    return release_program(Path(directory), name)
 
 
 def programs_in(environment: Path) -> Path:

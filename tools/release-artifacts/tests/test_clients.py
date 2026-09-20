@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tomllib
 from collections.abc import Callable
@@ -341,6 +342,53 @@ def test_a_consumer_cargo_cannot_read_is_a_stop_naming_it(tmp_path: Path) -> Non
 
     with pytest.raises(InstallError, match="asking where the consumer at"):
         consumer_program(consumer, "printobserver-sdk-smoke")
+
+
+#: What a `cargo` standing in on the path answers `metadata` with, and what a
+#: proof that trusted it would have done with each: no JSON at all, and JSON
+#: that names no target directory or names one that is not a path.
+UNANSWERED = [
+    ("plain text", "answered something other than JSON"),
+    ('{"packages": []}', "answered no `target_directory`"),
+    ('{"target_directory": 7}', "answered no `target_directory`"),
+    ('{"target_directory": ""}', "answered no `target_directory`"),
+    ("[]", "answered no `target_directory`"),
+]
+
+
+def _cargo_answering(directory: Path, answer: str) -> None:
+    """A `cargo` in `directory` that answers `answer` to everything.
+
+    A POSIX host runs it by its interpreter line. A Windows host finds a
+    program by its suffix and runs no interpreter line, so there the code sits
+    beside a `.cmd` that hands it to this interpreter.
+    """
+    code = f"import sys\nsys.stdout.write({answer!r})\n"
+    if sys.platform == "win32":
+        (directory / "cargo.py").write_text(code, encoding="utf-8")
+        (directory / "cargo.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0cargo.py" %*\r\n', encoding="utf-8"
+        )
+        return
+    written = directory / "cargo"
+    written.write_text(f"#!{sys.executable}\n{code}", encoding="utf-8")
+    written.chmod(0o755)
+
+
+@pytest.mark.parametrize(("answer", "refused"), UNANSWERED, ids=[a for a, _ in UNANSWERED])
+def test_a_cargo_that_names_no_target_directory_is_a_stop_quoting_its_answer(
+    answer: str, refused: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An answer naming no target directory gets no guessed path and no traceback."""
+    standing_in = tmp_path / "bin"
+    standing_in.mkdir()
+    _cargo_answering(standing_in, answer)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(standing_in), os.environ["PATH"]]))
+
+    with pytest.raises(InstallError, match=re.escape(refused)) as stopped:
+        consumer_program(_consumer_at(tmp_path / "consumer"), "printobserver-sdk-smoke")
+
+    contains(str(stopped.value), answer, describing="what the stop quotes")
 
 
 def test_a_consumer_manifest_names_a_windows_path_cargo_can_parse() -> None:
