@@ -11,10 +11,9 @@ from inside that copy, the way a second clone or worktree would.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from pathlib import Path
 
-from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
+from journey import REPO_ROOT, CopiesTheTree, GateCopy, capture, clean_environment, output
 from repo_checks.expect import absent, contains, equal, passing, truth
 
 #: The crate the profile is read off: the one under every other, with the
@@ -87,7 +86,7 @@ def _check(copy: GateCopy, *flags: str) -> str:
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it(
-    gate_copy: Callable[..., GateCopy],
+    gate_copy: CopiesTheTree,
 ) -> None:
     """A copy of the tree resolves `target` against its own root, not this checkout's.
 
@@ -127,7 +126,7 @@ def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it(
 
 
 def test_an_invocation_naming_its_own_target_directory_still_wins(
-    gate_copy: Callable[..., GateCopy], tmp_path: Path
+    gate_copy: CopiesTheTree, tmp_path: Path
 ) -> None:
     """`CARGO_TARGET_DIR` overrides the file, so a caller that needs another directory has one.
 
@@ -147,7 +146,7 @@ def test_an_invocation_naming_its_own_target_directory_still_wins(
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
-    gate_copy: Callable[..., GateCopy],
+    gate_copy: CopiesTheTree,
 ) -> None:
     """Dev and test hand rustc `debuginfo=1` under the copy's `target`; release hands it none.
 

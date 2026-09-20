@@ -38,10 +38,10 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import NamedTuple, NewType, Protocol, Self
+from typing import NamedTuple, NewType, Self
 
 import pytest
-from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
+from journey import REPO_ROOT, CopiesTheTree, capture, clean_environment, output
 from release_artifacts.registries import released_by
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
@@ -143,19 +143,6 @@ pytestmark = pytest.mark.skipif(
     shutil.which("release-plz") is None,
     reason="release-plz is installed by `just install-tools`; run bootstrap first",
 )
-
-
-class CopiesTheTree(Protocol):
-    """What the `gate_copy` fixture is: a factory for copies of the committed tree.
-
-    `node_modules=False` is the copy a publication is cut from, and the one
-    the release program is driven over here — it copies the whole tree aside
-    to diff it, and refuses a symbolic link out of the tree.
-    """
-
-    def __call__(self, *, node_modules: bool = True) -> GateCopy:
-        """Make one more copy, with or without the JavaScript dependencies linked in."""
-        ...
 
 
 def sparse_path(name: str) -> str:
