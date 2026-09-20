@@ -1,22 +1,12 @@
 """A fixture repository starts no maintenance of git's own.
 
-`GateCopy` commits the tracked tree into a fresh repository — some eight
-hundred loose objects and no pack — and `git commit` ends by spawning `git
-maintenance run --auto`. Since git 2.54 that command's default strategy is
-`geometric`, whose repack task fires at a hundred loose objects and runs
-*detached*: it packs the objects, deletes the loose ones, and removes each
-`objects/XX` directory they emptied — while the journey goes on to tag the copy
-and drive `release-plz update` over it, which copies the whole `.git` aside
-with a directory walk. Three gate rounds were lost to a fanout directory that
-walk had just listed and then could not enter. This host's git 2.43 keeps the
-older `gc` strategy, whose threshold is 6912 objects, so the repack never fires
-here — but the spawn does, and the spawn is what a journey can see on any
-version.
-
-So a copy is quiescent by construction: its own repository configuration turns
-automatic maintenance off before its first commit, and every command a journey
-later runs in it inherits that. This journey drives the real fixture under
-git's own trace and holds it there.
+`GateCopy` commits the tracked tree into a fresh repository, and every `git
+commit` spawns `git maintenance run --auto` — which on a git past 2.54 repacks
+the copy detached, under whatever a journey then walks `.git` with. The copy's
+own configuration turns that off, for the reason stated beside the setting in
+`journey.py`, and this journey drives the real fixture under git's trace to
+hold it there: the spawn is visible on every git version, whether or not the
+repack it would start ever fires.
 """
 
 from __future__ import annotations
@@ -41,10 +31,35 @@ MAINTENANCE_COMMANDS = frozenset({"maintenance", "gc"})
 QUIESCENT = ("maintenance.auto=false", "gc.auto=0")
 
 
+#: The two Trace2 events that record a process starting, each carrying its
+#: `argv`: a git process's own, and one for each child a git process spawned.
+STARTS = frozenset({"start", "child_start"})
+
+
 def _processes(trace: Path) -> list[list[str]]:
-    """Every process git's trace saw start: each git process, and each child one spawned."""
-    events = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
-    return [event["argv"] for event in events if event["event"] in ("start", "child_start")]
+    """Every process git's trace saw start: each git process, and each child one spawned.
+
+    One JSON object per line, whose `event` names the record's kind; a line of
+    another shape, or a start carrying no `argv` list, is refused naming the
+    line — a trace whose format moved must not read as a fixture that started
+    nothing.
+    """
+    processes: list[list[str]] = []
+    for number, line in enumerate(trace.read_text(encoding="utf-8").splitlines(), start=1):
+        event = json.loads(line)
+        truth(
+            isinstance(event, dict) and isinstance(event.get("event"), str),
+            describing=f"{trace.name}:{number} to be a Trace2 event record: {line!r}",
+        )
+        if event["event"] not in STARTS:
+            continue
+        argv = event.get("argv")
+        truth(
+            isinstance(argv, list) and all(isinstance(word, str) for word in argv),
+            describing=f"{trace.name}:{number} to carry the started process's argv: {line!r}",
+        )
+        processes.append(argv)
+    return processes
 
 
 def _git_subcommand(argv: list[str]) -> str:

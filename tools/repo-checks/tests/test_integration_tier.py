@@ -181,14 +181,12 @@ def test_a_list_that_gains_a_platform_refuses_the_unchanged_job(
 
 
 def _repository(root: Path) -> None:
-    """Make the copy a repository that starts no maintenance of git's own.
+    """A repository that starts no maintenance of git's own.
 
-    Committing the copied tree leaves some eight hundred loose objects, and
-    since git 2.54 the `git maintenance run --auto` every commit spawns repacks
-    that many *detached*, removing the emptied `objects/XX` directories while
-    the check's glob for every `project.json` is still walking `.git`. Turned
-    off in the repository's own configuration, as the e2e tier's `GateCopy`
-    does.
+    The check's glob for every `project.json` walks `.git` as part of the
+    root, and on a git past 2.54 the commit filling it would otherwise spawn a
+    repack that empties it under that walk; the setting is the e2e tier's
+    `GateCopy`'s, for the reason stated beside it.
     """
     for arguments in (
         ["init", "-q", "-b", "main"],
