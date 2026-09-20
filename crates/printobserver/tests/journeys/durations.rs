@@ -16,12 +16,42 @@
 //!
 //! The recorded expiry alone does not separate restoring at the right time from
 //! restoring early and from never restoring. So at the two short values the
-//! journey reads twice, and **both reads are scheduled against the expiry the
-//! record itself carries** rather than against the moment the request was made:
-//! once at that instant less [`MARGIN`] and once at it plus [`MARGIN`]. Each
-//! read records the instant it was taken at, and every intervention is asserted
-//! to have been read before its own expiry and after its own expiry — so a read
-//! that drifted is a failure rather than a silent weakening.
+//! journey reads twice around each intervention, and **both reads are
+//! scheduled against the expiry that intervention's own record carries**
+//! rather than against the moment the request was made, or against any other
+//! intervention's: once at that instant less [`MARGIN`] and once at it plus
+//! [`MARGIN`]. The five adjustments are taken one at a time — asked for, read
+//! before its expiry, read after it — so that what has to fit between an
+//! intervention's request and its first read is that request's own tail and
+//! nothing else. A batch of five requests followed by one read before the
+//! earliest expiry had to fit four more programs into the same span, and at
+//! the shortest duration this program accepts that span is under a second.
+//! That shortest duration is the first timed value everywhere but on Windows,
+//! whose tracer makes the request's own tail longer than a second —
+//! [`WINDOWS_TRACED_REQUEST_SECONDS`] says how and why.
+//!
+//! **The read before the expiry is made in this process**, through the
+//! client crate, and not through a spawned program. Every other read a journey
+//! makes goes through the built program under the tracer, and that is the
+//! right surface for what those reads prove; but this one is about the
+//! **server's** state at an instant, and a spawned, traced, coverage-
+//! instrumented program has no bound on how long it takes under the load a
+//! gate applies — one traced `status` has been seen to take longer than
+//! [`MARGIN`], and a read that lands after the expiry it was scheduled before
+//! proves nothing about either side of it. The program's own `status` command
+//! is proven elsewhere in the walk, and still answers the reads after the
+//! expiry below. What the pre-expiry assertion compares against the recorded
+//! expiry is the instant the read's **answer arrived**, not the instant the
+//! wait ended: the answer is evidence that the intervention was in force only
+//! if it was composed before the expiry, so a read that was issued in time and
+//! answered late fails naming that read rather than passing for having started
+//! on time.
+//!
+//! **The reads after the expiry stay in the traced program** — the status and
+//! the history — because there a slow read can only land later, which is the
+//! side of the expiry the read is about. Each is still asserted to have been
+//! taken after its own intervention's expiry, so a read that drifted is a
+//! failure rather than a silent weakening.
 //!
 //! # What is read, and what the machine can be read for
 //!
@@ -44,12 +74,13 @@ use std::collections::BTreeMap;
 
 use printobserver::failure::Exit;
 use printobserver::surface::{MAX_DURATION_SECONDS, MIN_DURATION_SECONDS};
+use printobserver_sdk::{Actor, Client};
 use printobserver_types::Timestamp;
 use printobserver_types::serde_json::Value;
 
 use crate::machine::Reports;
 use crate::walk::{self, Driven};
-use crate::world::World;
+use crate::world::{self, World};
 
 use super::failures::succeeding;
 use super::running;
@@ -61,31 +92,49 @@ const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 ///
 /// Short enough that "shortly before" is inside the shortest duration this
 /// program accepts, and long enough that a read started there finishes on the
-/// right side of the instant it is about.
+/// right side of the instant it is about. One value on every platform: no
+/// tracer sits inside the window before an expiry, so no tracer's cost is
+/// allowed for in it — what Windows' tracer costs is allowed for at
+/// [`WINDOWS_TRACED_REQUEST_SECONDS`], and is the request's rather than a
+/// read's.
 pub const MARGIN: Duration = Duration::from_millis(400);
 
-/// The margin the host's tracer leaves around the expiry read.
+/// What the Windows tracer adds to the shortest timed duration.
 ///
-/// Decoding one ETW session is materially slower than reading one `strace`
-/// file: on the hosted ARM runner a traced read issued [`MARGIN`] before an
-/// expiry landed well after it. The shortest Windows duration is already
-/// raised above the public minimum for that reason, so take enough of that
-/// Windows-only allowance — three seconds, a few times what one `logman`
-/// start and `tracerpt` decode cost there — to ensure the traced request
-/// finishes on the side of the expiry it started on. Linux keeps [`MARGIN`].
-fn margin(windows: bool) -> Duration {
+/// The first timed value of the corpus is the shortest duration this program
+/// accepts, on every platform but one. On Windows the traced request itself
+/// answers late: `traced` there stops the kernel logger and decodes its
+/// session with `tracerpt` **after** the program has exited and **before** it
+/// answers, so the recorded expiry — which is what the pre-expiry read is
+/// scheduled from — is in hand only after the server's `requested_at` plus
+/// that decode. Nothing here can make that read before it knows the instant
+/// it is about, and one second would not survive a decode this host cannot
+/// measure. So Windows alone starts the corpus this much above the minimum;
+/// it is an allowance for the request's own tail and not for any read, which
+/// is why [`MARGIN`] does not grow with it. What removes it is a pre-expiry
+/// read scheduled from a deadline known before the traced request returns.
+const WINDOWS_TRACED_REQUEST_SECONDS: i64 = 10;
+
+/// The first timed value of the corpus on this host.
+fn shortest_timed(windows: bool) -> i64 {
     if windows {
-        Duration::from_secs(3)
+        MIN_DURATION_SECONDS + WINDOWS_TRACED_REQUEST_SECONDS
     } else {
-        MARGIN
+        MIN_DURATION_SECONDS
     }
 }
 
 #[test]
-fn each_tracer_gets_its_platform_margin_around_an_expiry() {
-    assert_eq!(margin(false), MARGIN);
-    assert_eq!(margin(true), Duration::from_secs(3));
-    assert!(margin(true) < Duration::from_secs(MIN_DURATION_SECONDS as u64 + 10));
+fn every_host_but_windows_starts_the_corpus_at_the_minimum() {
+    assert_eq!(shortest_timed(false), MIN_DURATION_SECONDS);
+    assert_eq!(
+        shortest_timed(true),
+        MIN_DURATION_SECONDS + WINDOWS_TRACED_REQUEST_SECONDS
+    );
+    assert!(
+        MARGIN < Duration::from_secs(u64::try_from(MIN_DURATION_SECONDS).expect("a duration")),
+        "the margin is not inside the shortest duration this program accepts"
+    );
 }
 
 /// What one accepted adjustment left behind.
@@ -129,15 +178,15 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
         "the vocabulary's adjustments are not the ones this journey drives"
     );
 
-    let first = if cfg!(windows) {
-        MIN_DURATION_SECONDS + 10
-    } else {
-        MIN_DURATION_SECONDS
-    };
+    let first = shortest_timed(cfg!(windows));
     for seconds in [first, first + 2] {
-        let opened = each_asks_for(world, &adjustments, seconds);
-        the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
-        the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+        // One at a time, so that each intervention's two reads wait on its
+        // own request and on nothing another adjustment did.
+        for one in &adjustments {
+            let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
+            the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
+            the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+        }
     }
     let _ = each_asks_for(world, &adjustments, MAX_DURATION_SECONDS);
 
@@ -164,38 +213,18 @@ fn adjustments(world: &World) -> Vec<Driven> {
 /// Each is started from a value the adjustment is **not** about, where the
 /// machine reports one at all: an adjustment made from the value it asks for
 /// restores to that same value, and a machine that ignored both the change and
-/// the putting back would be indistinguishable from one that did neither.
-///
-/// Every one is moved there **before** any is asked for, and then all of them
-/// are asked for **at once**. The read that follows the batch is scheduled
-/// [`MARGIN`] before the *first* request's expiry, so at the shortest duration
-/// this program accepts everything between that request and the read has to
-/// fit in the remainder of one second. A heater settling in that span polls
-/// the machine at a pause of its own that alone can exceed it, and five
-/// requests made one after another — each a program started and a round trip
-/// to the supervisor — exceed it on a loaded host, which is what a hosted
-/// runner is. Settling first and asking together leaves the span holding the
-/// slowest request rather than the sum of them, and moves no value any other
-/// adjustment is about.
+/// the putting back would be indistinguishable from one that did neither. The
+/// settling comes before the request, and so before every timed window the
+/// reads around that request open.
 pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec<Bounded> {
-    for one in adjustments {
-        super::confirming::starting_from_somewhere_else(world, &one.command.name);
-    }
     let asked = seconds.to_string();
-    let answers: Vec<Value> = std::thread::scope(|scope| {
-        let asking: Vec<_> = adjustments
-            .iter()
-            .map(|one| scope.spawn(|| ask_for(world, one, &asked)))
-            .collect();
-        asking
-            .into_iter()
-            .map(|asked| asked.join().expect("an adjustment was asked for"))
-            .collect()
-    });
     adjustments
         .iter()
-        .zip(answers)
-        .map(|(one, answer)| the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds))
+        .map(|one| {
+            super::confirming::starting_from_somewhere_else(world, &one.command.name);
+            let answer = ask_for(world, one, &asked);
+            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds)
+        })
         .collect()
 }
 
@@ -286,61 +315,88 @@ fn instant(answer: &Value, at: &str) -> Timestamp {
 
 /// Wait until a margin before one instant, and answer when the wait ended.
 fn just_before(when: Timestamp, margin: Duration) -> Timestamp {
-    wait(when, -i64::try_from(margin.as_micros()).expect("a margin"))
+    wait(when, -micros(margin))
 }
 
 /// Wait until a margin after one instant, and answer when the wait ended.
 fn just_after(when: Timestamp, margin: Duration) -> Timestamp {
-    wait(when, i64::try_from(margin.as_micros()).expect("a margin"))
+    wait(when, micros(margin))
 }
+
+/// One margin, as the count of microseconds an instant is shifted by.
+fn micros(margin: Duration) -> i64 {
+    i64::try_from(margin.as_micros()).expect("a margin")
+}
+
+/// How long a wait sleeps before looking at the clock again.
+const WAIT_SLICE: Duration = Duration::from_millis(10);
 
 /// Wait until one instant shifted by a count of microseconds.
 ///
 /// The instant is computed against the record's own expiry rather than against
 /// the moment the request was made, which is what makes both reads scheduled
 /// relative to the thing they are about.
+///
+/// It is waited for on the clock it is an instant of. Every instant this
+/// system records is wall-clock time, and a host may step its wall clock while
+/// a journey runs — a guest resynchronising against its host does, by seconds
+/// at a time — so one sleep for the whole remainder, which counts on the
+/// monotonic clock, would end at the wrong wall-clock instant and read on the
+/// wrong side of the expiry it was scheduled against. Sleeping a slice at a
+/// time and looking at the wall clock between slices ends the wait when that
+/// clock says so, whatever it did in the meantime.
 fn wait(when: Timestamp, shift: i64) -> Timestamp {
-    let until =
-        when.as_utc().timestamp_micros() + shift - Timestamp::now().as_utc().timestamp_micros();
-    if until > 0 {
-        std::thread::sleep(Duration::from_micros(u64::try_from(until).expect("a wait")));
+    let until = when.as_utc().timestamp_micros() + shift;
+    loop {
+        let remaining = until - Timestamp::now().as_utc().timestamp_micros();
+        if remaining <= 0 {
+            return Timestamp::now();
+        }
+        let remaining = Duration::from_micros(u64::try_from(remaining).expect("a wait"));
+        std::thread::sleep(remaining.min(WAIT_SLICE));
     }
-    Timestamp::now()
 }
 
 /// The adjusted value is in place shortly before each one expires.
 ///
-/// One read for the batch, taken before the earliest expiry among them: every
-/// intervention is then asserted to have been read before **its own**, so a
-/// read that arrived late fails here rather than passing for having been taken
-/// at all. Two instants say so. `at` is when the read was issued, which is the
-/// schedule; the status's own `printer.observed_at` is when the server looked
-/// at the machine to answer it, which it stamps before reading which
-/// interventions still stand — so a read issued in time that landed late fails
-/// naming the tracer's cost rather than a value that was not in force.
+/// One read per intervention, scheduled [`MARGIN`] before **its own** recorded
+/// expiry and made in this process rather than through the traced program, so
+/// that nothing spawned sits between the scheduled instant and the answer.
+/// Three instants say what the read proves. `at` is when the wait ended,
+/// which is the schedule, and it is held to be no earlier than the margin
+/// before the expiry. `answered` is when the answer was in hand, and it is
+/// held to be before the expiry: an answer composed after it says nothing
+/// about the intervention having been in force, so a read whose answer arrived
+/// late fails here naming that read. And the status's own
+/// `printer.observed_at` is when the server looked at the machine to compose
+/// that answer, which it stamps before reading which interventions still
+/// stand, so the machine's value the read carries is one observed before the
+/// expiry too.
 pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
-    let earliest = opened
-        .iter()
-        .map(|bounded| bounded.expires_at)
-        .min()
-        .expect("this journey opened an intervention");
-    let margin = margin(cfg!(windows));
-    let at = just_before(earliest, margin);
-    let status = running::read(world, &["status", "--print-id", &world.print_id]);
-    let observed = instant(&status, "/printer/observed_at");
-    let held = in_force(&status);
-
     for bounded in opened {
+        let at = just_before(bounded.expires_at, MARGIN);
+        let (status, answered) = status_in_process(world);
+        let observed = instant(&status, "/printer/observed_at");
+        let held = in_force(&status);
+
         assert!(
-            at < bounded.expires_at,
-            "`{}` was read at {at}, which is not before it expires at {}",
+            at.as_utc().timestamp_micros()
+                >= bounded.expires_at.as_utc().timestamp_micros() - micros(MARGIN),
+            "`{}` was read at {at}, which is earlier than {MARGIN:?} before it expires at {}",
+            bounded.command,
+            bounded.expires_at
+        );
+        assert!(
+            answered < bounded.expires_at,
+            "`{}` was read at {at}, before it expires at {}, but the answer arrived at \
+             {answered}, after: the read in this process took longer than the window left",
             bounded.command,
             bounded.expires_at
         );
         assert!(
             observed < bounded.expires_at,
-            "`{}` was read at {at}, before it expires at {}, but the machine was observed \
-             at {observed}, after: the traced read took longer than the {margin:?} it was left",
+            "`{}` was answered at {answered}, before it expires at {}, but the machine was \
+             observed at {observed}, after it",
             bounded.command,
             bounded.expires_at
         );
@@ -354,22 +410,41 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, o
     }
 }
 
-/// The prior value is back shortly after each one expired.
-pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &[Bounded]) {
-    let latest = opened
-        .iter()
-        .map(|bounded| bounded.expires_at)
-        .max()
-        .expect("this journey opened an intervention");
-    let at = just_after(latest, margin(cfg!(windows)));
-    let status = running::read(world, &["status", "--print-id", &world.print_id]);
-    let held = in_force(&status);
-    let history = running::read(
-        world,
-        &["history", "--print-id", &world.print_id, "--limit", "40"],
-    );
+/// One status read of this world's print made in this process, and the instant
+/// its answer was in hand.
+///
+/// The client crate's own `status` operation, through the same recording proxy
+/// every traced command reaches the supervisor through, and its typed answer
+/// rendered back to the document the server sent — which is what the program
+/// prints under `--json`, so every assertion reads the same fields either way.
+fn status_in_process(world: &World) -> (Value, Timestamp) {
+    let client = Client::new(world.proxy.url(), Actor::Operator).with_credential(world::CREDENTIAL);
+    let answer = client
+        .status(&world.print_id)
+        .unwrap_or_else(|error| panic!("the status could not be read in this process: {error}"));
+    let answered = Timestamp::now();
+    let status = printobserver_sdk::as_value(&answer)
+        .unwrap_or_else(|error| panic!("a status answer this client read renders: {error}"));
+    (status, answered)
+}
 
+/// The prior value is back shortly after each one expired.
+///
+/// One status read and one history read per intervention, scheduled
+/// [`MARGIN`] after **its own** recorded expiry and made through the traced
+/// program: here a slow read can only land later, which is the side of the
+/// expiry this read is about, and the read is still asserted to have been
+/// taken after it.
+pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &[Bounded]) {
     for bounded in opened {
+        let at = just_after(bounded.expires_at, MARGIN);
+        let status = running::read(world, &["status", "--print-id", &world.print_id]);
+        let held = in_force(&status);
+        let history = running::read(
+            world,
+            &["history", "--print-id", &world.print_id, "--limit", "40"],
+        );
+
         assert!(
             at > bounded.expires_at,
             "`{}` was read at {at}, which is not after it expires at {}",
