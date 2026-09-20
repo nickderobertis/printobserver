@@ -132,10 +132,11 @@ fn every_host_but_windows_starts_the_corpus_at_the_minimum() {
         shortest_timed(true),
         MIN_DURATION_SECONDS + WINDOWS_TRACED_REQUEST_SECONDS
     );
-    assert!(
-        MARGIN < Duration::from_secs(u64::try_from(MIN_DURATION_SECONDS).expect("a duration")),
-        "the margin is not inside the shortest duration this program accepts"
-    );
+}
+
+#[test]
+fn the_margin_is_inside_the_shortest_duration_this_program_accepts() {
+    assert!(MARGIN < Duration::from_secs(u64::try_from(MIN_DURATION_SECONDS).expect("a duration")));
 }
 
 /// What one accepted adjustment left behind.
@@ -181,8 +182,6 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
 
     let first = shortest_timed(cfg!(windows));
     for seconds in [first, first + 2] {
-        // One at a time, so that each intervention's two reads wait on its
-        // own request and on nothing another adjustment did.
         for one in &adjustments {
             let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
             the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
@@ -338,12 +337,12 @@ fn just_after(when: Timestamp, margin: Duration) -> Timestamp {
     Timestamp::now()
 }
 
-/// One margin, as the count of microseconds an instant is shifted by.
 fn micros(margin: Duration) -> i64 {
     i64::try_from(margin.as_micros()).expect("a margin")
 }
 
-/// How long a wait sleeps before looking at the clock again.
+/// Short beside [`MARGIN`], so a wait ends within a fortieth of the margin it
+/// was scheduled by.
 const WAIT_SLICE: Duration = Duration::from_millis(10);
 
 /// Wait until the wall clock reaches one instant, in microseconds since the
