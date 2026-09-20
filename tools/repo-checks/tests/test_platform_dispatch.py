@@ -9,8 +9,9 @@ job answered, and a source job carrying a shape the committed script cannot run
 by hand. And the script itself is driven, over a copy of the tree and with real
 programs standing in for the ones its steps run, through every shape it reads
 off a source job: a teardown that runs after a failure, a step waived, a step
-conditioned on the runner's family, and an environment reading another step's
-outcome.
+conditioned on the runner's family or on every other family, a step run under
+PowerShell, and an environment reading another step's outcome, or choosing
+between several by family.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import io
 import os
 import re
 import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -33,6 +35,7 @@ from repo_checks.expect import absent, accepted, contains, equal, refused, refus
 from repo_checks.model import Repo
 from repo_checks.parsing import load_workflow
 from repo_checks.platforms import supported
+from repo_checks.shell import run as shell_run
 from treecopy import Tree
 
 DISPATCH = ".github/workflows/platform-dispatch.yml"
@@ -359,8 +362,19 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     [
         (
             "      - run: just check\n",
-            "      - run: just check\n        shell: pwsh\n",
-            "carries `shell`",
+            "      - run: just check\n        shell: cmd\n",
+            "runs under `cmd`",
+        ),
+        (
+            "      - run: just check\n",
+            "      - run: just check\n        if: runner.os == 'Windows' || always()\n",
+            "conditioned on `runner.os == 'Windows' || always()`",
+        ),
+        (
+            "      - run: just check\n",
+            "      - run: just check\n        env:\n"
+            "          WHEN: ${{ runner.os == 'Linux' && steps.a.outcome || 'never' }}\n",
+            "choice between outcomes",
         ),
         (
             "      - run: just check\n",
@@ -405,6 +419,8 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     ],
     ids=[
         "shell",
+        "compound-condition",
+        "choice-not-of-outcomes",
         "expression-env",
         "expression-waiver",
         "no-command",
@@ -503,7 +519,13 @@ class Recording:
         self.failing_on = ""
 
     def program(self, name: str, *, failing_on: str = "", exit_code: int = 7) -> None:
-        """One stand-in that records `name` and its arguments, and fails on one argument."""
+        """One stand-in that records `name` and its arguments, and fails on one argument.
+
+        A shell script, which is what a step under `bash` runs on every host;
+        on Windows a batch twin beside it too, because a step under `pwsh`
+        there runs a program by a suffix `PATHEXT` names and a bare script by
+        none.
+        """
         script = self.programs / name
         script.write_text(
             "#!/bin/sh\n"
@@ -513,7 +535,86 @@ class Recording:
             encoding="utf-8",
         )
         script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if sys.platform == "win32":
+            (self.programs / f"{name}.cmd").write_text(
+                "@echo off\r\n"
+                f'echo {name} %*>> "%RECORD%"\r\n'
+                f'if not "%FAIL_ON%"=="" if "%~1"=="%FAIL_ON%" exit /b {exit_code}\r\n'
+                "exit /b 0\r\n",
+                encoding="utf-8",
+            )
         self.failing_on = failing_on
+
+    def pipe_reader(self, name: str, *, exit_code: int = 0) -> None:
+        """One stand-in that reads its pipe out before it records, and exits as told.
+
+        What `sh` and `sudo sh` do with the script `curl` hands them: read it
+        before running it — so the record carries the order the commands
+        finished in rather than the order a pipeline started them.
+        """
+        script = self.programs / name
+        script.write_text(
+            "#!/bin/bash\n"
+            "if [ -p /dev/stdin ]; then cat > /dev/null; fi\n"
+            f'echo "{name}${{*:+ $*}}" >> "$RECORD"\n'
+            f"exit {exit_code}\n",
+            encoding="utf-8",
+        )
+        script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    #: What the stand-in profile defines: `irm`, `iex` and `Set-Service`, each
+    #: recording what it was given. The fetch answers its own address as the
+    #: script it fetched, the service installer and the start refuse as they do
+    #: unattended, and anything else runs.
+    POWERSHELL_PROFILE = (
+        "Remove-Item Alias:irm -Force\n"
+        "Remove-Item Alias:iex -Force\n"
+        "function irm { param([string]$Uri)"
+        ' Add-Content -LiteralPath $env:RECORD -Value "irm $Uri"; $Uri }\n'
+        "function iex { param([Parameter(ValueFromPipeline)]$Command) process {"
+        ' Add-Content -LiteralPath $env:RECORD -Value "iex $Command";'
+        " if ($Command -like '*install-service*') { throw 'cannot run unattended' } } }\n"
+        "function Set-Service {"
+        ' Add-Content -LiteralPath $env:RECORD -Value "Set-Service $args";'
+        " throw 'no service control manager here' }\n"
+    )
+
+    def powershell_commands(self) -> None:
+        """Stand-ins for the commands the Windows pair runs, in PowerShell's own vocabulary.
+
+        `irm` and `iex` are aliases and `Set-Service` a cmdlet, none of them a
+        program on a path, so they are stood in for where PowerShell reads its
+        commands from: a profile of this recording's own, which `pwsh -command`
+        loads exactly as it does for a caller at a prompt. Written where each
+        host's PowerShell reads one — under the configuration directory on
+        Linux and macOS, under the profile's documents on Windows — with the
+        environment `environment` hands every step naming this recording's
+        root as both; and PowerShell is asked, under that environment, where
+        it will read its profile from, so a host that reads it from somewhere
+        this recording does not own is refused rather than run against the
+        caller's own profile.
+
+        Raises:
+            AssertionError: If this host's PowerShell reads its profile from
+                outside this recording's root.
+        """
+        root = self.programs.parent
+        for directory in (root / "config" / "powershell", root / "Documents" / "PowerShell"):
+            directory.mkdir(parents=True)
+            (directory / "Microsoft.PowerShell_profile.ps1").write_text(
+                self.POWERSHELL_PROFILE, encoding="utf-8"
+            )
+        asked = shell_run(
+            ["pwsh", "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost"],
+            cwd=root,
+            env=self.environment(),
+            timeout=60,
+        )
+        reads = Path(asked.stdout.strip())
+        truth(
+            asked.returncode == 0 and reads.is_file() and reads.is_relative_to(root),
+            describing=f"pwsh to read its profile from under {root}, not from `{reads}`",
+        )
 
     def environment(self, **extra: str) -> dict[str, str]:
         """An environment finding the stand-ins first, and telling them what to record."""
@@ -521,6 +622,13 @@ class Recording:
         environment["PATH"] = os.pathsep.join([str(self.programs), environment.get("PATH", "")])
         environment["RECORD"] = str(self.record)
         environment["FAIL_ON"] = self.failing_on
+        # A home of this recording's own, and where `pwsh` reads its profile
+        # from relative to one on each host: the configuration directory on
+        # Linux and macOS, the profile's documents on Windows.
+        root = self.programs.parent
+        environment["HOME"] = str(root)
+        environment["USERPROFILE"] = str(root)
+        environment["XDG_CONFIG_HOME"] = str(root / "config")
         environment.update(extra)
         return environment
 
@@ -595,38 +703,61 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     )
 
 
+#: What the shell managers' pair records on each family: the installer read
+#: down its pipe, then that family's own start command.
+SHELL_PAIR = {
+    "systemctl": ["sudo sh", "sudo systemctl enable --now printobserver.service"],
+    "launchctl": [
+        "sudo sh",
+        "sudo launchctl bootstrap system /Library/LaunchDaemons/"
+        "io.github.nickderobertis.printobserver.plist",
+    ],
+}
+SHELL_INSTALLER = (
+    "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install-service.sh"
+)
+#: What the Windows pair records: the installer fetched and run, then the start.
+WINDOWS_INSTALLER = (
+    "https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install-service.ps1"
+)
+WINDOWS_PAIR = [
+    f"irm {WINDOWS_INSTALLER}",
+    f"iex {WINDOWS_INSTALLER}",
+    "Set-Service -Name printobserver -StartupType Automatic -Status Running",
+]
+
+
 @pytest.mark.parametrize(
-    ("platform", "started_by"),
-    [("linux-x86_64", "systemctl"), ("macos-aarch64", "launchctl")],
+    ("platform", "pair"),
+    [
+        ("linux-x86_64", [SHELL_INSTALLER, *SHELL_PAIR["systemctl"]]),
+        ("macos-aarch64", [SHELL_INSTALLER, *SHELL_PAIR["launchctl"]]),
+        ("windows-x86_64", WINDOWS_PAIR),
+    ],
+    ids=["systemd", "launchd", "windows-service"],
 )
 def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_may(
-    tree: Callable[[], Tree], tmp_path: Path, platform: str, started_by: str
+    tree: Callable[[], Tree], tmp_path: Path, platform: str, pair: list[str]
 ) -> None:
     """The route job's waived steps fail without failing it, and the report reads their outcomes.
 
-    Each family's start command runs on its own family alone, the installer
-    and the start are waived, and the summary the source writes on `always()`
-    carries both outcomes — read through `steps.<id>.outcome` and the
-    `runner.os` choice between the two start steps, as the source spells them.
+    Each family's pair runs on its own family alone — the shell installer on
+    every family but Windows, each start command on its own, and the
+    PowerShell pair under `pwsh` on Windows — the installer and the start are
+    waived, and the summary the source writes on `always()` carries both
+    outcomes, read through the `runner.os` choices between the pairs' steps as
+    the source spells them.
     """
     copy = tree()
     recording = Recording(tmp_path)
     for name in ("pip", "printobserver", "curl"):
         recording.program(name)
+    recording.powershell_commands()
     # `sudo` fails whatever it is asked: neither the installer nor the start
-    # command can succeed unattended, which is why the source waives them. The
-    # installer reaches it down a pipe, and it reads that pipe out before it
-    # records — as `sh` reads a script before running it — so the record
-    # carries the order the commands finished in rather than the order a
-    # pipeline started them.
-    recording.program("sudo", failing_on="sh")
-    (tmp_path / "programs" / "sudo").write_text(
-        "#!/bin/sh\n"
-        "if [ -p /dev/stdin ]; then cat > /dev/null; fi\n"
-        'echo "sudo $*" >> "$RECORD"\n'
-        "exit 1\n",
-        encoding="utf-8",
-    )
+    # command can succeed unattended, which is why the source waives them.
+    recording.pipe_reader("sudo", exit_code=1)
     summary = tmp_path / "summary.md"
 
     code, said = _run(copy, ROUTE, platform, recording, GITHUB_STEP_SUMMARY=str(summary))
@@ -634,26 +765,106 @@ def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_m
     equal(code, 0, describing=f"the exit of a route whose only failures are waived:\n{said}")
     equal(
         recording.recorded(),
-        [
-            "pip install printobserver-cli",
-            "printobserver --version",
-            "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
-            "scripts/install-service.sh",
-            "sudo sh",
-            f"sudo {started_by} "
-            + (
-                "enable --now printobserver.service"
-                if started_by == "systemctl"
-                else "bootstrap system /Library/LaunchDaemons/"
-                "io.github.nickderobertis.printobserver.plist"
-            ),
-        ],
+        ["pip install printobserver-cli", "printobserver --version", *pair],
         describing="what ran",
     )
     contains(said, "and its failure is waived", describing=said)
     equal(
         summary.read_text(encoding="utf-8"),
         f"{ROUTE}: service installation failure, service startup failure\n",
+        describing="the summary the report step wrote",
+    )
+
+
+@pytest.mark.parametrize(
+    ("platform", "taken"),
+    [
+        (
+            "linux-aarch64",
+            [
+                "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+                "scripts/install.sh",
+                "sh",
+                "printobserver --version",
+            ],
+        ),
+        (
+            "windows-aarch64",
+            [
+                "irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+                "scripts/install.ps1",
+                "iex https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+                "scripts/install.ps1",
+                "printobserver --version",
+            ],
+        ),
+    ],
+    ids=["shell-form", "powershell-form"],
+)
+def test_the_script_route_takes_the_form_of_the_script_its_family_runs(
+    tree: Callable[[], Tree], tmp_path: Path, platform: str, taken: list[str]
+) -> None:
+    """A step on every family but one runs there and not on that one, and `pwsh` runs its own.
+
+    The shell form's fetch and check are conditioned on `runner.os !=
+    'Windows'`, so a Windows dispatch skips both and runs the PowerShell form's
+    one step — two lines under `pwsh`, the fetch and the check in one session
+    — and a Linux dispatch does the reverse. What each recorded is what its
+    family's caller runs, and nothing of the other's.
+    """
+    copy = tree()
+    recording = Recording(tmp_path)
+    for name in ("printobserver", "curl"):
+        recording.program(name)
+    recording.pipe_reader("sh")
+    recording.pipe_reader("sudo", exit_code=1)
+    recording.powershell_commands()
+    summary = tmp_path / "summary.md"
+
+    code, said = _run(
+        copy, "install-route-script", platform, recording, GITHUB_STEP_SUMMARY=str(summary)
+    )
+
+    equal(code, 0, describing=f"the exit of a route whose only failures are waived:\n{said}")
+    equal(recording.recorded()[: len(taken)], taken, describing="how the route was taken")
+    contains(
+        summary.read_text(encoding="utf-8"),
+        "install-route-script: service installation failure, service startup failure",
+        describing="the summary the report step wrote",
+    )
+
+
+def test_a_powershell_step_fails_the_job_the_way_a_shell_one_does(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """An unwaived `pwsh` step that fails fails the job, and stops the steps after it.
+
+    The check inside the PowerShell form's one step is a program on the path,
+    run from `pwsh` as a caller who pasted the command and typed the check
+    runs it; when it fails, the pair after it does not run and the report on
+    `always()` says neither reached.
+    """
+    copy = tree()
+    recording = Recording(tmp_path)
+    recording.program("printobserver", failing_on="--version", exit_code=5)
+    recording.pipe_reader("sudo", exit_code=1)
+    recording.powershell_commands()
+    summary = tmp_path / "summary.md"
+
+    code, said = _run(
+        copy, "install-route-script", "windows-x86_64", recording, GITHUB_STEP_SUMMARY=str(summary)
+    )
+
+    truth(code != 0, describing=f"the exit of a route whose check failed:\n{said}")
+    equal(
+        recording.recorded()[-1],
+        "printobserver --version",
+        describing="the last thing that ran before the failure stopped the job",
+    )
+    contains(said, "failed with", describing=said)
+    contains(
+        summary.read_text(encoding="utf-8"),
+        "install-route-script: service installation skipped, service startup skipped",
         describing="the summary the report step wrote",
     )
 

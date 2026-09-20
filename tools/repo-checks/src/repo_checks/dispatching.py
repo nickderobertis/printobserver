@@ -34,17 +34,23 @@ rather than found by a dispatch that ran something else.
   and this executor passes them over.
 * A `run:` step runs under `bash --noprofile --norc -eo pipefail`, which is the
   shell Actions gives a step that names none — on Windows too, where the
-  workflow's `run` job names `bash` for every step.
+  workflow's `run` job names `bash` for every step. A step naming
+  `shell: pwsh` runs under `pwsh -command ". '<script>'"` the way Actions runs
+  one, which is how the install-route jobs run the Windows pair; `shell: bash`
+  names what a step gets anyway, and any other shell is refused.
 * `if: always()` runs the step whether or not one before it failed, which is
   how a teardown runs; `if: runner.os == '<Linux|macOS|Windows>'` runs it on
-  that family's runner alone; a step naming no condition runs unless one
-  before it failed and was not waived. Any other condition is refused.
+  that family's runner alone, and `if: runner.os != '<family>'` on every
+  other family's; a step naming no condition runs unless one before it failed
+  and was not waived. Any other condition is refused.
 * `continue-on-error: true` waives the step's failure: its outcome is
   `failure`, and the job's exit is not.
-* A step's `env:` carries a literal, `${{ steps.<id>.outcome }}`, or
-  `${{ runner.os == '<family>' && steps.<a>.outcome || steps.<b>.outcome }}`,
-  which are the shapes the install-route jobs report their waived steps with.
-  Any other expression is refused.
+* A step's `env:` carries a literal, `${{ steps.<id>.outcome }}`, or a choice
+  by family — `${{ runner.os == '<family>' && steps.<a>.outcome || steps.<b>
+  .outcome }}`, with as many `runner.os == '<family>' && steps.<id>.outcome ||`
+  arms as there are families to choose between before the one it falls back
+  to — which are the shapes the install-route jobs report their waived steps
+  with. Any other expression is refused.
 * A job-level `env:` value that is a literal is carried; one that is an
   expression is not, because it reads a run this dispatch is not — the
   registry proofs carry a version that way, and carried none prove the newest
@@ -56,6 +62,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import sys
 import tempfile
 from collections.abc import Callable
@@ -87,18 +94,33 @@ RUNNER_OS = {
 
 #: What a `run:` step may carry: a `uses:` step carries its action and what it
 #: is given, and nothing this executor reads.
-RUN_STEP_KEYS = frozenset({"id", "if", "run", "env", "continue-on-error", "name"})
+RUN_STEP_KEYS = frozenset({"id", "if", "run", "env", "continue-on-error", "name", "shell"})
 USES_STEP_KEYS = frozenset({"id", "if", "uses", "with", "name"})
 
-#: A step condition on the runner's family, and the one on a step that always runs.
-ALWAYS = "always()"
-OS_CONDITION = re.compile(r"^runner\.os\s*==\s*'(?P<family>Linux|macOS|Windows)'$")
+#: The shells a `run:` step may name: the one every step runs under anyway,
+#: and the cross-platform PowerShell the Windows pair of an install-route job
+#: runs under.
+BASH = "bash"
+PWSH = "pwsh"
+SHELLS = frozenset({BASH, PWSH})
 
-#: The two shapes a step's `env:` may read another step's outcome through.
+#: A step condition on the runner's family — on it, or on every other family —
+#: and the one on a step that always runs. A negated family is kept as the
+#: family with `!` in front of it.
+ALWAYS = "always()"
+NOT = "!"
+OS_CONDITION = re.compile(r"^runner\.os\s*(?P<operator>==|!=)\s*'(?P<family>Linux|macOS|Windows)'$")
+
+#: The two shapes a step's `env:` may read another step's outcome through: one
+#: step's outcome, or a choice by family — one arm per family chosen between,
+#: then the outcome it falls back to.
 OUTCOME = re.compile(r"^\$\{\{\s*steps\.(?P<step>[A-Za-z0-9_-]+)\.outcome\s*\}\}$")
-OS_CHOICE = re.compile(
-    r"^\$\{\{\s*runner\.os\s*==\s*'(?P<family>Linux|macOS|Windows)'\s*&&\s*"
+OS_ARM = re.compile(
+    r"runner\.os\s*==\s*'(?P<family>Linux|macOS|Windows)'\s*&&\s*"
     r"steps\.(?P<then>[A-Za-z0-9_-]+)\.outcome\s*\|\|\s*"
+)
+OS_CHOICE = re.compile(
+    r"^\$\{\{\s*(?P<arms>(?:" + OS_ARM.pattern + r")+)"
     r"steps\.(?P<otherwise>[A-Za-z0-9_-]+)\.outcome\s*\}\}$"
 )
 EXPRESSION = re.compile(r"\$\{\{.*\}\}", re.DOTALL)
@@ -253,10 +275,21 @@ class Step:
     #: Its `id`, or its position where it has none.
     id: str
     command: str
-    #: `always()`, a runner family, or `""` for a step naming no condition.
+    #: `always()`, a runner family, a family with `!` in front of it, or `""`
+    #: for a step naming no condition.
     condition: str
     waived: bool
     environment: dict[str, str] = field(default_factory=dict)
+    #: The shell it runs under: `bash` unless it names `pwsh`.
+    shell: str = BASH
+
+    def runs_on(self, runner_os: str) -> bool:
+        """Whether this step's condition admits a runner of `runner_os`'s family."""
+        if self.condition in {"", ALWAYS}:
+            return True
+        if self.condition.startswith(NOT):
+            return self.condition[len(NOT) :] != runner_os
+        return self.condition == runner_os
 
 
 def plan(source: Source, runner_os: str) -> list[Step]:
@@ -290,9 +323,22 @@ def plan(source: Source, runner_os: str) -> list[Step]:
                 condition,
                 waived,
                 environment,
+                _shell(where, step.get("shell")),
             )
         )
     return planned
+
+
+def _shell(where: str, declared: object) -> str:
+    """The shell a step names, as one of the two this executor runs a step under."""
+    if declared is None:
+        return BASH
+    if isinstance(declared, str) and declared.strip() in SHELLS:
+        return declared.strip()
+    raise DispatchError(
+        f"{where} runs under `{declared}`, and a dispatch by hand runs a step under "
+        f"`{BASH}` or `{PWSH}`"
+    )
 
 
 def _refuse_extra(where: str, extra: set[str]) -> None:
@@ -302,7 +348,7 @@ def _refuse_extra(where: str, extra: set[str]) -> None:
 
 
 def _condition(where: str, declared: object) -> str:
-    """A step's condition, as one of the three shapes this executor runs."""
+    """A step's condition, as one of the shapes this executor runs."""
     if declared is None:
         return ""
     if not isinstance(declared, str):
@@ -314,9 +360,10 @@ def _condition(where: str, declared: object) -> str:
     if match is None:
         raise DispatchError(
             f"{where} is conditioned on `{text}`, and a dispatch by hand runs a step on "
-            f"`{ALWAYS}`, on `runner.os == '<family>'`, or unconditionally"
+            f"`{ALWAYS}`, on `runner.os == '<family>'`, on `runner.os != '<family>'`, or "
+            f"unconditionally"
         )
-    return match["family"]
+    return match["family"] if match["operator"] == "==" else f"{NOT}{match['family']}"
 
 
 def _step_environment(where: str, declared: object, runner_os: str) -> dict[str, str]:
@@ -334,7 +381,7 @@ def _step_environment(where: str, declared: object, runner_os: str) -> dict[str,
             raise DispatchError(
                 f"{where} sets `{name}` to `{text}`, and a dispatch by hand reads a step's "
                 f"environment as a literal, as `steps.<id>.outcome`, or as a `runner.os` "
-                f"choice between two outcomes"
+                f"choice between outcomes, one arm per family and the one it falls back to"
             )
         environment[name] = text
     return environment
@@ -383,7 +430,11 @@ def _value(text: str, outcomes: dict[str, Outcome], runner_os: str) -> str:
     if match := OUTCOME.match(stripped):
         return str(outcomes.get(match["step"], Outcome.SKIPPED))
     if match := OS_CHOICE.match(stripped):
-        chosen = match["then"] if match["family"] == runner_os else match["otherwise"]
+        chosen = match["otherwise"]
+        for arm in OS_ARM.finditer(match["arms"]):
+            if arm["family"] == runner_os:
+                chosen = arm["then"]
+                break
         return str(outcomes.get(chosen, Outcome.SKIPPED))
     return text
 
@@ -397,10 +448,11 @@ def execute(
 ) -> int:
     """Run the source job's steps on this host, and answer the job's exit.
 
-    Every step's command runs under bash, with the job's literal environment and
-    its own, and what it prints reaches the caller's streams as it happens. A
-    step that fails and is not waived fails the job and stops every step after
-    it but those on `always()`; the exit is that first failure's.
+    Every step's command runs under bash — or under `pwsh`, where the step
+    names it — with the job's literal environment and its own, and what it
+    prints reaches the caller's streams as it happens. A step that fails and is
+    not waived fails the job and stops every step after it but those on
+    `always()`; the exit is that first failure's.
 
     Raises:
         DispatchError: If the source job carries a shape this cannot run.
@@ -413,8 +465,7 @@ def execute(
     for step in steps:
         # What Actions does: a step naming no condition, or a family's, runs
         # only while nothing before it has failed; `always()` runs regardless.
-        here = step.condition in {"", ALWAYS} or step.condition == resolved.runner_os
-        if not here or (failed and step.condition != ALWAYS):
+        if not step.runs_on(resolved.runner_os) or (failed and step.condition != ALWAYS):
             outcomes[step.id] = Outcome.SKIPPED
             continue
         say(f"platform-dispatch: {resolved.source.name} on {resolved.platform.id}: {step.command}")
@@ -425,7 +476,8 @@ def execute(
                 for name, value in step.environment.items()
             }
         )
-        code = _run_under_bash(step.command, cwd, environment_here)
+        run_under = _run_under_pwsh if step.shell == PWSH else _run_under_bash
+        code = run_under(step.command, cwd, environment_here)
         if code == 0:
             outcomes[step.id] = Outcome.SUCCESS
             continue
@@ -454,6 +506,43 @@ def _run_under_bash(command: str, cwd: Path, environment: dict[str, str]) -> int
             cwd=cwd,
             env=environment,
             capture=False,
+        )
+    finally:
+        path.unlink(missing_ok=True)
+    return completed.returncode
+
+
+#: What Actions puts around a `pwsh` step's own lines: an error stops the
+#: script, and a native command's exit status is the step's.
+PWSH_PROLOGUE = "$ErrorActionPreference = 'stop'\n"
+PWSH_EPILOGUE = "if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) { exit $LASTEXITCODE }\n"
+
+
+def _run_under_pwsh(command: str, cwd: Path, environment: dict[str, str]) -> int:
+    """One step's command, run the way Actions runs a step naming `pwsh`.
+
+    Raises:
+        DispatchError: If this host carries no `pwsh` to run it under.
+    """
+    if shutil.which(PWSH, path=environment.get("PATH")) is None:
+        msg = (
+            f"a step of this job runs under `{PWSH}`, and this host has none on PATH: install "
+            f"PowerShell 7 (https://github.com/PowerShell/PowerShell/releases) and put "
+            f"`{PWSH}` on PATH"
+        )
+        raise DispatchError(msg)
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".ps1", prefix="platform-dispatch-", delete=False, encoding="utf-8"
+    ) as script:
+        script.write(PWSH_PROLOGUE)
+        script.write(command)
+        if not command.endswith("\n"):
+            script.write("\n")
+        script.write(PWSH_EPILOGUE)
+        path = Path(script.name)
+    try:
+        completed = shell_run(
+            [PWSH, "-command", f". '{path}'"], cwd=cwd, env=environment, capture=False
         )
     finally:
         path.unlink(missing_ok=True)

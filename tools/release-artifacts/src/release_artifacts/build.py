@@ -267,7 +267,11 @@ def node_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> 
 
     per_platform = _node(repo, target, platform.npm_package)
     carried = packages.Archive()
-    carried.add(f"{packages.PACKAGE_ROOT}/bin/{PROGRAM}", binary.read_bytes(), executable=True)
+    # Under the platform's own name, which is the name the launcher resolves
+    # inside the package: a Windows host runs a program by its `.exe` suffix.
+    carried.add(
+        f"{packages.PACKAGE_ROOT}/bin/{platform.program}", binary.read_bytes(), executable=True
+    )
     platform_manifest = per_platform.manifest(
         description=f"{target.description} ({platform.id}).",
         os=[system],

@@ -56,7 +56,7 @@ from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
-from route_proof import ROUTE_PROOF
+from route_proof import ROUTE_PROOF, SHARED_TOOL_DIRECTORY
 
 #: The three routes an end user gets the program by, each taken from its own
 #: registry. Every one of them is driven against every outcome below.
@@ -115,6 +115,7 @@ def test_a_registry_serving_a_working_artifact_is_a_pass(
 
 
 @ROUTE_PROOF
+@SHARED_TOOL_DIRECTORY
 def test_the_npm_route_is_taken_where_node_shares_a_runner_directory_with_rust(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

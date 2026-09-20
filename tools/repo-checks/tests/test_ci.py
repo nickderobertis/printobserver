@@ -17,6 +17,7 @@ INSTALL = ".github/workflows/install-path.yml"
 #: The install-service step of the first install job, as the workflow spells it.
 SERVICE_STEP = (
     "      - id: install-service\n"
+    "        if: runner.os != 'Windows'\n"
     "        continue-on-error: true\n"
     "        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/"
     "printobserver/main/scripts/install-service.sh | sudo sh\n"
@@ -37,6 +38,24 @@ LAUNCHD_START_STEP = (
     "        continue-on-error: true\n"
     "        run: sudo launchctl bootstrap system "
     "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist\n"
+)
+
+#: The Windows pair of the same job, as the workflow spells it: its own installer
+#: rather than the one the two shell managers share, and its own start.
+WINDOWS_SERVICE_STEP = (
+    "      - id: install-service-windows-service\n"
+    "        if: runner.os == 'Windows'\n"
+    "        continue-on-error: true\n"
+    "        shell: pwsh\n"
+    "        run: irm https://raw.githubusercontent.com/nickderobertis/"
+    "printobserver/main/scripts/install-service.ps1 | iex\n"
+)
+WINDOWS_START_STEP = (
+    "      - id: start-service-windows-service\n"
+    "        if: runner.os == 'Windows'\n"
+    "        continue-on-error: true\n"
+    "        shell: pwsh\n"
+    "        run: Set-Service -Name printobserver -StartupType Automatic -Status Running\n"
 )
 
 FOURTH_ROUTE = """
@@ -269,6 +288,64 @@ def test_an_install_job_on_a_launchd_platform_omitting_its_start_command_is_refu
     refused(findings, "omits `sudo launchctl bootstrap system")
 
 
+def test_an_install_job_starting_the_windows_service_before_its_installer_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The Windows pair is held to its own order, apart from the shell managers' pairs."""
+    broken = tree()
+    broken.edit(INSTALL, WINDOWS_START_STEP, "")
+    broken.edit(INSTALL, WINDOWS_SERVICE_STEP, WINDOWS_START_STEP + WINDOWS_SERVICE_STEP)
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "out of the order AGENTS.md states")
+
+
+def test_an_install_job_on_a_windows_platform_omitting_its_installer_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A job carrying a Windows cell owes the PowerShell installer, not only the shell one."""
+    broken = tree()
+    broken.edit(INSTALL, WINDOWS_SERVICE_STEP, "")
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "omits `irm https://raw.githubusercontent.com/")
+
+
+def test_an_install_job_whose_windows_waived_step_is_fatal_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Each manager's pair is waived, the Windows one no less than the shell ones."""
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        WINDOWS_START_STEP,
+        WINDOWS_START_STEP.replace("        continue-on-error: true\n", ""),
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "step `start-service-windows-service` is fatal")
+
+
+def test_an_install_job_reporting_no_windows_outcome_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A summary reading only the shell installer's outcome says nothing of the Windows cells."""
+    broken = tree()
+    broken.edit(
+        INSTALL,
+        "          INSTALLED: ${{ runner.os == 'Windows' && "
+        "steps.install-service-windows-service.outcome || steps.install-service.outcome }}\n",
+        "          INSTALLED: ${{ steps.install-service.outcome }}\n",
+    )
+
+    findings = continuous_integration(broken.repo)
+
+    refused(findings, "cannot then tell a route whose service was established")
+
+
 def test_an_install_job_that_swallows_the_service_commands_silently_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
@@ -321,8 +398,14 @@ def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) 
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'waived_steps = ["install-service", "start-service-systemd", "start-service-launchd"]',
-        "waived_steps = []",
+        "waived_steps = [\n"
+        '  "install-service",\n'
+        '  "start-service-systemd",\n'
+        '  "start-service-launchd",\n'
+        '  "install-service-windows-service",\n'
+        '  "start-service-windows-service",\n'
+        "]\n",
+        "waived_steps = []\n",
     )
 
     findings = continuous_integration(broken.repo)

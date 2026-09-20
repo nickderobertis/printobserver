@@ -39,7 +39,7 @@ from release_artifacts.world import (
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
-from route_proof import ROUTE_PROOF
+from route_proof import ROUTE_PROOF, SHARED_TOOL_DIRECTORY
 
 #: The three routes an end user gets the program by, each installed for real.
 ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobserver"]
@@ -71,6 +71,7 @@ def test_node_is_kept_when_a_runner_installs_it_beside_rust(
 
 
 @ROUTE_PROOF
+@SHARED_TOOL_DIRECTORY
 def test_npm_route_installs_when_node_shares_a_runner_directory_with_rust(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -33,27 +33,31 @@ MATRIX_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.0
 #: The macOS cell that follows it in every one of those matrices.
 MATRIX_MACOS = "          - id: macos-aarch64\n            runner: macos-15\n"
 
-
-#: A platform the list carries while its bring-up is owed, answered `install path: no`:
-#: the gate and the integration tier carry its cell, and every route's is recorded.
-BEING_BROUGHT_UP = "windows-x86_64"
+#: A platform every matrix carries, whose cells the tests below take out of one
+#: job at a time to drive the two levers: the last one brought up, so that a
+#: copy narrowing it is the tree as it stood one step before this one.
+LAST_BROUGHT_UP = "windows-x86_64"
 
 #: The runner the supported-platform list declares for it.
-BEING_BROUGHT_UP_RUNNER = "windows-2025"
+LAST_BROUGHT_UP_RUNNER = "windows-2025"
 
 
-def matrix_cell(platform: str, runner: str = BEING_BROUGHT_UP_RUNNER) -> str:
+#: The runner each platform's cell names, as the supported-platform list declares it.
+RUNNERS = {
+    "linux-aarch64": "ubuntu-24.04-arm",
+    "macos-aarch64": "macos-15",
+    LAST_BROUGHT_UP: LAST_BROUGHT_UP_RUNNER,
+    "windows-aarch64": "windows-11-arm",
+}
+
+
+def matrix_cell(platform: str) -> str:
     """One cell of the matrix every platform-dependent job carries."""
-    return f"          - id: {platform}\n            runner: {runner}\n"
+    return f"          - id: {platform}\n            runner: {RUNNERS[platform]}\n"
 
 
 def record(copy: Tree, *lines: str) -> None:
-    """Add `lines` to the platform-exclusions block of a real tree.
-
-    The entries the committed block already carries stay: they are what lets the
-    platforms still being brought up be absent from every matrix, and a copy
-    without them would be refused for that before it said anything about `lines`.
-    """
+    """Add `lines` to the platform-exclusions block of a real tree."""
     copy.edit(
         "AGENTS.md",
         f"{EXCLUSIONS_BEGIN}\n",
@@ -61,23 +65,29 @@ def record(copy: Tree, *lines: str) -> None:
     )
 
 
-def unrecord(copy: Tree, platform: str, job: str) -> None:
-    """Take the committed entry for one cell out of a real tree's exclusions block."""
-    text = copy.read("AGENTS.md")
-    start = text.index(f"- `{platform}` on `{job}` — ")
-    end = text.index("\n", start) + 1
-    copy.write("AGENTS.md", text[:start] + text[end:])
+def narrow(copy: Tree, workflow: str, job: str, platform: str = LAST_BROUGHT_UP) -> None:
+    """Take one platform's cell out of one job's matrix in a real tree.
+
+    Anchored on the job, because every platform-dependent job of a workflow
+    carries the same matrix: what this narrows is that one job's own.
+    """
+    text = copy.read(workflow)
+    at = text.index(matrix_cell(platform), text.index(f"\n  {job}:\n"))
+    copy.write(workflow, text[:at] + text[at + len(matrix_cell(platform)) :])
 
 
-def answer_yes(copy: Tree, platform: str) -> None:
-    """Flip one committed entry of the supported-platform list to `install path: yes`."""
+def answer_no(copy: Tree, platform: str, reason: str) -> None:
+    """Flip one committed entry of the supported-platform list to `install path: no`."""
     text = copy.read("AGENTS.md")
     start = text.index(f"- `{platform}` — ")
     end = text.index("\n", start)
     entry = text[start:end]
     copy.write(
         "AGENTS.md",
-        text[:start] + entry[: entry.index("install path: no")] + "install path: yes" + text[end:],
+        text[:start]
+        + entry[: entry.index("install path: yes")]
+        + f"install path: no — {reason}"
+        + text[end:],
     )
 
 
@@ -131,21 +141,7 @@ def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
 ) -> None:
     """The answer binds in both directions: a `yes` every install tier must carry."""
     broken = tree()
-    broken.edit(
-        INSTALL,
-        MATRIX_AARCH64 + MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
-        "    steps:\n      - uses: actions/checkout@v5\n"
-        "      - uses: extractions/setup-just@v3\n"
-        "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: actions/setup-node@v5\n"
-        "      - run: just prove-registry-npm\n",
-        MATRIX_MACOS + "    runs-on: ${{ matrix.platform.runner }}\n"
-        "    steps:\n      - uses: actions/checkout@v5\n"
-        "      - uses: extractions/setup-just@v3\n"
-        "      - uses: astral-sh/setup-uv@v7\n"
-        "      - uses: actions/setup-node@v5\n"
-        "      - run: just prove-registry-npm\n",
-    )
+    narrow(broken, INSTALL, "prove-registry-npm", "linux-aarch64")
 
     findings = platforms(broken.repo)
 
@@ -346,23 +342,37 @@ def test_a_route_job_owes_a_platform_once_the_install_path_targets_it(
 ) -> None:
     """The first lever, read by the artifact-job check: `yes` makes every route's cell owed.
 
-    The committed block records each of that platform's route cells as owed, so
-    two of the entries go with the answer: a cell still recorded stays excused,
-    which is the second lever, and the two no longer recorded are what `yes`
-    now demands of the jobs that omit them.
+    One tree, two answers. With the platform answered `no`, the route jobs
+    that omit its cell owe nothing for it — the lever is what let the routes
+    be brought up after the gate; answered `yes`, the same omissions are what
+    the answer now demands of the jobs, and a cell the block records stays
+    excused, which is the second lever.
     """
-    broken = tree()
-    answer_yes(broken, BEING_BROUGHT_UP)
-    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-npm")
-    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-script")
+    narrowed = tree()
+    for job in ("prove-registry-pypi", "prove-registry-npm", "prove-registry-script"):
+        narrow(narrowed, INSTALL, job)
+    record(narrowed, f"- `{LAST_BROUGHT_UP}` on `prove-registry-pypi` — still being brought up")
+    answer_no(narrowed, LAST_BROUGHT_UP, "the routes are still being brought up")
+    accepted(
+        [finding for finding in artifact_jobs(narrowed.repo) if LAST_BROUGHT_UP in finding],
+        describing="the route jobs, while the install path does not target the platform",
+    )
 
-    findings = artifact_jobs(broken.repo)
+    text = narrowed.read("AGENTS.md")
+    narrowed.write(
+        "AGENTS.md",
+        text.replace(
+            "install path: no — the routes are still being brought up", "install path: yes"
+        ),
+    )
 
-    refused_naming(findings, "job `prove-registry-npm`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
-    refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{BEING_BROUGHT_UP}`")
+    findings = artifact_jobs(narrowed.repo)
+
+    refused_naming(findings, "job `prove-registry-npm`", f"AGENTS.md names `{LAST_BROUGHT_UP}`")
+    refused_naming(findings, "job `prove-registry-script`", f"AGENTS.md names `{LAST_BROUGHT_UP}`")
     accepted(
         [finding for finding in findings if "job `prove-registry-pypi`" in finding],
-        describing="`prove-registry-pypi`, whose cell is still recorded",
+        describing="`prove-registry-pypi`, whose cell is recorded",
     )
 
 
@@ -371,17 +381,19 @@ def test_a_client_job_omitting_a_cell_no_entry_records_is_refused_by_the_artifac
 ) -> None:
     """The second lever, read by the artifact-job check: only a recorded cell is excused."""
     broken = tree()
-    unrecord(broken, BEING_BROUGHT_UP, "prove-registry-client-rust")
+    narrow(broken, INSTALL, "prove-registry-client-rust")
+    narrow(broken, INSTALL, "prove-registry-client-python")
+    record(broken, f"- `{LAST_BROUGHT_UP}` on `prove-registry-client-python` — coming up")
 
     findings = artifact_jobs(broken.repo)
 
     refused_naming(
-        findings, "job `prove-registry-client-rust`", f"AGENTS.md names `{BEING_BROUGHT_UP}`"
+        findings, "job `prove-registry-client-rust`", f"AGENTS.md names `{LAST_BROUGHT_UP}`"
     )
     for job in ("prove-registry-client-python", "prove-registry-client-node"):
         accepted(
             [finding for finding in findings if f"job `{job}`" in finding],
-            describing=f"`{job}`, whose cell is still recorded",
+            describing=f"`{job}`, whose cell is recorded or carried",
         )
 
 
@@ -390,11 +402,23 @@ def test_a_release_build_omitting_a_cell_no_entry_records_is_refused(
 ) -> None:
     """Release automation builds for every platform the list names but the cells recorded."""
     broken = tree()
-    unrecord(broken, BEING_BROUGHT_UP, "artifacts")
+    narrow(broken, ".github/workflows/release-plz.yml", "artifacts")
 
     findings = release_automation(broken.repo)
 
-    refused_naming(findings, f"names `{BEING_BROUGHT_UP}`", "no committed job builds")
+    refused_naming(findings, f"names `{LAST_BROUGHT_UP}`", "no committed job builds")
+
+
+def test_a_release_build_omitting_a_recorded_cell_is_excused(tree: Callable[[], Tree]) -> None:
+    """The second lever, read by release automation's check: a recorded cell is not owed."""
+    narrowed = tree()
+    narrow(narrowed, ".github/workflows/release-plz.yml", "artifacts")
+    record(narrowed, f"- `{LAST_BROUGHT_UP}` on `artifacts` — its toolchain is being brought up")
+
+    accepted(
+        [finding for finding in release_automation(narrowed.repo) if LAST_BROUGHT_UP in finding],
+        describing="a release build omitting the one cell the block records",
+    )
 
 
 def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
@@ -407,18 +431,12 @@ def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
     workflow, the gate's being the first — and nothing excuses the omission.
     """
     broken = tree()
-    text = broken.read(".github/workflows/ci.yml")
-    job = text.index("\n  integration:\n")
-    at = text.index(matrix_cell(BEING_BROUGHT_UP), job)
-    broken.write(
-        ".github/workflows/ci.yml",
-        text[:at] + text[at + len(matrix_cell(BEING_BROUGHT_UP)) :],
-    )
+    narrow(broken, ".github/workflows/ci.yml", "integration")
 
     findings = integration_tier(broken.repo)
 
     refused_naming(
-        findings, "the integration job `integration`", f"omits platform `{BEING_BROUGHT_UP}`"
+        findings, "the integration job `integration`", f"omits platform `{LAST_BROUGHT_UP}`"
     )
 
 
@@ -433,7 +451,7 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     broken = tree()
     record(
         broken,
-        f"- `{BEING_BROUGHT_UP}` on `integration` — the virtual printer is being brought up",
+        f"- `{LAST_BROUGHT_UP}` on `integration` — the virtual printer is being brought up",
     )
 
     findings = integration_tier(broken.repo)
@@ -441,7 +459,7 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     refused_naming(
         findings,
         "the integration job `integration`",
-        f"names platform `{BEING_BROUGHT_UP}`",
+        f"names platform `{LAST_BROUGHT_UP}`",
         "a cell that does not run",
     )
 

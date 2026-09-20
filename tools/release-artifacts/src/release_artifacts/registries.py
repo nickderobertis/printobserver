@@ -73,7 +73,6 @@ from repo_checks.shell import run
 from release_artifacts import targets
 from release_artifacts.build import PROGRAM
 from release_artifacts.installing import (
-    INSTALL_SCRIPT,
     NODE_RUNTIME,
     SCRIPT_DIRECTORY,
     TOOLCHAIN,
@@ -81,6 +80,7 @@ from release_artifacts.installing import (
     Installed,
     InstallError,
     executable,
+    install_script_argv,
     interpreter_in,
     npm_global_program,
     programs_in,
@@ -1213,9 +1213,10 @@ def _script_route(
 ) -> Path:
     """Route 3, taken by the committed install script against the real releases.
 
-    The script is driven with `sh`, exactly as that route's own one-line
-    command drives it, pinned to the version under test and pointed at where
-    the releases are. What is being proven here is the download, the
+    The script this host's platform is reached by is driven exactly as that
+    route's own one-line command drives it — with `sh`, or under PowerShell on
+    Windows — pinned to the version under test and pointed at where the
+    releases are. What is being proven here is the download, the
     verification and the install — the fetch of the script itself is what the
     install job's own run of that one-line command proves.
 
@@ -1225,19 +1226,12 @@ def _script_route(
     """
     directory = into / "env" / SCRIPT_DIRECTORY
     ran(
-        [
-            "sh",
-            str(repo.path(INSTALL_SCRIPT)),
-            "--version",
-            f"v{version}",
-            "--to",
-            str(directory),
-        ],
+        install_script_argv(repo, version=f"v{version}", into=directory),
         cwd=into,
         env=without_rust({PRINTOBSERVER_RELEASE_BASE: bases.releases}),
         describing=f"the committed install script against {bases.releases}",
     )
-    return directory / PROGRAM
+    return directory / platforms.host(repo).program
 
 
 def _python_client(

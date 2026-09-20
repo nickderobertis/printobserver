@@ -1,5 +1,6 @@
 """The platform-table condition shared by end-user install-route proofs."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -25,4 +26,17 @@ ROUTE_PROOF = pytest.mark.skipif(HERE.no_route_proof is not None, reason=HERE.no
 WITHOUT_ROUTE_PROOF = pytest.mark.skipif(
     HERE.no_route_proof is None,
     reason="the install path targets this host, so the client is proven by the route",
+)
+
+#: The npm-route journeys that model the hosted macOS images' tool directory —
+#: one directory holding `node`, `npm` and `cargo` together, and the only
+#: place `node` and `npm` are on the path — which a Windows host cannot build:
+#: its `npm.cmd` runs the CLI it finds beside its own file, so an `npm` linked
+#: into a shared directory runs nothing. The hosted Windows images keep Node
+#: and Rust apart, so the layout is not one a Windows cell meets either; what
+#: the route does on Windows is proven by the route proofs beside these.
+SHARED_TOOL_DIRECTORY = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the shared tool directory modelled here is the hosted macOS images' layout, "
+    "which `npm.cmd` cannot be moved into",
 )

@@ -50,6 +50,7 @@ INTEGRATION_AARCH64 = (
 INSTALL_ROUTE_AARCH64 = (
     AARCH64
     + MACOS
+    + WINDOWS
     + (
         "    runs-on: ${{ matrix.platform.runner }}\n"
         "    steps:\n"

@@ -38,6 +38,7 @@ from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
     UNREADABLE,
 )
+from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
@@ -380,9 +381,10 @@ def supervisor() -> Path:
 
     The debug build, once: a client's smoke check is about the client, and
     the program on the other side of the socket is the same program either
-    way.
+    way. Under the name the platform gives it, which carries `.exe` on
+    Windows.
     """
-    built = REPO_ROOT / "target" / "debug" / "printobserver"
+    built = REPO_ROOT / "target" / "debug" / platforms.host(Repo(REPO_ROOT)).program
     if not built.is_file():
         passing(
             run(
@@ -418,7 +420,7 @@ def test_the_tier_recipe_proves_every_route_and_every_client(
     equal(
         len(said.strip().splitlines()),
         len(ROUTES) + len(CLIENTS),
-        describing=f"what `just {TIER}` said",
+        describing=f"the lines `just {TIER}` said, which were:\n{said}",
     )
 
 
