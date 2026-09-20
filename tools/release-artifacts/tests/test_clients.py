@@ -26,7 +26,9 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 from release_artifacts.installing import (
+    InstallError,
     consumer_manifest,
+    consumer_program,
     executable,
     install,
     interpreter_in,
@@ -34,6 +36,7 @@ from release_artifacts.installing import (
     programs_in,
     prove,
     prove_client,
+    release_program,
     smoke_check,
     without_rust,
 )
@@ -249,7 +252,7 @@ def test_an_installed_client_is_reached_where_its_own_hosts_installer_put_it(
         describing="the `pip` a registry proof installs with",
     )
     equal(
-        environment / "target" / "release" / executable("printobserver-sdk-smoke"),
+        release_program(environment / "target", "printobserver-sdk-smoke"),
         environment / layout["smoke"],
         describing="the program the Rust client's smoke check is built as",
     )
@@ -284,6 +287,60 @@ def test_a_rust_toolchain_is_taken_off_the_path_under_the_name_its_host_gives_it
     kept = without_rust()["PATH"].split(os.pathsep)
 
     equal(kept, [str(elsewhere)], describing="the path an install is run under")
+
+
+#: A consumer that depends on nothing, so where it builds is settled with no
+#: crate resolved.
+BARE_CONSUMER = """[package]
+name = "printobserver-sdk-smoke"
+version = "0.0.0"
+edition = "2024"
+
+[workspace]
+"""
+
+
+def _consumer_at(directory: Path) -> Path:
+    (directory / "src").mkdir(parents=True, exist_ok=True)
+    (directory / "src" / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+    (directory / "Cargo.toml").write_text(BARE_CONSUMER, encoding="utf-8")
+    return directory
+
+
+def test_a_consumers_program_is_looked_for_where_cargo_says_it_builds(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """Inside this clone that is the clone's own `target`; outside it, the consumer's own.
+
+    `.cargo/config.toml` at the root sends every build under the clone into
+    `<clone>/target`, and the proofs write their consumers under `dist/` — so a
+    proof that looked beside the manifest would report the program it had just
+    built as missing. A consumer in a temporary directory is under no such
+    file and builds beside itself, which is what a proof run from one sees.
+    """
+    smoke = executable("printobserver-sdk-smoke")
+    inside = _consumer_at(repo.root / "dist" / "test-clients" / "consumer")
+    outside = _consumer_at(tmp_path / "consumer")
+
+    equal(
+        consumer_program(inside, "printobserver-sdk-smoke"),
+        repo.root / "target" / "release" / smoke,
+        describing="where a consumer inside the clone is built",
+    )
+    equal(
+        consumer_program(outside, "printobserver-sdk-smoke").resolve(),
+        (outside / "target" / "release" / smoke).resolve(),
+        describing="where a consumer outside the clone is built",
+    )
+
+
+def test_a_consumer_cargo_cannot_read_is_a_stop_naming_it(tmp_path: Path) -> None:
+    """A consumer with no manifest gets no guessed path: the proof stops saying so."""
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+
+    with pytest.raises(InstallError, match="asking where the consumer at"):
+        consumer_program(consumer, "printobserver-sdk-smoke")
 
 
 def test_a_consumer_manifest_names_a_windows_path_cargo_can_parse() -> None:
