@@ -121,7 +121,7 @@ pub struct Bounded {
     /// When it stops standing.
     pub expires_at: Timestamp,
     /// Both clocks, read the moment its record was in hand.
-    asked: Clocks,
+    recorded: Clocks,
 }
 
 impl Bounded {
@@ -394,9 +394,8 @@ pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec
         .iter()
         .map(|one| {
             super::confirming::starting_from_somewhere_else(world, &one.command.name);
-            let clocks = Clocks::now();
             let answer = ask_for(world, one, &asked);
-            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds, clocks)
+            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds, Clocks::now())
         })
         .collect()
 }
@@ -418,7 +417,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
     one: &Driven,
     answer: &Value,
     seconds: i64,
-    asked: Clocks,
+    recorded: Clocks,
 ) -> Bounded {
     let requested = instant(answer, "/record/request/requested_at");
     let expires = instant(answer, "/intervention/expires_at");
@@ -447,7 +446,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
         applied_value: held("/intervention/applied_value"),
         prior_value: answer.pointer("/intervention/prior_value").cloned(),
         expires_at: expires,
-        asked,
+        recorded,
     };
     the_value_it_would_restore_is_not_the_value_it_applied(&bounded);
     bounded
@@ -570,7 +569,7 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
         let at = just_before(bounded.expires_at, MARGIN);
         let read = Clocks::now();
         let stepped = waiting
-            .stepped_since(bounded.asked)
+            .stepped_since(bounded.recorded)
             .map(|micros| (micros, "the span before the wait"))
             .or_else(|| {
                 read.stepped_since(waiting)
