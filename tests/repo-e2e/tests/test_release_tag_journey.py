@@ -809,13 +809,20 @@ class Stage:
 
         The stand-ins come first because the copy's `.cargo/config.toml`
         names the registry's port, and that port exists only once it is bound.
+        The registry tables are appended to the committed file rather than
+        replacing it, so the copy still builds under the tree's own build
+        contract — into its own `target`, with line-table debuginfo — and the
+        wiring adds a registry to that file rather than a second one.
         The copy is pytest's to remove; the listeners are this stage's.
         """
         self.record = Record()
         self.registry = StandInRegistry(self.record, publishable_crates())
         self.forge = StandInForge(self.record)
         self.copy = tagged(gate_copy, tags)
-        self.copy.write(".cargo/config.toml", self.registry.cargo_config())
+        self.copy.write(
+            ".cargo/config.toml",
+            self.copy.read(".cargo/config.toml") + "\n" + self.registry.cargo_config(),
+        )
 
     def __enter__(self) -> Self:
         """Hand the wired stage to the block; both stand-ins are already serving."""
