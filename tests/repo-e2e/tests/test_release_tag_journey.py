@@ -791,7 +791,9 @@ class Released(NamedTuple):
 class Stage:
     """A copy of the tree wired to a registry and a forge, sharing one record."""
 
-    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Necessary: the e2e tier
+    # is one project by design, so there is no narrower edge to hang this on, and wiring the
+    # copy to the registry adds nothing to its cost. suppressions.toml has the whole reason.
     def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:
         """Stand both stand-ins up, then copy the tree carrying `tags` and wire it to them.
 

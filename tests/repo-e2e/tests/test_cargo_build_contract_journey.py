@@ -108,7 +108,9 @@ def _check(copy: GateCopy, *flags: str) -> str:
     return _unit(copy.root, ["cargo", "check", "-v", "-p", CRATE, *flags], CRATE)
 
 
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Necessary: the e2e tier is
+# one project by design, so there is no narrower edge to hang this on, and this costs three
+# reads and one build of a dependency-free crate. suppressions.toml carries the whole reason.
 def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it(
     gate_copy: CopiesTheTree,
 ) -> None:
@@ -168,7 +170,9 @@ def test_an_invocation_naming_its_own_target_directory_still_wins(
     )
 
 
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Necessary: the e2e tier is
+# one project by design, so there is no narrower edge to hang this on, and these are `cargo
+# check` runs of the smallest crate rather than builds. suppressions.toml has the whole reason.
 def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
     gate_copy: CopiesTheTree,
 ) -> None:
