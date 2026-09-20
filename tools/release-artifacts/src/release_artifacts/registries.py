@@ -50,6 +50,21 @@ run cut which.
 order to prove a point, so the proof has to be drivable against a registry
 serving nothing, one serving something broken, and one serving something that
 works — which `standin.py` stands up.
+
+**One API this reads is read under a credential, and the rest are deliberately
+not.** A read of the FORGE'S OWN API — the release listing `released` asks, and
+the release document `release_of` asks — carries the credential `forge_token`
+resolves, because the forge meters an anonymous read by the caller's address
+and every hosted cell of this proof shares one: the whole tier then fails on
+`403 rate limit exceeded` for a quota nothing about the release under proof
+spent. Everything else reads as the person the proof is about reads. The three
+package registries take no credential of this repository's on a read at all,
+and would be sent one of another host's if they did. And the end-user download
+route — the install script fetching a release's artifacts from `Bases.releases`
+— sends none by construction, because a user taking route 3 has no token and a
+route proven with one would be a route nobody can take. Where no credential is
+in force the forge is read anonymously rather than refused: a developer's run
+by hand carries none, and a rate limit is not a precondition of the proof.
 """
 
 from __future__ import annotations
@@ -157,6 +172,24 @@ ASK_TIMEOUT_SECONDS = 60
 #: an address or a version — every one of which is also a string, and every
 #: one of which would put a secret somewhere a secret must not go.
 Token = NewType("Token", str)
+
+#: The repository secret the forge is written under, which is also the one a
+#: release-time run has in force. Declared here rather than beside the
+#: publisher's other two because a read of the forge's API resolves it as well:
+#: `publishing.CREDENTIALS` names this constant for its `release` registry, so
+#: the publish and the reads that decide what to publish take one name.
+FORGE_CREDENTIAL = "RELEASE_PLZ_TOKEN"
+
+#: And the token a workflow's own job carries, which is what a run of the
+#: install-path proof has — that workflow holds no forge secret and needs
+#: none: a read of a public repository's releases is authenticated for the
+#: quota rather than for the access.
+WORKFLOW_CREDENTIAL = "GITHUB_TOKEN"
+
+#: The two, in the order a run takes one. The publisher's own first, so that a
+#: release-time run reads the forge under exactly the credential it writes it
+#: under rather than under whichever the runner also happened to export.
+FORGE_CREDENTIALS = (FORGE_CREDENTIAL, WORKFLOW_CREDENTIAL)
 
 #: The number the forge gave one release, and the number it gave one asset.
 #: Each is the forge's own and means nothing beside the other: an asset is
@@ -705,6 +738,28 @@ def ordered(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in parts)
 
 
+def forge_token(environment: dict[str, str]) -> Token | None:
+    """The credential a read of the forge's own API is made under, or none.
+
+    One resolution, shared by the publisher and by every read of that API this
+    tool makes: `FORGE_CREDENTIALS` in order, and the first the environment
+    carries. Nothing here fails for the want of one — the forge answers an
+    anonymous read, and refusing a run by hand because a developer holds no
+    token would be a precondition this proof has no business having. What a
+    token buys is the quota: an anonymous read is metered by the caller's
+    address, and the hosted cells of this proof share one.
+
+    It reaches the forge's API and nothing else. The package registries take
+    no credential on a read, and the end-user download route is taken as a
+    user takes it, with none.
+    """
+    for name in FORGE_CREDENTIALS:
+        carried = environment.get(name, "").strip()
+        if carried:
+            return Token(carried)
+    return None
+
+
 def exchange(
     url: str,
     *,
@@ -762,15 +817,19 @@ def exchange(
     return read
 
 
-def _asked(url: str) -> bytes:
+def _asked(url: str, token: Token | None = None) -> bytes:
     """What one registry answered a read, or nothing where it serves no such name.
+
+    `token` is the forge's own and is passed by the two readers of the forge's
+    API alone. Every other caller leaves it out, which is what keeps one
+    registry's credential off another registry's host.
 
     Raises:
         RegistryError: If the address is not one this asks over, or the
             registry could not be reached or refused the read.
     """
     try:
-        return exchange(url)
+        return exchange(url, token=token)
     except RefusedError as refused:
         if refused.status == 404:
             return b""
@@ -781,14 +840,14 @@ def _asked(url: str) -> bytes:
         raise RegistryError(msg) from refused
 
 
-def _answered(url: str) -> object:
+def _answered(url: str, token: Token | None = None) -> object:
     """One registry's answer, parsed.
 
     Raises:
         RegistryError: If what it answered is not the JSON its own protocol
             says it answers.
     """
-    raw = _asked(url)
+    raw = _asked(url, token)
     if not raw:
         return None
     try:
@@ -839,8 +898,13 @@ def _versions(url: str, field: str) -> list[str]:
     ]
 
 
-def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
+def served(bases: Bases, target: targets.Target, token: Token | None = None) -> tuple[str, ...]:
     """Every version the registry serving one target serves, newest last.
+
+    `token` is the FORGE'S credential and reaches the forge's own listing and
+    nothing else: the three package registries take no credential of this
+    repository's on a read, and one sent there would be a secret handed to a
+    host it was never issued for.
 
     Raises:
         RegistryError: If the registry could not be asked, answered something
@@ -853,7 +917,7 @@ def served(bases: Bases, target: targets.Target) -> tuple[str, ...]:
         case "npm":
             versions = _versions(f"{bases.npm}/{target.name}", "versions")
         case "release":
-            versions = list(released(bases))
+            versions = list(released(bases, token))
         case "crate":
             versions = _crate_versions(f"{bases.crates}/{target.name}")
         case _:
@@ -908,14 +972,21 @@ def _crate_versions(url: str) -> list[str]:
     return found
 
 
-def released(bases: Bases) -> tuple[str, ...]:
+def released(bases: Bases, token: Token | None = None) -> tuple[str, ...]:
     """Every release the forge lists that a run may be keyed on, newest last.
+
+    Read under `token` where one is in force, because this is the forge's own
+    API and an anonymous read of it is metered by the caller's address — which
+    every hosted cell of this proof shares, so the whole tier fails on a quota
+    nothing about the release under proof spent. Anonymous where none is:
+    `forge_token` answers none for a run by hand, and the answer is the same
+    listing.
 
     Raises:
         RegistryError: If the forge could not be asked, or answered a listing
             of something other than releases.
     """
-    answer = _answered(bases.listing)
+    answer = _answered(bases.listing, token)
     if answer is None:
         return ()
     if not isinstance(answer, list):
@@ -1034,8 +1105,13 @@ def npm_versions(bases: Bases, name: str) -> tuple[str, ...]:
     return tuple(_versions(f"{bases.npm}/{name}", "versions"))
 
 
-def release_of(bases: Bases, version: str) -> Release:
+def release_of(bases: Bases, version: str, token: Token | None = None) -> Release:
     """The release the forge lists for one version, and the assets it carries.
+
+    The forge's API again, and read under the same credential the assets are
+    then uploaded under: the publisher holds one already, and a read it made
+    anonymously would meter the runner's address rather than the token that
+    is about to write.
 
     Raises:
         RegistryError: If the forge could not be asked, lists no release for
@@ -1043,7 +1119,7 @@ def release_of(bases: Bases, version: str) -> Release:
             with its upload address and its assets in it.
     """
     url = f"{bases.listing}/tags/v{version}"
-    answer = _answered(url)
+    answer = _answered(url, token)
     if answer is None:
         msg = (
             f"{url} lists no release v{version}, so nothing says where its artifacts are "
@@ -1104,7 +1180,9 @@ def _forge_number(reading: object) -> int | None:
     return reading
 
 
-def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
+def select(
+    bases: Bases, target: targets.Target, wanted: str, token: Token | None = None
+) -> Selected:
     """The version under test, and where it came from.
 
     Raises:
@@ -1122,11 +1200,11 @@ def select(bases: Bases, target: targets.Target, wanted: str) -> Selected:
             raise RegistryError(msg)
         return Selected(version, f"named by the caller as `{named}`")
     if named == RELEASE:
-        tags = released(bases)
+        tags = released(bases, token)
         if not tags:
             return Selected("", f"the newest release {bases.listing} lists, and it lists none")
         return Selected(tags[-1], "the newest release the forge published")
-    available = served(bases, target)
+    available = served(bases, target, token)
     if not available:
         return Selected("", f"the newest {bases.of(target.registry)} serves, and it serves none")
     return Selected(available[-1], f"the newest {bases.of(target.registry)} serves")
@@ -1548,8 +1626,12 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
     routed(repo)
     taken_as_client = target.id in clients(repo)
     bases = Bases.read(repo, environment)
+    # The forge's own, resolved once for the whole proof: every read of that
+    # API below carries it, and no read of a package registry and no download
+    # a user makes does.
+    token = forge_token(environment)
     where = bases.of(target.registry)
-    selected = select(bases, target, environment.get(PRINTOBSERVER_PROOF_VERSION, ""))
+    selected = select(bases, target, environment.get(PRINTOBSERVER_PROOF_VERSION, ""), token)
     stated = _stated_command(repo, target)
     preamble = [
         f"version under test: {selected.version or '(none)'} ({selected.whence})",
@@ -1559,13 +1641,13 @@ def prove(repo: Repo, identifier: str, into: Path, environment: dict[str, str]) 
         f"registry: {where}",
     ]
 
-    available = served(bases, target)
+    available = served(bases, target, token)
     if not selected.version or selected.version not in available:
         return _refused(target, selected, where, available, preamble)
 
     into.mkdir(parents=True, exist_ok=True)
     if taken_as_client:
-        return _prove_client(repo, target, selected, into, bases, preamble)
+        return _prove_client(repo, target, selected, into, bases, preamble, token)
     try:
         installed = take(repo, target, selected.version, into, bases)
         version = _reported(installed, into, RUNTIMES.get(target.id, ()))
@@ -1623,6 +1705,7 @@ def _prove_client(
     into: Path,
     bases: Bases,
     preamble: list[str],
+    token: Token | None = None,
 ) -> Proof:
     """Take one client from its registry and run its smoke check against the release's program.
 
@@ -1636,9 +1719,9 @@ def _prove_client(
     supervisor_target = targets.named(repo.root, SUPERVISOR_ROUTE)
     forge = bases.of(supervisor_target.registry)
     preamble = [*preamble, f"supervisor: `{SUPERVISOR_ROUTE}` {selected.version} from {forge}"]
-    if selected.version not in served(bases, supervisor_target):
+    if selected.version not in served(bases, supervisor_target, token):
         return _refused(
-            supervisor_target, selected, forge, served(bases, supervisor_target), preamble
+            supervisor_target, selected, forge, served(bases, supervisor_target, token), preamble
         )
     # A supervisor the release carries that does not come up, or does not
     # write the client file the smoke check reads, is an artifact that does

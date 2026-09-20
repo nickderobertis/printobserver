@@ -32,6 +32,13 @@ publish driven against this is proven by the reads that decide what to publish
 next time. A caller can make any one artifact refused, with a status and a body
 of its own choosing, and every write is recorded with the credential it
 carried, so that a journey can say which token reached which registry.
+
+**And every read is recorded the same way**, because which reads this
+repository makes authenticated is a decision rather than an accident: the
+forge's own API is asked under a token where a run has one, and the package
+registries and the end-user download of a release are asked as the person
+taking that route asks them — with nothing. A journey reads both back off this
+stand-in rather than off the code that composed the request.
 """
 
 from __future__ import annotations
@@ -112,11 +119,13 @@ LARGEST_WRITE = 256 * 1024 * 1024
 #: than a silent gap no journey can drive.
 REGISTRIES = tuple(CREDENTIALS)
 
-#: The `Authorization` header one write arrived with, verbatim: `Basic` and
-#: what `uv` encodes under it, or `Bearer` and the token `npm` or a forge
-#: upload sends. Its own type because it is the one thing a write records
-#: that is a secret, and a journey reads it back to say which token reached
-#: which registry — it is not a name to be compared with one.
+#: The `Authorization` header one request arrived with, verbatim: `Basic` and
+#: what `uv` encodes under it, or `Bearer` and the token `npm`, a forge upload
+#: or a read of the forge's own API sends — and empty for a request that
+#: carried none, which is every read a user's own install makes. Its own type
+#: because it is the one thing a write or a read records that is a secret, and
+#: a journey reads it back to say which token reached which registry — it is
+#: not a name to be compared with one.
 Authorization = NewType("Authorization", str)
 
 
@@ -161,6 +170,22 @@ class Write:
 
 
 @dataclass(frozen=True, slots=True)
+class Read:
+    """One read a registry here answered, and the credential it carried.
+
+    Recorded beside `Write` because which reads are authenticated is as much a
+    property of this tool as which writes are: the forge's own API is asked
+    under a token where a run has one, and the package registries and the
+    end-user download route are asked under none, whatever the run holds.
+    """
+
+    path: str
+    #: The credential as it arrived, empty where the read carried none —
+    #: which is what an end user's own download of a release carries.
+    credential: Authorization
+
+
+@dataclass(frozen=True, slots=True)
 class _Refusal:
     """What a caller arranged one artifact's writes to be answered with."""
 
@@ -195,6 +220,10 @@ class Registries:
         self.repo = repo
         self.into = into
         self.asked: list[str] = []
+        #: Every read a registry here answered, with the credential it
+        #: carried, in the order it arrived. `asked` is the paths alone, which
+        #: is what a journey asking WHICH registries were read wants.
+        self.read: list[Read] = []
         #: Every write a registry here was sent, accepted or refused, in the
         #: order it arrived.
         self.written: list[Write] = []
@@ -528,15 +557,21 @@ class Registries:
         self._server.server_close()
         self._serving.join(timeout=10)
 
-    def answer(self, path: str) -> Answer:
+    def answer(self, path: str, headers: Mapping[str, str] | None = None) -> Answer:
         """What this stand-in answers one read with.
 
         Decoded before it is looked up, because `npm` asks for a scoped
         package under its name percent-encoded — `@printobserver%2fcli-...` —
         and what is served is the name itself; and read without its query,
         which is a reader's own and names nothing served here.
+
+        `headers` arrive with their names in lower case, as `take` takes them,
+        and the credential among them is recorded verbatim: a journey reads it
+        back to say which reads this tool makes authenticated and which it
+        deliberately makes as an end user makes them.
         """
         self.asked.append(path)
+        self.read.append(Read(path, Authorization((headers or {}).get("authorization", ""))))
         found = self._answers.get(_served_path(path))
         if found is None:
             return Answer("text/plain", f"{path} is not served here\n".encode(), 404)
@@ -1085,11 +1120,15 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             """Answer whatever an installer asked for."""
-            self._answer(registries.answer(self.path))
+            self._answer(registries.answer(self.path, self._sent()))
 
         def do_HEAD(self) -> None:
             """Answer the headers alone, which is how `uv` sizes a file before fetching it."""
-            self._answer(registries.answer(self.path), body=False)
+            self._answer(registries.answer(self.path, self._sent()), body=False)
+
+        def _sent(self) -> dict[str, str]:
+            """What this request carried, by header name in lower case."""
+            return {name.lower(): value for name, value in self.headers.items()}
 
         def do_POST(self) -> None:
             """Take a wheel's legacy upload form, or one release asset's bytes."""
@@ -1112,8 +1151,7 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
                 )
                 return
             body = self.rfile.read(length)
-            headers = {name.lower(): value for name, value in self.headers.items()}
-            self._answer(registries.take(method, self.path, headers, body))
+            self._answer(registries.take(method, self.path, self._sent(), body))
 
         def _answer(self, answer: Answer, *, body: bool = True) -> None:
             """Answer, declaring the length every client reads the body by."""

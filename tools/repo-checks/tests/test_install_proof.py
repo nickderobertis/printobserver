@@ -30,6 +30,9 @@ VERSION = (
     "      PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}\n"
 )
 
+#: And the credential every one of them reads the forge's own listing under.
+CREDENTIAL = "      GITHUB_TOKEN: ${{ github.token }}\n"
+
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """The tier this repository ships is declared, recorded and out of the gate."""
@@ -403,6 +406,56 @@ def test_a_proof_job_declaring_no_version_at_all_is_refused(
     broken.edit(WORKFLOW, VERSION, "      UNREAD_BY_THE_TIER: nothing\n")
 
     refused(install_proof(broken.repo), "declares no `PRINTOBSERVER_PROOF_VERSION`")
+
+
+def test_a_proof_job_reading_the_forge_anonymously_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A cell that carries no token reads the forge's listing on the shared quota.
+
+    The forge meters an anonymous read of its API by the caller's address, and
+    the hosted runners share one, so this is not one cell reading slowly: it is
+    the whole tier answering `403 rate limit exceeded` before it has proven a
+    route, over a quota nothing about the release under proof spent.
+    """
+    broken = tree()
+    broken.edit(WORKFLOW, CREDENTIAL, "")
+
+    refused(install_proof(broken.repo), "declares no `GITHUB_TOKEN`")
+
+
+def test_a_proof_job_reading_the_forge_under_another_credential_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The token a job reads under is the workflow's own and nothing else.
+
+    A job authenticating as anything this repository did not grant it is a
+    credential nobody declared reaching an external API — which is the thing
+    `gh-secrets.json` exists to make impossible, one expression along.
+    """
+    broken = tree()
+    broken.edit(WORKFLOW, CREDENTIAL, "      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}\n")
+
+    refused(install_proof(broken.repo), "which is not the workflow's own token")
+
+
+def test_a_consumer_reading_another_credential_variable_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The workflow sets the name and the tool reads it; moved on one side it is unset.
+
+    And unset is not a failure anything reports: the tool reads the forge
+    anonymously, every route is still proven, and the tier goes on meeting the
+    rate limit it was changed to stop meeting.
+    """
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/registries.py",
+        'WORKFLOW_CREDENTIAL = "GITHUB_TOKEN"',
+        'WORKFLOW_CREDENTIAL = "FORGE_API_TOKEN"',
+    )
+
+    refused(install_proof(broken.repo), "declares no `GITHUB_TOKEN`")
 
 
 def test_a_proof_recipe_with_no_job_is_refused(tree: Callable[[], Tree]) -> None:
