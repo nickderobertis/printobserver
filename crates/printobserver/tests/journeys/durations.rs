@@ -15,44 +15,23 @@
 //! # What the two short values add, and when they are read
 //!
 //! The recorded expiry alone does not separate restoring at the right time from
-//! restoring early and from never restoring. So at the two short values the
-//! journey reads twice around each intervention, and **both reads are
-//! scheduled against the expiry that intervention's own record carries**
-//! rather than against the moment the request was made, or against any other
-//! intervention's: once at that instant less [`MARGIN`], and once [`MARGIN`]
-//! after the first poll at which the supervisor can have noticed it, which is
-//! that instant plus [`EXPIRY_POLL`]. The five adjustments are taken one at a
-//! time — asked for, read before its expiry, read after it — so that what has
-//! to fit between an intervention's request and its first read is that
-//! request's own tail and nothing else. A batch of five requests followed by one read before the
-//! earliest expiry had to fit four more programs into the same span, and at
-//! the shortest duration this program accepts that span is under a second.
-//! That shortest duration is the first timed value everywhere but on Windows,
-//! whose tracer makes the request's own tail longer than a second —
-//! [`WINDOWS_TRACED_REQUEST_SECONDS`] says how and why.
+//! restoring early and from never restoring. So at the two short values each
+//! intervention is taken alone and read twice, both reads scheduled from the
+//! expiry **its own** record carries: [`MARGIN`] before it, and [`MARGIN`]
+//! after the first poll at which the supervisor can have noticed it
+//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing but the
+//! request's own tail between a request and its first read; the batch this
+//! replaced fit four more traced programs into that span, and lost.
 //!
-//! **The read before the expiry is made in this process**, through the
-//! client crate, and not through a spawned program. Every other read a journey
-//! makes goes through the built program under the tracer, and that is the
-//! right surface for what those reads prove; but this one is about the
-//! **server's** state at an instant, and a spawned, traced, coverage-
-//! instrumented program has no bound on how long it takes under the load a
-//! gate applies — one traced `status` has been seen to take longer than
-//! [`MARGIN`], and a read that lands after the expiry it was scheduled before
-//! proves nothing about either side of it. The program's own `status` command
-//! is proven elsewhere in the walk, and still answers the reads after the
-//! expiry below. What the pre-expiry assertion compares against the recorded
-//! expiry is the instant the read's **answer arrived**, not the instant the
-//! wait ended: the answer is evidence that the intervention was in force only
-//! if it was composed before the expiry, so a read that was issued in time and
-//! answered late fails naming that read rather than passing for having started
-//! on time.
-//!
-//! **The reads after the expiry stay in the traced program** — the status and
-//! the history — because there a slow read can only land later, which is the
-//! side of the expiry the read is about. Each is still asserted to have been
-//! taken after its own intervention's expiry, so a read that drifted is a
-//! failure rather than a silent weakening.
+//! The read before the expiry is made **in this process** and asserted on the
+//! instant its answer arrived, because it is about the server's state at an
+//! instant and a spawned, traced, coverage-instrumented program has no bound
+//! on its latency under load — `the_adjusted_value_is_in_place_shortly_before_it_expires`
+//! says what each of its three instants proves. The reads after the expiry
+//! stay in the traced program, where a slow read can only land on the side of
+//! the expiry it is about. Every wait is kept on the wall clock the expiry is
+//! an instant of (`until`), and the store is checkpointed before each sequence
+//! so its own checkpoint cannot fall inside a window (`checkpoint_the_store`).
 //!
 //! # What is read, and what the machine can be read for
 //!
@@ -203,7 +182,7 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
     let first = shortest_timed(cfg!(windows));
     for seconds in [first, first + 2] {
         for one in &adjustments {
-            the_store_has_checkpointed(world);
+            checkpoint_the_store(world);
             let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
             the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
             the_prior_value_is_back_shortly_after_it_expires(world, &opened);
@@ -231,7 +210,7 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
 /// the store's own connection, before each intervention is asked for and
 /// outside every window. This keeps the journey's windows clear of the
 /// store's checkpoint and proves nothing about the store coping with one.
-fn the_store_has_checkpointed(world: &World) {
+fn checkpoint_the_store(world: &World) {
     let database = world
         .root
         .path()
