@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import tomllib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -318,16 +319,23 @@ def test_a_consumers_program_is_looked_for_where_cargo_says_it_builds(
     proof that looked beside the manifest would report the program it had just
     built as missing. A consumer in a temporary directory is under no such
     file and builds beside itself, which is what a proof run from one sees.
+
+    The consumer inside the clone has to be inside it, so it sits where the
+    proofs put theirs — and in a directory of its own that is gone when the
+    test is, so a run leaves nothing under `dist/`.
     """
     smoke = executable("printobserver-sdk-smoke")
-    inside = _consumer_at(repo.root / "dist" / "test-clients" / "consumer")
-    outside = _consumer_at(tmp_path / "consumer")
+    dist = repo.root / "dist"
+    dist.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dist, prefix="test-clients-") as scratch:
+        inside = _consumer_at(Path(scratch) / "consumer")
+        equal(
+            consumer_program(inside, "printobserver-sdk-smoke"),
+            repo.root / "target" / "release" / smoke,
+            describing="where a consumer inside the clone is built",
+        )
 
-    equal(
-        consumer_program(inside, "printobserver-sdk-smoke"),
-        repo.root / "target" / "release" / smoke,
-        describing="where a consumer inside the clone is built",
-    )
+    outside = _consumer_at(tmp_path / "consumer")
     equal(
         consumer_program(outside, "printobserver-sdk-smoke").resolve(),
         (outside / "target" / "release" / smoke).resolve(),
