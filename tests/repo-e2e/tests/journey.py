@@ -154,8 +154,19 @@ class GateCopy:
         for itself.
         """
         self.root = copy_tracked(root)
+        # A copy runs no automatic maintenance, set in its own configuration so
+        # every command a journey later runs in it inherits that whatever the
+        # host's git is configured to do. `git commit` ends by spawning `git
+        # maintenance run --auto`, and since git 2.54 that repacks a repository
+        # holding a hundred loose objects *detached* — this commit writes some
+        # eight hundred — deleting the emptied `objects/XX` directories while a
+        # tool that copies `.git` aside, as `release-plz update` does, is still
+        # walking them. `gc.auto=0` is for an older git, whose `gc` task the
+        # first setting does not reach. `test_gate_copy_journey.py` holds this.
         for args in (
             ["init", "-q", "-b", "main"],
+            ["config", "maintenance.auto", "false"],
+            ["config", "gc.auto", "0"],
             ["add", "-A"],
             [
                 "-c",
