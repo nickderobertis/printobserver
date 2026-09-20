@@ -25,7 +25,7 @@
 //! expiry it is about. What keeps the window before an expiry clear of
 //! everything but the read is documented where each piece is:
 //! `asked_and_read_before_its_expiry` (the deadline), `one_bounded_intervention`
-//! (the clock), `until` (the wait) and `checkpoint_the_store` (the store).
+//! (the host), `until` (the wait) and `checkpoint_the_store` (the store).
 //!
 //! # What is read, and what the machine can be read for
 //!
@@ -154,45 +154,61 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
     }
 }
 
-/// How many times one intervention is measured before a stepping clock fails
-/// the journey.
-const STEADY_CLOCK_ATTEMPTS: usize = 3;
+/// How many times one intervention is measured before a host that was not
+/// steady fails the journey.
+const STEADY_HOST_ATTEMPTS: usize = 3;
 
 /// One adjustment asked for with one duration, and read on both sides of its
-/// expiry — measured on a steady clock.
+/// expiry — measured on a steady host.
 ///
-/// A host may step its wall clock (this WSL2 host: by 0.47–1.9 s about every
-/// 33 s under load), and a step wider than [`MARGIN`] between the request and
-/// the read moves the expiry past the read on the only clock the system has.
-/// So the condition that the clock was steady is checked before anything is
-/// asserted on the read before the expiry, by the two clocks alone — the wall
-/// clock against elapsed time, to within a poll slice — and that read is
-/// discarded where it was taken across a step, recorded with the step's size
-/// and place, and taken again, at most [`STEADY_CLOCK_ATTEMPTS`] times. The
-/// record's expiry and the reads after it are asserted on every attempt: a
-/// step can only make those reads later, which is the side they are about. A
-/// supervisor that is late with no step fails exactly as it would without
-/// this. It is a guard against a stepping clock, not a margin.
+/// Two events of the host, and no fault of the supervisor, put the expiry on
+/// the wrong side of the read before it. A host may step its wall clock (this
+/// WSL2 host: by 0.47–2.0 s about every 34 s under load), and a step wider
+/// than [`MARGIN`] between the request and the read moves the expiry past the
+/// read on the only clock the system has. And a host may leave this thread
+/// unrun (the same host, once in some seven tiers, for two seconds with both
+/// clocks agreeing), so that the wait for the read ends after the instant it
+/// was scheduled for by more than the read has left. So both conditions are
+/// checked before anything is asserted on the read before the expiry — the
+/// wall clock against elapsed time, to within a poll slice, and the wait's
+/// end against its schedule, to within [`SCHEDULE_OVERSHOOT`] — and that read
+/// is discarded where either failed, recorded with the event's size and
+/// place, and taken again, at most [`STEADY_HOST_ATTEMPTS`] times. The
+/// record's expiry and the reads after it are asserted on every attempt: an
+/// event can only make those reads later, which is the side they are about.
+/// A supervisor that is late with neither event fails exactly as it would
+/// without this, since nothing checked here reaches it. It is a guard against
+/// a stepping clock and a paused guest, not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
-    let mut stepped = Vec::new();
-    for _ in 0..STEADY_CLOCK_ATTEMPTS {
+    let mut seen = Vec::new();
+    for _ in 0..STEADY_HOST_ATTEMPTS {
         checkpoint_the_store(world);
         super::confirming::starting_from_somewhere_else(world, &one.command.name);
         let (opened, measured) = asked_and_read_before_its_expiry(world, one, seconds);
         the_prior_value_is_back_shortly_after_it_expires(world, std::slice::from_ref(&opened));
         match measured {
-            Measured::OnASteadyClock => return,
-            Measured::OnASteppedClock(step) => stepped.push(step),
+            Measured::OnASteadyHost => return,
+            Measured::AcrossAHostEvent(event) => seen.push(event),
         }
     }
-    let steps: Vec<String> = stepped.iter().map(ToString::to_string).collect();
+    let events: Vec<String> = seen.iter().map(ToString::to_string).collect();
     panic!(
-        "`{}` at {seconds} seconds could not be measured on a steady clock: the host stepped \
-         its wall clock on every one of {STEADY_CLOCK_ATTEMPTS} attempts, by {}",
+        "`{}` at {seconds} seconds could not be measured on a steady host, on every one of \
+         {STEADY_HOST_ATTEMPTS} attempts: {}",
         one.command.name,
-        steps.join(", then ")
+        events.join(", then ")
     );
 }
+
+/// How far past its scheduled instant the wait for a read before an expiry
+/// may end and the read still be taken: half of [`MARGIN`], leaving the other
+/// half for the read itself.
+const SCHEDULE_OVERSHOOT: Duration = Duration::from_millis(200);
+
+const _: () = assert!(
+    SCHEDULE_OVERSHOOT.as_millis() * 2 == MARGIN.as_millis(),
+    "SCHEDULE_OVERSHOOT is not half of MARGIN"
+);
 
 /// The sleep between two looks at the proxy's record: an eightieth of
 /// [`MARGIN`], small beside the window the record is waited for in.
@@ -267,29 +283,43 @@ fn the_answer_the_supervisor_sent(world: &World, command: &str) -> Value {
 
 /// What one measurement before an expiry was taken on.
 enum Measured {
-    /// The clocks agreed from the request to the read, and every assertion
+    /// The host was steady from the request to the read, and every assertion
     /// on that read was made.
-    OnASteadyClock,
-    /// The wall clock stepped between the request and the read, and nothing
-    /// was asserted on that read.
-    OnASteppedClock(Step),
+    OnASteadyHost,
+    /// The host stepped its clock or left this thread unrun between the
+    /// request and the read, and nothing was asserted on that read.
+    AcrossAHostEvent(HostEvent),
 }
 
-/// One step of the host's wall clock, seen between a request and its read.
-struct Step {
-    /// How far the wall clock moved beyond elapsed time, in microseconds.
-    micros: i64,
-    /// Where it landed.
-    during: &'static str,
+/// One event of the host, seen between a request and its read.
+enum HostEvent {
+    /// The wall clock moved beyond elapsed time.
+    SteppedClock {
+        /// By how much, in microseconds.
+        micros: i64,
+        /// Where it landed.
+        during: &'static str,
+    },
+    /// This thread was not run, with both clocks agreeing.
+    PausedGuest {
+        /// How far past its scheduled instant the wait ended, in microseconds.
+        micros: i64,
+    },
 }
 
-impl std::fmt::Display for Step {
+impl std::fmt::Display for HostEvent {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "{} microseconds during {}",
-            self.micros, self.during
-        )
+        match self {
+            Self::SteppedClock { micros, during } => write!(
+                formatter,
+                "the host's wall clock stepped by {micros} microseconds during {during}"
+            ),
+            Self::PausedGuest { micros } => write!(
+                formatter,
+                "the host left this thread unrun: the wait ended {micros} microseconds after \
+                 the instant it was scheduled for, with both clocks agreeing"
+            ),
+        }
     }
 }
 
@@ -481,11 +511,6 @@ fn instant(answer: &Value, at: &str) -> Timestamp {
         .expect("an instant this system wrote")
 }
 
-/// Wait until a margin before one instant, and answer when the wait ended.
-fn just_before(when: Timestamp, margin: Duration) -> Timestamp {
-    until(when.as_utc().timestamp_micros() - micros(margin))
-}
-
 /// Wait until a margin after one instant, and answer when the wait ended.
 ///
 /// Held on both clocks. The supervisor notices an expiry on a poll of its own,
@@ -562,30 +587,33 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, o
 }
 
 /// One intervention read shortly before it expires, asserted on only where
-/// the clock was steady from its request to that read.
+/// the host was steady from its request to that read.
 ///
 /// The same read and the same assertions as
 /// [`the_adjusted_value_is_in_place_shortly_before_it_expires`], behind the
-/// steady-clock condition `one_bounded_intervention` states: a step seen
+/// steady-host condition `one_bounded_intervention` states: an event seen
 /// between the request and the read discards this read before anything is
 /// asserted on it, and says so on the output.
 fn measured_shortly_before_it_expires(world: &World, bounded: &Bounded) -> Measured {
     let reading = read_shortly_before_it_expires(world, bounded);
-    if let Some(step) = reading.stepped_since(bounded.steady_from) {
+    if let Some(event) = reading.host_event_since(bounded.steady_from) {
         eprintln!(
-            "discarding `{}`'s measurement before its expiry at {}: the host's wall clock \
-             stepped by {} microseconds during {}, and nothing is asserted on it",
-            bounded.command, bounded.expires_at, step.micros, step.during
+            "discarding `{}`'s measurement before its expiry at {}: {event}, and nothing is \
+             asserted on it",
+            bounded.command, bounded.expires_at
         );
-        return Measured::OnASteppedClock(step);
+        return Measured::AcrossAHostEvent(event);
     }
     the_reading_shows_it_in_force(bounded, &reading);
-    Measured::OnASteadyClock
+    Measured::OnASteadyHost
 }
 
 /// One status read scheduled before an intervention's expiry, with the clocks
 /// around it.
 struct Reading {
+    /// The instant the wait was scheduled to end, in microseconds since the
+    /// epoch.
+    scheduled: i64,
     /// When the wait ended: the schedule.
     at: Timestamp,
     /// When the answer was in hand.
@@ -601,9 +629,10 @@ struct Reading {
 }
 
 impl Reading {
-    /// The first step of the wall clock between an earlier reading and this
-    /// read, where there was one.
-    fn stepped_since(&self, earlier: Clocks) -> Option<Step> {
+    /// The first event of the host between an earlier reading and this read,
+    /// where there was one: a step of the wall clock in any of the three
+    /// spans, and failing that a wait that ended too far past its schedule.
+    fn host_event_since(&self, earlier: Clocks) -> Option<HostEvent> {
         self.waiting
             .stepped_since(earlier)
             .map(|micros| (micros, "the request and the span before the wait"))
@@ -617,19 +646,26 @@ impl Reading {
                     .stepped_since(self.waited)
                     .map(|micros| (micros, "the read"))
             })
-            .map(|(micros, during)| Step { micros, during })
+            .map(|(micros, during)| HostEvent::SteppedClock { micros, during })
+            .or_else(|| {
+                let overshoot = self.at.as_utc().timestamp_micros() - self.scheduled;
+                (overshoot > micros(SCHEDULE_OVERSHOOT))
+                    .then_some(HostEvent::PausedGuest { micros: overshoot })
+            })
     }
 }
 
 /// Wait until [`MARGIN`] before one intervention's recorded expiry, and read
 /// the status in this process.
 fn read_shortly_before_it_expires(world: &World, bounded: &Bounded) -> Reading {
+    let scheduled = bounded.expires_at.as_utc().timestamp_micros() - micros(MARGIN);
     let waiting = Clocks::now();
-    let at = just_before(bounded.expires_at, MARGIN);
+    let at = until(scheduled);
     let waited = Clocks::now();
     let (status, answered) = status_in_process(world);
     let read = Clocks::now();
     Reading {
+        scheduled,
         at,
         answered,
         status,
