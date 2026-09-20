@@ -19,13 +19,11 @@
 //! intervention is taken alone and read twice, both reads scheduled from the
 //! expiry **its own** record carries: [`MARGIN`] before it, and [`MARGIN`]
 //! after the first poll at which the supervisor can have noticed it
-//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing between a
-//! request and its first read; the batch this replaced fit four more traced
-//! programs into that span, and lost. And the expiry itself is learned from
-//! the recording proxy the moment the supervisor answers, not from the traced
-//! program's output, so the program's own exit — which under a gate's disk
-//! load has taken seconds — never reaches the read
-//! (`asked_and_read_before_its_expiry`).
+//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing of any other
+//! request between a request and its first read, and the expiry is learned
+//! from the recording proxy the moment the supervisor answers rather than
+//! from the traced program's output, so the program's own exit never reaches
+//! the read (`asked_and_read_before_its_expiry`).
 //!
 //! The read before the expiry is made **in this process** and asserted on the
 //! instant its answer arrived, because it is about the server's state at an
@@ -204,11 +202,13 @@ fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     );
 }
 
-/// How often the proxy is looked at for the supervisor's answer.
+/// Small beside [`MARGIN`], so the record is in hand within a hundredth of
+/// the margin of the supervisor sending it.
 const PROXY_POLL: Duration = Duration::from_millis(5);
 
-/// How long the supervisor is given to answer a request that opens an
-/// intervention.
+/// Long enough for the traced program to start and be answered on the
+/// slowest host this runs on, and short enough that a supervisor that never
+/// answers fails this journey rather than hanging it.
 const ANSWER_WAIT: Duration = Duration::from_secs(60);
 
 /// One adjustment asked for through the traced program, and read before its
@@ -567,13 +567,20 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
     for bounded in opened {
         let waiting = Clocks::now();
         let at = just_before(bounded.expires_at, MARGIN);
+        let waited = Clocks::now();
+        let (status, answered) = status_in_process(world);
         let read = Clocks::now();
         let stepped = waiting
             .stepped_since(bounded.recorded)
             .map(|micros| (micros, "the span before the wait"))
             .or_else(|| {
-                read.stepped_since(waiting)
+                waited
+                    .stepped_since(waiting)
                     .map(|micros| (micros, "the wait"))
+            })
+            .or_else(|| {
+                read.stepped_since(waited)
+                    .map(|micros| (micros, "the read"))
             });
         if let Some((micros, during)) = stepped {
             eprintln!(
@@ -583,7 +590,6 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
             );
             return Measured::OnASteppedClock(Step { micros, during });
         }
-        let (status, answered) = status_in_process(world);
         let observed = instant(&status, "/printer/observed_at");
         let held = in_force(&status);
 
