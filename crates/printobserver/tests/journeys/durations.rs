@@ -203,6 +203,7 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
     let first = shortest_timed(cfg!(windows));
     for seconds in [first, first + 2] {
         for one in &adjustments {
+            the_store_has_checkpointed(world);
             let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
             the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
             the_prior_value_is_back_shortly_after_it_expires(world, &opened);
@@ -213,6 +214,38 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
     for one in &adjustments {
         every_refused_duration_records_nothing(world, one);
     }
+}
+
+/// Checkpoint the supervisor's own database before one timed sequence.
+///
+/// The store keeps its database in write-ahead logging and lets `SQLite`
+/// checkpoint it on its own: at every commit once the log holds a thousand
+/// pages, and under `synchronous = NORMAL` that is the one moment it forces
+/// the data to disk. The journey's writes cross that boundary at a fixed point
+/// — between the tool and the bed requests at the shortest duration — so on
+/// every run one checkpoint falls inside one of the windows the reads below
+/// are timed against. Unloaded it costs milliseconds; under a gate's disk load
+/// it has cost up to two seconds, during which the supervisor answered no read
+/// and expired nothing. That is a stall of the system rather than a fault the
+/// timing assertions are written to find, so the log is emptied here through
+/// the store's own connection, before each intervention is asked for and
+/// outside every window. This keeps the journey's windows clear of the
+/// store's checkpoint and proves nothing about the store coping with one.
+fn the_store_has_checkpointed(world: &World) {
+    let database = world
+        .root
+        .path()
+        .join("state")
+        .join(printobserver_store_sqlite::DATABASE_FILE_NAME);
+    let connection = printobserver_store_sqlite::connect(&database)
+        .unwrap_or_else(|error| panic!("the supervisor's database does not open: {error}"));
+    let busy: i64 = connection
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap_or_else(|error| panic!("the supervisor's database does not checkpoint: {error}"));
+    assert_eq!(
+        busy, 0,
+        "the supervisor's database could not be checkpointed while something held it"
+    );
 }
 
 /// The commands of the walk that take a duration.
