@@ -180,6 +180,24 @@ def test_a_list_that_gains_a_platform_refuses_the_unchanged_job(
     refused(findings, "omits platform `linux-riscv64`")
 
 
+def _repository(root: Path) -> None:
+    """Make the copy a repository that starts no maintenance of git's own.
+
+    Committing the copied tree leaves some eight hundred loose objects, and
+    since git 2.54 the `git maintenance run --auto` every commit spawns repacks
+    that many *detached*, removing the emptied `objects/XX` directories while
+    the check's glob for every `project.json` is still walking `.git`. Turned
+    off in the repository's own configuration, as the e2e tier's `GateCopy`
+    does.
+    """
+    for arguments in (
+        ["init", "-q", "-b", "main"],
+        ["config", "maintenance.auto", "false"],
+        ["config", "gc.auto", "0"],
+    ):
+        run(["git", *arguments], cwd=root, check=True)
+
+
 def _committed(root: Path, message: str) -> str:
     """Commit whatever is in a copy, and answer with the revision it made."""
     for arguments in (
@@ -204,7 +222,7 @@ def test_a_list_that_loses_a_platform_it_carried_at_the_base_is_refused(
 ) -> None:
     """Deleting a platform and narrowing the job to match is the state this refuses."""
     broken = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=broken.root, check=True)
+    _repository(broken.root)
     base = _committed(broken.root, "chore: the committed tree, copied")
 
     broken.edit("AGENTS.md", AARCH64_PLATFORM, "")
@@ -219,7 +237,7 @@ def test_a_list_that_loses_a_platform_it_carried_at_the_base_is_refused(
 def test_a_platform_recorded_as_retired_may_leave_the_list(tree: Callable[[], Tree]) -> None:
     """A cut with its reason on record is a decision, and the matrix follows the list."""
     allowed = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=allowed.root, check=True)
+    _repository(allowed.root)
     base = _committed(allowed.root, "chore: the committed tree, copied")
 
     allowed.edit("AGENTS.md", AARCH64_PLATFORM, "")
@@ -240,7 +258,7 @@ def test_a_list_that_keeps_every_platform_it_carried_at_the_base_is_accepted(
 ) -> None:
     """A change that leaves the list alone is not narrowing it."""
     allowed = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=allowed.root, check=True)
+    _repository(allowed.root)
     base = _committed(allowed.root, "chore: the committed tree, copied")
 
     accepted(integration_tier(allowed.repo, base=base), describing="a list nothing narrowed")
