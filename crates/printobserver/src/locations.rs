@@ -188,32 +188,10 @@ mod tests {
         assert_eq!(smoke_value(&smoke, "WINDOWS_CONFIG"), WINDOWS.config);
     }
 
-    /// One platform's row of the README's table, cell by cell in column order,
-    /// so a path written under the wrong heading is a wrong answer rather than
-    /// one found elsewhere in the row.
-    fn readme_row(readme: &str, platform: &str) -> Vec<String> {
-        let row = readme
-            .lines()
-            .find(|line| line.starts_with(&format!("| {platform} |")))
-            .unwrap_or_else(|| panic!("the README's table carries no {platform} row"));
-        row.split('|')
-            .map(str::trim)
-            .filter(|cell| !cell.is_empty())
-            .skip(1)
-            .map(|cell| {
-                cell.strip_prefix('`')
-                    .and_then(|rest| rest.strip_suffix('`'))
-                    .unwrap_or_else(|| {
-                        panic!("the README's {platform} row cell `{cell}` is not backticked")
-                    })
-                    .to_owned()
-            })
-            .collect()
-    }
-
     /// The README tells a reader where their platform's install keeps things
-    /// in a table, and that table is exactly the answers here: the one place a
-    /// person meets these paths is held to the one place they are declared.
+    /// in a table, one row per platform, and each row is exactly the answers
+    /// here: the one place a person meets these paths is held to the one place
+    /// they are declared.
     #[test]
     fn the_readme_tells_each_platforms_own_locations() {
         let readme =
@@ -229,14 +207,13 @@ mod tests {
                 format!("{}\\printobserver.exe", WINDOWS.home),
             ),
         ] {
-            assert_eq!(
-                readme_row(&readme, platform),
-                vec![
-                    locations.config.to_owned(),
-                    locations.state.to_owned(),
-                    program
-                ],
-                "the README's {platform} row"
+            let row = format!(
+                "| {platform} | `{}` | `{}` | `{program}` |",
+                locations.config, locations.state
+            );
+            assert!(
+                readme.lines().any(|line| line == row),
+                "the README's table carries no row `{row}`"
             );
         }
     }
