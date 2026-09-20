@@ -804,6 +804,7 @@ class Released(NamedTuple):
 class Stage:
     """A copy of the tree wired to a registry and a forge, sharing one record."""
 
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
     def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:
         """Stand both stand-ins up, then copy the tree carrying `tags` and wire it to them.
 
