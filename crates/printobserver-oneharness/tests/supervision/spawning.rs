@@ -27,11 +27,12 @@ use crate::support::{
 fn every_process_a_turn_creates_is_the_responder_this_repository_ships() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("spawning");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),

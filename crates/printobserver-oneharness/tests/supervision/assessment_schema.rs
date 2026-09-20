@@ -11,12 +11,16 @@
 //! `printobserver-supervisor-api`'s suite reads that same file on every gate run, and
 //! `nx run-many` drives it while this project's tests are still going, so both
 //! sides take the lock [`schema_lock`] describes and neither ever sees the
-//! other's half-done tree. The artifact is restored by a guard rather than by
-//! the last line of a journey, so the tree comes back even from a panic, and
-//! this journey reads it back afterwards to say so.
+//! other's half-done tree. This journey is the one holder of the exclusive
+//! form, and it holds it from its first read to its last: the artifact it
+//! drives against before changing anything is the same file every other
+//! journey reads, so a shared hold dropped and an exclusive one taken later
+//! would leave those first reads racing the same change. The artifact is
+//! restored by a guard rather than by the last line of a journey, so the tree
+//! comes back even from a panic, and this journey reads it back afterwards to
+//! say so.
 
 use std::fs;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -25,7 +29,7 @@ use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{EventBody, PrintId, serde_json};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, block_on, config, event,
+    Exclusive, Fixture, HARNESS, SchemaHold, Watch, always, assessment, block_on, config, event,
     generated_assessment_schema, port, schema_lock, turn, unreadable,
 };
 
@@ -36,7 +40,12 @@ fn payload() -> EventBody {
 
 /// Drive one turn under one scripted answer, and answer what the port made of
 /// it, having also handed back the run requests it built.
+///
+/// The schema is read under this journey's own exclusive hold, so a drive
+/// before the artifact is changed and one after it read the same tree nobody
+/// else is touching.
 fn drive(
+    held: &SchemaHold<Exclusive>,
     fixture: &Fixture,
     schema: &std::path::Path,
     answer: &str,
@@ -46,7 +55,7 @@ fn drive(
 ) {
     let watch = Arc::new(Watch::default());
     let supervisor = port(
-        config(fixture, HARNESS, schema, always("SID-SCHEMA", answer)),
+        config(held, fixture, HARNESS, schema, always("SID-SCHEMA", answer)),
         &watch,
     );
     let print_id = PrintId::new();
@@ -58,13 +67,18 @@ fn drive(
 /// the answer, and changing it changes what is accepted.
 #[test]
 fn the_answer_is_constrained_by_the_generated_assessment_schema() {
+    // The one exclusive hold on the checked-in schema tree, for the whole of
+    // this journey: the artifact is changed on disk further down, and every
+    // read here — before the change, under it and after the restore — is of
+    // the tree this hold keeps every other suite out of.
+    let schemas = schema_lock();
     let fixture = Fixture::new("schema");
     let generated = generated_assessment_schema();
     let conforming = assessment("the first layer is down", "high");
 
     // The schema on the run request is the generated assessment schema's own
     // checked-in artifact, not a file this crate carries.
-    let (accepted, requests) = drive(&fixture, &generated, &conforming);
+    let (accepted, requests) = drive(&schemas, &fixture, &generated, &conforming);
     let named = requests
         .first()
         .expect("the port built a run request")
@@ -118,7 +132,7 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
         ("a missing field", &missing),
         ("a bad confidence", &outside),
     ] {
-        let (refused, _) = drive(&fixture, &generated, answer);
+        let (refused, _) = drive(&schemas, &fixture, &generated, answer);
         assert!(
             matches!(refused, Err(SupervisorError::InvalidAnswer { .. })),
             "{label} was accepted: {refused:?}"
@@ -126,7 +140,7 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
     }
 
     // And one that is not well-formed at all.
-    let (refused, _) = drive(&fixture, &generated, "the print looks fine to me");
+    let (refused, _) = drive(&schemas, &fixture, &generated, "the print looks fine to me");
     assert!(
         matches!(refused, Err(SupervisorError::InvalidAnswer { .. })),
         "an answer that is not JSON was accepted: {refused:?}"
@@ -134,11 +148,12 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
 
     // What the port validates against is the artifact on disk rather than a
     // copy of its bytes, which is what changing that artifact tells apart. The
-    // artifact is held still against every other suite that reads the schema
-    // tree, and restored by a guard rather than by the last line of this
-    // journey — so the tree comes back even from a panic here.
-    let held = HeldArtifact::hold(&generated);
-    let (before, _) = drive(&fixture, &generated, &conforming);
+    // artifact is changed under the exclusive hold every other suite that
+    // reads the schema tree waits on, and restored by a guard rather than by
+    // the last line of this journey — so the tree comes back even from a panic
+    // here.
+    let held = HeldArtifact::hold(&generated, &schemas);
+    let (before, _) = drive(&schemas, &fixture, &generated, &conforming);
     before.expect("the conforming answer is accepted against the artifact");
 
     // One field constrained more strictly, and the port built again.
@@ -147,7 +162,7 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
     stricter["properties"]["summary"]["minLength"] = serde_json::json!(500);
     held.replace(&serde_json::to_vec_pretty(&stricter).expect("the variant serializes"));
 
-    let (after, _) = drive(&fixture, &generated, &conforming);
+    let (after, _) = drive(&schemas, &fixture, &generated, &conforming);
     assert!(
         matches!(after, Err(SupervisorError::InvalidAnswer { .. })),
         "the answer accepted before is still accepted after the artifact changed, \
@@ -162,33 +177,34 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
         original,
         "the artifact was not put back as the tree carries it"
     );
-    let (restored, _) = drive(&fixture, &generated, &conforming);
+    let (restored, _) = drive(&schemas, &fixture, &generated, &conforming);
     restored.expect("the conforming answer is accepted once the artifact is restored");
 }
 
-/// The checked-in artifact, held still while this journey changes it.
+/// The checked-in artifact, remembered while this journey changes it.
 ///
-/// Holding is two things at once: the lock every suite that reads the schema
-/// tree takes, and the artifact's own bytes. Putting them back is [`Drop`]'s
-/// doing rather than a line at the end of the journey, because an assertion
-/// that fails in between must still leave the tree as it found it.
-struct HeldArtifact {
+/// It borrows the journey's exclusive hold on the schema tree, so it can only
+/// be made by a journey holding one and cannot outlive it: the artifact's own
+/// bytes are put back while every other suite is still kept out. Putting them
+/// back is [`Drop`]'s doing rather than a line at the end of the journey,
+/// because an assertion that fails in between must still leave the tree as it
+/// found it.
+struct HeldArtifact<'hold> {
     /// Where the artifact is.
     path: PathBuf,
     /// Its bytes as the tree carries them.
     original: Vec<u8>,
-    /// The lock, released by the kernel when this handle goes.
-    _lock: File,
+    /// The exclusive hold this guard lives under.
+    _held: &'hold SchemaHold<Exclusive>,
 }
 
-impl HeldArtifact {
-    /// Take the lock and remember what the artifact says.
-    fn hold(path: &Path) -> Self {
-        let lock = schema_lock();
+impl<'hold> HeldArtifact<'hold> {
+    /// Remember what the artifact says, under an exclusive hold.
+    fn hold(path: &Path, held: &'hold SchemaHold<Exclusive>) -> Self {
         Self {
             path: path.to_path_buf(),
             original: fs::read(path).expect("the artifact is readable"),
-            _lock: lock,
+            _held: held,
         }
     }
 
@@ -198,7 +214,7 @@ impl HeldArtifact {
     }
 }
 
-impl Drop for HeldArtifact {
+impl Drop for HeldArtifact<'_> {
     fn drop(&mut self) {
         // Loud rather than panicking: a panic here during an unwind would abort
         // the process and bury whatever assertion failed first, and the journey

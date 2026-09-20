@@ -35,7 +35,7 @@ fn notification_body() -> EventBody {
 fn each_print_keeps_its_own_session_across_a_rebuild() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("sessions");
     let schema = generated_assessment_schema();
     let environment = always("SID-SESSIONS", &assessment("the print is fine", "high"));
@@ -46,7 +46,7 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
 
     let watch = Arc::new(Watch::default());
     let supervisor = port(
-        config(&fixture, HARNESS, &schema, environment.clone()),
+        config(&schemas, &fixture, HARNESS, &schema, environment.clone()),
         &watch,
     );
 
@@ -77,7 +77,7 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
     drop(watch);
     let rebuilt_watch = Arc::new(Watch::default());
     let rebuilt = port(
-        config(&fixture, HARNESS, &schema, environment),
+        config(&schemas, &fixture, HARNESS, &schema, environment),
         &rebuilt_watch,
     );
 
