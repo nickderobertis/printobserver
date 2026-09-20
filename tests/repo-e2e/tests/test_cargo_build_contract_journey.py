@@ -22,6 +22,19 @@ CRATE = "printobserver-types"
 #: The debuginfo level cargo hands rustc under the dev profile: line tables only.
 LINE_TABLES = "-C debuginfo=1"
 
+#: Every variable cargo reads ahead of the file for one of its two keys. The
+#: gate's runners set one of them: `actions-rust-lang/setup-rust-toolchain`
+#: exports `CARGO_PROFILE_DEV_DEBUG=0` to keep its cache small, and under it the
+#: copy built at level 0 — carrying `-C strip=debuginfo` and no `debuginfo=` at
+#: all — while the file still said 1. What these journeys prove is the file, so
+#: cargo is handed none of them, and the one journey that sets one sets it after.
+OVERRIDES = (
+    "CARGO_TARGET_DIR",
+    "CARGO_BUILD_TARGET_DIR",
+    "CARGO_PROFILE_DEV_DEBUG",
+    "CARGO_PROFILE_TEST_DEBUG",
+)
+
 #: A crate that is no member of the workspace, planted inside the copy: its own
 #: `[workspace]` table is what keeps cargo from reading it as a stray member of
 #: the one above it, and it depends on nothing so a build of it costs nothing.
@@ -35,6 +48,15 @@ edition = "2024"
 '''
 
 
+def _file_alone(**extra: str) -> dict[str, str]:
+    """The environment cargo reads the copy's `.cargo/config.toml` under, and nothing over it."""
+    environment = clean_environment()
+    for name in OVERRIDES:
+        environment.pop(name, None)
+    environment.update(extra)
+    return environment
+
+
 def _metadata_target(cwd: Path, **environment: str) -> Path:
     """Where cargo, asked from `cwd`, says it will build.
 
@@ -46,7 +68,7 @@ def _metadata_target(cwd: Path, **environment: str) -> Path:
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
         cwd,
         timeout=120,
-        env=clean_environment(**environment),
+        env=_file_alone(**environment),
     )
     passing(result, describing=f"`cargo metadata` from {cwd}")
     metadata = json.loads(result.stdout)
@@ -72,7 +94,7 @@ def _unit(cwd: Path, command: list[str], crate: str) -> str:
     line whether or not it emits code; a full build of the copy would prove the
     same two things at the cost of linking every dependency.
     """
-    result = capture(command, cwd, timeout=900, env=clean_environment())
+    result = capture(command, cwd, timeout=900, env=_file_alone())
     passing(result, describing=f"`{' '.join(command)}`")
     unit = f"--crate-name {crate.replace('-', '_')} "
     invocations = [line for line in output(result).splitlines() if unit in line]
