@@ -19,11 +19,12 @@
 //! journey reads twice around each intervention, and **both reads are
 //! scheduled against the expiry that intervention's own record carries**
 //! rather than against the moment the request was made, or against any other
-//! intervention's: once at that instant less [`MARGIN`] and once at it plus
-//! [`MARGIN`]. The five adjustments are taken one at a time — asked for, read
-//! before its expiry, read after it — so that what has to fit between an
-//! intervention's request and its first read is that request's own tail and
-//! nothing else. A batch of five requests followed by one read before the
+//! intervention's: once at that instant less [`MARGIN`], and once [`MARGIN`]
+//! after the first poll at which the supervisor can have noticed it, which is
+//! that instant plus [`EXPIRY_POLL`]. The five adjustments are taken one at a
+//! time — asked for, read before its expiry, read after it — so that what has
+//! to fit between an intervention's request and its first read is that
+//! request's own tail and nothing else. A batch of five requests followed by one read before the
 //! earliest expiry had to fit four more programs into the same span, and at
 //! the shortest duration this program accepts that span is under a second.
 //! That shortest duration is the first timed value everywhere but on Windows,
@@ -99,6 +100,25 @@ const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 /// [`WINDOWS_TRACED_REQUEST_SECONDS`], and is the request's rather than a
 /// read's.
 pub const MARGIN: Duration = Duration::from_millis(400);
+
+/// How often the supervisor looks for an expiry: its expiry driver's own
+/// cadence, which is [`printobserver_core::DEFAULT_EXPIRY_POLL`].
+///
+/// The driver polls on elapsed time and expires what is due at each poll, so
+/// the first instant it can have noticed an expiry is up to one poll after it.
+/// The reads after an expiry are scheduled [`MARGIN`] after **that** instant
+/// rather than after the expiry itself: measured from the expiry, the margin
+/// would leave the driver the margin less a poll — under two hundred
+/// milliseconds — for the restore and the record of it, which a loaded host
+/// exceeds. Measured from the first poll that can have seen it, the margin is
+/// the same one the read before the expiry has. The test beside this holds
+/// the copy to the supervisor's own.
+const EXPIRY_POLL: Duration = Duration::from_millis(250);
+
+#[test]
+fn the_supervisor_polls_for_an_expiry_at_the_cadence_this_journey_allows_for() {
+    assert_eq!(EXPIRY_POLL, printobserver_core::DEFAULT_EXPIRY_POLL);
+}
 
 /// What the Windows tracer adds to the shortest timed duration.
 ///
@@ -445,13 +465,14 @@ fn status_in_process(world: &World) -> (Value, Timestamp) {
 /// The prior value is back shortly after each one expired.
 ///
 /// One status read and one history read per intervention, scheduled
-/// [`MARGIN`] after **its own** recorded expiry and made through the traced
-/// program: here a slow read can only land later, which is the side of the
-/// expiry this read is about, and the read is still asserted to have been
-/// taken after it.
+/// [`MARGIN`] after the first poll at which the supervisor can have noticed
+/// **its own** recorded expiry — [`EXPIRY_POLL`] says why the poll is counted
+/// — and made through the traced program: here a slow read can only land
+/// later, which is the side of the expiry this read is about, and the read is
+/// still asserted to have been taken after it.
 pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &[Bounded]) {
     for bounded in opened {
-        let at = just_after(bounded.expires_at, MARGIN);
+        let at = just_after(bounded.expires_at, EXPIRY_POLL + MARGIN);
         let status = running::read(world, &["status", "--print-id", &world.print_id]);
         let held = in_force(&status);
         let history = running::read(
