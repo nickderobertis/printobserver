@@ -22,17 +22,19 @@ CRATE = "printobserver-types"
 #: The debuginfo level cargo hands rustc under the dev profile: line tables only.
 LINE_TABLES = "-C debuginfo=1"
 
-#: Every variable cargo reads ahead of the file for one of its two keys. The
-#: gate's runners set one of them: `actions-rust-lang/setup-rust-toolchain`
-#: exports `CARGO_PROFILE_DEV_DEBUG=0` to keep its cache small, and under it the
-#: copy built at level 0 — carrying `-C strip=debuginfo` and no `debuginfo=` at
-#: all — while the file still said 1. What these journeys prove is the file, so
-#: cargo is handed none of them, and the one journey that sets one sets it after.
+#: Every variable cargo reads ahead of the file for one of its two keys, or for
+#: the release profile these journeys hold untouched. The gate's runners set one
+#: of them: `actions-rust-lang/setup-rust-toolchain` exports
+#: `CARGO_PROFILE_DEV_DEBUG=0` to keep its cache small, and under it the copy
+#: built at level 0 — carrying `-C strip=debuginfo` and no `debuginfo=` at all —
+#: while the file still said 1. What these journeys prove is the file, so cargo
+#: is handed none of them, and the one journey that sets one sets it after.
 OVERRIDES = (
     "CARGO_TARGET_DIR",
     "CARGO_BUILD_TARGET_DIR",
     "CARGO_PROFILE_DEV_DEBUG",
     "CARGO_PROFILE_TEST_DEBUG",
+    "CARGO_PROFILE_RELEASE_DEBUG",
 )
 
 #: A crate that is no member of the workspace, planted inside the copy: its own
