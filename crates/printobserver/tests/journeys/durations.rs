@@ -334,11 +334,21 @@ impl Clocks {
 /// here, outside every window. This keeps the journey's windows clear of the
 /// store's checkpoint and proves nothing about the store coping with one.
 fn checkpoint_the_store(world: &World) {
+    // The world lays its state directory out in its own terms and hands out no
+    // path to it, and the store's `connect` creates a database where none is,
+    // so the one this world seeded is required to be there before anything is
+    // opened: a layout that moved fails here naming the path, rather than
+    // checkpointing an empty store the supervisor never writes.
     let database = world
         .root
         .path()
         .join("state")
         .join(printobserver_store_sqlite::DATABASE_FILE_NAME);
+    assert!(
+        database.is_file(),
+        "the supervisor's database is not at {}",
+        database.display()
+    );
     let connection = printobserver_store_sqlite::connect(&database)
         .unwrap_or_else(|error| panic!("the supervisor's database does not open: {error}"));
     let busy: i64 = connection
