@@ -62,12 +62,13 @@ fn one_request_and_only_the_responder(watch: &Watch) {
 fn a_retry_inside_one_request_recovers_the_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("retries-recovered");
     let counter = fixture.path("attempts");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -103,7 +104,7 @@ fn a_retry_inside_one_request_recovers_the_turn() {
 fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("retries-exhausted");
     let schema = generated_assessment_schema();
     let print_id = PrintId::new();
@@ -111,6 +112,7 @@ fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
     let watch = Arc::new(Watch::default());
     let failing = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &schema,
@@ -142,6 +144,7 @@ fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
     let answering_watch = Arc::new(Watch::default());
     let answering = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &schema,

@@ -74,11 +74,12 @@ fn fillings(literals: &[String], prompt: &str) -> Option<Vec<String>> {
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("prompting");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -149,7 +150,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
 fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("skill");
     let schema = generated_assessment_schema();
     let environment = always("SID-SKILL", &assessment("the print is fine", "high"));
@@ -157,7 +158,7 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
     // The committed skill, exactly.
     let watch = Arc::new(Watch::default());
     let supervisor = port(
-        config(&fixture, HARNESS, &schema, environment.clone()),
+        config(&schemas, &fixture, HARNESS, &schema, environment.clone()),
         &watch,
     );
     let print_id = PrintId::new();
@@ -183,7 +184,7 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
     // carries, which a crate that embedded the skill's text could not do.
     let scratch = fixture.path("skill.md");
     fs::write(&scratch, &committed).expect("a scratch skill");
-    let mut configured = config(&fixture, HARNESS, &schema, environment);
+    let mut configured = config(&schemas, &fixture, HARNESS, &schema, environment);
     configured.skill_path = scratch.clone();
 
     for text in [committed.as_str(), "Watch the print. Say what you see."] {

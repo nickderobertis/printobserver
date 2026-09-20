@@ -18,8 +18,8 @@ use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
-    Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn, unreadable,
+    Fixture, HARNESS, OTHER_HARNESS, SchemaHold, Watch, always, assessment, block_on, config,
+    event, generated_assessment_schema, port, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
@@ -49,12 +49,14 @@ fn asked_of() -> HarnessIdentity {
     HarnessIdentity::new(HARNESS).expect("a journey names a harness")
 }
 
-/// The report one real turn answered with.
-fn one_real_report(tag: &str) -> RunReport {
+/// The report one real turn answered with, driven against the checked-in
+/// assessment schema under the hold the journey has on it.
+fn one_real_report<Mode>(held: &SchemaHold<Mode>, tag: &str) -> RunReport {
     let fixture = Fixture::new(tag);
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            held,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -82,8 +84,8 @@ fn detail(error: &SupervisorError) -> String {
 fn a_report_carrying_a_session_and_a_result_is_a_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
-    let report = one_real_report("reports-answered");
+    let schemas = schema_read_lock();
+    let report = one_real_report(&schemas, "reports-answered");
     let session = report
         .session
         .clone()
@@ -104,8 +106,8 @@ fn a_report_carrying_a_session_and_a_result_is_a_turn() {
 fn a_report_with_no_session_is_no_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
-    let mut report = one_real_report("reports-sessionless");
+    let schemas = schema_read_lock();
+    let mut report = one_real_report(&schemas, "reports-sessionless");
     let asked = asked_about(&report);
     report.session = None;
 
@@ -127,8 +129,8 @@ fn a_report_with_no_session_is_no_turn() {
 fn a_report_answering_more_than_once_is_no_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
-    let mut report = one_real_report("reports-two-results");
+    let schemas = schema_read_lock();
+    let mut report = one_real_report(&schemas, "reports-two-results");
     let asked = asked_about(&report);
     let answered = report
         .results
@@ -151,8 +153,8 @@ fn a_report_answering_more_than_once_is_no_turn() {
 fn a_report_with_no_result_is_no_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
-    let mut report = one_real_report("reports-resultless");
+    let schemas = schema_read_lock();
+    let mut report = one_real_report(&schemas, "reports-resultless");
     let asked = asked_about(&report);
     report.results.clear();
 
@@ -171,8 +173,8 @@ fn a_report_with_no_result_is_no_turn() {
 fn a_report_about_another_session_or_identity_is_not_this_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
-    let report = one_real_report("reports-mismatched");
+    let schemas = schema_read_lock();
+    let report = one_real_report(&schemas, "reports-mismatched");
     let asked = asked_about(&report);
 
     let another_print = SessionName::of(&PrintId::new(), 1);

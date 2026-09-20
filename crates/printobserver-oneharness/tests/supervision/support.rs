@@ -11,6 +11,7 @@
 use std::fs;
 use std::fs::File;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -105,27 +106,62 @@ fn schema_lock_file() -> File {
         .expect("the schema lock file is creatable")
 }
 
+/// The checked-in schema tree, held still for as long as this is alive.
+///
+/// This is the only thing [`schema`] and [`config`] will read the artifact
+/// under, and the only two ways to get one are [`schema_lock`] and
+/// [`schema_read_lock`] — so a journey cannot build a configuration from the
+/// checked-in artifact without naming a lock it holds, and a reader that holds
+/// none is a compile error rather than a race the next gate run finds. The
+/// reading happens inside the call that takes the hold, so even a hold made as
+/// a temporary lasts the whole of the read.
+///
+/// `Mode` says which of the two it is. Only an [`Exclusive`] hold lets a
+/// journey change what the tree says; a [`Shared`] one lets it read.
+pub struct SchemaHold<Mode> {
+    /// The lock, released by the kernel when this handle goes.
+    _lock: File,
+    /// Whether the hold is exclusive or shared, carried by the type.
+    _mode: PhantomData<Mode>,
+}
+
+/// The hold the one journey that **changes** the schema tree takes.
+pub struct Exclusive;
+
+/// The hold every journey that only **reads** the schema tree takes.
+pub struct Shared;
+
 /// Hold the checked-in schema tree still while this journey **changes** it.
 ///
-/// Exclusive, so nothing reads the tree while it is half-changed. The lock is
-/// the operating system's own, so the kernel releases it when the handle goes:
-/// a journey that panics, or is killed, leaves nothing holding it.
-pub fn schema_lock() -> File {
+/// Exclusive, so nothing reads the tree while it is half-changed: the change
+/// is a truncate and then a write, and a reader landing between the two finds
+/// no document at all. The lock is the operating system's own, so the kernel
+/// releases it when the handle goes: a journey that panics, or is killed,
+/// leaves nothing holding it.
+pub fn schema_lock() -> SchemaHold<Exclusive> {
     let file = schema_lock_file();
     file.lock().expect("the schema lock is takeable");
-    file
+    SchemaHold {
+        _lock: file,
+        _mode: PhantomData,
+    }
 }
 
 /// Hold the checked-in schema tree still while this journey **reads** it.
 ///
 /// Shared, so the journeys that only read the artifact still run beside each
 /// other and only the one that changes it waits for them. Every journey here
-/// that drives a turn against the checked-in artifact takes this, because an
-/// answer it accepts is only the answer that artifact admits.
-pub fn schema_read_lock() -> File {
+/// that names the checked-in artifact takes this — to drive a turn against it,
+/// because an answer it accepts is only the answer that artifact admits, and to
+/// do no more than build a configuration from it, because the configuration
+/// reads the artifact the moment it is built.
+pub fn schema_read_lock() -> SchemaHold<Shared> {
     let file = schema_lock_file();
     file.lock_shared().expect("the schema lock is shareable");
-    file
+    SchemaHold {
+        _lock: file,
+        _mode: PhantomData,
+    }
 }
 
 /// The committed prompt template.
@@ -176,8 +212,14 @@ impl Fixture {
     }
 }
 
-/// One assessment schema a journey constrains an answer by.
-pub fn schema(path: &Path) -> AssessmentSchema {
+/// One assessment schema a journey constrains an answer by, read under a hold
+/// on the checked-in schema tree.
+///
+/// The schema is parsed here, as it is named, so this is where the checked-in
+/// artifact is read — and the hold is asked for whatever the path names,
+/// because nothing here can tell a scratch schema from the artifact and a
+/// shared hold costs a journey nothing.
+pub fn schema<Mode>(_held: &SchemaHold<Mode>, path: &Path) -> AssessmentSchema {
     AssessmentSchema::at(path)
         .unwrap_or_else(|error| panic!("a journey names a schema to constrain an answer: {error}"))
 }
@@ -194,8 +236,9 @@ pub fn assignment(text: &str) -> EnvAssignment {
 }
 
 /// The configuration a journey drives the port with, constrained by the schema
-/// at `schema`.
-pub fn config(
+/// at `constraint`, which is read under `held`.
+pub fn config<Mode>(
+    held: &SchemaHold<Mode>,
     fixture: &Fixture,
     harness: &str,
     constraint: &Path,
@@ -205,7 +248,7 @@ pub fn config(
         state_dir: fixture.state_dir(),
         skill_path: skill_path(),
         prompt_template_path: template_path(),
-        assessment_schema: schema(constraint),
+        assessment_schema: schema(held, constraint),
         harness: identity(harness),
         model: None,
         working_dir: fixture.root.join("work"),

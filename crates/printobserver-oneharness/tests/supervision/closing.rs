@@ -40,11 +40,12 @@ fn last(sessions: &[SupervisionSession]) -> &SupervisionSession {
 fn a_terminal_state_closes_the_session_with_that_state_as_the_reason() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("closing-terminal");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -73,11 +74,12 @@ fn a_terminal_state_closes_the_session_with_that_state_as_the_reason() {
 fn an_abandoned_print_closes_its_session_with_abandonment_as_the_reason() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("closing-abandoned");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -106,11 +108,12 @@ fn an_abandoned_print_closes_its_session_with_abandonment_as_the_reason() {
 fn an_event_after_a_close_opens_the_next_session_of_the_sequence() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("closing-reopen");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
@@ -150,13 +153,16 @@ fn an_event_after_a_close_opens_the_next_session_of_the_sequence() {
 fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("closing-identity");
     let schema = generated_assessment_schema();
     let print_id = PrintId::new();
 
     let watch = Arc::new(Watch::default());
-    let first = port(config(&fixture, HARNESS, &schema, answering()), &watch);
+    let first = port(
+        config(&schemas, &fixture, HARNESS, &schema, answering()),
+        &watch,
+    );
     let opened = block_on(first.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
         .expect("the first turn runs");
     drop(first);
@@ -164,7 +170,7 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
     // The same state directory, and so the same session, on another identity.
     let moved_watch = Arc::new(Watch::default());
     let moved = port(
-        config(&fixture, OTHER_HARNESS, &schema, answering()),
+        config(&schemas, &fixture, OTHER_HARNESS, &schema, answering()),
         &moved_watch,
     );
     let after = block_on(moved.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
@@ -203,11 +209,12 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
 fn closing_a_print_with_no_session_open_answers_the_caller_success() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("closing-nothing-open");
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
+            &schemas,
             &fixture,
             HARNESS,
             &generated_assessment_schema(),
