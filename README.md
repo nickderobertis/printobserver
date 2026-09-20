@@ -23,8 +23,10 @@ camera → Obico → failure webhook → printobserver → supervising agent
 printer ← OctoPrint ← allowed action ← policy ← agent decision
 ```
 
-`printobserver server` is the supervisor. On an installed machine it runs as
-the `printobserver.service` systemd unit. It reads printer and job state through
+`printobserver server` is the supervisor. On an installed machine it runs as a
+service under that machine's own service manager — a systemd unit on Linux, a
+launchd daemon on macOS, a Windows service on Windows — started at boot and
+started again after a crash. It reads printer and job state through
 OctoPrint's API using the configured address and API key. It also exposes an
 ingress for alerts posted by Obico's webhook notification plugin; when an alert
 arrives, it immediately fetches the snapshot named by that alert.
@@ -44,6 +46,21 @@ audit what the agent requested, why, and what happened. See
 [the architecture](./docs/reference/architecture.md),
 [the intervention policy](./docs/reference/intervention-policy.md), and
 [the API and clients](./docs/reference/api-and-clients.md) for details.
+
+## Supported platforms
+
+printobserver runs on Linux (`linux-x86_64` and `linux-aarch64`), on macOS on
+Apple silicon (`macos-aarch64`), and on Windows (`windows-x86_64` and
+`windows-aarch64`). Every one of those is a first-class platform: the gate and
+the real-OctoPrint integration tier run on each of them on every change, a
+release is built for each of them, and each of the three install routes below
+is proven on each of them from its registry. The list that decides this is
+[`AGENTS.md`'s supported-platform list](./AGENTS.md#supported-platforms); a
+platform is supported when it is on that list, and nothing else here can add or
+remove one.
+
+Where the instructions below differ by operating system, they say so and give
+each one's own answer. Where they do not, the command is the same on all three.
 
 ## Set it up on a real printer
 
@@ -87,22 +104,26 @@ printobserver machine that Obico can reach and use it in the webhook URL.
 
 ### 3. Install printobserver
 
-Choose one alternative. Each installs a prebuilt program and needs no Rust
-toolchain on the printer host.
+Choose one of these three routes, on whichever operating system you are on.
+Each installs a program already built for your platform and needs no Rust
+toolchain on the printer host. The routes are stated once, in
+[`AGENTS.md`'s install path](./AGENTS.md#the-end-user-install-path), and a
+check holds the commands here to the ones stated there.
 
-With Python:
+With Python, on Linux, macOS or Windows:
 
 ```console
 pip install printobserver-cli
 ```
 
-With Node:
+With Node, on Linux, macOS or Windows:
 
 ```console
 npm install -g printobserver-cli
 ```
 
-Or with the bundled installer — on Linux and macOS:
+Or with the bundled installer, which needs neither package manager. On Linux
+and macOS:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
@@ -126,7 +147,8 @@ It takes the same two options:
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1))) -Version v0.1.0 -To C:\Tools\printobserver
 ```
 
-Check the program:
+Whichever route you took, check the program. It prints the version it is,
+which is the one thing the install commands cannot tell you:
 
 ```console
 printobserver --version
@@ -134,32 +156,48 @@ printobserver --version
 
 ### 4. Install the service files
 
-This installs the program, private state directory, configuration template,
-and service definition: a systemd unit on Linux, a launchd property list on
-macOS. It deliberately starts nothing.
+This puts four things in place — the program, a private state directory, a
+configuration template, and the service definition your platform's service
+manager reads — and deliberately starts nothing.
+
+On Linux and macOS, the installer writes a systemd unit or a launchd property
+list, whichever the host runs services under:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
 ```
 
-On Windows, from an elevated PowerShell, the same installer in its Windows form:
-the program under `C:\Program Files\printobserver`, the configuration and the
-private state directory under `C:\ProgramData\printobserver`, and a Windows
-service registered with the service control manager — to start on demand, as
-its own virtual account, and to be brought back if its process dies. It, too,
-starts nothing.
+On Windows, from an elevated PowerShell, the same installer in its Windows form
+registers a service with the service control manager — to start on demand, as
+its own virtual account, and to be brought back if its process dies:
 
 ```powershell
 irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.ps1 | iex
 ```
 
+Where the installer puts things differs by platform. The rest of this guide
+names the three places by role — the configuration file, the state directory,
+the program — and this table is what each role means on your machine:
+
+| Platform | Configuration file | State directory | Program |
+| --- | --- | --- | --- |
+| Linux | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
+| macOS | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
+| Windows | `C:\ProgramData\printobserver\config.toml` | `C:\ProgramData\printobserver\state` | `C:\Program Files\printobserver\printobserver.exe` |
+
+These are the program's own answers, from `crates/printobserver/src/locations.rs`;
+each installer writes exactly them, and a test holds this table to that module.
+The configuration file and the state directory are private: on Linux and macOS
+they are readable by root and by the service's own user, and on Windows by
+administrators and by the service's account.
+
 ### 5. Configure the supervisor
 
-Edit `/etc/printobserver/config.toml` (`C:\ProgramData\printobserver\config.toml` on
-Windows):
+Edit the configuration file — as root on Linux and macOS, from an elevated
+PowerShell on Windows:
 
 - `state_dir` holds the database, images, sessions, and installed agent assets;
-  the template uses `/var/lib/printobserver`.
+  the template uses your platform's state directory from the table above.
 - `listen` serves both the HTTP API and Obico ingress. The template uses
   `127.0.0.1:8420`; change it if Obico is on another machine.
 - `octoprint.url` is the OctoPrint base URL from step 1.
@@ -173,7 +211,7 @@ Windows):
 - `api.credential` is optional, and the template leaves it out. Every request to
   the HTTP API must carry the API credential, and the server refuses any request
   that does not. Left out, the service generates a random credential the first
-  time it starts, into `/var/lib/printobserver/api-credential`, and reuses it on
+  time it starts, into `api-credential` in the state directory, and reuses it on
   every later start. To choose it yourself, add an `[api]` table with
   `credential` set to a long random value; the generated file is then not used.
   This credential is separate from `ingress.shared_secret`, and neither is
@@ -188,20 +226,28 @@ Windows):
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.
 
-Each time it starts, the service writes `/var/lib/printobserver/client.toml`: a
-`[client]` table with `server`, the address it is listening on, and
+Each time it starts, the service writes `client.toml` into the state directory:
+a `[client]` table with `server`, the address it is listening on, and
 `credential`, the API credential in force. Its supervision turns read that file.
-You can too, as root: pass `--config /var/lib/printobserver/client.toml` to any
-command. `client.toml` and `api-credential` are readable only by the service's
-user.
+You can too, from a shell that can read the state directory — as root, or from
+an elevated PowerShell: pass `--config <state directory>/client.toml` to any
+command. `client.toml` and `api-credential` are readable by nobody else.
 
-From your own user account you cannot read `/etc/printobserver/config.toml` or
-anything under `/var/lib/printobserver`. Read the credential once as root, then
-supply it with the address. Either set both environment variables:
+From your own user account you cannot read the configuration file or anything
+under the state directory. Read the credential once with the privilege that
+can, then supply it with the address. Either set both environment variables —
+on Linux and macOS:
 
 ```console
 export PRINTOBSERVER_SERVER=http://127.0.0.1:8420
 export PRINTOBSERVER_CREDENTIAL="$(sudo cat /var/lib/printobserver/api-credential)"
+```
+
+and on Windows, from an elevated PowerShell:
+
+```powershell
+$env:PRINTOBSERVER_SERVER = 'http://127.0.0.1:8420'
+$env:PRINTOBSERVER_CREDENTIAL = Get-Content 'C:\ProgramData\printobserver\state\api-credential'
 ```
 
 or put both in a `[client]` table in a file only you can read, and pass that
@@ -210,7 +256,7 @@ file with `--config`:
 ```toml
 [client]
 server = "http://127.0.0.1:8420"
-credential = "the credential you read as root"
+credential = "the credential you read"
 ```
 
 If you set `api.credential`, use that value instead of the generated file. When
@@ -221,14 +267,13 @@ status 4 and says where the credential is read from.
 ### 6. Install and sign in the agent's harness
 
 There is no separate agent endpoint: when an event arrives, the server runs the
-harness `supervisor.harness` selects, as the service's own user. That user has
-no home under `/home` and the unit hides every home directory, so the harness
-keeps its sign-in under the state directory instead, in
-`/var/lib/printobserver/harness/<harness>`. printobserver can sign in
-`claude-code` and `codex`.
+harness `supervisor.harness` selects, as the service's own account. That
+account has no home directory of its own to keep a sign-in in, so the harness
+keeps it under the state directory instead, in `harness/<harness>` there.
+printobserver can sign in `claude-code` and `codex`.
 
-Install the harness program where the service user's path finds it, which a
-system-wide install does:
+Install the harness program system-wide, so that the service account's path
+finds it. On Linux and macOS:
 
 ```console
 sudo npm install -g @anthropic-ai/claude-code
@@ -246,20 +291,21 @@ Then sign it in once, as the service user:
 sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
 ```
 
-On Windows the service's virtual account cannot be signed in to and does not
-need to be — the sign-in lands under the state directory, which the installer
-made the service account's to read — so install the harness with
-`npm install -g` and sign in from the same elevated PowerShell:
+On Windows, install the harness with the same `npm install -g` command, without
+`sudo`, from an elevated PowerShell. The service's virtual account cannot be
+signed in to and does not need to be — the sign-in lands under the state
+directory, which the installer made the service account's to read — so sign in
+from that same elevated PowerShell:
 
 ```powershell
 & 'C:\Program Files\printobserver\printobserver.exe' sign-in
 ```
 
-This reads `state_dir` and `supervisor.harness` from
-`/etc/printobserver/config.toml` and nothing else, so it works before or after
-you fill in the OctoPrint and Obico values. It creates the harness's directory,
-readable by the service user alone, and runs that harness's own interactive
-sign-in in your terminal: `claude auth login`, or `codex login --device-auth`.
+This reads `state_dir` and `supervisor.harness` from the configuration file and
+nothing else, so it works before or after you fill in the OctoPrint and Obico
+values. It creates the harness's directory under the state directory, as
+private as that directory is, and runs that harness's own interactive sign-in
+in your terminal: `claude auth login`, or `codex login --device-auth`.
 Follow its prompts. The command exits with the harness's own status. It starts
 no service and contacts neither OctoPrint nor Obico.
 
@@ -271,7 +317,7 @@ sign-in again if the harness's sign-in expires, or after changing
 
 ### 7. Enable and start the service
 
-On Linux:
+One command, and which one is your platform's service manager's. On Linux:
 
 ```console
 sudo systemctl enable --now printobserver.service
@@ -283,8 +329,8 @@ On macOS:
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
-On Windows, the one command that sets the service to start automatically and
-starts it:
+On Windows, from an elevated PowerShell, the one command that sets the service
+to start automatically and starts it:
 
 ```powershell
 Set-Service -Name printobserver -StartupType Automatic -Status Running
