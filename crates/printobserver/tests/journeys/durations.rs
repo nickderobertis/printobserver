@@ -162,13 +162,15 @@ const STEADY_CLOCK_ATTEMPTS: usize = 3;
 /// A host may step its wall clock (this WSL2 host: by 0.47–1.9 s about every
 /// 33 s under load), and a step wider than [`MARGIN`] between the request and
 /// the read moves the expiry past the read on the only clock the system has.
-/// So the condition that the clock was steady is checked before any assertion,
-/// by the two clocks alone — the wall clock against elapsed time, to within a
-/// poll slice — and a measurement taken across a step is discarded, recorded
-/// with the step's size and place, and taken again, at most
-/// [`STEADY_CLOCK_ATTEMPTS`] times. A supervisor that is late with no step
-/// fails exactly as it would without this. It is a guard against a stepping
-/// clock, not a margin.
+/// So the condition that the clock was steady is checked before anything is
+/// asserted on the read before the expiry, by the two clocks alone — the wall
+/// clock against elapsed time, to within a poll slice — and that read is
+/// discarded where it was taken across a step, recorded with the step's size
+/// and place, and taken again, at most [`STEADY_CLOCK_ATTEMPTS`] times. The
+/// record's expiry and the reads after it are asserted on every attempt: a
+/// step can only make those reads later, which is the side they are about. A
+/// supervisor that is late with no step fails exactly as it would without
+/// this. It is a guard against a stepping clock, not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut stepped = Vec::new();
     for _ in 0..STEADY_CLOCK_ATTEMPTS {
@@ -222,10 +224,7 @@ fn asked_and_read_before_its_expiry(
         let asking = scope.spawn(|| ask_for(world, one, &asked));
         let sent = the_answer_the_supervisor_sent(world, &one.command.name);
         let bounded = the_expiry_is_the_duration_the_caller_gave(one, &sent, seconds, steady_from);
-        let measured = the_adjusted_value_is_in_place_shortly_before_it_expires(
-            world,
-            std::slice::from_ref(&bounded),
-        );
+        let measured = measured_shortly_before_it_expires(world, &bounded);
         let printed = asking.join().expect("the adjustment was asked for");
         assert_eq!(
             printed, sent,
@@ -265,20 +264,21 @@ fn the_answer_the_supervisor_sent(world: &World, command: &str) -> Value {
 }
 
 /// What one measurement before an expiry was taken on.
-pub enum Measured {
-    /// The clocks agreed from the request to the read, and every assertion was made.
+enum Measured {
+    /// The clocks agreed from the request to the read, and every assertion
+    /// on that read was made.
     OnASteadyClock,
-    /// The wall clock stepped between the request and the read, and no
-    /// assertion was made.
+    /// The wall clock stepped between the request and the read, and nothing
+    /// was asserted on that read.
     OnASteppedClock(Step),
 }
 
 /// One step of the host's wall clock, seen between a request and its read.
-pub struct Step {
+struct Step {
     /// How far the wall clock moved beyond elapsed time, in microseconds.
-    pub micros: i64,
+    micros: i64,
     /// Where it landed.
-    pub during: &'static str,
+    during: &'static str,
 }
 
 impl std::fmt::Display for Step {
@@ -542,69 +542,131 @@ fn until(instant: i64) -> Timestamp {
 /// that answer, which it stamps before reading which interventions still
 /// stand, so the machine's value the read carries is one observed before the
 /// expiry too.
-pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
-    world: &World,
-    opened: &[Bounded],
-) -> Measured {
+pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
     for bounded in opened {
-        let waiting = Clocks::now();
-        let at = just_before(bounded.expires_at, MARGIN);
-        let waited = Clocks::now();
-        let (status, answered) = status_in_process(world);
-        let read = Clocks::now();
-        let stepped = waiting
-            .stepped_since(bounded.steady_from)
+        let reading = read_shortly_before_it_expires(world, bounded);
+        the_reading_shows_it_in_force(bounded, &reading);
+    }
+}
+
+/// One intervention read shortly before it expires, asserted on only where
+/// the clock was steady from its request to that read.
+///
+/// The same read and the same assertions as
+/// [`the_adjusted_value_is_in_place_shortly_before_it_expires`], behind the
+/// steady-clock condition `one_bounded_intervention` states: a step seen
+/// between the request and the read discards this read before anything is
+/// asserted on it, and says so on the output.
+fn measured_shortly_before_it_expires(world: &World, bounded: &Bounded) -> Measured {
+    let reading = read_shortly_before_it_expires(world, bounded);
+    if let Some(step) = reading.stepped_since(bounded.steady_from) {
+        eprintln!(
+            "discarding `{}`'s measurement before its expiry at {}: the host's wall clock \
+             stepped by {} microseconds during {}, and nothing is asserted on it",
+            bounded.command, bounded.expires_at, step.micros, step.during
+        );
+        return Measured::OnASteppedClock(step);
+    }
+    the_reading_shows_it_in_force(bounded, &reading);
+    Measured::OnASteadyClock
+}
+
+/// One status read scheduled before an intervention's expiry, with the clocks
+/// around it.
+struct Reading {
+    /// When the wait ended: the schedule.
+    at: Timestamp,
+    /// When the answer was in hand.
+    answered: Timestamp,
+    /// What the supervisor answered.
+    status: Value,
+    /// Both clocks as the wait began.
+    waiting: Clocks,
+    /// Both clocks as the wait ended.
+    waited: Clocks,
+    /// Both clocks once the answer was in hand.
+    read: Clocks,
+}
+
+impl Reading {
+    /// The first step of the wall clock between an earlier reading and this
+    /// read, where there was one.
+    fn stepped_since(&self, earlier: Clocks) -> Option<Step> {
+        self.waiting
+            .stepped_since(earlier)
             .map(|micros| (micros, "the request and the span before the wait"))
             .or_else(|| {
-                waited
-                    .stepped_since(waiting)
+                self.waited
+                    .stepped_since(self.waiting)
                     .map(|micros| (micros, "the wait"))
             })
             .or_else(|| {
-                read.stepped_since(waited)
+                self.read
+                    .stepped_since(self.waited)
                     .map(|micros| (micros, "the read"))
-            });
-        if let Some((micros, during)) = stepped {
-            eprintln!(
-                "discarding `{}`'s measurement before its expiry at {}: the host's wall clock \
-                 stepped by {micros} microseconds during {during}, and nothing is asserted on it",
-                bounded.command, bounded.expires_at
-            );
-            return Measured::OnASteppedClock(Step { micros, during });
-        }
-        let observed = instant(&status, "/printer/observed_at");
-        let held = in_force(&status);
-
-        assert!(
-            at.as_utc().timestamp_micros()
-                >= bounded.expires_at.as_utc().timestamp_micros() - micros(MARGIN),
-            "`{}` was read at {at}, which is earlier than {MARGIN:?} before it expires at {}",
-            bounded.command,
-            bounded.expires_at
-        );
-        assert!(
-            answered < bounded.expires_at,
-            "`{}` was read at {at}, before it expires at {}, but the answer arrived at \
-             {answered}, after: the read in this process took longer than the window left",
-            bounded.command,
-            bounded.expires_at
-        );
-        assert!(
-            observed < bounded.expires_at,
-            "`{}` was answered at {answered}, before it expires at {}, but the machine was \
-             observed at {observed}, after it",
-            bounded.command,
-            bounded.expires_at
-        );
-        assert_eq!(
-            held.get(&bounded.id),
-            Some(&bounded.applied_value),
-            "`{}` is not in force shortly before it expires: {status}",
-            bounded.command
-        );
-        the_machine_reports(&status, bounded, Some(&bounded.applied_value), "adjusted");
+            })
+            .map(|(micros, during)| Step { micros, during })
     }
-    Measured::OnASteadyClock
+}
+
+/// Wait until [`MARGIN`] before one intervention's recorded expiry, and read
+/// the status in this process.
+fn read_shortly_before_it_expires(world: &World, bounded: &Bounded) -> Reading {
+    let waiting = Clocks::now();
+    let at = just_before(bounded.expires_at, MARGIN);
+    let waited = Clocks::now();
+    let (status, answered) = status_in_process(world);
+    let read = Clocks::now();
+    Reading {
+        at,
+        answered,
+        status,
+        waiting,
+        waited,
+        read,
+    }
+}
+
+/// One reading shows its intervention in force, on the three instants
+/// [`the_adjusted_value_is_in_place_shortly_before_it_expires`] names.
+fn the_reading_shows_it_in_force(bounded: &Bounded, reading: &Reading) {
+    let Reading {
+        at,
+        answered,
+        status,
+        ..
+    } = reading;
+    let observed = instant(status, "/printer/observed_at");
+    let held = in_force(status);
+
+    assert!(
+        at.as_utc().timestamp_micros()
+            >= bounded.expires_at.as_utc().timestamp_micros() - micros(MARGIN),
+        "`{}` was read at {at}, which is earlier than {MARGIN:?} before it expires at {}",
+        bounded.command,
+        bounded.expires_at
+    );
+    assert!(
+        answered < &bounded.expires_at,
+        "`{}` was read at {at}, before it expires at {}, but the answer arrived at \
+         {answered}, after: the read in this process took longer than the window left",
+        bounded.command,
+        bounded.expires_at
+    );
+    assert!(
+        observed < bounded.expires_at,
+        "`{}` was answered at {answered}, before it expires at {}, but the machine was \
+         observed at {observed}, after it",
+        bounded.command,
+        bounded.expires_at
+    );
+    assert_eq!(
+        held.get(&bounded.id),
+        Some(&bounded.applied_value),
+        "`{}` is not in force shortly before it expires: {status}",
+        bounded.command
+    );
+    the_machine_reports(status, bounded, Some(&bounded.applied_value), "adjusted");
 }
 
 /// One status read of this world's print made in this process, and the instant
