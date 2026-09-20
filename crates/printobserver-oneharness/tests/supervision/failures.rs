@@ -21,7 +21,7 @@ use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{EventBody, PrintId, serde_json};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
+    Fixture, HARNESS, SchemaHold, Watch, always, assessment, assignment, block_on, config, event,
     generated_assessment_schema, identity, port, schema_read_lock, turn, unreadable,
 };
 
@@ -31,8 +31,13 @@ fn payload() -> EventBody {
 }
 
 /// A configuration that would run a turn, answering conformingly.
-fn answering(fixture: &Fixture) -> SupervisorConfig {
+///
+/// Building it reads the checked-in assessment schema, so it is built under
+/// a hold on the schema tree — a journey that never drives a turn reads the
+/// artifact here all the same.
+fn answering<Mode>(held: &SchemaHold<Mode>, fixture: &Fixture) -> SupervisorConfig {
     config(
+        held,
         fixture,
         HARNESS,
         &generated_assessment_schema(),
@@ -75,9 +80,12 @@ fn write_ledger(fixture: &Fixture, print_id: &PrintId, document: &serde_json::Va
 /// A port needs the skill and the template to be where it was told they are.
 #[test]
 fn a_configuration_naming_files_that_are_not_there_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-absent");
     for missing in ["skill", "template"] {
-        let mut configured = answering(&fixture);
+        let mut configured = answering(&schemas, &fixture);
         let absent = fixture.path("nowhere.md");
         if missing == "skill" {
             configured.skill_path = absent.clone();
@@ -99,6 +107,9 @@ fn a_configuration_naming_files_that_are_not_there_is_refused() {
 /// which slot and why.
 #[test]
 fn a_template_that_does_not_declare_each_slot_once_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-template");
     let committed = fs::read_to_string(crate::support::template_path())
         .expect("the committed template is readable");
@@ -117,7 +128,7 @@ fn a_template_that_does_not_declare_each_slot_once_is_refused() {
         (&without, "declares no {{image_path}} slot"),
         (&twice, "more than once"),
     ] {
-        let mut configured = answering(&fixture);
+        let mut configured = answering(&schemas, &fixture);
         configured.prompt_template_path = path.clone();
         let refused = OneharnessSupervisor::open(configured)
             .err()
@@ -135,9 +146,9 @@ fn a_template_that_does_not_declare_each_slot_once_is_refused() {
 fn a_port_with_nothing_watching_it_still_takes_a_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unwatched");
-    unwatched_turn(answering(&fixture)).expect("an unwatched turn runs");
+    unwatched_turn(answering(&schemas, &fixture)).expect("an unwatched turn runs");
 
     let empty = format!("{:?}", TurnSeam::default());
     assert!(
@@ -168,11 +179,11 @@ fn a_port_with_nothing_watching_it_still_takes_a_turn() {
 fn a_harness_that_cannot_run_the_turn_is_unavailable() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unreachable");
 
     // A harness identity OneHarness does not know: refused before anything runs.
-    let mut unknown = answering(&fixture);
+    let mut unknown = answering(&schemas, &fixture);
     unknown.harness = identity("not-a-harness");
     let refused = watched_turn(unknown).expect_err("an unknown harness ran a turn");
     assert!(
@@ -181,7 +192,7 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
     );
 
     // A harness binary that is not on the machine: nothing to run the turn.
-    let mut absent = answering(&fixture);
+    let mut absent = answering(&schemas, &fixture);
     absent.harness_bin = Some(fixture.path("no-such-harness"));
     let refused = watched_turn(absent).expect_err("an absent harness binary ran a turn");
     let said = detail(&refused);
@@ -191,7 +202,7 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
     );
 
     // A harness that refuses the request outright — no credential, no turn.
-    let mut refusing = answering(&fixture);
+    let mut refusing = answering(&schemas, &fixture);
     refusing.harness_env = vec![
         assignment("MOCK_EXIT=1"),
         assignment("MOCK_STDERR=unauthorized: log in first"),
@@ -209,9 +220,9 @@ fn a_harness_that_cannot_run_the_turn_is_unavailable() {
 fn a_turn_that_outlives_its_deadline_is_a_timeout() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-timeout");
-    let mut slow = answering(&fixture);
+    let mut slow = answering(&schemas, &fixture);
     slow.turn_timeout = TurnTimeout::new(1).expect("one second is a bound");
     slow.harness_env.push(assignment("MOCK_SLEEP_MS=20000"));
     // The harness child is killed at the deadline, so its coverage profile is
@@ -233,7 +244,12 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
     let permissive = fixture.path("anything.json");
     fs::write(&permissive, r#"{"type": "object"}"#).expect("a scratch schema");
 
+    // The schema is this journey's own scratch file rather than the checked-in
+    // artifact; the hold is asked for all the same, and a shared one costs
+    // nothing.
+    let schemas = schema_read_lock();
     let configured = config(
+        &schemas,
         &fixture,
         HARNESS,
         &permissive,
@@ -254,7 +270,7 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
 fn a_ledger_that_cannot_be_read_is_reported() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unreadable");
     let print_id = PrintId::new();
     let ledger = fixture
@@ -266,7 +282,7 @@ fn a_ledger_that_cannot_be_read_is_reported() {
     fs::write(&ledger, "this is not a ledger").expect("a broken ledger");
 
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
 
     let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
         .expect_err("a turn ran against a ledger it could not read");
@@ -293,7 +309,7 @@ fn a_ledger_that_cannot_be_read_is_reported() {
     )
     .expect("a file where the ledger directory belongs");
     let blocked_watch = Arc::new(Watch::default());
-    let blocked_port = port(answering(&blocked), &blocked_watch);
+    let blocked_port = port(answering(&schemas, &blocked), &blocked_watch);
     let refused = blocked_port
         .recorded_sessions(&PrintId::new())
         .expect_err("a blocked ledger directory answered sessions");
@@ -313,7 +329,7 @@ fn a_ledger_that_cannot_be_read_is_reported() {
 fn a_ledger_that_cannot_be_written_is_reported() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-unwritable");
     // A dangling link where the ledger directory belongs: reading a print's
     // ledger finds nothing, and creating the directory to write one cannot
@@ -325,7 +341,7 @@ fn a_ledger_that_cannot_be_written_is_reported() {
     .expect("a dangling link where the ledger directory belongs");
 
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
     let print_id = PrintId::new();
 
     let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
@@ -350,9 +366,9 @@ fn a_ledger_that_cannot_be_written_is_reported() {
 fn a_harness_that_answers_and_exits_non_zero_still_took_the_turn() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-nonzero");
-    let mut configured = answering(&fixture);
+    let mut configured = answering(&schemas, &fixture);
     configured.harness_env.push(assignment("MOCK_EXIT=1"));
 
     let watch = Arc::new(Watch::default());
@@ -376,6 +392,9 @@ fn a_harness_that_answers_and_exits_non_zero_still_took_the_turn() {
 /// A ledger a later build wrote is refused rather than read as this build's.
 #[test]
 fn a_ledger_written_under_another_shape_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-shape");
     let print_id = PrintId::new();
     write_ledger(
@@ -390,7 +409,7 @@ fn a_ledger_written_under_another_shape_is_refused() {
     );
 
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
     let refused = supervisor
         .recorded_sessions(&print_id)
         .expect_err("a ledger of another shape was read as this build's");
@@ -408,6 +427,9 @@ fn a_ledger_written_under_another_shape_is_refused() {
 /// names them in, and a turn recorded against a session the print never opened.
 #[test]
 fn a_ledger_that_does_not_agree_with_itself_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-disagreeing");
     let print_id = PrintId::new();
     let other = PrintId::new();
@@ -459,7 +481,7 @@ fn a_ledger_that_does_not_agree_with_itself_is_refused() {
     ] {
         write_ledger(&fixture, &print_id, &document);
         let watch = Arc::new(Watch::default());
-        let supervisor = port(answering(&fixture), &watch);
+        let supervisor = port(answering(&schemas, &fixture), &watch);
         let refused = supervisor
             .recorded_sessions(&print_id)
             .err()
@@ -479,6 +501,9 @@ fn a_ledger_that_does_not_agree_with_itself_is_refused() {
 /// with nothing.
 #[test]
 fn a_recorded_turn_naming_no_session_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-nameless-turn");
     let print_id = PrintId::new();
     write_ledger(
@@ -493,7 +518,7 @@ fn a_recorded_turn_naming_no_session_is_refused() {
     );
 
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
     let refused = supervisor
         .recorded_turns(&print_id)
         .expect_err("a turn naming no conversation was read back");
@@ -507,6 +532,9 @@ fn a_recorded_turn_naming_no_session_is_refused() {
 /// A ledger holding another print's sessions is refused rather than continued.
 #[test]
 fn a_ledger_of_another_print_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-other-print");
     let print_id = PrintId::new();
     let other = PrintId::new();
@@ -522,7 +550,7 @@ fn a_ledger_of_another_print_is_refused() {
     );
 
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
     let refused = supervisor
         .recorded_turns(&print_id)
         .expect_err("one print's ledger was read as another's");
@@ -539,10 +567,10 @@ fn a_ledger_of_another_print_is_refused() {
 fn a_lost_harness_store_opens_the_conversation_again() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("failures-lost-store");
     let watch = Arc::new(Watch::default());
-    let supervisor = port(answering(&fixture), &watch);
+    let supervisor = port(answering(&schemas, &fixture), &watch);
     let print_id = PrintId::new();
 
     let opened = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))

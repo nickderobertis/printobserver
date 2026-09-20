@@ -18,7 +18,7 @@ use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn, unreadable,
+    generated_assessment_schema, port, schema, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
@@ -155,9 +155,8 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
     // is held still while it is read: the assessment-schema journey rewrites
     // that file beside this test, and a read that landed between its truncate
     // and its write would find no document at all.
-    let _schemas = schema_read_lock();
-    let named =
-        AssessmentSchema::at(generated_assessment_schema()).expect("the generated artifact");
+    let schemas = schema_read_lock();
+    let named = schema(&schemas, &generated_assessment_schema());
     assert_eq!(named.path(), generated_assessment_schema());
 }
 
@@ -166,10 +165,11 @@ fn a_schema_that_constrains_no_answer_is_refused_where_it_is_named() {
 fn the_run_request_carries_what_the_constrained_configuration_says() {
     // Every answer this journey drives is judged by the checked-in assessment
     // schema, so it is held still while the journey reads it.
-    let _schemas = schema_read_lock();
+    let schemas = schema_read_lock();
     let fixture = Fixture::new("configuration-request");
     let watch = Arc::new(Watch::default());
     let mut configured = config(
+        &schemas,
         &fixture,
         HARNESS,
         &generated_assessment_schema(),
