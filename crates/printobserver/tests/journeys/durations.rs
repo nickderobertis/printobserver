@@ -66,8 +66,10 @@ const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 /// How far either side of a recorded expiry a journey reads.
 ///
 /// Short enough that "shortly before" is inside the shortest duration this
-/// program accepts, and long enough that a read started there finishes on the
-/// right side of the instant it is about. One value on every platform: no
+/// program accepts, and long enough that a read started there ordinarily
+/// finishes on the right side of the instant it is about — a read that does
+/// not is discarded and taken again rather than accepted, which
+/// `one_bounded_intervention` states. One value on every platform: no
 /// tracer sits inside the window before an expiry, so no tracer's cost is
 /// allowed for in it.
 pub const MARGIN: Duration = Duration::from_millis(400);
@@ -161,24 +163,34 @@ const STEADY_HOST_ATTEMPTS: usize = 3;
 /// One adjustment asked for with one duration, and read on both sides of its
 /// expiry — measured on a steady host.
 ///
-/// Two events of the host, and no fault of the supervisor, put the expiry on
-/// the wrong side of the read before it. A host may step its wall clock (this
-/// WSL2 host: by 0.47–2.0 s about every 34 s under load), and a step wider
-/// than [`MARGIN`] between the request and the read moves the expiry past the
-/// read on the only clock the system has. And a host may leave this thread
-/// unrun (the same host, once in some seven tiers, for two seconds with both
-/// clocks agreeing), so that the wait for the read ends after the instant it
-/// was scheduled for by more than the read has left. So both conditions are
-/// checked before anything is asserted on the read before the expiry — the
-/// wall clock against elapsed time, to within a poll slice, and the wait's
-/// end against its schedule, to within [`SCHEDULE_OVERSHOOT`] — and that read
-/// is discarded where either failed, recorded with the event's size and
-/// place, and taken again, at most [`STEADY_HOST_ATTEMPTS`] times. The
-/// record's expiry and the reads after it are asserted on every attempt: an
-/// event can only make those reads later, which is the side they are about.
-/// A supervisor that is late with neither event fails exactly as it would
-/// without this, since nothing checked here reaches it. It is a guard against
-/// a stepping clock and a paused guest, not a margin.
+/// Three events of the host, and no fault of the supervisor, leave the read
+/// before an expiry with nothing to say about it. A host may step its wall
+/// clock (this WSL2 host: by 0.47–2.0 s about every 34 s under load), and a
+/// step wider than [`MARGIN`] between the request and the read moves the
+/// expiry past the read on the only clock the system has. A host may leave
+/// this thread unrun (the same host, once in some seven tiers, for two
+/// seconds with both clocks agreeing), so that the wait for the read ends
+/// after the instant it was scheduled for by more than the read has left. And
+/// a host whose processors are all spoken for may take longer over the read
+/// itself than the window the wait left it — this host, once in some sixty
+/// reads under a whole test tier running beside this one, 520 ms against a
+/// 400 ms window — because this client opens a fresh connection for every
+/// call and the supervisor composes a status by observing the machine, and
+/// nothing about either is bounded. So all three conditions are checked
+/// before anything is asserted on the read before the expiry — the wall clock
+/// against elapsed time, to within a poll slice; the wait's end against its
+/// schedule, to within [`SCHEDULE_OVERSHOOT`]; and the read's answer against
+/// the expiry it is about — and that read is discarded where any failed,
+/// recorded with the event's size and place, and taken again, at most
+/// [`STEADY_HOST_ATTEMPTS`] times. The record's expiry and the reads after it
+/// are asserted on every attempt: an event can only make those reads later,
+/// which is the side they are about. What is taken again is a measurement
+/// that could not be made rather than an assertion that failed — no claim
+/// about the supervisor is evaluated on a discarded read, a read that does
+/// land is held to every one of them, and a supervisor whose answer is late
+/// on all [`STEADY_HOST_ATTEMPTS`] attempts fails the journey with each
+/// event and its size on the output. It is a guard against a stepping clock,
+/// a paused guest and an unbounded read, not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut seen = Vec::new();
     for _ in 0..STEADY_HOST_ATTEMPTS {
@@ -286,8 +298,9 @@ enum Measured {
     /// The host was steady from the request to the read, and every assertion
     /// on that read was made.
     OnASteadyHost,
-    /// The host stepped its clock or left this thread unrun between the
-    /// request and the read, and nothing was asserted on that read.
+    /// The host stepped its clock, left this thread unrun, or took longer
+    /// over the read than the window the wait left it, and nothing was
+    /// asserted on that read.
     AcrossAHostEvent(HostEvent),
 }
 
@@ -305,6 +318,22 @@ enum HostEvent {
         /// How far past its scheduled instant the wait ended, in microseconds.
         micros: i64,
     },
+    /// The read did not answer inside the window the wait left before the
+    /// expiry.
+    ///
+    /// A host event rather than a margin: this client opens a fresh
+    /// connection for every call and the supervisor composes a status by
+    /// observing the machine, so on a host whose processors are all spoken
+    /// for the read takes a time nothing bounds. An answer composed after the
+    /// expiry is evidence of nothing about the intervention having stood —
+    /// not evidence that it had stopped standing — so the measurement is
+    /// taken again rather than read either way.
+    SlowRead {
+        /// What the read took, in microseconds.
+        micros: i64,
+        /// What the wait left it, in microseconds.
+        window: i64,
+    },
 }
 
 impl std::fmt::Display for HostEvent {
@@ -318,6 +347,11 @@ impl std::fmt::Display for HostEvent {
                 formatter,
                 "the host left this thread unrun: the wait ended {micros} microseconds after \
                  the instant it was scheduled for, with both clocks agreeing"
+            ),
+            Self::SlowRead { micros, window } => write!(
+                formatter,
+                "the read itself took {micros} microseconds and the wait left it {window}, so \
+                 its answer was composed after the expiry it is about"
             ),
         }
     }
@@ -579,6 +613,12 @@ fn until(instant: i64) -> Timestamp {
 /// that answer, which it stamps before reading which interventions still
 /// stand, so the machine's value the read carries is one observed before the
 /// expiry too.
+///
+/// Every intervention here was opened by the caller, so a late answer is
+/// failed rather than taken again: there is nothing at this entry to open a
+/// second time. Where this journey's own corpus opens them, one at a time, it
+/// makes the same read and the same comparison behind the condition
+/// `one_bounded_intervention` states.
 pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
     for bounded in opened {
         let reading = read_shortly_before_it_expires(world, bounded);
@@ -592,11 +632,11 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, o
 /// The same read and the same assertions as
 /// [`the_adjusted_value_is_in_place_shortly_before_it_expires`], behind the
 /// steady-host condition `one_bounded_intervention` states: an event seen
-/// between the request and the read discards this read before anything is
-/// asserted on it, and says so on the output.
+/// between the request and the read, or over the read itself, discards this
+/// read before anything is asserted on it, and says so on the output.
 fn measured_shortly_before_it_expires(world: &World, bounded: &Bounded) -> Measured {
     let reading = read_shortly_before_it_expires(world, bounded);
-    if let Some(event) = reading.host_event_since(bounded.steady_from) {
+    if let Some(event) = reading.host_event_since(bounded) {
         eprintln!(
             "discarding `{}`'s measurement before its expiry at {}: {event}, and nothing is \
              asserted on it",
@@ -629,12 +669,18 @@ struct Reading {
 }
 
 impl Reading {
-    /// The first event of the host between an earlier reading and this read,
-    /// where there was one: a step of the wall clock in any of the three
-    /// spans, and failing that a wait that ended too far past its schedule.
-    fn host_event_since(&self, earlier: Clocks) -> Option<HostEvent> {
+    /// The first event of the host between one intervention's request and
+    /// this read, where there was one: a step of the wall clock in any of the
+    /// three spans, failing that a wait that ended too far past its schedule,
+    /// and failing that a read whose answer arrived after the expiry it is
+    /// about.
+    ///
+    /// The last is the very comparison `the_reading_shows_it_in_force`
+    /// makes on `answered`, so a read discarded for it is exactly one that
+    /// assertion would refuse and no other.
+    fn host_event_since(&self, bounded: &Bounded) -> Option<HostEvent> {
         self.waiting
-            .stepped_since(earlier)
+            .stepped_since(bounded.steady_from)
             .map(|micros| (micros, "the request and the span before the wait"))
             .or_else(|| {
                 self.waited
@@ -651,6 +697,15 @@ impl Reading {
                 let overshoot = self.at.as_utc().timestamp_micros() - self.scheduled;
                 (overshoot > micros(SCHEDULE_OVERSHOOT))
                     .then_some(HostEvent::PausedGuest { micros: overshoot })
+            })
+            .or_else(|| {
+                let issued = self.at.as_utc().timestamp_micros();
+                let window = bounded.expires_at.as_utc().timestamp_micros() - issued;
+                let took = self.answered.as_utc().timestamp_micros() - issued;
+                (took >= window).then_some(HostEvent::SlowRead {
+                    micros: took,
+                    window,
+                })
             })
     }
 }
