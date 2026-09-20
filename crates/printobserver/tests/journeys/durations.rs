@@ -71,6 +71,7 @@
 
 use core::time::Duration;
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use printobserver::failure::Exit;
 use printobserver::surface::{MAX_DURATION_SECONDS, MIN_DURATION_SECONDS};
@@ -315,12 +316,26 @@ fn instant(answer: &Value, at: &str) -> Timestamp {
 
 /// Wait until a margin before one instant, and answer when the wait ended.
 fn just_before(when: Timestamp, margin: Duration) -> Timestamp {
-    wait(when, -micros(margin))
+    until(when.as_utc().timestamp_micros() - micros(margin))
 }
 
 /// Wait until a margin after one instant, and answer when the wait ended.
+///
+/// Held on both clocks. The supervisor notices an expiry on a poll of its own,
+/// whose cadence is elapsed time rather than the wall clock, so a wall clock
+/// stepped forward across the instant would end a wait kept on it alone with
+/// the supervisor given almost none of the margin to notice. So the margin is
+/// also counted as elapsed time from the moment the wall clock was seen past
+/// the instant, and the wait ends only when both have run out.
 fn just_after(when: Timestamp, margin: Duration) -> Timestamp {
-    wait(when, micros(margin))
+    let instant = when.as_utc().timestamp_micros();
+    until(instant);
+    let crossed = Instant::now();
+    until(instant + micros(margin));
+    if let Some(left) = (crossed + margin).checked_duration_since(Instant::now()) {
+        std::thread::sleep(left);
+    }
+    Timestamp::now()
 }
 
 /// One margin, as the count of microseconds an instant is shifted by.
@@ -331,7 +346,8 @@ fn micros(margin: Duration) -> i64 {
 /// How long a wait sleeps before looking at the clock again.
 const WAIT_SLICE: Duration = Duration::from_millis(10);
 
-/// Wait until one instant shifted by a count of microseconds.
+/// Wait until the wall clock reaches one instant, in microseconds since the
+/// epoch, and answer when it did.
 ///
 /// The instant is computed against the record's own expiry rather than against
 /// the moment the request was made, which is what makes both reads scheduled
@@ -340,15 +356,14 @@ const WAIT_SLICE: Duration = Duration::from_millis(10);
 /// It is waited for on the clock it is an instant of. Every instant this
 /// system records is wall-clock time, and a host may step its wall clock while
 /// a journey runs — a guest resynchronising against its host does, by seconds
-/// at a time — so one sleep for the whole remainder, which counts on the
-/// monotonic clock, would end at the wrong wall-clock instant and read on the
-/// wrong side of the expiry it was scheduled against. Sleeping a slice at a
-/// time and looking at the wall clock between slices ends the wait when that
-/// clock says so, whatever it did in the meantime.
-fn wait(when: Timestamp, shift: i64) -> Timestamp {
-    let until = when.as_utc().timestamp_micros() + shift;
+/// at a time — so one sleep for the whole remainder, which counts elapsed time,
+/// would end at the wrong wall-clock instant and read on the wrong side of the
+/// expiry it was scheduled against. Sleeping a slice at a time and looking at
+/// the wall clock between slices ends the wait when that clock says so,
+/// whatever it did in the meantime.
+fn until(instant: i64) -> Timestamp {
     loop {
-        let remaining = until - Timestamp::now().as_utc().timestamp_micros();
+        let remaining = instant - Timestamp::now().as_utc().timestamp_micros();
         if remaining <= 0 {
             return Timestamp::now();
         }
