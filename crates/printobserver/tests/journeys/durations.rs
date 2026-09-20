@@ -118,8 +118,9 @@ pub struct Bounded {
     pub prior_value: Option<Value>,
     /// When it stops standing.
     pub expires_at: Timestamp,
-    /// Both clocks, read the moment its record was in hand.
-    recorded: Clocks,
+    /// Both clocks, read before it was asked for: the reading the steady-clock
+    /// condition is checked from.
+    steady_from: Clocks,
 }
 
 impl Bounded {
@@ -175,7 +176,7 @@ const STEADY_CLOCK_ATTEMPTS: usize = 3;
 /// each measurement is taken on the condition that the clock was steady, and
 /// the condition is checked before any assertion, by the two clocks alone:
 /// where the wall clock and elapsed time disagree by more than a poll slice
-/// between the record being in hand and the read, that intervention's
+/// between the request being made and the read, that intervention's
 /// measurement is discarded, the discard is recorded with the step's size and
 /// where it landed, and the intervention is asked for again. A supervisor that
 /// was late with no step fails exactly as it would without this; a third step
@@ -235,9 +236,13 @@ fn asked_and_read_before_its_expiry(
     let asked = seconds.to_string();
     world.proxy.forget();
     std::thread::scope(|scope| {
+        // Read before the request is even sent, so that a step of the wall
+        // clock while the supervisor is handling the request — between its
+        // stamping `requested_at` and its answer — is inside the checked span.
+        let steady_from = Clocks::now();
         let asking = scope.spawn(|| ask_for(world, one, &asked));
-        let (sent, clocks) = the_answer_the_supervisor_sent(world, &one.command.name);
-        let bounded = the_expiry_is_the_duration_the_caller_gave(one, &sent, seconds, clocks);
+        let sent = the_answer_the_supervisor_sent(world, &one.command.name);
+        let bounded = the_expiry_is_the_duration_the_caller_gave(one, &sent, seconds, steady_from);
         let measured = the_adjusted_value_is_in_place_shortly_before_it_expires(
             world,
             std::slice::from_ref(&bounded),
@@ -253,8 +258,8 @@ fn asked_and_read_before_its_expiry(
 }
 
 /// The answer the supervisor sent to the request in flight, as the proxy
-/// recorded it, and both clocks read the moment it was seen.
-fn the_answer_the_supervisor_sent(world: &World, command: &str) -> (Value, Clocks) {
+/// recorded it.
+fn the_answer_the_supervisor_sent(world: &World, command: &str) -> Value {
     let started = Instant::now();
     loop {
         let sent = world
@@ -270,7 +275,7 @@ fn the_answer_the_supervisor_sent(world: &World, command: &str) -> (Value, Clock
                     .then_some(body)
             });
         if let Some(sent) = sent {
-            return (sent, Clocks::now());
+            return sent;
         }
         assert!(
             started.elapsed() < ANSWER_WAIT,
@@ -394,8 +399,9 @@ pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec
         .iter()
         .map(|one| {
             super::confirming::starting_from_somewhere_else(world, &one.command.name);
+            let steady_from = Clocks::now();
             let answer = ask_for(world, one, &asked);
-            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds, Clocks::now())
+            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds, steady_from)
         })
         .collect()
 }
@@ -417,7 +423,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
     one: &Driven,
     answer: &Value,
     seconds: i64,
-    recorded: Clocks,
+    steady_from: Clocks,
 ) -> Bounded {
     let requested = instant(answer, "/record/request/requested_at");
     let expires = instant(answer, "/intervention/expires_at");
@@ -446,7 +452,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
         applied_value: held("/intervention/applied_value"),
         prior_value: answer.pointer("/intervention/prior_value").cloned(),
         expires_at: expires,
-        recorded,
+        steady_from,
     };
     the_value_it_would_restore_is_not_the_value_it_applied(&bounded);
     bounded
@@ -571,8 +577,8 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
         let (status, answered) = status_in_process(world);
         let read = Clocks::now();
         let stepped = waiting
-            .stepped_since(bounded.recorded)
-            .map(|micros| (micros, "the span before the wait"))
+            .stepped_since(bounded.steady_from)
+            .map(|micros| (micros, "the request and the span before the wait"))
             .or_else(|| {
                 waited
                     .stepped_since(waiting)
