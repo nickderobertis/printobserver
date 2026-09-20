@@ -82,19 +82,21 @@ pub const MARGIN: Duration = Duration::from_millis(400);
 /// would leave the driver the margin less a poll — under two hundred
 /// milliseconds — for the restore and the record of it, which a loaded host
 /// exceeds. Measured from the first poll that can have seen it, the margin is
-/// the same one the read before the expiry has. The test beside this holds
-/// the copy to the supervisor's own.
+/// the same one the read before the expiry has. The copy is held to the
+/// supervisor's own where this file is compiled.
 const EXPIRY_POLL: Duration = Duration::from_millis(250);
 
-#[test]
-fn the_supervisor_polls_for_an_expiry_at_the_cadence_this_journey_allows_for() {
-    assert_eq!(EXPIRY_POLL, printobserver_core::DEFAULT_EXPIRY_POLL);
-}
+const _: () = assert!(
+    EXPIRY_POLL.as_millis() == printobserver_core::DEFAULT_EXPIRY_POLL.as_millis(),
+    "EXPIRY_POLL is not the cadence the supervisor polls for an expiry at"
+);
 
-#[test]
-fn the_margin_is_inside_the_shortest_duration_this_program_accepts() {
-    assert!(MARGIN < Duration::from_secs(u64::try_from(MIN_DURATION_SECONDS).expect("a duration")));
-}
+const _: () = assert!(
+    MIN_DURATION_SECONDS > 0
+        && MARGIN.as_millis()
+            < Duration::from_secs(MIN_DURATION_SECONDS.unsigned_abs()).as_millis(),
+    "MARGIN is not inside the shortest duration this program accepts"
+);
 
 /// What one accepted adjustment left behind.
 pub struct Bounded {
