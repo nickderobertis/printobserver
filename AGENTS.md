@@ -293,8 +293,14 @@ while the 95% floor remains required everywhere profiles are readable. No code
 is compiled only for Windows aarch64. The exemption is removed when that
 toolchain produces readable profiles.
 
-`docs/platform-bring-up.md` records what the macOS and Windows runners first
-said when each was brought up through the two levers below.
+What one platform needs that the others do not is recorded beside the code
+that answers it rather than in a record of a run: `.gitattributes` for the line
+endings a Windows checkout would otherwise convert, the justfile's
+`PATH_SEPARATOR` for the search path a Windows interpreter splits on `;`,
+`crates/printobserver/tests/support/traced.rs` for how an invocation is
+observed on the two platforms that have no `strace`, and `ci.yml` for the
+action that puts `just` on the one runner `extractions/setup-just` has no build
+for.
 
 ### The two levers a platform is brought up in stages by
 
