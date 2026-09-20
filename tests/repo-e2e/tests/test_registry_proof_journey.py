@@ -420,7 +420,7 @@ def test_the_tier_recipe_proves_every_route_and_every_client(
     equal(
         len(said.strip().splitlines()),
         len(ROUTES) + len(CLIENTS),
-        describing=f"what `just {TIER}` said",
+        describing=f"the lines `just {TIER}` said, which were:\n{said}",
     )
 
 
