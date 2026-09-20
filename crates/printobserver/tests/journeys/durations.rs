@@ -152,6 +152,8 @@ pub struct Bounded {
     pub prior_value: Option<Value>,
     /// When it stops standing.
     pub expires_at: Timestamp,
+    /// Both clocks, read just before it was asked for.
+    asked: Clocks,
 }
 
 impl Bounded {
@@ -182,16 +184,111 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
     let first = shortest_timed(cfg!(windows));
     for seconds in [first, first + 2] {
         for one in &adjustments {
-            checkpoint_the_store(world);
-            let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
-            the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
-            the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+            one_bounded_intervention(world, one, seconds);
         }
     }
     let _ = each_asks_for(world, &adjustments, MAX_DURATION_SECONDS);
 
     for one in &adjustments {
         every_refused_duration_records_nothing(world, one);
+    }
+}
+
+/// How many times one intervention is measured before a stepping clock fails
+/// the journey.
+const STEADY_CLOCK_ATTEMPTS: usize = 3;
+
+/// One adjustment asked for with one duration, and read on both sides of its
+/// expiry — measured on a steady clock.
+///
+/// The reads are scheduled on the wall clock, because that is the clock the
+/// expiry is an instant of; and a host may step that clock while a journey
+/// waits — this WSL2 host does, by 0.47–1.9 s about every 33 s under load.
+/// A step wider than [`MARGIN`] inside the wait before an expiry moves the
+/// expiry past the read on the only clock the system has, and no wait can
+/// read on the right side of an instant the clock has already jumped over. So
+/// each measurement is taken on the condition that the clock was steady, and
+/// the condition is checked before any assertion, by the two clocks alone:
+/// where the wall clock and elapsed time disagree by more than a poll slice
+/// between the request and the read, that intervention's measurement is
+/// discarded, the discard is recorded with the step's size and where it
+/// landed, and the intervention is asked for again. A supervisor that was late
+/// with no step fails exactly as it would without this; a third step fails the
+/// journey naming all three. This is a guard against a host whose wall clock
+/// steps, and not a margin.
+fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
+    let mut stepped = Vec::new();
+    for _ in 0..STEADY_CLOCK_ATTEMPTS {
+        checkpoint_the_store(world);
+        let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
+        let measured = the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
+        the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+        match measured {
+            Measured::OnASteadyClock => return,
+            Measured::OnASteppedClock(step) => stepped.push(step),
+        }
+    }
+    let steps: Vec<String> = stepped.iter().map(ToString::to_string).collect();
+    panic!(
+        "`{}` at {seconds} seconds could not be measured on a steady clock: the host stepped \
+         its wall clock on every one of {STEADY_CLOCK_ATTEMPTS} attempts, by {}",
+        one.command.name,
+        steps.join(", then ")
+    );
+}
+
+/// What one measurement before an expiry was taken on.
+pub enum Measured {
+    /// The clocks agreed from the request to the read, and every assertion was made.
+    OnASteadyClock,
+    /// The wall clock stepped between the request and the read, and no
+    /// assertion was made.
+    OnASteppedClock(Step),
+}
+
+/// One step of the host's wall clock, seen between a request and its read.
+pub struct Step {
+    /// How far the wall clock moved beyond elapsed time, in microseconds.
+    pub micros: i64,
+    /// Where it landed.
+    pub during: &'static str,
+}
+
+impl std::fmt::Display for Step {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} microseconds during {}",
+            self.micros, self.during
+        )
+    }
+}
+
+/// Both clocks, read at one moment.
+#[derive(Debug, Clone, Copy)]
+struct Clocks {
+    /// The wall clock, which every instant the system records is on.
+    wall: Timestamp,
+    /// Elapsed time, which nothing steps.
+    elapsed: Instant,
+}
+
+impl Clocks {
+    fn now() -> Self {
+        Self {
+            wall: Timestamp::now(),
+            elapsed: Instant::now(),
+        }
+    }
+
+    /// How far the wall clock moved since an earlier reading beyond what
+    /// elapsed, where that is more than one poll slice.
+    fn stepped_since(self, earlier: Self) -> Option<i64> {
+        let wall = self.wall.as_utc().timestamp_micros() - earlier.wall.as_utc().timestamp_micros();
+        let elapsed = i64::try_from(self.elapsed.duration_since(earlier.elapsed).as_micros())
+            .expect("a span");
+        let step = wall - elapsed;
+        (step.abs() > micros(WAIT_SLICE)).then_some(step)
     }
 }
 
@@ -254,8 +351,9 @@ pub fn each_asks_for(world: &World, adjustments: &[Driven], seconds: i64) -> Vec
         .iter()
         .map(|one| {
             super::confirming::starting_from_somewhere_else(world, &one.command.name);
+            let clocks = Clocks::now();
             let answer = ask_for(world, one, &asked);
-            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds)
+            the_expiry_is_the_duration_the_caller_gave(one, &answer, seconds, clocks)
         })
         .collect()
 }
@@ -277,6 +375,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
     one: &Driven,
     answer: &Value,
     seconds: i64,
+    asked: Clocks,
 ) -> Bounded {
     let requested = instant(answer, "/record/request/requested_at");
     let expires = instant(answer, "/intervention/expires_at");
@@ -305,6 +404,7 @@ fn the_expiry_is_the_duration_the_caller_gave(
         applied_value: held("/intervention/applied_value"),
         prior_value: answer.pointer("/intervention/prior_value").cloned(),
         expires_at: expires,
+        asked,
     };
     the_value_it_would_restore_is_not_the_value_it_applied(&bounded);
     bounded
@@ -418,9 +518,29 @@ fn until(instant: i64) -> Timestamp {
 /// that answer, which it stamps before reading which interventions still
 /// stand, so the machine's value the read carries is one observed before the
 /// expiry too.
-pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, opened: &[Bounded]) {
+pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
+    world: &World,
+    opened: &[Bounded],
+) -> Measured {
     for bounded in opened {
+        let waiting = Clocks::now();
         let at = just_before(bounded.expires_at, MARGIN);
+        let read = Clocks::now();
+        let stepped = waiting
+            .stepped_since(bounded.asked)
+            .map(|micros| (micros, "the request's own tail"))
+            .or_else(|| {
+                read.stepped_since(waiting)
+                    .map(|micros| (micros, "the wait"))
+            });
+        if let Some((micros, during)) = stepped {
+            eprintln!(
+                "discarding `{}`'s measurement before its expiry at {}: the host's wall clock \
+                 stepped by {micros} microseconds during {during}, and nothing is asserted on it",
+                bounded.command, bounded.expires_at
+            );
+            return Measured::OnASteppedClock(Step { micros, during });
+        }
         let (status, answered) = status_in_process(world);
         let observed = instant(&status, "/printer/observed_at");
         let held = in_force(&status);
@@ -454,6 +574,7 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(world: &World, o
         );
         the_machine_reports(&status, bounded, Some(&bounded.applied_value), "adjusted");
     }
+    Measured::OnASteadyClock
 }
 
 /// One status read of this world's print made in this process, and the instant
