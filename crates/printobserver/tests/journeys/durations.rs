@@ -19,21 +19,13 @@
 //! intervention is taken alone and read twice, both reads scheduled from the
 //! expiry **its own** record carries: [`MARGIN`] before it, and [`MARGIN`]
 //! after the first poll at which the supervisor can have noticed it
-//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing of any other
-//! request between a request and its first read, and the expiry is learned
-//! from the recording proxy the moment the supervisor answers rather than
-//! from the traced program's output, so the program's own exit never reaches
-//! the read (`asked_and_read_before_its_expiry`).
-//!
-//! The read before the expiry is made **in this process** and asserted on the
-//! instant its answer arrived, because it is about the server's state at an
-//! instant and a spawned, traced, coverage-instrumented program has no bound
-//! on its latency under load — `the_adjusted_value_is_in_place_shortly_before_it_expires`
-//! says what each of its three instants proves. The reads after the expiry
-//! stay in the traced program, where a slow read can only land on the side of
-//! the expiry it is about. Every wait is kept on the wall clock the expiry is
-//! an instant of (`until`), and the store is checkpointed before each sequence
-//! so its own checkpoint cannot fall inside a window (`checkpoint_the_store`).
+//! ([`EXPIRY_POLL`]). The read before the expiry is made in this process and
+//! asserted on the instant its answer arrived; the reads after it go through
+//! the traced program, where a slow read can only land on the side of the
+//! expiry it is about. What keeps the window before an expiry clear of
+//! everything but the read is documented where each piece is:
+//! `asked_and_read_before_its_expiry` (the deadline), `one_bounded_intervention`
+//! (the clock), `until` (the wait) and `checkpoint_the_store` (the store).
 //!
 //! # What is read, and what the machine can be read for
 //!
@@ -167,21 +159,16 @@ const STEADY_CLOCK_ATTEMPTS: usize = 3;
 /// One adjustment asked for with one duration, and read on both sides of its
 /// expiry — measured on a steady clock.
 ///
-/// The reads are scheduled on the wall clock, because that is the clock the
-/// expiry is an instant of; and a host may step that clock while a journey
-/// waits — this WSL2 host does, by 0.47–1.9 s about every 33 s under load.
-/// A step wider than [`MARGIN`] inside the wait before an expiry moves the
-/// expiry past the read on the only clock the system has, and no wait can
-/// read on the right side of an instant the clock has already jumped over. So
-/// each measurement is taken on the condition that the clock was steady, and
-/// the condition is checked before any assertion, by the two clocks alone:
-/// where the wall clock and elapsed time disagree by more than a poll slice
-/// between the request being made and the read, that intervention's
-/// measurement is discarded, the discard is recorded with the step's size and
-/// where it landed, and the intervention is asked for again. A supervisor that
-/// was late with no step fails exactly as it would without this; a third step
-/// fails the journey naming all three. This is a guard against a host whose
-/// wall clock steps, and not a margin.
+/// A host may step its wall clock (this WSL2 host: by 0.47–1.9 s about every
+/// 33 s under load), and a step wider than [`MARGIN`] between the request and
+/// the read moves the expiry past the read on the only clock the system has.
+/// So the condition that the clock was steady is checked before any assertion,
+/// by the two clocks alone — the wall clock against elapsed time, to within a
+/// poll slice — and a measurement taken across a step is discarded, recorded
+/// with the step's size and place, and taken again, at most
+/// [`STEADY_CLOCK_ATTEMPTS`] times. A supervisor that is late with no step
+/// fails exactly as it would without this. It is a guard against a stepping
+/// clock, not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut stepped = Vec::new();
     for _ in 0..STEADY_CLOCK_ATTEMPTS {
@@ -215,19 +202,11 @@ const ANSWER_WAIT: Duration = Duration::from_secs(60);
 /// One adjustment asked for through the traced program, and read before its
 /// expiry from the deadline the proxy saw.
 ///
-/// The recorded expiry is the request's own instant plus the duration, and the
-/// supervisor stamps that instant before it answers; the traced program then
-/// exits, writes its coverage profile and has its trace read, and under a
-/// gate's disk load that tail has taken seconds — every one of them inside
-/// the window before the expiry, which at the shortest duration is under a
-/// second long. So the deadline is not learned from the program's output. The
-/// world's recording proxy keeps the supervisor's answer the moment it is
-/// sent, before the program has read it: the traced request runs on a thread
-/// of its own, the answer is taken from the proxy as soon as it appears, the
-/// read before the expiry is scheduled from that record, and the program is
-/// joined afterwards and held to have printed that same answer. Nothing the
-/// program does after being answered can reach the read, and the program is
-/// still run, still traced and still read, exactly as every other command is.
+/// The supervisor stamps the request's instant before it answers, and the
+/// traced program's own exit — its coverage profile, its trace — then takes a
+/// time nothing bounds, inside the window before the expiry. So the deadline
+/// is taken from the recording proxy, which has the answer the moment it is
+/// sent, and the program is joined afterwards and held to have printed it.
 fn asked_and_read_before_its_expiry(
     world: &World,
     one: &Driven,
@@ -342,18 +321,15 @@ impl Clocks {
 
 /// Checkpoint the supervisor's own database before one timed sequence.
 ///
-/// The store keeps its database in write-ahead logging and lets `SQLite`
-/// checkpoint it on its own: at every commit once the log holds a thousand
-/// pages, and under `synchronous = NORMAL` that is the one moment it forces
-/// the data to disk. The journey's writes cross that boundary at a fixed point
-/// — between the tool and the bed requests at the shortest duration — so on
-/// every run one checkpoint falls inside one of the windows the reads below
-/// are timed against. Unloaded it costs milliseconds; under a gate's disk load
-/// it has cost up to two seconds, during which the supervisor answered no read
-/// and expired nothing. That is a stall of the system rather than a fault the
-/// timing assertions are written to find, so the log is emptied here through
-/// the store's own connection, before each intervention is asked for and
-/// outside every window. This keeps the journey's windows clear of the
+/// The store lets `SQLite` checkpoint its write-ahead log on its own, at a
+/// commit once the log holds a thousand pages, and under
+/// `synchronous = NORMAL` that is the one moment it forces data to disk. The
+/// journey's writes cross that boundary at a fixed point — between the tool
+/// and the bed requests at the shortest duration — and under a gate's disk
+/// load that checkpoint has cost up to two seconds, with the supervisor
+/// answering nothing meanwhile. That is a stall of the system rather than a
+/// fault the timing assertions are written to find, so the log is emptied
+/// here, outside every window. This keeps the journey's windows clear of the
 /// store's checkpoint and proves nothing about the store coping with one.
 fn checkpoint_the_store(world: &World) {
     let database = world
