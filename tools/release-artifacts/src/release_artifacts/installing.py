@@ -17,6 +17,7 @@ a source install are what the end user gets.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -75,6 +76,44 @@ def executable(name: str) -> str:
     and a caller reads that instead.
     """
     return f"{name}.exe" if sys.platform == "win32" else name
+
+
+def release_program(target_directory: Path, name: str) -> Path:
+    """Where a release build into `target_directory` leaves the program called `name`."""
+    return target_directory / "release" / executable(name)
+
+
+def consumer_program(consumer: Path, name: str, env: dict[str, str] | None = None) -> Path:
+    """Where `cargo build --release` of the consumer crate at `consumer` left `name`.
+
+    Asked of `cargo` rather than assumed at `consumer/target`, because that is
+    not where a consumer inside this clone builds: `.cargo/config.toml` at the
+    root sends every build under it into `<clone>/target`, the proofs write
+    their consumers under `dist/`, and only a consumer written outside the clone
+    builds beside its own manifest. `--no-deps` so the answer resolves nothing.
+
+    Raises:
+        InstallError: If `cargo` would not answer where it builds.
+    """
+    asked = run(
+        [
+            "cargo",
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+            str(consumer / "Cargo.toml"),
+        ],
+        cwd=consumer,
+        env=env,
+        timeout=INSTALL_TIMEOUT_SECONDS,
+    )
+    if asked.returncode != 0:
+        asking = f"asking where the consumer at {consumer} builds"
+        msg = f"{asking} failed ({asked.returncode}):\n{asked.stderr}"
+        raise InstallError(msg)
+    return release_program(Path(json.loads(asked.stdout)["target_directory"]), name)
 
 
 def programs_in(environment: Path) -> Path:
@@ -332,7 +371,7 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
         built.target,
         environment,
         None,
-        str(consumer / "target" / "release" / executable("printobserver-sdk-smoke")),
+        str(consumer_program(consumer, "printobserver-sdk-smoke")),
     )
 
 
