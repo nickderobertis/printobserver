@@ -19,9 +19,13 @@
 //! intervention is taken alone and read twice, both reads scheduled from the
 //! expiry **its own** record carries: [`MARGIN`] before it, and [`MARGIN`]
 //! after the first poll at which the supervisor can have noticed it
-//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing but the
-//! request's own tail between a request and its first read; the batch this
-//! replaced fit four more traced programs into that span, and lost.
+//! ([`EXPIRY_POLL`]). Taking them one at a time leaves nothing between a
+//! request and its first read; the batch this replaced fit four more traced
+//! programs into that span, and lost. And the expiry itself is learned from
+//! the recording proxy the moment the supervisor answers, not from the traced
+//! program's output, so the program's own exit — which under a gate's disk
+//! load has taken seconds — never reaches the read
+//! (`asked_and_read_before_its_expiry`).
 //!
 //! The read before the expiry is made **in this process** and asserted on the
 //! instant its answer arrived, because it is about the server's state at an
@@ -75,9 +79,7 @@ const REFUSED: [&str; 4] = ["0", "-1", "quickly", "86401"];
 /// program accepts, and long enough that a read started there finishes on the
 /// right side of the instant it is about. One value on every platform: no
 /// tracer sits inside the window before an expiry, so no tracer's cost is
-/// allowed for in it — what Windows' tracer costs is allowed for at
-/// [`WINDOWS_TRACED_REQUEST_SECONDS`], and is the request's rather than a
-/// read's.
+/// allowed for in it.
 pub const MARGIN: Duration = Duration::from_millis(400);
 
 /// How often the supervisor looks for an expiry: its expiry driver's own
@@ -99,40 +101,6 @@ fn the_supervisor_polls_for_an_expiry_at_the_cadence_this_journey_allows_for() {
     assert_eq!(EXPIRY_POLL, printobserver_core::DEFAULT_EXPIRY_POLL);
 }
 
-/// What the Windows tracer adds to the shortest timed duration.
-///
-/// The first timed value of the corpus is the shortest duration this program
-/// accepts, on every platform but one. On Windows the traced request itself
-/// answers late: `traced` there stops the kernel logger and decodes its
-/// session with `tracerpt` **after** the program has exited and **before** it
-/// answers, so the recorded expiry — which is what the pre-expiry read is
-/// scheduled from — is in hand only after the server's `requested_at` plus
-/// that decode. Nothing here can make that read before it knows the instant
-/// it is about, and one second would not survive a decode this host cannot
-/// measure. So Windows alone starts the corpus this much above the minimum;
-/// it is an allowance for the request's own tail and not for any read, which
-/// is why [`MARGIN`] does not grow with it. What removes it is a pre-expiry
-/// read scheduled from a deadline known before the traced request returns.
-const WINDOWS_TRACED_REQUEST_SECONDS: i64 = 10;
-
-/// The first timed value of the corpus on this host.
-fn shortest_timed(windows: bool) -> i64 {
-    if windows {
-        MIN_DURATION_SECONDS + WINDOWS_TRACED_REQUEST_SECONDS
-    } else {
-        MIN_DURATION_SECONDS
-    }
-}
-
-#[test]
-fn every_host_but_windows_starts_the_corpus_at_the_minimum() {
-    assert_eq!(shortest_timed(false), MIN_DURATION_SECONDS);
-    assert_eq!(
-        shortest_timed(true),
-        MIN_DURATION_SECONDS + WINDOWS_TRACED_REQUEST_SECONDS
-    );
-}
-
 #[test]
 fn the_margin_is_inside_the_shortest_duration_this_program_accepts() {
     assert!(MARGIN < Duration::from_secs(u64::try_from(MIN_DURATION_SECONDS).expect("a duration")));
@@ -152,7 +120,7 @@ pub struct Bounded {
     pub prior_value: Option<Value>,
     /// When it stops standing.
     pub expires_at: Timestamp,
-    /// Both clocks, read just before it was asked for.
+    /// Both clocks, read the moment its record was in hand.
     asked: Clocks,
 }
 
@@ -181,8 +149,7 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
         "the vocabulary's adjustments are not the ones this journey drives"
     );
 
-    let first = shortest_timed(cfg!(windows));
-    for seconds in [first, first + 2] {
+    for seconds in [MIN_DURATION_SECONDS, MIN_DURATION_SECONDS + 2] {
         for one in &adjustments {
             one_bounded_intervention(world, one, seconds);
         }
@@ -210,19 +177,19 @@ const STEADY_CLOCK_ATTEMPTS: usize = 3;
 /// each measurement is taken on the condition that the clock was steady, and
 /// the condition is checked before any assertion, by the two clocks alone:
 /// where the wall clock and elapsed time disagree by more than a poll slice
-/// between the request and the read, that intervention's measurement is
-/// discarded, the discard is recorded with the step's size and where it
-/// landed, and the intervention is asked for again. A supervisor that was late
-/// with no step fails exactly as it would without this; a third step fails the
-/// journey naming all three. This is a guard against a host whose wall clock
-/// steps, and not a margin.
+/// between the record being in hand and the read, that intervention's
+/// measurement is discarded, the discard is recorded with the step's size and
+/// where it landed, and the intervention is asked for again. A supervisor that
+/// was late with no step fails exactly as it would without this; a third step
+/// fails the journey naming all three. This is a guard against a host whose
+/// wall clock steps, and not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut stepped = Vec::new();
     for _ in 0..STEADY_CLOCK_ATTEMPTS {
         checkpoint_the_store(world);
-        let opened = each_asks_for(world, std::slice::from_ref(one), seconds);
-        let measured = the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
-        the_prior_value_is_back_shortly_after_it_expires(world, &opened);
+        super::confirming::starting_from_somewhere_else(world, &one.command.name);
+        let (opened, measured) = asked_and_read_before_its_expiry(world, one, seconds);
+        the_prior_value_is_back_shortly_after_it_expires(world, std::slice::from_ref(&opened));
         match measured {
             Measured::OnASteadyClock => return,
             Measured::OnASteppedClock(step) => stepped.push(step),
@@ -235,6 +202,82 @@ fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
         one.command.name,
         steps.join(", then ")
     );
+}
+
+/// How often the proxy is looked at for the supervisor's answer.
+const PROXY_POLL: Duration = Duration::from_millis(5);
+
+/// How long the supervisor is given to answer a request that opens an
+/// intervention.
+const ANSWER_WAIT: Duration = Duration::from_secs(60);
+
+/// One adjustment asked for through the traced program, and read before its
+/// expiry from the deadline the proxy saw.
+///
+/// The recorded expiry is the request's own instant plus the duration, and the
+/// supervisor stamps that instant before it answers; the traced program then
+/// exits, writes its coverage profile and has its trace read, and under a
+/// gate's disk load that tail has taken seconds — every one of them inside
+/// the window before the expiry, which at the shortest duration is under a
+/// second long. So the deadline is not learned from the program's output. The
+/// world's recording proxy keeps the supervisor's answer the moment it is
+/// sent, before the program has read it: the traced request runs on a thread
+/// of its own, the answer is taken from the proxy as soon as it appears, the
+/// read before the expiry is scheduled from that record, and the program is
+/// joined afterwards and held to have printed that same answer. Nothing the
+/// program does after being answered can reach the read, and the program is
+/// still run, still traced and still read, exactly as every other command is.
+fn asked_and_read_before_its_expiry(
+    world: &World,
+    one: &Driven,
+    seconds: i64,
+) -> (Bounded, Measured) {
+    let asked = seconds.to_string();
+    world.proxy.forget();
+    std::thread::scope(|scope| {
+        let asking = scope.spawn(|| ask_for(world, one, &asked));
+        let (sent, clocks) = the_answer_the_supervisor_sent(world, &one.command.name);
+        let bounded = the_expiry_is_the_duration_the_caller_gave(one, &sent, seconds, clocks);
+        let measured = the_adjusted_value_is_in_place_shortly_before_it_expires(
+            world,
+            std::slice::from_ref(&bounded),
+        );
+        let printed = asking.join().expect("the adjustment was asked for");
+        assert_eq!(
+            printed, sent,
+            "`{}` printed a document other than the answer the supervisor sent",
+            one.command.name
+        );
+        (bounded, measured)
+    })
+}
+
+/// The answer the supervisor sent to the request in flight, as the proxy
+/// recorded it, and both clocks read the moment it was seen.
+fn the_answer_the_supervisor_sent(world: &World, command: &str) -> (Value, Clocks) {
+    let started = Instant::now();
+    loop {
+        let sent = world
+            .proxy
+            .received()
+            .into_iter()
+            .rev()
+            .find_map(|received| {
+                let body: Value =
+                    printobserver_types::serde_json::from_str(&received.answered).ok()?;
+                body.pointer("/intervention/expires_at")
+                    .is_some()
+                    .then_some(body)
+            });
+        if let Some(sent) = sent {
+            return (sent, Clocks::now());
+        }
+        assert!(
+            started.elapsed() < ANSWER_WAIT,
+            "the supervisor answered `{command}` with no intervention within {ANSWER_WAIT:?}"
+        );
+        std::thread::sleep(PROXY_POLL);
+    }
 }
 
 /// What one measurement before an expiry was taken on.
@@ -528,7 +571,7 @@ pub fn the_adjusted_value_is_in_place_shortly_before_it_expires(
         let read = Clocks::now();
         let stepped = waiting
             .stepped_since(bounded.asked)
-            .map(|micros| (micros, "the request's own tail"))
+            .map(|micros| (micros, "the span before the wait"))
             .or_else(|| {
                 read.stepped_since(waiting)
                     .map(|micros| (micros, "the wait"))
