@@ -157,12 +157,12 @@ class Naming:
     wheel_versioned: bool
 
 
-#: What every platform identifier this repository's plan uses is called.
+#: What every platform identifier this repository names is called.
 #:
-#: Five rather than the three the supported-platform list names today, and
-#: deliberately: a platform joins that list only once every cell derived from
-#: it is green, and it cannot be brought up in stages if nothing can name it
-#: until it is already supported. Nothing here makes a platform supported —
+#: This table may name a platform the supported-platform list does not yet,
+#: and deliberately: a platform joins that list only once every cell derived
+#: from it is green, and it cannot be brought up in stages if nothing can name
+#: it until it is already supported. Nothing here makes a platform supported —
 #: `descriptor` refuses every identifier the list does not carry. Intel macOS
 #: is named by neither: it was cut as a platform for hosted-runner cost, and
 #: `repo-policy.toml`'s `platforms.retired` records that.

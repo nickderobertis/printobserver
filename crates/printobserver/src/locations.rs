@@ -8,9 +8,9 @@
 //!
 //! This module is the one place those answers are spelled. [`HERE`] is the one
 //! this build answers with, chosen by its target; every other copy — the Linux
-//! and Windows installers' own paths and the real-printer smoke test's
-//! configuration defaults among them — is held to [`LINUX`], [`MACOS`] or
-//! [`WINDOWS`] by this crate's tests.
+//! and Windows installers' own paths, the real-printer smoke test's
+//! configuration defaults and the README's table of them among them — is held
+//! to [`LINUX`], [`MACOS`] or [`WINDOWS`] by this crate's tests.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,10 +32,9 @@ pub const LINUX: Locations = Locations {
 
 /// Where an install keeps them on macOS.
 ///
-/// Provisional: this is the Linux answer, byte for byte, which is what macOS
-/// has always been given. Choosing macOS's own — and making its installer's
-/// placement agree with it — is the `macos-first-class` node's, which changes
-/// these values and nothing else here.
+/// The Linux answer, byte for byte: `scripts/install-service.sh` serves both
+/// platforms and puts things in the same places on each, so an operator moving
+/// between the two has one set of paths to know.
 pub const MACOS: Locations = Locations {
     config: "/etc/printobserver/config.toml",
     state: "/var/lib/printobserver",
@@ -92,9 +91,9 @@ mod tests {
         );
     }
 
-    /// macOS is given the Linux answer until its own is chosen.
+    /// One installer serves Linux and macOS, so macOS's answer is Linux's.
     #[test]
-    fn macos_is_given_the_linux_answer_until_its_own_is_chosen() {
+    fn macos_keeps_the_linux_answer() {
         assert_eq!(MACOS, LINUX);
     }
 
@@ -187,6 +186,36 @@ mod tests {
         assert_eq!(smoke_value(&smoke, "LINUX_CONFIG"), LINUX.config);
         assert_eq!(smoke_value(&smoke, "MACOS_CONFIG"), MACOS.config);
         assert_eq!(smoke_value(&smoke, "WINDOWS_CONFIG"), WINDOWS.config);
+    }
+
+    /// The README tells a reader where their platform's install keeps things
+    /// in a table, one row per platform, and each row is exactly the answers
+    /// here: the one place a person meets these paths is held to the one place
+    /// they are declared.
+    #[test]
+    fn the_readme_tells_each_platforms_own_locations() {
+        let readme =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
+                .expect("the committed README reads");
+
+        for (platform, locations, program) in [
+            ("Linux", LINUX, format!("{}/printobserver", LINUX.home)),
+            ("macOS", MACOS, format!("{}/printobserver", MACOS.home)),
+            (
+                "Windows",
+                WINDOWS,
+                format!("{}\\printobserver.exe", WINDOWS.home),
+            ),
+        ] {
+            let row = format!(
+                "| {platform} | `{}` | `{}` | `{program}` |",
+                locations.config, locations.state
+            );
+            assert!(
+                readme.lines().any(|line| line == row),
+                "the README's table carries no row `{row}`"
+            );
+        }
     }
 
     /// The Linux installer writes the service to exactly the Linux answer.

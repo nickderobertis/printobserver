@@ -2,7 +2,8 @@
 
 Every tier this repository declares, what each one proves, and — for the tiers
 that are not in the gate — why they are outside it and what runs them instead.
-This document covers the tiers the gate runs and the tiers outside the gate.
+This document covers the tiers the gate runs, the tiers outside the gate, and
+the test nothing selects.
 
 The set of tiers is not written down here. It is `repo-policy.toml`'s
 `gate.tiers` together with every other table of that file that declares a `tier`
@@ -16,12 +17,30 @@ formatting, linting, type checking and tests each fail the build on an issue,
 coverage is measured on the test run, and the coverage tier fails the build
 below the floors `repo-policy.toml` records. There is no warnings-only mode.
 
+Which platforms a tier runs on is stated under each tier, and every answer is
+derived from one list: `AGENTS.md`'s supported-platform list, which names each
+platform's runner and service manager. A tier that runs on every platform runs
+on exactly the platforms that list names, in one continuous-integration cell
+per platform, so a platform joining or leaving the list joins or leaves every
+such tier at once; a tier that runs once carries no platform matrix, and the
+reason it does not is recorded beside it. Nothing below names a platform the
+list does not carry, and a check refuses a document that does.
+
 ## The tiers the gate runs
+
+Every tier in this section runs on every supported platform: the `gate` job of
+`.github/workflows/ci.yml` is one cell per platform on the list, and each cell
+runs `just bootstrap` and then `just check`, which is all of them. On the two
+Windows cells `just` runs its recipes under Git's own bash, and the gate reads
+the same tree there because every text file is checked out with the line
+endings it was committed with.
 
 ### format-check
 
 Refuses a source file that is not in its language's canonical format — `cargo
 fmt`, `ruff format` and `biome`, each over the projects that language owns.
+
+**Where it runs.** Every supported platform, in the gate's cell for it.
 
 ### lint
 
@@ -29,10 +48,18 @@ Lints every project with its language's linter, failing on any finding. Rust is
 `clippy` with `all` and `pedantic` denied at the workspace level and
 `unsafe_code` forbidden outright.
 
+**Where it runs.** Every supported platform, in the gate's cell for it. On a
+Unix host it lints every crate twice — natively, and once more for the Windows
+target `repo-policy.toml`'s `toolchain.windows_lint` names — so a finding in
+`cfg(windows)` code is reported before a push rather than by a Windows cell at
+the end of a round; on the Windows cells the native pass is that pass.
+
 ### typecheck
 
 Type-checks every project with its language's type checker: `cargo check` over
 all targets, `ty` over the Python projects, and `tsc` over the Node ones.
+
+**Where it runs.** Every supported platform, in the gate's cell for it.
 
 ### test
 
@@ -41,6 +68,12 @@ the unit tests, the contract tests over the generated schemas, and the journeys
 that drive the real binary against a real server live — everything except the
 three tiers below and the printer's own integration binary.
 
+**Where it runs.** Every supported platform, in the gate's cell for it. The
+suites are one suite on every platform; what differs by platform is how a
+journey observes the host — which program traces an invocation, which service
+manager a service is driven through, how a serial device is named — and each
+of those is chosen by the host rather than by a test that only runs on one.
+
 ### coverage
 
 Fails the build below the line-coverage floors `repo-policy.toml` records: 95%
@@ -48,11 +81,22 @@ per ecosystem, measured on the run the `test` tier just did. Each ecosystem
 measures its own suite, because one blended figure lets one language's coverage
 pay for another's.
 
+**Where it runs.** Every supported platform, in the gate's cell for it, with
+one recorded exemption: on `windows-aarch64` the Rust toolchain cannot read the
+profiles its own instrumentation writes, so `repo-policy.toml` exempts that
+cell's Rust coverage report alone — the tests still run there, and the floor
+is still required everywhere profiles are readable. `AGENTS.md`'s
+"Supported platforms" records the toolchain defect and what removes the
+exemption.
+
 ### build
 
 Builds every project that produces an artifact, so that a tree whose tests pass
 and whose product does not compile for release is refused here rather than
 after a merge.
+
+**Where it runs.** Every supported platform, in the gate's cell for it, each
+building for its own Rust target.
 
 ### lint-workflows
 
@@ -60,6 +104,8 @@ Validates the committed workflows: `actionlint` parses them, `shellcheck` reads
 the committed shell scripts, and this repository's own workflow check refuses an
 unpinned action, a secret outside the manifest and a command outside the
 allowlist.
+
+**Where it runs.** Every supported platform, in the gate's cell for it.
 
 ### check-repo
 
@@ -70,12 +116,23 @@ checks behind this document and its siblings.
 `tools/repo-checks/src/repo_checks/registry.py` names every one of them, and
 each can be run on its own by name.
 
+**Where it runs.** Every supported platform, in the gate's cell for it. The
+platform checks are what hold every matrix in the committed workflows to the
+supported-platform list, so they run on each platform that list names.
+
 ### test-e2e
 
 The end-to-end tier, which drives this repository's own gate: it runs
 `just bootstrap` in a fresh copy carrying no build products, and it assembles
 copies of the tree carrying one defect each and asserts the gate refuses every
 one of them.
+
+**Where it runs.** Every supported platform, in the gate's cell for it. Its
+journey over the installed service drives the real service manager on the
+platforms that have one it can reach — systemd on the Linux cells, the
+service control manager on the Windows cells — and skips the macOS cell,
+where the same journey over launchd is `crates/printobserver/tests/service_manager.rs`'s,
+in the `test` tier.
 
 ## The tiers outside the gate
 
@@ -121,9 +178,13 @@ so a command that worked because nothing had to move is refused.
 of its own, starts it, and waits a print out. That is minutes of provisioning
 every gate run would otherwise pay for.
 
-**When it runs.** On every change, as a continuous-integration job of its own,
-on every platform the supported-platform list names. `just octoprint-up` and
-`just octoprint-down` bracket it.
+**When it runs.** On every change, as a continuous-integration job of its own —
+the `integration` job of `.github/workflows/ci.yml`, one cell per platform the
+supported-platform list names, each of which is a required check. `just
+octoprint-up` and `just octoprint-down` bracket it. OctoPrint's virtual printer
+is a bundled pure-Python plugin that needs no hardware, so no platform is
+excluded; `AGENTS.md`'s "Virtual printer availability" is where one would be
+recorded, with its reason.
 
 ### test-install-proof
 
@@ -155,11 +216,16 @@ contact no registry. No workflow job runs one of those: a job proving a shipped
 artifact takes it from its registry.
 
 **When it runs.** After a release, on a schedule and on a manual invocation, and
-on no trigger that fires on a change. The schedule is the cron `0 6 * * 1`, and
-`.github/workflows/install-path.yml` is where all three triggers are declared.
-The release-time one is the `release-plz` workflow *having finished* rather than
-the GitHub Release being published: that release is cut before its artifacts are
-built and published, so a proof keyed on it would measure the version before it.
+on no trigger that fires on a change — so nothing a developer does selects it,
+and a change to this tree is never what runs it. The schedule is the cron
+`0 6 * * 1`, and `.github/workflows/install-path.yml` is where all three
+triggers are declared. The release-time one is the `release-plz` workflow
+*having finished* rather than the GitHub Release being published: that release
+is cut before its artifacts are built and published, so a proof keyed on it
+would measure the version before it. Each of the six proofs is one cell per
+platform the supported-platform list answers `install path: yes` for, which
+today is every platform on it; by hand, `just test-install-proof` runs all six
+on the host it is run on, for the version `PRINTOBSERVER_PROOF_VERSION` names.
 
 Nothing here publishes to a registry in order to prove a point:
 `PRINTOBSERVER_PROOF_REGISTRIES` points all three registries at one stand-in
@@ -187,8 +253,32 @@ failure alert out: tens of minutes on a cold runner.
 **When it runs.** On a schedule and on a manual invocation, and on no trigger
 that fires on a change. The schedule is the cron `17 4 * * 1` —
 `.github/workflows/obico.yml` is where it is declared. `just obico-up` and
-`just obico-down` bracket it.
+`just obico-down` bracket it. It runs once, on one Linux runner, and carries no
+platform matrix: it proves an external producer's payload shape by standing
+Obico up from that project's own Linux container composition, so it is not a
+printer-host tier, and the hosted macOS and Windows runners do not run Linux
+containers. By hand it needs Docker and its Compose plugin, the one
+prerequisite `just bootstrap` does not install.
 
 A divergence this tier finds is a finding to report rather than a defect of this
 repository: the sample is a checked-in contract, and moving it is a deliberate
 change.
+
+## The test nothing selects
+
+One test in this repository is not a tier at all, and deliberately: the
+real-printer smoke test, `just test-printer-smoke`, which drives the installed
+`printobserver` command against a running supervisor and, through it, a real
+printer on a named serial port. It is not one of the gate's tiers, no graph
+target reaches it, and no workflow runs it on a change or on a schedule,
+because a print is hours of filament and an unattended test that starts one
+ruins a print nobody was watching. Two things together select it and one alone
+does not: the `--run` flag on its recipe, and `PRINTOBSERVER_SMOKE_DEVICE`
+naming the serial device — spelled the way the host names one, `/dev/ttyACM0`
+on Linux, `/dev/cu.usbmodem1101` on macOS, `COM3` on Windows. Absent either it
+says which was missing and runs nothing. It runs on whichever supported
+platform is beside the printer; every precondition it checks fails closed, and
+refusing to run is a pass. `repo-policy.toml`'s `[smoke]` declares the recipe,
+the flag and the variable, and names `AGENTS.md`'s "The real-printer smoke
+test" as the test's account — the section `just check-repo`'s
+`smoke-selection` refuses a tree without, or one that does not name all three.

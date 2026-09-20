@@ -272,9 +272,10 @@ from.
 - `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: yes
 [//]: # (END supported-platforms)
 
-The two Linux entries run under systemd and the macOS entry under launchd, and
-the installer in the end-user install path below writes each its own service
-definition. `linux-aarch64` is not optional: the machine beside the printer is
+The two Linux entries run under systemd, the macOS entry under launchd and the
+two Windows entries under the service control manager, and the installer in
+the end-user install path below writes each its own service definition.
+`linux-aarch64` is not optional: the machine beside the printer is
 usually a small ARM board, and it is the worst place to discover an
 architecture was never built for. Apple silicon is the only macOS platform:
 Intel macOS was cut on 2026-09-18 for hosted-runner cost, and
@@ -292,8 +293,14 @@ while the 95% floor remains required everywhere profiles are readable. No code
 is compiled only for Windows aarch64. The exemption is removed when that
 toolchain produces readable profiles.
 
-`docs/platform-bring-up.md` records what the macOS and Windows runners first
-said when each was brought up through the two levers below.
+What one platform needs that the others do not is recorded beside the code
+that answers it rather than in a record of a run: `.gitattributes` for the line
+endings a Windows checkout would otherwise convert, the justfile's
+`PATH_SEPARATOR` for the search path a Windows interpreter splits on `;`,
+`crates/printobserver/tests/support/traced.rs` for how an invocation is
+observed on the two platforms that have no `strace`, and `ci.yml` for the
+action that puts `just` on the one runner `extractions/setup-just` has no build
+for.
 
 ### The two levers a platform is brought up in stages by
 
@@ -437,14 +444,25 @@ unattended test that starts one ruins a print nobody was watching.
 and `just check-repo`'s `smoke-selection` refuses a tree in which anything else
 could reach it.
 
+On Linux and macOS, the device named as that host names one — `/dev/ttyACM0`
+here, `/dev/cu.usbmodem1101` on a Mac:
+
 ```console
 PRINTOBSERVER_SMOKE_DEVICE=/dev/ttyACM0 just test-printer-smoke --run
+```
+
+On Windows, the port named as Windows names one, and the variable set the way
+PowerShell sets one for the command after it:
+
+```powershell
+$env:PRINTOBSERVER_SMOKE_DEVICE='COM3'; just test-printer-smoke --run
 ```
 
 **What a person does before running it**, on the machine beside the printer, and
 in this order: bring the scripted `OctoPrint` up against the real device
 (`OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0 just
-octoprint-up`); upload `tools/printer-smoke/gcode/smoke.gcode` to that instance
+octoprint-up`, the two variables set the same way on Windows and the device
+named `COM3`); upload `tools/printer-smoke/gcode/smoke.gcode` to that instance
 under its own name; put the conservative envelope below into the running
 supervisor's configuration; and set a manifest for that file on the print the
 smoke is to act on, with `printobserver manifest-set`.
@@ -806,8 +824,9 @@ printobserver --version
 
 ### Then, in order — two commands
 
-Both run as root, and which pair you run is your platform's own: the
-supported-platform list's service-manager column names it. The first of a pair
+Both run with the host's administrative privilege — as root on Linux and macOS,
+in an elevated PowerShell on Windows — and which pair you run is your
+platform's own: the supported-platform list's service-manager column names it. The first of a pair
 puts the service in place and the second starts it, and one subsection below
 states one pair, headed by the service manager it belongs to. Every service
 manager that list names a platform the install path targets under has a pair
