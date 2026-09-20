@@ -91,7 +91,7 @@ mod tests {
         );
     }
 
-    /// macOS keeps the Linux answer.
+    /// One installer serves Linux and macOS, so macOS's answer is Linux's.
     #[test]
     fn macos_keeps_the_linux_answer() {
         assert_eq!(MACOS, LINUX);
@@ -188,9 +188,9 @@ mod tests {
         assert_eq!(smoke_value(&smoke, "WINDOWS_CONFIG"), WINDOWS.config);
     }
 
-    /// The README's table of where each platform's install puts things, one
-    /// row per platform, as the backticked cells after the platform's name:
-    /// the configuration file, the state directory and the program.
+    /// One platform's row of the README's table, cell by cell in column order,
+    /// so a path written under the wrong heading is a wrong answer rather than
+    /// one found elsewhere in the row.
     fn readme_row(readme: &str, platform: &str) -> Vec<String> {
         let row = readme
             .lines()

@@ -278,6 +278,7 @@ naming the serial device — spelled the way the host names one, `/dev/ttyACM0`
 on Linux, `/dev/cu.usbmodem1101` on macOS, `COM3` on Windows. Absent either it
 says which was missing and runs nothing. It runs on whichever supported
 platform is beside the printer; every precondition it checks fails closed, and
-refusing to run is a pass. `AGENTS.md`'s "The real-printer smoke test" is the
-whole account: what a person does before running it, what it verifies, and
-what to watch while it runs.
+refusing to run is a pass. `repo-policy.toml`'s `[smoke]` declares the recipe,
+the flag and the variable, and names `AGENTS.md`'s "The real-printer smoke
+test" as the test's account — the section `just check-repo`'s
+`smoke-selection` refuses a tree without, or one that does not name all three.
