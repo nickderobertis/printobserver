@@ -30,6 +30,8 @@ import pytest
 from release_artifacts.__main__ import main
 from release_artifacts.installing import InstallError
 from release_artifacts.registries import (
+    FORGE_CREDENTIAL,
+    FORGE_CREDENTIALS,
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
     RELEASE,
@@ -38,11 +40,13 @@ from release_artifacts.registries import (
     RELEASED_FIELD,
     UNREADABLE,
     VERSION_FIELD,
+    WORKFLOW_CREDENTIAL,
     Bases,
     Outcome,
     Proof,
     RegistryError,
     cut_at,
+    forge_token,
     ordered,
     prove,
     released,
@@ -66,6 +70,27 @@ ROUTES = ["pypi:printobserver-cli", "npm:printobserver-cli", "release:printobser
 #: this repository declares.
 UNSERVED = "9.9.9"
 
+#: The credentials a journey puts in force, by the environment each arrives
+#: in. Made up here, and under the real names: what is read back off the
+#: stand-in is WHICH request carried which, so a journey that invented the
+#: names as well would prove nothing about the resolution under test.
+MADE_UP = {name: f"a-{name.lower()}-this-journey-made-up" for name in FORGE_CREDENTIALS}
+
+
+def carried_by(registries: Registries, prefix: str, *, exactly: bool = False) -> set[str]:
+    """Every credential the reads of one address carried, as they arrived.
+
+    Read off the stand-in rather than off the request this tool composed: what
+    a criterion about a credential is about is the header that reached the
+    other end. A read that carried none is the empty string, which is what an
+    end user's own install of any of the three routes carries.
+    """
+    return {
+        read.credential
+        for read in registries.read
+        if (read.path.partition("?")[0] == prefix if exactly else read.path.startswith(prefix))
+    }
+
 
 # llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] The same reason as above it.
@@ -83,7 +108,7 @@ def registries(repo: Repo, tmp_path: Path) -> Iterator[Registries]:
 def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[..., Proof]:
     """Take one route from the stand-in registries and prove what they served."""
 
-    def prove_route(identifier: str, wanted: str = "") -> Proof:
+    def prove_route(identifier: str, wanted: str = "", **carrying: str) -> Proof:
         into = tmp_path / identifier.replace(":", "-").replace("/", "-") / (wanted or "newest")
         return prove(
             repo,
@@ -92,6 +117,7 @@ def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[...,
             {
                 PRINTOBSERVER_PROOF_REGISTRIES: registries.base,
                 PRINTOBSERVER_PROOF_VERSION: wanted,
+                **carrying,
             },
         )
 
@@ -1028,6 +1054,184 @@ def test_a_release_flag_that_is_not_a_boolean_is_refused(
         released(bases)
 
     contains(str(refused.value), "not the boolean its protocol serves", describing="what it said")
+
+
+@ROUTE_PROOF
+def test_the_forge_listing_is_read_under_the_token_a_run_carries(
+    registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """The one read this proof authenticates, and the registry beside it that it does not.
+
+    The forge meters an anonymous read of its API by the caller's ADDRESS, and
+    every hosted cell of this tier shares one: a run of it answered `403 rate
+    limit exceeded` on three platforms at once, before a single route had been
+    proven, over a quota nothing about the release under proof had spent. So
+    the listing is read under whatever credential the run carries. The Python
+    registry the route is then taken from is read under none — it takes no
+    credential of this repository's on a read, and one sent there would be a
+    secret on a host it was never issued for.
+    """
+    registries.serve("0.4.0")
+
+    proof = proving(
+        "pypi:printobserver-cli", RELEASE, **{WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL]}
+    )
+
+    equal(proof.outcome, Outcome.PROVEN, describing=proof.report)
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="what the read of the forge's own release listing carried",
+    )
+    equal(
+        carried_by(registries, PYPI_PREFIX),
+        {""},
+        describing="what the reads of the Python registry carried",
+    )
+
+
+@ROUTE_PROOF
+def test_the_forge_listing_is_read_anonymously_where_no_token_is_in_force(
+    registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """A run by hand carries no credential, and the proof it makes is the same proof.
+
+    Authentication here buys the quota rather than the access: this repository's
+    releases are public, so a run without a token reads the same listing and
+    reaches the same outcome. Refusing one would make a credential a
+    precondition of proving a release, which is not a thing this tier may need.
+    """
+    registries.serve("0.4.0")
+
+    proof = proving("pypi:printobserver-cli", RELEASE)
+
+    equal(proof.outcome, Outcome.PROVEN, describing=proof.report)
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {""},
+        describing="what the read of the forge's own release listing carried",
+    )
+
+
+@ROUTE_PROOF
+def test_the_end_user_download_route_carries_no_credential_either_way(
+    registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """Route 3 is taken as the person taking it takes it, token in force or not.
+
+    The install script downloads a release's artifacts and its checksum file
+    with no credential at all, because an installing user has none — a route
+    proven with one is a route nobody can take. So the same run whose listing
+    read carries the bearer downloads anonymously, and a run carrying no token
+    downloads exactly the same way.
+    """
+    registries.serve("0.4.0")
+    downloads = f"{FORGE_PREFIX}/download/"
+
+    proof = proving(
+        "release:printobserver", RELEASE, **{WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL]}
+    )
+
+    equal(proof.outcome, Outcome.PROVEN, describing=proof.report)
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="what the read of the forge's own release listing carried",
+    )
+    equal(
+        carried_by(registries, downloads),
+        {""},
+        describing="what the download an end user makes carried",
+    )
+    truth(
+        any(read.path.startswith(downloads) for read in registries.read),
+        describing="the release to have been downloaded at all",
+    )
+
+
+def test_the_publishers_own_credential_is_what_a_release_time_run_reads_under(
+    repo: Repo, registries: Registries
+) -> None:
+    """Both in force, and the forge is read under the one it is published under.
+
+    A release-time run carries the workflow's token as well as the repository
+    secret a release is published with. Reading under the second is what makes
+    the read and the write after it one caller: a read made under the other
+    token is metered against a budget the upload beside it does not share,
+    which is the defect this closes moved one job along.
+    """
+    registries.serve("0.4.0")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+    both = {
+        FORGE_CREDENTIAL: MADE_UP[FORGE_CREDENTIAL],
+        WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL],
+    }
+
+    equal(released(bases, forge_token(both)), ("0.4.0",), describing="what the forge lists")
+
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {f"Bearer {MADE_UP[FORGE_CREDENTIAL]}"},
+        describing="the credential the forge's own listing was read under",
+    )
+
+
+def test_a_credential_that_is_only_whitespace_is_no_credential_in_force(
+    repo: Repo, registries: Registries
+) -> None:
+    """An unset secret arrives as an empty string, and an empty bearer is worse than none.
+
+    A workflow that names a secret the repository does not hold exports it
+    empty rather than not at all, and a request sent `Bearer ` is one the forge
+    refuses outright — which would turn a rate limit into an authentication
+    failure on every cell.
+    """
+    registries.serve("0.4.0")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+
+    equal(forge_token({FORGE_CREDENTIAL: "   ", WORKFLOW_CREDENTIAL: ""}), None, describing="none")
+    equal(
+        released(bases, forge_token({FORGE_CREDENTIAL: "   "})),
+        ("0.4.0",),
+        describing="what the forge lists to a run carrying nothing usable",
+    )
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {""},
+        describing="what that read carried",
+    )
+
+
+def test_an_unusable_publisher_credential_falls_through_to_the_workflows_own(
+    repo: Repo, registries: Registries
+) -> None:
+    """The order is a preference, not a claim that the first one is there.
+
+    A job of the install-path workflow carries the workflow's token and no
+    repository secret, and a runner may still export the publisher's name
+    empty. Read as "the publisher's is in force", that is a run sent `Bearer `
+    — which the forge refuses outright, turning a rate limit into an
+    authentication failure on every cell. So an unusable one is passed over
+    and the next is taken.
+    """
+    registries.serve("0.4.0")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+    fallen_through = {
+        FORGE_CREDENTIAL: "  ",
+        WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL],
+    }
+
+    equal(
+        released(bases, forge_token(fallen_through)),
+        ("0.4.0",),
+        describing="what the forge lists to a run carrying only the workflow's token",
+    )
+
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="the credential that read fell through to",
+    )
 
 
 #: Two release-time runs, in the order they finished. Each cut the release its

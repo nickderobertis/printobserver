@@ -183,6 +183,47 @@ def test_every_artifact_reaches_the_registry_it_is_declared_for(
     absent([path.name for path in dist.iterdir()], ".npmrc", describing="the credential file")
 
 
+def test_the_forge_is_read_under_the_token_its_assets_are_then_uploaded_with(
+    repo: Repo,
+    dist: Path,
+    version: str,
+    registries: Registries,
+    environment: dict[str, str],
+) -> None:
+    """Asking the forge where to upload is a read of the API the upload goes to.
+
+    So it carries the same credential the upload does. Made anonymously it is
+    metered by the runner's own address, which every job of this repository
+    shares — the failure the install-path proof met, one job along. And that
+    credential reaches the forge's own document and nothing else: the reads
+    this publisher makes of the Python registry, asking what it already
+    serves, carry none at all.
+
+    The JavaScript registry IS read under a credential here, and that is not
+    this publisher's doing: that publish is `npm` itself, configured with an
+    `.npmrc` naming the token that registry's own secret carries, and its
+    client asks for the packument under it. So what is asserted beside the
+    forge's read is the property that holds whatever a registry's own client
+    does — the FORGE's token reached the forge's own release document and no
+    other address at all.
+    """
+    registries.release(f"v{version}")
+
+    publish(repo, dist, environment)
+
+    forge = Authorization(f"Bearer {TOKENS['RELEASE_PLZ_TOKEN']}")
+    equal(
+        {read.path.partition("?")[0] for read in registries.read if read.credential == forge},
+        {f"{FORGE_PREFIX}/tags/v{version}"},
+        describing="every address the forge's own credential was sent to on a read",
+    )
+    equal(
+        {read.credential for read in registries.read if read.path.startswith(PYPI_PREFIX)},
+        {""},
+        describing="what the reads asking the Python registry what it serves carried",
+    )
+
+
 def test_a_publish_that_failed_partway_is_finished_by_running_it_again(
     repo: Repo,
     dist: Path,

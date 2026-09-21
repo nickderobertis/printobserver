@@ -103,6 +103,10 @@ class Declared:
     version_input: str
     #: The word meaning "the newest release the forge published".
     release_selector: str
+    #: The environment the forge's own release listing is read under.
+    forge_token_env: str
+    #: What a job proving a route must set that environment to.
+    forge_token_expression: str
     #: The constant the module below declares that word as.
     selector_constant: str
     #: The variable pointing every registry somewhere other than the real ones.
@@ -170,6 +174,7 @@ def install_proof(repo: Repo) -> list[str]:
     triggers = triggers_of(workflow)
     findings.extend(_trigger_findings(repo, declared, triggers, relative))
     findings.extend(_version_findings(repo, declared, workflow, relative))
+    findings.extend(_credential_findings(repo, declared, workflow, relative))
     findings.extend(_consumer_findings(repo, declared))
     findings.extend(_job_findings(repo, declared, workflow, relative))
     findings.extend(_schedule_findings(repo, declared, triggers, relative))
@@ -460,6 +465,61 @@ def _version_findings(
     return findings
 
 
+def _credential_findings(
+    repo: Repo, policy: Declared, workflow: dict[str, Any], relative: str
+) -> list[str]:
+    """Every job proving a route reads the forge's listing under the run's own token.
+
+    The forge meters an ANONYMOUS read of its API by the caller's address, and
+    every hosted cell of this tier shares one — so a tier reading it
+    anonymously fails on a quota nothing about the release under proof spent,
+    and does it on every platform at once. The token is what answers that, and
+    the workflow setting it is the only thing that puts one in force: the tool
+    resolves the environment and nothing makes a job export it.
+
+    So this is the drift gate over that one contract. The policy declares the
+    name, the module reading it is held to the same literal by
+    `_consumer_findings`, and here every job that proves a route is held to
+    setting it — to the workflow's OWN token and to nothing else beside it,
+    since an expression merely CONTAINING that token is one whose other branch
+    can be any credential at all: `${{ github.token || secrets.ANY }}` reads as
+    granted by a substring and is a secret nobody declared reaching an external
+    API. What is required is the whole expression, compared with its spacing
+    taken out, because a workflow may write one with or without it.
+    """
+    variable = policy.forge_token_env
+    required = "${{" + policy.forge_token_expression + "}}"
+    jobs = jobs_of(workflow)
+    findings: list[str] = []
+    for name in sorted(_proving_jobs(repo, policy, jobs)):
+        # A job's `env` is whatever the YAML reader answered with, and anything
+        # but a mapping is refused HERE rather than reached into: a check whose
+        # job is to answer with findings, raising on the file it was pointed
+        # at, answers with a traceback nobody can act on.
+        declared = jobs[name].get("env") or {}
+        if not isinstance(declared, dict):
+            findings.append(
+                f"{relative}: job `{name}` declares its `env` as {declared!r}, which is not "
+                f"the mapping of environment a job takes"
+            )
+            continue
+        if variable not in declared:
+            findings.append(
+                f"{relative}: job `{name}` proves a route and declares no `{variable}`, so it "
+                f"reads the forge's release listing anonymously — on the quota the forge "
+                f"meters by address, which every cell of this tier shares"
+            )
+            continue
+        expression = " ".join(str(declared[variable]).split())
+        if "".join(expression.split()) != required:
+            findings.append(
+                f"{relative}: job `{name}`'s `{variable}` is `{expression}` rather than "
+                f"`{required}`, which is the workflow's own token and the whole of what "
+                f"that job may read the forge as"
+            )
+    return findings
+
+
 def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
     """The module reading the two variables and the selector declares what this file does.
 
@@ -480,7 +540,7 @@ def _consumer_findings(repo: Repo, policy: Declared) -> list[str]:
     findings = [
         f"{policy.version_source} declares no `{variable}`, which is the name "
         f"`repo-policy.toml` and the committed workflow use for it"
-        for variable in (policy.version_env, policy.standin_env)
+        for variable in (policy.version_env, policy.standin_env, policy.forge_token_env)
         if f'"{variable}"' not in source
     ]
     findings.extend(_selector_findings(source, policy))

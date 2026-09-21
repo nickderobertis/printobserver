@@ -40,6 +40,13 @@ with `PRINTOBSERVER_PROOF_REGISTRIES` set the whole publish lands on the
 stand-in `standin.py` stands up, and a journey can drive this real publisher
 over real artifacts against it — which is the only proof of the forge upload
 there is until a release runs it.
+
+**The one READ that carries a credential is the forge's.** Asking the forge
+for the release document is a read of the same API the assets go up to, so it
+is made under the same token rather than anonymously against the runner's own
+rate-limit quota. The two package registries are asked what they already serve
+with no credential at all: they take none on a read, and a publish that sent
+one would be this repository's secret on a request that never needed it.
 """
 
 from __future__ import annotations
@@ -57,6 +64,7 @@ from release_artifacts import packages
 from release_artifacts.build import ASSEMBLED_HERE, CHECKSUMS, PROGRAM, manifest_of
 from release_artifacts.registries import (
     FORGE_ACCEPT,
+    FORGE_CREDENTIAL,
     OCTET_STREAM,
     UPLOADED,
     Bases,
@@ -86,7 +94,11 @@ PRINTOBSERVER_PUBLISH_VERSION = "PRINTOBSERVER_PUBLISH_VERSION"
 CREDENTIALS = {
     "pypi": "PYPI_TOKEN",
     "npm": "NPM_TOKEN",
-    "release": "RELEASE_PLZ_TOKEN",
+    # Named by the constant rather than spelled again: `registries.py` resolves
+    # the same credential for a READ of the forge's own API — the release
+    # document this publisher asks for before it uploads — so the publish and
+    # that read cannot come to name two different secrets.
+    "release": FORGE_CREDENTIAL,
 }
 
 #: How long any one publish is given: fifteen minutes, as `installing.py`
@@ -368,7 +380,9 @@ def _publish_release(
     digests.write_bytes(packages.checksums(tarballs))
     assets = [*tarballs, digests]
     try:
-        release = release_of(bases, version)
+        # Under the token the assets are then uploaded with: this is the
+        # forge's own API, whose anonymous quota is the runner's address.
+        release = release_of(bases, version, token)
     except RegistryError as unread:
         for path in assets:
             publishing.attempt("release", path.name, lambda unread=unread: _raise(unread))

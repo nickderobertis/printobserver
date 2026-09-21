@@ -128,6 +128,17 @@ jobs:
       # number, which is whatever release automation last wrote there, and
       # never each route's own idea of "the newest".
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # What the forge's own release listing is read under. An anonymous read
+      # of that API is metered by the caller's ADDRESS, and the hosted runners
+      # share one, so a run of this tier met `403 rate limit exceeded` before
+      # it had proven a single route — on a quota nothing about the release
+      # under proof had spent. Nothing a route INSTALLS reads this: the three
+      # registries take no credential on a read, and the install script
+      # downloads a release as a user does, with none. Spelled `github.token`
+      # rather than as a secret, for the reason the `resolve` job's own use of
+      # it gives: `gh-secrets.json` lists what this repository holds, and the
+      # workflow's own token is not one of them.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -168,6 +179,9 @@ jobs:
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # The forge's own listing, read under a token for the quota rather than
+      # for the access — as `prove-registry-pypi` above says at length.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -206,6 +220,9 @@ jobs:
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # The forge's own listing, read under a token for the quota rather than
+      # for the access — as `prove-registry-pypi` above says at length.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -243,6 +260,9 @@ jobs:
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # The forge's own listing, read under a token for the quota rather than
+      # for the access — as `prove-registry-pypi` above says at length.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -285,6 +305,9 @@ jobs:
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # The forge's own listing, read under a token for the quota rather than
+      # for the access — as `prove-registry-pypi` above says at length.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -322,6 +345,9 @@ jobs:
     if: github.event_name != 'workflow_run' || needs.resolve.outputs.version != ''
     env:
       PRINTOBSERVER_PROOF_VERSION: ${{ inputs.version || needs.resolve.outputs.version }}
+      # The forge's own listing, read under a token for the quota rather than
+      # for the access — as `prove-registry-pypi` above says at length.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:

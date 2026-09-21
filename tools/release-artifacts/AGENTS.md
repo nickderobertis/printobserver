@@ -75,6 +75,33 @@ before any write. The release tarballs carry no version in their names, so
 that check is the only thing standing between one tag's artifacts and
 another's release.
 
+## The forge's API is read under a token; everything else is read as a user reads it
+
+A read of the forge's own API — the release listing the version selection asks
+for, and the release document the publisher asks for before it uploads — is
+metered by the CALLER'S ADDRESS when it is anonymous, and every hosted cell of
+this repository shares one. So an unauthenticated tier is refused its whole
+matrix at once, over a quota nothing about the release under proof spent, and
+the only repair is a person waiting for it to recover. Those two reads carry
+`forge_token`'s answer instead: the repository secret a release is published
+under where one is in force, and the workflow's own token otherwise. Reading
+under the publisher's secret first is what makes that read and the upload
+after it one caller rather than two.
+
+Every other read is deliberately anonymous, and each for its own reason. The
+three package registries take no credential of this repository's on a read at
+all, so one sent there would be a secret on a host it was never issued for. And
+the end-user download — the install script fetching a release's artifacts and
+its checksum file — is made with nothing, because an installing user has no
+token: a route proven with one is a route nobody can take. A run carrying no
+credential is not refused either, since what a token buys here is the quota and
+not the access; a developer's run by hand reads the same listing and reaches
+the same outcome.
+
+Which requests carry what is proven off the stand-in rather than argued from
+the code that composed them: it records the `Authorization` header of every
+read as it already did of every write, and the journeys read both back.
+
 ## No tier writes to the real forge
 
 The forge upload is a direct call under `RELEASE_PLZ_TOKEN`, and GitHub

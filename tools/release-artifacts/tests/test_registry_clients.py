@@ -39,8 +39,10 @@ from pathlib import Path
 import pytest
 from release_artifacts.installing import Installed, InstallError, prove_client
 from release_artifacts.registries import (
+    FORGE_CREDENTIALS,
     PRINTOBSERVER_PROOF_REGISTRIES,
     PRINTOBSERVER_PROOF_VERSION,
+    WORKFLOW_CREDENTIAL,
     Bases,
     Outcome,
     Proof,
@@ -49,7 +51,7 @@ from release_artifacts.registries import (
     prove,
     served,
 )
-from release_artifacts.standin import CRATES_PREFIX, Registries
+from release_artifacts.standin import CRATES_PREFIX, FORGE_PREFIX, Registries
 from release_artifacts.targets import declared, named
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, passing
@@ -64,6 +66,11 @@ CLIENTS = list(clients(Repo(Path(__file__).resolve().parents[3])))
 
 #: How long the one program build these share is given.
 BUILD_TIMEOUT_SECONDS = 2400
+
+#: The credentials a journey puts in force, by the environment each arrives in
+#: — made up here, under the real names, exactly as `test_registries.py` makes
+#: them: what is read back off the stand-in is which request carried which.
+MADE_UP = {name: f"a-{name.lower()}-this-journey-made-up" for name in FORGE_CREDENTIALS}
 
 
 @pytest.fixture(scope="module")
@@ -127,7 +134,7 @@ def registries(  # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] s
 def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[..., Proof]:
     """Take one client from the stand-in registries and prove what they served."""
 
-    def prove_client(identifier: str, wanted: str = "") -> Proof:
+    def prove_client(identifier: str, wanted: str = "", **carrying: str) -> Proof:
         into = tmp_path / identifier.replace(":", "-").replace("/", "-") / (wanted or "newest")
         return prove(
             repo,
@@ -136,6 +143,7 @@ def proving(repo: Repo, registries: Registries, tmp_path: Path) -> Callable[...,
             {
                 PRINTOBSERVER_PROOF_REGISTRIES: registries.base,
                 PRINTOBSERVER_PROOF_VERSION: wanted,
+                **carrying,
             },
         )
 
@@ -157,11 +165,18 @@ def test_a_registry_serving_the_client_is_a_pass_against_the_releases_own_superv
     install script; the check reads a status, materializes an image and opens
     the file the server answered — which a check that reached no server, or
     reached a build of this tree, would say nothing about.
+
+    Driven with a token in force, as a release-time run of this tier is, so
+    that the run also says which of the two things it asks the forge for
+    carries one. Asking WHICH RELEASES EXIST is a read of the forge's metered
+    API and carries it; DOWNLOADING the release is the install script doing
+    what an installing user does, and carries nothing.
     """
     registries.serve(version, program=supervisor)
     registries.serve_clients(identifier)
+    downloads = f"{FORGE_PREFIX}/download/"
 
-    proof = proving(identifier)
+    proof = proving(identifier, **{WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL]})
 
     equal(proof.outcome, Outcome.PROVEN, describing=f"the proof of `{identifier}`:\n{proof.report}")
     equal(proof.exit_status, 0, describing="the exit a pass answers with")
@@ -172,6 +187,47 @@ def test_a_registry_serving_the_client_is_a_pass_against_the_releases_own_superv
         " ".join(registries.asked),
         "/forge/releases/download/v",
         describing="the release the supervisor was taken from",
+    )
+    equal(
+        {
+            read.credential
+            for read in registries.read
+            if read.path.partition("?")[0] == FORGE_PREFIX
+        },
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="what the read asking the forge which releases exist carried",
+    )
+    equal(
+        {read.credential for read in registries.read if read.path.startswith(downloads)},
+        {""},
+        describing="what the download of the release's own supervisor carried",
+    )
+
+
+@pytest.mark.parametrize("identifier", CLIENTS)
+def test_the_forge_is_asked_under_the_token_even_where_it_serves_no_release(
+    identifier: str, version: str, registries: Registries, proving: Callable[..., Proof]
+) -> None:
+    """The read that finds no release is the metered one, and it is authenticated too.
+
+    This is the answer a release-time run gets while the publish is still in
+    flight, and it is reached before anything is installed — so on a host the
+    install path does not target yet, it is the whole of what proves the token
+    reaches the supervisor's own lookup.
+    """
+    registries.serve_clients(identifier)
+
+    proof = proving(identifier, version, **{WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL]})
+
+    equal(proof.outcome, Outcome.NOT_SERVED, describing=f"the proof of `{identifier}`")
+    equal(
+        {
+            read.credential
+            for read in registries.read
+            if read.path.partition("?")[0] == FORGE_PREFIX
+        },
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="what the read asking the forge which releases exist carried",
     )
 
 

@@ -234,6 +234,26 @@ release_recipe = "release-version"
 version_env = "PRINTOBSERVER_PROOF_VERSION"
 version_input = "version"
 release_selector = "release"
+# And the environment the forge's own release listing is read under. The forge
+# meters an anonymous read of its API by the CALLER'S ADDRESS, which every
+# hosted cell of this tier shares, so a run of it met `403 rate limit exceeded`
+# before proving a route. The workflow's own token is what answers that — it is
+# not a secret `gh-secrets.json` declares, and needs not be: the read is
+# authenticated for the quota rather than for the access.
+#
+# Declared here for the same reason the two variables above are: the workflow
+# sets it, the module below reads it, and nothing else would reconcile the two.
+# `just check-repo` requires that module to declare this literal and every job
+# proving a route to set it to the expression below.
+forge_token_env = "GITHUB_TOKEN"
+# What that job must set it to — the whole expression, `${{ <this> }}`, with
+# its spacing taken out. The workflow's own token, spelled as the token rather
+# than as `secrets.GITHUB_TOKEN`, because that spelling is a secret reference
+# and `gh-secrets.json` is the whole of what this repository holds. Held to the
+# whole expression rather than to what one contains, because `${{ github.token
+# || secrets.ANY }}` contains it and reads the forge as a credential nobody
+# declared.
+forge_token_expression = "github.token"
 # The constant the module below declares that word as. The constant is NAMED
 # here rather than the word searched for, because `"release"` is also the
 # registry a forge listing is read from in that same module: a check hunting the
