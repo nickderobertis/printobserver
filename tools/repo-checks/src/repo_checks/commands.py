@@ -18,7 +18,7 @@ from repo_checks.windows_lint import install_target
 CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?!?: .+")
 
 
-def install_tools(repo: Repo) -> int:
+def install_tools(repo: Repo, named: str | None = None) -> int:
     """Put every tool `repo-policy.toml` declares on PATH, at the release it holds.
 
     A tool already on PATH is skipped when the policy holds it at no release, or
@@ -28,13 +28,27 @@ def install_tools(repo: Repo) -> int:
     earlier on PATH shadows it, is refused naming where it is rather than
     accepted. A declaration the installer cannot act on is refused before
     anything is installed.
+
+    A tool declared `bootstrap = false` is one job's rather than every host's,
+    and is left alone unless it is `named`; naming one installs that tool alone.
     """
     try:
-        tools = toolchain_tools(repo)
+        declared = toolchain_tools(repo)
     except PolicyValueError as malformed:
         print(f"{malformed}. Correct it; nothing was installed.", file=sys.stderr)
         return 1
-    if install_target(repo) != 0:
+    if named is not None:
+        tools = tuple(tool for tool in declared if tool.command == named)
+        if not tools:
+            print(
+                f"`repo-policy.toml` declares no toolchain tool `{named}`. Declare one of: "
+                f"{', '.join(sorted(tool.command for tool in declared))}.",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        tools = tuple(tool for tool in declared if tool.bootstrap)
+    if named is None and install_target(repo) != 0:
         print("failed to add the Windows target's standard library", file=sys.stderr)
         return 1
     for tool in tools:

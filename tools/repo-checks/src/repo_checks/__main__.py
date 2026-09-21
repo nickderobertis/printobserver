@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from repo_checks import commands, windows_lint
+from repo_checks import commands, gh_release, windows_lint
 from repo_checks.checks_integration import integration_tier
 from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
@@ -18,6 +18,7 @@ from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
 COMMANDS = (
     "install-tools",
+    "install-gh",
     "tool-version",
     "install-hooks",
     "commit-msg",
@@ -42,7 +43,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "argument",
         nargs="?",
-        help="the commit-message file, for commit-msg; the tool, for tool-version",
+        help=(
+            "the commit-message file, for commit-msg; the tool, for tool-version and "
+            "install-tools; the release, for install-gh"
+        ),
     )
     parser.add_argument("--root", default=".", help="the tree to read (default: the cwd)")
     parser.add_argument("--base", default=None, help="a base revision to compare a change against")
@@ -52,7 +56,11 @@ def main(argv: list[str] | None = None) -> int:
 
     match parsed.name:
         case "install-tools":
-            return commands.install_tools(repo)
+            return commands.install_tools(repo, parsed.argument)
+        case "install-gh":
+            if parsed.argument is None:
+                parser.error("install-gh needs the release to install")
+            return gh_release.install_gh(parsed.argument)
         case "tool-version":
             if parsed.argument is None:
                 parser.error("tool-version needs the command of a toolchain tool")

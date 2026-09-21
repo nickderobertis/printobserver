@@ -139,6 +139,29 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
+  skill-install:
+    name: skill-install
+    # A real `gh skill install` of this repository's Agent Skill, from a copy of
+    # the tree and with no GitHub credentials, and `gh skill publish --dry-run`
+    # over it. A job of its own rather than a tier of the gate: it needs GitHub
+    # CLI at the release `repo-policy.toml` holds, which this job installs and
+    # the gate's runners are not given. No matrix: what `gh skill` reads and
+    # writes is the tree's own files, the same whichever host reads them.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      # The release `repo-policy.toml` holds gh at, installed from that
+      # release's own archive once its published checksums vouch for it, ahead
+      # of the runner's own gh on PATH.
+      - id: held
+        run: just tool-version gh >> "$GITHUB_OUTPUT"
+      - run: just install-gh ${{ steps.held.outputs.version }}
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: just test-skill-install
+
   pr-title:
     name: pr-title
     # Under squash-merge the pull-request title becomes the commit release

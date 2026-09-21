@@ -672,7 +672,9 @@ impl ServerConfig {
         })
     }
 
-    /// Where this server materializes the agent's committed assets.
+    /// Where this server materializes the agent's prompt template and
+    /// assessment schema. The skill is not among them: it is the installed one
+    /// `skill_path` names.
     #[must_use]
     pub fn assets_dir(&self) -> PathBuf {
         self.state_dir.join(ASSETS_DIRECTORY)

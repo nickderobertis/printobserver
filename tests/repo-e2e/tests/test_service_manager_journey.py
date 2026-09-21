@@ -537,7 +537,7 @@ def manager() -> Manager:
 
 
 def _fill_in(configuration: Path, octoprint: str) -> None:
-    """Fill the template in exactly as an operator would, take a free port, and install the skill."""
+    """Fill the template in as an operator would, take a free port, and install the skill."""
     filled = (
         configuration.read_text(encoding="utf-8")
         .replace('api_key = ""', 'api_key = "a-provisioned-key"')

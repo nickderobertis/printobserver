@@ -33,9 +33,17 @@ bootstrap:
     uv run -q python -m repo_checks install-hooks
 
 # Install the tools `repo-policy.toml` declares, skipping any already on PATH
-# at the release it holds them at, and replacing any at another.
-install-tools:
-    uv run -q python -m repo_checks install-tools
+# at the release it holds them at, and replacing any at another. A tool it
+# declares `bootstrap = false` is installed only when named: `just install-tools
+# gh`.
+install-tools *TOOL:
+    uv run -q python -m repo_checks install-tools {{TOOL}}
+
+# Install GitHub CLI at VERSION from that release's own archive, verified against
+# the checksums file the release publishes, into ~/.local/bin. The job that runs
+# `test-skill-install` passes the release `just tool-version gh` reads.
+install-gh VERSION:
+    uv run -q python -m repo_checks install-gh {{quote(VERSION)}}
 
 # The release `repo-policy.toml` holds TOOL at, as `version=<release>`.
 #
@@ -302,6 +310,17 @@ check-repo:
 test-e2e:
     just node-modules
     bunx nx run-many -t test-e2e --output-style=stream
+
+# A real `gh skill install` of this repository's Agent Skill, from a copy of this
+# tree and with no GitHub credentials, and `gh skill publish --dry-run` over it.
+#
+# Deliberately not one of `just check`'s tiers: it needs GitHub CLI at the
+# release `repo-policy.toml` holds, which the gate's runners are not given, so
+# it is the `skill-install` job of its own. Without that gh it refuses, naming
+# what is missing, rather than skipping.
+test-skill-install:
+    just node-modules
+    bunx nx run-many -t test-skill-install --output-style=stream
 
 # Bring up the scripted OctoPrint environment the integration tier drives.
 #

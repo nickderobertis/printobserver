@@ -237,6 +237,25 @@ committed install script doing the installing:
 `tests/repo-e2e/tests/test_registry_proof_journey.py` drives the recipes and
 `tools/release-artifacts/tests/test_registries.py` the proof beneath them.
 
+### test-skill-install
+
+**What it proves.** That the Agent Skill this repository publishes installs
+whole. From a copy of the tree's own files it runs the real `gh skill install`
+in an environment holding no GitHub credentials, and holds what arrives to what
+is committed: no symlink, the same files byte for byte but for `SKILL.md`, whose
+prose is the committed prose, and every link in the installed skill opening
+from the installed directory. It then runs `gh skill publish --dry-run` and
+reads its verdict from what it prints, since it exits zero either way.
+
+**Why it is outside the gate.** It needs GitHub CLI at the release
+`repo-policy.toml` holds, which the gate's runners are not given; reached
+without it, it refuses rather than skips.
+
+**When it runs.** On every change, as the `skill-install` job of
+`.github/workflows/ci.yml`, on one Linux runner with no platform matrix, after
+`just install-gh` installs that release from its own verified archive. The
+layout it depends on is checked on every platform inside the gate.
+
 ### test-obico
 
 **What it proves.** That the recorded Obico failure-alert sample still matches

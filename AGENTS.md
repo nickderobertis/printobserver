@@ -342,7 +342,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The three jobs that carry no platform matrix
+### The four jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -352,6 +352,7 @@ what makes a job running once a decision rather than an omission.
 - `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
 - `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
+- `skill-install` — the journey installs this repository's Agent Skill with a real `gh skill install` from a copy of the tree's own files and validates them with `gh skill publish --dry-run`, so what it proves is those files, the same whichever host reads them; it needs GitHub CLI at the release `repo-policy.toml` holds, which this job alone installs, and the gate's cells never reach it.
 [//]: # (END unmatrixed-jobs)
 
 ## The scripted OctoPrint environment

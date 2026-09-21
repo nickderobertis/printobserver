@@ -70,7 +70,7 @@ reason = "Pre-existing, deliberate output that the harness sign-in change only m
 rule = "cli_output_contract"
 file = "crates/printobserver/src/sign_in.rs"
 site = "Ok(exited_with(status))"
-reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `docs/reference/command-surface.md` says so."
+reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `skills/printobserver/reference/command-surface.md` says so."
 
 [[suppression]]
 rule = "cli_output_contract"
@@ -185,6 +185,12 @@ rule = "S310"
 file = "tools/obico-env/obico_tier.py"
 site = "urllib.request.urlopen(request"
 reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every fetch in this tier goes through, immediately below the `Request` it was handed."
+
+[[suppression]]
+rule = "S310"
+file = "tools/repo-checks/src/repo_checks/gh_release.py"
+site = "urllib.request.urlopen(url"
+reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the gh installer makes, and the line above it refuses any URL that is not https (or a loopback http address, which only its own suite's release stand-in serves); every URL reaching it is composed from the fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches the SHA-256 the same release's checksums file lists."
 
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
