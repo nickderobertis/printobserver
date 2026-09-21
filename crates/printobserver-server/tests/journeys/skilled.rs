@@ -137,7 +137,12 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
         &std::fs::read_to_string(&seen).expect("the harness wrote down what it was started with"),
     )
     .expect("what the harness wrote down is a document");
-    let ran_in = PathBuf::from(recorded["cwd"].as_str().expect("the harness ran somewhere"));
+    let ran_in = PathBuf::from(recorded["cwd"].as_str().unwrap_or_else(|| {
+        panic!(
+            "the harness recorded no working directory: {}",
+            recorded["cwd_error"]
+        )
+    }));
     assert_eq!(
         resolved(&ran_in),
         resolved(&installed),
@@ -148,7 +153,8 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
     assert_eq!(
         recorded["system"].as_str(),
         Some(prose_of(&installed_text).as_str()),
-        "the harness was not handed the installed skill's prose as its system prompt"
+        "the harness was not handed the installed skill's prose as its system prompt ({})",
+        recorded["system_error"]
     );
     assert!(
         prose_of(&installed_text).starts_with("# Supervising a 3D print\n"),

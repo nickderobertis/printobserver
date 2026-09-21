@@ -258,16 +258,29 @@ fn record_what_was_seen() {
             .position(|argument| argument == flag)
             .and_then(|at| arguments.get(at + 1))
     };
-    let system = after(SYSTEM_FLAGS.0)
-        .cloned()
-        .or_else(|| after(SYSTEM_FLAGS.1).and_then(|path| std::fs::read_to_string(path).ok()));
+    // Each failure is written down beside the value it cost, so a journey that
+    // finds no value reads why rather than a bare absence.
+    let system = match (after(SYSTEM_FLAGS.0), after(SYSTEM_FLAGS.1)) {
+        (Some(inline), _) => Ok(inline.clone()),
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .map_err(|error| format!("the system prompt file {path} is unreadable: {error}")),
+        (None, None) => Err("the run handed over no system prompt".to_owned()),
+    };
     let here = std::env::current_dir()
         .map(|directory| directory.display().to_string())
-        .ok();
-    let _ = std::fs::write(
-        record,
-        serde_json::json!({ "cwd": here, "system": system }).to_string(),
-    );
+        .map_err(|error| format!("the working directory is unreadable: {error}"));
+    let document = serde_json::json!({
+        "cwd": here.as_ref().ok(),
+        "cwd_error": here.as_ref().err(),
+        "system": system.as_ref().ok(),
+        "system_error": system.as_ref().err(),
+    });
+    // A record nobody can read is a journey that cannot see what it asserts
+    // on, so failing to write one ends the run rather than passing unseen.
+    if let Err(error) = std::fs::write(&record, document.to_string()) {
+        eprintln!("printobserver-server-responder: {record} could not be written: {error}");
+        std::process::exit(1);
+    }
 }
 
 /// Append one line to the file a journey reads what this responder did from.
