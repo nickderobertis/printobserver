@@ -277,7 +277,7 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
     let mut seen = Vec::new();
     for _ in 0..durations::MEASUREMENT_ATTEMPTS {
         let (opened, measured) =
-            durations::opened_and_measured_before_it_expires(world, &heater, short(), || {
+            durations::opened_and_one_measurement_attempted(world, &heater, short(), || {
                 world.machine_is_deaf(true);
             });
         if let durations::Measured::Discarded(reason) = measured {

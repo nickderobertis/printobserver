@@ -194,7 +194,7 @@ pub fn could_not_be_measured(command: &str, seconds: i64, seen: &[Unmeasurable])
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut seen = Vec::new();
     for _ in 0..MEASUREMENT_ATTEMPTS {
-        let (opened, measured) = opened_and_measured_before_it_expires(world, one, seconds, || {});
+        let (opened, measured) = opened_and_one_measurement_attempted(world, one, seconds, || {});
         the_prior_value_is_back_shortly_after_it_expires(world, std::slice::from_ref(&opened));
         match measured {
             Measured::Taken => return,
@@ -207,8 +207,8 @@ fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     );
 }
 
-/// One intervention opened and measured before its expiry, with the caller
-/// given the instant between the two.
+/// One intervention opened and one measurement of it attempted before its
+/// expiry, with the caller given the instant between the two.
 ///
 /// What one attempt of `one_bounded_intervention` is, for a caller that holds
 /// the loop itself: the store is checkpointed, the machine is settled at a
@@ -219,7 +219,7 @@ fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
 /// expiry is taken behind that guard. The intervention is answered whatever
 /// the guard said, because a caller whose measurement was discarded still
 /// has one standing to wait out.
-pub fn opened_and_measured_before_it_expires(
+pub fn opened_and_one_measurement_attempted(
     world: &World,
     one: &Driven,
     seconds: i64,
