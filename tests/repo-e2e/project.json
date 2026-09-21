@@ -9,10 +9,7 @@
     "lint": { "command": "uv run -q ruff check tests/repo-e2e" },
     "typecheck": { "command": "uv run -q ty check tests/repo-e2e" },
     "test-e2e": { "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
-      "command": "uv run -q pytest tests/repo-e2e/tests --ignore=tests/repo-e2e/tests/test_skill_install_journey.py"
-    },
-    "test-skill-install": {
-      "command": "uv run -q pytest tests/repo-e2e/tests/test_skill_install_journey.py"
+      "command": "uv run -q pytest tests/repo-e2e/tests"
     }
   }
 }

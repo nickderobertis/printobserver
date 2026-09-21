@@ -598,22 +598,10 @@ site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
-rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_skill_install_journey.py"
-site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The task that added this journey places it beside the other end-to-end journeys in `tests/repo-e2e/tests/`, and it is already behind an edge of its own: the `test-skill-install` target and recipe, which the gate's `test-e2e` target excludes by name and which only the `skill-install` job runs. No job here selects projects by what a change affected — every tier runs through `nx run-many` — so a project of its own would spare no change. What it costs is a copy of the tree and three `gh` runs, seconds, and what it proves is the one property nothing in the gate can: that a real `gh skill install` of the committed files carries the whole skill."
-
-[[suppression]]
-rule = "test_tiers_split_by_project_not_by_marker"
-file = "tests/repo-e2e/tests/test_skill_install_journey.py"
-site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-reason = "Split by target rather than by marker: the journey is its own module, run by its own `test-skill-install` target and excluded from `test-e2e` by path, with no marker anywhere. It lives in the end-to-end project because the task that added it places it beside that tier's other journeys and it uses that tier's own helpers for copying the tree and cleaning the environment; the same ground as the `expensive_tests_stay_behind_their_own_edge` entry for this file."
-
-[[suppression]]
-rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/project.json"
-site = "test-skill-install"
-reason = "On the target, as the entry for this rule at `test-e2e` in this file is: the `gh skill` journey is behind an edge of its own already — this target and the `test-skill-install` recipe, excluded from `test-e2e` by path and run only by the `skill-install` job. It lives in this project because the task that added it places it beside the end-to-end tier's other journeys and it uses that tier's helpers; no job here selects projects by what a change affected, so a project of its own would spare no change. It costs a copy of the tree and three `gh` runs, seconds."
+rule = "tests_mirror_real_usage"
+file = "tests/skill-install/tests/test_skill_install_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The operator's command is `gh skill install nickderobertis/printobserver printobserver`, and the install docs keep it as that. This journey installs `--from-local` from a copy of the tree because the task that added it requires exactly that: a remote install reads the repository's default branch, which carries the skill only once this change has landed, so it can prove nothing about the change under test. Everything else is the operator's path — the real `gh` at the held release, the same `skill install` command and skill name, and an environment holding no GitHub credential — and what arrives is held to the committed files."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"

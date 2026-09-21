@@ -17,9 +17,11 @@ verdict is read from what it prints; a copy with a broken frontmatter is run
 through it too, which is what shows that reading sees a refusal when there is
 one.
 
-This is not one of `just check`'s tiers: it needs GitHub CLI at the release
-`repo-policy.toml` holds, which the gate's runners are not given. Reached
-without it, it refuses, naming what is missing — it never skips.
+This is a project of its own and not one of `just check`'s tiers: it needs
+GitHub CLI at the release `repo-policy.toml` holds, which the gate's runners are
+not given, so its `test-skill-install` target is run by the `skill-install` job
+alone. Reached without that `gh`, it refuses, naming what is missing — it never
+skips.
 """
 
 from __future__ import annotations
@@ -30,14 +32,19 @@ import shutil
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, SKILL_DIRECTORY, clean_environment, copy_tracked
 from repo_checks.docs import links_of, skill_prose
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo, toolchain_tools
 from repo_checks.shell import run
 
+#: The repository this journey copies.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 #: The skill, as `gh skill install` names it.
 SKILL = "printobserver"
+
+#: The committed skill's directory.
+SKILL_DIRECTORY = REPO_ROOT / "skills" / SKILL
 
 #: The variables through which `gh` would find a credential, every one removed.
 TOKEN_VARIABLES = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
@@ -56,8 +63,6 @@ def _held_release() -> str:
     return release
 
 
-# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.fixture(scope="module")
 def gh() -> str:
     """The `gh` on PATH, refusing — never skipping — where there is none with `gh skill`."""
@@ -89,11 +94,37 @@ def gh() -> str:
     return found
 
 
+def _copy_of_the_tree(destination: Path) -> Path:
+    """The finished tree's working files: every file a clone would carry once it lands.
+
+    `--others --exclude-standard` includes what the change has added and not yet
+    committed, because `gh skill install --from-local` reads the working tree,
+    and excludes everything `.gitignore` covers.
+    """
+    listing = run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=REPO_ROOT,
+        check=True,
+    ).stdout
+    for name in (entry for entry in listing.split("\0") if entry):
+        source = REPO_ROOT / name
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_symlink():
+            target.symlink_to(source.readlink(), target_is_directory=source.is_dir())
+        elif source.is_file():
+            shutil.copy2(source, target)
+    return destination
+
+
 def _signed_out(configuration: Path) -> dict[str, str]:
-    """An environment in which `gh` holds no credential of any kind."""
-    environment = clean_environment(GH_CONFIG_DIR=str(configuration), GH_PROMPT_DISABLED="1")
+    """This process's environment with every way `gh` could find a credential removed."""
+    environment = dict(os.environ)
+    environment.pop("VIRTUAL_ENV", None)
     for variable in TOKEN_VARIABLES:
         environment.pop(variable, None)
+    environment["GH_CONFIG_DIR"] = str(configuration)
+    environment["GH_PROMPT_DISABLED"] = "1"
     return environment
 
 
@@ -127,7 +158,7 @@ def test_the_skill_installs_whole_from_a_copy_of_the_tree_with_no_credentials(
     gh: str, tmp_path: Path
 ) -> None:
     """What `gh skill install` puts down is the committed skill, and every link in it opens."""
-    tree = copy_tracked(tmp_path / "tree")
+    tree = _copy_of_the_tree(tmp_path / "tree")
     configuration = tmp_path / "gh-config"
     configuration.mkdir()
     environment = _signed_out(configuration)
@@ -139,6 +170,7 @@ def test_the_skill_installs_whole_from_a_copy_of_the_tree_with_no_credentials(
     )
 
     out = tmp_path / "installed"
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     installed = run(
         [gh, "skill", "install", str(tree), SKILL, "--from-local", "--dir", str(out)],
         cwd=tmp_path,
@@ -190,13 +222,13 @@ def test_publish_validation_finds_no_error_in_the_skill(gh: str, tmp_path: Path)
     configuration.mkdir()
     environment = _signed_out(configuration)
 
-    tree = copy_tracked(tmp_path / "tree")
+    tree = _copy_of_the_tree(tmp_path / "tree")
     validated = run([gh, "skill", "publish", "--dry-run"], cwd=tree, env=environment, timeout=300)
     said = validated.stdout + validated.stderr
     equal(_refusals(said), [], describing=f"what `gh skill publish --dry-run` refused:\n{said}")
     contains(said, "Dry run complete", describing="the dry run to have finished")
 
-    broken = copy_tracked(tmp_path / "broken")
+    broken = _copy_of_the_tree(tmp_path / "broken")
     written = broken / "skills" / SKILL / "SKILL.md"
     written.write_text(
         written.read_text(encoding="utf-8").replace("name: printobserver", "name: Print--Observer"),
