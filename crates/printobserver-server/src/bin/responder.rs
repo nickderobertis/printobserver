@@ -38,6 +38,20 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 /// declares it under, and the body exactly as a caller sends it.
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
+/// The variable naming the file this responder writes what it was started with
+/// to: the directory it was run in and the system prompt it was handed, as one
+/// JSON object.
+///
+/// Where the harness stands is what the skill's relative links resolve from,
+/// and what it was handed as its system prompt is the skill's prose. The one
+/// witness of either that is not the run request this server built is the
+/// process that request started.
+const SEEN: &str = "PRINTOBSERVER_RESPONDER_SEEN";
+
+/// The flags a Claude Code run is handed its system prompt under: inline, or
+/// as a file when the prompt is large enough to risk the argument ceiling.
+const SYSTEM_FLAGS: (&str, &str) = ("--append-system-prompt", "--append-system-prompt-file");
+
 /// What the context command in a prompt begins with, which is what a turn is
 /// told to run and what this responder finds its configuration and its print
 /// in.
@@ -194,6 +208,7 @@ fn read_answer(answer: &str) -> serde_json::Value {
 
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
+    record_what_was_seen();
     let Ok(log) = std::env::var(LOG) else {
         return;
     };
@@ -229,6 +244,30 @@ fn act() {
         }
         append(&log, &answered.to_string());
     }
+}
+
+/// Write down where this responder was run and the system prompt it was handed.
+fn record_what_was_seen() {
+    let Ok(record) = std::env::var(SEEN) else {
+        return;
+    };
+    let arguments: Vec<String> = std::env::args().collect();
+    let after = |flag: &str| {
+        arguments
+            .iter()
+            .position(|argument| argument == flag)
+            .and_then(|at| arguments.get(at + 1))
+    };
+    let system = after(SYSTEM_FLAGS.0)
+        .cloned()
+        .or_else(|| after(SYSTEM_FLAGS.1).and_then(|path| std::fs::read_to_string(path).ok()));
+    let here = std::env::current_dir()
+        .map(|directory| directory.display().to_string())
+        .ok();
+    let _ = std::fs::write(
+        record,
+        serde_json::json!({ "cwd": here, "system": system }).to_string(),
+    );
 }
 
 /// Append one line to the file a journey reads what this responder did from.

@@ -83,10 +83,11 @@ adapter hands over beside the body.
 
 The oneharness adapter — the one implementation of the supervisor port. It
 drives an agentic coding harness through OneHarness's own Rust crate API, in
-process, and it spawns nothing. The skill it sends as the system prompt, the
-template it fills for one turn, and the reference documents that skill links to
-are assets it ships — the composition root writes them into the state directory
-beside one another, because an installed host has no checkout to read them from.
+process, and it spawns nothing. The template it fills for one turn is an asset
+it ships. The skill it sends as the system prompt is not: it is the Agent Skill
+an operator installs with `gh skill install`, whose `SKILL.md` the server is
+pointed at, and the agent runs from that skill's directory so the reference
+documents the skill links to resolve beside it.
 
 ### printobserver-store-sqlite
 

@@ -336,7 +336,8 @@ pub struct SupervisorConfig {
     /// this port's own per-print ledger and `OneHarness`'s session store, which
     /// is what a restart continues a conversation from.
     pub state_dir: PathBuf,
-    /// The `PrintObserver` skill, sent as every turn's system prompt.
+    /// The `PrintObserver` skill's `SKILL.md`, whose prose is sent as every
+    /// turn's system prompt.
     pub skill_path: PathBuf,
     /// The committed prompt template, whose three slots one turn fills.
     pub prompt_template_path: PathBuf,
@@ -346,7 +347,9 @@ pub struct SupervisorConfig {
     pub harness: HarnessIdentity,
     /// The model, when one is pinned rather than left to the harness.
     pub model: Option<ModelName>,
-    /// The working directory each harness process runs in.
+    /// The working directory each harness process runs in. The composition
+    /// root sets it to the directory holding the skill, so the skill's own
+    /// relative links resolve from where the agent stands.
     pub working_dir: PathBuf,
     /// How long one turn is given.
     pub turn_timeout: TurnTimeout,

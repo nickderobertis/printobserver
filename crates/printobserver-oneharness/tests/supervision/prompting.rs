@@ -1,14 +1,17 @@
 //! The port composes nothing of its own into a turn.
 //!
 //! The prompt is the committed template with its three slots filled and nothing
-//! else, and the system prompt is the skill file at the configured path rather
-//! than text this crate carries.
+//! else, and the system prompt is the prose of the skill file at the configured
+//! path rather than text this crate carries.
 
 use std::fs;
 use std::sync::Arc;
 
-use printobserver_oneharness::{CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, SLOTS};
-use printobserver_supervisor_api::SupervisorPort;
+use printobserver_oneharness::{
+    CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor, SLOTS,
+    UnclosedFrontmatter, skill_prose,
+};
+use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{PrintId, serde_json};
 
 use crate::support::{
@@ -144,23 +147,31 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     );
 }
 
-/// The system prompt is the skill file at the configured path, read from the
-/// tree when the port is built.
-#[test]
-fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
-    // Every answer this journey drives is judged by the checked-in assessment
-    // schema, so it is held still while the journey reads it.
-    let schemas = schema_read_lock();
-    let fixture = Fixture::new("skill");
+/// The committed skill's prose, split off its frontmatter by hand rather than
+/// by the function under test: everything after the second line that is
+/// exactly `---`.
+fn committed_prose(committed: &str) -> &str {
+    let rest = committed
+        .strip_prefix("---\n")
+        .expect("the committed skill opens with a frontmatter block");
+    let closing = rest
+        .find("\n---\n")
+        .expect("the committed skill's frontmatter closes");
+    &rest[closing + "\n---\n".len()..]
+}
+
+/// The system prompt one port sends, built over the skill at `skill`.
+fn system_prompt_over(
+    schemas: &crate::support::SchemaHold<crate::support::Shared>,
+    fixture: &Fixture,
+    skill: &std::path::Path,
+) -> String {
     let schema = generated_assessment_schema();
     let environment = always("SID-SKILL", &assessment("the print is fine", "high"));
-
-    // The committed skill, exactly.
+    let mut configured = config(schemas, fixture, HARNESS, &schema, environment);
+    configured.skill_path = skill.to_path_buf();
     let watch = Arc::new(Watch::default());
-    let supervisor = port(
-        config(&schemas, &fixture, HARNESS, &schema, environment.clone()),
-        &watch,
-    );
+    let supervisor = port(configured, &watch);
     let print_id = PrintId::new();
     block_on(supervisor.run_turn(turn(
         print_id,
@@ -168,45 +179,151 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
         None,
     )))
     .expect("the turn runs");
+    watch
+        .requests()
+        .last()
+        .expect("the port built a run request")
+        .system
+        .clone()
+        .expect("the request carries a system prompt")
+}
+
+/// The system prompt is the prose of the skill file at the configured path,
+/// read from the tree when the port is built.
+#[test]
+fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("skill");
+
+    // The committed skill, with its frontmatter removed: the skill's own text,
+    // opening on its title and carrying none of the frontmatter's keys.
     let committed = fs::read_to_string(skill_path()).expect("the committed skill is readable");
+    let prose = committed_prose(&committed);
+    assert!(
+        prose.starts_with("# Supervising a 3D print\n"),
+        "the committed skill's prose does not open on its title"
+    );
+    let sent = system_prompt_over(&schemas, &fixture, &skill_path());
     assert_eq!(
-        watch
-            .requests()
-            .last()
-            .expect("the port built a run request")
-            .system
-            .as_deref(),
-        Some(committed.as_str()),
-        "the system prompt is not the committed skill"
+        sent, prose,
+        "the system prompt is not the committed skill's prose"
+    );
+    assert!(
+        !sent.contains("name: printobserver"),
+        "the system prompt carries the skill's frontmatter"
     );
 
     // And a skill file whose content changes on disk changes what the request
-    // carries, which a crate that embedded the skill's text could not do.
+    // carries, which a crate that embedded the skill's text could not do. A
+    // file with no frontmatter is sent as it is.
     let scratch = fixture.path("skill.md");
-    fs::write(&scratch, &committed).expect("a scratch skill");
-    let mut configured = config(&schemas, &fixture, HARNESS, &schema, environment);
-    configured.skill_path = scratch.clone();
-
-    for text in [committed.as_str(), "Watch the print. Say what you see."] {
+    for (text, expected) in [
+        (committed.as_str(), prose),
+        (
+            "Watch the print. Say what you see.",
+            "Watch the print. Say what you see.",
+        ),
+    ] {
         fs::write(&scratch, text).expect("the scratch skill is writable");
-        let rebuilt_watch = Arc::new(Watch::default());
-        let rebuilt = port(configured.clone(), &rebuilt_watch);
-        let print_id = PrintId::new();
-        block_on(rebuilt.run_turn(turn(
-            print_id,
-            event(print_id, unreadable("the body was not JSON")),
-            None,
-        )))
-        .expect("the turn runs");
         assert_eq!(
-            rebuilt_watch
-                .requests()
-                .last()
-                .expect("the port built a run request")
-                .system
-                .as_deref(),
-            Some(text),
+            system_prompt_over(&schemas, &fixture, &scratch),
+            expected,
             "the system prompt did not follow the file at the configured path"
         );
     }
+}
+
+/// A skill as `gh skill install` rewrites it is sent as the same prose.
+///
+/// An install adds its own `metadata` to the frontmatter and reorders the keys
+/// — a local install a `local-path`, a remote one where on the forge it came
+/// from — and leaves the prose byte for byte. What a turn sends is the prose,
+/// so neither shape changes it.
+#[test]
+fn a_skill_as_an_install_rewrote_it_is_sent_as_the_same_prose() {
+    // Every answer this journey drives is judged by the checked-in assessment
+    // schema, so it is held still while the journey reads it.
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("skill-installed");
+    let committed = fs::read_to_string(skill_path()).expect("the committed skill is readable");
+    let prose = committed_prose(&committed);
+
+    let installs = [
+        (
+            "local",
+            "---\ndescription: Supervise one 3D print.\nlicense: MIT\nmetadata:\n    \
+             local-path: /tmp/checkout/skills/printobserver\nname: printobserver\n---\n",
+        ),
+        (
+            "remote",
+            "---\ndescription: Supervise one 3D print.\nlicense: MIT\nmetadata:\n    \
+             github-path: skills/printobserver\n    github-ref: main\n    \
+             github-repo: nickderobertis/printobserver\n    \
+             github-tree-sha: 0123456789abcdef0123456789abcdef01234567\n\
+             name: printobserver\n---\n",
+        ),
+    ];
+    for (install, frontmatter) in installs {
+        let installed = fixture.path(&format!("{install}-SKILL.md"));
+        fs::write(&installed, format!("{frontmatter}{prose}")).expect("an installed skill");
+        assert_eq!(
+            system_prompt_over(&schemas, &fixture, &installed),
+            prose,
+            "the {install} install's rewritten frontmatter changed the prose sent"
+        );
+    }
+}
+
+/// A skill whose frontmatter never closes is refused, naming the file, rather
+/// than sent whole as the agent's instructions.
+#[test]
+fn a_skill_whose_frontmatter_never_closes_is_refused() {
+    // The configuration every port here is built from reads the checked-in
+    // assessment schema, so the schema tree is held still while it is read.
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("skill-unclosed");
+    let unclosed = fixture.path("unclosed-SKILL.md");
+    fs::write(
+        &unclosed,
+        "---\nname: printobserver\ndescription: Supervise one print.\n# Supervising\n",
+    )
+    .expect("an unclosed skill");
+    let schema = generated_assessment_schema();
+    let environment = always("SID-SKILL", &assessment("the print is fine", "high"));
+    let mut configured = config(&schemas, &fixture, HARNESS, &schema, environment);
+    configured.skill_path = unclosed;
+
+    let refused = OneharnessSupervisor::open(configured)
+        .expect_err("a port was built over a skill whose frontmatter never closes");
+    assert!(
+        matches!(refused, SupervisorError::Unavailable { .. }),
+        "the refusal is not unavailability: {refused}"
+    );
+    let said = refused.to_string();
+    assert!(
+        said.contains("unclosed-SKILL.md") && said.contains("frontmatter"),
+        "the refusal does not name the file and why: {said}"
+    );
+}
+
+/// The split itself, over the shapes a file on disk may take.
+#[test]
+fn the_prose_is_everything_after_the_line_closing_the_frontmatter() {
+    assert_eq!(skill_prose("# Title\nbody\n"), Ok("# Title\nbody\n"));
+    assert_eq!(skill_prose(""), Ok(""));
+    assert_eq!(skill_prose("---\nname: a\n---\n# Title\n"), Ok("# Title\n"));
+    assert_eq!(
+        skill_prose("---\r\nname: a\r\n---\r\n# Title\r\n"),
+        Ok("# Title\r\n")
+    );
+    // A line that merely starts with `---` neither opens nor closes a block.
+    assert_eq!(skill_prose("----\n# Title\n"), Ok("----\n# Title\n"));
+    assert_eq!(
+        skill_prose("---\nname: a\n--- not a fence\n---\nbody"),
+        Ok("body")
+    );
+    assert_eq!(skill_prose("---\nname: a\n"), Err(UnclosedFrontmatter));
+    assert_eq!(skill_prose("---"), Err(UnclosedFrontmatter));
 }

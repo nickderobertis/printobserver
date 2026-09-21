@@ -136,6 +136,8 @@ pub struct World {
     pub image_id: String,
     /// The event the acknowledgement command is about.
     pub event_id: String,
+    /// The skill the supervisor is configured with.
+    skill: PathBuf,
     /// The supervisor, running.
     server: Child,
 }
@@ -161,35 +163,55 @@ impl World {
     /// naming the recipe that brings one up: a tier that quietly passed against
     /// no printer would prove nothing, so there is no fallback and no skip.
     pub fn open(world: &str) -> Self {
-        Self::over(match world {
-            STOOD_IN => Printer::StoodIn(Machine::start()),
-            SCRIPTED => crate::scripted::scripted(),
-            other => panic!("there is no `{other}` world to open"),
-        })
+        Self::configured_with(world, &committed_skill(), None)
+    }
+
+    /// The same, with the supervisor configured with the skill at `skill` — an
+    /// installed one rather than the tree's — and running with `harness` as the
+    /// whole of its path, when a journey puts a harness there.
+    ///
+    /// # Panics
+    ///
+    /// The same as [`World::open`].
+    pub fn configured_with(world: &str, skill: &Path, harness: Option<&Path>) -> Self {
+        Self::over(
+            match world {
+                STOOD_IN => Printer::StoodIn(Machine::start()),
+                SCRIPTED => crate::scripted::scripted(),
+                other => panic!("there is no `{other}` world to open"),
+            },
+            skill,
+            harness,
+        )
     }
 
     /// A world over whatever is on the far side of the printer port.
-    fn over(printer: Printer) -> Self {
+    fn over(printer: Printer, skill: &Path, harness: Option<&Path>) -> Self {
         let root = TempDir::new().expect("this tier's own root");
         let state = root.path().join("state");
         std::fs::create_dir_all(&state).expect("a state directory");
         let (print_id, image_id, event_id) = seed(&state, &printable_file(&printer));
 
         let configuration = root.path().join("server.toml");
-        std::fs::write(&configuration, server_document(&state, &printer))
+        std::fs::write(&configuration, server_document(&state, &printer, skill))
             .expect("the configuration is writable");
         // Nothing on the path the supervisor runs with. No journey here is about
         // a supervision turn, and an alert one of them posts prompts one: over
         // whatever harness this host happens to have installed, that turn would
         // be a real conversation with a real agent. With nothing to find it
         // fails the way a missing harness does, recorded against the event.
+        // A journey that is about a turn names the one harness it put there.
         let no_harness = root.path().join("no-harness-on-this-path");
         std::fs::create_dir_all(&no_harness).expect("an empty directory to search");
+        let search = harness.map_or_else(
+            || no_harness.as_os_str().to_owned(),
+            |path| path.as_os_str().to_owned(),
+        );
         let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .arg("server")
             .arg("--config")
             .arg(&configuration)
-            .env("PATH", &no_harness)
+            .env("PATH", &search)
             .stderr(Stdio::piped())
             .spawn()
             .expect("the command that runs the supervisor runs");
@@ -203,6 +225,7 @@ impl World {
             print_id,
             image_id,
             event_id,
+            skill: skill.to_path_buf(),
             server,
         };
         std::fs::write(world.client_config(), world.client_document(CREDENTIAL))
@@ -356,7 +379,7 @@ impl World {
     pub fn generating_server_config(&self, name: &str, listen: &str) -> (PathBuf, PathBuf) {
         let state = self.root.path().join(format!("{name}-state"));
         std::fs::create_dir_all(&state).expect("a state directory");
-        let mut document = server_value(&state, &self.printer);
+        let mut document = server_value(&state, &self.printer, &self.skill);
         let table = document
             .as_object_mut()
             .expect("the configuration is a table");
@@ -382,7 +405,7 @@ impl World {
         let state = self.root.path().join("second-state");
         std::fs::create_dir_all(&state).expect("a state directory");
         let path = self.root.path().join("second-server.toml");
-        std::fs::write(&path, server_document(&state, &self.printer))
+        std::fs::write(&path, server_document(&state, &self.printer, &self.skill))
             .expect("the configuration is writable");
         path
     }
@@ -706,13 +729,24 @@ fn seed(state: &Path, file: &str) -> (String, String, String) {
     })
 }
 
+/// The committed skill, `skills/printobserver/SKILL.md`: what `gh skill
+/// install` installs on a host, read here from the tree.
+pub fn committed_skill() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("skills")
+        .join("printobserver")
+        .join("SKILL.md")
+}
+
 /// The configuration the supervisor is started under.
-fn server_document(state: &Path, printer: &Printer) -> String {
-    toml_of(&server_value(state, printer))
+fn server_document(state: &Path, printer: &Printer, skill: &Path) -> String {
+    toml_of(&server_value(state, printer, skill))
 }
 
 /// The same configuration, as the values it is written from.
-fn server_value(state: &Path, printer: &Printer) -> Value {
+fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
     json!({
         "state_dir": state.display().to_string(),
         "listen": "127.0.0.1:0",
@@ -721,7 +755,10 @@ fn server_value(state: &Path, printer: &Printer) -> Value {
             "api_key": printer.api_key(),
             "fan": "commandable",
         },
-        "supervisor": { "harness": "claude-code" },
+        "supervisor": {
+            "harness": "claude-code",
+            "skill_path": skill.display().to_string(),
+        },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
         // The credential the walk's own commands are configured with is the
         // one in force, chosen here so that a search for it in anything this

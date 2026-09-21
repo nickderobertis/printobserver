@@ -25,6 +25,18 @@ pub const SECRET: &str = "a-shared-secret-nothing-else-knows";
 /// The file the configuration is written to under a journey's own root.
 pub const CONFIG_FILE: &str = "config.toml";
 
+/// The committed skill, `skills/printobserver/SKILL.md`: the Agent Skill an
+/// installed host takes from `gh skill install`, read here from the tree.
+#[must_use]
+pub fn committed_skill() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("skills")
+        .join("printobserver")
+        .join("SKILL.md")
+}
+
 /// One configuration document, in the shape the file takes.
 ///
 /// Built from values rather than from a string, so a journey that makes one
@@ -43,6 +55,7 @@ fan = "commandable"
 
 [supervisor]
 harness = "claude-code"
+skill_path = {skill}
 
 [ingress]
 shared_secret = "{SECRET}"
@@ -69,6 +82,7 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
         // A TOML string rather than the path spliced between quotes: a Windows
         // path's separators are escapes inside a basic string.
         state = toml::Value::String(root.join("state").display().to_string()),
+        skill = toml::Value::String(committed_skill().display().to_string()),
     );
     toml::from_str(&text).expect("the base configuration is a document")
 }

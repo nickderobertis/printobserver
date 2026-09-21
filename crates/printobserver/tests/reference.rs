@@ -1,7 +1,7 @@
 //! The declared command surface, written out for a reader that is not Rust.
 //!
-//! `docs/reference/surface.json` is the one artifact the documentation checks
-//! read this program's surface off. It is **generated** from
+//! `skills/printobserver/reference/surface.json` is the one artifact the
+//! documentation checks read this program's surface off. It is **generated** from
 //! [`surface`](printobserver::surface::surface) and [`Exit::ALL`] rather than
 //! written: a command the server grows, an option a contract variant grows and
 //! an exit this program grows all reach those checks the moment the generation
@@ -25,7 +25,7 @@ use printobserver_server::Located;
 use printobserver_types::serde_json::{Value, json};
 
 /// Where the generated surface manifest is checked in.
-const MANIFEST: &str = "docs/reference/surface.json";
+const MANIFEST: &str = "skills/printobserver/reference/surface.json";
 
 /// The variable that makes this suite write the artifact rather than check it.
 const WRITING: &str = "PRINTOBSERVER_DOCS";

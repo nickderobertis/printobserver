@@ -528,64 +528,87 @@ pub fn accepts_the_committed_documentation(world: &World) {
     );
 }
 
-/// The directory the server materializes the agent's own assets into.
-const ASSETS: &str = "assets";
-
-/// Copy one directory tree into another, recursively.
+/// Copy one directory tree into another, recursively and as regular files.
+///
+/// A symlink is copied as what it names, which is the most any install could
+/// carry of it — and `gh skill install` carries less, dropping it outright. The
+/// check-repo rules refuse one under the skill's directory, so here there is
+/// none to copy.
 fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("the scratch tree is writable");
-    for entry in std::fs::read_dir(from).expect("the assets directory is readable") {
+    for entry in std::fs::read_dir(from).expect("the skill directory is readable") {
         let path = entry.expect("a readable directory entry").path();
         let target = to.join(path.file_name().expect("a file name"));
         if path.is_dir() {
             copy_tree(&path, &target);
         } else {
-            std::fs::copy(&path, &target).expect("an asset is copyable");
+            std::fs::copy(&path, &target).expect("a skill file is copyable");
         }
     }
 }
 
-/// One supervision turn from the assets an installed program wrote, alone.
+/// One supervision turn from a skill directory of its own, and nothing else.
 ///
 /// # What this is about
 ///
-/// The skill links out for everything it does not say itself, and until the
-/// composition root wrote the documents beside it those links resolved in a
-/// checkout and nowhere else — which is the one place the supervising agent
-/// never is. An installed host has the state directory the server created and
-/// no repository at all.
+/// This program carries no skill. An installed host has the one `gh skill
+/// install nickderobertis/printobserver printobserver` put down — the skill's
+/// own directory, `SKILL.md` and the `reference/` documents it links to, as
+/// regular files — and a configuration whose `supervisor.skill_path` names that
+/// `SKILL.md`. It has no repository at all.
 ///
-/// So this takes what the running server materialized, copies it into a
-/// directory of its own carrying **nothing else** — no `repo-policy.toml`, no
-/// `docs`, no checkout to fall back to — and carries the whole turn out of that
-/// copy. Every link the skill carries is opened there first, so a document the
-/// artifact does not bundle fails here by name rather than in front of an agent.
-pub fn the_installed_assets_carry_the_turn(world: &World) {
-    let installed = world.root.path().join("state").join(ASSETS);
+/// So this copies the committed skill directory into a directory of its own
+/// carrying **nothing else** — no `repo-policy.toml`, no checkout to fall back
+/// to — starts the real server with `supervisor.skill_path` naming the copy,
+/// opens every link the skill carries from the copy's own directory, and
+/// carries the whole turn out of it. Where the host can put a harness on the
+/// server's path, a real failure alert then runs a supervision turn, and the
+/// harness records the directory it was run in: it has to be the copy's,
+/// because that is where the skill's links resolve from.
+pub fn the_configured_skill_directory_carries_the_turn() {
+    let committed = crate::world::committed_skill();
     let alone = tempfile::TempDir::new().expect("a scratch tree");
-    copy_tree(&installed, alone.path());
-
-    let skill = alone.path().join(crate::server_assets::SKILL_FILE);
-    assert!(
-        skill.is_file(),
-        "the server materialized no skill at {}",
-        skill.display()
+    let installed = alone.path().join("printobserver");
+    copy_tree(
+        committed.parent().expect("the skill sits in a directory"),
+        &installed,
     );
-    let text = std::fs::read_to_string(&skill).expect("the materialized skill is readable");
+    let skill = installed.join("SKILL.md");
+
+    let text = std::fs::read_to_string(&skill).expect("the installed skill is readable");
     let links = crate::documented::links_in(&text);
-    assert!(!links.is_empty(), "the materialized skill links to nothing");
+    assert!(!links.is_empty(), "the installed skill links to nothing");
     for target in &links {
-        let at = alone.path().join(target);
+        let at = installed.join(target);
         assert!(
             at.is_file(),
-            "the skill an installed program wrote links to `{target}`, and the assets it \
-             wrote beside it carry no such file. An install that carried the skill and not \
-             what it points at hands the agent a dead link."
+            "the skill links to `{target}`, and its own directory carries no such file. \
+             `gh skill install` installs that directory alone, so an install hands the \
+             agent a dead link."
         );
     }
 
-    crate::documented::operator_workflow(world, &crate::documented::Documentation::beside(&skill))
-        .unwrap_or_else(|why| {
-            panic!("the assets an installed program wrote do not carry a turn: {why}")
-        });
+    #[cfg(unix)]
+    let harness = crate::harness_turn::HarnessOnPath::new(alone.path());
+    #[cfg(unix)]
+    let world =
+        crate::world::World::configured_with(crate::world::STOOD_IN, &skill, Some(&harness.bin()));
+    #[cfg(not(unix))]
+    let world = crate::world::World::configured_with(crate::world::STOOD_IN, &skill, None);
+
+    crate::documented::operator_workflow(&world, &crate::documented::Documentation::beside(&skill))
+        .unwrap_or_else(|why| panic!("a skill directory of its own does not carry a turn: {why}"));
+
+    #[cfg(unix)]
+    {
+        let ran_in = crate::harness_turn::HarnessOnPath::turn_ran_in(&world);
+        assert_eq!(
+            ran_in,
+            installed
+                .canonicalize()
+                .expect("the installed skill's directory resolves"),
+            "the supervision turn's harness ran somewhere other than the skill's own \
+             directory, so the skill's links do not resolve from where the agent stands"
+        );
+    }
 }
