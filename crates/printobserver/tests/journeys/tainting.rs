@@ -271,21 +271,17 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
         .find(|found| found.command.name == "set-bed-target-c")
         .expect("this walk drives a bed target");
 
-    // The read before the expiry is taken behind the same steady-host
-    // condition `journeys/durations.rs` states, and for the same reason: a
-    // host that left this thread unrun, or took longer over the read than the
-    // window before the expiry left it, produced no measurement rather than a
-    // defect this journey refused. A discarded attempt's own intervention is
-    // waited out first, over a machine that hears again, so that nothing it is
-    // still due to put back lands in the middle of the attempt after it.
+    // A discarded attempt's own intervention is waited out first, over a
+    // machine that hears again, so that nothing it is still due to put back
+    // lands in the middle of the attempt after it.
     let mut seen = Vec::new();
     for _ in 0..durations::STEADY_HOST_ATTEMPTS {
         let (opened, measured) =
             durations::opened_and_measured_before_it_expires(world, &heater, short(), || {
                 world.machine_is_deaf(true);
             });
-        if let durations::Measured::AcrossAHostEvent(event) = measured {
-            seen.push(event);
+        if let durations::Measured::Discarded(reason) = measured {
+            seen.push(reason);
             world.machine_is_deaf(false);
             durations::wait_out(&opened);
             continue;
