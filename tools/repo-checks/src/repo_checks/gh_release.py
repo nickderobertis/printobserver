@@ -101,6 +101,7 @@ def _download(url: str) -> bytes:
         msg = f"{url} is not an address this installer downloads from"
         raise GhReleaseError(msg)
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as answer:  # noqa: S310
             return answer.read()
     except (urllib.error.URLError, OSError) as error:
@@ -174,12 +175,16 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     return target
 
 
-def install_gh(version: str, into: Path | None = None) -> int:
-    """Install gh `version` for this host into `into`, `~/.local/bin` by default."""
+def install_gh(version: str, into: Path | None = None, *, releases: str = RELEASES) -> int:
+    """Install gh `version` for this host into `into`, `~/.local/bin` by default.
+
+    Says what it installed and where, says so when that directory is not on
+    PATH, and exits non-zero naming why when it installed nothing.
+    """
     destination = into if into is not None else Path.home() / ".local" / "bin"
     try:
         archive = archive_for(version, sys.platform, platform.machine())
-        installed = install(archive, destination)
+        installed = install(archive, destination, releases=releases)
     except GhReleaseError as refused:
         print(f"install-gh: {refused}", file=sys.stderr)
         return 1

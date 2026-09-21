@@ -56,6 +56,8 @@ def _held_release() -> str:
     return release
 
 
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.fixture(scope="module")
 def gh() -> str:
     """The `gh` on PATH, refusing — never skipping — where there is none with `gh skill`."""

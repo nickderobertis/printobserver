@@ -1192,9 +1192,8 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 The rule is an edge table, not a set of layers. `repo-policy.toml`'s
 `crates.may_depend_on` is the source (`crates.may_depend_on_in_tests` for the
-edges a crate's tests alone may add), `just check-repo` holds every manifest to
-it, and `skills/printobserver/reference/architecture.md` says why — why the crates are cut by
-domain, and why core names no implementation crate. The step that draws an edge
+edges a crate's tests alone may add), and `just check-repo` holds every manifest
+to it. The step that draws an edge
 is the step that admits it in the table. Do not bring `printobserver-store-api`
 back, yank it or republish it: it is no crate of this workspace and stays on
 crates.io at `0.2.0`.

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import platform
 import sys
 import tarfile
 import threading
@@ -21,8 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from repo_checks.expect import contains, equal, refused, truth
-from repo_checks.gh_release import Archive, GhReleaseError, archive_for, install
+from repo_checks.__main__ import main
+from repo_checks.expect import absent, contains, equal, refused, truth
+from repo_checks.gh_release import Archive, GhReleaseError, archive_for, install, install_gh
 from repo_checks.shell import run
 
 VERSION = "2.100.0"
@@ -192,3 +194,55 @@ def test_an_address_that_is_not_https_is_never_fetched(tmp_path: Path) -> None:
         install(archive, tmp_path / "bin", releases="http://example.invalid")
 
     contains(str(raised.value), "is not an address this installer downloads from")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_command_says_what_it_installed_and_that_its_directory_is_off_path(
+    serving: tuple[str, Release],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The entry point `just install-gh` reaches: its status and what it tells the caller."""
+    base, release = serving
+    _publish(release, archive_for(VERSION, sys.platform, platform.machine()))
+    into = tmp_path / "bin"
+    monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
+
+    equal(install_gh(VERSION, into, releases=base), 0)
+
+    said = capsys.readouterr().err
+    contains(said, f"install-gh: installed gh {VERSION} at {into / 'gh'}")
+    contains(said, f"{into} is not on PATH")
+
+    monkeypatch.setenv("PATH", str(into))
+    equal(install_gh(VERSION, into, releases=base), 0)
+    absent(capsys.readouterr().err, "is not on PATH")
+    contains(run(["gh", "--version"], check=True).stdout, f"gh version {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_command_exits_non_zero_naming_why_it_installed_nothing(
+    serving: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release the checksums do not vouch for is one exit status and one sentence."""
+    base, release = serving
+    _publish(release, archive_for(VERSION, sys.platform, platform.machine()), listed="e" * 64)
+
+    equal(install_gh(VERSION, tmp_path / "bin", releases=base), 1)
+
+    contains(capsys.readouterr().err, "install-gh: ")
+    truth(not (tmp_path / "bin" / "gh").exists(), describing="no gh where the install goes")
+
+
+def test_the_repository_command_refuses_what_is_not_a_release(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`python -m repo_checks install-gh` dispatches to the installer and passes its status on."""
+    equal(main(["install-gh", "latest"]), 1)
+    contains(capsys.readouterr().err, "install-gh: `latest` is not a release")
+
+    with pytest.raises(SystemExit) as exited:
+        main(["install-gh"])
+    equal(exited.value.code, 2, describing="the status of install-gh named no release")
+    contains(capsys.readouterr().err, "install-gh needs the release to install")

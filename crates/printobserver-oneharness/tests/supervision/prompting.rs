@@ -308,22 +308,23 @@ fn a_skill_whose_frontmatter_never_closes_is_refused() {
     );
 }
 
-/// The split itself, over the shapes a file on disk may take.
+/// The split itself, over the shared cases `check-repo`'s own split is held to.
+///
+/// The adapter and `check-repo` each split a `SKILL.md` into frontmatter and
+/// prose — one to send the prose, the other to measure it — and
+/// `skill-prose-cases.json` beside this suite is the one set of inputs and
+/// answers both are run over, so the two readings cannot drift apart unseen.
+/// A `null` prose is a file refused as a frontmatter block that never closes.
 #[test]
 fn the_prose_is_everything_after_the_line_closing_the_frontmatter() {
-    assert_eq!(skill_prose("# Title\nbody\n"), Ok("# Title\nbody\n"));
-    assert_eq!(skill_prose(""), Ok(""));
-    assert_eq!(skill_prose("---\nname: a\n---\n# Title\n"), Ok("# Title\n"));
-    assert_eq!(
-        skill_prose("---\r\nname: a\r\n---\r\n# Title\r\n"),
-        Ok("# Title\r\n")
-    );
-    // A line that merely starts with `---` neither opens nor closes a block.
-    assert_eq!(skill_prose("----\n# Title\n"), Ok("----\n# Title\n"));
-    assert_eq!(
-        skill_prose("---\nname: a\n--- not a fence\n---\nbody"),
-        Ok("body")
-    );
-    assert_eq!(skill_prose("---\nname: a\n"), Err(UnclosedFrontmatter));
-    assert_eq!(skill_prose("---"), Err(UnclosedFrontmatter));
+    let cases: serde_json::Value = serde_json::from_str(include_str!("skill-prose-cases.json"))
+        .expect("the shared cases are JSON");
+    let cases = cases.as_array().expect("the shared cases are a list");
+    assert!(!cases.is_empty(), "the shared cases carry no case");
+    for case in cases {
+        let named = case["case"].as_str().expect("every case is named");
+        let text = case["text"].as_str().expect("every case carries a text");
+        let expected = case["prose"].as_str().ok_or(UnclosedFrontmatter);
+        assert_eq!(skill_prose(text), expected, "the case `{named}`");
+    }
 }

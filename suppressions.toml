@@ -192,6 +192,12 @@ file = "tools/repo-checks/src/repo_checks/gh_release.py"
 site = "urllib.request.urlopen(url"
 reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the gh installer makes, and the line above it refuses any URL that is not https (or a loopback http address, which only its own suite's release stand-in serves); every URL reaching it is composed from the fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches the SHA-256 the same release's checksums file lists."
 
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/gh_release.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "The one download `just install-gh` makes, run by one blocking command in one CI step: the release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
+
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
 [[suppression]]
@@ -590,6 +596,18 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_skill_install_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The task that added this journey places it beside the other end-to-end journeys in `tests/repo-e2e/tests/`, and it is already behind an edge of its own: the `test-skill-install` target and recipe, which the gate's `test-e2e` target excludes by name and which only the `skill-install` job runs. No job here selects projects by what a change affected — every tier runs through `nx run-many` — so a project of its own would spare no change. What it costs is a copy of the tree and three `gh` runs, seconds, and what it proves is the one property nothing in the gate can: that a real `gh skill install` of the committed files carries the whole skill."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tests/repo-e2e/tests/test_skill_install_journey.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "Split by target rather than by marker: the journey is its own module, run by its own `test-skill-install` target and excluded from `test-e2e` by path, with no marker anywhere. It lives in the end-to-end project because the task that added it places it beside that tier's other journeys and it uses that tier's own helpers for copying the tree and cleaning the environment; the same ground as the `expensive_tests_stay_behind_their_own_edge` entry for this file."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"

@@ -72,6 +72,31 @@ def test_a_skill_every_rule_accepts_is_accepted(tmp_path: Path) -> None:
     accepted(skill(_skill_tree(tmp_path, FRONTMATTER + PROSE)), describing="the fixture skill")
 
 
+#: The inputs and answers the adapter's own split is held to, beside its suite.
+SHARED_CASES = (
+    Path(__file__).resolve().parents[3]
+    / "crates/printobserver-oneharness/tests/supervision/skill-prose-cases.json"
+)
+
+
+def test_the_split_answers_every_case_the_adapters_split_is_held_to() -> None:
+    """One file of cases, and both splits run over it: the Rust adapter's suite reads it too.
+
+    The adapter splits a `SKILL.md` to send its prose and this check splits it to
+    measure that prose; a `null` answer is a block that never closes.
+    """
+    cases = json.loads(SHARED_CASES.read_text(encoding="utf-8"))
+    equal(bool(cases), True, describing="whether the shared cases carry any case")
+    for case in cases:
+        if case["prose"] is None:
+            with pytest.raises(UnclosedFrontmatterError):
+                skill_prose(case["text"])
+            continue
+        equal(
+            skill_prose(case["text"]).prose, case["prose"], describing=f"the case {case['case']!r}"
+        )
+
+
 def test_the_split_is_the_adapters(tmp_path: Path) -> None:
     """Frontmatter between the fences, prose after them, and the whole text when none opens."""
     split = skill_prose("---\r\nname: x\r\n---\r\n# Prose\n")
