@@ -80,8 +80,11 @@ def test_a_link_through_a_directory_symlink_is_refused(tmp_path: Path) -> None:
     """The base layout: a document in a crate's assets beside a symlink to the documents."""
     _write(tmp_path, "docs/reference/a.md", "# A\n")
     _write(tmp_path, "crates/x/assets/skill.md", "# A skill\n\n[a](reference/a.md#top)\n")
+    # Each target is a `Path` so Windows stores it with its own separator: a
+    # relative target written with `/` is one Windows never resolves, and a
+    # link that dangles is no directory for the rule to find.
     (tmp_path / "crates/x/assets/reference").symlink_to(
-        "../../../docs/reference", target_is_directory=True
+        Path("../../../docs/reference"), target_is_directory=True
     )
 
     refused_naming(
@@ -110,7 +113,7 @@ def test_links_a_document_only_quotes_are_not_followed(tmp_path: Path) -> None:
         "notes.md",
         "# Notes\n\n`[a](linked/a.md)`\n\n```json\n[a](linked/a.md)\n```\n",
     )
-    (tmp_path / "linked").symlink_to("docs/reference", target_is_directory=True)
+    (tmp_path / "linked").symlink_to(Path("docs/reference"), target_is_directory=True)
 
     accepted(link_symlinks(Repo(tmp_path)), describing="links a document only quotes")
 
@@ -121,10 +124,12 @@ def test_a_symlink_inside_the_skill_directory_is_refused(tmp_path: Path, kind: s
     repo = _finished(tmp_path)
     _write(tmp_path, "elsewhere/b.md", "# B\n")
     if kind == "file":
-        (tmp_path / "skills/printobserver/reference/b.md").symlink_to("../../../elsewhere/b.md")
+        (tmp_path / "skills/printobserver/reference/b.md").symlink_to(
+            Path("../../../elsewhere/b.md")
+        )
     else:
         (tmp_path / "skills/printobserver/more").symlink_to(
-            "../../elsewhere", target_is_directory=True
+            Path("../../elsewhere"), target_is_directory=True
         )
 
     refused_naming(
