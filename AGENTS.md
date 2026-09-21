@@ -238,17 +238,11 @@ The skill is the supervising agent's whole initial context. Keep it short and
 put reference material in the documents it links to. `[docs]` in
 `repo-policy.toml` declares that surface and its enforced bounds.
 
-It is an Agent Skill, `skills/printobserver/`, installed with `gh skill install
-nickderobertis/printobserver printobserver` — by an operator onto the host
-beside the printer, and by anybody's own agent from GitHub. The program carries
-no copy: the server requires `supervisor.skill_path` to name an installed
-`SKILL.md`, sends its prose (the text after the frontmatter) as every turn's
-system prompt, and runs the agent from the skill's own directory so its
-relative links resolve. `gh skill` installs that directory alone and drops every
-symlink, and GitHub follows no directory symlink when it resolves a link, so
-everything the skill links must be a regular file inside its directory; `just
-check-repo` refuses a symlink under it, a link that leaves it, and a link
-anywhere that resolves only through a directory symlink.
+<!-- llmlint: ignore[instruction_layer_localized] The task that made the skill an installable Agent Skill requires this root section to state these three constraints; `skills/AGENTS.md` carries the working rules for the subtree. suppressions.toml has the full reason. -->
+The skill is an Agent Skill, installed with `gh skill install
+nickderobertis/printobserver printobserver`; the program carries no copy.
+Everything it links must be a regular file inside `skills/printobserver/`, and
+the server runs the agent from the installed skill's directory.
 
 ## Supported platforms
 
@@ -352,7 +346,7 @@ what makes a job running once a decision rather than an omission.
 - `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
 - `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
-- `skill-install` — the journey installs this repository's Agent Skill with a real `gh skill install` from a copy of the tree's own files and validates them with `gh skill publish --dry-run`, so what it proves is those files, the same whichever host reads them; it needs GitHub CLI at the release `repo-policy.toml` holds, which this job alone installs, and the gate's cells never reach it.
+- `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
 [//]: # (END unmatrixed-jobs)
 
 ## The scripted OctoPrint environment
@@ -925,6 +919,7 @@ Set-Service -Name printobserver -StartupType Automatic -Status Running
 
 ### Between the two commands, install the agent's skill
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
 The supervising agent's skill is not part of the program. It is the Agent Skill
 this repository publishes at `skills/printobserver`, and the service reads it
 from `supervisor.skill_path`, which the installer's configuration points at
@@ -938,9 +933,9 @@ under a home the systemd unit hides.
 
 Its one prerequisite is GitHub CLI 2.100.0 or later, the first release with
 `gh skill`, installed as the host's administrator. No GitHub sign-in is needed:
-the repository is public, and `gh skill install` reads it unauthenticated. An
-install made before the skill left the program has a configuration with no
-`skill_path`, and refuses to start until this step is taken and that line added.
+the repository is public, and `gh skill install` reads it unauthenticated. A
+configuration naming no `skill_path` refuses to start: take this step and add
+that line.
 
 On Linux and macOS:
 

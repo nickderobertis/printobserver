@@ -354,6 +354,42 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
+site = "The skill is an Agent Skill, installed with"
+reason = "The task that made the skill an installable Agent Skill requires the root's \"The agent-facing documentation\" section to state that the skill is an Agent Skill installed with `gh skill install`, that everything it links is a regular file inside its directory, and that the server runs the agent from the skill's directory. Those three are the contract between the server, the install path and the skill, which no one subtree owns; `skills/AGENTS.md` carries the subtree's own working rules."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The skill is an Agent Skill, installed with"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path` reads this step's two commands out of the root file, requires the section to state the `gh skill install` step, and holds the README's restatement to it, and the installers' configuration names what it installs. The task requires the step, its one prerequisite and what a configuration without the field does to be stated here; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path` reads this step's two commands out of the root file, requires the section to state the `gh skill install` step, and holds the README's restatement to it, and the installers' configuration names what it installs. The task requires the step, its one prerequisite and what a configuration without the field does to be stated here; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
 site = "Keep the OctoPrint journey in the required gate"
 reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
 
@@ -596,6 +632,12 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "new_projects_keep_the_graph_uniform"
+file = "tests/skill-install/project.json"
+site = "test-skill-install"
+reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells are deliberately not given GitHub CLI, so a `test` target here would put a journey that refuses without `gh` into the gate. The repository names a tier that runs only in its own job after its recipe — `test-integration`, `test-obico` — and `tools/obico-env/project.json` is the same shape as this one: `format`, `format-check`, `lint` and `typecheck` by the standard names, and its tests under its tier's name alone. `test-skill-install` is that name, the recipe `just test-skill-install` fans it out by, and `repo-policy.toml`'s `[skill_install]` declares it."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
