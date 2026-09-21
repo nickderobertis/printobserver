@@ -33,6 +33,13 @@ VERSION = (
 #: And the credential every one of them reads the forge's own listing under.
 CREDENTIAL = "      GITHUB_TOKEN: ${{ github.token }}\n"
 
+#: The comment every job but the first carries between the two, pointing back
+#: at the first job's account of why the credential is there.
+REASON = (
+    "      # The forge's own listing, read under a token for the quota rather than\n"
+    "      # for the access — as `prove-registry-pypi` above says at length.\n"
+)
+
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """The tier this repository ships is declared, recorded and out of the gate."""
@@ -436,7 +443,7 @@ def test_a_proof_job_reading_the_forge_under_another_credential_is_refused(
     broken = tree()
     broken.edit(WORKFLOW, CREDENTIAL, "      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}\n")
 
-    refused(install_proof(broken.repo), "which is not the workflow's own token")
+    refused(install_proof(broken.repo), "and the whole of what that job may read the forge as")
 
 
 def test_a_proof_job_reading_the_forge_under_a_composed_expression_is_refused(
@@ -467,7 +474,7 @@ def test_a_proof_job_whose_environment_is_not_a_mapping_is_refused(
     was pointed at, has answered with something nobody can act on.
     """
     broken = tree()
-    broken.edit(WORKFLOW, f"    env:\n{VERSION}{CREDENTIAL}", "    env: GITHUB_TOKEN\n")
+    broken.edit(WORKFLOW, f"    env:\n{VERSION}{REASON}{CREDENTIAL}", "    env: GITHUB_TOKEN\n")
 
     refused(install_proof(broken.repo), "which is not the mapping of environment a job takes")
 
