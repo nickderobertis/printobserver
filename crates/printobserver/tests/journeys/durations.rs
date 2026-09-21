@@ -158,7 +158,7 @@ pub fn every_adjustment_is_a_bounded_intervention(world: &World) {
 
 /// How many times one intervention is measured before measurements that could
 /// not be made fail the journey.
-pub const STEADY_HOST_ATTEMPTS: usize = 3;
+pub const MEASUREMENT_ATTEMPTS: usize = 3;
 
 /// What an intervention that could not be measured on any attempt says.
 ///
@@ -169,7 +169,7 @@ pub fn could_not_be_measured(command: &str, seconds: i64, seen: &[Unmeasurable])
     let reasons: Vec<String> = seen.iter().map(ToString::to_string).collect();
     format!(
         "`{command}` at {seconds} seconds could not be measured on any one of \
-         {STEADY_HOST_ATTEMPTS} attempts: {}",
+         {MEASUREMENT_ATTEMPTS} attempts: {}",
         reasons.join(", then ")
     )
 }
@@ -178,40 +178,22 @@ pub fn could_not_be_measured(command: &str, seconds: i64, seen: &[Unmeasurable])
 /// expiry — measured only where that read can measure it.
 ///
 /// Three conditions leave the read before an expiry with nothing to say about
-/// it, and the first two are events of the host rather than faults of the
-/// supervisor. A host may step its wall clock (this WSL2 host: by 0.47–2.0 s
-/// about every 34 s under load), and a step wider than [`MARGIN`] between the
-/// request and the read moves the expiry past the read on the only clock the
-/// system has. A host may leave this thread unrun (the same host, once in some
-/// seven tiers, for two seconds with both clocks agreeing), so that the wait
-/// for the read ends after the instant it was scheduled for by more than the
-/// read has left. And a host whose processors are all spoken for may take
-/// longer over the read itself than the window the wait left it — this host,
-/// once in some sixty reads under a whole test tier running beside this one,
-/// 520 ms against a 400 ms window — because this client opens a fresh
-/// connection for every call and the supervisor composes a status by observing
-/// the machine, and nothing about either is bounded. That third one cannot be
-/// told apart from a supervisor that answers slowly, and it is not claimed to
-/// be the host's: it is discarded because an answer composed after the expiry
-/// says nothing either way, and a supervisor late on every attempt still fails.
-/// So all three conditions are checked before anything is asserted on the read
-/// before the expiry — the wall clock against elapsed time, to within a poll
-/// slice; the wait's end against its schedule, to within
-/// [`SCHEDULE_OVERSHOOT`]; and the read's answer against the expiry it is about
-/// — and that read is discarded where any failed, recorded with the condition's
-/// size and place, and taken again, at most [`STEADY_HOST_ATTEMPTS`] times. The
-/// record's expiry and the reads after it are asserted on every attempt: each
-/// of the three can only make those reads later, which is the side they are
-/// about. What is taken again is a measurement that could not be made rather
-/// than an assertion that failed — no claim about the supervisor is evaluated
-/// on a discarded read, a read that does land is held to every one of them, and
-/// a supervisor whose answer is late on all [`STEADY_HOST_ATTEMPTS`] attempts
-/// fails the journey with each condition and its size on the output. It is a
-/// guard against a stepping clock, a paused guest and an unbounded read, not a
-/// margin.
+/// it: a wall clock stepped by more than a poll slice between the request and
+/// the answer (this WSL2 host steps by 0.47–2.0 s about every 34 s under
+/// load), a wait that ended more than [`SCHEDULE_OVERSHOOT`] past its schedule
+/// (this host has left the thread unrun for two seconds), and an answer that
+/// arrived after the expiry — a read whose latency nothing bounds and nothing
+/// attributes to the host or to the supervisor. Each is checked before
+/// anything is asserted on that read, which is then discarded, named on the
+/// output, and taken again, at most [`MEASUREMENT_ATTEMPTS`] times. The
+/// record's expiry and the reads after it are asserted on every attempt,
+/// since each condition can only make those reads later, which is the side
+/// they are about. No claim is evaluated on a discarded read, a read that
+/// lands is held to every one, and a supervisor late on every attempt fails
+/// the journey naming each condition. It is a guard, not a margin.
 fn one_bounded_intervention(world: &World, one: &Driven, seconds: i64) {
     let mut seen = Vec::new();
-    for _ in 0..STEADY_HOST_ATTEMPTS {
+    for _ in 0..MEASUREMENT_ATTEMPTS {
         let (opened, measured) = opened_and_measured_before_it_expires(world, one, seconds, || {});
         the_prior_value_is_back_shortly_after_it_expires(world, std::slice::from_ref(&opened));
         match measured {
@@ -368,14 +350,8 @@ pub enum Unmeasurable {
     /// The read did not answer inside the window the wait left before the
     /// expiry.
     ///
-    /// Not a margin, and not attributed to the host: this client opens a
-    /// fresh connection for every call and the supervisor composes a status
-    /// by observing the machine, so on a host whose processors are all spoken
-    /// for the read takes a time nothing bounds, and the latency alone does
-    /// not say whose it was. An answer composed after the expiry is evidence
-    /// of nothing about the intervention having stood — not evidence that it
-    /// had stopped standing — so the measurement is taken again rather than
-    /// read either way, and one late on every attempt fails the journey.
+    /// Evidence neither that the intervention stood nor that it had stopped,
+    /// whoever's latency made it late.
     SlowRead {
         /// What the read took, in microseconds.
         micros: i64,

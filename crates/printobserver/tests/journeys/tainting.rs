@@ -275,7 +275,7 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
     // machine that hears again, so that nothing it is still due to put back
     // lands in the middle of the attempt after it.
     let mut seen = Vec::new();
-    for _ in 0..durations::STEADY_HOST_ATTEMPTS {
+    for _ in 0..durations::MEASUREMENT_ATTEMPTS {
         let (opened, measured) =
             durations::opened_and_measured_before_it_expires(world, &heater, short(), || {
                 world.machine_is_deaf(true);
