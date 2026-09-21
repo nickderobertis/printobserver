@@ -88,6 +88,20 @@ def _planted_beside(copy: GateCopy) -> Path:
     return copy.root / BESIDE
 
 
+def _unquoted(invocation: str) -> str:
+    r"""`invocation` with the quotes cargo's own rendering added taken back off.
+
+    Cargo shell-escapes every argument it prints, wrapping any carrying a
+    character outside its safe set in single quotes. A path separator is one
+    such character, so on Windows `--out-dir 'C:\...\deps'` is what the line
+    says while on Linux the same argument is printed bare — a difference in how
+    cargo rendered the argument rather than in the argument, and one that failed
+    this journey on both Windows platforms while passing on the other three.
+    The quotes come off so a path is looked for as the one thing it is.
+    """
+    return invocation.replace("'", "")
+
+
 def _unit(cwd: Path, command: list[str], crate: str) -> str:
     """The one `rustc` invocation for `crate`, read off the verbose `command` run from `cwd`.
 
@@ -101,7 +115,7 @@ def _unit(cwd: Path, command: list[str], crate: str) -> str:
     unit = f"--crate-name {crate.replace('-', '_')} "
     invocations = [line for line in output(result).splitlines() if unit in line]
     equal(len(invocations), 1, describing=f"the number of rustc invocations for {crate}")
-    return invocations[0]
+    return _unquoted(invocations[0])
 
 
 def _check(copy: GateCopy, *flags: str) -> str:
@@ -205,3 +219,40 @@ def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
         f"--out-dir {copy.root / 'target' / 'release' / 'deps'}",
         describing="the release rustc invocation",
     )
+
+
+#: One `Running` line exactly as the gate's `windows-x86_64` runner printed it,
+#: cut to the arguments the journeys above read off such a line. It is a recording
+#: of cargo's own rendering on a platform this host cannot produce one on — the
+#: same shape as the committed Obico payload: replayed here on every platform, and
+#: reconciled against the producer by the Windows cells of the gate, which is where
+#: a rendering that moves again is found.
+WINDOWS_RENDERING = (
+    "     Running `C:\\Users\\runneradmin\\.rustup\\toolchains"
+    "\\1.97.1-x86_64-pc-windows-msvc\\bin\\rustc.exe --crate-name beside --edition=2024 "
+    "'src\\lib.rs' --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no "
+    "-C debuginfo=1 -C metadata=be73b5b2e0ca3839 --out-dir "
+    "'C:\\Temp\\test_cargo_builds_into_the_clo0\\copy1\\target\\debug\\deps' "
+    "-L 'dependency=C:\\Temp\\test_cargo_builds_into_the_clo0\\copy1\\target\\debug\\deps' "
+    "-D warnings`"
+)
+#: What that line hands rustc as its `--out-dir`, written the way this journey
+#: builds the expectation: the copy's own `target\debug\deps`, and no quotes.
+WINDOWS_OUT_DIR = "--out-dir C:\\Temp\\test_cargo_builds_into_the_clo0\\copy1\\target\\debug\\deps"
+
+
+def test_an_invocation_is_read_the_same_however_cargo_rendered_its_paths() -> None:
+    """A Windows rendering of a `rustc` invocation yields the same arguments a Unix one does.
+
+    Every assertion above looks for an argument in the line cargo printed, and
+    cargo prints a path bare or single-quoted depending on the characters in it
+    — so the journeys read a rendering, not just an invocation. On this host
+    every path renders bare and that difference is invisible, which is why it
+    reached the gate's Windows cells before it was found. Here the recorded
+    Windows line goes through the same reading, and the arguments come out of it
+    spelled exactly as the journeys above spell them.
+    """
+    read = _unquoted(WINDOWS_RENDERING)
+
+    contains(read, LINE_TABLES, describing="the recorded Windows rendering")
+    contains(read, WINDOWS_OUT_DIR, describing="the recorded Windows rendering")
