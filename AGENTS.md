@@ -239,10 +239,7 @@ put reference material in the documents it links to. `[docs]` in
 `repo-policy.toml` declares that surface and its enforced bounds.
 
 <!-- llmlint: ignore[instruction_layer_localized] The task that made the skill an installable Agent Skill requires this root section to state these three constraints; `skills/AGENTS.md` carries the working rules for the subtree. suppressions.toml has the full reason. -->
-The skill is an Agent Skill, installed with `gh skill install
-nickderobertis/printobserver printobserver`; the program carries no copy.
-Everything it links must be a regular file inside `skills/printobserver/`, and
-the server runs the agent from the installed skill's directory.
+The skill is an Agent Skill, installed with `gh skill install nickderobertis/printobserver printobserver`; the program carries no copy. Everything it links must be a regular file inside `skills/printobserver/`, and the server runs the agent from the installed skill's directory.
 
 ## Supported platforms
 
@@ -920,22 +917,7 @@ Set-Service -Name printobserver -StartupType Automatic -Status Running
 ### Between the two commands, install the agent's skill
 
 <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
-The supervising agent's skill is not part of the program. It is the Agent Skill
-this repository publishes at `skills/printobserver`, and the service reads it
-from `supervisor.skill_path`, which the installer's configuration points at
-`skills/printobserver/SKILL.md` under the state directory: a server whose
-configuration names no readable skill refuses to start, naming that field and
-the command below. So after the installer and before the command that starts
-the service, install the skill there, as the host's administrator — as root on
-Linux and macOS, in the elevated PowerShell on Windows. The service can read the
-state directory, where a skill installed into a person's own agent directory is
-under a home the systemd unit hides.
-
-Its one prerequisite is GitHub CLI 2.100.0 or later, the first release with
-`gh skill`, installed as the host's administrator. No GitHub sign-in is needed:
-the repository is public, and `gh skill install` reads it unauthenticated. A
-configuration naming no `skill_path` refuses to start: take this step and add
-that line.
+The supervising agent's skill is not part of the program: the service reads the installed skill `supervisor.skill_path` names, which the installer's configuration puts at `skills/printobserver/SKILL.md` under the state directory — a home the systemd unit hides could not be read — and a configuration naming no readable skill, one written before this step existed included, refuses to start until this step is taken and that line is there. So after the installer and before the command that starts the service, install it there as the host's administrator: as root on Linux and macOS, in the elevated PowerShell on Windows. Its one prerequisite is GitHub CLI 2.100.0 or later, the first release with `gh skill`; no GitHub sign-in is needed, because the repository is public and `gh skill install` reads it unauthenticated.
 
 On Linux and macOS:
 
