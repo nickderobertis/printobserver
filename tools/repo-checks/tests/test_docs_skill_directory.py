@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.checks_docs import link_symlinks, skill, skill_directory
-from repo_checks.expect import accepted, refused_naming
+from repo_checks.expect import accepted, refused_naming, truth
 from repo_checks.model import Repo
 
 #: The skill, where `repo-policy.toml` declares it.
@@ -51,6 +51,24 @@ def _write(root: Path, relative: str, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _symlink(link: Path, target: str, *, directory: bool) -> None:
+    """Make `link` a relative symlink to `target`, which must resolve through it.
+
+    The target is handed over as a `Path` so Windows stores it with its own
+    separator: a relative target written with `/` is one Windows keeps verbatim
+    and never resolves, and a link that dangles is no directory for a rule to
+    find. A host that may not create a symlink at all — a Windows account
+    without the privilege — cannot build these trees, so that is reported as
+    the reason this test did not run rather than as a finding the rule missed.
+    """
+    try:
+        link.symlink_to(Path(target), target_is_directory=directory)
+    except OSError as refused:
+        pytest.skip(f"this host may not create a symlink, so the tree cannot be built: {refused}")
+    reached = link.is_dir() if directory else link.is_file()
+    truth(reached, describing=f"the symlink `{link.name}` resolves to `{target}` on this host")
+
+
 def _finished(root: Path) -> Repo:
     """The finished layout: one real skill directory holding its references."""
     _write(root, "repo-policy.toml", DECLARED)
@@ -80,12 +98,7 @@ def test_a_link_through_a_directory_symlink_is_refused(tmp_path: Path) -> None:
     """The base layout: a document in a crate's assets beside a symlink to the documents."""
     _write(tmp_path, "docs/reference/a.md", "# A\n")
     _write(tmp_path, "crates/x/assets/skill.md", "# A skill\n\n[a](reference/a.md#top)\n")
-    # Each target is a `Path` so Windows stores it with its own separator: a
-    # relative target written with `/` is one Windows never resolves, and a
-    # link that dangles is no directory for the rule to find.
-    (tmp_path / "crates/x/assets/reference").symlink_to(
-        Path("../../../docs/reference"), target_is_directory=True
-    )
+    _symlink(tmp_path / "crates/x/assets/reference", "../../../docs/reference", directory=True)
 
     refused_naming(
         link_symlinks(Repo(tmp_path)),
@@ -100,7 +113,7 @@ def test_a_link_to_a_file_symlink_is_not_refused(tmp_path: Path) -> None:
     """The forge serves a symlinked file as the link it is; that is not this rule."""
     _write(tmp_path, "AGENTS.md", "# Agents\n")
     _write(tmp_path, "README.md", "# Read me\n\nSee [the notes](CLAUDE.md).\n")
-    (tmp_path / "CLAUDE.md").symlink_to("AGENTS.md")
+    _symlink(tmp_path / "CLAUDE.md", "AGENTS.md", directory=False)
 
     accepted(link_symlinks(Repo(tmp_path)), describing="a link to a symlinked file")
 
@@ -113,7 +126,7 @@ def test_links_a_document_only_quotes_are_not_followed(tmp_path: Path) -> None:
         "notes.md",
         "# Notes\n\n`[a](linked/a.md)`\n\n```json\n[a](linked/a.md)\n```\n",
     )
-    (tmp_path / "linked").symlink_to(Path("docs/reference"), target_is_directory=True)
+    _symlink(tmp_path / "linked", "docs/reference", directory=True)
 
     accepted(link_symlinks(Repo(tmp_path)), describing="links a document only quotes")
 
@@ -124,13 +137,13 @@ def test_a_symlink_inside_the_skill_directory_is_refused(tmp_path: Path, kind: s
     repo = _finished(tmp_path)
     _write(tmp_path, "elsewhere/b.md", "# B\n")
     if kind == "file":
-        (tmp_path / "skills/printobserver/reference/b.md").symlink_to(
-            Path("../../../elsewhere/b.md")
+        _symlink(
+            tmp_path / "skills/printobserver/reference/b.md",
+            "../../../elsewhere/b.md",
+            directory=False,
         )
     else:
-        (tmp_path / "skills/printobserver/more").symlink_to(
-            Path("../../elsewhere"), target_is_directory=True
-        )
+        _symlink(tmp_path / "skills/printobserver/more", "../../elsewhere", directory=True)
 
     refused_naming(
         skill_directory(repo),
