@@ -480,16 +480,29 @@ def _credential_findings(
     So this is the drift gate over that one contract. The policy declares the
     name, the module reading it is held to the same literal by
     `_consumer_findings`, and here every job that proves a route is held to
-    setting it — to the workflow's OWN token, since a job that set it to
-    something else would be authenticating as somebody this repository never
-    granted.
+    setting it — to the workflow's OWN token and to nothing else beside it,
+    since an expression merely CONTAINING that token is one whose other branch
+    can be any credential at all: `${{ github.token || secrets.ANY }}` reads as
+    granted by a substring and is a secret nobody declared reaching an external
+    API. What is required is the whole expression, compared with its spacing
+    taken out, because a workflow may write one with or without it.
     """
     variable = policy.forge_token_env
-    wanted = policy.forge_token_expression
+    required = "${{" + policy.forge_token_expression + "}}"
     jobs = jobs_of(workflow)
     findings: list[str] = []
     for name in sorted(_proving_jobs(repo, policy, jobs)):
+        # A job's `env` is whatever the YAML reader answered with, and anything
+        # but a mapping is refused HERE rather than reached into: a check whose
+        # job is to answer with findings, raising on the file it was pointed
+        # at, answers with a traceback nobody can act on.
         declared = jobs[name].get("env") or {}
+        if not isinstance(declared, dict):
+            findings.append(
+                f"{relative}: job `{name}` declares its `env` as {declared!r}, which is not "
+                f"the mapping of environment a job takes"
+            )
+            continue
         if variable not in declared:
             findings.append(
                 f"{relative}: job `{name}` proves a route and declares no `{variable}`, so it "
@@ -498,10 +511,11 @@ def _credential_findings(
             )
             continue
         expression = " ".join(str(declared[variable]).split())
-        if wanted not in expression:
+        if "".join(expression.split()) != required:
             findings.append(
-                f"{relative}: job `{name}`'s `{variable}` is `{expression}`, which is not the "
-                f"workflow's own token (`{wanted}`)"
+                f"{relative}: job `{name}`'s `{variable}` is `{expression}` rather than "
+                f"`{required}`, which is the workflow's own token and the whole of what "
+                f"that job may read the forge as"
             )
     return findings
 

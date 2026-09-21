@@ -246,9 +246,13 @@ release_selector = "release"
 # `just check-repo` requires that module to declare this literal and every job
 # proving a route to set it to the expression below.
 forge_token_env = "GITHUB_TOKEN"
-# What that job must set it to. The workflow's own token, spelled as the token
-# rather than as `secrets.GITHUB_TOKEN`, because that spelling is a secret
-# reference and `gh-secrets.json` is the whole of what this repository holds.
+# What that job must set it to — the whole expression, `${{ <this> }}`, with
+# its spacing taken out. The workflow's own token, spelled as the token rather
+# than as `secrets.GITHUB_TOKEN`, because that spelling is a secret reference
+# and `gh-secrets.json` is the whole of what this repository holds. Held to the
+# whole expression rather than to what one contains, because `${{ github.token
+# || secrets.ANY }}` contains it and reads the forge as a credential nobody
+# declared.
 forge_token_expression = "github.token"
 # The constant the module below declares that word as. The constant is NAMED
 # here rather than the word searched for, because `"release"` is also the

@@ -439,6 +439,39 @@ def test_a_proof_job_reading_the_forge_under_another_credential_is_refused(
     refused(install_proof(broken.repo), "which is not the workflow's own token")
 
 
+def test_a_proof_job_reading_the_forge_under_a_composed_expression_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The whole expression is the workflow's own token, not something containing it.
+
+    An expression whose other branch is any credential at all reads as granted
+    by a substring, and what reaches the forge is then a secret nobody
+    declared — which is the thing `gh-secrets.json` exists to make impossible.
+    """
+    broken = tree()
+    broken.edit(
+        WORKFLOW,
+        CREDENTIAL,
+        "      GITHUB_TOKEN: ${{ github.token || secrets.RELEASE_PLZ_TOKEN }}\n",
+    )
+
+    refused(install_proof(broken.repo), "and the whole of what that job may read the forge as")
+
+
+def test_a_proof_job_whose_environment_is_not_a_mapping_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A finding rather than a traceback: a job's `env` is whatever the file says.
+
+    A check whose whole job is to answer with findings, raising on the file it
+    was pointed at, has answered with something nobody can act on.
+    """
+    broken = tree()
+    broken.edit(WORKFLOW, f"    env:\n{VERSION}{CREDENTIAL}", "    env: GITHUB_TOKEN\n")
+
+    refused(install_proof(broken.repo), "which is not the mapping of environment a job takes")
+
+
 def test_a_consumer_reading_another_credential_variable_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

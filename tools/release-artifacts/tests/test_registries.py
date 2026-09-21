@@ -1202,6 +1202,38 @@ def test_a_credential_that_is_only_whitespace_is_no_credential_in_force(
     )
 
 
+def test_an_unusable_publisher_credential_falls_through_to_the_workflows_own(
+    repo: Repo, registries: Registries
+) -> None:
+    """The order is a preference, not a claim that the first one is there.
+
+    A job of the install-path workflow carries the workflow's token and no
+    repository secret, and a runner may still export the publisher's name
+    empty. Read as "the publisher's is in force", that is a run sent `Bearer `
+    — which the forge refuses outright, turning a rate limit into an
+    authentication failure on every cell. So an unusable one is passed over
+    and the next is taken.
+    """
+    registries.serve("0.4.0")
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: registries.base})
+    fallen_through = {
+        FORGE_CREDENTIAL: "  ",
+        WORKFLOW_CREDENTIAL: MADE_UP[WORKFLOW_CREDENTIAL],
+    }
+
+    equal(
+        released(bases, forge_token(fallen_through)),
+        ("0.4.0",),
+        describing="what the forge lists to a run carrying only the workflow's token",
+    )
+
+    equal(
+        carried_by(registries, FORGE_PREFIX, exactly=True),
+        {f"Bearer {MADE_UP[WORKFLOW_CREDENTIAL]}"},
+        describing="the credential that read fell through to",
+    )
+
+
 #: Two release-time runs, in the order they finished. Each cut the release its
 #: own tag names, and the second one's release is another run's as far as the
 #: first is concerned — which is the whole of what binding a proof to a run is
