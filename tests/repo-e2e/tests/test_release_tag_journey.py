@@ -38,10 +38,10 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import NamedTuple, NewType, Protocol, Self
+from typing import NamedTuple, NewType, Self
 
 import pytest
-from journey import REPO_ROOT, GateCopy, capture, clean_environment, output
+from journey import REPO_ROOT, CopiesTheTree, capture, clean_environment, output
 from release_artifacts.registries import released_by
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
@@ -143,19 +143,6 @@ pytestmark = pytest.mark.skipif(
     shutil.which("release-plz") is None,
     reason="release-plz is installed by `just install-tools`; run bootstrap first",
 )
-
-
-class CopiesTheTree(Protocol):
-    """What the `gate_copy` fixture is: a factory for copies of the committed tree.
-
-    `node_modules=False` is the copy a publication is cut from, and the one
-    the release program is driven over here — it copies the whole tree aside
-    to diff it, and refuses a symbolic link out of the tree.
-    """
-
-    def __call__(self, *, node_modules: bool = True) -> GateCopy:
-        """Make one more copy, with or without the JavaScript dependencies linked in."""
-        ...
 
 
 def sparse_path(name: str) -> str:
@@ -804,18 +791,28 @@ class Released(NamedTuple):
 class Stage:
     """A copy of the tree wired to a registry and a forge, sharing one record."""
 
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Necessary: the e2e tier
+    # is one project by design, so there is no narrower edge to hang this on, and wiring the
+    # copy to the registry adds nothing to its cost. suppressions.toml has the whole reason.
     def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:
         """Stand both stand-ins up, then copy the tree carrying `tags` and wire it to them.
 
         The stand-ins come first because the copy's `.cargo/config.toml`
         names the registry's port, and that port exists only once it is bound.
+        The registry tables are appended to the committed file rather than
+        replacing it, so the copy still builds under the tree's own build
+        contract — into its own `target`, with line-table debuginfo — and the
+        wiring adds a registry to that file rather than a second one.
         The copy is pytest's to remove; the listeners are this stage's.
         """
         self.record = Record()
         self.registry = StandInRegistry(self.record, publishable_crates())
         self.forge = StandInForge(self.record)
         self.copy = tagged(gate_copy, tags)
-        self.copy.write(".cargo/config.toml", self.registry.cargo_config())
+        self.copy.write(
+            ".cargo/config.toml",
+            self.copy.read(".cargo/config.toml") + "\n" + self.registry.cargo_config(),
+        )
 
     def __enter__(self) -> Self:
         """Hand the wired stage to the block; both stand-ins are already serving."""
