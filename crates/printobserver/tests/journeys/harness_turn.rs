@@ -42,9 +42,10 @@ impl HarnessOnPath {
         Self { bin }
     }
 
-    /// The whole path the supervisor runs with: the stand-in first, then the
-    /// system directories the stand-in's own shell commands are in.
-    pub fn bin(&self) -> PathBuf {
+    /// The whole search path the supervisor runs with: the stand-in's
+    /// directory first, then the system directories the stand-in's own shell
+    /// commands are in.
+    pub fn search_path(&self) -> PathBuf {
         PathBuf::from(format!("{}:/usr/bin:/bin", self.bin.display()))
     }
 

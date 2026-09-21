@@ -79,6 +79,7 @@ def install_the_skill(configuration: Path) -> Path:
         message = f"{configuration} names no `supervisor.skill_path` to install the skill at"
         raise AssertionError(message)
     installed = Path(named).parent
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
     shutil.copytree(SKILL_DIRECTORY, installed, dirs_exist_ok=True)
     return installed
 

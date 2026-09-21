@@ -591,8 +591,11 @@ pub fn the_configured_skill_directory_carries_the_turn() {
     #[cfg(unix)]
     let harness = crate::harness_turn::HarnessOnPath::new(alone.path());
     #[cfg(unix)]
-    let world =
-        crate::world::World::configured_with(crate::world::STOOD_IN, &skill, Some(&harness.bin()));
+    let world = crate::world::World::configured_with(
+        crate::world::STOOD_IN,
+        &skill,
+        Some(&harness.search_path()),
+    );
     #[cfg(not(unix))]
     let world = crate::world::World::configured_with(crate::world::STOOD_IN, &skill, None);
 
