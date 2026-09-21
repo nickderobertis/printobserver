@@ -634,6 +634,30 @@ site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
 rule = "new_projects_keep_the_graph_uniform"
 file = "tests/skill-install/project.json"
 site = "test-skill-install"

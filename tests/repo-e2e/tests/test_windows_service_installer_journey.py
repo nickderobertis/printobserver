@@ -435,6 +435,7 @@ def test_the_configuration_it_writes_is_one_the_server_starts_under(
         .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
     )
     ran.configuration.write_text(filled, encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
     install_the_skill(ran.configuration)
 
     server = start(

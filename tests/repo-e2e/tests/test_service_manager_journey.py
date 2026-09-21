@@ -546,6 +546,7 @@ def _fill_in(configuration: Path, octoprint: str) -> None:
         .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
     )
     configuration.write_text(filled, encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
     install_the_skill(configuration)
 
 
