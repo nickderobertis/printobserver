@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 from repo_checks import platforms
@@ -220,3 +221,16 @@ class GateCopy:
             timeout=timeout,
             env=clean_environment(UV_PROJECT_ENVIRONMENT=str(self.shared_venv)),
         )
+
+
+class CopiesTheTree(Protocol):
+    """What the `gate_copy` fixture is: a factory for copies of the committed tree.
+
+    `node_modules=False` is the copy a publication is cut from — one that has
+    never run `just bootstrap` — and the one a journey that copies the whole
+    tree aside, or refuses a symbolic link out of it, is driven over.
+    """
+
+    def __call__(self, *, node_modules: bool = True) -> GateCopy:
+        """Make one more copy, with or without the JavaScript dependencies linked in."""
+        ...

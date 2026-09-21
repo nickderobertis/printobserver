@@ -19,14 +19,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+import tempfile
 import tomllib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 from release_artifacts.installing import (
+    InstallError,
     consumer_manifest,
+    consumer_program,
     executable,
     install,
     interpreter_in,
@@ -34,6 +38,7 @@ from release_artifacts.installing import (
     programs_in,
     prove,
     prove_client,
+    release_program,
     smoke_check,
     without_rust,
 )
@@ -249,7 +254,7 @@ def test_an_installed_client_is_reached_where_its_own_hosts_installer_put_it(
         describing="the `pip` a registry proof installs with",
     )
     equal(
-        environment / "target" / "release" / executable("printobserver-sdk-smoke"),
+        release_program(environment / "target", "printobserver-sdk-smoke"),
         environment / layout["smoke"],
         describing="the program the Rust client's smoke check is built as",
     )
@@ -284,6 +289,114 @@ def test_a_rust_toolchain_is_taken_off_the_path_under_the_name_its_host_gives_it
     kept = without_rust()["PATH"].split(os.pathsep)
 
     equal(kept, [str(elsewhere)], describing="the path an install is run under")
+
+
+#: A consumer that depends on nothing, so where it builds is settled with no
+#: crate resolved.
+BARE_CONSUMER = """[package]
+name = "printobserver-sdk-smoke"
+version = "0.0.0"
+edition = "2024"
+
+[workspace]
+"""
+
+
+def _consumer_at(directory: Path) -> Path:
+    (directory / "src").mkdir(parents=True, exist_ok=True)
+    (directory / "src" / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+    (directory / "Cargo.toml").write_text(BARE_CONSUMER, encoding="utf-8")
+    return directory
+
+
+def test_a_consumers_program_is_looked_for_where_cargo_says_it_builds(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """Inside this clone that is the clone's own `target`; outside it, the consumer's own.
+
+    `.cargo/config.toml` at the root sends every build under the clone into
+    `<clone>/target`, and the proofs write their consumers under `dist/` — so a
+    proof that looked beside the manifest would report the program it had just
+    built as missing. A consumer in a temporary directory is under no such
+    file and builds beside itself, which is what a proof run from one sees.
+
+    The consumer inside the clone has to be inside it, so it sits where the
+    proofs put theirs — and in a directory of its own that is gone when the
+    test is, so a run leaves nothing under `dist/`.
+    """
+    smoke = executable("printobserver-sdk-smoke")
+    dist = repo.root / "dist"
+    dist.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dist, prefix="test-clients-") as scratch:
+        inside = _consumer_at(Path(scratch) / "consumer")
+        equal(
+            consumer_program(inside, "printobserver-sdk-smoke"),
+            repo.root / "target" / "release" / smoke,
+            describing="where a consumer inside the clone is built",
+        )
+
+    outside = _consumer_at(tmp_path / "consumer")
+    equal(
+        consumer_program(outside, "printobserver-sdk-smoke").resolve(),
+        (outside / "target" / "release" / smoke).resolve(),
+        describing="where a consumer outside the clone is built",
+    )
+
+
+def test_a_consumer_cargo_cannot_read_is_a_stop_naming_it(tmp_path: Path) -> None:
+    """A consumer with no manifest gets no guessed path: the proof stops saying so."""
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+
+    with pytest.raises(InstallError, match="asking where the consumer at"):
+        consumer_program(consumer, "printobserver-sdk-smoke")
+
+
+#: What a `cargo` standing in on the path answers `metadata` with, and what a
+#: proof that trusted it would have done with each: no JSON at all, and JSON
+#: that names no target directory or names one that is not a path.
+UNANSWERED = [
+    ("plain text", "answered something other than JSON"),
+    ('{"packages": []}', "answered no `target_directory`"),
+    ('{"target_directory": 7}', "answered no `target_directory`"),
+    ('{"target_directory": ""}', "answered no `target_directory`"),
+    ("[]", "answered no `target_directory`"),
+]
+
+
+def _cargo_answering(directory: Path, answer: str) -> None:
+    """A `cargo` in `directory` that answers `answer` to everything.
+
+    A POSIX host runs it by its interpreter line. A Windows host finds a
+    program by its suffix and runs no interpreter line, so there the code sits
+    beside a `.cmd` that hands it to this interpreter.
+    """
+    code = f"import sys\nsys.stdout.write({answer!r})\n"
+    if sys.platform == "win32":
+        (directory / "cargo.py").write_text(code, encoding="utf-8")
+        (directory / "cargo.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0cargo.py" %*\r\n', encoding="utf-8"
+        )
+        return
+    written = directory / "cargo"
+    written.write_text(f"#!{sys.executable}\n{code}", encoding="utf-8")
+    written.chmod(0o755)
+
+
+@pytest.mark.parametrize(("answer", "refused"), UNANSWERED, ids=[a for a, _ in UNANSWERED])
+def test_a_cargo_that_names_no_target_directory_is_a_stop_quoting_its_answer(
+    answer: str, refused: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An answer naming no target directory gets no guessed path and no traceback."""
+    standing_in = tmp_path / "bin"
+    standing_in.mkdir()
+    _cargo_answering(standing_in, answer)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(standing_in), os.environ["PATH"]]))
+
+    with pytest.raises(InstallError, match=re.escape(refused)) as stopped:
+        consumer_program(_consumer_at(tmp_path / "consumer"), "printobserver-sdk-smoke")
+
+    contains(str(stopped.value), answer, describing="what the stop quotes")
 
 
 def test_a_consumer_manifest_names_a_windows_path_cargo_can_parse() -> None:

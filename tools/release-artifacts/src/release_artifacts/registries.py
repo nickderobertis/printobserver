@@ -94,6 +94,7 @@ from release_artifacts.installing import (
     TOOLCHAIN_REPORT,
     Installed,
     InstallError,
+    consumer_program,
     executable,
     install_script_argv,
     interpreter_in,
@@ -1436,7 +1437,7 @@ def _rust_client(
         target.id,
         environment,
         None,
-        str(consumer / "target" / "release" / executable("printobserver-sdk-smoke")),
+        str(consumer_program(consumer, "printobserver-sdk-smoke", environment_variables)),
     )
 
 

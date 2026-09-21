@@ -1219,3 +1219,20 @@ file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
 site = "def staged"
 reason = "The older release the staged directory carries is a stand-in that reports a version of its own, for the reason the shell form's journey stages the same: what the pinned-release assertions are about is which release the script chose, and two artifacts carrying the same program could not tell a reader that. The newest release carries the real program wherever this host can run it — `_program` above — and the script's own download, verification and install run unchanged over either."
 
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_cargo_build_contract_journey.py"
+site = "def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it("
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — three `cargo metadata` reads and one `cargo build` of a planted crate with no dependencies — is seconds, and the copy it runs over is what proves the target directory is the copy's own."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_cargo_build_contract_journey.py"
+site = "def test_dev_builds_carry_line_tables_and_release_builds_carry_none("
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs is bounded by design: three `cargo check` runs of the workspace's smallest crate rather than builds, because the profile shows on rustc's command line before anything is linked, and the copy they run over is what proves where the build lands."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+site = "def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:"
+reason = "The same ground the entry for this rule at `def released` in this file states: this repository's end-to-end tier is one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Wiring the copy to the stand-in registry adds nothing to that journey's cost; it composes the registry tables onto the copy's own build contract so the publishes the journey drives build under it, which is the cheaper build."
