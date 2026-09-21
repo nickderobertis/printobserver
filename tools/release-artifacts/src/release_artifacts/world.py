@@ -87,6 +87,10 @@ ACCEPTED = (200, 202)
 #: without anybody spelling its name a second time.
 ACTION_KINDS = Path(__file__).resolve().parents[4] / "schemas/printobserver-core/ActionKind.json"
 
+#: The agent's skill the supervisor is configured with: the committed one, which
+#: is what `gh skill install` puts on a host. The program carries none.
+SKILL = Path(__file__).resolve().parents[4] / "skills/printobserver/SKILL.md"
+
 #: How long the supervisor is given to answer at the address it bound.
 STARTUP_TIMEOUT_SECONDS = 60.0
 
@@ -283,7 +287,7 @@ def _configuration(state: Path, printer: Printer, credential: str | None = None)
             "api_key": printer.api_key,
             "fan": "commandable",
         },
-        "supervisor": {"harness": "claude-code"},
+        "supervisor": {"harness": "claude-code", "skill_path": str(SKILL)},
         "ingress": {"shared_secret": INGRESS_WORD, "answer_bound_ms": 1000},
         "safety": {
             "agent_min_interval_s": 0,

@@ -133,6 +133,11 @@ Plain '-Binary' $Binary
 $InstalledBinary = Join-Path (Under-Root $ProgramDirectory) $Program
 $InstalledConfig = Under-Root $ConfigPath
 $InstalledState = Under-Root $StateDirectory
+# Where the agent's skill is installed, and the SKILL.md the configuration names
+# in it: the program carries no skill of its own. Joined one component at a time
+# so every separator is the host's own.
+$InstalledSkills = Join-Path $InstalledState 'skills'
+$InstalledSkill = Join-Path (Join-Path $InstalledSkills 'printobserver') 'SKILL.md'
 
 foreach ($directory in @((Split-Path $InstalledBinary), (Split-Path $InstalledConfig), $InstalledState)) {
     try {
@@ -225,6 +230,10 @@ fan = "commandable"
 [supervisor]
 # The harness identity supervision turns run on.
 harness = "claude-code"
+# The agent's skill, which this program does not carry. Install it here, from
+# an elevated PowerShell, before starting the service:
+#   gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills
+skill_path = '$InstalledSkill'
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.
@@ -276,4 +285,4 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
 }
 
 $kept = if ($Kept.Count -gt 0) { " (" + ($Kept -join '; ') + ")" } else { '' }
-[Console]::Error.WriteLine("install-service.ps1: installed $InstalledBinary, $InstalledConfig, $InstalledState and the service $ServiceName$kept, and started nothing; edit $InstalledConfig, then run: Set-Service -Name $ServiceName -StartupType Automatic -Status Running")
+[Console]::Error.WriteLine("install-service.ps1: installed $InstalledBinary, $InstalledConfig, $InstalledState and the service $ServiceName$kept, and started nothing; install the agent's skill with gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills, edit $InstalledConfig, then run: Set-Service -Name $ServiceName -StartupType Automatic -Status Running")

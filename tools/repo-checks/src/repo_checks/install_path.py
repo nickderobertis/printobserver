@@ -45,13 +45,25 @@ VERIFICATION_HEADING = "then, check"
 VERIFICATION_PROGRAM = "printobserver"
 VERIFICATION_OPTION = "--version"
 
-# The subsection stating how the agent's harness is installed and signed in as
-# the service's own user, between the two commands. Its commands are part of the
-# section's canonical set, so every restatement of them is held to it.
+# The subsections stating what is done between the two commands: the agent's
+# skill installed, and its harness installed and signed in as the service's own
+# user. Every subsection headed so is read, in order, and their commands are
+# part of the section's canonical set, so every restatement of them is held to
+# it.
 SIGN_IN_HEADING = "between the two commands"
 
 # What the sign-in subsection has to run to sign the harness in at all.
 SIGN_IN_COMMAND = "printobserver sign-in"
+
+# What installs the agent's skill, which the program does not carry: the one
+# Agent Skill this repository publishes, taken from the public repository with
+# no GitHub sign-in.
+SKILL_INSTALL_COMMAND = "gh skill install nickderobertis/printobserver printobserver --dir "
+
+# What the section may never tell an operator to run: the skill is read from a
+# public repository, and a sign-in to GitHub is a credential on a printer host
+# that nothing there needs.
+GITHUB_SIGN_IN = "gh auth login"
 
 # The sentence the section must carry so a reader cannot mistake the routes for
 # steps. Stated literally because a check cannot judge a paraphrase.
@@ -151,7 +163,8 @@ class InstallPath:
     #: pair they are. A platform's pair is the one its service-manager column
     #: names, which is what `commands_for` answers.
     service_commands: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    #: How the agent's harness is installed and signed in as the service's user.
+    #: What is run between the two commands: the agent's skill installed, and
+    #: its harness installed and signed in as the service's user.
     sign_in: tuple[str, ...] = ()
     #: Every service manager the section states more than one pair for. Kept
     #: rather than collapsed: the second subsection would otherwise replace the
@@ -223,7 +236,7 @@ def parse(agents_md: str) -> InstallPath:
         elif title.lower().startswith(VERIFICATION_HEADING):
             verification = tuple(fenced_commands(text))
         elif title.lower().startswith(SIGN_IN_HEADING):
-            sign_in = tuple(fenced_commands(text))
+            sign_in = (*sign_in, *fenced_commands(text))
         elif not seen_route:
             intro_lines.extend(lines)
     return InstallPath(

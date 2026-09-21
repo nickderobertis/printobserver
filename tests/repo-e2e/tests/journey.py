@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Protocol
 
@@ -53,6 +54,33 @@ def pythonpath() -> str:
             return os.pathsep.join(line.partition(":=")[2].strip().strip('"').split(":"))
     message = "the justfile lists no TOOL_PACKAGES, and these tools live on it"
     raise AssertionError(message)
+
+
+#: The one Agent Skill this repository publishes, which `gh skill install`
+#: puts on a host: the skill's own directory, alone.
+SKILL_DIRECTORY = REPO_ROOT / "skills" / "printobserver"
+
+
+def install_the_skill(configuration: Path) -> Path:
+    """Put the agent's skill where one server configuration names it.
+
+    The program carries no skill: the install path installs it with `gh skill
+    install nickderobertis/printobserver printobserver --dir <state>/skills`, and
+    the installer's configuration names `<state>/skills/printobserver/SKILL.md`.
+    This lays down what that install does — the committed skill's directory
+    alone, as regular files — at the directory the configuration's own
+    `supervisor.skill_path` names, and answers that directory.
+    """
+    with configuration.open("rb") as handle:
+        document = tomllib.load(handle)
+    supervisor = document.get("supervisor")
+    named = supervisor.get("skill_path") if isinstance(supervisor, dict) else None
+    if not isinstance(named, str) or not named:
+        message = f"{configuration} names no `supervisor.skill_path` to install the skill at"
+        raise AssertionError(message)
+    installed = Path(named).parent
+    shutil.copytree(SKILL_DIRECTORY, installed, dirs_exist_ok=True)
+    return installed
 
 
 def tracked_files(root: Path) -> list[str]:

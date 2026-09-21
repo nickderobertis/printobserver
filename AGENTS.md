@@ -63,7 +63,7 @@ against the tree, is what reconciles it against a later version of that skill.
 - `shape:react` — excluded: builds on `web-app`, which does not apply.
 - `shape:nextjs` — excluded: builds on `react`, which does not apply.
 - `shape:asdf-plugin` — excluded: this repository ships no asdf plugin.
-- `shape:skills-repo` — excluded: this repository ships no agent skills.
+- `shape:skills-repo` — excluded: this repository ships one Agent Skill, at `skills/printobserver`, as the CLI's agent-facing documentation surface. It is not a skills repository, so that shape's guidance is out of scope here.
 - `language:rust` — included: the workspace, the artifact and every port and
   adapter are Rust.
 - `language:python` — included: the Python client distribution, and this
@@ -237,8 +237,18 @@ the scripted `OctoPrint`.
 The skill is the supervising agent's whole initial context. Keep it short and
 put reference material in the documents it links to. `[docs]` in
 `repo-policy.toml` declares that surface and its enforced bounds.
-References must remain reachable beside the materialized skill after install,
-on a host with no checkout.
+
+It is an Agent Skill, `skills/printobserver/`, installed with `gh skill install
+nickderobertis/printobserver printobserver` — by an operator onto the host
+beside the printer, and by anybody's own agent from GitHub. The program carries
+no copy: the server requires `supervisor.skill_path` to name an installed
+`SKILL.md`, sends its prose (the text after the frontmatter) as every turn's
+system prompt, and runs the agent from the skill's own directory so its
+relative links resolve. `gh skill` installs that directory alone and drops every
+symlink, and GitHub follows no directory symlink when it resolves a link, so
+everything the skill links must be a regular file inside its directory; `just
+check-repo` refuses a symlink under it, a link that leaves it, and a link
+anywhere that resolves only through a directory symlink.
 
 ## Supported platforms
 
@@ -722,8 +732,9 @@ integration jobs that exercise it — is derived from here, and `just check-repo
 refuses any that differs.
 
 The path is **one program obtained by any one of three alternative routes, and
-then two commands in order**, with the agent's harness installed and signed in
-as the service's own user between those two commands.
+then two commands in order**, with the agent's skill installed, and the agent's
+harness installed and signed in as the service's own user, between those two
+commands.
 
 The three routes are three ways of *obtaining* the program, so a reader takes
 one of them whatever platform they are on rather than one per platform. What is
@@ -909,6 +920,37 @@ irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/
 
 ```powershell
 Set-Service -Name printobserver -StartupType Automatic -Status Running
+```
+
+### Between the two commands, install the agent's skill
+
+The supervising agent's skill is not part of the program. It is the Agent Skill
+this repository publishes at `skills/printobserver`, and the service reads it
+from `supervisor.skill_path`, which the installer's configuration points at
+`skills/printobserver/SKILL.md` under the state directory: a server whose
+configuration names no readable skill refuses to start, naming that field and
+the command below. So after the installer and before the command that starts
+the service, install the skill there, as the host's administrator — as root on
+Linux and macOS, in the elevated PowerShell on Windows. The service can read the
+state directory, where a skill installed into a person's own agent directory is
+under a home the systemd unit hides.
+
+Its one prerequisite is GitHub CLI 2.100.0 or later, the first release with
+`gh skill`, installed as the host's administrator. No GitHub sign-in is needed:
+the repository is public, and `gh skill install` reads it unauthenticated. An
+install made before the skill left the program has a configuration with no
+`skill_path`, and refuses to start until this step is taken and that line added.
+
+On Linux and macOS:
+
+```console
+sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/printobserver/skills
+```
+
+On Windows:
+
+```powershell
+gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
 ```
 
 ### Between the two commands, sign in the agent's harness
@@ -1150,7 +1192,7 @@ that manifest spells it, and `just check-repo` enforces that too.
 The rule is an edge table, not a set of layers. `repo-policy.toml`'s
 `crates.may_depend_on` is the source (`crates.may_depend_on_in_tests` for the
 edges a crate's tests alone may add), `just check-repo` holds every manifest to
-it, and `docs/reference/architecture.md` says why — why the crates are cut by
+it, and `skills/printobserver/reference/architecture.md` says why — why the crates are cut by
 domain, and why core names no implementation crate. The step that draws an edge
 is the step that admits it in the table. Do not bring `printobserver-store-api`
 back, yank it or republish it: it is no crate of this workspace and stays on

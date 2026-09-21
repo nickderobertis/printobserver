@@ -331,6 +331,10 @@ fan = "commandable"
 [supervisor]
 # The harness identity supervision turns run on.
 harness = "claude-code"
+# The agent's skill, which this program does not carry. Install it here, as
+# root, before starting the service:
+#   gh skill install nickderobertis/printobserver printobserver --dir $RUNTIME_STATE/skills
+skill_path = "$RUNTIME_STATE/skills/printobserver/SKILL.md"
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.
@@ -451,5 +455,6 @@ chmod 0644 "$INSTALLED_DEFINITION" ||
     die "$INSTALLED_DEFINITION could not be made readable. Run this as root."
 
 echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE_DIR \
-and $INSTALLED_DEFINITION and started nothing; edit $INSTALLED_CONFIG, then run: \
-$START_COMMAND" >&2
+and $INSTALLED_DEFINITION and started nothing; install the agent's skill with \
+gh skill install nickderobertis/printobserver printobserver --dir $RUNTIME_STATE/skills, \
+edit $INSTALLED_CONFIG, then run: $START_COMMAND" >&2

@@ -80,6 +80,11 @@ fn host_answering(response: &'static [u8]) -> SocketAddr {
 fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
     let state = root.join("state");
     let path = root.join("config.toml");
+    // The committed skill, which is what `gh skill install` puts on a host.
+    let skill = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../skills/printobserver/SKILL.md")
+        .display()
+        .to_string();
     let document = toml::toml! {
         state_dir = (state.display().to_string())
         listen = "127.0.0.1:0"
@@ -89,6 +94,7 @@ fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
         fan = "commandable"
         [supervisor]
         harness = "claude-code"
+        skill_path = skill
         [ingress]
         shared_secret = "a-shared-secret"
         [api]
