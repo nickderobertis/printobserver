@@ -46,8 +46,8 @@ pub use api::{ApiState, BODY_BOUND, DRAIN_BOUND, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,
-    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, ServerConfig, SharedSecret, SignInConfig,
-    SupervisorSection, plainly_written,
+    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, SKILL_INSTALL, ServerConfig,
+    SharedSecret, SignInConfig, SupervisorSection, plainly_written,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
@@ -65,7 +65,7 @@ pub use reconcile::{
 };
 pub use server::{
     API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running,
-    SCHEMA_FILE, SKILL_FILE, Server, StartError, TURN_PROMPT, context_command,
+    SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, context_command,
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,

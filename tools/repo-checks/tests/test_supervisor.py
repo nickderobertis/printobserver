@@ -219,7 +219,7 @@ def test_a_lock_only_one_suite_takes_is_refused(tree: Callable[[], Tree]) -> Non
 
 
 POLICY = "repo-policy.toml"
-SKILL = f"{CRATE}/assets/printobserver-skill.md"
+SKILL = "skills/printobserver/SKILL.md"
 
 
 def _without_the_supervisor_section(copy: Tree) -> None:

@@ -8,7 +8,7 @@
 //! operator has to change.
 
 use printobserver_oneharness::ModelName;
-use printobserver_server::{ConfigField, Server, StartError};
+use printobserver_server::{CLIENT_CONFIG_FILE, ConfigField, Server, StartError};
 use tempfile::TempDir;
 
 use crate::probes::{base_url, refusing_host, silent_host};
@@ -288,8 +288,9 @@ async fn a_server_nobody_stopped_stops_when_its_handle_goes() {
 /// with.
 ///
 /// Editing either on a running host is a restart rather than a rebuild, which
-/// is why they are paths; a configuration that names neither runs the ones this
-/// program carries, and one that names them runs the operator's.
+/// is why they are paths. The skill has no fallback — this program carries
+/// none — and a configuration naming a template runs the operator's rather
+/// than the one this program carries.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_skill_and_a_template_the_operator_supplied_are_what_is_used() {
     let answering = silent_host().await;
@@ -321,10 +322,7 @@ async fn a_skill_and_a_template_the_operator_supplied_are_what_is_used() {
     .await
     .expect("a server runs on the skill and the template the operator supplied");
 
-    assert_eq!(
-        running.config().skill_path.as_deref(),
-        Some(skill.as_path())
-    );
+    assert_eq!(running.config().skill_path, skill);
     assert_eq!(
         running.config().prompt_template_path.as_deref(),
         Some(template.as_path())
@@ -333,17 +331,85 @@ async fn a_skill_and_a_template_the_operator_supplied_are_what_is_used() {
         running.config().model.as_ref().map(ModelName::as_str),
         Some("claude-opus-5")
     );
-    // The one this program carries is written into the state directory only
-    // when the operator supplied none.
+    // The template this program carries is written into the state directory
+    // only when the operator supplied none.
     assert!(
         !running
             .config()
             .assets_dir()
-            .join(printobserver_server::SKILL_FILE)
+            .join(printobserver_server::PROMPT_FILE)
             .exists(),
-        "a skill the operator supplied was replaced by the one this program carries"
+        "a template the operator supplied was replaced by the one this program carries"
     );
     running.stop().await;
+}
+
+/// The command every refusal of the skill names, which is how an operator gets
+/// one: this program carries none.
+const INSTALL: &str = "gh skill install nickderobertis/printobserver printobserver";
+
+/// A configuration naming no skill is refused, naming the field and how to
+/// install the skill it should name.
+///
+/// Every install made before the skill stopped shipping inside this program
+/// carries such a configuration, so the refusal is the whole of the upgrade
+/// instruction its operator is given.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_configuration_naming_no_skill_is_refused_saying_how_to_install_one() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+
+    let started = started_with(root.path(), &base_url(&answering), |document| {
+        crate::world::remove(document, "supervisor.skill_path");
+    })
+    .await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up with no skill for its agent");
+    };
+    assert_eq!(refusal.field(), Some(ConfigField::SkillPath));
+    let said = refusal.to_string();
+    assert!(
+        said.contains("supervisor.skill_path") && said.contains(INSTALL),
+        "the refusal does not name the field and how to install the skill: {said}"
+    );
+    assert!(
+        !root.path().join("state").join(CLIENT_CONFIG_FILE).exists(),
+        "a server refused for its skill still wrote a client configuration"
+    );
+}
+
+/// A skill path naming nothing readable is refused the same way.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unreadable_skill_is_refused_saying_how_to_install_one() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let absent = root
+        .path()
+        .join("skills")
+        .join("printobserver")
+        .join("SKILL.md");
+
+    let started = started_with(root.path(), &base_url(&answering), |document| {
+        set(
+            document,
+            "supervisor.skill_path",
+            toml::Value::String(absent.display().to_string()),
+        );
+    })
+    .await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up on a skill that is not there");
+    };
+    assert_eq!(refusal.field(), Some(ConfigField::SkillPath));
+    let said = refusal.to_string();
+    assert!(
+        said.contains("supervisor.skill_path")
+            && said.contains("cannot be read")
+            && said.contains(INSTALL),
+        "the refusal does not name the field, the file and how to install the skill: {said}"
+    );
 }
 
 /// A template that is not a template refuses the start, in the harness's words.

@@ -7,6 +7,10 @@ carries. Everything here narrows that section once, so a malformed declaration
 is one finding naming the key rather than an attribute error out of whichever
 check happened to read it first.
 
+The skill is an Agent Skill, so it opens with a YAML frontmatter block and what
+a turn sends is the prose after it; `skill_prose` is the one split of the two,
+and it is the Rust adapter's `skill_prose` read the same way.
+
 The generator for the schema document lives here too, because the document and
 the check over it must be one reading: a document generated one way and checked
 another is a document that can pass a comparison with itself while missing a
@@ -35,9 +39,6 @@ POLICY_NAMES = (
     "schema_document",
     "schema_directory",
     "example_fence",
-    "bundle_source",
-    "bundle_assets",
-    "bundle_directory",
 )
 
 #: The declarations of `[docs]` read as whole numbers.
@@ -68,7 +69,7 @@ class Document:
 class DocsPolicy:
     """The `[docs]` section of `repo-policy.toml`, narrowed once."""
 
-    #: The skill OneHarness sends as every turn's system prompt.
+    #: The skill whose prose OneHarness sends as every turn's system prompt.
     skill: str
     #: The most characters that skill may be.
     skill_max_characters: int
@@ -82,12 +83,6 @@ class DocsPolicy:
     schema_directory: str
     #: The fence a runnable example is written in.
     example_fence: str
-    #: The source that carries the reference documents into the artifact.
-    bundle_source: str
-    #: The directory that source reads them out of.
-    bundle_assets: str
-    #: The directory the skill links to them under, beside itself.
-    bundle_directory: str
     #: The nine things the skill owes.
     elements: tuple[SkillElement, ...]
     #: Every reference document, in the order they are declared.
@@ -181,9 +176,6 @@ def docs_policy(repo: Repo) -> DocsPolicy:
         schema_document=named["schema_document"],
         schema_directory=named["schema_directory"],
         example_fence=named["example_fence"],
-        bundle_source=named["bundle_source"],
-        bundle_assets=named["bundle_assets"],
-        bundle_directory=named["bundle_directory"],
         elements=tuple(elements),
         documents=tuple(documents),
     )
@@ -332,3 +324,57 @@ LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 def links_of(text: str) -> list[str]:
     """Every markdown link target one document carries."""
     return LINK.findall(text)
+
+
+class UnclosedFrontmatterError(ValueError):
+    """A skill that opens a `---` frontmatter block and never closes it."""
+
+
+@dataclass(frozen=True, slots=True)
+class SkillText:
+    """A skill split into its frontmatter and the prose a turn sends."""
+
+    #: The text between the two `---` lines, or `None` when no block opens.
+    frontmatter: str | None
+    #: Every character after the closing `---` line, or the whole text.
+    prose: str
+    #: How many lines of the file come before the prose, so a line number
+    #: counted in the prose is that number plus this one in the file.
+    offset: int
+
+
+def _is_fence(line: str) -> bool:
+    """Whether one line, with its terminator, is exactly `---`."""
+    bare = line.removesuffix("\n").removesuffix("\r") if line.endswith("\n") else line
+    return bare == "---"
+
+
+def skill_prose(text: str) -> SkillText:
+    r"""Split a `SKILL.md` into its frontmatter and its prose.
+
+    Exactly the adapter's own split: when the first line — its `\n` or
+    `\r\n` terminator stripped — is not exactly `---` there is no
+    frontmatter and the prose is the whole text; otherwise the prose is every
+    character after the next line that is exactly `---`.
+
+    Raises:
+        UnclosedFrontmatterError: If the first line opens a block no later
+            line closes.
+    """
+    pieces = text.split("\n")
+    lines = [piece + "\n" for piece in pieces[:-1]]
+    if pieces[-1]:
+        lines.append(pieces[-1])
+    if not lines or not _is_fence(lines[0]):
+        return SkillText(frontmatter=None, prose=text, offset=0)
+    consumed = len(lines[0])
+    for index, line in enumerate(lines[1:], start=1):
+        if _is_fence(line):
+            return SkillText(
+                frontmatter="".join(lines[1:index]),
+                prose=text[consumed + len(line) :],
+                offset=index + 1,
+            )
+        consumed += len(line)
+    msg = "the frontmatter block the first line opens is never closed by a `---` line"
+    raise UnclosedFrontmatterError(msg)

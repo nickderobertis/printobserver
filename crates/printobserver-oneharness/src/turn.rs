@@ -20,6 +20,7 @@ use printobserver_types::{PrintId, Timestamp};
 use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{PrintLedger, RecordedTurn, SessionName};
 use crate::prompt::{NO_IMAGE, PromptTemplate};
+use crate::skill::skill_prose;
 
 /// The directory under the state directory `OneHarness` keeps its own session
 /// store in. Naming it here is what makes a restart continue a conversation:
@@ -34,7 +35,8 @@ pub struct OneharnessSupervisor {
     config: SupervisorConfig,
     /// Where a caller watches what a turn does.
     seam: TurnSeam,
-    /// The `PrintObserver` skill, read from the tree when this port was built.
+    /// The `PrintObserver` skill's prose, read from the configured path when
+    /// this port was built and with its frontmatter split off.
     skill: String,
     /// The committed prompt template, read from the tree when this port was
     /// built.
@@ -46,8 +48,9 @@ impl OneharnessSupervisor {
     ///
     /// # Errors
     ///
-    /// Returns [`SupervisorError::Unavailable`] when either file cannot be read
-    /// or the template does not declare the three slots a turn fills.
+    /// Returns [`SupervisorError::Unavailable`] when either file cannot be read,
+    /// when the skill opens a frontmatter block it never closes, or when the
+    /// template does not declare the three slots a turn fills.
     pub fn open(config: SupervisorConfig) -> Result<Self, SupervisorError> {
         Self::observed(config, TurnSeam::default())
     }
@@ -58,7 +61,11 @@ impl OneharnessSupervisor {
     ///
     /// The same as [`OneharnessSupervisor::open`].
     pub fn observed(config: SupervisorConfig, seam: TurnSeam) -> Result<Self, SupervisorError> {
-        let skill = read(&config.skill_path)?;
+        let skill = skill_prose(&read(&config.skill_path)?)
+            .map_err(|error| SupervisorError::Unavailable {
+                detail: format!("{}: {error}", config.skill_path.display()),
+            })?
+            .to_owned();
         let template =
             PromptTemplate::parse(&read(&config.prompt_template_path)?).map_err(|error| {
                 SupervisorError::Unavailable {

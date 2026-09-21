@@ -63,7 +63,7 @@ against the tree, is what reconciles it against a later version of that skill.
 - `shape:react` — excluded: builds on `web-app`, which does not apply.
 - `shape:nextjs` — excluded: builds on `react`, which does not apply.
 - `shape:asdf-plugin` — excluded: this repository ships no asdf plugin.
-- `shape:skills-repo` — excluded: this repository ships no agent skills.
+- `shape:skills-repo` — excluded: this repository ships one Agent Skill, at `skills/printobserver`, as the CLI's agent-facing documentation surface. It is not a skills repository, so that shape's guidance is out of scope here.
 - `language:rust` — included: the workspace, the artifact and every port and
   adapter are Rust.
 - `language:python` — included: the Python client distribution, and this
@@ -237,8 +237,9 @@ the scripted `OctoPrint`.
 The skill is the supervising agent's whole initial context. Keep it short and
 put reference material in the documents it links to. `[docs]` in
 `repo-policy.toml` declares that surface and its enforced bounds.
-References must remain reachable beside the materialized skill after install,
-on a host with no checkout.
+
+<!-- llmlint: ignore[instruction_layer_localized] The task that made the skill an installable Agent Skill requires this root section to state these three constraints; `skills/AGENTS.md` carries the working rules for the subtree. suppressions.toml has the full reason. -->
+The skill is an Agent Skill, installed with `gh skill install nickderobertis/printobserver printobserver`; the program carries no copy. Everything it links must be a regular file inside `skills/printobserver/`, and the server runs the agent from the installed skill's directory.
 
 ## Supported platforms
 
@@ -332,7 +333,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The three jobs that carry no platform matrix
+### The four jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -342,6 +343,7 @@ what makes a job running once a decision rather than an omission.
 - `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
 - `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
+- `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
 [//]: # (END unmatrixed-jobs)
 
 ## The scripted OctoPrint environment
@@ -722,8 +724,9 @@ integration jobs that exercise it — is derived from here, and `just check-repo
 refuses any that differs.
 
 The path is **one program obtained by any one of three alternative routes, and
-then two commands in order**, with the agent's harness installed and signed in
-as the service's own user between those two commands.
+then two commands in order**, with the agent's skill installed, and the agent's
+harness installed and signed in as the service's own user, between those two
+commands.
 
 The three routes are three ways of *obtaining* the program, so a reader takes
 one of them whatever platform they are on rather than one per platform. What is
@@ -909,6 +912,23 @@ irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/
 
 ```powershell
 Set-Service -Name printobserver -StartupType Automatic -Status Running
+```
+
+### Between the two commands, install the agent's skill
+
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
+The supervising agent's skill is not part of the program: the service reads the installed skill `supervisor.skill_path` names, which the installer's configuration puts at `skills/printobserver/SKILL.md` under the state directory — a home the systemd unit hides could not be read — and a configuration naming no readable skill, one written before this step existed included, refuses to start until this step is taken and that line is there. So after the installer and before the command that starts the service, install it there as the host's administrator: as root on Linux and macOS, in the elevated PowerShell on Windows. Its one prerequisite is GitHub CLI 2.100.0 or later, the first release with `gh skill`; no GitHub sign-in is needed, because the repository is public and `gh skill install` reads it unauthenticated.
+
+On Linux and macOS:
+
+```console
+sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/printobserver/skills
+```
+
+On Windows:
+
+```powershell
+gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
 ```
 
 ### Between the two commands, sign in the agent's harness
@@ -1149,9 +1169,8 @@ that manifest spells it, and `just check-repo` enforces that too.
 
 The rule is an edge table, not a set of layers. `repo-policy.toml`'s
 `crates.may_depend_on` is the source (`crates.may_depend_on_in_tests` for the
-edges a crate's tests alone may add), `just check-repo` holds every manifest to
-it, and `docs/reference/architecture.md` says why — why the crates are cut by
-domain, and why core names no implementation crate. The step that draws an edge
+edges a crate's tests alone may add), and `just check-repo` holds every manifest
+to it. The step that draws an edge
 is the step that admits it in the table. Do not bring `printobserver-store-api`
 back, yank it or republish it: it is no crate of this workspace and stays on
 crates.io at `0.2.0`.

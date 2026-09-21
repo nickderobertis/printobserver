@@ -1000,6 +1000,35 @@ fn the_installed_definition_passes_the_service_managers_own_verifier() {
     );
 }
 
+/// The committed skill's directory, which is what `gh skill install` puts on a
+/// host.
+fn committed_skill() -> PathBuf {
+    repo_root().join("skills").join("printobserver")
+}
+
+/// Install the agent's skill where the installed configuration names it, as
+/// `gh skill install --dir <state directory>/skills` would: the skill's
+/// directory, alone, as regular files.
+fn install_the_skill(state: &Path) -> PathBuf {
+    let installed = state.join("skills").join("printobserver");
+    copy_tree(&committed_skill(), &installed);
+    installed
+}
+
+/// Copy one directory tree into another, as regular files.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("the skill's directory is writable");
+    for entry in std::fs::read_dir(from).expect("the skill directory is readable") {
+        let path = entry.expect("a readable directory entry").path();
+        let target = to.join(path.file_name().expect("a file name"));
+        if path.is_dir() {
+            copy_tree(&path, &target);
+        } else {
+            std::fs::copy(&path, &target).expect("a skill file is copyable");
+        }
+    }
+}
+
 /// Fill in the installed configuration template exactly as an operator would.
 ///
 /// The two values the template leaves blank, an `OctoPrint` address that
@@ -1107,6 +1136,7 @@ fn started_by_the_unit() -> Started {
             .expect("the start command names the configuration it runs under"),
     );
     fill_in(&configuration);
+    install_the_skill(&installed.state());
 
     // A print in the state directory the installer created, so the context read
     // below has something to read. This is what an alert would have opened.
@@ -1734,6 +1764,7 @@ fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
     let start = definition.start;
     let configuration = PathBuf::from(start.last().expect("a configuration"));
     fill_in(&configuration);
+    let skill = install_the_skill(&installed.state());
     let entry = configured_harness(&configuration);
     let bin = under.path().join("harness-bin");
     let invocations = under.path().join("invocations");
@@ -1800,6 +1831,11 @@ fn a_started_server_hands_every_turn_the_directory_the_sign_in_wrote() {
         PathBuf::from(recorded(&turn, "directory")),
         directory,
         "the turn was pointed somewhere other than the directory the sign-in wrote"
+    );
+    assert_eq!(
+        PathBuf::from(recorded(&turn, "cwd")),
+        skill.canonicalize().expect("the installed skill resolves"),
+        "the turn's harness did not run in the installed skill's own directory"
     );
     assert_eq!(recorded(&turn, "state"), SIGN_IN_STATE);
     assert_eq!(
@@ -1882,6 +1918,12 @@ UNIT_HOME=$(directive Environment | sed -n 's/^HOME=//p')
 PASSWD_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
 echo "passwd=$(getent passwd "$SERVICE_USER")"
 echo "harness=$(sed -n 's/^harness = "\(.*\)"$/\1/p' "$CONFIG")"
+
+# The agent's skill, as root, where `gh skill install --dir "$STATE/skills"`
+# puts it and where the installed configuration's `skill_path` names it.
+mkdir -p "$STATE/skills" && cp -R "$JOURNEY_SKILL" "$STATE/skills/" ||
+    refuse "the agent's skill could not be installed"
+echo "skill=$STATE/skills/printobserver"
 
 # The harness program, installed where the service user's path finds it.
 mkdir -p "$ROOT/usr/local/bin"
@@ -2124,6 +2166,7 @@ fn run_the_service_journey() -> Vec<(String, String)> {
                 env!("CARGO_BIN_EXE_printobserver")
             ))
             .arg(format!("JOURNEY_STAND_INS={}", stand_ins.display()))
+            .arg(format!("JOURNEY_SKILL={}", committed_skill().display()))
             .arg(format!("JOURNEY_OCTOPRINT={}", silent_host()))
             .arg(format!("JOURNEY_TYPED={TYPED_IN_THE_JOURNEY}"))
             .arg(format!("JOURNEY_OPERATOR_HOME={operator_home}"))
@@ -2298,6 +2341,11 @@ fn assert_the_sign_in_and_the_turn(report: &[(String, String)], state: &str, ser
     // The supervision turn the unit's own start command ran.
     assert_eq!(reported_once(report, "turn_user"), service_user);
     assert_eq!(reported_once(report, "turn_directory"), harness_dir);
+    assert_eq!(
+        reported_once(report, "turn_cwd"),
+        reported_once(report, "skill"),
+        "the turn's harness did not run in the installed skill's own directory"
+    );
     assert_eq!(reported_once(report, "turn_state"), SIGN_IN_STATE);
     assert!(inside(reported_once(report, "turn_home"), state));
     // The state file the sign-in left and the file the turn wrote beside it are

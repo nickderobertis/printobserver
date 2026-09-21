@@ -169,9 +169,12 @@ pub fn template_path() -> PathBuf {
     crate_dir().join("assets").join("turn-prompt.md")
 }
 
-/// The committed `PrintObserver` skill.
+/// The committed `PrintObserver` skill: the Agent Skill's own `SKILL.md`.
 pub fn skill_path() -> PathBuf {
-    crate_dir().join("assets").join("printobserver-skill.md")
+    repo_root()
+        .join("skills")
+        .join("printobserver")
+        .join("SKILL.md")
 }
 
 /// The test-only responder this repository ships for `OneHarness` to resolve

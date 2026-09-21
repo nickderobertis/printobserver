@@ -10,7 +10,8 @@
 //! under:
 //!
 //! 1. the committed installer runs as root, and nothing is running afterwards;
-//! 2. the configuration is filled in as an operator would;
+//! 2. the configuration is filled in as an operator would, and the agent's
+//!    skill is installed where it names one, as `gh skill install` puts it;
 //! 3. the definition is activated by the operator's own documented command, read
 //!    out of `AGENTS.md`'s pair for this manager;
 //! 4. the program comes up, as the service's user, and answers the API — with
@@ -55,6 +56,9 @@ const INSTALLER: &str = "scripts/install-service.sh";
 const BINARY: &str = "/usr/local/lib/printobserver/printobserver";
 const CONFIGURATION: &str = "/etc/printobserver/config.toml";
 const STATE: &str = "/var/lib/printobserver";
+
+/// Where the committed skill's directory is mounted in the journey's container.
+const CONTAINED_SKILL: &str = "/journey/skill/printobserver";
 
 /// The user the installer creates when it runs as root.
 const SERVICE_USER: &str = "printobserver";
@@ -154,6 +158,10 @@ impl Environment {
             .arg(format!(
                 "--volume={}:/journey/printobserver:ro",
                 env!("CARGO_BIN_EXE_printobserver")
+            ))
+            .arg(format!(
+                "--volume={}:{CONTAINED_SKILL}:ro",
+                committed_skill().display()
             ))
             .args([&image, "/usr/lib/systemd/systemd"])
             .output()
@@ -621,10 +629,11 @@ fn diagnosis(environment: &Environment, manager: Manager) -> String {
 /// The service, installed, activated, killed and brought back by its manager.
 fn journey(manager: Manager) {
     let environment = Environment::start(manager);
-    let (installer, binary) = match &environment {
+    let (installer, binary, skill) = match &environment {
         Environment::Container { .. } => (
             PathBuf::from("/journey/install-service.sh"),
             PathBuf::from("/journey/printobserver"),
+            PathBuf::from(CONTAINED_SKILL),
         ),
         Environment::Host { .. } => (
             repo_root()
@@ -632,10 +641,12 @@ fn journey(manager: Manager) {
                 .canonicalize()
                 .expect("the installer resolves"),
             PathBuf::from(env!("CARGO_BIN_EXE_printobserver")),
+            committed_skill(),
         ),
     };
 
     install_and_fill_in(&environment, manager, &installer, &binary);
+    install_the_skill(&environment, &skill);
     let first = activate(&environment, manager);
     let second = kill_and_see_it_back(&environment, manager, first);
     assert_ne!(first, second);
@@ -685,6 +696,33 @@ fn install_and_fill_in(
             Some(filled.as_bytes()),
         ),
         "writing the filled-in configuration",
+    );
+}
+
+/// The committed skill's directory, which is what `gh skill install` puts on a
+/// host.
+fn committed_skill() -> PathBuf {
+    repo_root()
+        .join("skills")
+        .join("printobserver")
+        .canonicalize()
+        .expect("the committed skill resolves")
+}
+
+/// Step 2's second half: the agent's skill, as root, where `gh skill install
+/// --dir <state directory>/skills` puts it and where the installed
+/// configuration's `skill_path` names it — the skill's directory, alone, as
+/// regular files. The server refuses to start without it, so this is the
+/// install path's step between the installer and the start command.
+fn install_the_skill(environment: &Environment, skill: &Path) {
+    let skills = format!("{STATE}/skills");
+    succeeded(
+        &environment.root(&["mkdir", "-p", &skills], None),
+        "making the skills directory",
+    );
+    succeeded(
+        &environment.root(&["cp", "-R", &skill.display().to_string(), &skills], None),
+        "installing the agent's skill",
     );
 }
 

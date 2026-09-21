@@ -16,7 +16,7 @@ from repo_checks.expect import accepted, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
 
-TESTING = "docs/reference/testing.md"
+TESTING = "skills/printobserver/reference/testing.md"
 
 
 def test_every_committed_document_agrees_with_the_list(committed: Repo) -> None:
@@ -123,11 +123,13 @@ def test_a_document_nothing_can_read_is_reported_rather_than_raised(
 ) -> None:
     """A check that died on one document would say nothing about the rest of them."""
     broken = tree()
-    (broken.root / "docs" / "reference" / "not-utf8.md").write_bytes(b"# \xff\xfe not text\n")
+    (broken.root / "skills" / "printobserver" / "reference" / "not-utf8.md").write_bytes(
+        b"# \xff\xfe not text\n"
+    )
 
     findings = platform_names(broken.repo)
 
-    refused_naming(findings, "docs/reference/not-utf8.md", "nothing here can read")
+    refused_naming(findings, "skills/printobserver/reference/not-utf8.md", "nothing here can read")
 
 
 def test_a_document_naming_a_platform_of_a_family_nothing_here_supports_is_refused(

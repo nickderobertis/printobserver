@@ -43,5 +43,8 @@ mod refusing;
 mod responding;
 #[path = "journeys/restarting.rs"]
 mod restarting;
+#[cfg(feature = "test-responder")]
+#[path = "journeys/skilled.rs"]
+mod skilled;
 #[path = "journeys/surface.rs"]
 mod surface;

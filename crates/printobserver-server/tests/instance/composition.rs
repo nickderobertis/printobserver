@@ -244,6 +244,7 @@ fan = "commandable"
 
 [supervisor]
 harness = "claude-code"
+skill_path = {skill}
 
 [ingress]
 shared_secret = "{SECRET}"
@@ -276,6 +277,12 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
         // A TOML string rather than the path spliced between quotes: a Windows
         // path's separators are escapes inside a basic string.
         state = toml::Value::String(root.join("state").display().to_string()),
+        skill = toml::Value::String(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../skills/printobserver/SKILL.md")
+                .display()
+                .to_string()
+        ),
         url = octoprint,
         key = instance.api_key,
         credential = CONFIGURED_CREDENTIAL
@@ -368,11 +375,6 @@ fn materialize(directory: &std::path::Path, name: &str, contents: &str) -> PathB
 /// The real supervising agent, with only the provider process replaced.
 fn agent(config: &ServerConfig) -> OneharnessSupervisor {
     let assets = config.assets_dir();
-    let skill = materialize(
-        &assets,
-        "printobserver-skill.md",
-        printobserver_oneharness::DEFAULT_SKILL,
-    );
     let template = materialize(
         &assets,
         "turn-prompt.md",
@@ -408,7 +410,7 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
     .to_string();
     OneharnessSupervisor::open(SupervisorConfig {
         state_dir: config.state_dir.clone(),
-        skill_path: skill,
+        skill_path: config.skill_path.clone(),
         prompt_template_path: template,
         assessment_schema: AssessmentSchema::at(&schema).expect("the schema constrains an answer"),
         harness: HarnessIdentity::new("claude-code").expect("a harness identity"),

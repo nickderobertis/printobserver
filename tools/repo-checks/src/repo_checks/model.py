@@ -179,6 +179,9 @@ class Tool:
     command: str
     install: str
     version: str | None
+    #: Whether `just install-tools` installs it on every host. A tool only one
+    #: job needs is `False`, and is installed where it is named.
+    bootstrap: bool = True
 
     @property
     def install_argv(self) -> list[str]:
@@ -197,8 +200,9 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
 
     Raises:
         PolicyValueError: If an entry is not a table or lacks a `command` or
-            `install` string, holds a `version` that is not a release, or holds
-            one its `install` never substitutes.
+            `install` string, holds a `version` that is not a release, holds
+            one its `install` never substitutes, or a `bootstrap` that is not a
+            boolean.
     """
     entries = policy_table(repo, "toolchain").get("tool")
     if not isinstance(entries, list):
@@ -223,5 +227,12 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
                 f"never substitutes `{{version}}`, so it installs a release other than {version}"
             )
             raise PolicyValueError(msg)
-        tools.append(Tool(named["command"], named["install"], version))
+        bootstrap = entry.get("bootstrap", True)
+        if not isinstance(bootstrap, bool):
+            msg = (
+                f"`repo-policy.toml`'s `bootstrap` for `{named['command']}` is {bootstrap!r}, "
+                f"which is not `true` or `false`"
+            )
+            raise PolicyValueError(msg)
+        tools.append(Tool(named["command"], named["install"], version, bootstrap))
     return tuple(tools)

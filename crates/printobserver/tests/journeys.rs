@@ -25,6 +25,12 @@
 //! lets it run in every gate. `tests/integration.rs` runs the same walk over
 //! the `OctoPrint` `just octoprint-up` provisioned.
 
+#[cfg(unix)]
+#[path = "support/harness.rs"]
+mod harness;
+#[cfg(unix)]
+#[path = "journeys/harness_turn.rs"]
+mod harness_turn;
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]
@@ -66,8 +72,6 @@ mod running;
 mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
-
-use printobserver_server as server_assets;
 
 use world::World;
 
@@ -122,17 +126,17 @@ fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone(
     documented::walk(&world);
 }
 
-/// The documented operator workflow from the running server's assets, and nothing
-/// else.
+/// The documented operator workflow from a skill directory of its own, and
+/// nothing else.
 ///
-/// The skill an installed program writes links out for everything it does not
-/// say itself, and the agent that reads it stands in a state directory rather
-/// than in a checkout. This copies what the server wrote into a directory
-/// carrying nothing else, opens every link the skill carries there, and carries
-/// the whole turn out of that copy.
+/// This program carries no skill: an installed host has the directory `gh skill
+/// install` put down, and a configuration naming its `SKILL.md`. This copies
+/// the committed skill directory alone into a directory carrying nothing else,
+/// starts the real server configured with it, opens every link the skill
+/// carries from there, carries the whole turn out of that copy, and — where a
+/// harness can be stood in on the server's path — establishes that a
+/// supervision turn's harness ran in that directory.
 #[test]
-fn the_installed_assets_carry_the_documented_operator_workflow() {
-    let world = World::open(world::STOOD_IN);
-
-    documenting::the_installed_assets_carry_the_turn(&world);
+fn the_configured_skill_directory_carries_the_documented_operator_workflow() {
+    documenting::the_configured_skill_directory_carries_the_turn();
 }

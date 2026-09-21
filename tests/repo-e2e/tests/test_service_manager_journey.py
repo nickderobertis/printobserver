@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Protocol
 
 import pytest
-from journey import HERE, REPO_ROOT, clean_environment, run
+from journey import HERE, REPO_ROOT, clean_environment, install_the_skill, run
 from repo_checks import install_path as ip
 from repo_checks.checks_service import ACTIVATION_NAMES, installer_for
 from repo_checks.expect import contains, equal, passing, truth
@@ -537,7 +537,7 @@ def manager() -> Manager:
 
 
 def _fill_in(configuration: Path, octoprint: str) -> None:
-    """Fill the template in exactly as an operator would, and take a free port."""
+    """Fill the template in as an operator would, take a free port, and install the skill."""
     filled = (
         configuration.read_text(encoding="utf-8")
         .replace('api_key = ""', 'api_key = "a-provisioned-key"')
@@ -546,6 +546,8 @@ def _fill_in(configuration: Path, octoprint: str) -> None:
         .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
     )
     configuration.write_text(filled, encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
+    install_the_skill(configuration)
 
 
 def _where_it_serves(state: Path) -> Served | None:

@@ -1,0 +1,57 @@
+[
+  {
+    "case": "no frontmatter",
+    "text": "# Title\nbody\n",
+    "prose": "# Title\nbody\n"
+  },
+  {
+    "case": "empty file",
+    "text": "",
+    "prose": ""
+  },
+  {
+    "case": "frontmatter as committed",
+    "text": "---\nname: a\ndescription: b\nlicense: MIT\n---\n# Title\n",
+    "prose": "# Title\n"
+  },
+  {
+    "case": "frontmatter as a local install rewrites it",
+    "text": "---\ndescription: b\nlicense: MIT\nmetadata:\n    local-path: /tmp/x\nname: a\n---\n# Title\n",
+    "prose": "# Title\n"
+  },
+  {
+    "case": "frontmatter as a remote install rewrites it",
+    "text": "---\ndescription: b\nlicense: MIT\nmetadata:\n    github-path: skills/a\n    github-ref: main\n    github-repo: o/r\n    github-tree-sha: 0123\nname: a\n---\n# Title\n",
+    "prose": "# Title\n"
+  },
+  {
+    "case": "line endings a Windows editor writes",
+    "text": "---\r\nname: a\r\n---\r\n# Title\r\n",
+    "prose": "# Title\r\n"
+  },
+  {
+    "case": "a first line that only starts with the fence",
+    "text": "----\n# Title\n",
+    "prose": "----\n# Title\n"
+  },
+  {
+    "case": "a line that only starts with the fence does not close",
+    "text": "---\nname: a\n--- not a fence\n---\nbody",
+    "prose": "body"
+  },
+  {
+    "case": "a fence with nothing after it",
+    "text": "---\nname: a\n---",
+    "prose": ""
+  },
+  {
+    "case": "never closed",
+    "text": "---\nname: a\n",
+    "prose": null
+  },
+  {
+    "case": "a lone fence",
+    "text": "---",
+    "prose": null
+  }
+]

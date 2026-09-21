@@ -369,6 +369,18 @@ restarts_after_crash = "actions= restart"
 program_source = "crates/printobserver/src/windows_service.rs"
 program_constant = "SERVICE_NAME"
 
+[skill_install]
+# The real `gh skill install` of this repository's Agent Skill, from a copy of
+# the tree and with no GitHub credentials. Like the tiers above it declares a
+# `tier` recipe, which is what the documentation check inventories every tier
+# outside the gate by. It is deliberately NOT one of `gate.tiers`: it needs
+# GitHub CLI at the release `[[toolchain.tool]]` holds `gh` at, which is not
+# bootstrapped on the gate's runners, so it is the `skill-install` job of
+# `.github/workflows/ci.yml` alone, on every change. The layout it proves is
+# held on every platform, inside the gate, by `docs-skill-directory` and
+# `docs-link-symlinks`.
+tier = "test-skill-install"
+
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable
 # of destroying itself, and so the one thing nothing may select automatically.
@@ -507,7 +519,7 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 # read.
 adapter = "printobserver-oneharness"
 prompt_template = "crates/printobserver-oneharness/assets/turn-prompt.md"
-skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
+skill = "skills/printobserver/SKILL.md"
 # The generated assessment schema's own checked-in artifact: written by the
 # contracts' generation target, which refuses the tree when it no longer matches
 # the types. It is the only schema the agent's answer may be constrained by.
@@ -743,6 +755,11 @@ allowlist = ".claude/settings.json"
 # which `just check-repo` requires of it. Unheld, the gate ran whichever release
 # a cache restored and the release job whichever a registry served newest, so a
 # journey proving one release-plz proved nothing about the one that releases.
+#
+# A tool carrying `bootstrap = false` is one job's rather than every host's:
+# `just install-tools` — and so `just bootstrap` — leaves it alone, and `just
+# install-tools <command>` installs it, and it alone, where that job needs it.
+# Absent, `bootstrap` is `true`.
 # The Windows target `just lint` runs clippy for on a Unix host, so a finding
 # in the tree's `cfg(windows)` code is reported before a push rather than by a
 # Windows runner two hours later. The GNU flavour rather than MSVC: it sees the
@@ -773,9 +790,29 @@ command = "release-plz"
 version = "0.3.167"
 install = "cargo install release-plz --locked --version {version}"
 
+# GitHub CLI, for the one journey that runs a real `gh skill install` of this
+# repository's Agent Skill, held at the release that journey's behaviour was
+# measured on — 2.100.0, the first with `gh skill`. Not bootstrapped: the gate's
+# hosted runners carry a `gh` of their own, and replacing it on every cell would
+# serve nothing there. The `skill-install` job installs this release through
+# `repo_checks install-gh`, which verifies the release's own archive against its
+# published checksums before anything reaches PATH.
+[[toolchain.tool]]
+command = "gh"
+version = "2.100.0"
+bootstrap = false
+install = "uv run -q python -m repo_checks install-gh {version}"
+
 [docs]
-# The agent-facing documentation: one skill and the reference documents it
-# links to.
+# The agent-facing documentation: one Agent Skill and the reference documents
+# it links to, all regular files in one directory, `skills/printobserver/`.
+# `gh skill install nickderobertis/printobserver printobserver` installs exactly
+# that directory and drops every symlink in it, and an installed server is
+# pointed at the installed `SKILL.md` by `supervisor.skill_path` and runs the
+# agent from beside it. So `just check-repo` refuses a symlink under the skill's
+# directory and a link from it that leaves it, holds the skill's frontmatter to
+# the Agent Skills rules, and measures everything below over the prose after
+# that frontmatter — the part a turn sends.
 #
 # The skill is what OneHarness sends as every supervision turn's SYSTEM PROMPT,
 # so its length is paid on every turn of every print. The two bounds below are
@@ -785,7 +822,7 @@ install = "cargo install release-plz --locked --version {version}"
 # to both, refuses reference material in it whatever form that material takes,
 # refuses a link to a document that is not there, and refuses a skill that omits
 # a link to one of the documents declared below.
-skill = "crates/printobserver-oneharness/assets/printobserver-skill.md"
+skill = "skills/printobserver/SKILL.md"
 skill_max_characters = 6000
 skill_max_lines = 150
 
@@ -796,24 +833,9 @@ skill_max_lines = 150
 # this program's own `surface()`; `schema_document` is written by
 # `repo-check docs-schemas-write` from the schema tree the contracts' own
 # generation target writes and gates. Neither is edited by hand.
-surface_manifest = "docs/reference/surface.json"
-schema_document = "docs/reference/schemas.md"
+surface_manifest = "skills/printobserver/reference/surface.json"
+schema_document = "skills/printobserver/reference/schemas.md"
 schema_directory = "schemas"
-
-# What carries the reference documents into the built artifact, and the
-# directory the skill links to them under.
-#
-# The skill links out for everything it does not say itself, and an install that
-# carried the skill and none of what it points at would hand the agent dead
-# links. So the documents are `include_str!`-ed into the adapter that ships the
-# skill and written beside it on an installed host. `just check-repo` holds that
-# array to the documents declared below, in both directions, resolving both
-# sides on the filesystem — `crates/printobserver-oneharness/assets/reference`
-# is this repository's own `docs/reference`, so a document is bundled by being
-# the document rather than by being spelled the same way.
-bundle_source = "crates/printobserver-oneharness/src/lib.rs"
-bundle_assets = "crates/printobserver-oneharness/assets"
-bundle_directory = "reference"
 
 # Where a documented example is run from, so a reader copying one runs what this
 # repository ran. `console` is the fence, `$ ` opens a command line, and the
@@ -867,7 +889,7 @@ marker = "5. **Record what you saw.**"
 # rather than something a reader notices, and the document's own opening
 # coverage statement is held to the headings it actually carries.
 [[docs.document]]
-path = "docs/reference/command-surface.md"
+path = "skills/printobserver/reference/command-surface.md"
 headings = [
     "What a command is made of",
     "The four global options",
@@ -876,7 +898,7 @@ headings = [
 ]
 
 [[docs.document]]
-path = "docs/reference/api-and-clients.md"
+path = "skills/printobserver/reference/api-and-clients.md"
 headings = [
     "The one versioned prefix",
     "How a request is authenticated",
@@ -885,7 +907,7 @@ headings = [
 ]
 
 [[docs.document]]
-path = "docs/reference/architecture.md"
+path = "skills/printobserver/reference/architecture.md"
 headings = [
     "The crates",
     "Why the crates are cut by domain",
@@ -894,22 +916,22 @@ headings = [
 ]
 
 [[docs.document]]
-path = "docs/reference/schemas.md"
+path = "skills/printobserver/reference/schemas.md"
 headings = ["The schema set", "The schemas"]
 
 [[docs.document]]
-path = "docs/reference/common-operations.md"
+path = "skills/printobserver/reference/common-operations.md"
 headings = ["Before you start", "The worked examples"]
 
 [[docs.document]]
-path = "docs/reference/testing.md"
+path = "skills/printobserver/reference/testing.md"
 headings = [
     "The tiers the gate runs",
     "The tiers outside the gate",
 ]
 
 [[docs.document]]
-path = "docs/reference/intervention-policy.md"
+path = "skills/printobserver/reference/intervention-policy.md"
 headings = [
     "Where the bounds come from",
     "What a rejection carries",

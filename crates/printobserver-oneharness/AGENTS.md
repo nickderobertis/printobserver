@@ -22,7 +22,9 @@ seam.
 ## What a prompt may say is one committed file
 
 The template is the whole of it: three slots filled and sent unchanged, and a
-system prompt read from the tree rather than carried in this crate's text. A
+system prompt — the prose of the installed skill the configuration names, its
+frontmatter split off — read from the tree rather than carried in this crate's
+text; the crate carries no skill at all. A
 rule about what the agent may be told is then a rule about one file a person
 reads, instead of a claim about code spread over a turn.
 

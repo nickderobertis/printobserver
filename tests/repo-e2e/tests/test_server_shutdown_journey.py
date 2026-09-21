@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import REPO_ROOT, SKILL_DIRECTORY, clean_environment, run
 from repo_checks.expect import equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import host
@@ -91,6 +91,7 @@ def _configuration(root: Path, octoprint: str) -> Path:
         'fan = "commandable"',
         "[supervisor]",
         'harness = "claude-code"',
+        f"skill_path = {json.dumps(str(SKILL_DIRECTORY / 'SKILL.md'))}",
         "[ingress]",
         'shared_secret = "a-shared-secret"',
         "[api]",

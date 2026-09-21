@@ -36,6 +36,7 @@ WINDOWS_ACTIVATION = "Set-Service -Name printobserver -StartupType Automatic -St
 #: service, which leaves a pair whose first command starts a 3D printer's
 #: supervisor.
 INSTALLER_REPLACED = "```console\nsudo systemctl enable --now printobserver.service\n```"
+SKILL_HEADING = "\n### Between the two commands, install the agent's skill"
 FOURTH_ROUTE = """
 #### Route 4 — a distribution channel nobody built
 
@@ -173,10 +174,9 @@ def test_a_pair_for_a_service_manager_the_list_does_not_name_is_refused(
     broken = tree()
     broken.edit(
         "AGENTS.md",
-        "\n### Between the two commands, sign in the agent's harness",
+        SKILL_HEADING,
         "\n#### openrc\n\n```console\nsudo rc-update add printobserver default\n```\n\n"
-        "```console\nsudo rc-service printobserver start\n```\n"
-        "\n### Between the two commands, sign in the agent's harness",
+        "```console\nsudo rc-service printobserver start\n```\n" + SKILL_HEADING,
     )
 
     findings = install_path_section(broken.repo)
@@ -425,15 +425,25 @@ def test_a_check_that_does_not_ask_which_version_it_is_is_refused(
 
 SIGN_IN = "sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in"
 WINDOWS_SIGN_IN = "& 'C:\\Program Files\\printobserver\\printobserver.exe' sign-in"
+SKILL_INSTALL = (
+    "sudo gh skill install nickderobertis/printobserver printobserver "
+    "--dir /var/lib/printobserver/skills"
+)
+WINDOWS_SKILL_INSTALL = (
+    "gh skill install nickderobertis/printobserver printobserver "
+    "--dir C:\\ProgramData\\printobserver\\state\\skills"
+)
 
 
 def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> None:
-    """The harness installs and the service-user sign-in belong to the one source."""
+    """The skill install, the harness installs and the service-user sign-in are one source."""
     path = ip.parse(committed.agents_md)
 
     equal(
         path.sign_in,
         (
+            SKILL_INSTALL,
+            WINDOWS_SKILL_INSTALL,
             "sudo npm install -g @anthropic-ai/claude-code",
             "sudo npm install -g @openai/codex",
             SIGN_IN,
@@ -455,6 +465,52 @@ def test_a_section_stating_no_sign_in_is_refused(tree: Callable[[], Tree]) -> No
     findings = install_path_section(broken.repo)
 
     refused(findings, "states no `printobserver sign-in`")
+
+
+def test_a_section_stating_no_skill_install_is_refused(tree: Callable[[], Tree]) -> None:
+    """The program carries no skill, so a path that never installs one supervises nothing."""
+    broken = tree()
+    text = broken.read("AGENTS.md")
+    start = text.index(SKILL_HEADING)
+    end = text.index("\n### Between the two commands, sign in the agent's harness")
+    broken.write("AGENTS.md", text[:start] + text[end:])
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states no `gh skill install nickderobertis/printobserver printobserver")
+
+
+def test_a_skill_install_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None:
+    """The README's skill install is derived from the section like every other command."""
+    broken = tree()
+    broken.edit(
+        "README.md",
+        SKILL_INSTALL,
+        SKILL_INSTALL.replace("/var/lib/printobserver/skills", "/root/.agents/skills"),
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states")
+
+
+def test_telling_an_operator_to_sign_in_to_github_is_refused(tree: Callable[[], Tree]) -> None:
+    """The skill is read from a public repository: no GitHub credential belongs on the host."""
+    for place in ("AGENTS.md", "README.md"):
+        broken = tree()
+        broken.edit(
+            place,
+            "Its one prerequisite is GitHub CLI 2.100.0 or later"
+            if place == "AGENTS.md"
+            else "It needs GitHub CLI 2.100.0 or later",
+            "First run gh auth login. Its one prerequisite is GitHub CLI 2.100.0 or later"
+            if place == "AGENTS.md"
+            else "First run gh auth login. It needs GitHub CLI 2.100.0 or later",
+        )
+
+        findings = install_path_section(broken.repo)
+
+        refused(findings, "tells an operator to run `gh auth login`")
 
 
 def test_a_sign_in_restatement_that_differs_is_refused(tree: Callable[[], Tree]) -> None:
@@ -488,12 +544,48 @@ def test_a_second_pair_for_one_service_manager_is_refused(
     broken = tree()
     broken.edit(
         "AGENTS.md",
-        "\n### Between the two commands, sign in the agent's harness",
+        SKILL_HEADING,
         "\n#### systemd\n\n```console\ncurl -fsSL https://example.invalid/other.sh | sudo sh\n"
         "```\n\n```console\nsudo systemctl enable --now printobserver.service\n```\n"
-        "\n### Between the two commands, sign in the agent's harness",
+        + SKILL_HEADING,
     )
 
     findings = install_path_section(broken.repo)
 
     refused(findings, "states more than one pair of commands for the `systemd` service manager")
+
+
+def test_a_gh_prerequisite_other_than_the_held_release_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The step's prerequisite is the release the credential-free install is proven on."""
+    for place, sentence in (
+        ("AGENTS.md", "Its one prerequisite is GitHub CLI 2.100.0 or later"),
+        ("README.md", "It needs GitHub CLI 2.100.0 or later"),
+    ):
+        broken = tree()
+        broken.edit(place, sentence, sentence.replace("2.100.0", "2.90.0"))
+
+        findings = install_path_section(broken.repo)
+
+        refused(findings, "states GitHub CLI 2.90.0 or later")
+
+
+def test_moving_the_held_gh_release_alone_is_refused(tree: Callable[[], Tree]) -> None:
+    """A pin moved without the documented prerequisite leaves both places claiming the old one."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'version = "2.100.0"', 'version = "2.101.0"')
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "`repo-policy.toml` holds `gh` at 2.101.0")
+
+
+def test_dropping_the_gh_prerequisite_is_refused(tree: Callable[[], Tree]) -> None:
+    """An operator told to run `gh skill` has to be told which `gh` has it."""
+    broken = tree()
+    broken.edit("README.md", "It needs GitHub CLI 2.100.0 or later", "It needs GitHub CLI")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states no `GitHub CLI 2.100.0 or later` prerequisite")

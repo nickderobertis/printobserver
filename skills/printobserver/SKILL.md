@@ -1,3 +1,8 @@
+---
+name: printobserver
+description: Supervise one 3D print as PrintObserver's agent — read what the printer and the failure detector report, decide whether to intervene, and act only through the printobserver command. Use it when PrintObserver hands you an event about a print it is watching.
+license: MIT
+---
 # Supervising a 3D print
 
 ## The role you are in

@@ -148,19 +148,30 @@ impl Documentation {
     ///
     /// Links are resolved against the skill's **own directory** rather than
     /// against a tree root, because that is the anchor an install reproduces:
-    /// the server writes the reference documents beside the skill it
-    /// materialized and stands the agent in that directory. So this reads a
-    /// checkout and a state directory the same way, which is what lets the same
-    /// walk run over both.
+    /// `gh skill install` puts down that directory alone, and the server stands
+    /// the agent in it. So this reads a checkout and an installed skill the same
+    /// way, which is what lets the same walk run over both — and a link that
+    /// left the skill's directory is refused here, because no install carries
+    /// what it points at.
     pub fn beside(skill_path: &Path) -> Self {
         let beside = skill_path.parent().expect("the skill sits in a directory");
+        let contained = beside
+            .canonicalize()
+            .expect("the skill's directory resolves");
         let skill = std::fs::read_to_string(skill_path)
             .unwrap_or_else(|error| panic!("{} is readable: {error}", skill_path.display()));
         let mut linked = BTreeMap::new();
         for target in links_in(&skill) {
             validate_relative_path(&target);
-            // llmlint: ignore[boundary_inputs_validated] Checkout references intentionally follow the assets/reference symlink outside the skill directory into docs/reference. The docs skill check validates this declared bundle; the installed-assets journey proves its materialized links without a checkout. Confining links to the skill directory would reject the supported checkout layout.
-            let body = std::fs::read_to_string(beside.join(&target)).unwrap_or_else(|error| {
+            let document = beside.join(&target).canonicalize().unwrap_or_else(|error| {
+                panic!("linked document `{target}` must be readable: {error}")
+            });
+            assert!(
+                document.starts_with(&contained),
+                "linked document `{target}` resolves outside the skill's own directory, \
+                 which is all an installed skill carries"
+            );
+            let body = std::fs::read_to_string(&document).unwrap_or_else(|error| {
                 panic!("linked document `{target}` must be readable: {error}")
             });
             linked.insert(target, body);
@@ -456,6 +467,28 @@ fn unreadable_documentation_link_names_its_target() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let skill = directory.path().join("skill.md");
     std::fs::write(&skill, "Read the [reference](missing.md).\n").expect("write an inline skill");
+    Documentation::beside(&skill);
+}
+
+/// A link that reaches outside the skill's own directory — here through a
+/// symlink inside it — is refused, because an installed skill carries none of
+/// what it points at.
+#[test]
+#[should_panic(expected = "resolves outside the skill's own directory")]
+fn a_link_out_of_the_skills_directory_is_refused() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let beside = directory.path().join("skill");
+    let outside = directory.path().join("outside");
+    std::fs::create_dir_all(&beside).expect("a skill directory");
+    std::fs::create_dir_all(&outside).expect("a directory outside it");
+    std::fs::write(outside.join("guide.md"), "A guide.\n").expect("a document outside");
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&outside, beside.join("reference"));
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_dir(&outside, beside.join("reference"));
+    linked.expect("a symlink out of the skill's directory");
+    let skill = beside.join("SKILL.md");
+    std::fs::write(&skill, "Read the [guide](reference/guide.md).\n").expect("a skill");
     Documentation::beside(&skill);
 }
 

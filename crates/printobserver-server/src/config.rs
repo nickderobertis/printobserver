@@ -67,8 +67,21 @@ pub const DEFAULT_INGRESS_ANSWER_BOUND_MS: u64 = 1_000;
 pub const OBICO_POSTING_TIMEOUT_MS: u64 = 5_000;
 
 /// The directory under the state directory this server materializes the
-/// supervising agent's own committed assets into.
+/// supervising agent's prompt template and assessment schema into. The skill
+/// is not among them: it is installed with [`SKILL_INSTALL`] and configured by
+/// `supervisor.skill_path`.
 pub const ASSETS_DIRECTORY: &str = "assets";
+
+/// How the supervising agent's skill is installed, and what names it after.
+///
+/// This program carries no skill of its own: the skill is the Agent Skill this
+/// repository publishes, installed as any other is, and every refusal of
+/// `supervisor.skill_path` says so, because it is the one instruction an
+/// operator whose configuration predates that needs.
+pub const SKILL_INSTALL: &str = "the skill is installed with `gh skill install \
+     nickderobertis/printobserver printobserver --dir <dir>`, and \
+     `supervisor.skill_path` names the installed `SKILL.md`, \
+     `<dir>/printobserver/SKILL.md`";
 
 /// Every value this program is configured with, and the key it is spelled under.
 ///
@@ -281,8 +294,9 @@ pub struct SupervisorSection {
     /// The model turns are pinned to, when one is pinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// The skill to send as every turn's system prompt, when the operator
-    /// supplies one instead of the committed skill this program carries.
+    /// The installed skill's `SKILL.md`, whose prose is sent as every turn's
+    /// system prompt; the agent runs from the directory holding it. Required:
+    /// this program carries no skill, and an absent one refuses the start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_path: Option<PathBuf>,
     /// The prompt template one turn fills, when the operator supplies one
@@ -559,9 +573,10 @@ pub struct ServerConfig {
     pub harness: HarnessIdentity,
     /// The model turns are pinned to, when one is pinned.
     pub model: Option<ModelName>,
-    /// The skill to send as every turn's system prompt, when the operator
-    /// supplied one.
-    pub skill_path: Option<PathBuf>,
+    /// The installed skill's `SKILL.md`, whose prose is sent as every turn's
+    /// system prompt. The agent runs from the directory holding it, which is
+    /// where the skill's own `reference/` documents sit.
+    pub skill_path: PathBuf,
     /// The prompt template one turn fills, when the operator supplied one.
     pub prompt_template_path: Option<PathBuf>,
     /// How long the ingress may take to answer.
@@ -623,10 +638,7 @@ impl ServerConfig {
                     .map_err(|error| ConfigError::about(ConfigField::Model, error.to_string()))?,
             ),
         };
-        let skill_path = readable(
-            ConfigField::SkillPath,
-            file.supervisor.skill_path.as_deref(),
-        )?;
+        let skill_path = skill(file.supervisor.skill_path.as_deref())?;
         let prompt_template_path = readable(
             ConfigField::PromptTemplatePath,
             file.supervisor.prompt_template_path.as_deref(),
@@ -660,7 +672,9 @@ impl ServerConfig {
         })
     }
 
-    /// Where this server materializes the agent's committed assets.
+    /// Where this server materializes the agent's prompt template and
+    /// assessment schema. The skill is not among them: it is the installed one
+    /// `skill_path` names.
     #[must_use]
     pub fn assets_dir(&self) -> PathBuf {
         self.state_dir.join(ASSETS_DIRECTORY)
@@ -892,6 +906,31 @@ fn readable(field: ConfigField, named: Option<&Path>) -> Result<Option<PathBuf>,
         .map(|_| Some(path.to_path_buf()))
         .map_err(|error| {
             ConfigError::about(field, format!("{} cannot be read: {error}", path.display()))
+        })
+}
+
+/// The installed skill, refused naming how to install one when it is absent or
+/// cannot be read.
+fn skill(named: Option<&Path>) -> Result<PathBuf, ConfigError> {
+    let Some(path) = named else {
+        return Err(ConfigError::about(
+            ConfigField::SkillPath,
+            format!(
+                "the configuration file carries no value for it, and this program carries \
+                 no skill of its own: {SKILL_INSTALL}"
+            ),
+        ));
+    };
+    std::fs::read_to_string(path)
+        .map(|_| path.to_path_buf())
+        .map_err(|error| {
+            ConfigError::about(
+                ConfigField::SkillPath,
+                format!(
+                    "{} cannot be read: {error}. {SKILL_INSTALL}",
+                    path.display()
+                ),
+            )
         })
 }
 

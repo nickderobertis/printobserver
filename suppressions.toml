@@ -70,7 +70,7 @@ reason = "Pre-existing, deliberate output that the harness sign-in change only m
 rule = "cli_output_contract"
 file = "crates/printobserver/src/sign_in.rs"
 site = "Ok(exited_with(status))"
-reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `docs/reference/command-surface.md` says so."
+reason = "Passing the harness's own exit status through is the contract the task that added `printobserver sign-in` fixes: it exits with the harness's status, and its end-to-end tier asserts exactly that. Everything this program itself refuses — an unreadable configuration, a harness outside the table, a directory it cannot create, a program not on the path — is refused before the harness runs, under this program's own `unconfigured` exit, so the one status that reaches the caller after the harness has run is the harness's own, and `skills/printobserver/reference/command-surface.md` says so."
 
 [[suppression]]
 rule = "cli_output_contract"
@@ -186,6 +186,18 @@ file = "tools/obico-env/obico_tier.py"
 site = "urllib.request.urlopen(request"
 reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every fetch in this tier goes through, immediately below the `Request` it was handed."
 
+[[suppression]]
+rule = "S310"
+file = "tools/repo-checks/src/repo_checks/gh_release.py"
+site = "urllib.request.urlopen(url"
+reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the gh installer makes, and the line above it refuses any URL that is not https (or a loopback http address, which only its own suite's release stand-in serves); every URL reaching it is composed from the fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches the SHA-256 the same release's checksums file lists."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/gh_release.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "The one download `just install-gh` makes, run by one blocking command in one CI step: the release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
+
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
 [[suppression]]
@@ -262,12 +274,6 @@ reason = "The function is the six steps of one supervision turn, written in the 
 
 
 [[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-server/src/server.rs"
-site = "working_dir: assets.clone(),"
-reason = "A wrong working directory makes the agent's relative reference-file opens fail with a missing-path error on its first documentation read. That failure is visible to the supervising agent, not silent, so the rule's silent-failure condition is not met. The installed-assets journey already proves the bundled links resolve without a checkout; a billed harness turn would re-prove file resolution."
-
-[[suppression]]
 rule = "least_privilege_grants"
 file = "crates/printobserver-server/src/server.rs"
 site = "let held = std::fs::read(&path)"
@@ -284,12 +290,6 @@ rule = "changed_behavior_has_e2e"
 file = ".config/nextest.toml"
 site = "[test-groups]"
 reason = "Assigning binary(integration) to octoprint with max-threads = 1 is a structural declaration settled by reading this file. The narrowed rule excludes structural claims; another runtime test would not improve that proof."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "crates/printobserver/tests/journeys/documented.rs"
-site = "let body = std::fs::read_to_string(beside.join(&target))"
-reason = "Checkout links intentionally traverse the assets/reference symlink into docs/reference outside the skill directory. The docs skill check validates the declared bundle and the installed-assets journey verifies materialized links. Directory confinement would reject the supported checkout layout."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
@@ -314,18 +314,6 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/project.json"
 site = "metadata"
 reason = "Proving regeneration from a missing or corrupted committed surface requires forbidden tree surgery. The existing reference test compares the committed manifest to the actual runtime surface serialized by write mode."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-oneharness/src/lib.rs"
-site = "pub const REFERENCE_DIRECTORY:"
-reason = "The immutable literal reference is not a field or caller-supplied path, so callers cannot assign escaping values. The documentation bundle check holds consumers to the declared layout."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-oneharness/src/lib.rs"
-site = "pub const DEFAULT_REFERENCES:"
-reason = "The immutable array carries literal bundled paths rather than caller-constructed entries. The documentation bundle check compares every path with the validated policy set in both directions, and the installed-assets journey opens the materialized references."
 
 [[suppression]]
 rule = "instruction_layer_localized"
@@ -361,6 +349,42 @@ reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke te
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "names that configuration file"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "The skill is an Agent Skill, installed with"
+reason = "The task that made the skill an installable Agent Skill requires the root's \"The agent-facing documentation\" section to state that the skill is an Agent Skill installed with `gh skill install`, that everything it links is a regular file inside its directory, and that the server runs the agent from the skill's directory. Those three are the contract between the server, the install path and the skill, which no one subtree owns; `skills/AGENTS.md` carries the subtree's own working rules."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The skill is an Agent Skill, installed with"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path` reads this step's two commands out of the root file, requires the section to state the `gh skill install` step, and holds the README's restatement to it, and the installers' configuration names what it installs. The task requires the step, its one prerequisite and what a configuration without the field does to be stated here; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The supervising agent's skill is not part of the program"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path: `just check-repo`'s `install-path` reads this step's two commands out of the root file, requires the section to state the `gh skill install` step, and holds the README's restatement to it, and the installers' configuration names what it installs. The task requires the step, its one prerequisite and what a configuration without the field does to be stated here; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The supervising agent's skill is not part of the program"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
@@ -608,6 +632,54 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "install_the_skill("
+reason = "This journey is about the service installer and the service manager, and it runs in the gate, whose cells are deliberately not given GitHub CLI (the manager's ruling for this change: the gate never needs `gh`). So it lays the skill down where the installer's configuration names it the way `gh skill install` does — the committed skill directory alone, as regular files — rather than running `gh`. That this is what the real install lays down is proven, not assumed: the `tests/skill-install` journey runs the real `gh skill install` with no credentials and asserts the installed directory holds exactly the regular files of `skills/printobserver/`, byte for byte but for `SKILL.md`'s rewritten frontmatter. The boundary this journey crosses for real is the installer and the manager it registers with."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/journey.py"
+site = "shutil.copytree(SKILL_DIRECTORY"
+reason = "The helper the gate's service-installer journeys lay the skill down with, and the same ground as the entries for these rules at its two callers: the gate's cells are deliberately not given GitHub CLI, so it puts down what `gh skill install --dir <state>/skills` puts down — the committed skill directory alone, as regular files — rather than running `gh`. The `tests/skill-install` journey proves that equivalence against the real `gh skill install` on every change, asserting the installed directory holds exactly those regular files, byte for byte but for `SKILL.md`'s rewritten frontmatter."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/journey.py"
+site = "shutil.copytree(SKILL_DIRECTORY"
+reason = "The helper the gate's service-installer journeys lay the skill down with, and the same ground as the entries for these rules at its two callers: the gate's cells are deliberately not given GitHub CLI, so it puts down what `gh skill install --dir <state>/skills` puts down — the committed skill directory alone, as regular files — rather than running `gh`. The `tests/skill-install` journey proves that equivalence against the real `gh skill install` on every change, asserting the installed directory holds exactly those regular files, byte for byte but for `SKILL.md`'s rewritten frontmatter."
+
+[[suppression]]
+rule = "new_projects_keep_the_graph_uniform"
+file = "tests/skill-install/project.json"
+site = "test-skill-install"
+reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells are deliberately not given GitHub CLI, so a `test` target here would put a journey that refuses without `gh` into the gate. The repository names a tier that runs only in its own job after its recipe — `test-integration`, `test-obico` — and `tools/obico-env/project.json` is the same shape as this one: `format`, `format-check`, `lint` and `typecheck` by the standard names, and its tests under its tier's name alone. `test-skill-install` is that name, the recipe `just test-skill-install` fans it out by, and `repo-policy.toml`'s `[skill_install]` declares it."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/skill-install/tests/test_skill_install_journey.py"
+site = "llmlint: ignore[tests_mirror_real_usage]"
+reason = "The operator's command is `gh skill install nickderobertis/printobserver printobserver`, and the install docs keep it as that. This journey installs `--from-local` from a copy of the tree because the task that added it requires exactly that: a remote install reads the repository's default branch, which carries the skill only once this change has landed, so it can prove nothing about the change under test. Everything else is the operator's path — the real `gh` at the held release, the same `skill install` command and skill name, and an environment holding no GitHub credential — and what arrives is held to the committed files."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1082,6 +1154,18 @@ rule = "no_redundant_instruction_pointers"
 file = "README.md"
 site = "See [`AGENTS.md`](./AGENTS.md) for repository development"
 reason = "The README is the forge's landing page, read by a person in a browser or a fresh clone who is handed no instruction file by any harness; the pointer is how that reader finds the development and release rules at all. The line predates this branch and is outside its diff — the judge read it as context of the install-path section the branch edits."
+
+[[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "skills/printobserver/reference/testing.md"
+site = "`AGENTS.md`'s \"Supported platforms\" records the toolchain defect"
+reason = "This reference document is read by people on the forge and by agents from an installed skill, and neither is handed AGENTS.md by any harness, so the pointer is how that reader learns where the record lives rather than a restatement of instructions already loaded. The paragraph is the base's own, unchanged in content: the skill's move put it inside this branch's diff by a rename, and it was joined onto the one line this directive covers."
+
+[[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "skills/printobserver/reference/testing.md"
+site = "`AGENTS.md`'s \"Virtual printer availability\" is where one would be recorded"
+reason = "This reference document is read by people on the forge and by agents from an installed skill, and neither is handed AGENTS.md by any harness, so the pointer is how that reader learns where the record lives rather than a restatement of instructions already loaded. The paragraph is the base's own, unchanged in content: the skill's move put it inside this branch's diff by a rename, and it was joined onto the one line this directive covers."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"

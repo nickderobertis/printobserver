@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import REPO_ROOT, clean_environment, install_the_skill, run
 from repo_checks import install_path as ip
 from repo_checks.checks_service import installer_for
 from repo_checks.expect import contains, equal, failing, passing, truth
@@ -435,6 +435,8 @@ def test_the_configuration_it_writes_is_one_the_server_starts_under(
         .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
     )
     ran.configuration.write_text(filled, encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
+    install_the_skill(ran.configuration)
 
     server = start(
         [str(ran.binary), "server", "--config", str(ran.configuration)],

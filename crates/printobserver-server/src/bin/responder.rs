@@ -38,6 +38,20 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 /// declares it under, and the body exactly as a caller sends it.
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
+/// The variable naming the file this responder writes what it was started with
+/// to: the directory it was run in and the system prompt it was handed, as one
+/// JSON object.
+///
+/// Where the harness stands is what the skill's relative links resolve from,
+/// and what it was handed as its system prompt is the skill's prose. The one
+/// witness of either that is not the run request this server built is the
+/// process that request started.
+const SEEN: &str = "PRINTOBSERVER_RESPONDER_SEEN";
+
+/// The flags a Claude Code run is handed its system prompt under: inline, or
+/// as a file when the prompt is large enough to risk the argument ceiling.
+const SYSTEM_FLAGS: (&str, &str) = ("--append-system-prompt", "--append-system-prompt-file");
+
 /// What the context command in a prompt begins with, which is what a turn is
 /// told to run and what this responder finds its configuration and its print
 /// in.
@@ -194,6 +208,7 @@ fn read_answer(answer: &str) -> serde_json::Value {
 
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
+    record_what_was_seen();
     let Ok(log) = std::env::var(LOG) else {
         return;
     };
@@ -228,6 +243,43 @@ fn act() {
             );
         }
         append(&log, &answered.to_string());
+    }
+}
+
+/// Write down where this responder was run and the system prompt it was handed.
+fn record_what_was_seen() {
+    let Ok(record) = std::env::var(SEEN) else {
+        return;
+    };
+    let arguments: Vec<String> = std::env::args().collect();
+    let after = |flag: &str| {
+        arguments
+            .iter()
+            .position(|argument| argument == flag)
+            .and_then(|at| arguments.get(at + 1))
+    };
+    // Each failure is written down beside the value it cost, so a journey that
+    // finds no value reads why rather than a bare absence.
+    let system = match (after(SYSTEM_FLAGS.0), after(SYSTEM_FLAGS.1)) {
+        (Some(inline), _) => Ok(inline.clone()),
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .map_err(|error| format!("the system prompt file {path} is unreadable: {error}")),
+        (None, None) => Err("the run handed over no system prompt".to_owned()),
+    };
+    let here = std::env::current_dir()
+        .map(|directory| directory.display().to_string())
+        .map_err(|error| format!("the working directory is unreadable: {error}"));
+    let document = serde_json::json!({
+        "cwd": here.as_ref().ok(),
+        "cwd_error": here.as_ref().err(),
+        "system": system.as_ref().ok(),
+        "system_error": system.as_ref().err(),
+    });
+    // A record nobody can read is a journey that cannot see what it asserts
+    // on, so failing to write one ends the run rather than passing unseen.
+    if let Err(error) = std::fs::write(&record, document.to_string()) {
+        eprintln!("printobserver-server-responder: {record} could not be written: {error}");
+        std::process::exit(1);
     }
 }
 

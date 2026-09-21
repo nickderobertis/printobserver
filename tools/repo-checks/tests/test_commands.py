@@ -322,6 +322,102 @@ def test_install_tools_accepts_a_held_tool_on_the_path_at_its_release_without_re
     absent(capsys.readouterr().err, "installing")
 
 
+#: The release the committed toolchain holds gh at, which it does not bootstrap.
+GH_HELD = next(
+    str(tool["version"])
+    for tool in Repo(REPO_ROOT).policy["toolchain"]["tool"]
+    if tool["command"] == "gh"
+)
+
+# A stand-in for `uv`, recording what it was asked and putting the `gh` the
+# committed install would have put on PATH, answering the release it was asked
+# for.
+UV_STANDIN = """
+import os
+import pathlib
+import sys
+
+arguments = sys.argv[1:]
+with open(os.environ["UV_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+    record.write(" ".join(arguments) + "\\n")
+into = pathlib.Path(os.environ["CARGO_STANDIN_INTO"])
+answer = f"print({'gh version ' + arguments[-1] + ' (a stand-in)'!r})\\n"
+if sys.platform == "win32":
+    (into / "gh.py").write_text(answer, encoding="utf-8")
+    (into / "gh.cmd").write_text(f'@"{sys.executable}" "%~dp0gh.py" %*\\r\\n', encoding="utf-8")
+else:
+    program = into / "gh"
+    program.write_text(f"#!{sys.executable}\\n{answer}", encoding="utf-8")
+    program.chmod(0o755)
+"""
+
+
+def test_install_tools_leaves_a_tool_declared_not_to_bootstrap_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Bootstrap installs every host's tools, and not one job's: gh is left off PATH."""
+    root, installs, record = toolchain(tmp_path, monkeypatch)
+    program(installs, "release-plz", answering(HELD))
+    uv_record = tmp_path / "uv-invocations"
+    uv_record.touch()
+    program(installs, "uv", UV_STANDIN)
+    monkeypatch.setenv("UV_STANDIN_RECORD", str(uv_record))
+
+    equal(main(["install-tools", "--root", str(root)]), 0)
+
+    absent(capsys.readouterr().err, "gh")
+    equal(uv_record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+
+
+def test_install_tools_installs_a_tool_it_is_named_whatever_bootstrap_says(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The job that needs gh names it, and gets the held release through its install."""
+    root, installs, record = toolchain(tmp_path, monkeypatch)
+    uv_record = tmp_path / "uv-invocations"
+    uv_record.touch()
+    program(installs, "uv", UV_STANDIN)
+    monkeypatch.setenv("UV_STANDIN_RECORD", str(uv_record))
+
+    equal(main(["install-tools", "gh", "--root", str(root)]), 0)
+
+    contains(capsys.readouterr().err, "installing gh")
+    equal(
+        uv_record.read_text(encoding="utf-8").splitlines(),
+        [f"run -q python -m repo_checks install-gh {GH_HELD}"],
+        describing="what `uv` was asked to install",
+    )
+    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+    contains(run(["gh", "--version"], check=True).stdout, f"gh version {GH_HELD}")
+
+
+def test_install_tools_refuses_a_tool_the_toolchain_does_not_declare(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Naming a tool nobody declared installs nothing and says what is declared."""
+    root, _, record = toolchain(tmp_path, monkeypatch)
+
+    equal(main(["install-tools", "hub", "--root", str(root)]), 1)
+
+    contains(capsys.readouterr().err, "declares no toolchain tool `hub`")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+
+
+def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_installed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`bootstrap = "no"` is not `false`, and a guess at which was meant is not made."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="gh", install="false") + 'bootstrap = "no"\n', encoding="utf-8"
+    )
+
+    equal(install_tools(Repo(root)), 1)
+    contains(capsys.readouterr().err, "`bootstrap` for `gh` is 'no'")
+
+
 def test_tool_version_answers_the_release_the_toolchain_holds(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

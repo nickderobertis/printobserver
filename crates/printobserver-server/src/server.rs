@@ -207,9 +207,6 @@ fn without_terminator(text: &str) -> &str {
         .unwrap_or(text)
 }
 
-/// The file name the agent's skill is materialized under.
-pub const SKILL_FILE: &str = "printobserver-skill.md";
-
 /// The file name the agent's prompt template is materialized under.
 pub const PROMPT_FILE: &str = "turn-prompt.md";
 
@@ -499,11 +496,11 @@ async fn probe(printer: &dyn PrinterPort) -> Result<(), StartError> {
 
 /// Write one of the agent's committed assets into the state directory.
 ///
-/// The port reads its skill, its template and its schema from paths, so that
-/// editing one on a running host is a restart rather than a rebuild. An
-/// installed program has no checkout to read them out of, so the bytes it
-/// carries are written here — and an operator who configured a path of their
-/// own is pointed at theirs instead.
+/// The port reads its template and its schema from paths, so that editing one
+/// on a running host is a restart rather than a rebuild. An installed program
+/// has no checkout to read them out of, so the bytes it carries are written
+/// here — and an operator who configured a template of their own is pointed at
+/// theirs instead.
 fn materialize(
     directory: &Path,
     name: &str,
@@ -516,42 +513,47 @@ fn materialize(
     Ok(path)
 }
 
-/// Write the reference documents the skill links to into the assets directory.
+/// The directory the harness runs in: the one holding the configured skill.
 ///
-/// The skill is deliberately short and links out for everything else, so an
-/// install that carried the skill and none of what it points at would hand the
-/// agent a set of dead links — which is worse than no links, because it reads as
-/// documentation right up to the moment it is opened. Each document goes to the
-/// path the skill links to it by, relative to the assets directory, and the
-/// harness runs with that directory as its working directory: so the one
-/// relative link in the skill resolves both from the skill's own location and
-/// from where the agent is standing, and it resolves to the same file.
-fn materialize_references(assets: &Path) -> Result<(), StartError> {
-    for (relative, contents) in printobserver_oneharness::DEFAULT_REFERENCES {
-        let path = assets.join(relative);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| StartError::State {
-                detail: format!("{} could not be created: {error}", parent.display()),
-            })?;
-        }
-        std::fs::write(&path, contents).map_err(|error| StartError::State {
-            detail: format!("{} could not be written: {error}", path.display()),
-        })?;
+/// An installed skill is a directory — its `SKILL.md` and the `reference/`
+/// documents that file links to by relative paths — so the agent stands where
+/// those links resolve. A skill named by a bare file name sits in this
+/// process's own working directory.
+fn beside_the_skill(skill_path: &Path) -> std::path::PathBuf {
+    match skill_path.parent() {
+        Some(directory) if !directory.as_os_str().is_empty() => directory.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
     }
-    Ok(())
 }
 
-/// The supervising agent's harness, over the assets this program carries.
+/// The supervising agent's harness, over the configured skill and the assets
+/// this program carries.
 fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> {
+    OneharnessSupervisor::open(agent_config(config)?).map_err(|error| StartError::Supervisor {
+        detail: error.to_string(),
+    })
+}
+
+/// The supervising agent's configuration, as [`Server::start`] composes it.
+///
+/// The template and the assessment schema are written into the assets
+/// directory; the skill is the installed one `supervisor.skill_path` names, and
+/// every turn runs in the directory holding it — where an installed skill's
+/// `reference/` documents sit, so the links the skill carries resolve from
+/// where the agent stands. The harness is the one `supervisor.harness` names,
+/// found by name, and a harness this program can sign in is pointed at the
+/// sign-in kept under the state directory.
+///
+/// # Errors
+///
+/// Returns [`StartError::State`] when the assets or the sign-in directory
+/// cannot be written, and [`StartError::Supervisor`] when the schema it wrote
+/// constrains nothing.
+pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartError> {
     let assets = config.assets_dir();
     std::fs::create_dir_all(&assets).map_err(|error| StartError::State {
         detail: format!("{} could not be created: {error}", assets.display()),
     })?;
-    materialize_references(&assets)?;
-    let skill_path = match &config.skill_path {
-        Some(path) => path.clone(),
-        None => materialize(&assets, SKILL_FILE, printobserver_oneharness::DEFAULT_SKILL)?,
-    };
     let prompt_template_path = match &config.prompt_template_path {
         Some(path) => path.clone(),
         None => materialize(&assets, PROMPT_FILE, TURN_PROMPT)?,
@@ -597,24 +599,20 @@ fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> 
         }
         None => Vec::new(),
     };
-    OneharnessSupervisor::open(SupervisorConfig {
+    Ok(SupervisorConfig {
         state_dir: config.state_dir.clone(),
-        skill_path,
+        skill_path: config.skill_path.clone(),
         prompt_template_path,
         assessment_schema,
         harness: config.harness.clone(),
         model: config.model.clone(),
-        // The assets directory rather than the state directory, so that the
-        // skill's own relative links to the reference documents beside it
-        // resolve from where the agent is standing as well as from the skill.
-        // llmlint: ignore[changed_behavior_has_e2e] A wrong cwd makes relative reference-file opens fail visibly on the first documentation read; the narrowed rule requires a silent failure. The installed-assets journey already proves the bundled links resolve without a checkout.
-        working_dir: assets.clone(),
+        // The skill's own directory rather than the state or assets directory,
+        // so that the skill's relative links to the reference documents beside
+        // it resolve from where the agent is standing as well as from the skill.
+        working_dir: beside_the_skill(&config.skill_path),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
         harness_bin: None,
         harness_env,
-    })
-    .map_err(|error| StartError::Supervisor {
-        detail: error.to_string(),
     })
 }
 

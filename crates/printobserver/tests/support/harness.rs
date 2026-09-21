@@ -12,7 +12,8 @@
 //! what it was answered on standard output.
 //!
 //! **Its supervision turn** refuses to answer unless that state file is there,
-//! records beside it what it read, and answers the assessment it was given.
+//! records beside it what it read and the directory it was run in, and answers
+//! the assessment it was given.
 //!
 //! Nothing here spells a variable's name: each stand-in is written for one entry
 //! of the adapter's own table, and reads the variable that entry declares.
@@ -92,6 +93,7 @@ case "$1" in
         {{
             echo "user=$(id -un)"
             echo "directory=$dir"
+            echo "cwd=$(pwd -P)"
             echo "home=${{HOME:-}}"
             echo "state=$(cat "$dir/{SIGNED_IN}")"
         }} > "$dir/{TURN_SEEN}.part"

@@ -17,6 +17,7 @@ from repo_checks.model import (
     policy_string_list,
     policy_strings,
     policy_table,
+    toolchain_tools,
 )
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -26,6 +27,7 @@ from repo_checks.parsing import (
     marker_block,
     programs_in,
     run_commands,
+    section,
     steps_of,
 )
 from repo_checks.platforms import (
@@ -670,7 +672,60 @@ def install_path_section(repo: Repo) -> list[str]:
             f"harness is signed in as the service's own user"
         )
 
+    if not any(ip.SKILL_INSTALL_COMMAND in command for command in path.sign_in):
+        findings.append(
+            f"AGENTS.md's `{ip.SECTION_HEADING}` states no `{ip.SKILL_INSTALL_COMMAND}<dir>` "
+            f"under a `{ip.SIGN_IN_HEADING}...` subsection, so nothing states how the agent's "
+            f"skill — which the program does not carry — reaches the host"
+        )
+    findings.extend(
+        f"{place} tells an operator to run `{ip.GITHUB_SIGN_IN}`. The skill is read from a "
+        f"public repository with no GitHub sign-in, and a GitHub credential on a printer "
+        f"host is one nothing there needs"
+        for place, text in (
+            ("AGENTS.md's install path", section(repo.agents_md, ip.SECTION_HEADING)),
+            ("README.md", repo.read("README.md") if repo.exists("README.md") else ""),
+        )
+        if ip.GITHUB_SIGN_IN in text
+    )
+    findings.extend(_gh_prerequisite_findings(repo))
+
     findings.extend(ip.drifted_statements(path, _restatements(repo)))
+    return findings
+
+
+def _gh_prerequisite_findings(repo: Repo) -> list[str]:
+    """The skill step's GitHub CLI prerequisite is the release `repo-policy.toml` holds.
+
+    That release is the one the credential-free `gh skill install` journey runs,
+    so a prerequisite naming any other is a claim nothing here proves.
+    """
+    try:
+        held = next((tool.version for tool in toolchain_tools(repo) if tool.command == "gh"), None)
+    except PolicyValueError as error:
+        return [str(error)]
+    if held is None:
+        return [
+            "`repo-policy.toml` holds `gh` at no release, so nothing proves the skill "
+            "step's prerequisite"
+        ]
+    findings: list[str] = []
+    for place, text in (
+        ("AGENTS.md's install path", section(repo.agents_md, ip.SECTION_HEADING)),
+        ("README.md", repo.read("README.md") if repo.exists("README.md") else ""),
+    ):
+        stated = ip.GH_PREREQUISITE.findall(text)
+        if not stated:
+            findings.append(
+                f"{place} states no `GitHub CLI {held} or later` prerequisite for installing "
+                f"the agent's skill"
+            )
+        findings.extend(
+            f"{place} states GitHub CLI {version} or later as the skill step's prerequisite, "
+            f"and `repo-policy.toml` holds `gh` at {held}, the release the install is proven on"
+            for version in stated
+            if version != held
+        )
     return findings
 
 

@@ -35,17 +35,20 @@ The server exposes an HTTP API that serves only requests carrying its API
 credential. Every other `printobserver` subcommand, the Rust, Python, and Node
 clients, and the agent use that same API and command surface. The oneharness adapter in `crates/printobserver-oneharness` runs one
 supervision turn for each event on the harness identity configured under
-`[supervisor]`. It supplies
-[`printobserver-skill.md`](./crates/printobserver-oneharness/assets/printobserver-skill.md)
-as the turn's system prompt, and the agent acts through the same commands an
-operator uses.
+`[supervisor]`. The turn's system prompt is
+[the PrintObserver skill](./skills/printobserver/SKILL.md), an Agent Skill this
+repository publishes and the program does not carry: a host installs it with
+`gh skill install nickderobertis/printobserver printobserver`, and
+`supervisor.skill_path` names the installed `SKILL.md`. The agent runs from the
+skill's own directory, where the reference documents it links to sit, and acts
+through the same commands an operator uses.
 
 Every action request is recorded with its actor and reason, together with the
 policy decision and, when accepted, its outcome. The history lets a person
 audit what the agent requested, why, and what happened. See
-[the architecture](./docs/reference/architecture.md),
-[the intervention policy](./docs/reference/intervention-policy.md), and
-[the API and clients](./docs/reference/api-and-clients.md) for details.
+[the architecture](./skills/printobserver/reference/architecture.md),
+[the intervention policy](./skills/printobserver/reference/intervention-policy.md), and
+[the API and clients](./skills/printobserver/reference/api-and-clients.md) for details.
 
 ## Supported platforms
 
@@ -196,8 +199,9 @@ administrators and by the service's account.
 Edit the configuration file — as root on Linux and macOS, from an elevated
 PowerShell on Windows:
 
-- `state_dir` holds the database, images, sessions, and installed agent assets;
-  the template uses your platform's state directory from the table above.
+- `state_dir` holds the database, images, sessions, the agent's prompt assets
+  and, under `skills`, the agent's installed skill; the template uses your
+  platform's state directory from the table above.
 - `listen` serves both the HTTP API and Obico ingress. The template uses
   `127.0.0.1:8420`; change it if Obico is on another machine.
 - `octoprint.url` is the OctoPrint base URL from step 1.
@@ -206,6 +210,12 @@ PowerShell on Windows:
   part-cooling fan, or `absent` when the printer has none.
 - `supervisor.harness` selects the oneharness identity for supervision turns;
   the template selects `claude-code`.
+- `supervisor.skill_path` names the installed agent skill's `SKILL.md`; the
+  template names `skills/printobserver/SKILL.md` under your state directory,
+  which is where step 6 installs it. It is required: printobserver carries no
+  skill of its own, and the service refuses to start, naming this field, when
+  it names nothing readable. A configuration written before this field was
+  required has no such line: add it, and take step 6.
 - `ingress.shared_secret` is the private random value used in step 2. Anyone
   who has it can submit an alert that may lead to a printer action.
 - `api.credential` is optional, and the template leaves it out. Every request to
@@ -264,7 +274,32 @@ both variables are set and you pass no `--config`, `printobserver` does not read
 the service's configuration file at all. A command the server refuses exits with
 status 4 and says where the credential is read from.
 
-### 6. Install and sign in the agent's harness
+### 6. Install the agent's skill
+
+The agent's skill is not part of the program: it is the Agent Skill this
+repository publishes, and the service reads it from `supervisor.skill_path`.
+Install it under the state directory, where the service can read it, as the
+host's administrator — as root on Linux and macOS, from an elevated PowerShell
+on Windows. It needs GitHub CLI 2.100.0 or later, the first release with
+`gh skill`, and no GitHub sign-in: the repository is public. The installer's
+comment above `skill_path` names the same command.
+
+On Linux and macOS:
+
+```console
+sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/printobserver/skills
+```
+
+On Windows:
+
+```powershell
+gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
+```
+
+Run it again to take a newer skill; restart the service afterwards, because the
+skill is read when the service starts.
+
+### 7. Install and sign in the agent's harness
 
 There is no separate agent endpoint: when an event arrives, the server runs the
 harness `supervisor.harness` selects, as the service's own account. That
@@ -310,12 +345,12 @@ Follow its prompts. The command exits with the harness's own status. It starts
 no service and contacts neither OctoPrint nor Obico.
 
 Every supervision turn the service runs is pointed at the same directory, so
-it uses that sign-in: an Obico failure webhook causes a turn using the bundled
+it uses that sign-in: an Obico failure webhook causes a turn using the installed
 skill, and every action the agent requests goes through the policy. Run the
 sign-in again if the harness's sign-in expires, or after changing
 `supervisor.harness`.
 
-### 7. Enable and start the service
+### 8. Enable and start the service
 
 One command, and which one is your platform's service manager's. On Linux:
 
@@ -343,7 +378,7 @@ Starting is separate because this service commands a 3D printer. Installing
 software must not start a process that can move the machine — at install, or at
 the next reboot.
 
-### 8. Verify the installation
+### 9. Verify the installation
 
 ```console
 printobserver --version
@@ -392,20 +427,21 @@ printobserver context --print-id PRINT_ID
 ```
 
 Give every change a `--reason`. See
-[common operations](./docs/reference/common-operations.md) for a worked example
+[common operations](./skills/printobserver/reference/common-operations.md) for a worked example
 of every command, including a temporary adjustment with `--duration-s`, and
 its output.
 
 ## Reference documentation
 
-- [The agent skill](./crates/printobserver-oneharness/assets/printobserver-skill.md)
-- [The command surface](./docs/reference/command-surface.md)
-- [Common operations](./docs/reference/common-operations.md)
-- [The intervention policy](./docs/reference/intervention-policy.md)
-- [The API and clients](./docs/reference/api-and-clients.md)
-- [The schemas](./docs/reference/schemas.md)
-- [The architecture](./docs/reference/architecture.md)
-- [Testing](./docs/reference/testing.md)
+- [The agent skill](./skills/printobserver/SKILL.md), installed with
+  `gh skill install nickderobertis/printobserver printobserver`
+- [The command surface](./skills/printobserver/reference/command-surface.md)
+- [Common operations](./skills/printobserver/reference/common-operations.md)
+- [The intervention policy](./skills/printobserver/reference/intervention-policy.md)
+- [The API and clients](./skills/printobserver/reference/api-and-clients.md)
+- [The schemas](./skills/printobserver/reference/schemas.md)
+- [The architecture](./skills/printobserver/reference/architecture.md)
+- [Testing](./skills/printobserver/reference/testing.md)
 
 ## Development
 

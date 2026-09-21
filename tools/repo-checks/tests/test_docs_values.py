@@ -54,8 +54,10 @@ def test_reference_material_belongs_outside_the_skill(
     ("text", "finding"),
     [
         ("[Guide](reference/absent.md)", "there is no such document"),
-        ("[Guide](../guide.md)", "climbs out of the skill's own directory"),
-        ("[Guide](https://example.invalid/guide.md)", "not a path beside the skill"),
+        # Climbing out is `skill_directory`'s to refuse by name; here it is a
+        # link to nothing the skill's directory carries.
+        ("[Guide](../guide.md)", "there is no such document"),
+        ("[Guide](https://example.invalid/guide.md)", "not a path inside the skill's own"),
         ("Read the guide.", "links to no declared reference document"),
     ],
 )

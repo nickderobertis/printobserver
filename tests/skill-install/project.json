@@ -1,0 +1,16 @@
+{
+  "name": "skill-install",
+  "root": "tests/skill-install",
+  "projectType": "library",
+  "tags": ["lang:python", "type:e2e"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tests/skill-install" },
+    "format-check": { "command": "uv run -q ruff format --check tests/skill-install" },
+    "lint": { "command": "uv run -q ruff check tests/skill-install" },
+    "typecheck": { "command": "uv run -q ty check tests/skill-install" },
+    "test-skill-install": { "metadata": { "description": "llmlint: ignore[new_projects_keep_the_graph_uniform] suppressions.toml has the reason." },
+      "inputs": ["default", "{workspaceRoot}/skills/**/*"],
+      "command": "uv run -q pytest tests/skill-install/tests"
+    }
+  }
+}

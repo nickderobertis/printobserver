@@ -22,7 +22,8 @@
     "test": { "cache": false, "inputs": ["default", "^default"] },
     "test-e2e": { "cache": false },
     "test-integration": { "cache": false, "parallelism": false },
-    "test-obico": { "cache": false }
+    "test-obico": { "cache": false },
+    "test-skill-install": { "cache": false }
   },
   "defaultBase": "origin/main"
 }
