@@ -612,6 +612,12 @@ reason = "Split by target rather than by marker: the journey is its own module, 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
+site = "test-skill-install"
+reason = "On the target, as the entry for this rule at `test-e2e` in this file is: the `gh skill` journey is behind an edge of its own already — this target and the `test-skill-install` recipe, excluded from `test-e2e` by path and run only by the `skill-install` job. It lives in this project because the task that added it places it beside the end-to-end tier's other journeys and it uses that tier's helpers; no job here selects projects by what a change affected, so a project of its own would spare no change. It costs a copy of the tree and three `gh` runs, seconds."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/project.json"
 site = "test-e2e"
 reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. So there is no edge to put this behind that would spare an unrelated change anything: a project of its own would carry the same target name and be run by the same `nx run-many` the tier already is. If that ceases to be true — if this repository grows per-project end-to-end targets — this suppression stops being right, and a reader can see that from this sentence."
 
