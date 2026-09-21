@@ -163,10 +163,9 @@ impl Documentation {
         let mut linked = BTreeMap::new();
         for target in links_in(&skill) {
             validate_relative_path(&target);
-            let document = beside
-                .join(&target)
-                .canonicalize()
-                .unwrap_or_else(|error| panic!("linked document `{target}` must exist: {error}"));
+            let document = beside.join(&target).canonicalize().unwrap_or_else(|error| {
+                panic!("linked document `{target}` must be readable: {error}")
+            });
             assert!(
                 document.starts_with(&contained),
                 "linked document `{target}` resolves outside the skill's own directory, \
@@ -468,6 +467,28 @@ fn unreadable_documentation_link_names_its_target() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let skill = directory.path().join("skill.md");
     std::fs::write(&skill, "Read the [reference](missing.md).\n").expect("write an inline skill");
+    Documentation::beside(&skill);
+}
+
+/// A link that reaches outside the skill's own directory — here through a
+/// symlink inside it — is refused, because an installed skill carries none of
+/// what it points at.
+#[test]
+#[should_panic(expected = "resolves outside the skill's own directory")]
+fn a_link_out_of_the_skills_directory_is_refused() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let beside = directory.path().join("skill");
+    let outside = directory.path().join("outside");
+    std::fs::create_dir_all(&beside).expect("a skill directory");
+    std::fs::create_dir_all(&outside).expect("a directory outside it");
+    std::fs::write(outside.join("guide.md"), "A guide.\n").expect("a document outside");
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&outside, beside.join("reference"));
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_dir(&outside, beside.join("reference"));
+    linked.expect("a symlink out of the skill's directory");
+    let skill = beside.join("SKILL.md");
+    std::fs::write(&skill, "Read the [guide](reference/guide.md).\n").expect("a skill");
     Documentation::beside(&skill);
 }
 
