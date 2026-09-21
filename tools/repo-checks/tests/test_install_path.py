@@ -553,3 +553,39 @@ def test_a_second_pair_for_one_service_manager_is_refused(
     findings = install_path_section(broken.repo)
 
     refused(findings, "states more than one pair of commands for the `systemd` service manager")
+
+
+def test_a_gh_prerequisite_other_than_the_held_release_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The step's prerequisite is the release the credential-free install is proven on."""
+    for place, sentence in (
+        ("AGENTS.md", "Its one prerequisite is GitHub CLI 2.100.0 or later"),
+        ("README.md", "It needs GitHub CLI 2.100.0 or later"),
+    ):
+        broken = tree()
+        broken.edit(place, sentence, sentence.replace("2.100.0", "2.90.0"))
+
+        findings = install_path_section(broken.repo)
+
+        refused(findings, "states GitHub CLI 2.90.0 or later")
+
+
+def test_moving_the_held_gh_release_alone_is_refused(tree: Callable[[], Tree]) -> None:
+    """A pin moved without the documented prerequisite leaves both places claiming the old one."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'version = "2.100.0"', 'version = "2.101.0"')
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "`repo-policy.toml` holds `gh` at 2.101.0")
+
+
+def test_dropping_the_gh_prerequisite_is_refused(tree: Callable[[], Tree]) -> None:
+    """An operator told to run `gh skill` has to be told which `gh` has it."""
+    broken = tree()
+    broken.edit("README.md", "It needs GitHub CLI 2.100.0 or later", "It needs GitHub CLI")
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states no `GitHub CLI 2.100.0 or later` prerequisite")

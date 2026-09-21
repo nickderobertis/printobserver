@@ -65,6 +65,11 @@ SKILL_INSTALL_COMMAND = "gh skill install nickderobertis/printobserver printobse
 # that nothing there needs.
 GITHUB_SIGN_IN = "gh auth login"
 
+# How the section and the README state the skill step's one prerequisite. The
+# release it names is the one `repo-policy.toml` holds `gh` at, which is the one
+# the credential-free install journey is proven on, so the two are one contract.
+GH_PREREQUISITE = re.compile(r"GitHub CLI (\S+) or later")
+
 # The sentence the section must carry so a reader cannot mistake the routes for
 # steps. Stated literally because a check cannot judge a paraphrase.
 ALTERNATIVES_SENTENCE = (
