@@ -81,13 +81,8 @@ per ecosystem, measured on the run the `test` tier just did. Each ecosystem
 measures its own suite, because one blended figure lets one language's coverage
 pay for another's.
 
-**Where it runs.** Every supported platform, in the gate's cell for it, with
-one recorded exemption: on `windows-aarch64` the Rust toolchain cannot read the
-profiles its own instrumentation writes, so `repo-policy.toml` exempts that
-cell's Rust coverage report alone — the tests still run there, and the floor
-is still required everywhere profiles are readable. `AGENTS.md`'s
-"Supported platforms" records the toolchain defect and what removes the
-exemption.
+<!-- llmlint: ignore[no_redundant_instruction_pointers] this document is read on the forge and from an installed skill, where no harness loads AGENTS.md; the paragraph is the base's, unchanged and moved by a rename. suppressions.toml has the full reason. -->
+**Where it runs.** Every supported platform, in the gate's cell for it, with one recorded exemption: on `windows-aarch64` the Rust toolchain cannot read the profiles its own instrumentation writes, so `repo-policy.toml` exempts that cell's Rust coverage report alone — the tests still run there, and the floor is still required everywhere profiles are readable. `AGENTS.md`'s "Supported platforms" records the toolchain defect and what removes the exemption.
 
 ### build
 
@@ -178,13 +173,8 @@ so a command that worked because nothing had to move is refused.
 of its own, starts it, and waits a print out. That is minutes of provisioning
 every gate run would otherwise pay for.
 
-**When it runs.** On every change, as a continuous-integration job of its own —
-the `integration` job of `.github/workflows/ci.yml`, one cell per platform the
-supported-platform list names, each of which is a required check. `just
-octoprint-up` and `just octoprint-down` bracket it. OctoPrint's virtual printer
-is a bundled pure-Python plugin that needs no hardware, so no platform is
-excluded; `AGENTS.md`'s "Virtual printer availability" is where one would be
-recorded, with its reason.
+<!-- llmlint: ignore[no_redundant_instruction_pointers] this document is read on the forge and from an installed skill, where no harness loads AGENTS.md; the paragraph is the base's, unchanged and moved by a rename. suppressions.toml has the full reason. -->
+**When it runs.** On every change, as a continuous-integration job of its own — the `integration` job of `.github/workflows/ci.yml`, one cell per platform the supported-platform list names, each of which is a required check. `just octoprint-up` and `just octoprint-down` bracket it. OctoPrint's virtual printer is a bundled pure-Python plugin that needs no hardware, so no platform is excluded; `AGENTS.md`'s "Virtual printer availability" is where one would be recorded, with its reason.
 
 ### test-install-proof
 

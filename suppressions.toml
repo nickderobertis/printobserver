@@ -1156,6 +1156,18 @@ site = "See [`AGENTS.md`](./AGENTS.md) for repository development"
 reason = "The README is the forge's landing page, read by a person in a browser or a fresh clone who is handed no instruction file by any harness; the pointer is how that reader finds the development and release rules at all. The line predates this branch and is outside its diff — the judge read it as context of the install-path section the branch edits."
 
 [[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "skills/printobserver/reference/testing.md"
+site = "`AGENTS.md`'s \"Supported platforms\" records the toolchain defect"
+reason = "This reference document is read by people on the forge and by agents from an installed skill, and neither is handed AGENTS.md by any harness, so the pointer is how that reader learns where the record lives rather than a restatement of instructions already loaded. The paragraph is the base's own, unchanged in content: the skill's move put it inside this branch's diff by a rename, and it was joined onto the one line this directive covers."
+
+[[suppression]]
+rule = "no_redundant_instruction_pointers"
+file = "skills/printobserver/reference/testing.md"
+site = "`AGENTS.md`'s \"Virtual printer availability\" is where one would be recorded"
+reason = "This reference document is read by people on the forge and by agents from an installed skill, and neither is handed AGENTS.md by any harness, so the pointer is how that reader learns where the record lives rather than a restatement of instructions already loaded. The paragraph is the base's own, unchanged in content: the skill's move put it inside this branch's diff by a rename, and it was joined onto the one line this directive covers."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
