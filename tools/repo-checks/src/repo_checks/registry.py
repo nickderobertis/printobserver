@@ -88,6 +88,8 @@ CHECKS: dict[str, Check] = {
     "base-files": base_files,
     "suppressions": checks_suppressions.suppressions,
     "docs-skill": checks_docs.skill,
+    "docs-skill-directory": checks_docs.skill_directory,
+    "docs-link-symlinks": checks_docs.link_symlinks,
     "docs-reference": checks_docs.reference,
     "docs-schemas": checks_docs.schema_document,
     "docs-platforms": checks_docs.platform_names,

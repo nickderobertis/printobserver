@@ -45,9 +45,6 @@ surface_manifest = "surface.json"
 schema_document = "schemas.md"
 schema_directory = "schemas"
 example_fence = "console"
-bundle_source = "bundle.rs"
-bundle_assets = "assets"
-bundle_directory = "reference"
 
 [[docs.skill_element]]
 name = "the role"
@@ -119,14 +116,6 @@ def test_a_skill_that_is_not_there_is_refused(tmp_path: Path) -> None:
     repo = _declaring(tmp_path)
 
     refused(skill(repo), "the committed skill `skill.md` is absent")
-
-
-def test_a_bundle_source_that_is_not_there_is_refused(tmp_path: Path) -> None:
-    """Without it nothing says what the built artifact carries."""
-    repo = _declaring(tmp_path)
-    _write(tmp_path, "skill.md", "# A skill\n")
-
-    refused(skill(repo), "`bundle.rs`, is absent")
 
 
 def test_a_reference_check_with_no_generated_surface_manifest_is_refused(tmp_path: Path) -> None:
@@ -287,9 +276,6 @@ def test_malformed_documentation_entries_are_not_discarded(
         "surface_manifest",
         "schema_document",
         "schema_directory",
-        "bundle_source",
-        "bundle_assets",
-        "bundle_directory",
         "path",
     ],
 )

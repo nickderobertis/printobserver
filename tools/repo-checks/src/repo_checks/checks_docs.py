@@ -1,15 +1,32 @@
 """The agent-facing documentation, held to the things it documents.
 
-Three checks, and each of them reads the tree rather than the document's own
-claims about itself.
+Each check here reads the tree rather than the document's own claims about
+itself.
 
-`skill` holds the committed skill to the two bounds `repo-policy.toml` declares,
-to the nine things it owes in its own text, and to carrying no reference
-material of its own — an argument list, an output description, a schema fragment
-or a worked example, in whatever form. The skill is sent as the system prompt of
-every supervision turn, so its length is paid on every turn of every print; a
-skill that restates the reference documentation crowds out the picture of the
-print it is supposed to be looking at.
+`skill` holds the committed skill to being an Agent Skill and its prose to what a
+system prompt can afford. The file opens with a YAML frontmatter block — a
+mapping whose `name` is the skill's directory's name and follows agentskills.io's
+rules, and whose `description` is a non-empty string of at most 1,024
+characters — and what a turn sends is the prose after it, which opens with a
+`# ` heading. That prose, and only that, is held to the two bounds
+`repo-policy.toml` declares, to the nine things it owes in its own text, to
+linking every declared reference document, and to carrying no reference
+material of its own — an argument list, an output description, a schema
+fragment or a worked example, in whatever form. The skill is sent as the system
+prompt of every supervision turn, so its length is paid on every turn of every
+print; a skill that restates the reference documentation crowds out the picture
+of the print it is supposed to be looking at.
+
+`skill_directory` holds the skill's directory to carrying itself. `gh skill
+install` installs that directory alone and drops every symlink in it, and the
+installed server runs the agent from beside the installed skill, so a symlink
+under it is refused, and so is a relative link from the skill or from any
+document under it that leaves the directory or names anything but a regular
+file inside it.
+
+`link_symlinks` holds every committed document to links the forge can follow.
+GitHub does not follow a directory symlink when it resolves a relative link, so
+a link reaching its target only through one is a 404 there.
 
 `reference` holds each declared document to its declared headings, to an opening
 statement that says what it covers and is true of the document itself, and to
@@ -26,15 +43,20 @@ contracts' own generation target maintains, in both directions.
 from __future__ import annotations
 
 import json
+import os
+import posixpath
 import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+import yaml
+
 from repo_checks.docs import (
     DocsPolicy,
     Document,
+    UnclosedFrontmatterError,
     docs_policy,
     entries_of,
     entry_body,
@@ -44,6 +66,7 @@ from repo_checks.docs import (
     schema_document_text,
     schema_members,
     section_of,
+    skill_prose,
 )
 from repo_checks.model import (
     UNCOMMITTED_DIRECTORIES,
@@ -79,8 +102,19 @@ COMMAND_ENTRY_LABELS = ("**Output.**", "**Failures.**")
 #: The shape a document writes a test function's name in.
 TEST_NAME = re.compile(r"^[a-z][a-z0-9_]{19,}$")
 
-#: How the source that ships the skill names an asset it carries into the artifact.
-BUNDLED = re.compile(r'include_str!\("\.\./assets/([^"]+)"\)')
+#: What agentskills.io allows a skill's `name` to be: 1 to 64 lowercase ASCII
+#: letters, digits and hyphens, neither opening nor closing with a hyphen and
+#: never carrying two in a row.
+SKILL_NAME = re.compile(r"^(?!-)(?!.*--)[a-z0-9-]{1,64}(?<!-)$")
+
+#: The most characters agentskills.io allows a skill's `description` to be.
+SKILL_DESCRIPTION_MAX = 1024
+
+#: A code span, whose text is shown rather than rendered.
+CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")
+
+#: A link target that names no path in this tree: a URL or a mail address.
+NOT_A_PATH = ("://", "mailto:")
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +253,7 @@ def _reference_vocabulary(repo: Repo, policy: DocsPolicy, surface: Surface) -> s
 
 
 def skill(repo: Repo) -> list[str]:
-    """The committed skill is short, carries what it owes, and restates nothing."""
+    """The committed skill is an Agent Skill, and its prose is short and restates nothing."""
     try:
         policy = docs_policy(repo)
     except PolicyValueError as error:
@@ -227,26 +261,39 @@ def skill(repo: Repo) -> list[str]:
     if not repo.exists(policy.skill):
         return [f"the committed skill `{policy.skill}` is absent"]
 
-    text = repo.read(policy.skill)
-    findings: list[str] = []
+    try:
+        split = skill_prose(repo.read(policy.skill))
+    except UnclosedFrontmatterError:
+        return [
+            f"`{policy.skill}` opens a frontmatter block with `---` and no later line "
+            f"closes it, so none of it is prose: close the block with a line that is "
+            f"exactly `---`."
+        ]
+    findings = _frontmatter(policy.skill, split.frontmatter)
+    text = split.prose
+    if not text.startswith("# "):
+        findings.append(
+            f"`{policy.skill}`'s prose does not begin with a `# ` heading. What follows "
+            f"the frontmatter is what every turn is sent, and it opens by saying what it is."
+        )
 
     characters = len(text)
     lines = text.splitlines()
     if characters > policy.skill_max_characters:
         findings.append(
-            f"`{policy.skill}` is {characters} characters, and the bound is "
+            f"`{policy.skill}`'s prose is {characters} characters, and the bound is "
             f"{policy.skill_max_characters}. It is sent as the system prompt of every "
             f"supervision turn, so every character of it is paid on every turn: move "
             f"what it says into a reference document and link to it."
         )
     if len(lines) > policy.skill_max_lines:
         findings.append(
-            f"`{policy.skill}` is {len(lines)} lines, and the bound is {policy.skill_max_lines}"
+            f"`{policy.skill}`'s prose is {len(lines)} lines, and the bound is "
+            f"{policy.skill_max_lines}"
         )
 
-    findings.extend(_reference_material(repo, policy, text))
+    findings.extend(_reference_material(repo, policy, text, offset=split.offset))
     findings.extend(_skill_links(repo, policy, text))
-    findings.extend(_bundled_references(repo, policy))
     # Markers are matched over whitespace-normalized text, so a passage that
     # wraps at a different column is the same passage. What removing the passage
     # removes is the marker, which is what this is about.
@@ -262,15 +309,74 @@ def skill(repo: Repo) -> list[str]:
     return findings
 
 
-def _reference_material(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
-    """Every piece of reference material the skill carries, whatever its form."""
+def _frontmatter(where: str, frontmatter: str | None) -> list[str]:
+    """The skill's frontmatter is a YAML mapping naming its directory and describing it.
+
+    These are agentskills.io's own rules for a `SKILL.md`, and `gh skill
+    install` reads the skill by them: a `name` that is not the directory's, or
+    a `description` it cannot read, is a skill it will not install as this one.
+    """
+    if frontmatter is None:
+        return [
+            f"`{where}` does not open with a `---` frontmatter block. An Agent Skill "
+            f"opens with one carrying its `name` and `description`."
+        ]
+    try:
+        parsed = yaml.safe_load(frontmatter)
+    except yaml.YAMLError as error:
+        return [f"`{where}`'s frontmatter is not YAML: {error}"]
+    if not isinstance(parsed, dict):
+        return [
+            f"`{where}`'s frontmatter is not a YAML mapping, so it carries no `name` and "
+            f"no `description`"
+        ]
+    findings: list[str] = []
+    directory = PurePosixPath(where).parent.name
+    name = parsed.get("name")
+    if not isinstance(name, str):
+        findings.append(
+            f"`{where}`'s frontmatter `name` is absent or not a string; it must be "
+            f"`{directory}`, the name of the directory the skill is in"
+        )
+    else:
+        if not SKILL_NAME.fullmatch(name):
+            findings.append(
+                f"`{where}`'s frontmatter `name` is `{name}`, which is not 1 to 64 "
+                f"lowercase ASCII letters, digits and hyphens that neither open nor close "
+                f"with a hyphen nor carry two in a row"
+            )
+        if name != directory:
+            findings.append(
+                f"`{where}`'s frontmatter `name` is `{name}`, and the directory the skill "
+                f"is in is `{directory}`. An Agent Skill is named by its directory."
+            )
+    description = parsed.get("description")
+    if not isinstance(description, str) or not description.strip():
+        findings.append(
+            f"`{where}`'s frontmatter `description` is absent or empty. It is what says "
+            f"when the skill applies."
+        )
+    elif len(description) > SKILL_DESCRIPTION_MAX:
+        findings.append(
+            f"`{where}`'s frontmatter `description` is {len(description)} characters, and "
+            f"an Agent Skill's may be at most {SKILL_DESCRIPTION_MAX}"
+        )
+    return findings
+
+
+def _reference_material(repo: Repo, policy: DocsPolicy, text: str, *, offset: int = 0) -> list[str]:
+    """Every piece of reference material the skill's prose carries, whatever its form.
+
+    `offset` is how many lines of the file precede that prose, so every finding
+    names the line of the file rather than of the prose.
+    """
     surface = _read_surface(repo, policy)
     if isinstance(surface, str):
         return [surface]
     vocabulary = _reference_vocabulary(repo, policy, surface)
 
     findings: list[str] = []
-    for number, line in enumerate(text.splitlines(), start=1):
+    for number, line in enumerate(text.splitlines(), start=offset + 1):
         where = f"`{policy.skill}`:{number}"
         if line.startswith("```"):
             findings.append(
@@ -310,35 +416,29 @@ def _reference_material(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
 
 
 def _skill_links(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
-    """The skill links to every declared document, by a path an install can keep.
+    """The skill links to every declared document, by a path an install keeps.
 
-    Links are resolved **relative to the skill's own file** rather than to the
-    repository root, because that is the anchor an installed program can
-    reproduce: the composition root writes the reference documents beside the
-    skill it materialized, and runs the agent with that directory as its working
-    directory. A link that escaped that directory would resolve in a checkout and
-    nowhere else, so one is refused here rather than discovered by an agent.
+    Links are resolved **relative to the skill's own directory** rather than to
+    the repository root, because that directory is the whole of what an install
+    carries: `gh skill install` installs the skill's directory alone, and the
+    server runs the agent from it. So a link here is a path inside that
+    directory or it is nothing an agent can follow; whether one stays inside is
+    `skill_directory`'s to hold, and this holds that each names a document there
+    and that every declared document is reached.
     """
     beside = repo.path(policy.skill).parent
-    targets = links_of(text)
     findings: list[str] = []
     reached: set[Path] = set()
-    for target in sorted(set(targets)):
-        if target.startswith(("/", "#")) or "://" in target:
+    for target in sorted(set(links_of(text))):
+        path = _link_path(target)
+        if path is None or target.startswith("#"):
             findings.append(
-                f"`{policy.skill}` links to `{target}`, which is not a path beside the "
-                f"skill. An installed program materializes the documents beside the "
-                f"skill it wrote, so a link it cannot reproduce is a dead link there."
+                f"`{policy.skill}` links to `{target}`, which is not a path inside the "
+                f"skill's own directory. `gh skill install` installs that directory "
+                f"alone, so a link to anything else is a dead link to an installed agent."
             )
             continue
-        if ".." in PurePosixPath(target).parts:
-            findings.append(
-                f"`{policy.skill}` links to `{target}`, which climbs out of the skill's "
-                f"own directory. An installed program can only carry what sits beside "
-                f"the skill it materialized."
-            )
-            continue
-        resolved = (beside / target).resolve()
+        resolved = (beside / path).resolve()
         if not resolved.exists():
             findings.append(f"`{policy.skill}` links to `{target}`, and there is no such document")
             continue
@@ -352,37 +452,156 @@ def _skill_links(repo: Repo, policy: DocsPolicy, text: str) -> list[str]:
     return findings
 
 
-def _bundled_references(repo: Repo, policy: DocsPolicy) -> list[str]:
-    """The built artifact carries every document the skill is allowed to link to.
+def _link_path(target: str) -> str | None:
+    """The path one relative link names, or `None` for a link that names no path.
 
-    Read off the `include_str!` calls of the source that ships the skill and
-    compared with the declared documents **on the filesystem**, so a document is
-    bundled by being that document rather than by being spelled the same way.
+    A URL, a mail address and an absolute path name nothing relative to the
+    document; a `#fragment` and a `?query` are not part of the path a link
+    names, so they are dropped. A bare `#fragment` names the document itself,
+    which is the empty path.
     """
-    if not repo.exists(policy.bundle_source):
-        return [
-            f"the source that bundles the reference documents, `{policy.bundle_source}`, is absent"
-        ]
-    beside = repo.path(policy.bundle_assets)
-    carried = {
-        (beside / captured).resolve()
-        for captured in BUNDLED.findall(repo.read(policy.bundle_source))
-        if captured.startswith(f"{policy.bundle_directory}/")
-    }
-    declared = {repo.path(document.path).resolve(): document.path for document in policy.documents}
-    findings = [
-        f"`{policy.bundle_source}` bundles no reference document for `{path}`. The skill "
-        f"links to it, and an install that carried the skill and not the document would "
-        f"hand the agent a dead link."
-        for resolved, path in sorted(declared.items(), key=lambda entry: entry[1])
-        if resolved not in carried
-    ]
-    findings.extend(
-        f"`{policy.bundle_source}` bundles `{resolved}`, which this repository declares no "
-        f"reference document for"
-        for resolved in sorted(carried - set(declared))
-    )
+    if target.startswith("/") or any(marker in target for marker in NOT_A_PATH):
+        return None
+    return target.split("#", 1)[0].split("?", 1)[0]
+
+
+def _rendered_text(text: str) -> str:
+    """One document with its fenced blocks and code spans taken out.
+
+    What is inside either is shown rather than rendered, so a `[a](b)` there —
+    a generated schema's description quoting a Rust intra-doc link, say — is no
+    link any reader can follow, and holding it to a path would refuse a
+    document for quoting something.
+    """
+    kept: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if fence is None and stripped.startswith(("```", "~~~")):
+            fence = stripped[:3]
+            continue
+        if fence is not None:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+        kept.append(CODE_SPAN.sub("", line))
+    return "\n".join(kept)
+
+
+def _relative_links(text: str) -> list[tuple[str, str]]:
+    """Every link one document renders that names a path, with that path."""
+    found: list[tuple[str, str]] = []
+    for target in sorted(set(links_of(_rendered_text(text)))):
+        path = _link_path(target)
+        if path:
+            found.append((target, path))
+    return found
+
+
+def link_symlinks(repo: Repo) -> list[str]:
+    """No committed document links to anything through a directory symlink.
+
+    GitHub does not follow a directory symlink when it resolves a relative link
+    in a rendered document, so a link that reaches its target only by passing
+    through one works in a checkout and is a 404 on the forge. The path is
+    normalized the way the forge normalizes it — lexically, `..` cancelling the
+    component before it — and every directory along it is read, so a symlinked
+    directory anywhere between the document and the target is found. A link
+    whose final target is itself a symlinked *file* is left alone: that is a
+    different question, and it is not this one.
+    """
+    documents, findings = _documents(repo)
+    root = repo.root
+    for where, text in documents:
+        directory = PurePosixPath(where).parent
+        for target, path in _relative_links(text):
+            joined = PurePosixPath(posixpath.normpath((directory / path).as_posix()))
+            if not joined.parts or joined.parts[0] == "..":
+                continue
+            for depth in range(1, len(joined.parts)):
+                through = PurePosixPath(*joined.parts[:depth])
+                on_disk = root / through
+                if on_disk.is_symlink() and on_disk.is_dir():
+                    findings.append(
+                        f"`{where}` links to `{target}` through `{through}`, which is a "
+                        f"symlink to a directory. GitHub does not follow a directory "
+                        f"symlink when it resolves a link, so the link is a 404 there: "
+                        f"link to the directory the symlink points at instead."
+                    )
+                    break
     return findings
+
+
+def skill_directory(repo: Repo) -> list[str]:
+    """The skill's directory carries itself: no symlink, and no link that leaves it.
+
+    `gh skill install` installs the skill's directory alone and drops every
+    symlink in it, and the installed server runs the agent from beside the
+    installed `SKILL.md`. So a symlink under that directory is a file an install
+    does not carry, and a relative link from the skill's prose — or from any
+    document under that directory — that resolves outside it, or to anything but
+    a regular file inside it, is a link an installed agent cannot follow.
+    """
+    try:
+        policy = docs_policy(repo)
+    except PolicyValueError as error:
+        return [str(error)]
+    directory = repo.path(policy.skill).parent
+    if not directory.is_dir():
+        return [f"the skill's directory `{Path(policy.skill).parent.as_posix()}` is absent"]
+    carried = (
+        "`gh skill install` installs the skill's directory alone and drops every "
+        "symlink in it, so an install would not carry"
+    )
+    findings: list[str] = []
+    documents: list[Path] = []
+    for current, directories, files in os.walk(directory, followlinks=False):
+        here = Path(current)
+        for name in sorted([*directories, *files]):
+            path = here / name
+            relative = path.relative_to(repo.root).as_posix()
+            if path.is_symlink():
+                findings.append(
+                    f"`{relative}` is a symlink under the skill's directory. {carried} it."
+                )
+            elif name in files and name.endswith(".md"):
+                documents.append(path)
+    for document in sorted(documents):
+        where = document.relative_to(repo.root).as_posix()
+        try:
+            text = document.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as unreadable:
+            findings.append(
+                f"`{where}` is under the skill's directory and unreadable: {unreadable}"
+            )
+            continue
+        if document == repo.path(policy.skill):
+            try:
+                text = skill_prose(text).prose
+            except UnclosedFrontmatterError:
+                continue
+        for target, path in _relative_links(text):
+            resolved = Path(os.path.normpath(document.parent / path))
+            inside = resolved.is_relative_to(directory)
+            if inside and resolved.is_file() and not _through_symlink(directory, resolved):
+                continue
+            reason = (
+                "which resolves outside the skill's directory"
+                if not inside
+                else "which is not a regular file inside the skill's directory"
+            )
+            findings.append(f"`{where}` links to `{target}`, {reason}. {carried} the link.")
+    return findings
+
+
+def _through_symlink(directory: Path, path: Path) -> bool:
+    """Whether any component of `path` below `directory` is a symlink."""
+    current = directory
+    for part in path.relative_to(directory).parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
 
 
 def _crate_dependencies(repo: Repo, crate: str) -> set[str]:
