@@ -271,13 +271,38 @@ fn the_restoration_assertion_refuses_an_incorrect_restoration(world: &World) {
         .find(|found| found.command.name == "set-bed-target-c")
         .expect("this walk drives a bed target");
 
-    let opened = durations::each_asks_for(world, std::slice::from_ref(&heater), short());
-    world.machine_is_deaf(true);
-    durations::the_adjusted_value_is_in_place_shortly_before_it_expires(world, &opened);
-    refused("an incorrect restoration", || {
-        durations::the_prior_value_is_back_shortly_after_it_expires(world, &opened);
-    });
-    world.machine_is_deaf(false);
+    // The read before the expiry is taken behind the same steady-host
+    // condition `journeys/durations.rs` states, and for the same reason: a
+    // host that left this thread unrun, or took longer over the read than the
+    // window before the expiry left it, produced no measurement rather than a
+    // defect this journey refused. A discarded attempt's own intervention is
+    // waited out first, over a machine that hears again, so that nothing it is
+    // still due to put back lands in the middle of the attempt after it.
+    let mut seen = Vec::new();
+    for _ in 0..durations::STEADY_HOST_ATTEMPTS {
+        let (opened, measured) =
+            durations::opened_and_measured_before_it_expires(world, &heater, short(), || {
+                world.machine_is_deaf(true);
+            });
+        if let durations::Measured::AcrossAHostEvent(event) = measured {
+            seen.push(event);
+            world.machine_is_deaf(false);
+            durations::wait_out(&opened);
+            continue;
+        }
+        refused("an incorrect restoration", || {
+            durations::the_prior_value_is_back_shortly_after_it_expires(
+                world,
+                std::slice::from_ref(&opened),
+            );
+        });
+        world.machine_is_deaf(false);
+        return;
+    }
+    panic!(
+        "{}",
+        durations::could_not_be_measured(&heater.command.name, short(), &seen)
+    );
 }
 
 /// How long the adjustment the restoration defect is driven over stands for.
