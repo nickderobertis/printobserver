@@ -98,6 +98,38 @@ def test_a_policy_declaring_no_platform_list_is_refused(
     refused(findings, "declares no `toolchain.python_typecheck.platforms` list")
 
 
+def test_a_project_declaring_no_root_is_refused(tree: Callable[[], Tree]) -> None:
+    """The root decides which passes are looked for, so it is read or it is a finding.
+
+    Composed out of whatever was declared instead, it would hold this target to
+    a pass over a path nobody wrote — a finding naming a root the tree has no
+    project at, which is worse than none.
+    """
+    broken = tree()
+    broken.edit(SDK, '"root": "python/printobserver-sdk"', '"root": 3')
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused(findings, "printobserver-sdk-python is a Python project declaring no `root` path")
+
+
+def test_a_project_declaring_no_name_is_reported_under_its_own_directory(
+    tree: Callable[[], Tree],
+) -> None:
+    """A name identifies a project in a finding, so an unreadable one still names somewhere.
+
+    Unlike the root, it decides nothing; refusing to report at all would leave
+    the target's real defect — the missing pass — unsaid.
+    """
+    broken = tree()
+    broken.edit(SDK, '"name": "printobserver-sdk-python"', '"name": []')
+    broken.edit(SDK, f"{HOST_INVOCATION} && {WIN32_INVOCATION}", HOST_INVOCATION)
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused_naming(findings, "printobserver-sdk:typecheck", "no `win32` pass")
+
+
 def test_a_project_carrying_no_python_tag_is_left_alone(tree: Callable[[], Tree]) -> None:
     """What a project is held to is the language it declares itself in."""
     relabelled = tree()

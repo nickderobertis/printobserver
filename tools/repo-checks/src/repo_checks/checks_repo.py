@@ -125,8 +125,18 @@ class PythonProject:
     """One `lang:python` project of the Nx graph, as its own `project.json` declares it."""
 
     name: str
-    root: str
+    root: str | None
     typecheck: str | None
+
+
+def _declared_text(value: object) -> str | None:
+    """The value where it is a non-empty string, and `None` where it declares nothing.
+
+    A declaration of another shape is not read as text: coercing it would
+    compose a root or a name out of whatever JSON happened to be there, and the
+    check below would then hold a target to a path nobody wrote.
+    """
+    return value if isinstance(value, str) and value else None
 
 
 def _python_projects(repo: Repo) -> list[PythonProject]:
@@ -134,8 +144,12 @@ def _python_projects(repo: Repo) -> list[PythonProject]:
 
     A declaration of another shape declares nothing a caller can read, so each
     member is taken only where it is the shape it is meant to be: a project
-    whose `typecheck` command is absent or is not a string carries `None`, and
-    is a finding of the check below rather than a traceback out of this.
+    whose `root` or `typecheck` command is absent or is not a non-empty string
+    carries `None`, and is a finding of the check below rather than a traceback
+    out of this. The name alone falls back, to the directory the declaration
+    was read from, because it identifies a project in a finding rather than
+    deciding anything — and a project whose own name is unreadable is one a
+    reader still has to be able to find.
     """
     projects: list[PythonProject] = []
     for path in repo.project_paths:
@@ -148,9 +162,9 @@ def _python_projects(repo: Repo) -> list[PythonProject]:
         command = target.get("command") if isinstance(target, dict) else None
         projects.append(
             PythonProject(
-                name=str(declared.get("name", path.parent.name)),
-                root=str(declared.get("root", path.parent.name)),
-                typecheck=command if isinstance(command, str) else None,
+                name=_declared_text(declared.get("name")) or path.parent.name,
+                root=_declared_text(declared.get("root")),
+                typecheck=_declared_text(command),
             )
         )
     return projects
@@ -181,6 +195,9 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
     platforms: tuple[str, ...] = tuple(declared)
     findings: list[str] = []
     for project in _python_projects(repo):
+        if project.root is None:
+            findings.append(f"{project.name} is a Python project declaring no `root` path")
+            continue
         if project.typecheck is None:
             findings.append(f"{project.name} is a Python project declaring no `typecheck` command")
             continue
