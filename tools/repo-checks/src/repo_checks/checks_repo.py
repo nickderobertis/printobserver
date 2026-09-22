@@ -119,6 +119,16 @@ def command_allowlist(repo: Repo) -> list[str]:
     return findings
 
 
+def _mapping(value: object) -> dict[str, Any]:
+    """A JSON or TOML value as a mapping, or an empty one where it is anything else.
+
+    Every caller here is asking what a file declares, and a file declaring
+    something of the wrong shape declares nothing the caller can use. Reading it
+    as empty turns that into the check's own finding rather than a traceback.
+    """
+    return value if isinstance(value, dict) else {}
+
+
 def python_typecheck_platforms(repo: Repo) -> list[str]:
     """Every Python project type-checks for the host's platform and for each declared one.
 
@@ -129,15 +139,26 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
     `repo-policy.toml`'s rather than each project's, so nine targets cannot
     drift into carrying eight.
     """
-    platforms: list[str] = repo.policy["toolchain"]["python_typecheck"]["platforms"]
+    declared = _mapping(_mapping(repo.policy.get("toolchain")).get("python_typecheck")).get(
+        "platforms"
+    )
+    if not isinstance(declared, list) or not all(
+        isinstance(platform, str) and platform for platform in declared
+    ):
+        return [
+            "`repo-policy.toml` declares no `toolchain.python_typecheck.platforms` list of "
+            f"platform names: found {declared!r}"
+        ]
+    platforms: list[str] = declared
     findings: list[str] = []
     for project in repo.project_paths:
-        data = json.loads(project.read_text(encoding="utf-8"))
-        if "lang:python" not in (data.get("tags") or []):
+        data = _mapping(json.loads(project.read_text(encoding="utf-8")))
+        tags = data.get("tags")
+        if not isinstance(tags, list) or "lang:python" not in tags:
             continue
         name = str(data.get("name", project.parent.name))
         root = str(data.get("root", project.parent.name))
-        command = (data.get("targets") or {}).get("typecheck", {}).get("command")
+        command = _mapping(_mapping(data.get("targets")).get("typecheck")).get("command")
         if not isinstance(command, str):
             findings.append(f"{name} is a Python project declaring no `typecheck` command")
             continue

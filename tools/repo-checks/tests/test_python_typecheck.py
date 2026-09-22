@@ -85,3 +85,22 @@ def test_a_platform_added_to_the_policy_is_required_of_every_project(
     findings = python_typecheck_platforms(broken.repo)
 
     refused_naming(findings, "printobserver-sdk-python:typecheck", "no `darwin` pass")
+
+
+def test_a_policy_declaring_no_platform_list_is_refused(tree: Callable[[], Tree]) -> None:
+    """The check reads one declaration, and says so rather than raising when it is not one."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'platforms = ["win32"]', 'platforms = "win32"')
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused(findings, "declares no `toolchain.python_typecheck.platforms` list")
+
+
+def test_a_project_carrying_no_python_tag_is_left_alone(tree: Callable[[], Tree]) -> None:
+    """What a project is held to is the language it declares itself in."""
+    relabelled = tree()
+    relabelled.edit(SDK, '"lang:python"', '"lang:ruby"')
+    relabelled.edit(SDK, f"{HOST_INVOCATION} && {WIN32_INVOCATION}", HOST_INVOCATION)
+
+    accepted(python_typecheck_platforms(relabelled.repo))
