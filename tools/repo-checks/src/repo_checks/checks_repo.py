@@ -119,6 +119,40 @@ def command_allowlist(repo: Repo) -> list[str]:
     return findings
 
 
+def python_typecheck_platforms(repo: Repo) -> list[str]:
+    """Every Python project type-checks for the host's platform and for each declared one.
+
+    A type checker reads `sys.platform` and `os.name` to decide which members a
+    module has, so a pass on this host alone sees `os.getuid` and never sees
+    `os.startfile`: an attribute reached outside a platform guard is reported
+    first by a runner of the platform it is missing from. The platforms are
+    `repo-policy.toml`'s rather than each project's, so nine targets cannot
+    drift into carrying eight.
+    """
+    platforms: list[str] = repo.policy["toolchain"]["python_typecheck"]["platforms"]
+    findings: list[str] = []
+    for project in repo.project_paths:
+        data = json.loads(project.read_text(encoding="utf-8"))
+        if "lang:python" not in (data.get("tags") or []):
+            continue
+        name = str(data.get("name", project.parent.name))
+        root = str(data.get("root", project.parent.name))
+        command = (data.get("targets") or {}).get("typecheck", {}).get("command")
+        if not isinstance(command, str):
+            findings.append(f"{name} is a Python project declaring no `typecheck` command")
+            continue
+        if f"ty check {root}" not in command:
+            findings.append(f"{name}:typecheck runs no `ty check {root}` pass for this host")
+        findings.extend(
+            f"{name}:typecheck runs no `{platform}` pass over {root}: a defect in code "
+            f"`sys.platform` hides from this host would be reported first by a "
+            f"{platform} runner"
+            for platform in platforms
+            if f"ty check --python-platform {platform} {root}" not in command
+        )
+    return findings
+
+
 def recipe_set(repo: Repo) -> list[str]:
     """The check recipe invokes every declared tier and no recipe runs nothing."""
     tiers: list[str] = repo.policy["gate"]["tiers"]
