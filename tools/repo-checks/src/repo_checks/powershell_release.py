@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -140,6 +141,10 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     Nothing is unpacked until the archive has matched the digest the release's
     own hashes file lists for it.
 
+    The archive is unpacked beside the runtime directory and moved onto it only
+    once the program is there, so an archive that turns out to carry none leaves
+    the runtime a previous install put there as it was.
+
     Raises:
         InstallerError: If a download fails, the digests disagree, the archive
             cannot be unpacked, or it carries no program.
@@ -153,18 +158,23 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         source=f"the release's {HASHES}",
     )
     runtime = runtime_directory(into, archive.version)
-    unpack(payload, name=archive.name, into=runtime)
-    program = runtime / "pwsh"
-    if not program.is_file():
-        msg = f"{archive.name} carries no pwsh: {runtime} holds no such program"
+    staged = runtime.with_name(f".{runtime.name}.part")
+    shutil.rmtree(staged, ignore_errors=True)
+    unpack(payload, name=archive.name, into=staged)
+    if not (staged / "pwsh").is_file():
+        shutil.rmtree(staged, ignore_errors=True)
+        msg = f"{archive.name} carries no pwsh: it unpacks to no such program"
         raise InstallerError(msg)
+    shutil.rmtree(runtime, ignore_errors=True)
+    staged.replace(runtime)
+    program = runtime / "pwsh"
     program.chmod(0o755)
     into.mkdir(parents=True, exist_ok=True)
     linked = into / "pwsh"
-    staged = into / ".pwsh.part"
-    staged.unlink(missing_ok=True)
-    staged.symlink_to(program)
-    staged.replace(linked)
+    staging = into / ".pwsh.part"
+    staging.unlink(missing_ok=True)
+    staging.symlink_to(program)
+    staging.replace(linked)
     return linked
 
 

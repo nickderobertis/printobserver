@@ -88,6 +88,49 @@ def test_the_verb_refuses_a_tampered_archive_before_anything_is_unpacked(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_an_archive_carrying_no_program_leaves_the_runtime_a_good_install_left(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """The archive is unpacked beside the runtime and moved onto it, never into it."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    install(archive, into, releases=base)
+
+    broken = archive_bytes(carrying=None)
+    release.files[archive.name] = broken
+    release.files[HASHES] = (f"{hashlib.sha256(broken).hexdigest()} *{archive.name}\n").encode(
+        "utf-16"
+    )
+    with pytest.raises(InstallerError):
+        install(archive, into, releases=base)
+
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_verb_says_what_it_installed_and_that_its_directory_is_off_path(
+    serving_release: tuple[str, Release],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A directory off PATH is an install that worked and a program nobody can run."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    said = capsys.readouterr().err
+    contains(said, f"installed PowerShell {VERSION} at {into / 'pwsh'}")
+    contains(said, f"{into} is not on PATH")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_a_release_listing_no_checksum_for_the_archive_is_refused(
     serving_release: tuple[str, Release], tmp_path: Path
 ) -> None:
@@ -142,6 +185,17 @@ def test_an_archive_that_is_not_a_powershell_is_refused_naming_what_it_lacks(
 
     contains(str(raised.value), said)
     truth(not (tmp_path / "bin").exists(), describing="nothing written where pwsh goes")
+    truth(
+        not runtime_directory(tmp_path / "bin", VERSION).exists(),
+        describing="no runtime left where one would go",
+    )
+    equal(
+        sorted(path.name for path in (tmp_path / "share").iterdir())
+        if (tmp_path / "share").exists()
+        else [],
+        [],
+        describing="what the refused install left beside the runtime",
+    )
 
 
 def test_a_windows_host_is_told_it_carries_powershell_already() -> None:

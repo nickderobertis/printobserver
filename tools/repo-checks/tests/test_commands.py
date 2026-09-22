@@ -339,6 +339,33 @@ def test_install_tools_refuses_a_held_tool_a_copy_earlier_on_the_path_shadows(
     )
 
 
+def test_install_tools_refuses_an_install_that_landed_off_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A program on no directory PATH names is a tool nothing that follows can run.
+
+    It is the one outcome an install that exited zero can still leave, and it is
+    what a host whose `~/.local/bin` is off PATH meets. What it must not read as
+    is a copy shadowing the installed one, which is the other way a tool ends up
+    answering wrong after an install that worked.
+    """
+    root, _, record = toolchain(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "off-the-path"
+    elsewhere.mkdir()
+    monkeypatch.setenv("INSTALL_STANDIN_INTO", str(elsewhere))
+
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, f"release-plz is on no directory PATH names after installing {HELD}")
+    absent(said, "shadows the one installed")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [f"run -q python -m repo_checks install-release-plz {HELD}"],
+        describing="what `uv` was asked to install",
+    )
+
+
 def test_install_tools_accepts_a_held_tool_on_the_path_at_its_release_without_reinstalling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
