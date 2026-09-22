@@ -1,12 +1,10 @@
 """Every Python project type-checks for its own host and for every declared platform."""
 
-# `assert` is how pytest states an assertion and how it produces the failure
-# message a reader acts on; suppressions.toml carries the reason.
-
 from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from repo_checks.checks_repo import python_typecheck_platforms
 from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
@@ -87,10 +85,13 @@ def test_a_platform_added_to_the_policy_is_required_of_every_project(
     refused_naming(findings, "printobserver-sdk-python:typecheck", "no `darwin` pass")
 
 
-def test_a_policy_declaring_no_platform_list_is_refused(tree: Callable[[], Tree]) -> None:
+@pytest.mark.parametrize("declared", ['platforms = "win32"', "platforms = []"])
+def test_a_policy_declaring_no_platform_list_is_refused(
+    tree: Callable[[], Tree], declared: str
+) -> None:
     """The check reads one declaration, and says so rather than raising when it is not one."""
     broken = tree()
-    broken.edit("repo-policy.toml", 'platforms = ["win32"]', 'platforms = "win32"')
+    broken.edit("repo-policy.toml", 'platforms = ["win32"]', declared)
 
     findings = python_typecheck_platforms(broken.repo)
 

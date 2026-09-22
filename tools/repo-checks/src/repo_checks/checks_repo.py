@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from repo_checks.model import Repo
@@ -119,14 +120,40 @@ def command_allowlist(repo: Repo) -> list[str]:
     return findings
 
 
-def _mapping(value: object) -> dict[str, Any]:
-    """A JSON or TOML value as a mapping, or an empty one where it is anything else.
+@dataclass(frozen=True)
+class PythonProject:
+    """One `lang:python` project of the Nx graph, as its own `project.json` declares it."""
 
-    Every caller here is asking what a file declares, and a file declaring
-    something of the wrong shape declares nothing the caller can use. Reading it
-    as empty turns that into the check's own finding rather than a traceback.
+    name: str
+    root: str
+    typecheck: str | None
+
+
+def _python_projects(repo: Repo) -> list[PythonProject]:
+    """Every Python project of the graph, in the graph's own order.
+
+    A declaration of another shape declares nothing a caller can read, so each
+    member is taken only where it is the shape it is meant to be: a project
+    whose `typecheck` command is absent or is not a string carries `None`, and
+    is a finding of the check below rather than a traceback out of this.
     """
-    return value if isinstance(value, dict) else {}
+    projects: list[PythonProject] = []
+    for path in repo.project_paths:
+        declared = json.loads(path.read_text(encoding="utf-8"))
+        tags = declared.get("tags") if isinstance(declared, dict) else None
+        if not isinstance(tags, list) or "lang:python" not in tags:
+            continue
+        targets = declared.get("targets")
+        target = targets.get("typecheck") if isinstance(targets, dict) else None
+        command = target.get("command") if isinstance(target, dict) else None
+        projects.append(
+            PythonProject(
+                name=str(declared.get("name", path.parent.name)),
+                root=str(declared.get("root", path.parent.name)),
+                typecheck=command if isinstance(command, str) else None,
+            )
+        )
+    return projects
 
 
 def python_typecheck_platforms(repo: Repo) -> list[str]:
@@ -139,37 +166,34 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
     `repo-policy.toml`'s rather than each project's, so nine targets cannot
     drift into carrying eight.
     """
-    declared = _mapping(_mapping(repo.policy.get("toolchain")).get("python_typecheck")).get(
-        "platforms"
-    )
-    if not isinstance(declared, list) or not all(
-        isinstance(platform, str) and platform for platform in declared
+    toolchain = repo.policy.get("toolchain")
+    section = toolchain.get("python_typecheck") if isinstance(toolchain, dict) else None
+    declared = section.get("platforms") if isinstance(section, dict) else None
+    if not (
+        isinstance(declared, list)
+        and declared
+        and all(isinstance(platform, str) and platform for platform in declared)
     ):
         return [
             "`repo-policy.toml` declares no `toolchain.python_typecheck.platforms` list of "
             f"platform names: found {declared!r}"
         ]
-    platforms: list[str] = declared
+    platforms: tuple[str, ...] = tuple(declared)
     findings: list[str] = []
-    for project in repo.project_paths:
-        data = _mapping(json.loads(project.read_text(encoding="utf-8")))
-        tags = data.get("tags")
-        if not isinstance(tags, list) or "lang:python" not in tags:
+    for project in _python_projects(repo):
+        if project.typecheck is None:
+            findings.append(f"{project.name} is a Python project declaring no `typecheck` command")
             continue
-        name = str(data.get("name", project.parent.name))
-        root = str(data.get("root", project.parent.name))
-        command = _mapping(_mapping(data.get("targets")).get("typecheck")).get("command")
-        if not isinstance(command, str):
-            findings.append(f"{name} is a Python project declaring no `typecheck` command")
-            continue
-        if f"ty check {root}" not in command:
-            findings.append(f"{name}:typecheck runs no `ty check {root}` pass for this host")
+        if f"ty check {project.root}" not in project.typecheck:
+            findings.append(
+                f"{project.name}:typecheck runs no `ty check {project.root}` pass for this host"
+            )
         findings.extend(
-            f"{name}:typecheck runs no `{platform}` pass over {root}: a defect in code "
-            f"`sys.platform` hides from this host would be reported first by a "
+            f"{project.name}:typecheck runs no `{platform}` pass over {project.root}: a defect "
+            f"in code `sys.platform` hides from this host would be reported first by a "
             f"{platform} runner"
             for platform in platforms
-            if f"ty check --python-platform {platform} {root}" not in command
+            if f"ty check --python-platform {platform} {project.root}" not in project.typecheck
         )
     return findings
 
