@@ -188,15 +188,15 @@ reason = "The second half of the same one URL-opening site: S310 flags both buil
 
 [[suppression]]
 rule = "S310"
-file = "tools/repo-checks/src/repo_checks/gh_release.py"
+file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "urllib.request.urlopen(url"
-reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the gh installer makes, and the line above it refuses any URL that is not https (or a loopback http address, which only its own suite's release stand-in serves); every URL reaching it is composed from the fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches the SHA-256 the same release's checksums file lists."
+reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the three release installers make, and the line above it refuses any URL that is not https (or a loopback http address, which only their own suites' release stand-ins serve); every URL reaching it is composed from a fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches a SHA-256 the release itself publishes or this repository commits."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/repo-checks/src/repo_checks/gh_release.py"
+file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
-reason = "The one download `just install-gh` makes, run by one blocking command in one CI step: the release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
+reason = "The downloads `just install-tools` makes, run by one blocking command in one CI step: a release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
 
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 

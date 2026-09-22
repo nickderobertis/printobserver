@@ -31,6 +31,11 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
 
     A tool declared `bootstrap = false` is one job's rather than every host's,
     and is left alone unless it is `named`; naming one installs that tool alone.
+
+    A tool declaring `provided_by` is one the host may already provide under
+    another name — PowerShell, which every Windows host carries as `powershell`.
+    Any of those commands on PATH and nothing is installed, at any release: a
+    copy this repository did not install is not one it holds at a release.
     """
     try:
         declared = toolchain_tools(repo)
@@ -52,6 +57,8 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
         print("failed to add the Windows target's standard library", file=sys.stderr)
         return 1
     for tool in tools:
+        if tool.provided_by and _provider(tool.provided_by) is not None:
+            continue
         present = shutil.which(tool.command)
         if present is None:
             print(f"installing {tool.command}", file=sys.stderr)
@@ -74,7 +81,15 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
         if tool.version is None:
             continue
         installed = shutil.which(tool.command)
-        answered = _release_of(installed) if installed is not None else None
+        if installed is None:
+            print(
+                f"{tool.command} is on no directory PATH names after installing {tool.version}: "
+                f"the install put it somewhere this shell does not look. Put that directory on "
+                f"PATH — the install said where it wrote — and run this again.",
+                file=sys.stderr,
+            )
+            return 1
+        answered = _release_of(installed)
         if answered != tool.version:
             print(
                 f"{tool.command} at {installed} still answers {answered or 'no release'} after "
@@ -84,6 +99,11 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
             )
             return 1
     return 0
+
+
+def _provider(candidates: tuple[str, ...]) -> str | None:
+    """The first of `candidates` on PATH, or none where the host carries none."""
+    return next((found for name in candidates if (found := shutil.which(name))), None)
 
 
 def _release_of(program: str) -> str | None:

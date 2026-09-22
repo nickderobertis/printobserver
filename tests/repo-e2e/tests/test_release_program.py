@@ -46,7 +46,10 @@ def release_step_arguments() -> list[str]:
 
 pytestmark = pytest.mark.skipif(
     shutil.which("release-plz") is None,
-    reason="release-plz is installed by `just install-tools`; run bootstrap first",
+    reason=(
+        "release-plz is installed by `just install-tools release-plz`, which "
+        "`just test-e2e` runs before this tier"
+    ),
 )
 
 

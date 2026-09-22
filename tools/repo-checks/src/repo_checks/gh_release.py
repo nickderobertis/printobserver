@@ -8,38 +8,37 @@ this takes the official archive for the host from the release itself, checks it
 against the checksums file the same release publishes, and only then puts the
 program on PATH. A download the checksums do not vouch for is never installed.
 
+The download, the digest check, the extraction and the placement are
+`verified_download`'s, shared with the two installers beside this one; what this
+module states is what a `gh` release calls its archives.
+
 Linux on x86_64 and arm64 and macOS are the hosts it knows; any other is refused
 by name rather than guessed at.
 """
 
 from __future__ import annotations
 
-import hashlib
-import io
 import os
 import platform
 import sys
-import tarfile
-import urllib.error
-import urllib.request
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from repo_checks.model import RELEASE
+from repo_checks.verified_download import (
+    InstallerError,
+    digest_for,
+    download,
+    member_of,
+    place,
+    verified,
+)
 
 #: Where every `gh` release publishes its archives and its checksums file.
 RELEASES = "https://github.com/cli/cli/releases/download"
 
-#: How long one download may take, in seconds.
-DOWNLOAD_TIMEOUT = 120
-
 #: The processor names a host reports, as the release names its archives.
 ARCHITECTURES = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
-
-
-class GhReleaseError(Exception):
-    """Why the held release could not be installed, in words a caller acts on."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,12 +72,12 @@ def archive_for(version: str, system: str, machine: str) -> Archive:
     """The archive of `version` built for one host.
 
     Raises:
-        GhReleaseError: If `version` is not a release, or the host is not one
+        InstallerError: If `version` is not a release, or the host is not one
             this installer knows.
     """
     if not RELEASE.fullmatch(version):
         msg = f"`{version}` is not a release: name one as `2.100.0`"
-        raise GhReleaseError(msg)
+        raise InstallerError(msg)
     architecture = ARCHITECTURES.get(machine.lower())
     named = {"linux": "linux", "darwin": "macOS"}.get(system)
     if named is None or architecture is None:
@@ -87,61 +86,30 @@ def archive_for(version: str, system: str, machine: str) -> Archive:
             f"host is {system} on {machine}. Install gh {version} from "
             f"https://github.com/cli/cli/releases/tag/v{version} yourself."
         )
-        raise GhReleaseError(msg)
+        raise InstallerError(msg)
     return Archive(version, named, architecture)
-
-
-def _download(url: str) -> bytes:
-    """One file of a release, or why it could not be fetched.
-
-    Raises:
-        GhReleaseError: If the download fails.
-    """
-    if not url.startswith(("https://", "http://127.0.0.1:")):
-        msg = f"{url} is not an address this installer downloads from"
-        raise GhReleaseError(msg)
-    try:
-        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
-        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as answer:  # noqa: S310
-            return answer.read()
-    except (urllib.error.URLError, OSError) as error:
-        msg = f"{url} could not be downloaded: {error}"
-        raise GhReleaseError(msg) from error
 
 
 def _expected_digest(checksums: str, archive: Archive) -> str:
     """The SHA-256 the release's checksums file lists for one archive.
 
     Raises:
-        GhReleaseError: If the file lists none for it.
+        InstallerError: If the file lists none for it.
     """
-    for line in checksums.splitlines():
-        digest, _, listed = line.strip().partition("  ")
-        if listed == archive.name and len(digest) == 64:
-            return digest.lower()
-    msg = f"the release's {archive.checksums} lists no checksum for {archive.name}"
-    raise GhReleaseError(msg)
+    listed = digest_for(checksums, archive.name)
+    if listed is None:
+        msg = f"the release's {archive.checksums} lists no checksum for {archive.name}"
+        raise InstallerError(msg)
+    return listed
 
 
 def _program_in(payload: bytes, archive: Archive) -> bytes:
     """The `gh` program out of one verified archive.
 
     Raises:
-        GhReleaseError: If the archive carries no program where the release puts it.
+        InstallerError: If the archive carries no program where the release puts it.
     """
-    member = f"{archive.stem}/bin/gh"
-    try:
-        if archive.name.endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(payload)) as bundle:
-                return bundle.read(member)
-        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as bundle:
-            extracted = bundle.extractfile(member)
-            if extracted is None:
-                raise KeyError(member)
-            return extracted.read()
-    except (KeyError, tarfile.TarError, zipfile.BadZipFile) as error:
-        msg = f"{archive.name} carries no {member}: {error}"
-        raise GhReleaseError(msg) from error
+    return member_of(payload, name=archive.name, member=f"{archive.stem}/bin/gh")
 
 
 def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
@@ -151,28 +119,18 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     the release's own checksums file lists for it.
 
     Raises:
-        GhReleaseError: If a download fails, the digests disagree, or the
+        InstallerError: If a download fails, the digests disagree, or the
             archive carries no program.
     """
     base = f"{releases}/v{archive.version}"
-    checksums = _download(f"{base}/{archive.checksums}").decode("utf-8", errors="replace")
-    expected = _expected_digest(checksums, archive)
-    payload = _download(f"{base}/{archive.name}")
-    actual = hashlib.sha256(payload).hexdigest()
-    if actual != expected:
-        msg = (
-            f"{archive.name} hashes to {actual}, and the release's {archive.checksums} lists "
-            f"{expected}: nothing was installed"
-        )
-        raise GhReleaseError(msg)
-    program = _program_in(payload, archive)
-    into.mkdir(parents=True, exist_ok=True)
-    target = into / "gh"
-    staged = into / ".gh.part"
-    staged.write_bytes(program)
-    staged.chmod(0o755)
-    staged.replace(target)
-    return target
+    checksums = download(f"{base}/{archive.checksums}").decode("utf-8", errors="replace")
+    payload = verified(
+        f"{base}/{archive.name}",
+        name=archive.name,
+        expected=_expected_digest(checksums, archive),
+        source=f"the release's {archive.checksums}",
+    )
+    return place(_program_in(payload, archive), into, "gh")
 
 
 def install_gh(version: str, into: Path | None = None, *, releases: str = RELEASES) -> int:
@@ -185,7 +143,7 @@ def install_gh(version: str, into: Path | None = None, *, releases: str = RELEAS
     try:
         archive = archive_for(version, sys.platform, platform.machine())
         installed = install(archive, destination, releases=releases)
-    except GhReleaseError as refused:
+    except InstallerError as refused:
         print(f"install-gh: {refused}", file=sys.stderr)
         return 1
     print(f"install-gh: installed gh {version} at {installed}", file=sys.stderr)

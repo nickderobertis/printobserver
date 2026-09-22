@@ -62,14 +62,14 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
-      # The release `repo-policy.toml` holds release-plz at, which is the one
-      # the gate's toolchain installs and the journeys prove: a registry's
-      # newest is a program nothing here has run.
-      - id: held
-        run: just tool-version release-plz >> "$GITHUB_OUTPUT"
+      # The release `repo-policy.toml` holds release-plz at, prebuilt and
+      # verified against the digest this repository commits for it: a registry's
+      # newest is a program nothing here has run. The recipe reads the held
+      # release off the policy, so this job states it nowhere.
+      - run: just install-tools release-plz
       - uses: taiki-e/install-action@v2
         with:
-          tool: release-plz@${{ steps.held.outputs.version }},cargo-semver-checks
+          tool: cargo-semver-checks
       - run: release-plz release-pr --backend github
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
@@ -115,13 +115,12 @@ jobs:
         if: github.event_name == 'push'
       # The held release, as in `release-pr`: the release program that tags and
       # publishes is the one the release-tag journey holds to its report.
-      - id: held
-        if: github.event_name == 'push'
-        run: just tool-version release-plz >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'push'
+        run: just install-tools release-plz
       - uses: taiki-e/install-action@v2
         if: github.event_name == 'push'
         with:
-          tool: release-plz@${{ steps.held.outputs.version }},cargo-semver-checks
+          tool: cargo-semver-checks
       # Tags, cuts the GitHub Release, and publishes every crate target
       # `release-targets.toml` declares. Idempotent: a version already on the
       # registry is skipped, so a partial failure is recovered by the next push.

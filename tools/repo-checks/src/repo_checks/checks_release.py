@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,15 @@ MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action", "await-approval")
 HALTING_COMMANDS = ("read -p", "read -r -p")
+
+#: What puts a `run` step in scope for the held-release rule at all: a step that
+#: installs something. A step that merely *runs* a held tool, or reads the
+#: release it is held at, states no release and is not one of these.
+INSTALLING = re.compile(r"\binstall\b")
+
+#: The one command a workflow installs a held tool with: it reads the release
+#: off `repo-policy.toml` rather than restating it, so a bump is one edit.
+HELD_INSTALL = "just install-tools {tool}"
 
 
 def _publishable_crates(repo: Repo) -> list[str]:
@@ -261,15 +271,59 @@ def _held_entries(step: dict[str, Any], held: dict[str, str]) -> list[tuple[str,
     return [(entry.split("@", 1)[0], entry) for entry in entries if entry.split("@", 1)[0] in held]
 
 
+def _names(tool: str, command: str) -> bool:
+    """Whether a run command names `tool` as a word of its own.
+
+    `just install-gh ${{ ... }}` does not name `gh` by this reading, and that is
+    deliberate: it is a recipe *about* gh rather than a second statement of the
+    release gh is held at, and the recipe is what reads that release.
+    """
+    return re.search(rf"(?<![\w-]){re.escape(tool)}(?![\w-])", command) is not None
+
+
+def _held_run_findings(command: str, held: Mapping[str, str], where: str) -> list[str]:
+    """Every run step installing a held tool does it through the one command that reads the policy.
+
+    A step that installs a held tool some other way — `cargo install <tool>`, or
+    a package manager's own — states the release itself or takes whatever is
+    newest, and either way the toolchain's `version` has stopped being the one
+    place that release is written.
+
+    A step that *runs* a held tool is not one that installs it, however the word
+    `install` reads in it: `gh skill install <skill>` installs a skill with gh,
+    so a command whose own program is the held tool is passed over.
+    """
+    if not INSTALLING.search(command):
+        return []
+    running = set(programs_in(command))
+    return [
+        f"{where} installs `{name}` by running `{command}` rather than "
+        f"`{HELD_INSTALL.format(tool=name)}`, the one command that takes the release "
+        f"`repo-policy.toml` holds `{name}` at ({held[name]}) from the policy itself"
+        for name in held
+        if name not in running
+        and _names(name, command)
+        and command != HELD_INSTALL.format(tool=name)
+    ]
+
+
 def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:
-    """Every action installing a tool the toolchain holds takes that release from it.
+    """Every step installing a tool the toolchain holds takes that release from it.
 
     A tool `repo-policy.toml` holds at a `version` is one release everywhere, and
-    that field is the one place it is written. So an action step naming one must
-    name `<tool>@${{ steps.<id>.outputs.version }}`, where `<id>` is an earlier
-    step of the same job running `just tool-version <tool>` into
-    `GITHUB_OUTPUT`: unpinned it is whatever a registry serves newest, and pinned
-    to a literal it is a second statement a bump misses.
+    that field is the one place it is written. Two shapes of step can install
+    one, and each has one accepted form.
+
+    An **action** step naming one must name `<tool>@${{ steps.<id>.outputs.version
+    }}`, where `<id>` is an earlier step of the same job running `just
+    tool-version <tool>` into `GITHUB_OUTPUT`: unpinned it is whatever a registry
+    serves newest, and pinned to a literal it is a second statement a bump
+    misses.
+
+    A **run** step installing one must be `just install-tools <tool>`, which
+    reads the release off the policy and verifies what it downloads against a
+    digest before anything reaches PATH. That is how the release workflow
+    installs the release program, prebuilt, now that no host compiles it.
     """
     held = {tool.command: tool.version for tool in tools if tool.version is not None}
     findings: list[str] = []
@@ -283,6 +337,7 @@ def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:
                     for command in held
                     if step.get("id") and run == f'just tool-version {command} >> "$GITHUB_OUTPUT"'
                 )
+                findings.extend(_held_run_findings(run, held, f"{path.name}: job `{job_name}`"))
                 findings.extend(
                     f"{path.name}: job `{job_name}` installs `{entry}` through "
                     f"`{step['uses']}` rather than the release `repo-policy.toml` holds "

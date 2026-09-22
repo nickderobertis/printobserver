@@ -15,17 +15,18 @@ import io
 import platform
 import sys
 import tarfile
-import threading
 import zipfile
 from collections.abc import Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 from repo_checks.__main__ import main
 from repo_checks.expect import absent, contains, equal, refused, truth
-from repo_checks.gh_release import Archive, GhReleaseError, archive_for, install, install_gh
+from repo_checks.gh_release import Archive, archive_for, install, install_gh
 from repo_checks.shell import run
+from repo_checks.verified_download import InstallerError
+from standin_release import Release
+from standin_release import serving as serve
 
 VERSION = "2.100.0"
 
@@ -52,44 +53,12 @@ def _archive_bytes(archive: Archive) -> bytes:
     return buffer.getvalue()
 
 
-class Release:
-    """A release served over loopback HTTP: the files, by name, and what was asked."""
-
-    def __init__(self, files: dict[str, bytes]) -> None:
-        """A release publishing `files`, which nothing has asked for yet."""
-        self.files = files
-        self.asked: list[str] = []
-
-
 @pytest.fixture
 def serving() -> Iterator[tuple[str, Release]]:
     """A loopback server answering the release's files under `/v<version>/`."""
-    release = Release({})
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            release.asked.append(self.path)
-            name = self.path.rsplit("/", 1)[-1]
-            body = release.files.get(name) if self.path.startswith(f"/v{VERSION}/") else None
-            if body is None:
-                self.send_error(404)
-                return
-            self.send_response(200)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, format: str, *args: object) -> None:
-            """Say nothing: the journey's own assertions are the signal."""
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_address[1]}", release
-    finally:
-        server.shutdown()
-        server.server_close()
+    release = Release()
+    with serve(f"/v{VERSION}/", release) as base:
+        yield base, release
 
 
 def _publish(release: Release, archive: Archive, *, listed: str | None = None) -> None:
@@ -131,7 +100,7 @@ def test_an_archive_the_checksums_do_not_vouch_for_is_never_installed(
     archive = archive_for(VERSION, "linux", "x86_64")
     _publish(release, archive, listed="f" * 64)
 
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         install(archive, tmp_path / "bin", releases=base)
 
     contains(str(raised.value), "nothing was installed")
@@ -147,7 +116,7 @@ def test_a_release_listing_no_checksum_for_the_archive_is_refused(
     _publish(release, archive)
     release.files[archive.checksums] = b"0" * 64 + b"  something-else.tar.gz\n"
 
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         install(archive, tmp_path / "bin", releases=base)
 
     contains(str(raised.value), f"lists no checksum for {archive.name}")
@@ -160,7 +129,7 @@ def test_a_release_the_forge_does_not_serve_is_refused(
     base, _ = serving
     archive = archive_for(VERSION, "linux", "x86_64")
 
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         install(archive, tmp_path / "bin", releases=base)
 
     contains(str(raised.value), f"{archive.checksums} could not be downloaded")
@@ -172,7 +141,7 @@ def test_a_release_the_forge_does_not_serve_is_refused(
 )
 def test_a_host_the_installer_does_not_know_is_refused_by_name(system: str, machine: str) -> None:
     """Rather than guess at an archive, the installer names the host it cannot serve."""
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         archive_for(VERSION, system, machine)
 
     refused([str(raised.value)], f"this host is {system} on {machine}")
@@ -180,7 +149,7 @@ def test_a_host_the_installer_does_not_know_is_refused_by_name(system: str, mach
 
 def test_a_version_that_is_not_a_release_is_refused() -> None:
     """The release reaches a URL, so it is read as a release or not at all."""
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         archive_for("latest", "linux", "x86_64")
 
     contains(str(raised.value), "`latest` is not a release")
@@ -190,7 +159,7 @@ def test_an_address_that_is_not_https_is_never_fetched(tmp_path: Path) -> None:
     """Only the forge's https address and a loopback stand-in are downloaded from."""
     archive = archive_for(VERSION, "linux", "x86_64")
 
-    with pytest.raises(GhReleaseError) as raised:
+    with pytest.raises(InstallerError) as raised:
         install(archive, tmp_path / "bin", releases="http://example.invalid")
 
     contains(str(raised.value), "is not an address this installer downloads from")
