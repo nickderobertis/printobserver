@@ -98,7 +98,11 @@ lint:
     bunx nx run-many -t lint --output-style=stream
     uv run -q python -m repo_checks lint-windows-target
 
-# Type-check every project with its language's type checker.
+# Type-check every project with its language's type checker — and every Python
+# project once more for the `win32` platform, so an attribute only a POSIX host
+# has is reported here rather than by a Windows runner. Both passes are the
+# project's own `typecheck` target, which is what makes a new project join them
+# by declaring the target every other project declares.
 typecheck:
     just node-modules
     bunx nx run-many -t typecheck --output-style=stream

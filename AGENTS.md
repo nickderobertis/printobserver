@@ -143,6 +143,19 @@ every host that is not Windows; where it is absent the pass fails naming the
 `rustup target add`, because a lint that ran over none of the Windows code is
 not one that passed.
 
+`just typecheck` type-checks every Python project twice for the same reason, and
+the second pass is in the project's own `typecheck` target rather than in a
+recipe beside it: `ty check <project>`, and then `ty check --python-platform
+win32 <project>`. `sys.platform` and `os.name` are what a type checker reads to
+decide which members a module has, so a Unix-hosted pass alone sees `os.getuid`
+and never sees `os.startfile` — and a POSIX-only attribute reached outside a
+`sys.platform == "win32"` guard is then reported first by a Windows runner at
+the end of the matrix. Both passes run on every host, so the Windows runners
+repeat the Unix pass exactly as the Unix hosts repeat theirs; one `ty`
+invocation takes one platform, which is why there are two of them.
+`tests/repo-e2e/tests/test_sdk_project_targets.py` drives the real target over
+both shapes.
+
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
 continuous-integration job of its own.
