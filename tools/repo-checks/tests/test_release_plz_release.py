@@ -237,17 +237,29 @@ def test_a_version_that_is_not_a_release_is_refused() -> None:
     contains(str(raised.value), "`newest` is not a release")
 
 
-def test_an_address_that_is_not_https_is_never_fetched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "releases",
+    [
+        "http://example.invalid",
+        # Everything before an `@` in an authority is userinfo, so this address
+        # begins with the loopback address and resolves to somebody else's host.
+        "http://127.0.0.1:80@example.invalid",
+        "ftp://127.0.0.1:8080",
+        "file:///tmp",
+    ],
+)
+def test_an_address_that_is_not_https_or_loopback_is_never_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, releases: str
 ) -> None:
-    """Only the forge's https address and a loopback stand-in are downloaded from."""
+    """Only a producer's https address and a loopback stand-in are downloaded from."""
     archive = archive_for(VERSION, sys.platform, platform.machine())
     monkeypatch.setitem(DIGESTS, VERSION, {archive.target: "0" * 64})
 
     with pytest.raises(InstallerError) as raised:
-        install(archive, tmp_path / "bin", releases="http://example.invalid")
+        install(archive, tmp_path / "bin", releases=releases)
 
     contains(str(raised.value), "is not an address this installer downloads from")
+    truth(not (tmp_path / "bin").exists(), describing="nothing written where the program goes")
 
 
 def test_every_supported_platform_has_a_target_and_a_committed_digest() -> None:

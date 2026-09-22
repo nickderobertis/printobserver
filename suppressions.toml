@@ -1320,3 +1320,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_tag_journey.py"
 site = "def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:"
 reason = "The same ground the entry for this rule at `def released` in this file states: this repository's end-to-end tier is one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Wiring the copy to the stand-in registry adds nothing to that journey's cost; it composes the registry tables onto the copy's own build contract so the publishes the journey drives build under it, which is the cheaper build."
+
+[[suppression]]
+rule = "external_service_suite_stays_out_of_the_affected_tier"
+file = "justfile"
+site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
+reason = "The rule is about wiring an external-service suite INTO the pull-request gate, and this line wires none in. The three release journeys are already in `tests/repo-e2e`, which `AGENTS.md` places in `just check`'s `test-e2e` tier, and they already ran there: `just bootstrap` installed release-plz on every host until this change took it out of general bootstrap to stop every cold Windows cell compiling it for thirteen minutes. What this line restores is the tool those already-present journeys need. Deleting it moves no suite out of the tier — it only makes those three skip silently, which is the failure https://github.com/nickderobertis/printobserver/issues/86 asks to prevent. Promoting the release journeys out of the end-to-end tier is a separate decision about where that coverage lives, and the entries for `expensive_tests_stay_behind_their_own_edge` at `tests/repo-e2e/project.json` record why this repository's end-to-end tier is one project with one target."

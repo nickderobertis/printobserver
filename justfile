@@ -312,8 +312,10 @@ check-repo:
 # — only this tier and the release workflow run it — and the three journeys that
 # drive it skip where it is absent. Installing it here is what keeps those three
 # from going silently skipped on a host, or a gate cell, that bootstrapped and
-# nothing more. It is prebuilt and verified, and a copy already at the held
-# release is left alone, so this costs a run that has one nothing.
+# nothing more. The install downloads one verified prebuilt archive, and skips
+# even that where the held release is already on PATH.
+#
+# llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason.
 test-e2e:
     uv run -q python -m repo_checks install-tools release-plz
     just node-modules

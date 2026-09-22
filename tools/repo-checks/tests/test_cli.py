@@ -5,11 +5,13 @@
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from repo_checks.__main__ import main
+from repo_checks import __main__ as entry_point
+from repo_checks.__main__ import COMMANDS, main
 from repo_checks.expect import contains, equal
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -228,3 +230,59 @@ def test_an_unconventional_pull_request_title_is_refused(
     monkeypatch.setenv("PR_TITLE", "some changes")
 
     equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+
+
+#: The two names that are groups of checks rather than commands: `main` takes
+#: them beside `COMMANDS` and beside every check the registry declares.
+GROUPS = ("all", "workflows")
+
+
+def dispatched_names() -> set[str]:
+    """Every literal name `main`'s own `match` has a case for.
+
+    Read off the committed source rather than by running anything: what this
+    reconciles is the two places a verb's name is written, and running one of
+    them would install a tool or start a coverage run.
+    """
+    source = Path(entry_point.__file__).read_text(encoding="utf-8")
+    dispatch = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    return {
+        pattern.value.value
+        for node in ast.walk(dispatch)
+        if isinstance(node, ast.match_case)
+        for pattern in [node.pattern]
+        if isinstance(pattern, ast.MatchValue)
+        and isinstance(pattern.value, ast.Constant)
+        and isinstance(pattern.value.value, str)
+    }
+
+
+def test_every_command_the_help_lists_is_one_the_dispatch_has_a_case_for() -> None:
+    """The name a verb is offered under and the name it is run under are one name.
+
+    `COMMANDS` is what `--help` lists and the `match` below it is what runs one,
+    and nothing reconciles them by construction: a verb added to one and not the
+    other is offered and unknown, or reachable and undocumented.
+    """
+    equal(
+        sorted(dispatched_names() - set(GROUPS)),
+        sorted(COMMANDS),
+        describing="the commands `main` dispatches, against the ones it offers",
+    )
+
+
+def test_a_command_offered_but_not_dispatched_is_caught(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """What the reconciliation above is worth: an offered verb nothing runs is refused."""
+    monkeypatch.setattr("repo_checks.__main__.COMMANDS", (*COMMANDS, "install-everything"))
+
+    with pytest.raises(SystemExit) as exited:
+        main(["install-everything"])
+
+    equal(exited.value.code, 2)
+    contains(capsys.readouterr().err, "unknown check 'install-everything'")

@@ -19,6 +19,7 @@ import hashlib
 import io
 import tarfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 import zlib
@@ -27,15 +28,33 @@ from pathlib import Path
 #: How long one download may take, in seconds.
 DOWNLOAD_TIMEOUT = 120
 
-#: The addresses an installer downloads from: the forge over TLS, and the
-#: loopback stand-in release the suites serve an installer its own artifacts
-#: from. Anything else is refused rather than fetched, so no configured release
-#: store can turn one of these installers into an arbitrary downloader.
-PERMITTED = ("https://", "http://127.0.0.1:")
+#: The hosts an installer may download from over plain HTTP: the loopback
+#: addresses a suite serves an installer its own stand-in release on, and no
+#: name that a resolver decides. Everything else has to be `https`.
+LOOPBACK = frozenset({"127.0.0.1", "::1"})
 
 
 class InstallerError(Exception):
     """Why a held release could not be installed, in words a caller acts on."""
+
+
+def permitted(url: str) -> bool:
+    """Whether an installer downloads from this address at all.
+
+    A producer's forge over TLS, and a loopback address over plain HTTP, which
+    is how a suite serves an installer a stand-in release. `--releases` is a
+    caller's input, so this is what keeps one of these installers from being an
+    arbitrary downloader.
+
+    The address is **parsed** rather than read off the front, because everything
+    before an `@` in an authority is userinfo: `http://127.0.0.1:80@example.com`
+    begins with a loopback address, names `example.com` as its host, and would
+    pass any check made on the text.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and parsed.hostname in LOOPBACK
 
 
 def download(url: str) -> bytes:
@@ -45,7 +64,7 @@ def download(url: str) -> bytes:
         InstallerError: If the address is not one an installer downloads from,
             or the download fails.
     """
-    if not url.startswith(PERMITTED):
+    if not permitted(url):
         msg = f"{url} is not an address this installer downloads from"
         raise InstallerError(msg)
     try:
