@@ -13,6 +13,17 @@ is what `DIGESTS` is: a release nothing has recorded digests for is refused
 naming itself, rather than installed against whatever the forge happens to
 serve, so a version bump lands with its own digests or does not land.
 
+Being a copy of what a producer published, `DIGESTS` needs saying where its
+reconciliation is, because upstream offers no file to read it from. It is the
+install itself, and it fails closed: every real install downloads the archive
+and hashes it, and a served archive that is not the bytes recorded here refuses
+naming both digests and writes nothing. So the producer re-cutting an asset,
+or serving one this repository never saw, stops the install with the
+disagreement on screen — it cannot pass as the release recorded here. The other
+half is `test_every_supported_platform_has_a_target_and_a_committed_digest`,
+which holds the table's keys to the held release and to the supported-platform
+list, so a bump with no digests fails the suite before it can fail a runner.
+
 The five targets are the five `AGENTS.md`'s supported-platform list names, and
 `tests/test_release_plz_release.py` holds them to it.
 """

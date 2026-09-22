@@ -40,6 +40,17 @@ HASHES = "hashes.sha256"
 #: What the release calls the build for each host it can be installed on, keyed
 #: by what the interpreter answers for the operating system and the processor.
 #: `win32` is deliberately absent: a Windows host already carries PowerShell.
+#:
+#: These names are the producer's rather than this repository's, and what
+#: reconciles them with it is the release's own `hashes.sha256`: it lists one
+#: line per archive the release publishes, by name, and `_expected_digest`
+#: refuses an archive name that file does not list — naming the file and the
+#: name it looked for. So a flavour PowerShell renames stops this installer
+#: with the producer's own listing as the evidence, rather than downloading
+#: something else or silently installing an older build.
+#:
+#: `tests/test_powershell_release.py` drives that refusal against a stand-in
+#: release serving a hashes file that lists another name.
 FLAVOURS = {
     ("linux", "x86_64"): "linux-x64",
     ("linux", "aarch64"): "linux-arm64",
@@ -145,6 +156,13 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     once the program is there, so an archive that turns out to carry none leaves
     the runtime a previous install put there as it was.
 
+    A runtime already installed is never deleted before its replacement is in
+    place: it is renamed aside first, the staged one is moved onto the name it
+    vacated, and only then is the old one removed. There is therefore no moment
+    at which the working runtime has been destroyed and the new one is not yet
+    there — the state an install interrupted between a delete and a move would
+    otherwise leave, which is a `pwsh` on PATH pointing at nothing.
+
     Raises:
         InstallerError: If a download fails, the digests disagree, the archive
             cannot be unpacked, or it carries no program.
@@ -165,8 +183,12 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         shutil.rmtree(staged, ignore_errors=True)
         msg = f"{archive.name} carries no pwsh: it unpacks to no such program"
         raise InstallerError(msg)
-    shutil.rmtree(runtime, ignore_errors=True)
+    superseded = runtime.with_name(f".{runtime.name}.superseded")
+    shutil.rmtree(superseded, ignore_errors=True)
+    if runtime.exists():
+        runtime.replace(superseded)
     staged.replace(runtime)
+    shutil.rmtree(superseded, ignore_errors=True)
     program = runtime / "pwsh"
     program.chmod(0o755)
     into.mkdir(parents=True, exist_ok=True)
