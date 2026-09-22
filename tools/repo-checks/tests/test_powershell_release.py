@@ -11,8 +11,10 @@ link the install leaves is run to prove it reaches what the archive carried.
 from __future__ import annotations
 
 import hashlib
+import io
 import platform
 import sys
+import tarfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -28,11 +30,22 @@ from repo_checks.powershell_release import (
 )
 from repo_checks.shell import run
 from repo_checks.verified_download import InstallerError
-from standin_powershell import RUNTIME_FILE, archive_bytes
+from standin_powershell import RUNTIME_FILE, archive_bytes, program
 from standin_powershell import publish as _publish
 from standin_release import Release, serving
 
 VERSION = "7.6.6"
+
+
+def _escaping_archive() -> bytes:
+    """An archive whose one member names a path above where it is unpacked."""
+    buffer = io.BytesIO()
+    payload = b"a file nobody asked this archive to write\n"
+    with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+        info = tarfile.TarInfo("../escaped")
+        info.size = len(payload)
+        bundle.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -128,6 +141,62 @@ def test_the_verb_says_what_it_installed_and_that_its_directory_is_off_path(
     said = capsys.readouterr().err
     contains(said, f"installed PowerShell {VERSION} at {into / 'pwsh'}")
     contains(said, f"{into} is not on PATH")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_second_install_replaces_the_runtime_and_the_link_the_first_one_left(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """Installing again over a runtime already there leaves one runtime and one link."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    install(archive, into, releases=base)
+
+    replacing = archive_bytes(carrying=program("7.6.6 (the second install)"), runtime=b"newer\n")
+    release.files[archive.name] = replacing
+    release.files[HASHES] = (f"{hashlib.sha256(replacing).hexdigest()} *{archive.name}\n").encode(
+        "utf-16"
+    )
+    linked = install(archive, into, releases=base)
+
+    runtime = runtime_directory(into, VERSION)
+    contains(run([str(linked), "--version"], check=True).stdout, "the second install")
+    equal((runtime / RUNTIME_FILE).read_bytes(), b"newer\n", describing="the unpacked runtime")
+    equal(
+        sorted(path.name for path in runtime.parent.iterdir()),
+        [runtime.name],
+        describing="what the two installs left beside the runtime",
+    )
+    equal(sorted(path.name for path in into.iterdir()), ["pwsh"], describing="the link directory")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_an_archive_whose_member_leaves_the_directory_is_unpacked_nowhere(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A digest vouches for bytes; the archive inside them is still read as untrusted.
+
+    The member here names a path above the directory it is unpacked into, which
+    is how an archive writes over a file nobody asked it to touch.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    escaping = _escaping_archive()
+    release.files[archive.name] = escaping
+    release.files[HASHES] = (f"{hashlib.sha256(escaping).hexdigest()} *{archive.name}\n").encode(
+        "utf-16"
+    )
+    into = tmp_path / "bin"
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, into, releases=base)
+
+    above = runtime_directory(into, VERSION).parent
+    contains(str(raised.value), "could not be unpacked")
+    truth(not (above / "escaped").exists(), describing="nothing written above the directory")
+    truth(not into.exists(), describing="nothing written where pwsh goes")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")

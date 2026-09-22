@@ -115,6 +115,35 @@ def test_the_verb_installs_a_verified_release_and_the_installed_copy_answers_it(
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the archive's program is a script")
+def test_a_second_install_replaces_the_program_the_first_one_put_there(
+    serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bump installs over the copy already there rather than beside it.
+
+    Every install after the first meets a program at the name it writes, and the
+    write is staged and moved onto it: what a caller reaching for the program
+    finds is the copy that was there or the whole new one, never a partial file.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive, monkeypatch)
+    into = tmp_path / "bin"
+    install(archive, into, releases=base)
+
+    replacing = _archive_bytes(archive, carrying=_program("0.0.2"))
+    release.files[archive.name] = replacing
+    monkeypatch.setitem(DIGESTS, VERSION, {archive.target: hashlib.sha256(replacing).hexdigest()})
+    installed = install(archive, into, releases=base)
+
+    contains(run([str(installed)], check=True).stdout, "release-plz 0.0.2")
+    equal(
+        sorted(path.name for path in into.iterdir()),
+        [archive.program],
+        describing="what the two installs left in the directory",
+    )
+
+
 def test_the_verb_refuses_a_tampered_archive_before_anything_reaches_path(
     serving_release: tuple[str, Release],
     tmp_path: Path,

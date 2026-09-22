@@ -28,14 +28,16 @@ def program(release: str) -> bytes:
     return f"#!{sys.executable}\nprint('PowerShell {release}')\n".encode()
 
 
-def archive_bytes(*, carrying: bytes | None) -> bytes:
+def archive_bytes(*, carrying: bytes | None, runtime: bytes | None = None) -> bytes:
     """The archive the release would publish: the program and a runtime file at its root.
 
     `carrying=None` is an archive with the runtime and no program at all, which
-    is what an installer meets when a producer changes its layout.
+    is what an installer meets when a producer changes its layout. `runtime`
+    names what that file holds, or an archive whose member leaves the directory
+    it is unpacked into where it names a path of its own.
     """
     buffer = io.BytesIO()
-    members = [(RUNTIME_FILE, b"a runtime file the program needs\n", 0o644)]
+    members = [(RUNTIME_FILE, runtime or b"a runtime file the program needs\n", 0o644)]
     if carrying is not None:
         members.insert(0, ("pwsh", carrying, 0o755))
     with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
