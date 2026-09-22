@@ -98,6 +98,51 @@ def test_a_policy_declaring_no_platform_list_is_refused(
     refused(findings, "declares no `toolchain.python_typecheck.platforms` list")
 
 
+def test_a_pass_that_only_prints_the_invocation_is_refused(tree: Callable[[], Tree]) -> None:
+    """What satisfies the rule is a pass that runs, not a command carrying its text.
+
+    An `echo` of the invocation contains every word a reader of the text would
+    look for and type-checks nothing at all.
+    """
+    broken = tree()
+    broken.edit(SDK, WIN32_INVOCATION, f"echo {WIN32_INVOCATION}")
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused_naming(findings, "no `win32` pass over python/printobserver-sdk")
+
+
+def test_a_pass_over_a_root_this_one_starts_with_is_refused(tree: Callable[[], Tree]) -> None:
+    """A root is a whole argument of a pass rather than text found inside one.
+
+    `python/printobserver-sdk-extra` contains `python/printobserver-sdk`, so
+    read as text a pass over the one would answer for the other and this
+    project's own code would go unchecked for `win32`.
+    """
+    broken = tree()
+    broken.edit(
+        SDK,
+        WIN32_INVOCATION,
+        "uv run -q ty check --python-platform win32 python/printobserver-sdk-extra",
+    )
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused_naming(findings, "no `win32` pass over python/printobserver-sdk")
+
+
+def test_one_pass_naming_several_roots_covers_each_of_them(tree: Callable[[], Tree]) -> None:
+    """A pass is read by what it checks, so two roots in one invocation is two passes."""
+    together = tree()
+    together.edit(
+        SDK,
+        WIN32_INVOCATION,
+        "uv run -q ty check --python-platform win32 python/printobserver-sdk tools/repo-checks",
+    )
+
+    accepted(python_typecheck_platforms(together.repo))
+
+
 def test_a_project_declaring_no_root_is_refused(tree: Callable[[], Tree]) -> None:
     """The root decides which passes are looked for, so it is read or it is a finding.
 

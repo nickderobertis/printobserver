@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ NX_INVOCATION = "bunx nx"
 NODE_INSTALL_RECIPE = "node-modules"
 LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
+# The `ty` option naming the platform a pass reads `sys.platform` as.
+PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
 
 
@@ -170,6 +173,66 @@ def _python_projects(repo: Repo) -> list[PythonProject]:
     return projects
 
 
+@dataclass(frozen=True)
+class TyPass:
+    """One `ty check` invocation of a `typecheck` command: what it checks, and for what."""
+
+    platform: str | None
+    roots: tuple[str, ...]
+
+
+def _ty_passes(command: str) -> list[TyPass]:
+    """Every `ty check` a `typecheck` command actually runs, read as invocations.
+
+    Read as text instead, the contract below is satisfied by things that check
+    nothing: an `echo` of the invocation being looked for, and a pass over
+    `python/printobserver-sdk-extra`, which any test for the root
+    `python/printobserver-sdk` finds inside it. So the command is split into the
+    invocations the shell would run, each is tokenized, and a root counts only
+    where it is a whole argument of one that runs `ty check`.
+    """
+    passes: list[TyPass] = []
+    for invocation in command.split("&&"):
+        try:
+            tokens = shlex.split(invocation)
+        except ValueError:
+            continue
+        if not tokens or tokens[0] in NO_OP_COMMANDS:
+            continue
+        start = next(
+            (
+                index + 2
+                for index in range(len(tokens) - 1)
+                if tokens[index] == "ty" and tokens[index + 1] == "check"
+            ),
+            None,
+        )
+        if start is None:
+            continue
+        platform: str | None = None
+        roots: list[str] = []
+        rest = tokens[start:]
+        index = 0
+        while index < len(rest):
+            token = rest[index]
+            if token == PLATFORM_OPTION and index + 1 < len(rest):
+                platform = rest[index + 1]
+                index += 2
+                continue
+            if token.startswith(f"{PLATFORM_OPTION}="):
+                platform = token.partition("=")[2]
+            elif not token.startswith("-"):
+                roots.append(token)
+            index += 1
+        passes.append(TyPass(platform=platform, roots=tuple(roots)))
+    return passes
+
+
+def _checks_root(passes: Iterable[TyPass], root: str, *, platform: str | None) -> bool:
+    """Whether one of those invocations checks that root for that platform."""
+    return any(found.platform == platform and root in found.roots for found in passes)
+
+
 def python_typecheck_platforms(repo: Repo) -> list[str]:
     """Every Python project type-checks for the host's platform and for each declared one.
 
@@ -201,7 +264,8 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
         if project.typecheck is None:
             findings.append(f"{project.name} is a Python project declaring no `typecheck` command")
             continue
-        if f"ty check {project.root}" not in project.typecheck:
+        passes = _ty_passes(project.typecheck)
+        if not _checks_root(passes, project.root, platform=None):
             findings.append(
                 f"{project.name}:typecheck runs no `ty check {project.root}` pass for this host"
             )
@@ -210,7 +274,7 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
             f"in code `sys.platform` hides from this host would be reported first by a "
             f"{platform} runner"
             for platform in platforms
-            if f"ty check --python-platform {platform} {project.root}" not in project.typecheck
+            if not _checks_root(passes, project.root, platform=platform)
         )
     return findings
 
