@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,6 +24,11 @@ NX_INVOCATION = "bunx nx"
 NODE_INSTALL_RECIPE = "node-modules"
 LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
+# The runner a `typecheck` command reaches its type checker through, and the
+# program a pass is: `uv run -q ty check <root>` runs `ty`, and the pair is what
+# an invocation has to execute rather than merely carry.
+TY_RUNNER = ("uv", "run")
+TY_PROGRAM = ("ty", "check")
 PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
 
@@ -180,15 +185,37 @@ class TyPass:
     roots: tuple[str, ...]
 
 
+def _executed(tokens: Sequence[str]) -> Sequence[str]:
+    """The program one invocation runs, and its arguments, past any runner prefix.
+
+    `uv run -q ty check <root>` runs `ty`; `uv run -q echo ty check <root>` runs
+    `echo`, carries every word the first one does, and type-checks nothing. The
+    two differ only in a token that is neither the first nor the last, so the
+    program is found by stepping over the one runner this repository's targets
+    use and over its flags, rather than by looking for `ty check` anywhere in
+    the line.
+
+    Only that runner is stepped over. An invocation reaching `ty` some other way
+    reads here as running no pass, which is a finding about a target rather than
+    a silent acceptance — the safe direction for a gate.
+    """
+    index = len(TY_RUNNER) if tuple(tokens[: len(TY_RUNNER)]) == TY_RUNNER else 0
+    while index < len(tokens) and tokens[index].startswith("-"):
+        index += 1
+    return tokens[index:]
+
+
 def _ty_passes(command: str) -> list[TyPass]:
     """Every `ty check` a `typecheck` command actually runs, read as invocations.
 
     Read as text instead, the contract below is satisfied by things that check
-    nothing: an `echo` of the invocation being looked for, and a pass over
+    nothing: an `echo` of the invocation being looked for — `uv run -q echo ty
+    check <root>` as much as a bare one — and a pass over
     `python/printobserver-sdk-extra`, which any test for the root
     `python/printobserver-sdk` finds inside it. So the command is split into the
-    invocations the shell would run, each is tokenized, and a root counts only
-    where it is a whole argument of one that runs `ty check`.
+    invocations the shell would run, each is tokenized, a pass counts only where
+    `ty check` is the program it executes, and a root only where it is a whole
+    argument of one.
     """
     passes: list[TyPass] = []
     for invocation in command.split("&&"):
@@ -196,21 +223,12 @@ def _ty_passes(command: str) -> list[TyPass]:
             tokens = shlex.split(invocation)
         except ValueError:
             continue
-        if not tokens or tokens[0] in NO_OP_COMMANDS:
-            continue
-        start = next(
-            (
-                index + 2
-                for index in range(len(tokens) - 1)
-                if tokens[index] == "ty" and tokens[index + 1] == "check"
-            ),
-            None,
-        )
-        if start is None:
+        run = _executed(tokens)
+        if tuple(run[: len(TY_PROGRAM)]) != TY_PROGRAM:
             continue
         platform: str | None = None
         roots: list[str] = []
-        rest = tokens[start:]
+        rest = run[len(TY_PROGRAM) :]
         index = 0
         while index < len(rest):
             token = rest[index]

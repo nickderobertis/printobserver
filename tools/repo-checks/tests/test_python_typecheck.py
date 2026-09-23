@@ -11,6 +11,7 @@ from repo_checks.model import Repo
 from treecopy import Tree
 
 SDK = "python/printobserver-sdk/project.json"
+ROOT = "python/printobserver-sdk"
 HOST_INVOCATION = "uv run -q ty check python/printobserver-sdk"
 WIN32_INVOCATION = "uv run -q ty check --python-platform win32 python/printobserver-sdk"
 
@@ -106,6 +107,22 @@ def test_a_pass_that_only_prints_the_invocation_is_refused(tree: Callable[[], Tr
     """
     broken = tree()
     broken.edit(SDK, WIN32_INVOCATION, f"echo {WIN32_INVOCATION}")
+
+    findings = python_typecheck_platforms(broken.repo)
+
+    refused_naming(findings, "no `win32` pass over python/printobserver-sdk")
+
+
+def test_a_pass_the_runner_only_prints_is_refused(tree: Callable[[], Tree]) -> None:
+    """The no-op is the program the runner runs, rather than the command's first word.
+
+    `uv run -q echo ty check <root>` carries the runner, its flag and every
+    word of the invocation being looked for, and differs from the real pass by
+    one token that is neither the first nor the last. It type-checks nothing,
+    so what decides a pass is the program the invocation executes.
+    """
+    broken = tree()
+    broken.edit(SDK, WIN32_INVOCATION, f"uv run -q echo ty check --python-platform win32 {ROOT}")
 
     findings = python_typecheck_platforms(broken.repo)
 
