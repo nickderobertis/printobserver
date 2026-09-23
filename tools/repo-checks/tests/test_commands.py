@@ -536,6 +536,43 @@ def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_install
     contains(capsys.readouterr().err, "`bootstrap` for `gh` is 'no'")
 
 
+@pytest.mark.parametrize(
+    ("declared", "said"),
+    [
+        ('"powershell"', "is 'powershell', which is not a non-empty list of commands"),
+        ("[]", "is [], which is not a non-empty list of commands"),
+        ('["   "]', "names '   ', which is not a command"),
+        ('["powershell", 7]', "names 7, which is not a command"),
+        ('["powershell"]', "names powershell and not `pwsh` itself"),
+    ],
+)
+def test_a_provided_by_that_names_no_alternative_is_refused_before_anything_is_installed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], declared: str, said: str
+) -> None:
+    """The declaration that decides whether a host installs at all is read or refused.
+
+    `provided_by` is the one thing that can silently leave a host with no
+    command on PATH: a table naming only the alternative satisfies a
+    `shutil.which` for it, installs nothing, and exits zero, so every recipe
+    after it fails on a tool the bootstrap reported it had handled. So a list
+    that is no list, a name that is no command, and a set omitting the tool's
+    own command are each refused where they are written, and the install the
+    entry declares is never reached.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="pwsh", install="false") + f"provided_by = {declared}\n",
+        encoding="utf-8",
+    )
+
+    equal(main(["install-tools", "--root", str(root)]), 1)
+
+    refusing = capsys.readouterr().err
+    contains(refusing, said)
+    absent(refusing, "failed to install")
+
+
 def test_tool_version_answers_the_release_the_toolchain_holds(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
