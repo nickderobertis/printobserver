@@ -24,7 +24,6 @@ NX_INVOCATION = "bunx nx"
 NODE_INSTALL_RECIPE = "node-modules"
 LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
-# The `ty` option naming the platform a pass reads `sys.platform` as.
 PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
 
@@ -228,11 +227,6 @@ def _ty_passes(command: str) -> list[TyPass]:
     return passes
 
 
-def _checks_root(passes: Iterable[TyPass], root: str, *, platform: str | None) -> bool:
-    """Whether one of those invocations checks that root for that platform."""
-    return any(found.platform == platform and root in found.roots for found in passes)
-
-
 def python_typecheck_platforms(repo: Repo) -> list[str]:
     """Every Python project type-checks for the host's platform and for each declared one.
 
@@ -264,8 +258,12 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
         if project.typecheck is None:
             findings.append(f"{project.name} is a Python project declaring no `typecheck` command")
             continue
-        passes = _ty_passes(project.typecheck)
-        if not _checks_root(passes, project.root, platform=None):
+        checked = {
+            (found.platform, root)
+            for found in _ty_passes(project.typecheck)
+            for root in found.roots
+        }
+        if (None, project.root) not in checked:
             findings.append(
                 f"{project.name}:typecheck runs no `ty check {project.root}` pass for this host"
             )
@@ -274,7 +272,7 @@ def python_typecheck_platforms(repo: Repo) -> list[str]:
             f"in code `sys.platform` hides from this host would be reported first by a "
             f"{platform} runner"
             for platform in platforms
-            if not _checks_root(passes, project.root, platform=platform)
+            if (platform, project.root) not in checked
         )
     return findings
 
