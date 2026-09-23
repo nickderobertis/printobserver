@@ -149,7 +149,7 @@ def test_a_pass_over_a_root_this_one_starts_with_is_refused(tree: Callable[[], T
 
 
 def test_one_pass_naming_several_roots_covers_each_of_them(tree: Callable[[], Tree]) -> None:
-    """A pass is read by what it checks, so two roots in one invocation is two passes."""
+    """A pass answers for every root it names, so one invocation covers both of these."""
     together = tree()
     together.edit(
         SDK,
