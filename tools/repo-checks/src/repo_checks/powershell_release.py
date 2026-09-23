@@ -202,6 +202,7 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     try:
         if runtime.exists():
             runtime.replace(superseded)
+        # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         staged.replace(runtime)
     except OSError as failed:
         shutil.rmtree(staged, ignore_errors=True)

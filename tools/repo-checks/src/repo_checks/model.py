@@ -250,6 +250,13 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
 def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
     """The commands one entry declares its tool already provided by, narrowed.
 
+    `entry` is `Any`-valued because it is one table straight out of
+    `tomllib.load`, which answers whatever the file happened to contain and is
+    the boundary this function exists to narrow: everything it returns is a
+    `tuple[str, ...]` it has checked, and everything else is a
+    `PolicyValueError` naming what the table said. A narrower parameter would
+    be a claim about a file a person edits, made before anything read it.
+
     Raises:
         PolicyValueError: If it is not a list of names, or names every command
             but the tool's own: a host carrying only the alternative would be
