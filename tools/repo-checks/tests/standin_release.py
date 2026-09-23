@@ -32,6 +32,11 @@ class Release:
     files: dict[str, bytes] = field(default_factory=dict)
     #: The path of every request made of it, in the order they were made.
     asked: list[str] = field(default_factory=list)
+    #: A name the release answers with a redirect rather than with bytes, and
+    #: the address it names. A real release asset is answered this way — the
+    #: forge redirects to its own asset store — so this is what lets a suite
+    #: drive both the redirect an installer follows and the one it refuses.
+    redirects: dict[str, str] = field(default_factory=dict)
 
 
 @contextmanager
@@ -40,13 +45,21 @@ def serving(prefix: str, release: Release) -> Iterator[str]:
 
     Anything outside `prefix`, and any name the release does not publish, is a
     404 — which is what an installer meets when a producer publishes no artifact
-    for a host, and is a case each suite drives.
+    for a host, and is a case each suite drives. A name in `redirects` is
+    answered `302` to the address it names, as the forge answers for a release
+    asset.
     """
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             release.asked.append(self.path)
             name = self.path.rsplit("/", 1)[-1]
+            if self.path.startswith(prefix) and name in release.redirects:
+                self.send_response(302)
+                self.send_header("Location", release.redirects[name])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             body = release.files.get(name) if self.path.startswith(prefix) else None
             if body is None:
                 self.send_error(404)

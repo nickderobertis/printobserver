@@ -257,7 +257,11 @@ def test_install_tools_installs_a_held_tool_absent_from_the_path_at_its_release(
 
     equal(main(["install-tools", "release-plz", "--root", str(root)]), 0)
 
-    contains(capsys.readouterr().err, "installing release-plz")
+    equal(
+        capsys.readouterr().err,
+        "",
+        describing="what it says installing a tool absent from PATH: the install names it",
+    )
     equal(
         record.read_text(encoding="utf-8").splitlines(),
         [f"run -q python -m repo_checks install-release-plz {HELD}"],
@@ -396,9 +400,6 @@ def test_install_tools_leaves_a_tool_declared_not_to_bootstrap_alone(
 
     equal(main(["install-tools", "--root", str(root)]), 0)
 
-    said = capsys.readouterr().err
-    absent(said, "installing gh")
-    absent(said, "installing release-plz")
     equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
     equal(shutil.which("gh"), None, describing="a gh bootstrap left off PATH")
     equal(shutil.which("release-plz"), None, describing="a release-plz bootstrap left off PATH")
@@ -412,7 +413,6 @@ def test_install_tools_installs_a_tool_it_is_named_whatever_bootstrap_says(
 
     equal(main(["install-tools", "gh", "--root", str(root)]), 0)
 
-    contains(capsys.readouterr().err, "installing gh")
     equal(
         record.read_text(encoding="utf-8").splitlines(),
         [f"run -q python -m repo_checks install-gh {GH_HELD}"],
@@ -455,7 +455,7 @@ raise SystemExit(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the PowerShell installer refuses Windows")
 def test_bootstrap_installs_powershell_from_its_release_and_no_release_plz_at_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
 ) -> None:
     """`just bootstrap`'s own install path, on a host carrying no PowerShell.
 
@@ -474,9 +474,11 @@ def test_bootstrap_installs_powershell_from_its_release_and_no_release_plz_at_al
 
         equal(main(["install-tools", "--root", str(root)]), 0)
 
-    said = capsys.readouterr().err
-    contains(said, "installing pwsh")
-    absent(said, "installing release-plz")
+    # The installer runs as a subprocess and writes to the real stderr, which is
+    # what a caller of `just bootstrap` reads and what `capfd` captures.
+    said = capfd.readouterr().err
+    contains(said, f"installed PowerShell {PWSH_HELD} at {installs / 'pwsh'}")
+    absent(said, "release-plz")
     equal(
         release.asked,
         [f"/v{PWSH_HELD}/{HASHES}", f"/v{PWSH_HELD}/{archive.name}"],

@@ -14,7 +14,9 @@ installer really holds so that nothing but the address decides the outcome.
 
 from __future__ import annotations
 
+import platform
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -23,8 +25,12 @@ from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gh_release import RELEASES as GH_RELEASES
 from repo_checks.powershell_release import RELEASES as POWERSHELL_RELEASES
+from repo_checks.powershell_release import archive_for, install
 from repo_checks.release_plz_release import RELEASES as RELEASE_PLZ_RELEASES
-from repo_checks.verified_download import FORGE
+from repo_checks.shell import run
+from repo_checks.verified_download import FORGE, InstallerError
+from standin_powershell import publish
+from standin_release import Release, serving
 
 #: Each install verb with the release the committed toolchain holds it at, read
 #: off that toolchain so the refusal under test is the address's alone and a
@@ -85,3 +91,68 @@ def test_a_verb_pointed_at_an_address_no_installer_fetches_installs_nothing(
 def test_every_installers_own_address_is_one_the_rule_admits(address: str) -> None:
     """A producer's address the rule refused would be an installer that fetched nothing."""
     contains(address, f"https://{FORGE}/", describing="the address the installer downloads from")
+
+
+#: The release the PowerShell installer is driven at here. Its stand-in is the
+#: one every suite shares, which is why the redirect is proven through that
+#: installer: what a redirect happens to, `download` decides for all three.
+PWSH = next(held.version for held in held_by_verb() if held.command == "pwsh")
+
+
+@pytest.fixture
+def serving_powershell() -> Iterator[tuple[str, Release]]:
+    """A loopback release laid out as the PowerShell installer reads one."""
+    release = Release()
+    with serving(f"/v{PWSH}/", release) as base:
+        yield base, release
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_release_redirecting_its_archive_elsewhere_on_loopback_is_still_installed(
+    serving_powershell: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A redirect is how a real release asset is answered, so one must be followed.
+
+    The forge answers a release asset with a `302` to its own asset store, and
+    a download refusing every redirect would fetch nothing at all from a real
+    release. Here the stand-in answers the archive that way, naming itself
+    under another name, and what is installed is the program that name carries.
+    """
+    base, release = serving_powershell
+    archive = archive_for(PWSH, sys.platform, platform.machine())
+    publish(release, archive)
+    release.files["moved.tar.gz"] = release.files[archive.name]
+    release.redirects[archive.name] = f"{base}/v{PWSH}/moved.tar.gz"
+    into = tmp_path / "bin"
+
+    install(archive, into, releases=base)
+
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {PWSH}")
+    contains(
+        release.asked,
+        f"/v{PWSH}/moved.tar.gz",
+        describing="the address the redirect was followed to",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_release_redirecting_off_tls_is_refused_and_installs_nothing(
+    serving_powershell: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A download that began over TLS is not walked off it by whatever answered.
+
+    Both the checksums file and the archive are fetched from the address a
+    caller named, so an answer free to redirect anywhere would be an answer
+    free to move either onto a scheme and a host this rule already refused.
+    """
+    base, release = serving_powershell
+    archive = archive_for(PWSH, sys.platform, platform.machine())
+    publish(release, archive)
+    release.redirects[archive.name] = "http://example.invalid/moved.tar.gz"
+    into = tmp_path / "bin"
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, into, releases=base)
+
+    contains(str(raised.value), "which is not an address this installer follows")
+    truth(not into.exists(), describing="nothing written where the program goes")

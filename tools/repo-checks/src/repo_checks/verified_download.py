@@ -23,7 +23,9 @@ import urllib.parse
 import urllib.request
 import zipfile
 import zlib
+from http.client import HTTPMessage
 from pathlib import Path
+from typing import IO
 
 #: How long one download may take, in seconds.
 DOWNLOAD_TIMEOUT = 120
@@ -78,19 +80,63 @@ def permitted(url: str) -> bool:
     return parsed.scheme == "http" and hostname in LOOPBACK
 
 
+def followed(url: str) -> bool:
+    """Whether a redirect an answer names is one an installer follows.
+
+    A release asset on the forge is answered with a redirect to the forge's own
+    asset store, so following one is how any of these downloads completes and
+    the host cannot be held to `FORGE` here. What is held is the **scheme**: a
+    redirect to plain `http` is a downgrade of a download that began over TLS,
+    and the only plain-HTTP answer an installer takes is a suite's own stand-in
+    on loopback, which is the one this admits besides.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
+    except ValueError:
+        return False
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and hostname in LOOPBACK
+
+
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only where `followed` admits the address it names."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        """Refuse the redirect outright rather than hand urllib another address."""
+        if not followed(newurl):
+            reason = f"redirected to {newurl}, which is not an address this installer follows"
+            raise urllib.error.HTTPError(newurl, code, reason, headers, None)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def download(url: str) -> bytes:
     """One file of a release, or why it could not be fetched.
 
+    Every redirect the answer names is held to `followed` before it is taken,
+    so a download that began at the forge over TLS cannot be walked off it onto
+    plain HTTP by whatever answered.
+
     Raises:
         InstallerError: If the address is not one an installer downloads from,
-            or the download fails.
+            a redirect names one it does not follow, or the download fails.
     """
     if not permitted(url):
         msg = f"{url} is not an address this installer downloads from"
         raise InstallerError(msg)
+    opener = urllib.request.build_opener(_Redirects)
     try:
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
-        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as answer:  # noqa: S310
+        with opener.open(url, timeout=DOWNLOAD_TIMEOUT) as answer:
             return answer.read()
     except (urllib.error.URLError, OSError) as error:
         msg = f"{url} could not be downloaded: {error}"

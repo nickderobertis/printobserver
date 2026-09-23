@@ -36,6 +36,11 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
     another name — PowerShell, which every Windows host carries as `powershell`.
     Any of those commands on PATH and nothing is installed, at any release: a
     copy this repository did not install is not one it holds at a release.
+
+    What it says is what the caller could not already work out. A tool absent
+    from PATH is installed with no line of its own, because the install itself
+    names what it put where; what is said instead is the one thing an install
+    cannot say, which is why a copy that was already there is being replaced.
     """
     try:
         declared = toolchain_tools(repo)
@@ -60,9 +65,7 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
         if tool.provided_by and _provider(tool.provided_by) is not None:
             continue
         present = shutil.which(tool.command)
-        if present is None:
-            print(f"installing {tool.command}", file=sys.stderr)
-        else:
+        if present is not None:
             answered = _release_of(present) if tool.version is not None else None
             if tool.version is None or answered == tool.version:
                 continue

@@ -187,12 +187,6 @@ site = "urllib.request.urlopen(request"
 reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every fetch in this tier goes through, immediately below the `Request` it was handed."
 
 [[suppression]]
-rule = "S310"
-file = "tools/repo-checks/src/repo_checks/verified_download.py"
-site = "urllib.request.urlopen(url"
-reason = "S310 fires on opening a URL whose scheme it cannot audit statically. This is the one download the three release installers make, and the line above it refuses any URL that is not https (or a loopback http address, which only their own suites' release stand-ins serve); every URL reaching it is composed from a fixed GitHub releases address and a validated release. What is downloaded is installed only after it matches a SHA-256 the release itself publishes or this repository commits."
-
-[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"

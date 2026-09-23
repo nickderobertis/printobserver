@@ -21,7 +21,10 @@ from pathlib import Path
 import pytest
 from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal, refused, truth
+from repo_checks.model import Repo
+from repo_checks.platforms import supported
 from repo_checks.powershell_release import (
+    FLAVOURS,
     HASHES,
     archive_for,
     install,
@@ -33,6 +36,7 @@ from repo_checks.verified_download import InstallerError
 from standin_powershell import RUNTIME_FILE, archive_bytes, program
 from standin_powershell import publish as _publish
 from standin_release import Release, serving
+from treecopy import REPO_ROOT
 
 VERSION = "7.6.6"
 
@@ -357,3 +361,39 @@ def test_the_hashes_file_is_read_as_its_producer_encoded_it() -> None:
 
     equal(listing(line.encode("utf-16")).strip(), line)
     equal(listing(line.encode("utf-8")).strip(), line, describing="a producer that writes UTF-8")
+
+
+def test_every_supported_platform_but_windows_has_a_flavour() -> None:
+    """A platform with no flavour is a development host the PowerShell journeys skip on.
+
+    `AGENTS.md`'s supported-platform list is the one source of which platforms
+    this repository has, and this installer restates the producer's name for
+    each of them. A platform the list gains and this does not would leave that
+    host with no `pwsh` and the three PowerShell journeys silently skipped
+    there, so every one the list names has a flavour here — except the Windows
+    ones, which are absent by design, carry PowerShell already, and are what
+    `archive_for` refuses by name. That exception is asserted too, so a Windows
+    entry appearing here is refused rather than quietly installed over the
+    host's own PowerShell.
+
+    A flavour for a host the list does NOT name is deliberately left alone:
+    `repo-policy.toml` retired `macos-x86_64` as a CI platform for runner cost
+    rather than because nobody develops there, and a developer on one still
+    runs these journeys.
+    """
+    committed = Repo(REPO_ROOT)
+    named = {entry.id for entry in supported(committed) if not entry.id.startswith("windows-")}
+    flavoured = {
+        f"{'macos' if system == 'darwin' else system}-{machine}" for system, machine in FLAVOURS
+    }
+
+    equal(
+        sorted(flavoured & named),
+        sorted(named),
+        describing="the supported platforms this installer takes PowerShell for",
+    )
+    equal(
+        sorted(entry.id for entry in supported(committed) if entry.id.startswith("windows-")),
+        sorted(entry.id for entry in supported(committed) if entry.id not in flavoured),
+        describing="the platforms with no flavour: Windows, which carries PowerShell already",
+    )
