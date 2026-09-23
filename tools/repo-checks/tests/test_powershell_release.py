@@ -397,3 +397,37 @@ def test_every_supported_platform_but_windows_has_a_flavour() -> None:
         sorted(entry.id for entry in supported(committed) if entry.id not in flavoured),
         describing="the platforms with no flavour: Windows, which carries PowerShell already",
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_an_install_interrupted_mid_commit_is_recovered_by_the_next_one(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """The state a commit stopped part-way leaves, run forward rather than argued about.
+
+    Between the two renames a replacement is made of, the runtime already
+    installed is at the aside name and the name `pwsh` is linked to holds
+    nothing — a machine whose install was killed there has a broken link and a
+    runtime under a dotted name. No test can make a rename between two entries
+    of one directory fail, so that state is not produced here by breaking one;
+    it is put on disk directly, exactly as an interrupted install leaves it, and
+    what is proven is the thing an operator needs: the next install comes back
+    over it, leaving one runtime, one link and nothing dotted beside it.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    install(archive, into, releases=base)
+    runtime = runtime_directory(into, VERSION)
+    runtime.replace(runtime.with_name(f".{runtime.name}.superseded"))
+    truth(not (into / "pwsh").resolve().exists(), describing="the link an interruption leaves")
+
+    install(archive, into, releases=base)
+
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    equal(
+        sorted(path.name for path in runtime.parent.iterdir()),
+        [runtime.name],
+        describing="what the recovering install left beside the runtime",
+    )
