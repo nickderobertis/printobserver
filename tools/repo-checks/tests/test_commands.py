@@ -17,7 +17,7 @@ import pytest
 from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
 from repo_checks.commands import coverage, install_hooks, install_tools
-from repo_checks.expect import absent, contains, equal
+from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
 from repo_checks.powershell_release import archive_for as powershell_archive_for
@@ -508,6 +508,112 @@ def test_bootstrap_installs_nothing_where_the_host_already_provides_powershell(
 
     absent(capsys.readouterr().err, "pwsh")
     equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
+
+
+# The `uv` the end-to-end recipe journeys below put on PATH. The recipe's own
+# first line is `uv run -q python -m repo_checks install-tools release-plz`, and
+# that verb is the real one, run in the copied tree the recipe runs in; the
+# download it then asks `uv` for is the install stand-in above, because what is
+# in question here is the recipe rather than the installer, which
+# `test_release_plz_release.py` drives against a stand-in release of its own.
+E2E_UV = (
+    """
+import os
+import sys
+
+sys.path[:0] = os.environ["STANDIN_IMPORT_PATH"].split(os.pathsep)
+verb = sys.argv[sys.argv.index("-m") + 2 :]
+if verb[0] == "install-tools":
+    from repo_checks.__main__ import main
+
+    with open(os.environ["INSTALL_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+        record.write(" ".join(sys.argv[1:]) + "\\n")
+
+    raise SystemExit(main(verb))
+"""
+    + INSTALL_STANDIN
+)
+
+# The tier the recipe starts once its prerequisites are in place: `bunx nx`,
+# which would run every journey. It records what `release-plz --version` answers
+# at the moment it is started — the one thing the three journeys that drive the
+# release program ask before deciding whether to skip.
+TIER_STANDIN = """#!/bin/sh
+{ printf 'bunx %s\\n' "$*"; release-plz --version 2>&1 || echo 'no release-plz'; } \\
+  >> "$INSTALL_STANDIN_RECORD"
+"""
+
+
+def e2e_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    """A tree carrying the committed justfile and toolchain, and a PATH with no release-plz.
+
+    PATH holds the stand-in `uv`, `bun` and `bunx`, the real `just` — which the
+    recipe runs again for `node-modules` — and the directory holding the shell,
+    and nothing else. Returns the tree, the `just`
+    to run in it, and the record of what the recipe's programs were asked.
+    """
+    just = shutil.which("just")
+    if just is None:
+        pytest.fail("`just` is not on PATH; `just bootstrap` installs it")
+    shell = shutil.which("sh")
+    if shell is None:
+        pytest.fail("no `sh` on PATH to run the recipe's stand-ins under")
+    root, installs, record = toolchain(tmp_path, monkeypatch, uv=E2E_UV)
+    shutil.copy2(REPO_ROOT / "justfile", root / "justfile")
+    for name, code in (("bun", "#!/bin/sh\nexit 0\n"), ("bunx", TIER_STANDIN)):
+        (installs / name).write_text(code, encoding="utf-8")
+        (installs / name).chmod(0o755)
+    (installs / "just").symlink_to(just)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(installs), str(Path(shell).parent)]))
+    monkeypatch.setenv("STANDIN_IMPORT_PATH", os.pathsep.join(sys.path))
+    equal(shutil.which("release-plz"), None, describing="release-plz before the recipe runs")
+    return root, installs / "just", record
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_end_to_end_recipe_puts_the_held_release_plz_on_path_before_the_tier_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`just test-e2e` on a host that bootstrapped and nothing more.
+
+    Bootstrap leaves release-plz alone, and the three journeys that drive it skip
+    where it is absent; so the recipe installs it by name first, and the tier
+    finds the held release already on PATH when it starts.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+
+    ran = run([str(just), "test-e2e"], cwd=root, env=dict(os.environ))
+
+    equal(ran.returncode, 0, describing=f"`just test-e2e`: {ran.stdout}{ran.stderr}")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [
+            "run -q python -m repo_checks install-tools release-plz",
+            f"run -q python -m repo_checks install-release-plz {HELD}",
+            "bunx nx run-many -t test-e2e --output-style=stream",
+            f"release-plz version {HELD}",
+        ],
+        describing="what the recipe ran, in order, and what the tier found on PATH",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_end_to_end_recipe_starts_no_journey_when_release_plz_cannot_be_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that lands some other release stops the recipe before the tier.
+
+    Running the tier anyway would be the silent skip this prerequisite is there
+    to prevent, reported as a pass.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+    monkeypatch.setenv("INSTALL_STANDIN_ANSWERS", STALE)
+
+    ran = run([str(just), "test-e2e"], cwd=root, env=dict(os.environ))
+
+    truth(ran.returncode != 0, describing="`just test-e2e` over an install that did not hold")
+    contains(ran.stderr, f"answers {STALE}")
+    absent(record.read_text(encoding="utf-8"), "bunx", describing="the tier, which never started")
 
 
 def test_install_tools_refuses_a_tool_the_toolchain_does_not_declare(
