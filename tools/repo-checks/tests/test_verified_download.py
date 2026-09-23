@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gh_release import RELEASES as GH_RELEASES
@@ -25,21 +26,22 @@ from repo_checks.powershell_release import RELEASES as POWERSHELL_RELEASES
 from repo_checks.release_plz_release import RELEASES as RELEASE_PLZ_RELEASES
 from repo_checks.verified_download import FORGE
 
-#: Each install verb, with a release its own installer holds digests or a
-#: checksums file for, so the refusal under test is the address's alone. The
-#: PowerShell verb refuses a Windows host before it reads an address at all —
-#: that host already carries PowerShell — so there it would answer about the
-#: host rather than about the address, and this says nothing there.
-VERBS = (
-    ("install-gh", "2.100.0"),
-    ("install-release-plz", "0.3.167"),
+#: Each install verb with the release the committed toolchain holds it at, read
+#: off that toolchain so the refusal under test is the address's alone and a
+#: bump carries these with it. The PowerShell verb refuses a Windows host before
+#: it reads an address at all — that host already carries PowerShell — so there
+#: it would answer about the host rather than about the address, and this says
+#: nothing there.
+VERBS = tuple(
     pytest.param(
-        "install-powershell",
-        "7.6.6",
+        held.verb,
+        held.version,
         marks=pytest.mark.skipif(
-            sys.platform == "win32", reason="the installer refuses a Windows host first"
+            held.command == "pwsh" and sys.platform == "win32",
+            reason="the installer refuses a Windows host before it reads an address",
         ),
-    ),
+    )
+    for held in held_by_verb()
 )
 
 #: Addresses no installer fetches, each for its own reason: a host that is not

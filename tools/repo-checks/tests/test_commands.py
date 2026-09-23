@@ -14,10 +14,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
 from repo_checks.commands import coverage, install_hooks, install_tools
 from repo_checks.expect import absent, contains, equal
-from repo_checks.model import Repo, toolchain_tools
+from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
 from repo_checks.powershell_release import archive_for as powershell_archive_for
 from repo_checks.shell import run
@@ -28,11 +29,7 @@ from treecopy import REPO_ROOT, Tree
 
 def _held(command: str) -> str:
     """The release the committed toolchain holds one tool at, read rather than restated."""
-    return next(
-        str(tool["version"])
-        for tool in Repo(REPO_ROOT).policy["toolchain"]["tool"]
-        if tool["command"] == command
-    )
+    return next(held.version for held in held_by_verb() if held.command == command)
 
 
 #: The releases the committed toolchain holds, read rather than restated so
@@ -44,27 +41,13 @@ PWSH_HELD = _held("pwsh")
 STALE = "0.0.0-stale"
 
 
-def _install_verbs() -> dict[str, str]:
-    """Which install verb puts which command on PATH, read off the committed toolchain.
-
-    The stand-in below has to write the program the verb it was handed would
-    install, and that pairing is the toolchain's own: an entry names the
-    command it puts on PATH and the argv that installs it, and where that argv
-    goes through `repo_checks`, the word after it is the verb. Restating the
-    pairing here would leave a second copy to go stale the day an installer is
-    added or renamed — the stand-in would then answer for the wrong program and
-    the journey would pass having proved nothing.
-    """
-    verbs: dict[str, str] = {}
-    for tool in toolchain_tools(Repo(REPO_ROOT)):
-        words = tool.install.split()
-        if "repo_checks" in words:
-            verbs[words[words.index("repo_checks") + 1]] = tool.command
-    return verbs
-
-
+#: Which install verb produces which command, read off the committed toolchain
+#: rather than restated: the stand-in below writes the program the verb it was
+#: handed would install, and a second copy of that pairing would leave the
+#: stand-in answering for the wrong program the day an installer is added or
+#: renamed — a journey passing having proved nothing.
 #: The pairing the stand-in is handed, as JSON in its own environment variable.
-INSTALL_VERBS = json.dumps(_install_verbs())
+INSTALL_VERBS = json.dumps({held.verb: held.command for held in held_by_verb()})
 
 # A stand-in for `uv`, which is how every tool the toolchain holds at a release
 # is installed: the committed install runs `uv run -q python -m repo_checks
