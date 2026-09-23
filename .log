@@ -1,1 +1,0 @@
-uv run -q python -m repo_checks all
