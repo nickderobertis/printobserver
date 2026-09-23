@@ -24,31 +24,51 @@ from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gh_release import RELEASES as GH_RELEASES
+from repo_checks.gh_release import archive_for as gh_archive_for
 from repo_checks.powershell_release import RELEASES as POWERSHELL_RELEASES
 from repo_checks.powershell_release import archive_for, install
 from repo_checks.release_plz_release import RELEASES as RELEASE_PLZ_RELEASES
+from repo_checks.release_plz_release import archive_for as release_plz_archive_for
 from repo_checks.shell import run
 from repo_checks.verified_download import FORGE, InstallerError
 from standin_powershell import publish
 from standin_release import Release, serving
 
+#: Each installer's own reading of a host, by the verb that drives it.
+ARCHIVE_FOR = {
+    "install-gh": gh_archive_for,
+    "install-powershell": archive_for,
+    "install-release-plz": release_plz_archive_for,
+}
+
+
+def _serves_this_host(verb: str, version: str) -> bool:
+    """Whether `verb`'s installer takes this host, asked of that installer itself."""
+    try:
+        ARCHIVE_FOR[verb](version, sys.platform, platform.machine())
+    except InstallerError:
+        return False
+    return True
+
+
 #: Each install verb with the release the committed toolchain holds it at, read
 #: off that toolchain so the refusal under test is the address's alone and a
-#: bump carries these with it. The PowerShell verb refuses a Windows host before
-#: it reads an address at all — that host already carries PowerShell — so there
-#: it would answer about the host rather than about the address, and this says
-#: nothing there.
+#: bump carries these with it. An installer refuses a host it takes no archive
+#: for — gh's and PowerShell's both refuse Windows — before it reads an address
+#: at all, so there it would answer about the host rather than about the
+#: address, and this says nothing there.
 VERBS = tuple(
     pytest.param(
         held.verb,
         held.version,
         marks=pytest.mark.skipif(
-            held.command == "pwsh" and sys.platform == "win32",
-            reason="the installer refuses a Windows host before it reads an address",
+            not _serves_this_host(held.verb, held.version),
+            reason="the installer refuses this host before it reads an address",
         ),
     )
     for held in held_by_verb()
 )
+
 
 #: Addresses no installer fetches, each for its own reason: a host that is not
 #: the forge however well-formed its TLS is; a scheme nothing here speaks; and
