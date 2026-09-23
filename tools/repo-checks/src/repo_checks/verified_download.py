@@ -62,11 +62,20 @@ def permitted(url: str) -> bool:
     before an `@` in an authority is userinfo: `http://127.0.0.1:80@example.com`
     begins with a loopback address, names `example.com` as its host, and would
     pass any check made on the text.
+
+    An authority the parser itself refuses — `https://[::1`, whose IPv6 bracket
+    never closes — is not an address either, and is answered here rather than
+    let out as a `ValueError` from under a caller who passed `--releases` and
+    is owed a refusal naming what they passed.
     """
-    parsed = urllib.parse.urlsplit(url)
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
+    except ValueError:
+        return False
     if parsed.scheme == "https":
-        return parsed.hostname == FORGE
-    return parsed.scheme == "http" and parsed.hostname in LOOPBACK
+        return hostname == FORGE
+    return parsed.scheme == "http" and hostname in LOOPBACK
 
 
 def download(url: str) -> bytes:

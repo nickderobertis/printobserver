@@ -53,6 +53,9 @@ REFUSED = (
     "http://127.0.0.1:80@example.invalid",
     "ftp://127.0.0.1:8080",
     "file:///tmp",
+    # An authority the parser itself refuses: the bracket never closes, so
+    # reading the host raises rather than answering one.
+    "https://[::1",
 )
 
 

@@ -16,16 +16,22 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+@dataclass(slots=True)
 class Release:
-    """A release served over loopback HTTP: the files, by name, and what was asked."""
+    """A release served over loopback HTTP: the files, by name, and what was asked.
 
-    def __init__(self, files: dict[str, bytes] | None = None) -> None:
-        """A release publishing `files`, which nothing has asked for yet."""
-        self.files = files if files is not None else {}
-        self.asked: list[str] = []
+    Not frozen: a suite publishes a file, drives an installer, and republishes
+    a different one under the same name to drive the next outcome.
+    """
+
+    #: What the release publishes, by the name the forge serves it under.
+    files: dict[str, bytes] = field(default_factory=dict)
+    #: The path of every request made of it, in the order they were made.
+    asked: list[str] = field(default_factory=list)
 
 
 @contextmanager

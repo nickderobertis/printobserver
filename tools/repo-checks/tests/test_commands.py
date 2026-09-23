@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -16,7 +17,7 @@ import pytest
 from repo_checks.__main__ import main
 from repo_checks.commands import coverage, install_hooks, install_tools
 from repo_checks.expect import absent, contains, equal
-from repo_checks.model import Repo
+from repo_checks.model import Repo, toolchain_tools
 from repo_checks.powershell_release import HASHES
 from repo_checks.powershell_release import archive_for as powershell_archive_for
 from repo_checks.shell import run
@@ -42,6 +43,29 @@ PWSH_HELD = _held("pwsh")
 #: A release no toolchain holds anything at: the cached copy from before a bump.
 STALE = "0.0.0-stale"
 
+
+def _install_verbs() -> dict[str, str]:
+    """Which install verb puts which command on PATH, read off the committed toolchain.
+
+    The stand-in below has to write the program the verb it was handed would
+    install, and that pairing is the toolchain's own: an entry names the
+    command it puts on PATH and the argv that installs it, and where that argv
+    goes through `repo_checks`, the word after it is the verb. Restating the
+    pairing here would leave a second copy to go stale the day an installer is
+    added or renamed — the stand-in would then answer for the wrong program and
+    the journey would pass having proved nothing.
+    """
+    verbs: dict[str, str] = {}
+    for tool in toolchain_tools(Repo(REPO_ROOT)):
+        words = tool.install.split()
+        if "repo_checks" in words:
+            verbs[words[words.index("repo_checks") + 1]] = tool.command
+    return verbs
+
+
+#: The pairing the stand-in is handed, as JSON in its own environment variable.
+INSTALL_VERBS = json.dumps(_install_verbs())
+
 # A stand-in for `uv`, which is how every tool the toolchain holds at a release
 # is installed: the committed install runs `uv run -q python -m repo_checks
 # install-<something> <release>`, which downloads a real release over the
@@ -52,15 +76,12 @@ STALE = "0.0.0-stale"
 # else the install path does — reading the committed declaration, asking what is
 # on PATH, deciding — is the real command's.
 INSTALL_STANDIN = """
+import json
 import os
 import pathlib
 import sys
 
-PROGRAMS = {
-    "install-gh": "gh",
-    "install-release-plz": "release-plz",
-    "install-powershell": "pwsh",
-}
+PROGRAMS = json.loads(os.environ["INSTALL_STANDIN_PROGRAMS"])
 arguments = sys.argv[1:]
 with open(os.environ["INSTALL_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(" ".join(arguments) + "\\n")
@@ -212,6 +233,7 @@ def toolchain(
     monkeypatch.setenv("PATH", os.pathsep.join(str(directory) for directory in directories))
     monkeypatch.setenv("INSTALL_STANDIN_INTO", str(installs))
     monkeypatch.setenv("INSTALL_STANDIN_RECORD", str(record))
+    monkeypatch.setenv("INSTALL_STANDIN_PROGRAMS", INSTALL_VERBS)
     return root, installs, record
 
 
