@@ -123,6 +123,39 @@ def test_an_archive_carrying_no_program_leaves_the_runtime_a_good_install_left(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_replacement_the_filesystem_refuses_leaves_the_runtime_that_was_there(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A commit that cannot be made is a refusal naming where the working runtime is.
+
+    The name the installer puts a superseded runtime aside under is occupied
+    here by a regular file, which is a directory rename the filesystem refuses
+    — the one way a commit fails that a test can produce rather than pretend.
+    What it proves is that the failure leaves the runtime the first install put
+    there untouched and still runnable, and comes back as a refusal a caller
+    reads rather than as a traceback out of the middle of a replacement.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    install(archive, into, releases=base)
+    runtime = runtime_directory(into, VERSION)
+    runtime.with_name(f".{runtime.name}.superseded").write_text("in the way", encoding="utf-8")
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, into, releases=base)
+
+    contains(str(raised.value), f"{runtime} could not be replaced")
+    contains(str(raised.value), f"The runtime this was replacing is at {runtime}")
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    truth(
+        not runtime.with_name(f".{runtime.name}.part").exists(),
+        describing="the staged runtime, cleared by the refusal",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_the_verb_pointed_at_a_relative_directory_leaves_a_link_that_runs(
     serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -30,8 +30,17 @@ DOWNLOAD_TIMEOUT = 120
 
 #: The hosts an installer may download from over plain HTTP: the loopback
 #: addresses a suite serves an installer its own stand-in release on, and no
-#: name that a resolver decides. Everything else has to be `https`.
+#: name that a resolver decides.
 LOOPBACK = frozenset({"127.0.0.1", "::1"})
+
+#: The one forge every release these installers take is published on, which is
+#: the only host reached over TLS. `https` on its own is not enough for two of
+#: the three: gh and PowerShell read the checksums file from the same release
+#: the archive comes from, so a host free to serve both would be a host free to
+#: serve bytes and the digest vouching for them. Holding the origin to the
+#: producer's own forge is what stops `--releases` naming such a host.
+#: `test_verified_download.py` holds each installer's own address to it.
+FORGE = "github.com"
 
 
 class InstallerError(Exception):
@@ -41,10 +50,13 @@ class InstallerError(Exception):
 def permitted(url: str) -> bool:
     """Whether an installer downloads from this address at all.
 
-    A producer's forge over TLS, and a loopback address over plain HTTP, which
+    The producer's forge over TLS, and a loopback address over plain HTTP, which
     is how a suite serves an installer a stand-in release. `--releases` is a
     caller's input, so this is what keeps one of these installers from being an
-    arbitrary downloader.
+    arbitrary downloader — and the host matters as much as the scheme, because
+    two of the three installers read the digest that vouches for an archive out
+    of a file served beside it. Any `https` host would therefore be a host free
+    to hand an installer bytes and its own approval of them together.
 
     The address is **parsed** rather than read off the front, because everything
     before an `@` in an authority is userinfo: `http://127.0.0.1:80@example.com`
@@ -53,7 +65,7 @@ def permitted(url: str) -> bool:
     """
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme == "https":
-        return True
+        return parsed.hostname == FORGE
     return parsed.scheme == "http" and parsed.hostname in LOOPBACK
 
 

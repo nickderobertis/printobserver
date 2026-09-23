@@ -163,9 +163,17 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     there — the state an install interrupted between a delete and a move would
     otherwise leave, which is a `pwsh` on PATH pointing at nothing.
 
+    Neither of those two moves can destroy a runtime, and a filesystem that
+    refuses one is reported as a refusal naming where the runtime it was
+    replacing now is, rather than let out as a traceback from the middle of a
+    replacement: `os.replace` between two entries of one directory is the
+    atomic primitive there is, so there is nothing to retry and the one thing
+    an operator needs is which of the two names holds the working runtime.
+
     Raises:
         InstallerError: If a download fails, the digests disagree, the archive
-            cannot be unpacked, or it carries no program.
+            cannot be unpacked, it carries no program, or the runtime already
+            installed cannot be replaced.
     """
     # Absolute, whatever the caller passed: the runtime goes beside `into` and
     # `pwsh` inside it is linked into `into`, so a relative directory would put
@@ -189,9 +197,19 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         raise InstallerError(msg)
     superseded = runtime.with_name(f".{runtime.name}.superseded")
     shutil.rmtree(superseded, ignore_errors=True)
-    if runtime.exists():
-        runtime.replace(superseded)
-    staged.replace(runtime)
+    try:
+        if runtime.exists():
+            runtime.replace(superseded)
+        staged.replace(runtime)
+    except OSError as failed:
+        shutil.rmtree(staged, ignore_errors=True)
+        held = superseded if superseded.is_dir() and not runtime.is_dir() else runtime
+        msg = (
+            f"{runtime} could not be replaced with the runtime unpacked beside it: {failed}. "
+            f"The runtime this was replacing is at {held}; `pwsh` is linked to {runtime}, so "
+            f"moving it back there restores what was working."
+        )
+        raise InstallerError(msg) from failed
     shutil.rmtree(superseded, ignore_errors=True)
     program = runtime / "pwsh"
     program.chmod(0o755)
