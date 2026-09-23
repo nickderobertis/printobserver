@@ -167,6 +167,10 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         InstallerError: If a download fails, the digests disagree, the archive
             cannot be unpacked, or it carries no program.
     """
+    # Absolute, whatever the caller passed: the runtime goes beside `into` and
+    # `pwsh` inside it is linked into `into`, so a relative directory would put
+    # the link's own target under the link's directory, where nothing is.
+    into = into.resolve()
     base = f"{releases}/v{archive.version}"
     hashes = listing(download(f"{base}/{HASHES}"))
     payload = verified(
@@ -206,7 +210,7 @@ def install_powershell(version: str, into: Path | None = None, *, releases: str 
     Says what it installed and where, says so when that directory is not on
     PATH, and exits non-zero naming why when it installed nothing.
     """
-    destination = into if into is not None else Path.home() / ".local" / "bin"
+    destination = (into if into is not None else Path.home() / ".local" / "bin").resolve()
     try:
         archive = archive_for(version, sys.platform, platform.machine())
         installed = install(archive, destination, releases=releases)

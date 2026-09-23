@@ -123,6 +123,31 @@ def test_an_archive_carrying_no_program_leaves_the_runtime_a_good_install_left(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_verb_pointed_at_a_relative_directory_leaves_a_link_that_runs(
+    serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--into bin` is a directory a caller names from where they stand, and it works.
+
+    The runtime goes BESIDE the directory the program is linked into, so a
+    relative directory taken as written would leave `bin/pwsh` pointing at
+    `share/powershell-<release>/pwsh` resolved from `bin/` — a link under
+    itself, where nothing is, and a verb that exits zero having installed a
+    program nobody can run.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    monkeypatch.chdir(tmp_path)
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", "bin"]), 0)
+
+    linked = tmp_path / "bin" / "pwsh"
+    truth(linked.is_symlink(), describing="the link the install left")
+    truth(linked.resolve().is_file(), describing=f"what it points at: {linked.readlink()}")
+    contains(run([str(linked), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_the_verb_says_what_it_installed_and_that_its_directory_is_off_path(
     serving_release: tuple[str, Release],
     tmp_path: Path,

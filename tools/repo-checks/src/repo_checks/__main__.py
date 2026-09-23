@@ -42,8 +42,18 @@ BASE_AWARE = {"suppressions": suppressions, "integration-tier": integration_tier
 
 
 def _into(named: str | None) -> Path | None:
-    """The directory an install verb was pointed at, or none for its own default."""
-    return Path(named) if named else None
+    """The directory an install verb was pointed at, absolute, or none for its own default.
+
+    Resolved here rather than taken as written, because one of these installs
+    leaves a symlink: PowerShell's runtime is unpacked beside the directory the
+    caller named and `pwsh` inside it is linked into that directory, so a
+    relative `--into bin` would make a link at `bin/pwsh` whose target
+    `share/powershell-<release>/pwsh` resolves from `bin/` — under itself,
+    where nothing is. The verb would exit zero having left a broken link. It is
+    also what makes the "not on PATH" line these verbs print compare the
+    directory against PATH's own absolute entries rather than against a name.
+    """
+    return Path(named).resolve() if named else None
 
 
 def main(argv: list[str] | None = None) -> int:
