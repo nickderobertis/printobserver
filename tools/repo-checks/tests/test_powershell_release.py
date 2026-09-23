@@ -147,7 +147,8 @@ def test_a_replacement_the_filesystem_refuses_leaves_the_runtime_that_was_there(
         install(archive, into, releases=base)
 
     contains(str(raised.value), f"{runtime} could not be replaced")
-    contains(str(raised.value), f"The runtime this was replacing is at {runtime}")
+    contains(str(raised.value), "Nothing was deleted: the runtime this was replacing is at")
+    contains(str(raised.value), f"`pwsh` is linked to {runtime}")
     contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
     truth(
         not runtime.with_name(f".{runtime.name}.part").exists(),

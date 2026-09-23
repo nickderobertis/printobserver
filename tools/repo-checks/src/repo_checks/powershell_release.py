@@ -164,11 +164,13 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     otherwise leave, which is a `pwsh` on PATH pointing at nothing.
 
     Neither of those two moves can destroy a runtime, and a filesystem that
-    refuses one is reported as a refusal naming where the runtime it was
-    replacing now is, rather than let out as a traceback from the middle of a
-    replacement: `os.replace` between two entries of one directory is the
-    atomic primitive there is, so there is nothing to retry and the one thing
-    an operator needs is which of the two names holds the working runtime.
+    refuses either is reported as a refusal naming the two places the runtime
+    it was replacing can be, rather than let out as a traceback from the middle
+    of a replacement: `os.replace` between two entries of one directory is the
+    atomic primitive there is, so there is nothing to retry and what an
+    operator needs is where to look. The refusal names both rather than reading
+    the directory to say which, because a rule this module states about itself
+    and no test can reach is worse than the sentence it saves.
 
     Raises:
         InstallerError: If a download fails, the digests disagree, the archive
@@ -203,11 +205,11 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         staged.replace(runtime)
     except OSError as failed:
         shutil.rmtree(staged, ignore_errors=True)
-        held = superseded if superseded.is_dir() and not runtime.is_dir() else runtime
         msg = (
             f"{runtime} could not be replaced with the runtime unpacked beside it: {failed}. "
-            f"The runtime this was replacing is at {held}; `pwsh` is linked to {runtime}, so "
-            f"moving it back there restores what was working."
+            f"Nothing was deleted: the runtime this was replacing is at {runtime}, or at "
+            f"{superseded} if it had already been put aside. `pwsh` is linked to {runtime}, "
+            f"so whichever of the two holds it belongs there."
         )
         raise InstallerError(msg) from failed
     shutil.rmtree(superseded, ignore_errors=True)
