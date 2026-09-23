@@ -11,6 +11,7 @@ runs the real Nx target over it.
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Callable
 
 import pytest
@@ -127,10 +128,12 @@ def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
 ) -> None:
     """The target's `win32` pass, failing on an attribute only a POSIX host has.
 
-    The default pass over this same module passes, and says so in the output
-    before the second pass refuses it: on a Unix host nothing but that second
-    pass reports `os.getuid`, so without it the first report comes from a
-    Windows runner at the end of the matrix.
+    On a Unix host the default pass over this same module passes, and says so
+    in the output before the second pass refuses it: there nothing but that
+    second pass reports `os.getuid`, so without it the first report comes from
+    a Windows runner at the end of the matrix. On a Windows host the default
+    pass is itself a `win32` pass and refuses the module first, so the target
+    failing is all that host can show.
     """
     broken = gate_copy()
     broken.write(
@@ -143,7 +146,8 @@ def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
 
     failing((code, said), naming="unresolved-attribute")
     contains(said, "getuid", describing="the win32 pass's own diagnostic")
-    contains(said, "All checks passed!", describing="the default pass, which ran first")
+    if sys.platform != "win32":
+        contains(said, "All checks passed!", describing="the default pass, which ran first")
 
 
 def test_the_python_typecheck_target_passes_a_guarded_windows_only_attribute(
