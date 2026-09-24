@@ -773,6 +773,18 @@ allowlist = ".claude/settings.json"
 target = "x86_64-pc-windows-gnu"
 zig_target = "x86_64-windows-gnu"
 
+# The platforms every Python project is type-checked for besides the host's
+# own. `ty` reads `sys.platform` and `os.name` to decide which members a module
+# has, so a pass on a Unix host sees `os.getuid` and never sees `os.startfile`,
+# and an attribute reached outside a `sys.platform == "win32"` guard is
+# reported first by a Windows runner at the end of the matrix. This list is the
+# one declaration of that: `just check-repo`'s `python-typecheck-platforms`
+# holds every `lang:python` project's `typecheck` target to a pass for its own
+# root per platform named here, beside the default one, so the nine targets
+# cannot drift into carrying eight.
+[toolchain.python_typecheck]
+platforms = ["win32"]
+
 [[toolchain.tool]]
 command = "cargo-nextest"
 install = "cargo install cargo-nextest --locked"

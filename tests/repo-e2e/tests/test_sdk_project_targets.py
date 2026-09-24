@@ -11,11 +11,12 @@ runs the real Nx target over it.
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Callable
 
 import pytest
 from journey import REPO_ROOT, GateCopy, clean_environment
-from repo_checks.expect import contains, failing, passing
+from repo_checks.expect import contains, equal, failing, passing
 from repo_checks.shell import run as shell_run
 
 PYTHON_PROJECT = "printobserver-sdk-python"
@@ -120,6 +121,60 @@ def test_the_python_typecheck_target_fails_on_a_type_error(
     code, said = _run_target(broken, PYTHON_PROJECT, "typecheck")
 
     failing((code, said), naming="invalid-return-type")
+
+
+def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """The target's `win32` pass, failing on an attribute only a POSIX host has.
+
+    On a Unix host the default pass over this same module passes, and says so
+    in the output before the second pass refuses it: there nothing but that
+    second pass reports `os.getuid`, so without it the first report comes from
+    a Windows runner at the end of the matrix. On a Windows host the default
+    pass is itself a `win32` pass and refuses the module first, so the target
+    failing is all that host can show.
+    """
+    broken = gate_copy()
+    broken.write(
+        PY_SOURCE,
+        '"""A module."""\n\nimport os\n\n\ndef owner() -> int:\n'
+        '    """Return the effective user id of this process."""\n    return os.getuid()\n',
+    )
+
+    code, said = _run_target(broken, PYTHON_PROJECT, "typecheck")
+
+    failing((code, said), naming="unresolved-attribute")
+    contains(said, "getuid", describing="the win32 pass's own diagnostic")
+    if sys.platform != "win32":
+        contains(said, "All checks passed!", describing="the default pass, which ran first")
+
+
+def test_the_python_typecheck_target_passes_a_guarded_windows_only_attribute(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """Both passes, over an attribute the module reaches only where it exists.
+
+    `os.startfile` is absent on every platform but Windows, so reaching it
+    unguarded fails the default pass; under the guard both passes accept it,
+    and both say so, which is how this journey sees two passes rather than one.
+    """
+    guarded = gate_copy()
+    guarded.write(
+        PY_SOURCE,
+        '"""A module."""\n\nimport os\nimport sys\n\n\ndef reveal(path: str) -> None:\n'
+        '    """Open a path through the host\'s own shell association."""\n'
+        '    if sys.platform == "win32":\n        os.startfile(path)\n',
+    )
+
+    code, said = _run_target(guarded, PYTHON_PROJECT, "typecheck")
+
+    passing((code, said), describing=f"{PYTHON_PROJECT}:typecheck over the guarded module")
+    equal(
+        said.count("All checks passed!"),
+        2,
+        describing="the passes the target ran: the default one and `win32`",
+    )
 
 
 def test_the_python_test_target_fails_on_a_failing_test(

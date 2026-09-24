@@ -17,7 +17,7 @@
       "command": "uv run -q ruff check python/printobserver-sdk"
     },
     "typecheck": {
-      "command": "uv run -q ty check python/printobserver-sdk"
+      "command": "uv run -q ty check python/printobserver-sdk && uv run -q ty check --python-platform win32 python/printobserver-sdk"
     },
     "test": {
       "command": "uv run -q coverage run -m pytest python/printobserver-sdk/tests"
