@@ -404,6 +404,28 @@ def test_a_windows_host_is_told_it_carries_powershell_already() -> None:
     refused([str(raised.value)], "a Windows host carries PowerShell already")
 
 
+@pytest.mark.parametrize("machine", ["AMD64", "ARM64"])
+def test_the_verb_on_a_windows_host_installs_nothing_and_says_why(
+    machine: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Pointed at the producer's own release, a Windows host is refused before any download.
+
+    The address is the one the verb takes by default, so the refusal is the
+    host's: nothing is fetched, and nothing reaches the directory it was given.
+    """
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    into = tmp_path / "bin"
+
+    equal(main(["install-powershell", VERSION, "--into", str(into)]), 1)
+
+    contains(capsys.readouterr().err, "install-powershell: a Windows host carries PowerShell")
+    truth(not into.exists(), describing="nothing written where pwsh goes")
+
+
 @pytest.mark.parametrize(("system", "machine"), [("linux", "riscv64"), ("freebsd14", "amd64")])
 def test_a_host_the_installer_does_not_know_is_refused_by_name(system: str, machine: str) -> None:
     """Rather than guess at an archive, the installer names the host it cannot serve."""
@@ -419,6 +441,29 @@ def test_a_version_that_is_not_a_release_is_refused() -> None:
         archive_for("lts", "linux", "x86_64")
 
     contains(str(raised.value), "`lts` is not a release")
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "named"),
+    [
+        ("linux", "x86_64", "linux-x64"),
+        ("linux", "aarch64", "linux-arm64"),
+        ("darwin", "arm64", "osx-arm64"),
+    ],
+)
+def test_a_host_it_takes_is_answered_the_archive_its_release_names(
+    system: str, machine: str, named: str
+) -> None:
+    """The archive's name is the one `hashes.sha256` lists and the release serves."""
+    equal(archive_for(VERSION, system, machine).name, f"powershell-{VERSION}-{named}.tar.gz")
+
+
+def test_the_runtime_sits_beside_the_directory_its_program_is_linked_into(tmp_path: Path) -> None:
+    """`~/.local/bin/pwsh` reaches `~/.local/share/powershell-<release>/pwsh`."""
+    equal(
+        runtime_directory(tmp_path / "bin", VERSION),
+        tmp_path / "share" / f"powershell-{VERSION}",
+    )
 
 
 def test_the_hashes_file_is_read_as_its_producer_encoded_it() -> None:

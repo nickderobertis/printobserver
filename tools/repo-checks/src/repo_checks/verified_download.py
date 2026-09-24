@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
+import sys
 import tarfile
 import urllib.error
 import urllib.parse
@@ -274,3 +276,19 @@ def place(program: bytes, into: Path, name: str) -> Path:
         )
         raise InstallerError(msg) from error
     return target
+
+
+def announce(verb: str, installed: str, at: Path, destination: Path, program: str) -> int:
+    """Say what a verb installed and where, and that its directory is off PATH if it is.
+
+    A directory off PATH is an install that worked and a program nobody can
+    run, so that is said rather than left to a `command not found` later.
+    Answers the verb's exit status, which is success.
+    """
+    print(f"{verb}: installed {installed} at {at}", file=sys.stderr)
+    if str(destination) not in os.environ.get("PATH", "").split(os.pathsep):
+        print(
+            f"{verb}: {destination} is not on PATH; put it there before running {program}",
+            file=sys.stderr,
+        )
+    return 0

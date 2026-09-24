@@ -135,6 +135,18 @@ def test_explicit_empty_install_options_are_refused_before_any_install(
     contains(capsys.readouterr().err, f"{option} needs a nonempty value")
 
 
+@pytest.mark.parametrize("verb", [held.verb for held in held_by_verb()])
+def test_a_verb_named_no_release_is_refused_naming_what_it_needs(
+    verb: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An install with no release would be one of whatever release came to hand."""
+    with pytest.raises(SystemExit) as exited:
+        main([verb])
+
+    equal(exited.value.code, 2)
+    contains(capsys.readouterr().err, f"{verb} needs the release to install")
+
+
 @pytest.mark.parametrize(
     "address", [GH_RELEASES, RELEASE_PLZ_RELEASES, POWERSHELL_RELEASES], ids=lambda a: a
 )

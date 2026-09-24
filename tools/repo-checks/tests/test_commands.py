@@ -10,13 +10,14 @@ import os
 import platform
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
-from repo_checks.commands import coverage, install_hooks, install_tools
+from repo_checks.commands import COVERAGE_HOST, coverage, install_hooks, install_tools
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
@@ -951,3 +952,98 @@ def test_coverage_states_each_total_beside_its_floor_on_a_pass(
         out.strip().splitlines()[-1],
         "coverage: rust lines 96.63% (floor 95%), python lines 97% (floor 95%)",
     )
+
+
+#: The platform a line is marked unreached on when it is not this host's.
+ELSEWHERE = "linux" if sys.platform == "win32" else "win32"
+
+#: A module one of whose functions this host never reaches and one of whose
+#: functions another platform never reaches, marked the way a source here marks
+#: either. Neither is called, so each is missed unless its mark excludes it.
+MARKED = f"""
+def everywhere():
+    return "reached"
+
+
+def not_here():  # pragma: unreached on {sys.platform} - this host never calls it
+    return "unreached here"
+
+
+def not_there():  # pragma: unreached on {ELSEWHERE} - that platform never calls it
+    return "unreached there"
+
+
+everywhere()
+"""
+
+#: A `cargo llvm-cov report` whose Rust total clears every floor, so the
+#: Python report is the one thing a run is ruled on.
+RUST_CLEARED = 'print("TOTAL 1 0 100.00% 1 0 100.00% 1 0 100.00% 0 0 -")\n'
+
+#: `uv run -q coverage <arguments>`, answered by this interpreter's own
+#: coverage.py so the report read is the real one over the real configuration.
+UV_COVERAGE = f"""
+import subprocess
+import sys
+
+arguments = sys.argv[sys.argv.index("coverage") + 1 :]
+raise SystemExit(subprocess.call([{sys.executable!r}, "-m", "coverage", *arguments]))
+"""
+
+
+def measured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
+    """A tree whose `MARKED` module was measured under the committed coverage configuration."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    committed = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    report = committed["tool"]["coverage"]["report"]
+    (root / "pyproject.toml").write_text(
+        "[tool.coverage.report]\n"
+        + "".join(f"{key} = {json.dumps(value)}\n" for key, value in report.items()),
+        encoding="utf-8",
+    )
+    (root / "marked.py").write_text(MARKED, encoding="utf-8")
+    monkeypatch.delenv(COVERAGE_HOST, raising=False)
+    run([sys.executable, "-m", "coverage", "run", "marked.py"], cwd=root, check=True)
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(programs, "cargo", RUST_CLEARED)
+    program(programs, "uv", UV_COVERAGE)
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    return Repo(root)
+
+
+def _missed(report: str) -> str:
+    """The `Missing` column of a report's one measured module."""
+    row = next(line for line in report.splitlines() if line.startswith("marked.py"))
+    return row.split("%", 1)[1].strip()
+
+
+def test_coverage_does_not_count_a_line_this_platform_never_reaches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A line marked for this host is excluded here; one marked for another host is counted.
+
+    So a platform whose suites skip what only another platform runs is not held
+    to lines it cannot reach, and those lines stay counted where they run.
+    """
+    repo = measured(tmp_path, monkeypatch)
+
+    equal(coverage(repo), 1)
+
+    out = capsys.readouterr().out
+    equal(_missed(out), "11", describing="the one line missed: `not_there`'s, never `not_here`'s")
+
+
+def test_a_report_nothing_named_a_platform_for_excludes_no_marked_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`coverage report` by hand names no platform, so every marked line is counted."""
+    repo = measured(tmp_path, monkeypatch)
+
+    report = run([sys.executable, "-m", "coverage", "report"], cwd=repo.root)
+
+    equal(_missed(report.stdout), "7, 11")

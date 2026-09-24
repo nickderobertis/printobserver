@@ -376,6 +376,10 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
     return Exemption(outcome=outcome + entry.reference)
 
 
+#: What `pyproject.toml`'s coverage report reads the platform it is made on off.
+COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
+
+
 def coverage(repo: Repo) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
@@ -415,9 +419,13 @@ def coverage(repo: Repo) -> int:
     if python.returncode not in (0, 1):
         print(python.stderr, file=sys.stderr)
         failed = True
+    # The report is made on the host the suites ran on, so a line this platform's
+    # hosts never reach — marked `# pragma: unreached on <platform>` — is not
+    # counted here, and stays counted on every platform whose hosts reach it.
     report = run(
         ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
         cwd=repo.root,
+        env={**os.environ, COVERAGE_HOST: sys.platform},
     )
     print(report.stdout, end="")
     if report.returncode != 0:

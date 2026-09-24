@@ -18,7 +18,6 @@ there is nothing for this to install.
 
 from __future__ import annotations
 
-import os
 import platform
 import shutil
 import sys
@@ -28,6 +27,7 @@ from pathlib import Path
 from repo_checks.model import RELEASE
 from repo_checks.verified_download import (
     InstallerError,
+    announce,
     digest_for,
     download,
     held_to_producer,
@@ -132,7 +132,9 @@ def listing(payload: bytes) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
-def _expected_digest(hashes: str, archive: Archive) -> str:
+def _expected_digest(
+    hashes: str, archive: Archive
+) -> str:  # pragma: unreached on win32 - only install reads a hashes file
     """The SHA-256 the release's hashes file lists for one archive.
 
     Raises:
@@ -155,7 +157,9 @@ def runtime_directory(into: Path, version: str) -> Path:
     return into.parent / "share" / f"powershell-{version}"
 
 
-def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
+def install(
+    archive: Archive, into: Path, *, releases: str = RELEASES
+) -> Path:  # pragma: unreached on win32 - archive_for takes no Windows archive
     """Download, verify and install one archive's PowerShell, linked into `into`.
 
     Nothing is unpacked until the archive has matched the digest the release's
@@ -301,14 +305,12 @@ def install_powershell(version: str, into: Path | None = None, *, releases: str 
     try:
         held_to_producer(releases, RELEASES)
         archive = archive_for(version, sys.platform, platform.machine())
-        installed = install(archive, destination, releases=releases)
+        installed = install(
+            archive, destination, releases=releases
+        )  # pragma: unreached on win32 - archive_for takes no Windows archive
     except InstallerError as refused:
         print(f"install-powershell: {refused}", file=sys.stderr)
         return 1
-    print(f"install-powershell: installed PowerShell {version} at {installed}", file=sys.stderr)
-    if str(destination) not in os.environ.get("PATH", "").split(os.pathsep):
-        print(
-            f"install-powershell: {destination} is not on PATH; put it there before running pwsh",
-            file=sys.stderr,
-        )
-    return 0
+    return announce(
+        "install-powershell", f"PowerShell {version}", installed, destination, "pwsh"
+    )  # pragma: unreached on win32 - archive_for takes no Windows archive

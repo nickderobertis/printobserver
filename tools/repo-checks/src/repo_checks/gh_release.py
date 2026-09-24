@@ -18,7 +18,6 @@ by name rather than guessed at.
 
 from __future__ import annotations
 
-import os
 import platform
 import sys
 from dataclasses import dataclass
@@ -27,6 +26,7 @@ from pathlib import Path
 from repo_checks.model import RELEASE
 from repo_checks.verified_download import (
     InstallerError,
+    announce,
     digest_for,
     download,
     held_to_producer,
@@ -145,14 +145,12 @@ def install_gh(version: str, into: Path | None = None, *, releases: str = RELEAS
     try:
         held_to_producer(releases, RELEASES)
         archive = archive_for(version, sys.platform, platform.machine())
-        installed = install(archive, destination, releases=releases)
+        installed = install(
+            archive, destination, releases=releases
+        )  # pragma: unreached on win32 - archive_for takes no Windows archive
     except InstallerError as refused:
         print(f"install-gh: {refused}", file=sys.stderr)
         return 1
-    print(f"install-gh: installed gh {version} at {installed}", file=sys.stderr)
-    if str(destination) not in os.environ.get("PATH", "").split(os.pathsep):
-        print(
-            f"install-gh: {destination} is not on PATH; put it there before running gh",
-            file=sys.stderr,
-        )
-    return 0
+    return announce(
+        "install-gh", f"gh {version}", installed, destination, "gh"
+    )  # pragma: unreached on win32 - archive_for takes no Windows archive

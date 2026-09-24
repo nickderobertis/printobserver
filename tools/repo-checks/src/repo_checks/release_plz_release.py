@@ -24,6 +24,7 @@ from pathlib import Path
 from repo_checks.model import RELEASE
 from repo_checks.verified_download import (
     InstallerError,
+    announce,
     held_to_producer,
     member_of,
     place,
@@ -199,11 +200,6 @@ def install_release_plz(version: str, into: Path | None = None, *, releases: str
     except InstallerError as refused:
         print(f"install-release-plz: {refused}", file=sys.stderr)
         return 1
-    print(f"install-release-plz: installed release-plz {version} at {installed}", file=sys.stderr)
-    if str(destination) not in os.environ.get("PATH", "").split(os.pathsep):
-        print(
-            f"install-release-plz: {destination} is not on PATH; put it there before "
-            f"running release-plz",
-            file=sys.stderr,
-        )
-    return 0
+    return announce(
+        "install-release-plz", f"release-plz {version}", installed, destination, "release-plz"
+    )
