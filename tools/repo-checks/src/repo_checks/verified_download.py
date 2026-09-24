@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 import zlib
-from http.client import HTTPMessage
+from http.client import HTTPException, HTTPMessage
 from pathlib import Path
 from typing import IO
 
@@ -192,7 +192,7 @@ def download(url: str) -> bytes:
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         with opener.open(url, timeout=DOWNLOAD_TIMEOUT) as answer:
             return answer.read()
-    except (urllib.error.URLError, OSError) as error:
+    except (urllib.error.URLError, OSError, HTTPException) as error:
         msg = f"{url} could not be downloaded: {error}"
         raise InstallerError(msg) from error
 

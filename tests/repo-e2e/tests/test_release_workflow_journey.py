@@ -142,7 +142,6 @@ PUBLISH_UNGATED = (
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 RELEASE_PLZ_STANDIN = """#!/bin/sh
-# The release program's stand-in; the module docstring says what it answers.
 printf '%s\\n' "$*" >> "$RELEASE_PLZ_STANDIN_RECORD"
 case "$1" in
   --version)

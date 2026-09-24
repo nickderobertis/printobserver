@@ -315,6 +315,52 @@ def test_a_release_redirecting_to_tls_is_followed_to_the_address_it_names() -> N
     absent(str(raised.value), "not an address this installer follows")
 
 
+@pytest.fixture
+def cut_short() -> Iterator[str]:
+    """A loopback release whose every answer promises more bytes than it sends, then closes."""
+    stopping = threading.Event()
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        listener.settimeout(0.2)
+
+        def answer_all() -> None:
+            while not stopping.is_set():
+                try:
+                    connection = listener.accept()[0]
+                except TimeoutError:
+                    continue
+                with connection:
+                    connection.recv(65536)
+                    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort")
+
+        answering = threading.Thread(target=answer_all, daemon=True)
+        answering.start()
+        yield f"http://127.0.0.1:{listener.getsockname()[1]}"
+        stopping.set()
+        answering.join(DOWNLOAD_WAIT)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="gh's and PowerShell's installers refuse Windows"
+)
+@pytest.mark.parametrize(("verb", "version"), VERBS)
+def test_a_release_whose_answer_ends_early_is_refused_as_a_failed_download(
+    verb: str,
+    version: str,
+    cut_short: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A body shorter than the length its server declared is the verb's refusal, not a traceback."""
+    into = tmp_path / verb / "bin"
+
+    equal(main([verb, version, "--releases", cut_short, "--into", str(into)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, "could not be downloaded")
+    contains(said, "IncompleteRead")
+    truth(not into.exists(), describing=f"nothing written where {verb} puts a program")
+
+
 @pytest.mark.parametrize(
     "redirected",
     ["http://example.invalid/moved.tar.gz", "https://127.0.0.1:bad/moved.tar.gz"],
