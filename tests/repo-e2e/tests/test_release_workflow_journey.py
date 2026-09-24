@@ -142,14 +142,7 @@ PUBLISH_UNGATED = (
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 RELEASE_PLZ_STANDIN = """#!/bin/sh
-# A stand-in for the release program: what it would say, and none of what it
-# would reach. `release-pr` fails the way the wedged one did; `release` prints
-# the answer the journey put in RELEASE_PLZ_STANDIN_ANSWER, and only when asked
-# for it with `--output json`, as the real one prints nothing otherwise;
-# `--version` answers the held release the journey put in
-# RELEASE_PLZ_STANDIN_VERSION, spelled as the real one spells it. Every
-# invocation is written to RELEASE_PLZ_STANDIN_RECORD, so a journey can say
-# the program was never reached.
+# The release program's stand-in; the module docstring says what it answers.
 printf '%s\\n' "$*" >> "$RELEASE_PLZ_STANDIN_RECORD"
 case "$1" in
   --version)

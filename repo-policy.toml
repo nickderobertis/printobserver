@@ -798,15 +798,9 @@ install = "cargo install cargo-llvm-cov --locked"
 # `tests/repo-e2e/tests/test_release_tag_journey.py` records the shape this one
 # prints: a bump re-reads that recording.
 #
-# Not bootstrapped, and taken PREBUILT. Only the release workflow, the three
-# release journeys and `just release-dry-run` run it, and `cargo install` compiled it from source on every
-# host that bootstrapped — about thirteen minutes on a cold Windows gate cell,
-# for a program that cell runs in one tier. `just test-e2e` installs it by name,
-# so the journeys that drive it never go silently skipped, and `just
-# release-dry-run` and the release workflow install it by name too. `repo_checks install-release-plz` verifies
-# the archive against the SHA-256 this repository commits for that release and
-# that target — upstream publishes no checksums file of its own — before
-# anything reaches PATH.
+# Not bootstrapped: compiling it cost a cold Windows gate cell about thirteen
+# minutes, and only the release workflow, the release journeys and
+# `just release-dry-run` run it — each installs this prebuilt release by name.
 [[toolchain.tool]]
 command = "release-plz"
 version = "0.3.167"
