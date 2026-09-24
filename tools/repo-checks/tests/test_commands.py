@@ -632,6 +632,48 @@ def test_the_end_to_end_recipe_starts_no_journey_when_release_plz_cannot_be_inst
     absent(record.read_text(encoding="utf-8"), "bunx", describing="the tier, which never started")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_release_dry_run_installs_the_held_release_plz_and_runs_that(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`just release-dry-run` on a host that bootstrapped and nothing more.
+
+    Bootstrap leaves release-plz alone, so the recipe installs it by name, and
+    the program it then runs is the held release that install put on PATH.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+
+    ran = run([str(just), "release-dry-run"], cwd=root, env=dict(os.environ))
+
+    equal(ran.returncode, 0, describing=f"`just release-dry-run`: {ran.stdout}{ran.stderr}")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [
+            "run -q python -m repo_checks install-tools release-plz",
+            f"run -q python -m repo_checks install-release-plz {HELD}",
+        ],
+        describing="what the recipe installed before running release-plz",
+    )
+    contains(ran.stdout, f"release-plz version {HELD}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_release_dry_run_runs_nothing_when_release_plz_cannot_be_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that lands some other release stops the recipe before release-plz runs."""
+    root, just, _ = e2e_recipe(tmp_path, monkeypatch)
+    monkeypatch.setenv("INSTALL_STANDIN_ANSWERS", STALE)
+
+    ran = run([str(just), "release-dry-run"], cwd=root, env=dict(os.environ))
+
+    truth(
+        ran.returncode != 0, describing="`just release-dry-run` over an install that did not hold"
+    )
+    contains(ran.stderr, f"answers {STALE}")
+    absent(ran.stdout, "release-plz version", describing="release-plz, which never ran")
+
+
 def test_install_tools_refuses_a_tool_the_toolchain_does_not_declare(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

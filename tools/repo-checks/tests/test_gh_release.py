@@ -215,3 +215,39 @@ def test_the_repository_command_refuses_what_is_not_a_release(
         main(["install-gh"])
     equal(exited.value.code, 2, describing="the status of install-gh named no release")
     contains(capsys.readouterr().err, "install-gh needs the release to install")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_repository_command_installs_from_the_release_and_directory_it_is_given(
+    serving: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`python -m repo_checks install-gh <version> --releases <base> --into <dir>`, end to end."""
+    base, release = serving
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+
+    equal(main(["install-gh", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    contains(capsys.readouterr().err, f"install-gh: installed gh {VERSION} at {into / 'gh'}")
+    contains(run([str(into / "gh"), "--version"], check=True).stdout, f"gh version {VERSION}")
+    equal(
+        release.asked,
+        [f"/v{VERSION}/{archive.checksums}", f"/v{VERSION}/{archive.name}"],
+        describing="what the command downloaded, and from where",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_the_repository_command_installs_nothing_from_a_release_its_checksums_disown(
+    serving: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tampered archive served at `--releases` never reaches `--into`."""
+    base, release = serving
+    _publish(release, archive_for(VERSION, sys.platform, platform.machine()), listed="e" * 64)
+    into = tmp_path / "bin"
+
+    equal(main(["install-gh", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    contains(capsys.readouterr().err, "nothing was installed")
+    truth(not (into / "gh").exists(), describing="no gh where the install goes")
