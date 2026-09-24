@@ -5,7 +5,8 @@ stand-in release over loopback HTTP, and it is the one thing about an installer
 a caller decides. Two of the three read the digest that vouches for an archive
 out of a file served beside it, so an origin free to serve both would be an
 origin free to hand an installer bytes and its own approval of them — which is
-why `https` alone does not admit a host, and the producer's own forge does.
+why `https` alone does not admit a host, nor the forge alone a repository: a
+caller may name the producer's own release address, or a stand-in on loopback.
 
 Driven through `python -m repo_checks <verb>`, which is where a caller's
 `--releases` actually enters, and the verbs are asked for a release each
@@ -74,12 +75,14 @@ VERBS = tuple(
 
 
 #: Addresses no installer fetches, each for its own reason: a host that is not
-#: the forge however well-formed its TLS is; a scheme nothing here speaks; and
-#: an authority whose loopback-looking front is userinfo, so the host it names
-#: is somebody else's.
+#: the forge however well-formed its TLS is; a repository on the forge that is
+#: not the producer's, whose release could carry an archive and the checksums
+#: approving it together; a scheme nothing here speaks; and an authority whose
+#: loopback-looking front is userinfo, so the host it names is somebody else's.
 REFUSED = (
     "https://example.invalid/releases/download",
     "https://github.com.example.invalid/releases/download",
+    "https://github.com/someone-else/fork/releases/download",
     "http://example.invalid",
     "http://127.0.0.1:80@example.invalid",
     "ftp://127.0.0.1:8080",
@@ -165,15 +168,16 @@ def test_a_release_redirecting_its_archive_elsewhere_on_loopback_is_still_instal
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
-def test_a_release_redirecting_to_tls_on_another_host_is_followed_there(
+def test_a_release_redirecting_to_tls_is_followed_to_the_address_it_names(
     serving_powershell: tuple[str, Release], tmp_path: Path
 ) -> None:
     """A redirect to `https` is taken whatever host it names, as the forge's are.
 
     The forge answers a release asset with a redirect to its own asset store on
     another host, so the host of a TLS redirect cannot be held to the forge.
-    Here the redirect names `https` on a loopback listener this suite owns — a
-    host `--releases` itself would refuse — and that listener being reached is
+    Here the redirect names `https` on a loopback listener this suite owns — an
+    address `--releases` itself would refuse, since over `https` it is not the
+    forge — and that listener being reached is
     what says the redirect was followed rather than refused. It speaks no TLS,
     so the download then fails, and the install is refused as a failed download
     with nothing written.

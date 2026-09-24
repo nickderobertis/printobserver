@@ -37,7 +37,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from repo_checks.model import RELEASE
-from repo_checks.verified_download import InstallerError, member_of, place, verified
+from repo_checks.verified_download import (
+    InstallerError,
+    held_to_producer,
+    member_of,
+    place,
+    verified,
+)
 
 #: Where every release-plz release publishes its archives.
 RELEASES = "https://github.com/release-plz/release-plz/releases/download"
@@ -182,6 +188,7 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         InstallerError: If no digest is committed, a download fails, the digests
             disagree, or the archive carries no program.
     """
+    held_to_producer(releases, RELEASES)
     payload = verified(
         f"{releases}/release-plz-v{archive.version}/{archive.name}",
         name=archive.name,

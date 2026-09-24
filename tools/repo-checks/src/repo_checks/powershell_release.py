@@ -29,7 +29,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from repo_checks.model import RELEASE
-from repo_checks.verified_download import InstallerError, digest_for, download, unpack, verified
+from repo_checks.verified_download import (
+    InstallerError,
+    digest_for,
+    download,
+    held_to_producer,
+    unpack,
+    verified,
+)
 
 #: Where every PowerShell release publishes its archives and its hashes file.
 RELEASES = "https://github.com/PowerShell/PowerShell/releases/download"
@@ -181,6 +188,7 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     # `pwsh` inside it is linked into `into`, so a relative directory would put
     # the link's own target under the link's directory, where nothing is.
     into = into.resolve()
+    held_to_producer(releases, RELEASES)
     base = f"{releases}/v{archive.version}"
     hashes = listing(download(f"{base}/{HASHES}"))
     payload = verified(

@@ -83,6 +83,31 @@ def permitted(url: str) -> bool:
     return parsed.scheme == "http" and hostname in LOOPBACK
 
 
+def held_to_producer(releases: str, producer: str) -> None:
+    """Refuse a release address that is neither the producer's own nor a loopback stand-in.
+
+    `permitted` holds every download to the forge, and that is not enough for
+    the address a caller hands an installer as `--releases`: any repository on
+    the forge publishes releases, and gh's and PowerShell's installers read the
+    digest vouching for an archive out of the same release as the archive. So a
+    `--releases` naming somebody else's repository would name a release free to
+    serve bytes and its own approval of them. What a caller may name instead of
+    the producer's own address is a suite's stand-in on loopback, and only that.
+
+    Raises:
+        InstallerError: If `releases` is neither.
+    """
+    if releases == producer:
+        return
+    if permitted(releases) and urllib.parse.urlsplit(releases).scheme == "http":
+        return
+    msg = (
+        f"{releases} is not an address this installer downloads from: it takes {producer}, "
+        f"or a stand-in release served on loopback"
+    )
+    raise InstallerError(msg)
+
+
 def followed(url: str) -> bool:
     """Whether a redirect an answer names is one an installer follows.
 

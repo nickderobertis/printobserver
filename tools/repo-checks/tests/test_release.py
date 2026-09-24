@@ -178,7 +178,7 @@ HELD_INSTALL = "- run: just install-tools release-plz"
         ),
     ],
 )
-def test_a_release_program_installed_by_any_other_command_is_refused(
+def test_a_release_program_installed_by_cargo_install_pinned_or_not_is_refused(
     tree: Callable[[], Tree], installed: str, why: str
 ) -> None:
     """The release job installs the release-plz the toolchain holds, through the one command."""

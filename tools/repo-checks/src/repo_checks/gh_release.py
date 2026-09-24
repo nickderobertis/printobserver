@@ -29,6 +29,7 @@ from repo_checks.verified_download import (
     InstallerError,
     digest_for,
     download,
+    held_to_producer,
     member_of,
     place,
     verified,
@@ -122,6 +123,7 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         InstallerError: If a download fails, the digests disagree, or the
             archive carries no program.
     """
+    held_to_producer(releases, RELEASES)
     base = f"{releases}/v{archive.version}"
     checksums = download(f"{base}/{archive.checksums}").decode("utf-8", errors="replace")
     payload = verified(
