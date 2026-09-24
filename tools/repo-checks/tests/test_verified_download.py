@@ -84,9 +84,11 @@ REFUSED = (
     "http://127.0.0.1:80@example.invalid",
     "ftp://127.0.0.1:8080",
     "file:///tmp",
-    # An authority the parser itself refuses: the bracket never closes, so
-    # reading the host raises rather than answering one.
+    # Authorities the parser itself refuses: the bracket never closes, so
+    # reading the host raises rather than answering one; and the forge's own
+    # host with a port that is no number, which only reading the port refuses.
     "https://[::1",
+    "https://github.com:bad/releases/download",
 )
 
 
@@ -204,19 +206,25 @@ def test_a_release_redirecting_to_tls_on_another_host_is_followed_there(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
-def test_a_release_redirecting_off_tls_is_refused_and_installs_nothing(
-    serving_powershell: tuple[str, Release], tmp_path: Path
+@pytest.mark.parametrize(
+    "redirected",
+    ["http://example.invalid/moved.tar.gz", "https://127.0.0.1:bad/moved.tar.gz"],
+)
+def test_a_release_redirecting_off_tls_or_to_no_address_is_refused_and_installs_nothing(
+    serving_powershell: tuple[str, Release], tmp_path: Path, redirected: str
 ) -> None:
     """A download that began over TLS is not walked off it by whatever answered.
 
     Both the checksums file and the archive are fetched from the address a
     caller named, so an answer free to redirect anywhere would be an answer
     free to move either onto a scheme and a host this rule already refused.
+    A redirect naming a port that is no number names no address at all, and is
+    refused the same way rather than failing somewhere inside the download.
     """
     base, release = serving_powershell
     archive = archive_for(PWSH, sys.platform, platform.machine())
     publish(release, archive)
-    release.redirects[archive.name] = "http://example.invalid/moved.tar.gz"
+    release.redirects[archive.name] = redirected
     into = tmp_path / "bin"
 
     with pytest.raises(InstallerError) as raised:

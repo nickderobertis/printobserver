@@ -309,6 +309,7 @@ def driven(
             UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
             RELEASE_PLZ_STANDIN_ANSWER=str(answer_file),
             RELEASE_PLZ_STANDIN_RECORD=str(invocations),
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ,
             RELEASE_STANDIN_RECORD=str(record),
             RELEASE_STANDIN_RECORDED=" ".join(RECORDED),

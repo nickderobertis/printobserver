@@ -66,13 +66,16 @@ def permitted(url: str) -> bool:
     pass any check made on the text.
 
     An authority the parser itself refuses — `https://[::1`, whose IPv6 bracket
-    never closes — is not an address either, and is answered here rather than
-    let out as a `ValueError` from under a caller who passed `--releases` and
-    is owed a refusal naming what they passed.
+    never closes, or `https://github.com:bad`, whose port is no number — is not
+    an address either, and is answered here rather than let out as a
+    `ValueError` from under a caller who passed `--releases` and is owed a
+    refusal naming what they passed. The port is read for that alone: which
+    port the forge is reached on is the forge's business.
     """
     try:
         parsed = urllib.parse.urlsplit(url)
         hostname = parsed.hostname
+        _ = parsed.port
     except ValueError:
         return False
     if parsed.scheme == "https":
@@ -88,11 +91,13 @@ def followed(url: str) -> bool:
     the host cannot be held to `FORGE` here. What is held is the **scheme**: a
     redirect to plain `http` is a downgrade of a download that began over TLS,
     and the only plain-HTTP answer an installer takes is a suite's own stand-in
-    on loopback, which is the one this admits besides.
+    on loopback, which is the one this admits besides. An address whose
+    authority the parser refuses, its port included, is followed nowhere.
     """
     try:
         parsed = urllib.parse.urlsplit(url)
         hostname = parsed.hostname
+        _ = parsed.port
     except ValueError:
         return False
     if parsed.scheme == "https":

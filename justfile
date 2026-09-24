@@ -314,10 +314,8 @@ check-repo:
 # from going silently skipped on a host, or a gate cell, that bootstrapped and
 # nothing more. The install downloads one verified prebuilt archive, and skips
 # even that where the held release is already on PATH.
-#
-# llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason.
 test-e2e:
-    uv run -q python -m repo_checks install-tools release-plz
+    uv run -q python -m repo_checks install-tools release-plz  # llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason.
     just node-modules
     bunx nx run-many -t test-e2e --output-style=stream
 
