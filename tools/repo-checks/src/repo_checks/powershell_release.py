@@ -172,14 +172,8 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     there — the state an install interrupted between a delete and a move would
     otherwise leave, which is a `pwsh` on PATH pointing at nothing.
 
-    Neither of those two moves can destroy a runtime, and a filesystem that
-    refuses either is reported as a refusal naming the two places the runtime
-    it was replacing can be, rather than let out as a traceback from the middle
-    of a replacement: `os.replace` between two entries of one directory is the
-    atomic primitive there is, so there is nothing to retry and what an
-    operator needs is where to look. The refusal names both rather than reading
-    the directory to say which, because a rule this module states about itself
-    and no test can reach is worse than the sentence it saves.
+    A refused replacement names both locations where the prior runtime can be,
+    so an operator can put it back if the filesystem stopped the swap.
 
     Raises:
         InstallerError: If a download fails, the digests disagree, the archive

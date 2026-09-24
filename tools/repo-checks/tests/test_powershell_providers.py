@@ -30,3 +30,19 @@ def test_bootstrap_dropping_a_powershell_the_journey_uses_is_refused(
     equal(main(["powershell-providers", "--root", str(broken.root)]), 1)
 
     contains(capsys.readouterr().err, "pwsh provided_by")
+
+
+def test_a_malformed_installer_journey_is_a_check_finding(
+    tree: Callable[[], Tree], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A damaged source file should make the repository check fail cleanly."""
+    broken = tree()
+    broken.edit(
+        "tools/release-artifacts/src/release_artifacts/installing.py",
+        'POWERSHELLS = ("pwsh", "powershell")',
+        "POWERSHELLS = (",
+    )
+
+    equal(main(["powershell-providers", "--root", str(broken.root)]), 1)
+
+    contains(capsys.readouterr().err, "could not be parsed")

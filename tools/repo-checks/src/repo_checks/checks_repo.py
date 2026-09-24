@@ -39,7 +39,10 @@ def powershell_providers(repo: Repo) -> list[str]:
     source = "tools/release-artifacts/src/release_artifacts/installing.py"
     if not repo.exists(source):
         return [f"{source} is absent: it declares the PowerShell commands installer journeys run"]
-    syntax = ast.parse(repo.read(source), filename=source)
+    try:
+        syntax = ast.parse(repo.read(source), filename=source)
+    except SyntaxError as error:
+        return [f"{source} could not be parsed: {error.msg} at line {error.lineno}"]
     assignment = next(
         (
             node
