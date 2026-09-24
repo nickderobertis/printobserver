@@ -143,6 +143,7 @@ def install_gh(version: str, into: Path | None = None, *, releases: str = RELEAS
     """
     destination = into if into is not None else Path.home() / ".local" / "bin"
     try:
+        held_to_producer(releases, RELEASES)
         archive = archive_for(version, sys.platform, platform.machine())
         installed = install(archive, destination, releases=releases)
     except InstallerError as refused:

@@ -113,6 +113,27 @@ def test_a_verb_pointed_at_an_address_no_installer_fetches_installs_nothing(
     truth(not into.exists(), describing=f"nothing written where {verb} puts a program")
 
 
+def test_gh_refuses_an_untrusted_address_even_on_a_host_without_an_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The public verb checks its caller's address before its host's archive support."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    into = tmp_path / "bin"
+
+    equal(
+        main(
+            ["install-gh", "2.100.0", "--releases", "https://example.invalid", "--into", str(into)]
+        ),
+        1,
+    )
+
+    contains(capsys.readouterr().err, "is not an address this installer downloads from")
+    truth(not into.exists(), describing="nothing written where gh goes")
+
+
 @pytest.mark.parametrize(
     "address", [GH_RELEASES, RELEASE_PLZ_RELEASES, POWERSHELL_RELEASES], ids=lambda a: a
 )

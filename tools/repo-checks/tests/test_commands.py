@@ -110,6 +110,21 @@ def test_install_hooks_points_git_at_the_committed_hooks(
     equal(configured, ".githooks")
 
 
+@pytest.mark.parametrize("option", ["--releases", "--into"])
+def test_install_tools_refuses_options_it_cannot_apply(
+    option: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The bootstrap verb must not silently discard a caller's install destination."""
+    (tmp_path / "repo-policy.toml").write_text(
+        POLICY.format(command="unused", install="unused"), encoding="utf-8"
+    )
+    with pytest.raises(SystemExit) as exited:
+        main(["install-tools", "missing", "--root", str(tmp_path), option, "unused"])
+
+    equal(exited.value.code, 2)
+    contains(capsys.readouterr().err, f"{option} cannot be used with install-tools")
+
+
 def test_install_hooks_is_a_no_op_outside_a_git_repository(
     tree: Callable[[], Tree],
 ) -> None:

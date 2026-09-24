@@ -78,7 +78,8 @@ def main(argv: list[str] | None = None) -> int:
         "--releases",
         default=None,
         help=(
-            "where an install verb downloads a release's artifacts from, its producer's own "
+            "where install-gh, install-release-plz or install-powershell downloads its artifacts "
+            "from, its producer's own "
             "forge by default. Only an https address or a loopback one is fetched, which is "
             "what lets a suite serve an installer a stand-in release over real HTTP"
         ),
@@ -86,7 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--into",
         default=None,
-        help="the directory an install verb puts the program in, its own default otherwise",
+        help=(
+            "the directory install-gh, install-release-plz or install-powershell puts the "
+            "program in, its own default otherwise"
+        ),
     )
     parsed = parser.parse_args(argv)
 
@@ -94,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
 
     match parsed.name:
         case "install-tools":
+            for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
+                if value is not None:
+                    parser.error(f"{option} cannot be used with install-tools")
             return commands.install_tools(repo, parsed.argument)
         case "install-gh":
             if parsed.argument is None:
