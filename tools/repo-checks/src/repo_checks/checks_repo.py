@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import shlex
 import tomllib
@@ -9,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import Repo, toolchain_tools
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     marker_block,
@@ -31,6 +32,43 @@ TY_RUNNER = ("uv", "run")
 TY_PROGRAM = ("ty", "check")
 PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
+
+
+def powershell_providers(repo: Repo) -> list[str]:
+    """The PowerShell commands bootstrap accepts are the ones installer journeys run."""
+    source = "tools/release-artifacts/src/release_artifacts/installing.py"
+    if not repo.exists(source):
+        return [f"{source} is absent: it declares the PowerShell commands installer journeys run"]
+    syntax = ast.parse(repo.read(source), filename=source)
+    assignment = next(
+        (
+            node
+            for node in syntax.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "POWERSHELLS"
+                for target in node.targets
+            )
+        ),
+        None,
+    )
+    if assignment is None:
+        return [f"{source} declares no literal POWERSHELLS tuple"]
+    try:
+        declared = ast.literal_eval(assignment.value)
+    except ValueError, TypeError, SyntaxError:
+        return [f"{source} declares no literal POWERSHELLS tuple"]
+    if not isinstance(declared, tuple) or not all(isinstance(name, str) for name in declared):
+        return [f"{source} declares no literal POWERSHELLS tuple"]
+    held = next((tool for tool in toolchain_tools(repo) if tool.command == "pwsh"), None)
+    if held is None:
+        return ["repo-policy.toml declares no pwsh toolchain tool"]
+    if held.provided_by != declared:
+        return [
+            f"repo-policy.toml's pwsh provided_by {held.provided_by!r} differs from "
+            f"{source}'s POWERSHELLS {declared!r}"
+        ]
+    return []
 
 
 def agent_layer(repo: Repo) -> list[str]:

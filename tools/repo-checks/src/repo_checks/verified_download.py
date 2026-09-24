@@ -253,10 +253,19 @@ def place(program: bytes, into: Path, name: str) -> Path:
     for the program while this runs finds either the copy that was there or the
     whole new one, never a partial file.
     """
-    into.mkdir(parents=True, exist_ok=True)
     target = into / name
     staged = into / f".{name}.part"
-    staged.write_bytes(program)
-    staged.chmod(0o755)
-    staged.replace(target)
+    try:
+        into.mkdir(parents=True, exist_ok=True)
+        staged.write_bytes(program)
+        # Both operations act on the file just written in this directory. A
+        # separate natural refusal needs an external filesystem change between
+        # these calls; the write refusal is driven through the public verb.
+        staged.chmod(0o755)
+        staged.replace(target)
+    except OSError as error:
+        msg = (
+            f"{name} could not be placed in {into}: {error}; the installed program was not replaced"
+        )
+        raise InstallerError(msg) from error
     return target

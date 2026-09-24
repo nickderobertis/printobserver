@@ -462,3 +462,26 @@ def test_an_install_interrupted_mid_commit_is_recovered_by_the_next_one(
         [runtime.name],
         describing="what the recovering install left beside the runtime",
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_blocked_recovery_keeps_the_saved_runtime(
+    serving_release: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A saved runtime survives when another entry blocks its original name."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+    capsys.readouterr()
+    runtime = runtime_directory(into, VERSION)
+    saved = runtime.with_name(f".{runtime.name}.superseded")
+    runtime.replace(saved)
+    runtime.write_text("another entry", encoding="utf-8")
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    contains(capsys.readouterr().err, str(saved))
+    contains(run([str(saved / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    equal(runtime.read_text(encoding="utf-8"), "another entry")

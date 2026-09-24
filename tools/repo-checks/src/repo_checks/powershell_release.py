@@ -207,8 +207,28 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         shutil.rmtree(staged, ignore_errors=True)
         msg = f"{archive.name} carries no pwsh: it unpacks to no such program"
         raise InstallerError(msg)
+    try:
+        # The file was just unpacked by this process. Making it executable
+        # before the directory swap keeps a chmod refusal off the live link.
+        (staged / "pwsh").chmod(0o755)
+    except OSError as failed:
+        shutil.rmtree(staged, ignore_errors=True)
+        msg = f"{archive.name}'s pwsh could not be made executable: {failed}"
+        raise InstallerError(msg) from failed
     superseded = runtime.with_name(f".{runtime.name}.superseded")
-    shutil.rmtree(superseded, ignore_errors=True)
+    if superseded.is_dir():
+        if not runtime.exists():
+            superseded.replace(runtime)
+        elif (runtime / "pwsh").is_file():
+            shutil.rmtree(superseded)
+        else:
+            shutil.rmtree(staged, ignore_errors=True)
+            msg = (
+                f"{runtime} could not be replaced: another entry holds its name while the "
+                f"previous PowerShell runtime is at {superseded}. Move that entry away, "
+                f"then install again."
+            )
+            raise InstallerError(msg)
     try:
         if runtime.exists():
             runtime.replace(superseded)
@@ -225,7 +245,6 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
         raise InstallerError(msg) from failed
     shutil.rmtree(superseded, ignore_errors=True)
     program = runtime / "pwsh"
-    program.chmod(0o755)
     linked = into / "pwsh"
     staging = into / ".pwsh.part"
     try:

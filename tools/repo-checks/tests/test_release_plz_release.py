@@ -196,6 +196,29 @@ def test_the_verb_refuses_a_tampered_archive_before_anything_reaches_path(
     truth(not into.exists(), describing="nothing written where the program goes")
 
 
+def test_a_staging_name_the_filesystem_refuses_preserves_the_installed_program(
+    serving_release: tuple[str, Release],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A directory at the staging name blocks writing without replacing the working copy."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive, monkeypatch)
+    into = tmp_path / "bin"
+    equal(main(["install-release-plz", VERSION, "--releases", base, "--into", str(into)]), 0)
+    capsys.readouterr()
+    installed = into / archive.program
+    before = installed.read_bytes()
+    (into / f".{archive.program}.part").mkdir()
+
+    equal(main(["install-release-plz", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    contains(capsys.readouterr().err, "could not be placed")
+    equal(installed.read_bytes(), before)
+
+
 def test_the_verb_says_what_it_installed_and_that_its_directory_is_off_path(
     serving_release: tuple[str, Release],
     tmp_path: Path,

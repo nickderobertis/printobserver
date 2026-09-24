@@ -34,7 +34,7 @@ from repo_checks.powershell_release import archive_for, install
 from repo_checks.release_plz_release import RELEASES as RELEASE_PLZ_RELEASES
 from repo_checks.release_plz_release import archive_for as release_plz_archive_for
 from repo_checks.shell import run
-from repo_checks.verified_download import FORGE, InstallerError
+from repo_checks.verified_download import InstallerError, permitted
 from standin_powershell import publish
 from standin_release import Release, serving
 
@@ -139,7 +139,7 @@ def test_gh_refuses_an_untrusted_address_even_on_a_host_without_an_archive(
 )
 def test_every_installers_own_address_is_one_the_rule_admits(address: str) -> None:
     """A producer's address the rule refused would be an installer that fetched nothing."""
-    contains(address, f"https://{FORGE}/", describing="the address the installer downloads from")
+    truth(permitted(address), describing=f"the address rule admitting {address}")
 
 
 #: The release the PowerShell installer is driven at here. Its stand-in is the
