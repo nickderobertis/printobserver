@@ -218,7 +218,17 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     superseded = runtime.with_name(f".{runtime.name}.superseded")
     if superseded.is_dir():
         if not runtime.exists():
-            superseded.replace(runtime)
+            try:
+                # Both entries share the directory just used for staging, so
+                # only an external filesystem change can refuse this rename.
+                superseded.replace(runtime)
+            except OSError as failed:
+                shutil.rmtree(staged, ignore_errors=True)
+                msg = (
+                    f"the saved PowerShell runtime at {superseded} could not be restored "
+                    f"to {runtime}: {failed}. It remains at {superseded}."
+                )
+                raise InstallerError(msg) from failed
         elif (runtime / "pwsh").is_file():
             shutil.rmtree(superseded)
         else:

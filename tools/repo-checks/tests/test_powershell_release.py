@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import io
 import platform
+import shutil
 import sys
 import tarfile
 from collections.abc import Iterator
@@ -485,3 +486,23 @@ def test_a_blocked_recovery_keeps_the_saved_runtime(
     contains(capsys.readouterr().err, str(saved))
     contains(run([str(saved / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
     equal(runtime.read_text(encoding="utf-8"), "another entry")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_saved_runtime_beside_a_working_one_is_cleared_after_the_next_install(
+    serving_release: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A completed swap interrupted before cleanup leaves an old saved copy."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+    runtime = runtime_directory(into, VERSION)
+    saved = runtime.with_name(f".{runtime.name}.superseded")
+    shutil.copytree(runtime, saved)
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    truth(not saved.exists(), describing="the stale saved runtime is cleared")
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
