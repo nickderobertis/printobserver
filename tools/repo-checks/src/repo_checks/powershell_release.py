@@ -37,6 +37,7 @@ from repo_checks.verified_download import (
 )
 
 #: Where every PowerShell release publishes its archives and its hashes file.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 RELEASES = "https://github.com/PowerShell/PowerShell/releases/download"
 
 #: The name of the checksums file every release publishes beside its archives.
