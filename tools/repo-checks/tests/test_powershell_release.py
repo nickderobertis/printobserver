@@ -583,7 +583,13 @@ def test_a_saved_runtime_that_cannot_be_removed_after_swap_is_reported(
     equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
     capsys.readouterr()
     runtime = runtime_directory(into, VERSION)
-    runtime.chmod(0o500)
+    # Protect a directory inside the runtime rather than the runtime itself: macOS
+    # refuses to rename a directory its owner cannot write, which would stop the
+    # swap before the removal this test is about. Linux allows that rename.
+    protected = runtime / "protected"
+    protected.mkdir()
+    (protected / "held").write_text("held\n", encoding="utf-8")
+    protected.chmod(0o500)
     saved = runtime.with_name(f".{runtime.name}.superseded")
 
     try:
@@ -592,5 +598,6 @@ def test_a_saved_runtime_that_cannot_be_removed_after_swap_is_reported(
         truth(saved.exists(), describing="the protected old copy remains")
         contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
     finally:
-        if saved.exists():
-            saved.chmod(0o700)
+        for held in (protected, saved / "protected"):
+            if held.exists():
+                held.chmod(0o700)
