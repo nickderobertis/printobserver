@@ -15,7 +15,7 @@ from repo_checks.checks_release import (
     release_gating,
     release_targets,
 )
-from repo_checks.expect import accepted, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -189,6 +189,50 @@ def test_a_release_program_installed_by_cargo_install_pinned_or_not_is_refused(
 
     refused(findings, f"installs `release-plz` by running `{installed}`")
     refused(findings, "the one command that takes the release `repo-policy.toml` holds")
+
+
+@pytest.mark.parametrize(
+    ("workflow", "original", "installed"),
+    [
+        (
+            ".github/workflows/ci.yml",
+            "just install-gh ${{ steps.held.outputs.version }}",
+            "just install-gh 2.99.0",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "just install-gh ${{ steps.held.outputs.version }}",
+            "just install-gh ${{ steps.elsewhere.outputs.version }}",
+        ),
+        (
+            RELEASE,
+            "just install-tools release-plz",
+            "uv run -q python -m repo_checks install-release-plz 0.3.160",
+        ),
+    ],
+)
+def test_a_held_tools_installer_handed_a_release_the_policy_did_not_is_refused(
+    tree: Callable[[], Tree], workflow: str, original: str, installed: str
+) -> None:
+    """An installer verb installs what it is handed, so a literal is a second statement of it."""
+    broken = tree()
+    before = broken.read(workflow)
+    contains(before, original, describing=workflow)
+    broken.write(workflow, before.replace(original, installed, 1))
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, f"by running `{installed}`, which hands `install-")
+    refused(findings, "a release of its own rather than the one `repo-policy.toml` holds")
+
+
+def test_the_committed_installer_steps_hand_each_the_release_the_policy_holds(
+    tree: Callable[[], Tree],
+) -> None:
+    """`ci.yml`'s `just install-gh` reads gh's release off the policy, and so is accepted."""
+    findings = release_automation(tree().repo)
+
+    accepted([f for f in findings if "hands `install-" in f])
 
 
 def test_an_action_installing_a_held_tool_unpinned_is_refused(tree: Callable[[], Tree]) -> None:
