@@ -16,7 +16,7 @@ import platform
 import shutil
 import sys
 import tarfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -488,6 +488,31 @@ def test_the_hashes_file_is_read_as_its_producer_encoded_it() -> None:
 
     equal(listing(line.encode("utf-16")).strip(), line)
     equal(listing(line.encode("utf-8")).strip(), line, describing="a producer that writes UTF-8")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+@pytest.mark.parametrize(
+    "encoded",
+    [
+        lambda text: b"\xff\xfe" + text.encode("utf-16-le"),
+        lambda text: b"\xfe\xff" + text.encode("utf-16-be"),
+        lambda text: text.encode("utf-8"),
+    ],
+    ids=["utf-16 little-endian", "utf-16 big-endian", "utf-8"],
+)
+def test_the_verb_installs_whichever_encoding_the_hashes_file_was_published_in(
+    serving_release: tuple[str, Release], tmp_path: Path, encoded: Callable[[str], bytes]
+) -> None:
+    """The digest a release lists is found however its hashes file was encoded."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    release.files[HASHES] = encoded(release.files[HASHES].decode("utf-16"))
+    into = tmp_path / "bin"
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
 
 
 def test_every_supported_platform_but_windows_has_a_flavour() -> None:
