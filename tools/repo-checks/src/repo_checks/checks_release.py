@@ -289,22 +289,26 @@ def _held_run_findings(command: str, held: Mapping[str, str], where: str) -> lis
     newest, and either way the toolchain's `version` has stopped being the one
     place that release is written.
 
-    A step that *runs* a held tool is not one that installs it, however the word
-    `install` reads in it: `gh skill install <skill>` installs a skill with gh,
-    so a command whose own program is the held tool is passed over.
+    A command that *runs* a held tool is not one that installs it, however the
+    word `install` reads in it: `gh skill install <skill>` installs a skill with
+    gh. Each shell command in a compound line is checked separately, so an
+    earlier `gh --version` cannot conceal a later `cargo install gh`.
     """
-    if not INSTALLING.search(command):
-        return []
-    running = set(programs_in(command))
-    return [
-        f"{where} installs `{name}` by running `{command}` rather than "
-        f"`{HELD_INSTALL.format(tool=name)}`, the one command that takes the release "
-        f"`repo-policy.toml` holds `{name}` at ({held[name]}) from the policy itself"
-        for name in held
-        if name not in running
-        and _names(name, command)
-        and command != HELD_INSTALL.format(tool=name)
-    ]
+    findings: list[str] = []
+    for part in re.split(r"\s*(?:&&|\|\||[;|])\s*", command):
+        if not INSTALLING.search(part):
+            continue
+        running = set(programs_in(part))
+        findings.extend(
+            f"{where} installs `{name}` by running `{part}` rather than "
+            f"`{HELD_INSTALL.format(tool=name)}`, the one command that takes the release "
+            f"`repo-policy.toml` holds `{name}` at ({held[name]}) from the policy itself"
+            for name in held
+            if name not in running
+            and _names(name, part)
+            and part != HELD_INSTALL.format(tool=name)
+        )
+    return findings
 
 
 def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:

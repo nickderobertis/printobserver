@@ -35,12 +35,10 @@ DOWNLOAD_TIMEOUT = 120
 #: name that a resolver decides.
 LOOPBACK = frozenset({"127.0.0.1", "::1"})
 
-#: The one forge every release these installers take is published on, which is
-#: the only host reached over TLS. `https` on its own is not enough for two of
-#: the three: gh and PowerShell read the checksums file from the same release
-#: the archive comes from, so a host free to serve both would be a host free to
-#: serve bytes and the digest vouching for them. Holding the origin to the
-#: producer's own forge is what stops `--releases` naming such a host.
+#: The host permitted for an initial HTTPS release address. Redirects from it
+#: may reach other TLS hosts through `followed`. `https` alone is insufficient
+#: for the initial address: gh and PowerShell read a checksums file beside the
+#: archive, so an arbitrary origin could serve both bytes and their approval.
 #: `test_verified_download.py` holds each installer's own address to it.
 FORGE = "github.com"
 

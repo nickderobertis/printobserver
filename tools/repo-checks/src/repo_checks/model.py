@@ -266,8 +266,8 @@ def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
 
     Raises:
         PolicyValueError: If it is not a list of names, or names every command
-            but the tool's own: a host carrying only the alternative would be
-            left with no `command` on PATH and nothing would install one.
+            but the tool's own: a host carrying that command would be treated
+            as lacking the tool and an install would replace it.
     """
     declared = entry.get("provided_by")
     if declared is None:
@@ -290,8 +290,8 @@ def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
     if command not in names:
         msg = (
             f"`repo-policy.toml`'s `provided_by` for `{command}` names "
-            f"{', '.join(names)} and not `{command}` itself, so a host carrying none of "
-            f"them would be left with no `{command}` on PATH"
+            f"{', '.join(names)} and not `{command}` itself, so a host already carrying "
+            f"`{command}` would replace it during bootstrap"
         )
         raise PolicyValueError(msg)
     return tuple(names)

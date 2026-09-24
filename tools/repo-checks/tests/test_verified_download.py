@@ -115,25 +115,28 @@ def test_a_verb_pointed_at_an_address_no_installer_fetches_installs_nothing(
     truth(not into.exists(), describing=f"nothing written where {verb} puts a program")
 
 
-def test_gh_refuses_an_untrusted_address_even_on_a_host_without_an_archive(
+@pytest.mark.parametrize("verb", [held.verb for held in held_by_verb()])
+@pytest.mark.parametrize("machine", ["AMD64", "ARM64"])
+def test_a_verb_refuses_an_untrusted_address_before_host_archive_selection(
+    verb: str,
+    machine: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The public verb checks its caller's address before its host's archive support."""
+    """A Windows caller gets the same address refusal, even without a host archive."""
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(platform, "machine", lambda: machine)
     into = tmp_path / "bin"
+    version = next(held.version for held in held_by_verb() if held.verb == verb)
 
     equal(
-        main(
-            ["install-gh", "2.100.0", "--releases", "https://example.invalid", "--into", str(into)]
-        ),
+        main([verb, version, "--releases", "https://example.invalid", "--into", str(into)]),
         1,
     )
 
     contains(capsys.readouterr().err, "is not an address this installer downloads from")
-    truth(not into.exists(), describing="nothing written where gh goes")
+    truth(not into.exists(), describing=f"nothing written where {verb} goes")
 
 
 @pytest.mark.parametrize("verb", [held.verb for held in held_by_verb()])
@@ -205,13 +208,9 @@ def test_a_release_redirecting_its_archive_elsewhere_on_loopback_is_still_instal
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
-def test_a_tls_redirect_cannot_downgrade_to_loopback_http(
-    serving_powershell: tuple[str, Release],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A real HTTPS response cannot send the archive back to plain HTTP."""
+@pytest.fixture
+def local_tls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ssl.SSLContext:
+    """A trusted local TLS listener for a release's asset-store redirect."""
     openssl = shutil.which("openssl")
     if openssl is None:
         pytest.skip("OpenSSL is needed to serve the local TLS redirect")
@@ -246,12 +245,20 @@ def test_a_tls_redirect_cannot_downgrade_to_loopback_http(
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(cert, key)
+    return tls
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_tls_redirect_cannot_downgrade_to_loopback_http(
+    serving_powershell: tuple[str, Release], tmp_path: Path, local_tls: ssl.SSLContext
+) -> None:
+    """A real HTTPS response cannot send the archive back to plain HTTP."""
     base, release = serving_powershell
     archive = archive_for(PWSH, sys.platform, platform.machine())
     publish(release, archive)
     release.files["moved.tar.gz"] = release.files[archive.name]
     middle = Release()
-    with serving(f"/v{PWSH}/", middle, tls=tls) as secure:
+    with serving(f"/v{PWSH}/", middle, tls=local_tls) as secure:
         release.redirects[archive.name] = f"{secure}/v{PWSH}/{archive.name}"
         middle.redirects[archive.name] = f"{base}/v{PWSH}/moved.tar.gz"
         into = tmp_path / "bin"
@@ -262,6 +269,25 @@ def test_a_tls_redirect_cannot_downgrade_to_loopback_http(
     contains(str(raised.value), "not an address this installer follows")
     contains(middle.asked, f"/v{PWSH}/{archive.name}")
     truth(not into.exists(), describing="nothing written where pwsh goes")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_tls_asset_redirect_installs_the_verified_program(
+    serving_powershell: tuple[str, Release], tmp_path: Path, local_tls: ssl.SSLContext
+) -> None:
+    """A release may serve its checksum over HTTP and its verified asset over TLS."""
+    base, release = serving_powershell
+    archive = archive_for(PWSH, sys.platform, platform.machine())
+    publish(release, archive)
+    asset_store = Release(files={archive.name: release.files[archive.name]})
+    with serving(f"/v{PWSH}/", asset_store, tls=local_tls) as secure:
+        release.redirects[archive.name] = f"{secure}/v{PWSH}/{archive.name}"
+        into = tmp_path / "bin"
+
+        equal(main(["install-powershell", PWSH, "--releases", base, "--into", str(into)]), 0)
+
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {PWSH}")
+    equal(asset_store.asked, [f"/v{PWSH}/{archive.name}"])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")

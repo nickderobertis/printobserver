@@ -540,3 +540,57 @@ def test_a_saved_runtime_beside_a_working_one_is_cleared_after_the_next_install(
 
     truth(not saved.exists(), describing="the stale saved runtime is cleared")
     contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_an_unclearable_saved_runtime_refuses_without_replacing_the_working_one(
+    serving_release: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A filesystem refusal while clearing an old saved copy keeps pwsh runnable."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+    capsys.readouterr()
+    runtime = runtime_directory(into, VERSION)
+    saved = runtime.with_name(f".{runtime.name}.superseded")
+    shutil.copytree(runtime, saved)
+    saved.chmod(0o500)
+
+    try:
+        equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 1)
+        contains(capsys.readouterr().err, "saved PowerShell runtime could not be cleared")
+        contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+        truth(saved.exists(), describing="the saved copy remains for manual recovery")
+        truth(
+            not runtime.with_name(f".{runtime.name}.part").exists(),
+            describing="the uncommitted replacement is cleared",
+        )
+    finally:
+        saved.chmod(0o700)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_saved_runtime_that_cannot_be_removed_after_swap_is_reported(
+    serving_release: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A completed swap can leave a protected old copy without losing the new pwsh."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+    capsys.readouterr()
+    runtime = runtime_directory(into, VERSION)
+    runtime.chmod(0o500)
+    saved = runtime.with_name(f".{runtime.name}.superseded")
+
+    try:
+        equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+        contains(capsys.readouterr().err, "old PowerShell runtime could not be cleared")
+        truth(saved.exists(), describing="the protected old copy remains")
+        contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    finally:
+        if saved.exists():
+            saved.chmod(0o700)

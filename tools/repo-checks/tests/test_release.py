@@ -230,6 +230,23 @@ def test_a_step_that_runs_a_held_tool_is_not_one_that_installs_it(
     accepted([f for f in findings if "install" in f and "gh" in f])
 
 
+def test_running_a_held_tool_before_installing_it_does_not_hide_the_install(
+    tree: Callable[[], Tree],
+) -> None:
+    """Each command in a compound run step must account for its own install."""
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace(
+            HELD_INSTALL, "- run: gh --version && cargo install gh"
+        ),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "installs `gh` by running `cargo install gh`")
+
+
 def test_a_held_release_that_is_not_a_release_is_refused(tree: Callable[[], Tree]) -> None:
     """A held release reaches a workflow's output, so one that is not a release is refused."""
     broken = tree()

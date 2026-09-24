@@ -1,29 +1,7 @@
-"""One exact release program, installed prebuilt from its own published archive.
+"""Install the held release-plz archive after checking its committed SHA-256.
 
-`release-plz` is held at one release in `repo-policy.toml`'s toolchain, because
-the journeys in `tests/repo-e2e` that drive it record what *that* release
-prints. This installer takes the prebuilt archive the release publishes for the
-host.
-
-Upstream publishes no checksums file beside those archives, so the digest this
-installer holds one to is **committed here**, per release and per target. That
-is what `DIGESTS` is: a release nothing has recorded digests for is refused
-naming itself, rather than installed against whatever the forge happens to
-serve, so a version bump lands with its own digests or does not land.
-
-Being a copy of what a producer published, `DIGESTS` needs saying where its
-reconciliation is, because upstream offers no file to read it from. It is the
-install itself, and it fails closed: every real install downloads the archive
-and hashes it, and a served archive that is not the bytes recorded here refuses
-naming both digests and writes nothing. So the producer re-cutting an asset,
-or serving one this repository never saw, stops the install with the
-disagreement on screen — it cannot pass as the release recorded here. The other
-half is `test_every_supported_platform_has_a_target_and_a_committed_digest`,
-which holds the table's keys to the held release and to the supported-platform
-list, so a bump with no digests fails the suite before it can fail a runner.
-
-The five targets are the five `AGENTS.md`'s supported-platform list names, and
-`tests/test_release_plz_release.py` holds them to it.
+`test_release_plz_release.py` holds targets and digests to the toolchain release
+and to `AGENTS.md`'s supported platforms.
 """
 
 from __future__ import annotations
@@ -69,12 +47,9 @@ ARCHITECTURES = {
     "arm64": "aarch64",
 }
 
-#: The SHA-256 of each archive, per release and per target, read off the forge's
-#: own per-asset `digest` when the release was held. Upstream publishes no
-#: checksums file of its own for these, so this is the only thing vouching for
-#: what is downloaded: it is committed, reviewed, and keyed by release so that
-#: bumping `repo-policy.toml`'s held version without recording digests for it
-#: refuses rather than installing something nobody checked.
+#: SHA-256 values from the GitHub release API's per-asset `digest`. Upstream
+#: publishes no checksums file for these archives. An install hashes the archive
+#: against the matching release and target here before placing the program.
 #:
 #: Read the digests for a new release with:
 #:
@@ -209,6 +184,7 @@ def install_release_plz(version: str, into: Path | None = None, *, releases: str
     """
     destination = into if into is not None else cargo_bin()
     try:
+        held_to_producer(releases, RELEASES)
         archive = archive_for(version, sys.platform, platform.machine())
         installed = install(archive, destination, releases=releases)
     except InstallerError as refused:

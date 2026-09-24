@@ -230,7 +230,16 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
                 )
                 raise InstallerError(msg) from failed
         elif (runtime / "pwsh").is_file():
-            shutil.rmtree(superseded)
+            try:
+                shutil.rmtree(superseded)
+            except OSError as failed:
+                shutil.rmtree(staged, ignore_errors=True)
+                msg = (
+                    f"{superseded} saved PowerShell runtime could not be cleared: {failed}. "
+                    f"The working runtime remains at {runtime}; clear the saved directory "
+                    f"and install again."
+                )
+                raise InstallerError(msg) from failed
         else:
             shutil.rmtree(staged, ignore_errors=True)
             msg = (
@@ -253,7 +262,17 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
             f"so whichever of the two holds it belongs there."
         )
         raise InstallerError(msg) from failed
-    shutil.rmtree(superseded, ignore_errors=True)
+    try:
+        shutil.rmtree(superseded)
+    except FileNotFoundError:
+        pass
+    except OSError as failed:
+        print(
+            f"install-powershell: old PowerShell runtime could not be cleared at "
+            f"{superseded}: {failed}. The new runtime is at {runtime}; remove the old "
+            f"directory when it is writable.",
+            file=sys.stderr,
+        )
     program = runtime / "pwsh"
     linked = into / "pwsh"
     staging = into / ".pwsh.part"
@@ -280,6 +299,7 @@ def install_powershell(version: str, into: Path | None = None, *, releases: str 
     """
     destination = (into if into is not None else Path.home() / ".local" / "bin").resolve()
     try:
+        held_to_producer(releases, RELEASES)
         archive = archive_for(version, sys.platform, platform.machine())
         installed = install(archive, destination, releases=releases)
     except InstallerError as refused:
