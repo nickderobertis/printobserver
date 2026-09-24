@@ -237,9 +237,7 @@ def test_running_a_held_tool_before_installing_it_does_not_hide_the_install(
     broken = tree()
     broken.write(
         RELEASE,
-        broken.read(RELEASE).replace(
-            HELD_INSTALL, "- run: gh --version && cargo install gh"
-        ),
+        broken.read(RELEASE).replace(HELD_INSTALL, "- run: gh --version && cargo install gh"),
     )
 
     findings = release_automation(broken.repo)

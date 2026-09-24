@@ -304,9 +304,7 @@ def _held_run_findings(command: str, held: Mapping[str, str], where: str) -> lis
             f"`{HELD_INSTALL.format(tool=name)}`, the one command that takes the release "
             f"`repo-policy.toml` holds `{name}` at ({held[name]}) from the policy itself"
             for name in held
-            if name not in running
-            and _names(name, part)
-            and part != HELD_INSTALL.format(tool=name)
+            if name not in running and _names(name, part) and part != HELD_INSTALL.format(tool=name)
         )
     return findings
 
