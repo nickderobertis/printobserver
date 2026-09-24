@@ -6,11 +6,14 @@ and to `AGENTS.md`'s supported platforms.
 `RELEASES`, the tag path, `Archive.name` and `Archive.program` restate how the
 producer publishes a release, and what reconciles them with it is the gate
 itself: `just test-e2e` runs `install-tools release-plz` first, and bootstrap
-installs no release-plz, so every gate cell downloads the held archive from the
-producer by those names, hashes it against `DIGESTS` and extracts the program
-it names. A release published under any other address, archive or program name
-fails that install closed, naming what it could not fetch or find, and fails the
-gate with it.
+installs no release-plz, so a gate cell whose host does not already carry the
+held release — every freshly provisioned runner — downloads the held archive
+from the producer by those names, hashes it against `DIGESTS` and extracts the
+program it names. A host that does carry it installs nothing and reconciles
+nothing, which is why the proof is the runners' rather than a developer's. A
+release published under any other address, archive or program name fails that
+install closed, naming what it could not fetch or find, and fails the gate with
+it.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from pathlib import Path
 
 from repo_checks.model import RELEASE
 from repo_checks.verified_download import (
+    ARCHITECTURES,
     InstallerError,
     announce,
     held_to_producer,
@@ -44,17 +48,6 @@ TARGETS = {
     ("darwin", "aarch64"): "aarch64-apple-darwin",
     ("win32", "x86_64"): "x86_64-pc-windows-msvc",
     ("win32", "aarch64"): "aarch64-pc-windows-msvc",
-}
-
-#: `platform.machine()` spells one processor differently per host — Linux
-#: `x86_64` and `aarch64`, macOS `arm64`, Windows `AMD64` and `ARM64` — and is
-#: read lowercased, so this maps every spelling it knows to one name.
-ARCHITECTURES = {
-    "x86_64": "x86_64",
-    "amd64": "x86_64",
-    "x64": "x86_64",
-    "aarch64": "aarch64",
-    "arm64": "aarch64",
 }
 
 #: SHA-256 values from the GitHub release API's per-asset `digest`. Upstream

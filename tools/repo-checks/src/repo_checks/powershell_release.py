@@ -26,6 +26,7 @@ from pathlib import Path
 
 from repo_checks.model import RELEASE
 from repo_checks.verified_download import (
+    ARCHITECTURES,
     InstallerError,
     announce,
     digest_for,
@@ -62,17 +63,6 @@ FLAVOURS = {
     ("linux", "aarch64"): "linux-arm64",
     ("darwin", "aarch64"): "osx-arm64",
     ("darwin", "x86_64"): "osx-x64",
-}
-
-#: `platform.machine()` spells one processor differently per host — Linux
-#: `x86_64` and `aarch64`, macOS `arm64`, Windows `AMD64` and `ARM64` — and is
-#: read lowercased, so this maps every spelling it knows to one name.
-ARCHITECTURES = {
-    "x86_64": "x86_64",
-    "amd64": "x86_64",
-    "x64": "x86_64",
-    "aarch64": "aarch64",
-    "arm64": "aarch64",
 }
 
 
@@ -171,10 +161,11 @@ def install(
 
     A runtime already installed is never deleted before its replacement is in
     place: it is renamed aside first, the staged one is moved onto the name it
-    vacated, and only then is the old one removed. There is therefore no moment
-    at which the working runtime has been destroyed and the new one is not yet
-    there — the state an install interrupted between a delete and a move would
-    otherwise leave, which is a `pwsh` on PATH pointing at nothing.
+    vacated, and only then is the old one removed. Between those two renames
+    `pwsh` names nothing, but nothing has been destroyed: an install
+    interrupted there leaves the previous runtime whole under its aside name,
+    and the next install moves it back onto its own name before making its own
+    swap — where a delete followed by a move would leave nothing to move back.
 
     A refused replacement names both locations where the prior runtime can be,
     so an operator can put it back if the filesystem stopped the swap.
@@ -214,6 +205,7 @@ def install(
     try:
         # The file was just unpacked by this process. Making it executable
         # before the directory swap keeps a chmod refusal off the live link.
+        # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         (staged / "pwsh").chmod(0o755)
     except OSError as failed:
         shutil.rmtree(staged, ignore_errors=True)
@@ -223,8 +215,8 @@ def install(
     if superseded.is_dir():
         if not runtime.exists():
             try:
-                # Both entries share the directory just used for staging, so
-                # only an external filesystem change can refuse this rename.
+                # A name `exists` reads as vacant can still be occupied — a link
+                # to nothing is — and then the filesystem refuses this rename.
                 superseded.replace(runtime)
             except OSError as failed:
                 shutil.rmtree(staged, ignore_errors=True)

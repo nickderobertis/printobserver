@@ -45,6 +45,20 @@ LOOPBACK = frozenset({"127.0.0.1", "::1"})
 FORGE = "github.com"
 
 
+#: `platform.machine()` spells one processor differently per host — Linux
+#: `x86_64` and `aarch64`, macOS `arm64`, Windows `AMD64` and `ARM64` — and is
+#: read lowercased, so this maps every spelling it knows to one name. The
+#: PowerShell and release program installers read a host through it; gh's names
+#: its archives by the producer's own spelling, which is its own map.
+ARCHITECTURES = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "x64": "x86_64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
+}
+
+
 class InstallerError(Exception):
     """Why a held release could not be installed, in words a caller acts on."""
 

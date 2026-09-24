@@ -1374,3 +1374,9 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "return f\"powershell-{self.version}-{self.flavour}.tar.gz\""
 reason = "The archive name is checked against the release's own hashes.sha256 before its bytes are downloaded or unpacked. A producer rename therefore refuses the install instead of silently selecting another asset; the missing-name journey proves that behavior over HTTP. The release listing is the runtime source, so duplicating its mutable contents in the deterministic repository gate would not improve the install's trust boundary."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/repo-checks/src/repo_checks/powershell_release.py"
+site = "(staged / \"pwsh\").chmod(0o755)"
+reason = "This line makes executable a file this same process unpacked a moment earlier into a directory it just created, and `chmod` by a file's owner on a regular file it owns is refused only by a filesystem that stopped accepting writes in between, or one mounted read-only under a directory the unpack itself wrote to. Neither can be arranged from outside the process without pretending the call failed, which is the mocking this repository's rules forbid. The `pwsh` it reaches is `is_file()` just above, so a link to somewhere else never gets here, and the archive's own shapes are each driven end to end over a stand-in release served on loopback: one that is no archive at all, one carrying no program, one whose member leaves its directory, and one that installs and runs. What the handler does if this ever fails — clear the staged runtime and refuse naming the archive, before the swap so the working runtime is untouched — is the same shape the refusals above it are proven to take."

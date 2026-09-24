@@ -568,6 +568,42 @@ def test_a_blocked_recovery_keeps_the_saved_runtime(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_saved_runtime_that_cannot_be_moved_back_is_left_where_it_is_and_named(
+    serving_release: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A link to nothing at the runtime's name reads as vacant and still refuses the move back.
+
+    An interrupted install leaves the runtime under its aside name; if the name
+    it came from is then a dangling link — somebody's hand-made link to a
+    runtime they since removed — nothing is there to `exists`, and the move
+    back onto it is refused by the filesystem. The refusal names where the
+    saved runtime still is, and that runtime still runs.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive)
+    into = tmp_path / "bin"
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 0)
+    capsys.readouterr()
+    runtime = runtime_directory(into, VERSION)
+    saved = runtime.with_name(f".{runtime.name}.superseded")
+    runtime.replace(saved)
+    runtime.symlink_to(tmp_path / "a runtime somebody removed")
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    contains(
+        capsys.readouterr().err,
+        f"the saved PowerShell runtime at {saved} could not be restored to {runtime}",
+    )
+    contains(run([str(saved / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    truth(
+        not runtime.with_name(f".{runtime.name}.part").exists(),
+        describing="the staged runtime, cleared",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_a_saved_runtime_beside_a_working_one_is_cleared_after_the_next_install(
     serving_release: tuple[str, Release], tmp_path: Path
 ) -> None:
