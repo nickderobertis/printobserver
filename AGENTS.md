@@ -130,6 +130,13 @@ lines, per ecosystem). There is no warnings-only mode, and one exemption from th
 Rust floor: `windows-aarch64`, whose toolchain cannot read the profiles its own
 instrumentation writes ([rust-lang/rust#150123](https://github.com/rust-lang/rust/issues/150123)).
 
+A Python line one platform's hosts never reach — an installer path that platform
+refuses before it gets there — carries `# pragma: unreached on <sys.platform> -
+<why>`. It is excluded from a report made on that platform alone, and counted
+on every other: `just coverage` names the platform it reports on, and
+`pyproject.toml`'s coverage configuration reads it. Mark only a line that
+platform cannot reach; a line a test there could drive is covered there.
+
 `just lint` lints every crate twice on a Unix host: natively, and once more for
 the Windows target `repo-policy.toml`'s `toolchain.windows_lint` names, so a
 finding in `cfg(windows)` code — dead code to the native pass — is reported
