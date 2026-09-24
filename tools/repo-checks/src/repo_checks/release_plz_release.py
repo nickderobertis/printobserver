@@ -2,6 +2,15 @@
 
 `test_release_plz_release.py` holds targets and digests to the toolchain release
 and to `AGENTS.md`'s supported platforms.
+
+`RELEASES`, the tag path, `Archive.name` and `Archive.program` restate how the
+producer publishes a release, and what reconciles them with it is the gate
+itself: `just test-e2e` runs `install-tools release-plz` first, and bootstrap
+installs no release-plz, so every gate cell downloads the held archive from the
+producer by those names, hashes it against `DIGESTS` and extracts the program
+it names. A release published under any other address, archive or program name
+fails that install closed, naming what it could not fetch or find, and fails the
+gate with it.
 """
 
 from __future__ import annotations
