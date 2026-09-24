@@ -98,7 +98,10 @@ lint:
     bunx nx run-many -t lint --output-style=stream
     uv run -q python -m repo_checks lint-windows-target
 
-# Type-check every project with its language's type checker.
+# Type-check every project with its language's type checker — every Python
+# project for this host and for each platform `repo-policy.toml` declares, so a
+# defect `sys.platform` hides from this host is reported here rather than by a
+# runner of that platform.
 typecheck:
     just node-modules
     bunx nx run-many -t typecheck --output-style=stream

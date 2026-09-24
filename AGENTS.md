@@ -143,6 +143,12 @@ every host that is not Windows; where it is absent the pass fails naming the
 `rustup target add`, because a lint that ran over none of the Windows code is
 not one that passed.
 
+Every Python project's `typecheck` target type-checks for this host and for
+each platform `repo-policy.toml`'s `toolchain.python_typecheck` declares, for
+the same reason: a type checker reads `sys.platform` to decide which members a
+module has, so one host's pass leaves every other platform's defects to that
+platform's own runner. `just check-repo` refuses a target carrying fewer.
+
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
 check`: it is non-deterministic and needs a harness credential, so it is a
 continuous-integration job of its own.

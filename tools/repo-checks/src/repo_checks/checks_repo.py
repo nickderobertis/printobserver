@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from repo_checks.model import Repo
@@ -22,6 +24,12 @@ NX_INVOCATION = "bunx nx"
 NODE_INSTALL_RECIPE = "node-modules"
 LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
+# The runner a `typecheck` command reaches its type checker through, and the
+# program a pass is: `uv run -q ty check <root>` runs `ty`, and the pair is what
+# an invocation has to execute rather than merely carry.
+TY_RUNNER = ("uv", "run")
+TY_PROGRAM = ("ty", "check")
+PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
 
 
@@ -116,6 +124,174 @@ def command_allowlist(repo: Repo) -> list[str]:
         for program in sorted(allowed)
         if program not in derived
     )
+    return findings
+
+
+@dataclass(frozen=True)
+class PythonProject:
+    """One `lang:python` project of the Nx graph, as its own `project.json` declares it."""
+
+    name: str
+    root: str | None
+    typecheck: str | None
+
+
+def _declared_text(value: object) -> str | None:
+    """The value where it is a non-empty string, and `None` where it declares nothing.
+
+    A declaration of another shape is not read as text: coercing it would
+    compose a root or a name out of whatever JSON happened to be there, and the
+    check below would then hold a target to a path nobody wrote.
+    """
+    return value if isinstance(value, str) and value else None
+
+
+def _python_projects(repo: Repo) -> list[PythonProject]:
+    """Every Python project of the graph, in the graph's own order.
+
+    A declaration of another shape declares nothing a caller can read, so each
+    member is taken only where it is the shape it is meant to be: a project
+    whose `root` or `typecheck` command is absent or is not a non-empty string
+    carries `None`, and is a finding of the check below rather than a traceback
+    out of this. The name alone falls back, to the directory the declaration
+    was read from, because it identifies a project in a finding rather than
+    deciding anything — and a project whose own name is unreadable is one a
+    reader still has to be able to find.
+    """
+    projects: list[PythonProject] = []
+    for path in repo.project_paths:
+        declared = json.loads(path.read_text(encoding="utf-8"))
+        tags = declared.get("tags") if isinstance(declared, dict) else None
+        if not isinstance(tags, list) or "lang:python" not in tags:
+            continue
+        targets = declared.get("targets")
+        target = targets.get("typecheck") if isinstance(targets, dict) else None
+        command = target.get("command") if isinstance(target, dict) else None
+        projects.append(
+            PythonProject(
+                name=_declared_text(declared.get("name")) or path.parent.name,
+                root=_declared_text(declared.get("root")),
+                typecheck=_declared_text(command),
+            )
+        )
+    return projects
+
+
+@dataclass(frozen=True)
+class TyPass:
+    """One `ty check` invocation of a `typecheck` command: what it checks, and for what."""
+
+    platform: str | None
+    roots: tuple[str, ...]
+
+
+def _executed(tokens: Sequence[str]) -> Sequence[str]:
+    """The program one invocation runs, and its arguments, past any runner prefix.
+
+    `uv run -q ty check <root>` runs `ty`; `uv run -q echo ty check <root>` runs
+    `echo`, carries every word the first one does, and type-checks nothing. The
+    two differ only in a token that is neither the first nor the last, so the
+    program is found by stepping over the one runner this repository's targets
+    use and over its flags, rather than by looking for `ty check` anywhere in
+    the line.
+
+    Only that runner is stepped over. An invocation reaching `ty` some other way
+    reads here as running no pass, which is a finding about a target rather than
+    a silent acceptance — the safe direction for a gate.
+    """
+    index = len(TY_RUNNER) if tuple(tokens[: len(TY_RUNNER)]) == TY_RUNNER else 0
+    while index < len(tokens) and tokens[index].startswith("-"):
+        index += 1
+    return tokens[index:]
+
+
+def _ty_passes(command: str) -> list[TyPass]:
+    """Every `ty check` a `typecheck` command actually runs, read as invocations.
+
+    Read as text instead, the contract below is satisfied by things that check
+    nothing: an `echo` of the invocation being looked for — `uv run -q echo ty
+    check <root>` as much as a bare one — and a pass over
+    `python/printobserver-sdk-extra`, which any test for the root
+    `python/printobserver-sdk` finds inside it. So the command is split into the
+    invocations the shell would run, each is tokenized, a pass counts only where
+    `ty check` is the program it executes, and a root only where it is a whole
+    argument of one.
+    """
+    passes: list[TyPass] = []
+    for invocation in command.split("&&"):
+        try:
+            tokens = shlex.split(invocation)
+        except ValueError:
+            continue
+        run = _executed(tokens)
+        if tuple(run[: len(TY_PROGRAM)]) != TY_PROGRAM:
+            continue
+        platform: str | None = None
+        roots: list[str] = []
+        rest = run[len(TY_PROGRAM) :]
+        index = 0
+        while index < len(rest):
+            token = rest[index]
+            if token == PLATFORM_OPTION and index + 1 < len(rest):
+                platform = rest[index + 1]
+                index += 2
+                continue
+            if token.startswith(f"{PLATFORM_OPTION}="):
+                platform = token.partition("=")[2]
+            elif not token.startswith("-"):
+                roots.append(token)
+            index += 1
+        passes.append(TyPass(platform=platform, roots=tuple(roots)))
+    return passes
+
+
+def python_typecheck_platforms(repo: Repo) -> list[str]:
+    """Every Python project type-checks for the host's platform and for each declared one.
+
+    A type checker reads `sys.platform` and `os.name` to decide which members a
+    module has, so a pass on this host alone sees `os.getuid` and never sees
+    `os.startfile`: an attribute reached outside a platform guard is reported
+    first by a runner of the platform it is missing from. The platforms are
+    `repo-policy.toml`'s rather than each project's, so nine targets cannot
+    drift into carrying eight.
+    """
+    toolchain = repo.policy.get("toolchain")
+    section = toolchain.get("python_typecheck") if isinstance(toolchain, dict) else None
+    declared = section.get("platforms") if isinstance(section, dict) else None
+    if not (
+        isinstance(declared, list)
+        and declared
+        and all(isinstance(platform, str) and platform for platform in declared)
+    ):
+        return [
+            "`repo-policy.toml` declares no `toolchain.python_typecheck.platforms` list of "
+            f"platform names: found {declared!r}"
+        ]
+    platforms: tuple[str, ...] = tuple(declared)
+    findings: list[str] = []
+    for project in _python_projects(repo):
+        if project.root is None:
+            findings.append(f"{project.name} is a Python project declaring no `root` path")
+            continue
+        if project.typecheck is None:
+            findings.append(f"{project.name} is a Python project declaring no `typecheck` command")
+            continue
+        checked = {
+            (found.platform, root)
+            for found in _ty_passes(project.typecheck)
+            for root in found.roots
+        }
+        if (None, project.root) not in checked:
+            findings.append(
+                f"{project.name}:typecheck runs no `ty check {project.root}` pass for this host"
+            )
+        findings.extend(
+            f"{project.name}:typecheck runs no `{platform}` pass over {project.root}: a defect "
+            f"in code `sys.platform` hides from this host would be reported first by a "
+            f"{platform} runner"
+            for platform in platforms
+            if (platform, project.root) not in checked
+        )
     return findings
 
 

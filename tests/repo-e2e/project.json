@@ -7,7 +7,9 @@
     "format": { "command": "uv run -q ruff format tests/repo-e2e" },
     "format-check": { "command": "uv run -q ruff format --check tests/repo-e2e" },
     "lint": { "command": "uv run -q ruff check tests/repo-e2e" },
-    "typecheck": { "command": "uv run -q ty check tests/repo-e2e" },
+    "typecheck": {
+      "command": "uv run -q ty check tests/repo-e2e && uv run -q ty check --python-platform win32 tests/repo-e2e"
+    },
     "test-e2e": { "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
       "command": "uv run -q pytest tests/repo-e2e/tests"
     }
