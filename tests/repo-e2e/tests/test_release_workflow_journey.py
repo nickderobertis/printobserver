@@ -152,9 +152,6 @@ RELEASE_PLZ_STANDIN = """#!/bin/sh
 # the program was never reached.
 printf '%s\\n' "$*" >> "$RELEASE_PLZ_STANDIN_RECORD"
 case "$1" in
-  # A stand-in for a program answers which program it is, and this one answers
-  # the release the policy holds, so the workflow's own install step reads the
-  # held release as already there and installs nothing.
   # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
   --version)
     echo "release-plz $RELEASE_PLZ_STANDIN_VERSION"

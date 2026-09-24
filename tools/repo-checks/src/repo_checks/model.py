@@ -247,6 +247,13 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
     return tuple(tools)
 
 
+#: What `provided_by` may name: a program as PATH finds one, by its bare name.
+#: A path or anything with a separator in it is not looked up on PATH at all —
+#: `shutil.which` answers it as written — so it would decide whether a host
+#: installs by what sits at one location rather than by what that host carries.
+COMMAND_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+
+
 def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
     """The commands one entry declares its tool already provided by, narrowed.
 
@@ -273,7 +280,7 @@ def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
         raise PolicyValueError(msg)
     names: list[str] = []
     for name in declared:
-        if not isinstance(name, str) or not name.strip():
+        if not isinstance(name, str) or not COMMAND_NAME.fullmatch(name.strip()):
             msg = (
                 f"`repo-policy.toml`'s `provided_by` for `{command}` names {name!r}, "
                 f"which is not a command"

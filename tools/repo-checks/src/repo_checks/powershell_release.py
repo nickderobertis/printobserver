@@ -65,7 +65,9 @@ FLAVOURS = {
     ("darwin", "x86_64"): "osx-x64",
 }
 
-#: The processor names a host reports, as this module spells one.
+#: `platform.machine()` spells one processor differently per host — Linux
+#: `x86_64` and `aarch64`, macOS `arm64`, Windows `AMD64` and `ARM64` — and is
+#: read lowercased, so this maps every spelling it knows to one name.
 ARCHITECTURES = {
     "x86_64": "x86_64",
     "amd64": "x86_64",

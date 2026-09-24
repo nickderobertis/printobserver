@@ -649,6 +649,7 @@ def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_install
         ("[]", "is [], which is not a non-empty list of commands"),
         ('["   "]', "names '   ', which is not a command"),
         ('["powershell", 7]', "names 7, which is not a command"),
+        ('["pwsh", "/usr/bin/powershell"]', "names '/usr/bin/powershell', which is not a command"),
         ('["powershell"]', "names powershell and not `pwsh` itself"),
     ],
 )
