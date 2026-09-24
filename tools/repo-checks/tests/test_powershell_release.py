@@ -44,10 +44,19 @@ VERSION = next(held.version for held in held_by_verb() if held.command == "pwsh"
 
 
 def _escaping_archive() -> bytes:
-    """An archive whose one member names a path above where it is unpacked."""
+    """An archive carrying a program, then a member naming a path above where it is unpacked.
+
+    The program comes first, so extraction has written a file of its own by
+    the time the escaping member is refused.
+    """
     buffer = io.BytesIO()
     payload = b"a file nobody asked this archive to write\n"
     with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+        carried = program("7.6.6 (written before the refusal)")
+        first = tarfile.TarInfo("pwsh")
+        first.size = len(carried)
+        first.mode = 0o755
+        bundle.addfile(first, io.BytesIO(carried))
         info = tarfile.TarInfo("../escaped")
         info.size = len(payload)
         bundle.addfile(info, io.BytesIO(payload))
@@ -307,8 +316,10 @@ def test_an_archive_whose_member_leaves_the_directory_is_unpacked_nowhere(
 ) -> None:
     """A digest vouches for bytes; the archive inside them is still read as untrusted.
 
-    The member here names a path above the directory it is unpacked into, which
-    is how an archive writes over a file nobody asked it to touch.
+    The second member names a path above the directory it is unpacked into,
+    which is how an archive writes over a file nobody asked it to touch. The
+    program before it has already been written to the staging directory by
+    then, and is cleared with it.
     """
     base, release = serving_release
     archive = archive_for(VERSION, sys.platform, platform.machine())
@@ -324,7 +335,12 @@ def test_an_archive_whose_member_leaves_the_directory_is_unpacked_nowhere(
 
     above = runtime_directory(into, VERSION).parent
     contains(str(raised.value), "could not be unpacked")
-    truth(not (above / "escaped").exists(), describing="nothing written above the directory")
+    equal(
+        sorted(path.name for path in above.iterdir()) if above.exists() else [],
+        [],
+        describing="what the refused archive left beside the runtime, staging included",
+    )
+    truth(not (above.parent / "escaped").exists(), describing="nothing written above the runtime")
     truth(not into.exists(), describing="nothing written where pwsh goes")
 
 

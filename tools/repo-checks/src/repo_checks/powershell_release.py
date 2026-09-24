@@ -198,7 +198,13 @@ def install(
     except OSError as failed:
         msg = f"{staged} staging directory could not be cleared: {failed}"
         raise InstallerError(msg) from failed
-    unpack(payload, name=archive.name, into=staged)
+    try:
+        unpack(payload, name=archive.name, into=staged)
+    except InstallerError:
+        # An archive refused partway has already written the members before the
+        # one refused, so the staging directory is cleared rather than left.
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
     if not (staged / "pwsh").is_file():
         shutil.rmtree(staged, ignore_errors=True)
         msg = f"{archive.name} carries no pwsh: it unpacks to no such program"

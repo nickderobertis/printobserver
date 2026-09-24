@@ -427,7 +427,7 @@ def test_an_archive_is_unpacked_whole_into_its_own_directory(tmp_path: Path) -> 
     [_tar({"../escaped": b"outside"}), b"not an archive at all"],
     ids=["a member leaving the directory", "not a tar"],
 )
-def test_an_archive_the_data_filter_or_reader_refuses_is_unpacked_nowhere(
+def test_an_archive_the_data_filter_or_reader_refuses_writes_nothing_above_its_directory(
     tmp_path: Path, payload: bytes
 ) -> None:
     """Nothing is written above the directory an archive was unpacked into."""
