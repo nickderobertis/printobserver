@@ -152,8 +152,8 @@ RELEASE_PLZ_STANDIN = """#!/bin/sh
 # the program was never reached.
 printf '%s\\n' "$*" >> "$RELEASE_PLZ_STANDIN_RECORD"
 case "$1" in
-  # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
   --version)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     echo "release-plz $RELEASE_PLZ_STANDIN_VERSION"
     exit 0
     ;;
