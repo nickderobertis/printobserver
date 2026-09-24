@@ -1334,6 +1334,18 @@ site = "RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ"
 reason = "The environment the stand-in's `--version` answer reads, and the same ground as the entry at that answer: `release-plz` is stood in because the real one reaches crates.io and a forge, and the layer under test is the committed workflow's scheduling. This line hands the stand-in the release `repo-policy.toml` holds, read off the policy rather than restated, so the workflow's real `just install-tools release-plz` step finds the held release on PATH and takes its own already-present path; answering anything else would have the journey download a release archive from GitHub inside a tier about `needs` and `if` expressions. The directive sits here as well as at the answer because an `ignore` covers only the line beneath it."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "echo \"release-plz $RELEASE_PLZ_STANDIN_VERSION\""
+reason = "The same answer the `e2e_not_mocked` entries at this site and at `RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ` cover. It lets the workflow's real `just install-tools release-plz` step decide that nothing needs installing, so this journey does not take the installer's download path. That path is not this journey's subject, and it is proven where it is: `tools/repo-checks/tests/test_release_plz_release.py` drives `python -m repo_checks install-release-plz` against a loopback stand-in release, refusing a tampered archive before anything reaches PATH, and the gate's own `just test-e2e` runs `install-tools release-plz` first, downloading the held archive from the producer and verifying it against the committed digest. What this journey asks is whether the committed workflow's `needs` and `if` expressions reach the build and the publish, and taking the download path here would put the network inside that tier and add nothing to what the installer's own tests prove."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ"
+reason = "The same answer the `e2e_not_mocked` entries at this site and at the stand-in's `--version` answer cover. It lets the workflow's real `just install-tools release-plz` step decide that nothing needs installing, so this journey does not take the installer's download path. That path is not this journey's subject, and it is proven where it is: `tools/repo-checks/tests/test_release_plz_release.py` drives `python -m repo_checks install-release-plz` against a loopback stand-in release, refusing a tampered archive before anything reaches PATH, and the gate's own `just test-e2e` runs `install-tools release-plz` first, downloading the held archive from the producer and verifying it against the committed digest. What this journey asks is whether the committed workflow's `needs` and `if` expressions reach the build and the publish, and taking the download path here would put the network inside that tier and add nothing to what the installer's own tests prove."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "staged.replace(runtime)"
