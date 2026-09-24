@@ -242,7 +242,7 @@ def member_of(payload: bytes, *, name: str, member: str) -> bytes:
             if extracted is None:
                 raise KeyError(member)
             return extracted.read()
-    except (KeyError, tarfile.TarError, zipfile.BadZipFile, zlib.error) as error:
+    except (KeyError, tarfile.TarError, zipfile.BadZipFile, zlib.error, EOFError) as error:
         msg = f"{name} carries no {member}: {error}"
         raise InstallerError(msg) from error
 
@@ -262,7 +262,7 @@ def unpack(payload: bytes, *, name: str, into: Path) -> None:
     try:
         with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as bundle:
             bundle.extractall(into, filter="data")
-    except (tarfile.TarError, zlib.error, OSError) as error:
+    except (tarfile.TarError, zlib.error, EOFError, OSError) as error:
         msg = f"{name} could not be unpacked into {into}: {error}"
         raise InstallerError(msg) from error
 

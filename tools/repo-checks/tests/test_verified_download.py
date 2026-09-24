@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import platform
 import shutil
 import socket
@@ -371,6 +372,16 @@ def _tar(entries: dict[str, bytes | None]) -> bytes:
     return buffer.getvalue()
 
 
+def _truncated() -> bytes:
+    """A `.tar.gz` cut off inside its compressed stream, as an interrupted download is.
+
+    The member is incompressible, so the cut lands in the deflate data rather
+    than in the trailer gzip would forgive.
+    """
+    whole = _tar({"tool/bin/tool": os.urandom(200_000)})
+    return whole[: len(whole) // 2]
+
+
 def _zip(entries: dict[str, bytes]) -> bytes:
     """A `.zip` of named files."""
     buffer = io.BytesIO()
@@ -399,8 +410,9 @@ def test_a_member_is_read_out_of_either_archive_shape(name: str, payload: bytes)
         ("tool.tar.gz", _tar({"README": b"no program"})),
         ("tool.zip", _zip({"README": b"no program"})),
         ("tool.zip", b"not an archive at all"),
+        ("tool.tar.gz", _truncated()),
     ],
-    ids=["a directory by that name", "tar without it", "zip without it", "not a zip"],
+    ids=["a directory by that name", "tar without it", "zip without it", "not a zip", "truncated"],
 )
 def test_an_archive_without_the_member_as_a_file_is_refused_naming_it(
     name: str, payload: bytes
@@ -424,8 +436,8 @@ def test_an_archive_is_unpacked_whole_into_its_own_directory(tmp_path: Path) -> 
 
 @pytest.mark.parametrize(
     "payload",
-    [_tar({"../escaped": b"outside"}), b"not an archive at all"],
-    ids=["a member leaving the directory", "not a tar"],
+    [_tar({"../escaped": b"outside"}), b"not an archive at all", _truncated()],
+    ids=["a member leaving the directory", "not a tar", "truncated"],
 )
 def test_an_archive_the_data_filter_or_reader_refuses_writes_nothing_above_its_directory(
     tmp_path: Path, payload: bytes

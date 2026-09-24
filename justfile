@@ -312,8 +312,8 @@ check-repo:
 # The end-to-end tier: journeys that drive the real gate, checks and bootstrap.
 #
 # release-plz first, by name: `repo-policy.toml` declares it `bootstrap = false`
-# — only this tier and the release workflow run it — and the three journeys that
-# drive it skip where it is absent. Installing it here is what keeps those three
+# — only this tier, `release-dry-run` and the release workflow run it — and the
+# three journeys that drive it skip where it is absent. Installing it here is what keeps those three
 # from going silently skipped on a host, or a gate cell, that bootstrapped and
 # nothing more. The install downloads one verified prebuilt archive, and skips
 # even that where the held release is already on PATH.
@@ -415,6 +415,7 @@ lint-llm:
 
 # Prove release-plz accepts this tree's release configuration, publishing nothing.
 release-dry-run:
+    uv run -q python -m repo_checks install-tools release-plz
     release-plz release --dry-run
 
 # Bring up the self-hosted Obico stack the scheduled reconciliation tier drives.
