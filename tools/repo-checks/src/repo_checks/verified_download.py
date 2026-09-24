@@ -29,7 +29,10 @@ from http.client import HTTPMessage
 from pathlib import Path
 from typing import IO
 
-#: How long one download may take, in seconds.
+#: Seconds urllib waits on any one blocking socket operation — the connection
+#: or a single read — rather than a bound on the whole download: a slow
+#: release that is still arriving finishes, and a server that stops answering
+#: is refused.
 DOWNLOAD_TIMEOUT = 120
 
 #: The hosts an installer may download from over plain HTTP: the loopback
