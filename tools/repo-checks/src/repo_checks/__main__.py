@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from repo_checks import (
     commands,
@@ -30,12 +30,23 @@ class _Installer(Protocol):
     def __call__(self, version: str, into: Path | None = None, *, releases: str) -> int: ...
 
 
-# The verbs that download a release, each with its installer and its producer's
-# own address: the only verbs `--releases` and `--into` mean anything to.
-INSTALLERS: dict[str, tuple[_Installer, str]] = {
-    "install-gh": (gh_release.install_gh, gh_release.RELEASES),
-    "install-release-plz": (release_plz_release.install_release_plz, release_plz_release.RELEASES),
-    "install-powershell": (powershell_release.install_powershell, powershell_release.RELEASES),
+class Installer(NamedTuple):
+    """One install verb: what it runs, and the producer's address it fetches by default."""
+
+    install: _Installer
+    producer: str
+
+
+# The verbs that download a release: the only verbs `--releases` and `--into`
+# mean anything to.
+INSTALLERS = {
+    "install-gh": Installer(gh_release.install_gh, gh_release.RELEASES),
+    "install-release-plz": Installer(
+        release_plz_release.install_release_plz, release_plz_release.RELEASES
+    ),
+    "install-powershell": Installer(
+        powershell_release.install_powershell, powershell_release.RELEASES
+    ),
 }
 
 COMMANDS = (
@@ -121,11 +132,11 @@ def main(argv: list[str] | None = None) -> int:
         case verb if verb in INSTALLERS:
             if parsed.argument is None:
                 parser.error(f"{verb} needs the release to install")
-            installer, producer = INSTALLERS[verb]
-            return installer(
+            installer = INSTALLERS[verb]
+            return installer.install(
                 parsed.argument,
                 _into(parsed.into),
-                releases=parsed.releases if parsed.releases is not None else producer,
+                releases=parsed.releases if parsed.releases is not None else installer.producer,
             )
         case "tool-version":
             if parsed.argument is None:
