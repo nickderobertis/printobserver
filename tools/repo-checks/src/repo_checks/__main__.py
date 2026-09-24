@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Protocol
 
 from repo_checks import (
     commands,
@@ -22,11 +23,24 @@ from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
 from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
+
+class _Installer(Protocol):
+    """What every release installer takes: the release, a directory, and where to fetch it."""
+
+    def __call__(self, version: str, into: Path | None = None, *, releases: str) -> int: ...
+
+
+# The verbs that download a release, each with its installer and its producer's
+# own address: the only verbs `--releases` and `--into` mean anything to.
+INSTALLERS: dict[str, tuple[_Installer, str]] = {
+    "install-gh": (gh_release.install_gh, gh_release.RELEASES),
+    "install-release-plz": (release_plz_release.install_release_plz, release_plz_release.RELEASES),
+    "install-powershell": (powershell_release.install_powershell, powershell_release.RELEASES),
+}
+
 COMMANDS = (
     "install-tools",
-    "install-gh",
-    "install-release-plz",
-    "install-powershell",
+    *INSTALLERS,
     "tool-version",
     "install-hooks",
     "commit-msg",
@@ -39,10 +53,6 @@ COMMANDS = (
 # The checks that read a base revision as well as the tree: what a change adds,
 # and what it takes away.
 BASE_AWARE = {"suppressions": suppressions, "integration-tier": integration_tier}
-
-# The verbs that download a release, and so the only ones `--releases` and
-# `--into` mean anything to.
-INSTALL_VERBS = frozenset({"install-gh", "install-release-plz", "install-powershell"})
 
 
 def _into(named: str | None) -> Path | None:
@@ -100,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
         if value is not None and not value.strip():
             parser.error(f"{option} needs a nonempty value")
-        if value is not None and parsed.name not in INSTALL_VERBS:
+        if value is not None and parsed.name not in INSTALLERS:
             parser.error(f"{option} cannot be used with {parsed.name}")
 
     repo = Repo(Path(parsed.root))
@@ -108,33 +118,14 @@ def main(argv: list[str] | None = None) -> int:
     match parsed.name:
         case "install-tools":
             return commands.install_tools(repo, parsed.argument)
-        case "install-gh":
+        case verb if verb in INSTALLERS:
             if parsed.argument is None:
-                parser.error("install-gh needs the release to install")
-            return gh_release.install_gh(
+                parser.error(f"{verb} needs the release to install")
+            installer, producer = INSTALLERS[verb]
+            return installer(
                 parsed.argument,
                 _into(parsed.into),
-                releases=parsed.releases if parsed.releases is not None else gh_release.RELEASES,
-            )
-        case "install-release-plz":
-            if parsed.argument is None:
-                parser.error("install-release-plz needs the release to install")
-            return release_plz_release.install_release_plz(
-                parsed.argument,
-                _into(parsed.into),
-                releases=(
-                    parsed.releases if parsed.releases is not None else release_plz_release.RELEASES
-                ),
-            )
-        case "install-powershell":
-            if parsed.argument is None:
-                parser.error("install-powershell needs the release to install")
-            return powershell_release.install_powershell(
-                parsed.argument,
-                _into(parsed.into),
-                releases=(
-                    parsed.releases if parsed.releases is not None else powershell_release.RELEASES
-                ),
+                releases=parsed.releases if parsed.releases is not None else producer,
             )
         case "tool-version":
             if parsed.argument is None:

@@ -43,21 +43,27 @@ def powershell_providers(repo: Repo) -> list[str]:
         syntax = ast.parse(repo.read(source), filename=source)
     except SyntaxError as error:
         return [f"{source} could not be parsed: {error.msg} at line {error.lineno}"]
-    assignment = next(
-        (
-            node
-            for node in syntax.body
-            if isinstance(node, ast.Assign)
+    assignments = [
+        node
+        for node in ast.walk(syntax)
+        if (
+            isinstance(node, ast.Assign)
             and any(
                 isinstance(target, ast.Name) and target.id == "POWERSHELLS"
                 for target in node.targets
             )
-        ),
-        None,
-    )
-    if assignment is None:
+        )
+        or (
+            isinstance(node, (ast.AnnAssign, ast.AugAssign))
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "POWERSHELLS"
+        )
+    ]
+    if len(assignments) > 1:
+        return [f"{source} assigns POWERSHELLS more than once, so no one literal is its value"]
+    if not assignments or not isinstance(assignments[0], ast.Assign):
         return [f"{source} declares no literal POWERSHELLS tuple"]
-    value = assignment.value
+    value = assignments[0].value
     if not isinstance(value, ast.Tuple) or not all(
         isinstance(element, ast.Constant) and isinstance(element.value, str)
         for element in value.elts
