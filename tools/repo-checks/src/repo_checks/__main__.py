@@ -40,6 +40,10 @@ COMMANDS = (
 # and what it takes away.
 BASE_AWARE = {"suppressions": suppressions, "integration-tier": integration_tier}
 
+# The verbs that download a release, and so the only ones `--releases` and
+# `--into` mean anything to.
+INSTALL_VERBS = frozenset({"install-gh", "install-release-plz", "install-powershell"})
+
 
 def _into(named: str | None) -> Path | None:
     """The directory an install verb was pointed at, absolute, or none for its own default.
@@ -96,14 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
         if value is not None and not value.strip():
             parser.error(f"{option} needs a nonempty value")
+        if value is not None and parsed.name not in INSTALL_VERBS:
+            parser.error(f"{option} cannot be used with {parsed.name}")
 
     repo = Repo(Path(parsed.root))
 
     match parsed.name:
         case "install-tools":
-            for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
-                if value is not None:
-                    parser.error(f"{option} cannot be used with install-tools")
             return commands.install_tools(repo, parsed.argument)
         case "install-gh":
             if parsed.argument is None:
