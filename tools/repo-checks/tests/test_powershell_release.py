@@ -161,6 +161,37 @@ def test_a_replacement_the_filesystem_refuses_leaves_the_runtime_that_was_there(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_link_the_filesystem_refuses_after_the_runtime_was_replaced_is_a_refusal(
+    serving_release: tuple[str, Release],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The runtime is in place and the link is not: the verb says which, and where.
+
+    The name the link is staged under is occupied here by a directory, which a
+    file unlink refuses — so the second install replaces the runtime the first
+    left and then cannot commit the link onto it. That comes back as the verb's
+    own refusal naming the runtime it did install, rather than as a traceback
+    after a replacement, and the link the first install left still runs.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    install(archive, into, releases=base)
+    (into / ".pwsh.part").mkdir()
+    runtime = runtime_directory(into, VERSION)
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, f"install-powershell: PowerShell {VERSION} is installed at {runtime}")
+    contains(said, f"`pwsh` could not be linked into {into}")
+    contains(said, f"Link {runtime / 'pwsh'} there yourself")
+    contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_the_verb_pointed_at_a_relative_directory_leaves_a_link_that_runs(
     serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

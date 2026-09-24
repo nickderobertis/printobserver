@@ -14,15 +14,18 @@ installer really holds so that nothing but the address decides the outcome.
 
 from __future__ import annotations
 
+import contextlib
 import platform
+import socket
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
-from repo_checks.expect import contains, equal, truth
+from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.gh_release import RELEASES as GH_RELEASES
 from repo_checks.gh_release import archive_for as gh_archive_for
 from repo_checks.powershell_release import RELEASES as POWERSHELL_RELEASES
@@ -118,6 +121,10 @@ def test_every_installers_own_address_is_one_the_rule_admits(address: str) -> No
 #: installer: what a redirect happens to, `download` decides for all three.
 PWSH = next(held.version for held in held_by_verb() if held.command == "pwsh")
 
+#: How long, in seconds, a suite waits on a loopback listener an installer is
+#: redirected to: far longer than a connect over loopback takes.
+DOWNLOAD_WAIT = 30
+
 
 @pytest.fixture
 def serving_powershell() -> Iterator[tuple[str, Release]]:
@@ -153,6 +160,47 @@ def test_a_release_redirecting_its_archive_elsewhere_on_loopback_is_still_instal
         f"/v{PWSH}/moved.tar.gz",
         describing="the address the redirect was followed to",
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_release_redirecting_to_tls_on_another_host_is_followed_there(
+    serving_powershell: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A redirect to `https` is taken whatever host it names, as the forge's are.
+
+    The forge answers a release asset with a redirect to its own asset store on
+    another host, so the host of a TLS redirect cannot be held to the forge.
+    Here the redirect names `https` on a loopback listener this suite owns — a
+    host `--releases` itself would refuse — and that listener being reached is
+    what says the redirect was followed rather than refused. It speaks no TLS,
+    so the download then fails, and the install is refused as a failed download
+    with nothing written.
+    """
+    base, release = serving_powershell
+    archive = archive_for(PWSH, sys.platform, platform.machine())
+    publish(release, archive)
+    reached = threading.Event()
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        listener.settimeout(DOWNLOAD_WAIT)
+
+        def accept_one() -> None:
+            with contextlib.suppress(TimeoutError), listener.accept()[0]:
+                reached.set()
+
+        accepting = threading.Thread(target=accept_one, daemon=True)
+        accepting.start()
+        port = listener.getsockname()[1]
+        release.redirects[archive.name] = f"https://127.0.0.1:{port}/moved.tar.gz"
+        into = tmp_path / "bin"
+
+        with pytest.raises(InstallerError) as raised:
+            install(archive, into, releases=base)
+        accepting.join(DOWNLOAD_WAIT)
+
+    truth(reached.is_set(), describing="the TLS address the redirect named, reached")
+    contains(str(raised.value), "could not be downloaded")
+    absent(str(raised.value), "not an address this installer follows")
+    truth(not into.exists(), describing="nothing written where the program goes")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")

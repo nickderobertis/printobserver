@@ -216,12 +216,20 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     shutil.rmtree(superseded, ignore_errors=True)
     program = runtime / "pwsh"
     program.chmod(0o755)
-    into.mkdir(parents=True, exist_ok=True)
     linked = into / "pwsh"
     staging = into / ".pwsh.part"
-    staging.unlink(missing_ok=True)
-    staging.symlink_to(program)
-    staging.replace(linked)
+    try:
+        into.mkdir(parents=True, exist_ok=True)
+        staging.unlink(missing_ok=True)
+        staging.symlink_to(program)
+        staging.replace(linked)
+    except OSError as failed:
+        msg = (
+            f"PowerShell {archive.version} is installed at {runtime}, and `pwsh` could not be "
+            f"linked into {into}: {failed}. Link {program} there yourself, or install again "
+            f"into a directory this can write."
+        )
+        raise InstallerError(msg) from failed
     return linked
 
 

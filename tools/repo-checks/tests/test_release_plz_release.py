@@ -115,6 +115,37 @@ def test_the_verb_installs_a_verified_release_and_the_installed_copy_answers_it(
     )
 
 
+def test_the_verb_places_the_archives_own_program_under_the_name_this_host_runs(
+    serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On every host, Windows included, what lands on PATH is what the archive carried.
+
+    The two journeys that run the installed program skip Windows, where a
+    script is no `.exe`; this one does not run it, so it is what drives the
+    Windows target's extraction and placement: `release-plz.exe` out of the
+    archive and into the directory, byte for byte, under the name a Windows
+    shell resolves `release-plz` to.
+    """
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive, monkeypatch)
+    into = tmp_path / "bin"
+
+    equal(main(["install-release-plz", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    equal(
+        archive.program,
+        "release-plz.exe" if sys.platform == "win32" else "release-plz",
+        describing="the name the program is placed under on this host",
+    )
+    equal(
+        sorted(path.name for path in into.iterdir()),
+        [archive.program],
+        describing="what the install left in the directory",
+    )
+    equal((into / archive.program).read_bytes(), _program(VERSION))
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="the archive's program is a script")
 def test_a_second_install_replaces_the_program_the_first_one_put_there(
     serving_release: tuple[str, Release], tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -652,7 +652,7 @@ def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_install
         ('["powershell"]', "names powershell and not `pwsh` itself"),
     ],
 )
-def test_a_provided_by_that_names_no_alternative_is_refused_before_anything_is_installed(
+def test_a_malformed_provided_by_is_refused_before_anything_is_installed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], declared: str, said: str
 ) -> None:
     """The declaration that decides whether a host installs at all is read or refused.
