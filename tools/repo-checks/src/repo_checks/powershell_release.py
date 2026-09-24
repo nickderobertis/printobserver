@@ -216,7 +216,8 @@ def install(
         if not runtime.exists():
             try:
                 # A name `exists` reads as vacant can still be occupied — a link
-                # to nothing is — and then the filesystem refuses this rename.
+                # to nothing is — and `rename(2)` moves a directory only onto an
+                # absent name or an empty directory, so it refuses this one.
                 superseded.replace(runtime)
             except OSError as failed:
                 shutil.rmtree(staged, ignore_errors=True)
