@@ -86,6 +86,29 @@ def test_the_verb_installs_a_verified_release_and_the_link_reaches_its_program(
     runtime = runtime_directory(into, VERSION)
     truth((runtime / RUNTIME_FILE).is_file(), describing="the whole archive unpacked")
     contains(run([str(into / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_link_name_held_by_a_directory_is_a_refusal_naming_the_installed_runtime(
+    serving_release: tuple[str, Release],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The staged link is made, and committing it onto `pwsh` is what the filesystem refuses."""
+    base, release = serving_release
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    into = tmp_path / "bin"
+    _publish(release, archive)
+    (into / "pwsh" / "kept").mkdir(parents=True)
+    runtime = runtime_directory(into, VERSION)
+
+    equal(main(["install-powershell", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, f"install-powershell: PowerShell {VERSION} is installed at {runtime}")
+    contains(said, f"`pwsh` could not be linked into {into}")
+    contains(run([str(runtime / "pwsh"), "--version"], check=True).stdout, f"PowerShell {VERSION}")
+    equal((into / "pwsh" / "kept").is_dir(), True)
     equal(
         release.asked,
         [f"/v{VERSION}/{HASHES}", f"/v{VERSION}/{archive.name}"],
