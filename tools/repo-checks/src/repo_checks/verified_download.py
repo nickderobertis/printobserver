@@ -108,26 +108,33 @@ def held_to_producer(releases: str, producer: str) -> None:
     raise InstallerError(msg)
 
 
-def followed(url: str) -> bool:
+def followed(url: str, *, from_url: str) -> bool:
     """Whether a redirect an answer names is one an installer follows.
 
     A release asset on the forge is answered with a redirect to the forge's own
     asset store, so following one is how any of these downloads completes and
-    the host cannot be held to `FORGE` here. What is held is the **scheme**: a
-    redirect to plain `http` is a downgrade of a download that began over TLS,
-    and the only plain-HTTP answer an installer takes is a suite's own stand-in
-    on loopback, which is the one this admits besides. An address whose
-    authority the parser refuses, its port included, is followed nowhere.
+    the host cannot be held to `FORGE` here. A TLS answer may redirect only to
+    TLS. A loopback HTTP stand-in may redirect to another loopback HTTP address
+    so its release journey can exercise redirects over real sockets. An address
+    whose authority the parser refuses, its port included, is followed nowhere.
     """
     try:
         parsed = urllib.parse.urlsplit(url)
         hostname = parsed.hostname
         _ = parsed.port
+        origin = urllib.parse.urlsplit(from_url)
+        origin_host = origin.hostname
+        _ = origin.port
     except ValueError:
         return False
     if parsed.scheme == "https":
         return True
-    return parsed.scheme == "http" and hostname in LOOPBACK
+    return (
+        parsed.scheme == "http"
+        and hostname in LOOPBACK
+        and origin.scheme == "http"
+        and origin_host in LOOPBACK
+    )
 
 
 class _Redirects(urllib.request.HTTPRedirectHandler):
@@ -143,7 +150,7 @@ class _Redirects(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> urllib.request.Request | None:
         """Refuse the redirect outright rather than hand urllib another address."""
-        if not followed(newurl):
+        if not followed(newurl, from_url=req.full_url):
             reason = f"redirected to {newurl}, which is not an address this installer follows"
             raise urllib.error.HTTPError(newurl, code, reason, headers, None)
         return super().redirect_request(req, fp, code, msg, headers, newurl)

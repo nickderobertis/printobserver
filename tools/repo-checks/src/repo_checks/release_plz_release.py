@@ -2,10 +2,8 @@
 
 `release-plz` is held at one release in `repo-policy.toml`'s toolchain, because
 the journeys in `tests/repo-e2e` that drive it record what *that* release
-prints. It used to be `cargo install`ed, which compiled it from source on every
-host that bootstrapped — about thirteen minutes on a cold Windows gate cell, for
-a program only the release workflow and those journeys run. This takes the
-prebuilt archive the release publishes for the host instead.
+prints. This installer takes the prebuilt archive the release publishes for the
+host.
 
 Upstream publishes no checksums file beside those archives, so the digest this
 installer holds one to is **committed here**, per release and per target. That

@@ -1,11 +1,8 @@
 """One exact PowerShell release, installed from its own published archive.
 
-Three end-to-end journeys here drive the committed PowerShell install script and
-the Windows service installer the way a caller on Windows runs them — under
-`pwsh`. Before this, nothing declared or installed that program: a Linux or
-macOS development host carried none, and the journeys refused or skipped there,
-so the one thing proving the Windows half of the install path ran on Windows
-alone.
+The install-script and Windows service journeys run under `pwsh` on Linux and
+macOS as well as Windows. This installer supplies it where the host carries
+neither `pwsh` nor `powershell`.
 
 `pwsh` is a whole .NET runtime rather than one file, so the release's archive is
 unpacked whole into a directory of its own and the program inside it is linked

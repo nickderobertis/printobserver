@@ -13,6 +13,7 @@ would be no verification at all.
 
 from __future__ import annotations
 
+import ssl
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -40,7 +41,7 @@ class Release:
 
 
 @contextmanager
-def serving(prefix: str, release: Release) -> Iterator[str]:
+def serving(prefix: str, release: Release, *, tls: ssl.SSLContext | None = None) -> Iterator[str]:
     """Answer `release`'s files under `prefix`, yielding the address to download from.
 
     Anything outside `prefix`, and any name the release does not publish, is a
@@ -73,10 +74,13 @@ def serving(prefix: str, release: Release) -> Iterator[str]:
             """Say nothing: the suite's own assertions are the signal."""
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    if tls is not None:
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
+        scheme = "https" if tls is not None else "http"
+        yield f"{scheme}://127.0.0.1:{server.server_address[1]}"
     finally:
         server.shutdown()
         server.server_close()

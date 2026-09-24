@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal, refused, truth
 from repo_checks.model import Repo
@@ -39,7 +40,7 @@ from standin_powershell import publish as _publish
 from standin_release import Release, serving
 from treecopy import REPO_ROOT
 
-VERSION = "7.6.6"
+VERSION = next(held.version for held in held_by_verb() if held.command == "pwsh")
 
 
 def _escaping_archive() -> bytes:

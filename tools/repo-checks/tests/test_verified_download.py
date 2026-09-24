@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import contextlib
 import platform
+import shutil
 import socket
+import ssl
 import sys
 import threading
 from collections.abc import Iterator
@@ -204,6 +206,65 @@ def test_a_release_redirecting_its_archive_elsewhere_on_loopback_is_still_instal
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
+def test_a_tls_redirect_cannot_downgrade_to_loopback_http(
+    serving_powershell: tuple[str, Release],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real HTTPS response cannot send the archive back to plain HTTP."""
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.skip("OpenSSL is needed to serve the local TLS redirect")
+    config = tmp_path / "openssl.cnf"
+    config.write_text(
+        "[req]\nprompt=no\ndistinguished_name=dn\nx509_extensions=v3\n"
+        "[dn]\nCN=127.0.0.1\n[v3]\nsubjectAltName=IP:127.0.0.1\n",
+        encoding="utf-8",
+    )
+    cert = tmp_path / "cert.pem"
+    key = tmp_path / "key.pem"
+    run(
+        [
+            openssl,
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-config",
+            str(config),
+        ],
+        check=True,
+    )
+    monkeypatch.setenv("SSL_CERT_FILE", str(cert))
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(cert, key)
+    base, release = serving_powershell
+    archive = archive_for(PWSH, sys.platform, platform.machine())
+    publish(release, archive)
+    release.files["moved.tar.gz"] = release.files[archive.name]
+    middle = Release()
+    with serving(f"/v{PWSH}/", middle, tls=tls) as secure:
+        release.redirects[archive.name] = f"{secure}/v{PWSH}/{archive.name}"
+        middle.redirects[archive.name] = f"{base}/v{PWSH}/moved.tar.gz"
+        into = tmp_path / "bin"
+
+        with pytest.raises(InstallerError) as raised:
+            install(archive, into, releases=base)
+
+    contains(str(raised.value), "not an address this installer follows")
+    contains(middle.asked, f"/v{PWSH}/{archive.name}")
+    truth(not into.exists(), describing="nothing written where pwsh goes")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the installer refuses a Windows host")
 def test_a_release_redirecting_to_tls_is_followed_to_the_address_it_names(
     serving_powershell: tuple[str, Release], tmp_path: Path
 ) -> None:
@@ -250,10 +311,10 @@ def test_a_release_redirecting_to_tls_is_followed_to_the_address_it_names(
     "redirected",
     ["http://example.invalid/moved.tar.gz", "https://127.0.0.1:bad/moved.tar.gz"],
 )
-def test_a_release_redirecting_off_tls_or_to_no_address_is_refused_and_installs_nothing(
+def test_a_loopback_release_redirecting_to_untrusted_or_malformed_address_is_refused(
     serving_powershell: tuple[str, Release], tmp_path: Path, redirected: str
 ) -> None:
-    """A download that began over TLS is not walked off it by whatever answered.
+    """A loopback release cannot redirect to an untrusted or malformed address.
 
     Both the checksums file and the archive are fetched from the address a
     caller named, so an answer free to redirect anywhere would be an answer
