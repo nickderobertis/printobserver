@@ -82,6 +82,7 @@ ARCHITECTURES = {
 #:
 #:     gh api repos/release-plz/release-plz/releases/tags/release-plz-v<version> \
 #:       --jq '.assets[] | "\(.name)  \(.digest)"'
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 DIGESTS: dict[str, dict[str, str]] = {
     "0.3.167": {
         "x86_64-unknown-linux-gnu": (

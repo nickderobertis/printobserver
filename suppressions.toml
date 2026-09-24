@@ -1338,3 +1338,27 @@ rule = "changed_behavior_has_e2e"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "staged.replace(runtime)"
 reason = "The replacement this line completes is covered end to end three times over, against a stand-in release served over real HTTP: a second install replaces the runtime and the link the first left; a commit the filesystem refuses leaves the first runtime untouched and comes back as a refusal, driven by occupying the aside name with a regular file; and the state an install interrupted mid-commit leaves — the runtime under the dotted aside name, `pwsh` linked to nothing — is put on disk and run forward, the next install recovering it to one runtime and one working link. What is not covered, and what the rule was read four times over this branch to demand, is THIS rename failing after the one above it succeeded. That state cannot be reached from outside the process: the name it renames onto has just been vacated, both entries are in one directory this install has already written to, and `os.replace` between them fails only on a full or vanishing filesystem. Four designs were tried against the objection — the two renames reordered so nothing is deleted before its replacement is in place, the failure diagnosed rather than let out as a traceback, a conditional that read the directory to say which name held the runtime deleted because only one of its branches could ever run, and the interrupted state driven forward — and the demand survived each. A test that made this line fail would have to make a rename fail by pretending, which is the mocking this repository's own rules forbid, so the honest answer is the three journeys above and this note rather than a fourth that proves nothing."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release_plz_release.py"
+site = "DIGESTS: dict[str, dict[str, str]] = {"
+reason = "Release-plz publishes no checksums file; these SHA-256 values were copied from the release API's per-asset digest for the held 0.3.167 assets. The committed digest is intentionally the authority for an install: verified() hashes the actual download and refuses changed bytes before placement. A gate that re-reads the forge's current digest would make a producer re-cut override this repository's reviewed pin, rather than detect the changed artifact at install time. The supported-platform test holds every target to a committed digest, and the tampered-archive journey proves the mismatch refusal."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/powershell_release.py"
+site = "HASHES = \"hashes.sha256\""
+reason = "This is the producer's asset name, not a second local contract: each install requests this exact file from the selected PowerShell release and refuses a missing file before unpacking anything. A live quality-gate fetch would depend on GitHub being reachable even when no installer is run; the runtime boundary is where the producer's release is actually consulted. The installer journeys serve that file over real HTTP and verify the downloaded archive against its contents."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/powershell_release.py"
+site = "FLAVOURS = {"
+reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/powershell_release.py"
+site = "return f\"powershell-{self.version}-{self.flavour}.tar.gz\""
+reason = "The archive name is checked against the release's own hashes.sha256 before its bytes are downloaded or unpacked. A producer rename therefore refuses the install instead of silently selecting another asset; the missing-name journey proves that behavior over HTTP. The release listing is the runtime source, so duplicating its mutable contents in the deterministic repository gate would not improve the install's trust boundary."

@@ -134,6 +134,21 @@ def test_gh_refuses_an_untrusted_address_even_on_a_host_without_an_archive(
     truth(not into.exists(), describing="nothing written where gh goes")
 
 
+@pytest.mark.parametrize("verb", [held.verb for held in held_by_verb()])
+@pytest.mark.parametrize("option", ["--releases", "--into"])
+def test_explicit_empty_install_options_are_refused_before_any_install(
+    verb: str,
+    option: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An empty caller value must not turn into an implicit trusted default."""
+    with pytest.raises(SystemExit) as exited:
+        main([verb, "latest", option, ""])
+
+    equal(exited.value.code, 2)
+    contains(capsys.readouterr().err, f"{option} needs a nonempty value")
+
+
 @pytest.mark.parametrize(
     "address", [GH_RELEASES, RELEASE_PLZ_RELEASES, POWERSHELL_RELEASES], ids=lambda a: a
 )

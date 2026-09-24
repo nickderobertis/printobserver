@@ -53,7 +53,7 @@ def _into(named: str | None) -> Path | None:
     also what makes the "not on PATH" line these verbs print compare the
     directory against PATH's own absolute entries rather than against a name.
     """
-    return Path(named).resolve() if named else None
+    return Path(named).resolve() if named is not None else None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,6 +93,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parsed = parser.parse_args(argv)
+    for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
+        if value is not None and not value.strip():
+            parser.error(f"{option} needs a nonempty value")
 
     repo = Repo(Path(parsed.root))
 
@@ -108,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             return gh_release.install_gh(
                 parsed.argument,
                 _into(parsed.into),
-                releases=parsed.releases or gh_release.RELEASES,
+                releases=parsed.releases if parsed.releases is not None else gh_release.RELEASES,
             )
         case "install-release-plz":
             if parsed.argument is None:
@@ -116,7 +119,9 @@ def main(argv: list[str] | None = None) -> int:
             return release_plz_release.install_release_plz(
                 parsed.argument,
                 _into(parsed.into),
-                releases=parsed.releases or release_plz_release.RELEASES,
+                releases=(
+                    parsed.releases if parsed.releases is not None else release_plz_release.RELEASES
+                ),
             )
         case "install-powershell":
             if parsed.argument is None:
@@ -124,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
             return powershell_release.install_powershell(
                 parsed.argument,
                 _into(parsed.into),
-                releases=parsed.releases or powershell_release.RELEASES,
+                releases=(
+                    parsed.releases if parsed.releases is not None else powershell_release.RELEASES
+                ),
             )
         case "tool-version":
             if parsed.argument is None:

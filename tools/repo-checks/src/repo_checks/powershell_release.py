@@ -42,6 +42,7 @@ from repo_checks.verified_download import (
 RELEASES = "https://github.com/PowerShell/PowerShell/releases/download"
 
 #: The name of the checksums file every release publishes beside its archives.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 HASHES = "hashes.sha256"
 
 #: What the release calls the build for each host it can be installed on, keyed
@@ -58,6 +59,7 @@ HASHES = "hashes.sha256"
 #:
 #: `tests/test_powershell_release.py` drives that refusal against a stand-in
 #: release serving a hashes file that lists another name.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 FLAVOURS = {
     ("linux", "x86_64"): "linux-x64",
     ("linux", "aarch64"): "linux-arm64",
@@ -89,6 +91,7 @@ class Archive:
     @property
     def name(self) -> str:
         """The archive's file name, as `hashes.sha256` lists it."""
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
         return f"powershell-{self.version}-{self.flavour}.tar.gz"
 
 
