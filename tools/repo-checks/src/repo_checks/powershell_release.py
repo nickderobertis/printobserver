@@ -195,7 +195,13 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     )
     runtime = runtime_directory(into, archive.version)
     staged = runtime.with_name(f".{runtime.name}.part")
-    shutil.rmtree(staged, ignore_errors=True)
+    try:
+        shutil.rmtree(staged)
+    except FileNotFoundError:
+        pass
+    except OSError as failed:
+        msg = f"{staged} staging directory could not be cleared: {failed}"
+        raise InstallerError(msg) from failed
     unpack(payload, name=archive.name, into=staged)
     if not (staged / "pwsh").is_file():
         shutil.rmtree(staged, ignore_errors=True)
