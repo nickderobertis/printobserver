@@ -57,12 +57,13 @@ def powershell_providers(repo: Repo) -> list[str]:
     )
     if assignment is None:
         return [f"{source} declares no literal POWERSHELLS tuple"]
-    try:
-        declared = ast.literal_eval(assignment.value)
-    except ValueError, TypeError, SyntaxError:
+    value = assignment.value
+    if not isinstance(value, ast.Tuple) or not all(
+        isinstance(element, ast.Constant) and isinstance(element.value, str)
+        for element in value.elts
+    ):
         return [f"{source} declares no literal POWERSHELLS tuple"]
-    if not isinstance(declared, tuple) or not all(isinstance(name, str) for name in declared):
-        return [f"{source} declares no literal POWERSHELLS tuple"]
+    declared = tuple(element.value for element in value.elts if isinstance(element, ast.Constant))
     held = next((tool for tool in toolchain_tools(repo) if tool.command == "pwsh"), None)
     if held is None:
         return ["repo-policy.toml declares no pwsh toolchain tool"]

@@ -69,8 +69,13 @@ PWSH = next(held.version for held in held_by_verb() if held.command == "pwsh")
             'POWERSHELLS = ["pwsh", "powershell"]',
             "declares no literal POWERSHELLS tuple",
         ),
+        (
+            'POWERSHELLS = ("pwsh", "powershell")',
+            'POWERSHELLS = ("pwsh", 7)',
+            "declares no literal POWERSHELLS tuple",
+        ),
     ],
-    ids=["no such name", "not a literal", "not a tuple"],
+    ids=["no such name", "not a literal", "not a tuple", "not all names"],
 )
 def test_a_journey_declaring_no_literal_tuple_of_powershells_is_refused(
     tree: Callable[[], Tree], capsys: pytest.CaptureFixture[str], old: str, new: str, said: str
