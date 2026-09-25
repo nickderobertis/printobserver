@@ -10,8 +10,8 @@ authors.workspace = true
 
 [dependencies]
 chrono = "0.4"
-printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
-printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.2.0" }
+printobserver-core = { path = "../printobserver-core", version = "0.3.0" }
+printobserver-printer-api = { path = "../printobserver-printer-api", version = "0.3.0" }
 printobserver-supervisor-api = { workspace = true }
 printobserver-types = { workspace = true }
 rusqlite = { version = "0.37", features = ["bundled"] }
