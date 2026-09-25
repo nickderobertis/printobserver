@@ -70,6 +70,11 @@ source = [
 
 [tool.coverage.report]
 show_missing = true
+# A line one platform's hosts never reach, marked `# pragma: unreached on
+# <sys.platform> - <why>`, is excluded from a report made on that platform and
+# counted on every other. `repo_checks.commands.coverage` names the platform the
+# report is made on; a report nothing named one for excludes no such line.
+exclude_also = ["# pragma: unreached on ${PRINTOBSERVER_COVERAGE_HOST-no host named}\\b"]
 
 [tool.ty.environment]
 python-version = "3.14"

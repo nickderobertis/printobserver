@@ -819,11 +819,17 @@ fn tear_down(environment: Environment, manager: Manager) {
             "booting the service out",
         ),
     }
-    assert_eq!(
-        running(&environment, manager),
-        None,
-        "the {spelled} service is still running after it was torn down"
-    );
+    // launchd's `bootout` can answer while the process it signalled is still
+    // exiting, so the manager is given until the deadline to report it gone.
+    let deadline = Instant::now() + PATIENCE;
+    while let Some(pid) = running(&environment, manager) {
+        assert!(
+            Instant::now() < deadline,
+            "the {spelled} service is still running as {pid} after it was torn down:\n{}",
+            diagnosis(&environment, manager)
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    }
     let (teardown_of, had_var_lib) = match &environment {
         Environment::Container { name, image, .. } => (Some((name.clone(), image.clone())), true),
         Environment::Host { had_var_lib } => (None, *had_var_lib),

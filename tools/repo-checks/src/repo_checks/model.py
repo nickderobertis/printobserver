@@ -182,6 +182,13 @@ class Tool:
     #: Whether `just install-tools` installs it on every host. A tool only one
     #: job needs is `False`, and is installed where it is named.
     bootstrap: bool = True
+    #: Every command whose presence on PATH means the host already provides this
+    #: tool, the tool's own command among them. Empty where nothing but the
+    #: command itself provides it, which is every tool here but PowerShell: a
+    #: Windows host carries `powershell` and a developer host may carry a `pwsh`
+    #: of its own, and neither is this repository's to replace at the release it
+    #: holds, because neither is one it installed.
+    provided_by: tuple[str, ...] = ()
 
     @property
     def install_argv(self) -> list[str]:
@@ -201,8 +208,9 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
     Raises:
         PolicyValueError: If an entry is not a table or lacks a `command` or
             `install` string, holds a `version` that is not a release, holds
-            one its `install` never substitutes, or a `bootstrap` that is not a
-            boolean.
+            one its `install` never substitutes, a `bootstrap` that is not a
+            boolean, or a `provided_by` that is not a list of names including
+            the tool's own command.
     """
     entries = policy_table(repo, "toolchain").get("tool")
     if not isinstance(entries, list):
@@ -234,5 +242,56 @@ def toolchain_tools(repo: Repo) -> tuple[Tool, ...]:
                 f"which is not `true` or `false`"
             )
             raise PolicyValueError(msg)
-        tools.append(Tool(named["command"], named["install"], version, bootstrap))
+        provided_by = _provided_by(entry, named["command"])
+        tools.append(Tool(named["command"], named["install"], version, bootstrap, provided_by))
     return tuple(tools)
+
+
+#: What `provided_by` may name: a program as PATH finds one, by its bare name.
+#: A path or anything with a separator in it is not looked up on PATH at all —
+#: `shutil.which` answers it as written — so it would decide whether a host
+#: installs by what sits at one location rather than by what that host carries.
+COMMAND_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+
+
+def _provided_by(entry: dict[str, Any], command: str) -> tuple[str, ...]:
+    """The commands one entry declares its tool already provided by, narrowed.
+
+    `entry` is `Any`-valued because it is one table straight out of
+    `tomllib.load`, which answers whatever the file happened to contain and is
+    the boundary this function exists to narrow: everything it returns is a
+    `tuple[str, ...]` it has checked, and everything else is a
+    `PolicyValueError` naming what the table said. A narrower parameter would
+    be a claim about a file a person edits, made before anything read it.
+
+    Raises:
+        PolicyValueError: If it is not a list of names, or names every command
+            but the tool's own: a host carrying that command would be treated
+            as lacking the tool and an install would replace it.
+    """
+    declared = entry.get("provided_by")
+    if declared is None:
+        return ()
+    if not isinstance(declared, list) or not declared:
+        msg = (
+            f"`repo-policy.toml`'s `provided_by` for `{command}` is {declared!r}, "
+            f"which is not a non-empty list of commands"
+        )
+        raise PolicyValueError(msg)
+    names: list[str] = []
+    for name in declared:
+        if not isinstance(name, str) or not COMMAND_NAME.fullmatch(name.strip()):
+            msg = (
+                f"`repo-policy.toml`'s `provided_by` for `{command}` names {name!r}, "
+                f"which is not a command"
+            )
+            raise PolicyValueError(msg)
+        names.append(name.strip())
+    if command not in names:
+        msg = (
+            f"`repo-policy.toml`'s `provided_by` for `{command}` names "
+            f"{', '.join(names)} and not `{command}` itself, so a host already carrying "
+            f"`{command}` would replace it during bootstrap"
+        )
+        raise PolicyValueError(msg)
+    return tuple(names)

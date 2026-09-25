@@ -797,10 +797,15 @@ install = "cargo install cargo-llvm-cov --locked"
 # different shape from 0.3.164, the release the `0.2.0` run used, and
 # `tests/repo-e2e/tests/test_release_tag_journey.py` records the shape this one
 # prints: a bump re-reads that recording.
+#
+# Not bootstrapped: compiling it cost a cold Windows gate cell about thirteen
+# minutes, and only the release workflow, the release journeys and
+# `just release-dry-run` run it — each installs this prebuilt release by name.
 [[toolchain.tool]]
 command = "release-plz"
 version = "0.3.167"
-install = "cargo install release-plz --locked --version {version}"
+bootstrap = false
+install = "uv run -q python -m repo_checks install-release-plz {version}"
 
 # GitHub CLI, for the one journey that runs a real `gh skill install` of this
 # repository's Agent Skill, held at the release that journey's behaviour was
@@ -814,6 +819,25 @@ command = "gh"
 version = "2.100.0"
 bootstrap = false
 install = "uv run -q python -m repo_checks install-gh {version}"
+
+# PowerShell, for the three end-to-end journeys that drive the committed
+# PowerShell install script and the Windows service installer the way a caller
+# on Windows runs them. Nothing used to declare or install it, so those journeys
+# ran on Windows alone and a Linux or macOS development host proved that half of
+# the install path not at all.
+#
+# `provided_by` is why a Windows host installs nothing: it carries `powershell`,
+# which is what `release_artifacts.installing` runs a script under where `pwsh`
+# is absent, and a host carrying a `pwsh` of its own is left alone too — neither
+# is a copy this repository installed, so neither is one it holds at a release.
+# Where a host carries neither, `repo_checks install-powershell` takes the
+# release's own archive and verifies it against the `hashes.sha256` that release
+# publishes before unpacking anything.
+[[toolchain.tool]]
+command = "pwsh"
+version = "7.6.6"
+provided_by = ["pwsh", "powershell"]
+install = "uv run -q python -m repo_checks install-powershell {version}"
 
 [docs]
 # The agent-facing documentation: one Agent Skill and the reference documents

@@ -47,9 +47,9 @@ install-gh VERSION:
 
 # The release `repo-policy.toml` holds TOOL at, as `version=<release>`.
 #
-# What a workflow installing TOOL prebuilt rather than through `install-tools`
-# appends to `GITHUB_OUTPUT` and installs, so the gate's toolchain and the
-# release job run one release and a bump is one edit.
+# What a workflow installing TOOL prebuilt through a step of its own rather than
+# through `install-tools` appends to `GITHUB_OUTPUT` and installs, so that
+# release is written in one place and a bump is one edit.
 tool-version TOOL:
     @uv run -q python -m repo_checks tool-version {{quote(TOOL)}}
 
@@ -310,7 +310,15 @@ check-repo:
     uv run -q python -m repo_checks all
 
 # The end-to-end tier: journeys that drive the real gate, checks and bootstrap.
+#
+# release-plz first, by name: `repo-policy.toml` declares it `bootstrap = false`
+# — only this tier, `release-dry-run` and the release workflow run it — and the
+# three journeys that drive it skip where it is absent. Installing it here is what keeps those three
+# from going silently skipped on a host, or a gate cell, that bootstrapped and
+# nothing more. The install downloads one verified prebuilt archive, and skips
+# even that where the held release is already on PATH.
 test-e2e:
+    uv run -q python -m repo_checks install-tools release-plz  # llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason.
     just node-modules
     bunx nx run-many -t test-e2e --output-style=stream
 
@@ -407,6 +415,7 @@ lint-llm:
 
 # Prove release-plz accepts this tree's release configuration, publishing nothing.
 release-dry-run:
+    uv run -q python -m repo_checks install-tools release-plz
     release-plz release --dry-run
 
 # Bring up the self-hosted Obico stack the scheduled reconciliation tier drives.

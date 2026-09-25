@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,15 @@ MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action", "await-approval")
 HALTING_COMMANDS = ("read -p", "read -r -p")
+
+#: What puts a `run` step in scope for the held-release rule at all: a step that
+#: installs something. A step that merely *runs* a held tool, or reads the
+#: release it is held at, states no release and is not one of these.
+INSTALLING = re.compile(r"\binstall\b")
+
+#: The one command a workflow installs a held tool with: it reads the release
+#: off `repo-policy.toml` rather than restating it, so a bump is one edit.
+HELD_INSTALL = "just install-tools {tool}"
 
 
 def _publishable_crates(repo: Repo) -> list[str]:
@@ -261,17 +271,113 @@ def _held_entries(step: dict[str, Any], held: dict[str, str]) -> list[tuple[str,
     return [(entry.split("@", 1)[0], entry) for entry in entries if entry.split("@", 1)[0] in held]
 
 
+def _names(tool: str, command: str) -> bool:
+    """Whether a run command names `tool` as a word of its own.
+
+    `just install-gh ${{ ... }}` does not name `gh` by this reading, and that is
+    deliberate: it is a recipe *about* gh, and what it is handed is held to the
+    policy by `_handed_findings` instead.
+    """
+    return re.search(rf"(?<![\w-]){re.escape(tool)}(?![\w-])", command) is not None
+
+
+def _installer_verb(tool: Tool) -> str | None:
+    """The word of a held tool's `install` its release is handed to: its installer's own verb."""
+    words = tool.install.split()
+    return words[words.index("{version}") - 1] if "{version}" in words[1:] else None
+
+
+def _handed_findings(
+    part: str, verbs: Mapping[str, str], reading: Mapping[str, str], held: Mapping[str, str]
+) -> list[str]:
+    """A command calling a held tool's installer verb hands it the release the policy holds.
+
+    `just install-gh <release>` and `repo_checks install-release-plz <release>`
+    each install exactly the release they are handed, so a literal there is a
+    second statement of it a bump misses. The one accepted argument is
+    `${{ steps.<id>.outputs.version }}`, `<id>` being an earlier step of the
+    same job running `just tool-version <tool>` into `GITHUB_OUTPUT`.
+    """
+    findings: list[str] = []
+    for name, verb in verbs.items():
+        called = re.search(rf"(?<![\w-]){re.escape(verb)}(?![\w-])", part)
+        if called is None:
+            continue
+        handed = part[called.end() :].strip()
+        if name in reading and handed == f"${{{{ steps.{reading[name]}.outputs.version }}}}":
+            continue
+        findings.append(
+            f"installs `{name}` by running `{part}`, which hands `{verb}` a release of its "
+            f"own rather than the one `repo-policy.toml` holds `{name}` at ({held[name]}): "
+            f"give an earlier step of that job an `id` running `just tool-version {name} >> "
+            f'"$GITHUB_OUTPUT"` and hand it `${{{{ steps.<id>.outputs.version }}}}`'
+        )
+    return findings
+
+
+def _held_run_findings(
+    command: str,
+    held: Mapping[str, str],
+    where: str,
+    verbs: Mapping[str, str],
+    reading: Mapping[str, str],
+) -> list[str]:
+    """Every run step installing a held tool does it through the one command that reads the policy.
+
+    A step that installs a held tool some other way — `cargo install <tool>`, or
+    a package manager's own — states the release itself or takes whatever is
+    newest, and either way the toolchain's `version` has stopped being the one
+    place that release is written.
+
+    A command that *runs* a held tool is not one that installs it, however the
+    word `install` reads in it: `gh skill install <skill>` installs a skill with
+    gh. Each shell command in a compound line is checked separately, so an
+    earlier `gh --version` cannot conceal a later `cargo install gh`.
+    """
+    findings: list[str] = []
+    for part in re.split(r"\s*(?:&&|\|\||[;|])\s*", command):
+        findings.extend(
+            f"{where} {found}" for found in _handed_findings(part, verbs, reading, held)
+        )
+        if not INSTALLING.search(part):
+            continue
+        running = set(programs_in(part))
+        findings.extend(
+            f"{where} installs `{name}` by running `{part}` rather than "
+            f"`{HELD_INSTALL.format(tool=name)}`, the one command that takes the release "
+            f"`repo-policy.toml` holds `{name}` at ({held[name]}) from the policy itself"
+            for name in held
+            if name not in running and _names(name, part) and part != HELD_INSTALL.format(tool=name)
+        )
+    return findings
+
+
 def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:
-    """Every action installing a tool the toolchain holds takes that release from it.
+    """Every step installing a tool the toolchain holds takes that release from it.
 
     A tool `repo-policy.toml` holds at a `version` is one release everywhere, and
-    that field is the one place it is written. So an action step naming one must
-    name `<tool>@${{ steps.<id>.outputs.version }}`, where `<id>` is an earlier
-    step of the same job running `just tool-version <tool>` into
-    `GITHUB_OUTPUT`: unpinned it is whatever a registry serves newest, and pinned
-    to a literal it is a second statement a bump misses.
+    that field is the one place it is written. Two shapes of step can install
+    one, and each has one accepted form.
+
+    An **action** step naming one must name `<tool>@${{ steps.<id>.outputs.version
+    }}`, where `<id>` is an earlier step of the same job running `just
+    tool-version <tool>` into `GITHUB_OUTPUT`: unpinned it is whatever a registry
+    serves newest, and pinned to a literal it is a second statement a bump
+    misses.
+
+    A **run** step installing one must be `just install-tools <tool>`, which
+    reads the release off the policy and verifies what it downloads against a
+    digest before anything reaches PATH. That is how the release workflow
+    installs the release program, prebuilt, now that no host compiles it. A run
+    step calling a held tool's own installer verb instead — `just install-gh`
+    — hands it the release the same way an action step names it.
     """
     held = {tool.command: tool.version for tool in tools if tool.version is not None}
+    verbs = {
+        tool.command: verb
+        for tool in tools
+        if tool.version is not None and (verb := _installer_verb(tool)) is not None
+    }
     findings: list[str] = []
     for path in repo.workflow_paths:
         for job_name, job in jobs_of(load_workflow(path)).items():
@@ -282,6 +388,9 @@ def _held_release_findings(repo: Repo, tools: tuple[Tool, ...]) -> list[str]:
                     (command, str(step["id"]))
                     for command in held
                     if step.get("id") and run == f'just tool-version {command} >> "$GITHUB_OUTPUT"'
+                )
+                findings.extend(
+                    _held_run_findings(run, held, f"{path.name}: job `{job_name}`", verbs, reading)
                 )
                 findings.extend(
                     f"{path.name}: job `{job_name}` installs `{entry}` through "

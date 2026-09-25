@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import shlex
 import tomllib
@@ -9,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import Repo, toolchain_tools
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     marker_block,
@@ -31,6 +32,53 @@ TY_RUNNER = ("uv", "run")
 TY_PROGRAM = ("ty", "check")
 PLATFORM_OPTION = "--python-platform"
 DISPOSITIONS = ("included", "excluded")
+
+
+def powershell_providers(repo: Repo) -> list[str]:
+    """The PowerShell commands bootstrap accepts are the ones installer journeys run."""
+    source = "tools/release-artifacts/src/release_artifacts/installing.py"
+    if not repo.exists(source):
+        return [f"{source} is absent: it declares the PowerShell commands installer journeys run"]
+    try:
+        syntax = ast.parse(repo.read(source), filename=source)
+    except SyntaxError as error:
+        return [f"{source} could not be parsed: {error.msg} at line {error.lineno}"]
+    assignments = [
+        node
+        for node in ast.walk(syntax)
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "POWERSHELLS"
+                for target in node.targets
+            )
+        )
+        or (
+            isinstance(node, (ast.AnnAssign, ast.AugAssign))
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "POWERSHELLS"
+        )
+    ]
+    if len(assignments) > 1:
+        return [f"{source} assigns POWERSHELLS more than once, so no one literal is its value"]
+    if not assignments or not isinstance(assignments[0], ast.Assign):
+        return [f"{source} declares no literal POWERSHELLS tuple"]
+    value = assignments[0].value
+    if not isinstance(value, ast.Tuple) or not all(
+        isinstance(element, ast.Constant) and isinstance(element.value, str)
+        for element in value.elts
+    ):
+        return [f"{source} declares no literal POWERSHELLS tuple"]
+    declared = tuple(element.value for element in value.elts if isinstance(element, ast.Constant))
+    held = next((tool for tool in toolchain_tools(repo) if tool.command == "pwsh"), None)
+    if held is None:
+        return ["repo-policy.toml declares no pwsh toolchain tool"]
+    if held.provided_by != declared:
+        return [
+            f"repo-policy.toml's pwsh provided_by {held.provided_by!r} differs from "
+            f"{source}'s POWERSHELLS {declared!r}"
+        ]
+    return []
 
 
 def agent_layer(repo: Repo) -> list[str]:

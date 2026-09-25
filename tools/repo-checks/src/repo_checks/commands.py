@@ -31,6 +31,16 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
 
     A tool declared `bootstrap = false` is one job's rather than every host's,
     and is left alone unless it is `named`; naming one installs that tool alone.
+
+    A tool declaring `provided_by` is one the host may already provide under
+    another name — PowerShell, which every Windows host carries as `powershell`.
+    Any of those commands on PATH and nothing is installed, at any release: a
+    copy this repository did not install is not one it holds at a release.
+
+    What it says is what the caller could not already work out. A tool absent
+    from PATH is installed with no line of its own, because the install itself
+    names what it put where; what is said instead is the one thing an install
+    cannot say, which is why a copy that was already there is being replaced.
     """
     try:
         declared = toolchain_tools(repo)
@@ -52,10 +62,10 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
         print("failed to add the Windows target's standard library", file=sys.stderr)
         return 1
     for tool in tools:
+        if tool.provided_by and _provider(tool.provided_by) is not None:
+            continue
         present = shutil.which(tool.command)
-        if present is None:
-            print(f"installing {tool.command}", file=sys.stderr)
-        else:
+        if present is not None:
             answered = _release_of(present) if tool.version is not None else None
             if tool.version is None or answered == tool.version:
                 continue
@@ -74,7 +84,15 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
         if tool.version is None:
             continue
         installed = shutil.which(tool.command)
-        answered = _release_of(installed) if installed is not None else None
+        if installed is None:
+            print(
+                f"{tool.command} is on no directory PATH names after installing {tool.version}: "
+                f"the install put it somewhere this shell does not look. Put that directory on "
+                f"PATH — the install said where it wrote — and run this again.",
+                file=sys.stderr,
+            )
+            return 1
+        answered = _release_of(installed)
         if answered != tool.version:
             print(
                 f"{tool.command} at {installed} still answers {answered or 'no release'} after "
@@ -84,6 +102,11 @@ def install_tools(repo: Repo, named: str | None = None) -> int:
             )
             return 1
     return 0
+
+
+def _provider(candidates: tuple[str, ...]) -> str | None:
+    """The first of `candidates` on PATH, or none where the host carries none."""
+    return next((found for name in candidates if (found := shutil.which(name))), None)
 
 
 def _release_of(program: str) -> str | None:
@@ -353,6 +376,10 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
     return Exemption(outcome=outcome + entry.reference)
 
 
+#: What `pyproject.toml`'s coverage report reads the platform it is made on off.
+COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
+
+
 def coverage(repo: Repo) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
@@ -392,9 +419,13 @@ def coverage(repo: Repo) -> int:
     if python.returncode not in (0, 1):
         print(python.stderr, file=sys.stderr)
         failed = True
+    # The report is made on the host the suites ran on, so a line this platform's
+    # hosts never reach — marked `# pragma: unreached on <platform>` — is not
+    # counted here, and stays counted on every platform whose hosts reach it.
     report = run(
         ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
         cwd=repo.root,
+        env={**os.environ, COVERAGE_HOST: sys.platform},
     )
     print(report.stdout, end="")
     if report.returncode != 0:

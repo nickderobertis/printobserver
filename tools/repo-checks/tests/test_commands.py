@@ -5,57 +5,81 @@
 
 from __future__ import annotations
 
+import json
 import os
+import platform
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
-from repo_checks.commands import coverage, install_hooks, install_tools
-from repo_checks.expect import absent, contains, equal
+from repo_checks.commands import COVERAGE_HOST, coverage, install_hooks, install_tools
+from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.powershell_release import HASHES
+from repo_checks.powershell_release import archive_for as powershell_archive_for
 from repo_checks.shell import run
+from standin_powershell import publish as publish_powershell
+from standin_release import Release, serving
 from treecopy import REPO_ROOT, Tree
 
-#: The release the committed toolchain holds release-plz at, read rather than
-#: restated so these journeys follow a bump.
-HELD = next(
-    str(tool["version"])
-    for tool in Repo(REPO_ROOT).policy["toolchain"]["tool"]
-    if tool["command"] == "release-plz"
-)
+
+def _held(command: str) -> str:
+    """The release the committed toolchain holds one tool at, read rather than restated."""
+    return next(held.version for held in held_by_verb() if held.command == command)
+
+
+#: The releases the committed toolchain holds, read rather than restated so
+#: these journeys follow a bump.
+HELD = _held("release-plz")
+PWSH_HELD = _held("pwsh")
 
 #: A release no toolchain holds anything at: the cached copy from before a bump.
 STALE = "0.0.0-stale"
 
-# A stand-in for `cargo install`, which reaches crates.io and compiles for
-# minutes: it writes the program the install would have put in
-# CARGO_STANDIN_INTO, answering `--version` with the release it was asked for,
-# — or with CARGO_STANDIN_ANSWERS where that is set, as a build naming no release
-# answers — and records every invocation to CARGO_STANDIN_RECORD. Everything else
-# the install path does — reading the committed declaration, asking what is on
-# PATH, deciding — is the real command's.
-CARGO_STANDIN = """
+
+#: Which install verb produces which command, read off the committed toolchain
+#: rather than restated: the stand-in below writes the program the verb it was
+#: handed would install, and a second copy of that pairing would leave the
+#: stand-in answering for the wrong program the day an installer is added or
+#: renamed — a journey passing having proved nothing.
+#: The pairing the stand-in is handed, as JSON in its own environment variable.
+INSTALL_VERBS = json.dumps({held.verb: held.command for held in held_by_verb()})
+
+# A stand-in for `uv`, which is how every tool the toolchain holds at a release
+# is installed: the committed install runs `uv run -q python -m repo_checks
+# install-<something> <release>`, which downloads a real release over the
+# network. This writes the program that verb installs into INSTALL_STANDIN_INTO,
+# answering `--version` with the release it was asked for — or with
+# INSTALL_STANDIN_ANSWERS where that is set, as a build naming no release
+# answers — and records every invocation to INSTALL_STANDIN_RECORD. Everything
+# else the install path does — reading the committed declaration, asking what is
+# on PATH, deciding — is the real command's.
+INSTALL_STANDIN = """
+import json
 import os
 import pathlib
 import sys
 
+PROGRAMS = json.loads(os.environ["INSTALL_STANDIN_PROGRAMS"])
 arguments = sys.argv[1:]
-with open(os.environ["CARGO_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+with open(os.environ["INSTALL_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(" ".join(arguments) + "\\n")
-release = arguments[arguments.index("--version") + 1] if "--version" in arguments else "0.0.1"
-release = os.environ.get("CARGO_STANDIN_ANSWERS", release)
-into = pathlib.Path(os.environ["CARGO_STANDIN_INTO"])
-answer = f"print({arguments[1] + ' ' + release!r})\\n"
+name = PROGRAMS[arguments[arguments.index("-m") + 2]]
+release = os.environ.get("INSTALL_STANDIN_ANSWERS", arguments[-1])
+into = pathlib.Path(os.environ["INSTALL_STANDIN_INTO"])
+answer = f"print({name + ' version ' + release!r})\\n"
 if sys.platform == "win32":
-    (into / f"{arguments[1]}.py").write_text(answer, encoding="utf-8")
-    (into / f"{arguments[1]}.cmd").write_text(
-        f'@"{sys.executable}" "%~dp0{arguments[1]}.py" %*\\r\\n', encoding="utf-8"
+    (into / f"{name}.py").write_text(answer, encoding="utf-8")
+    (into / f"{name}.cmd").write_text(
+        f'@"{sys.executable}" "%~dp0{name}.py" %*\\r\\n', encoding="utf-8"
     )
 else:
-    program = into / arguments[1]
+    program = into / name
     program.write_text(f"#!{sys.executable}\\n{answer}", encoding="utf-8")
     program.chmod(0o755)
 """
@@ -85,6 +109,22 @@ def test_install_hooks_points_git_at_the_committed_hooks(
 
     configured = run(["git", "config", "core.hooksPath"], cwd=fresh.root, check=True).stdout.strip()
     equal(configured, ".githooks")
+
+
+@pytest.mark.parametrize("option", ["--releases", "--into"])
+@pytest.mark.parametrize("verb", ["install-tools", "tool-version", "suppressions"])
+def test_a_verb_that_downloads_nothing_refuses_an_install_option(
+    verb: str, option: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No verb but an installer silently discards a caller's download source or destination."""
+    (tmp_path / "repo-policy.toml").write_text(
+        POLICY.format(command="unused", install="unused"), encoding="utf-8"
+    )
+    with pytest.raises(SystemExit) as exited:
+        main([verb, "missing", "--root", str(tmp_path), option, "unused"])
+
+    equal(exited.value.code, 2)
+    contains(capsys.readouterr().err, f"{option} cannot be used with {verb}")
 
 
 def test_install_hooks_is_a_no_op_outside_a_git_repository(
@@ -151,28 +191,38 @@ def failing_with(status: int) -> str:
 
 
 def toolchain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, shadow: str | None = None
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    shadow: str | None = None,
+    provides: str | None = "pwsh",
+    provided_release: str = PWSH_HELD,
+    uv: str = INSTALL_STANDIN,
 ) -> tuple[Path, Path, Path]:
     """A tree carrying the committed toolchain declaration, and a PATH of stand-ins alone.
 
-    The PATH holds the stand-in `cargo` and the directory it installs into — the
-    two tools the policy holds at no release already there, and a `rustup`
-    answering that the Windows lint target's standard library is too, so what
-    is decided is release-plz's — and, with `shadow`, a directory ahead of both
-    holding a release-plz answering that release. Returns the tree, the
-    directory installs land in, and the record of what `cargo` was asked.
+    The PATH holds the stand-in `uv` and the directory it installs into — the
+    two cargo tools the policy holds at no release already there, a `rustup`
+    answering that the Windows lint target's standard library is there too, and
+    the PowerShell `provides` names at `provided_release`, so that a test about
+    one tool decides nothing about another. `provides=None` is a host carrying
+    no PowerShell at all; `shadow` puts a directory ahead of both holding a
+    release-plz answering that release. Returns the tree, the directory installs
+    land in, and the record of what `uv` was asked.
     """
     root = tmp_path / "tree"
     root.mkdir()
     shutil.copy2(REPO_ROOT / "repo-policy.toml", root / "repo-policy.toml")
-    installs = tmp_path / "cargo-bin"
+    installs = tmp_path / "toolchain-bin"
     installs.mkdir()
-    program(installs, "cargo", CARGO_STANDIN)
+    program(installs, "uv", uv)
     for present in ("cargo-nextest", "cargo-llvm-cov"):
         program(installs, present, f"print({f'{present} 0.0.1'!r})\n")
+    if provides is not None:
+        program(installs, provides, f"print({f'PowerShell {provided_release}'!r})\n")
     windows_lint = Repo(REPO_ROOT).policy["toolchain"]["windows_lint"]["target"]
     program(installs, "rustup", f"print({windows_lint!r})\n")
-    record = tmp_path / "cargo-invocations"
+    record = tmp_path / "install-invocations"
     record.touch()
     directories = [installs]
     if shadow is not None:
@@ -181,8 +231,9 @@ def toolchain(
         program(shadowing, "release-plz", answering(shadow))
         directories.insert(0, shadowing)
     monkeypatch.setenv("PATH", os.pathsep.join(str(directory) for directory in directories))
-    monkeypatch.setenv("CARGO_STANDIN_INTO", str(installs))
-    monkeypatch.setenv("CARGO_STANDIN_RECORD", str(record))
+    monkeypatch.setenv("INSTALL_STANDIN_INTO", str(installs))
+    monkeypatch.setenv("INSTALL_STANDIN_RECORD", str(record))
+    monkeypatch.setenv("INSTALL_STANDIN_PROGRAMS", INSTALL_VERBS)
     return root, installs, record
 
 
@@ -204,15 +255,15 @@ def test_install_tools_replaces_a_held_tool_on_the_path_at_another_release(
     root, installs, record = toolchain(tmp_path, monkeypatch)
     program(installs, "release-plz", stale)
 
-    equal(main(["install-tools", "--root", str(root)]), 0)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 0)
 
     contains(capsys.readouterr().err, said)
     equal(
         record.read_text(encoding="utf-8").splitlines(),
-        [f"install release-plz --locked --version {HELD}"],
-        describing="what `cargo` was asked to install",
+        [f"run -q python -m repo_checks install-release-plz {HELD}"],
+        describing="what `uv` was asked to install",
     )
-    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {HELD}")
+    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz version {HELD}")
 
 
 def test_install_tools_installs_a_held_tool_absent_from_the_path_at_its_release(
@@ -221,15 +272,19 @@ def test_install_tools_installs_a_held_tool_absent_from_the_path_at_its_release(
     """A host with no release-plz at all gets the held release, not the newest."""
     root, _, record = toolchain(tmp_path, monkeypatch)
 
-    equal(main(["install-tools", "--root", str(root)]), 0)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 0)
 
-    contains(capsys.readouterr().err, "installing release-plz")
+    equal(
+        capsys.readouterr().err,
+        "",
+        describing="what it says installing a tool absent from PATH: the install names it",
+    )
     equal(
         record.read_text(encoding="utf-8").splitlines(),
-        [f"install release-plz --locked --version {HELD}"],
-        describing="what `cargo` was asked to install",
+        [f"run -q python -m repo_checks install-release-plz {HELD}"],
+        describing="what `uv` was asked to install",
     )
-    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {HELD}")
+    contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz version {HELD}")
 
 
 def test_install_tools_reports_a_replacement_it_could_not_install(
@@ -238,13 +293,14 @@ def test_install_tools_reports_a_replacement_it_could_not_install(
     """A stale copy the install could not replace fails naming the command to run by hand."""
     root, installs, _ = toolchain(tmp_path, monkeypatch)
     program(installs, "release-plz", answering(STALE))
-    program(installs, "cargo", failing_with(101))
+    program(installs, "uv", failing_with(101))
 
-    equal(main(["install-tools", "--root", str(root)]), 1)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 1)
 
     contains(
         capsys.readouterr().err,
-        f"failed to install release-plz. Run `cargo install release-plz --locked --version {HELD}`",
+        f"failed to install release-plz. Run `uv run -q python -m repo_checks "
+        f"install-release-plz {HELD}`",
     )
     contains(run(["release-plz", "--version"], check=True).stdout, f"release-plz {STALE}")
 
@@ -254,9 +310,9 @@ def test_install_tools_refuses_an_install_whose_program_names_no_release(
 ) -> None:
     """A program that cannot say it is the held release is not accepted as it."""
     root, _, _ = toolchain(tmp_path, monkeypatch)
-    monkeypatch.setenv("CARGO_STANDIN_ANSWERS", "(built from an unknown revision)")
+    monkeypatch.setenv("INSTALL_STANDIN_ANSWERS", "(built from an unknown revision)")
 
-    equal(main(["install-tools", "--root", str(root)]), 1)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 1)
 
     contains(capsys.readouterr().err, f"still answers no release after installing {HELD}")
 
@@ -297,15 +353,42 @@ def test_install_tools_refuses_a_held_tool_a_copy_earlier_on_the_path_shadows(
     """An install the PATH does not reach is refused, naming the copy it reaches instead."""
     root, _, record = toolchain(tmp_path, monkeypatch, shadow=STALE)
 
-    equal(main(["install-tools", "--root", str(root)]), 1)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 1)
 
     said = capsys.readouterr().err
     contains(said, f"{shutil.which('release-plz')} still answers {STALE}")
     contains(said, "a copy earlier on PATH shadows the one installed")
     equal(
         record.read_text(encoding="utf-8").splitlines(),
-        [f"install release-plz --locked --version {HELD}"],
-        describing="what `cargo` was asked to install",
+        [f"run -q python -m repo_checks install-release-plz {HELD}"],
+        describing="what `uv` was asked to install",
+    )
+
+
+def test_install_tools_refuses_an_install_that_landed_off_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A program on no directory PATH names is a tool nothing that follows can run.
+
+    It is the one outcome an install that exited zero can still leave, and it is
+    what a host whose `~/.local/bin` is off PATH meets. What it must not read as
+    is a copy shadowing the installed one, which is the other way a tool ends up
+    answering wrong after an install that worked.
+    """
+    root, _, record = toolchain(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "off-the-path"
+    elsewhere.mkdir()
+    monkeypatch.setenv("INSTALL_STANDIN_INTO", str(elsewhere))
+
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, f"release-plz is on no directory PATH names after installing {HELD}")
+    absent(said, "shadows the one installed")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [f"run -q python -m repo_checks install-release-plz {HELD}"],
+        describing="what `uv` was asked to install",
     )
 
 
@@ -316,80 +399,280 @@ def test_install_tools_accepts_a_held_tool_on_the_path_at_its_release_without_re
     root, installs, record = toolchain(tmp_path, monkeypatch)
     program(installs, "release-plz", answering(HELD))
 
-    equal(main(["install-tools", "--root", str(root)]), 0)
+    equal(main(["install-tools", "release-plz", "--root", str(root)]), 0)
 
-    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
     absent(capsys.readouterr().err, "installing")
 
 
 #: The release the committed toolchain holds gh at, which it does not bootstrap.
-GH_HELD = next(
-    str(tool["version"])
-    for tool in Repo(REPO_ROOT).policy["toolchain"]["tool"]
-    if tool["command"] == "gh"
-)
-
-# A stand-in for `uv`, recording what it was asked and putting the `gh` the
-# committed install would have put on PATH, answering the release it was asked
-# for.
-UV_STANDIN = """
-import os
-import pathlib
-import sys
-
-arguments = sys.argv[1:]
-with open(os.environ["UV_STANDIN_RECORD"], "a", encoding="utf-8") as record:
-    record.write(" ".join(arguments) + "\\n")
-into = pathlib.Path(os.environ["CARGO_STANDIN_INTO"])
-answer = f"print({'gh version ' + arguments[-1] + ' (a stand-in)'!r})\\n"
-if sys.platform == "win32":
-    (into / "gh.py").write_text(answer, encoding="utf-8")
-    (into / "gh.cmd").write_text(f'@"{sys.executable}" "%~dp0gh.py" %*\\r\\n', encoding="utf-8")
-else:
-    program = into / "gh"
-    program.write_text(f"#!{sys.executable}\\n{answer}", encoding="utf-8")
-    program.chmod(0o755)
-"""
+GH_HELD = _held("gh")
 
 
 def test_install_tools_leaves_a_tool_declared_not_to_bootstrap_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Bootstrap installs every host's tools, and not one job's: gh is left off PATH."""
-    root, installs, record = toolchain(tmp_path, monkeypatch)
-    program(installs, "release-plz", answering(HELD))
-    uv_record = tmp_path / "uv-invocations"
-    uv_record.touch()
-    program(installs, "uv", UV_STANDIN)
-    monkeypatch.setenv("UV_STANDIN_RECORD", str(uv_record))
+    root, _, record = toolchain(tmp_path, monkeypatch)
 
     equal(main(["install-tools", "--root", str(root)]), 0)
 
-    absent(capsys.readouterr().err, "gh")
-    equal(uv_record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
-    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
+    equal(shutil.which("gh"), None, describing="a gh bootstrap left off PATH")
+    equal(shutil.which("release-plz"), None, describing="a release-plz bootstrap left off PATH")
 
 
 def test_install_tools_installs_a_tool_it_is_named_whatever_bootstrap_says(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The job that needs gh names it, and gets the held release through its install."""
-    root, installs, record = toolchain(tmp_path, monkeypatch)
-    uv_record = tmp_path / "uv-invocations"
-    uv_record.touch()
-    program(installs, "uv", UV_STANDIN)
-    monkeypatch.setenv("UV_STANDIN_RECORD", str(uv_record))
+    root, _, record = toolchain(tmp_path, monkeypatch)
 
     equal(main(["install-tools", "gh", "--root", str(root)]), 0)
 
-    contains(capsys.readouterr().err, "installing gh")
     equal(
-        uv_record.read_text(encoding="utf-8").splitlines(),
+        record.read_text(encoding="utf-8").splitlines(),
         [f"run -q python -m repo_checks install-gh {GH_HELD}"],
         describing="what `uv` was asked to install",
     )
-    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
     contains(run(["gh", "--version"], check=True).stdout, f"gh version {GH_HELD}")
+
+
+# A `uv` that runs the real install verb rather than standing in for it. The
+# committed install for `pwsh` is `uv run -q python -m repo_checks
+# install-powershell <release>`, and this runs exactly that verb, pointed at the
+# stand-in release this suite serves and at a directory on the stand-in PATH. It
+# is given this interpreter's own import path, because `repo_checks` reads its
+# siblings and a subprocess inherits none of what pytest arranged. So what the
+# bootstrap journey below drives is the real declaration, the real
+# `install-tools` decision, and the real installer doing the whole of its own
+# work: downloading, checking the digest, unpacking and linking.
+FORWARDING_UV = """
+import os
+import sys
+
+sys.path[:0] = os.environ["STANDIN_IMPORT_PATH"].split(os.pathsep)
+from repo_checks.__main__ import main
+
+arguments = sys.argv[1:]
+verb = arguments[arguments.index("-m") + 2 :]
+raise SystemExit(
+    main(
+        [
+            *verb,
+            "--releases",
+            os.environ["STANDIN_RELEASES"],
+            "--into",
+            os.environ["STANDIN_INTO"],
+        ]
+    )
+)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the PowerShell installer refuses Windows")
+def test_bootstrap_installs_powershell_from_its_release_and_no_release_plz_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """`just bootstrap`'s own install path, on a host carrying no PowerShell.
+
+    The one tool it installs is `pwsh`, taken from the release and verified
+    before it is unpacked; release-plz is a job's rather than every host's, so
+    nothing here fetches or compiles it.
+    """
+    root, installs, _ = toolchain(tmp_path, monkeypatch, provides=None, uv=FORWARDING_UV)
+    release = Release()
+    archive = powershell_archive_for(PWSH_HELD, sys.platform, platform.machine())
+    with serving(f"/v{PWSH_HELD}/", release) as base:
+        publish_powershell(release, archive)
+        monkeypatch.setenv("STANDIN_RELEASES", base)
+        monkeypatch.setenv("STANDIN_INTO", str(installs))
+        monkeypatch.setenv("STANDIN_IMPORT_PATH", os.pathsep.join(sys.path))
+
+        equal(main(["install-tools", "--root", str(root)]), 0)
+
+    # The installer runs as a subprocess and writes to the real stderr, which is
+    # what a caller of `just bootstrap` reads and what `capfd` captures.
+    said = capfd.readouterr().err
+    contains(said, f"installed PowerShell {PWSH_HELD} at {installs / 'pwsh'}")
+    absent(said, "release-plz")
+    equal(
+        release.asked,
+        [f"/v{PWSH_HELD}/{HASHES}", f"/v{PWSH_HELD}/{archive.name}"],
+        describing="what the bootstrap downloaded",
+    )
+    contains(run(["pwsh", "--version"], check=True).stdout, f"PowerShell {PWSH_HELD}")
+    equal(shutil.which("release-plz"), None, describing="a release-plz bootstrap did not install")
+
+
+@pytest.mark.parametrize(("provides", "release"), [("pwsh", "7.4.1"), ("powershell", "5.1.22621")])
+def test_bootstrap_installs_nothing_where_the_host_already_provides_powershell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    provides: str,
+    release: str,
+) -> None:
+    """A PowerShell this repository did not install is not one it holds at a release.
+
+    Neither of these answers the held release, and neither is replaced: a Windows
+    host's `powershell` is part of the operating system, and a developer's own
+    `pwsh` is theirs.
+    """
+    root, _, record = toolchain(tmp_path, monkeypatch, provides=provides, provided_release=release)
+
+    equal(main(["install-tools", "--root", str(root)]), 0)
+
+    absent(capsys.readouterr().err, "pwsh")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
+
+
+# The `uv` the end-to-end recipe journeys below put on PATH. The recipe's own
+# first line is `uv run -q python -m repo_checks install-tools release-plz`, and
+# that verb is the real one, run in the copied tree the recipe runs in; the
+# download it then asks `uv` for is the install stand-in above, because what is
+# in question here is the recipe rather than the installer, which
+# `test_release_plz_release.py` drives against a stand-in release of its own.
+E2E_UV = (
+    """
+import os
+import sys
+
+sys.path[:0] = os.environ["STANDIN_IMPORT_PATH"].split(os.pathsep)
+verb = sys.argv[sys.argv.index("-m") + 2 :]
+if verb[0] == "install-tools":
+    from repo_checks.__main__ import main
+
+    with open(os.environ["INSTALL_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+        record.write(" ".join(sys.argv[1:]) + "\\n")
+
+    raise SystemExit(main(verb))
+"""
+    + INSTALL_STANDIN
+)
+
+# The tier the recipe starts once its prerequisites are in place: `bunx nx`,
+# which would run every journey. It records what `release-plz --version` answers
+# at the moment it is started — the one thing the three journeys that drive the
+# release program ask before deciding whether to skip.
+TIER_STANDIN = """#!/bin/sh
+{ printf 'bunx %s\\n' "$*"; release-plz --version 2>&1 || echo 'no release-plz'; } \\
+  >> "$INSTALL_STANDIN_RECORD"
+"""
+
+
+def e2e_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    """A tree carrying the committed justfile and toolchain, and a PATH with no release-plz.
+
+    PATH holds the stand-in `uv`, `bun` and `bunx`, the real `just` — which the
+    recipe runs again for `node-modules` — and the directory holding the shell,
+    and nothing else. Returns the tree, the `just`
+    to run in it, and the record of what the recipe's programs were asked.
+    """
+    just = shutil.which("just")
+    if just is None:
+        pytest.fail("`just` is not on PATH; `just bootstrap` installs it")
+    shell = shutil.which("sh")
+    if shell is None:
+        pytest.fail("no `sh` on PATH to run the recipe's stand-ins under")
+    root, installs, record = toolchain(tmp_path, monkeypatch, uv=E2E_UV)
+    shutil.copy2(REPO_ROOT / "justfile", root / "justfile")
+    for name, code in (("bun", "#!/bin/sh\nexit 0\n"), ("bunx", TIER_STANDIN)):
+        (installs / name).write_text(code, encoding="utf-8")
+        (installs / name).chmod(0o755)
+    (installs / "just").symlink_to(just)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(installs), str(Path(shell).parent)]))
+    monkeypatch.setenv("STANDIN_IMPORT_PATH", os.pathsep.join(sys.path))
+    equal(shutil.which("release-plz"), None, describing="release-plz before the recipe runs")
+    return root, installs / "just", record
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_end_to_end_recipe_puts_the_held_release_plz_on_path_before_the_tier_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`just test-e2e` on a host that bootstrapped and nothing more.
+
+    Bootstrap leaves release-plz alone, and the three journeys that drive it skip
+    where it is absent; so the recipe installs it by name first, and the tier
+    finds the held release already on PATH when it starts.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+
+    ran = run([str(just), "test-e2e"], cwd=root, env=dict(os.environ))
+
+    equal(ran.returncode, 0, describing=f"`just test-e2e`: {ran.stdout}{ran.stderr}")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [
+            "run -q python -m repo_checks install-tools release-plz",
+            f"run -q python -m repo_checks install-release-plz {HELD}",
+            "bunx nx run-many -t test-e2e --output-style=stream",
+            f"release-plz version {HELD}",
+        ],
+        describing="what the recipe ran, in order, and what the tier found on PATH",
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_end_to_end_recipe_starts_no_journey_when_release_plz_cannot_be_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that lands some other release stops the recipe before the tier.
+
+    Running the tier anyway would be the silent skip this prerequisite is there
+    to prevent, reported as a pass.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+    monkeypatch.setenv("INSTALL_STANDIN_ANSWERS", STALE)
+
+    ran = run([str(just), "test-e2e"], cwd=root, env=dict(os.environ))
+
+    truth(ran.returncode != 0, describing="`just test-e2e` over an install that did not hold")
+    contains(ran.stderr, f"answers {STALE}")
+    absent(record.read_text(encoding="utf-8"), "bunx", describing="the tier, which never started")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_release_dry_run_installs_the_held_release_plz_and_runs_that(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`just release-dry-run` on a host that bootstrapped and nothing more.
+
+    Bootstrap leaves release-plz alone, so the recipe installs it by name, and
+    the program it then runs is the held release that install put on PATH.
+    """
+    root, just, record = e2e_recipe(tmp_path, monkeypatch)
+
+    ran = run([str(just), "release-dry-run"], cwd=root, env=dict(os.environ))
+
+    equal(ran.returncode, 0, describing=f"`just release-dry-run`: {ran.stdout}{ran.stderr}")
+    equal(
+        record.read_text(encoding="utf-8").splitlines(),
+        [
+            "run -q python -m repo_checks install-tools release-plz",
+            f"run -q python -m repo_checks install-release-plz {HELD}",
+        ],
+        describing="what the recipe installed before running release-plz",
+    )
+    contains(ran.stdout, f"release-plz version {HELD}")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the recipe's stand-ins are POSIX scripts")
+def test_the_release_dry_run_runs_nothing_when_release_plz_cannot_be_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that lands some other release stops the recipe before release-plz runs."""
+    root, just, _ = e2e_recipe(tmp_path, monkeypatch)
+    monkeypatch.setenv("INSTALL_STANDIN_ANSWERS", STALE)
+
+    ran = run([str(just), "release-dry-run"], cwd=root, env=dict(os.environ))
+
+    truth(
+        ran.returncode != 0, describing="`just release-dry-run` over an install that did not hold"
+    )
+    contains(ran.stderr, f"answers {STALE}")
+    absent(ran.stdout, "release-plz version", describing="release-plz, which never ran")
 
 
 def test_install_tools_refuses_a_tool_the_toolchain_does_not_declare(
@@ -401,7 +684,7 @@ def test_install_tools_refuses_a_tool_the_toolchain_does_not_declare(
     equal(main(["install-tools", "hub", "--root", str(root)]), 1)
 
     contains(capsys.readouterr().err, "declares no toolchain tool `hub`")
-    equal(record.read_text(encoding="utf-8"), "", describing="what `cargo` was asked")
+    equal(record.read_text(encoding="utf-8"), "", describing="what `uv` was asked")
 
 
 def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_installed(
@@ -416,6 +699,44 @@ def test_a_bootstrap_that_is_not_a_boolean_is_refused_before_anything_is_install
 
     equal(install_tools(Repo(root)), 1)
     contains(capsys.readouterr().err, "`bootstrap` for `gh` is 'no'")
+
+
+@pytest.mark.parametrize(
+    ("declared", "said"),
+    [
+        ('"powershell"', "is 'powershell', which is not a non-empty list of commands"),
+        ("[]", "is [], which is not a non-empty list of commands"),
+        ('["   "]', "names '   ', which is not a command"),
+        ('["powershell", 7]', "names 7, which is not a command"),
+        ('["pwsh", "/usr/bin/powershell"]', "names '/usr/bin/powershell', which is not a command"),
+        ('["powershell"]', "names powershell and not `pwsh` itself"),
+    ],
+)
+def test_a_malformed_provided_by_is_refused_before_anything_is_installed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], declared: str, said: str
+) -> None:
+    """The declaration that decides whether a host installs at all is read or refused.
+
+    `provided_by` is the one thing that can silently leave a host with no
+    command on PATH: a table naming only the alternative satisfies a
+    `shutil.which` for it, installs nothing, and exits zero, so every recipe
+    after it fails on a tool the bootstrap reported it had handled. So a list
+    that is no list, a name that is no command, and a set omitting the tool's
+    own command are each refused where they are written, and the install the
+    entry declares is never reached.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="pwsh", install="false") + f"provided_by = {declared}\n",
+        encoding="utf-8",
+    )
+
+    equal(main(["install-tools", "--root", str(root)]), 1)
+
+    refusing = capsys.readouterr().err
+    contains(refusing, said)
+    absent(refusing, "failed to install")
 
 
 def test_tool_version_answers_the_release_the_toolchain_holds(
@@ -674,3 +995,98 @@ def test_coverage_states_each_total_beside_its_floor_on_a_pass(
         out.strip().splitlines()[-1],
         "coverage: rust lines 96.63% (floor 95%), python lines 97% (floor 95%)",
     )
+
+
+#: The platform a line is marked unreached on when it is not this host's.
+ELSEWHERE = "linux" if sys.platform == "win32" else "win32"
+
+#: A module one of whose functions this host never reaches and one of whose
+#: functions another platform never reaches, marked the way a source here marks
+#: either. Neither is called, so each is missed unless its mark excludes it.
+MARKED = f"""
+def everywhere():
+    return "reached"
+
+
+def not_here():  # pragma: unreached on {sys.platform} - this host never calls it
+    return "unreached here"
+
+
+def not_there():  # pragma: unreached on {ELSEWHERE} - that platform never calls it
+    return "unreached there"
+
+
+everywhere()
+"""
+
+#: A `cargo llvm-cov report` whose Rust total clears every floor, so the
+#: Python report is the one thing a run is ruled on.
+RUST_CLEARED = 'print("TOTAL 1 0 100.00% 1 0 100.00% 1 0 100.00% 0 0 -")\n'
+
+#: `uv run -q coverage <arguments>`, answered by this interpreter's own
+#: coverage.py so the report read is the real one over the real configuration.
+UV_COVERAGE = f"""
+import subprocess
+import sys
+
+arguments = sys.argv[sys.argv.index("coverage") + 1 :]
+raise SystemExit(subprocess.call([{sys.executable!r}, "-m", "coverage", *arguments]))
+"""
+
+
+def measured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
+    """A tree whose `MARKED` module was measured under the committed coverage configuration."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    committed = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    report = committed["tool"]["coverage"]["report"]
+    (root / "pyproject.toml").write_text(
+        "[tool.coverage.report]\n"
+        + "".join(f"{key} = {json.dumps(value)}\n" for key, value in report.items()),
+        encoding="utf-8",
+    )
+    (root / "marked.py").write_text(MARKED, encoding="utf-8")
+    monkeypatch.delenv(COVERAGE_HOST, raising=False)
+    run([sys.executable, "-m", "coverage", "run", "marked.py"], cwd=root, check=True)
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(programs, "cargo", RUST_CLEARED)
+    program(programs, "uv", UV_COVERAGE)
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    return Repo(root)
+
+
+def _missed(report: str) -> str:
+    """The `Missing` column of a report's one measured module."""
+    row = next(line for line in report.splitlines() if line.startswith("marked.py"))
+    return row.split("%", 1)[1].strip()
+
+
+def test_coverage_does_not_count_a_line_this_platform_never_reaches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A line marked for this host is excluded here; one marked for another host is counted.
+
+    So a platform whose suites skip what only another platform runs is not held
+    to lines it cannot reach, and those lines stay counted where they run.
+    """
+    repo = measured(tmp_path, monkeypatch)
+
+    equal(coverage(repo), 1)
+
+    out = capsys.readouterr().out
+    equal(_missed(out), "11", describing="the one line missed: `not_there`'s, never `not_here`'s")
+
+
+def test_a_report_nothing_named_a_platform_for_excludes_no_marked_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`coverage report` by hand names no platform, so every marked line is counted."""
+    repo = measured(tmp_path, monkeypatch)
+
+    report = run([sys.executable, "-m", "coverage", "report"], cwd=repo.root)
+
+    equal(_missed(report.stdout), "7, 11")

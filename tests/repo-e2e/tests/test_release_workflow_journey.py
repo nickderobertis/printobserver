@@ -11,7 +11,12 @@ in a copy of the tree, substituting only what reaches outside this host:
   * `release-plz`, which would reach a forge and a registry, is a stand-in
     whose `release-pr` fails the way the wedged one did and whose `release`
     answers whatever the journey says was released — and only when asked
-    with `--output json`, as the real one does;
+    with `--output json`, as the real one does. It answers `--version` with
+    the release `repo-policy.toml` holds, because the workflow's own
+    `just install-tools release-plz` step asks a `release-plz` on PATH which
+    release it is: answering the held one is what makes that step decide
+    nothing needs installing, so no journey run downloads an archive and
+    every run takes the same path whether or not the host has release-plz;
   * `just bootstrap`, `just build-artifacts` and `just publish-artifacts` are
     recorded rather than run, because the question is whether the build and
     the publish are REACHED, and building the workspace in release mode
@@ -54,7 +59,7 @@ from release_artifacts.registries import (
     VERSION_FIELD,
 )
 from repo_checks.expect import absent, contains, equal, truth
-from repo_checks.model import Repo
+from repo_checks.model import Repo, toolchain_tools
 from repo_checks.shell import run as shell_run
 
 WORKFLOW = ".github/workflows/release-plz.yml"
@@ -102,6 +107,16 @@ def cells(job: str) -> int:
 #: both workflows to.
 RECORD_ARTIFACT = str(Repo(REPO_ROOT).policy["release"]["record_artifact"])
 
+#: The release `repo-policy.toml` holds the release program at, which is what
+#: the stand-in answers `--version` with. Read rather than restated, so that a
+#: bump of the held release does not leave the stand-in claiming the old one and
+#: the workflow's install step replacing it.
+HELD_RELEASE_PLZ = next(
+    tool.version
+    for tool in toolchain_tools(Repo(REPO_ROOT))
+    if tool.command == "release-plz" and tool.version is not None
+)
+
 #: A version no tree of this repository declares, tagged at the copy's commit
 #: for the dispatch that names an existing tag over the wrong tree.
 MISMATCHED = "9.9.9"
@@ -127,14 +142,13 @@ PUBLISH_UNGATED = (
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 RELEASE_PLZ_STANDIN = """#!/bin/sh
-# A stand-in for the release program: what it would say, and none of what it
-# would reach. `release-pr` fails the way the wedged one did; `release` prints
-# the answer the journey put in RELEASE_PLZ_STANDIN_ANSWER, and only when asked
-# for it with `--output json`, as the real one prints nothing otherwise. Every
-# invocation is written to RELEASE_PLZ_STANDIN_RECORD, so a journey can say
-# the program was never reached.
 printf '%s\\n' "$*" >> "$RELEASE_PLZ_STANDIN_RECORD"
 case "$1" in
+  --version)
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
+    echo "release-plz $RELEASE_PLZ_STANDIN_VERSION"
+    exit 0
+    ;;
   release-pr)
     echo "ERROR failed to determine next versions: package \\`printobserver-sdk\\` not found" \\
       "in the registry, but the git tag v0.1.0 exists" >&2
@@ -284,6 +298,8 @@ def driven(
             UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
             RELEASE_PLZ_STANDIN_ANSWER=str(answer_file),
             RELEASE_PLZ_STANDIN_RECORD=str(invocations),
+            # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
+            RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ,
             RELEASE_STANDIN_RECORD=str(record),
             RELEASE_STANDIN_RECORDED=" ".join(RECORDED),
             RELEASE_STANDIN_REAL_JUST=str(real_just),

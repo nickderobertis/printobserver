@@ -9,16 +9,49 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import NamedTuple, Protocol
 
-from repo_checks import commands, gh_release, windows_lint
+from repo_checks import (
+    commands,
+    gh_release,
+    powershell_release,
+    release_plz_release,
+    windows_lint,
+)
 from repo_checks.checks_integration import integration_tier
 from repo_checks.checks_suppressions import suppressions
 from repo_checks.model import Repo
 from repo_checks.registry import ALL, CHECKS, WORKFLOW_CHECKS
 
+
+class _Installer(Protocol):
+    """What every release installer takes: the release, a directory, and where to fetch it."""
+
+    def __call__(self, version: str, into: Path | None = None, *, releases: str) -> int: ...
+
+
+class Installer(NamedTuple):
+    """One install verb: what it runs, and the producer's address it fetches by default."""
+
+    install: _Installer
+    producer: str
+
+
+# The verbs that download a release: the only verbs `--releases` and `--into`
+# mean anything to.
+INSTALLERS = {
+    "install-gh": Installer(gh_release.install_gh, gh_release.RELEASES),
+    "install-release-plz": Installer(
+        release_plz_release.install_release_plz, release_plz_release.RELEASES
+    ),
+    "install-powershell": Installer(
+        powershell_release.install_powershell, powershell_release.RELEASES
+    ),
+}
+
 COMMANDS = (
     "install-tools",
-    "install-gh",
+    *INSTALLERS,
     "tool-version",
     "install-hooks",
     "commit-msg",
@@ -33,6 +66,21 @@ COMMANDS = (
 BASE_AWARE = {"suppressions": suppressions, "integration-tier": integration_tier}
 
 
+def _into(named: str | None) -> Path | None:
+    """The directory an install verb was pointed at, absolute, or none for its own default.
+
+    Resolved here rather than taken as written, because one of these installs
+    leaves a symlink: PowerShell's runtime is unpacked beside the directory the
+    caller named and `pwsh` inside it is linked into that directory, so a
+    relative `--into bin` would make a link at `bin/pwsh` whose target
+    `share/powershell-<release>/pwsh` resolves from `bin/` — under itself,
+    where nothing is. The verb would exit zero having left a broken link. It is
+    also what makes the "not on PATH" line these verbs print compare the
+    directory against PATH's own absolute entries rather than against a name.
+    """
+    return Path(named).resolve() if named is not None else None
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one check, one group of checks, or one command."""
     parser = argparse.ArgumentParser(prog="repo-check", description=__doc__)
@@ -45,22 +93,51 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         help=(
             "the commit-message file, for commit-msg; the tool, for tool-version and "
-            "install-tools; the release, for install-gh"
+            "install-tools; the release, for install-gh, install-release-plz and "
+            "install-powershell"
         ),
     )
     parser.add_argument("--root", default=".", help="the tree to read (default: the cwd)")
     parser.add_argument("--base", default=None, help="a base revision to compare a change against")
+    parser.add_argument(
+        "--releases",
+        default=None,
+        help=(
+            "where install-gh, install-release-plz or install-powershell downloads its artifacts "
+            "from, its producer's own "
+            "forge by default. Only an https address or a loopback one is fetched, which is "
+            "what lets a suite serve an installer a stand-in release over real HTTP"
+        ),
+    )
+    parser.add_argument(
+        "--into",
+        default=None,
+        help=(
+            "the directory install-gh, install-release-plz or install-powershell puts the "
+            "program in, its own default otherwise"
+        ),
+    )
     parsed = parser.parse_args(argv)
+    for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
+        if value is not None and not value.strip():
+            parser.error(f"{option} needs a nonempty value")
+        if value is not None and parsed.name not in INSTALLERS:
+            parser.error(f"{option} cannot be used with {parsed.name}")
 
     repo = Repo(Path(parsed.root))
 
     match parsed.name:
         case "install-tools":
             return commands.install_tools(repo, parsed.argument)
-        case "install-gh":
+        case verb if verb in INSTALLERS:
             if parsed.argument is None:
-                parser.error("install-gh needs the release to install")
-            return gh_release.install_gh(parsed.argument)
+                parser.error(f"{verb} needs the release to install")
+            installer = INSTALLERS[verb]
+            return installer.install(
+                parsed.argument,
+                _into(parsed.into),
+                releases=parsed.releases if parsed.releases is not None else installer.producer,
+            )
         case "tool-version":
             if parsed.argument is None:
                 parser.error("tool-version needs the command of a toolchain tool")

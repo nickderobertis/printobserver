@@ -141,7 +141,10 @@ RELEASE_TIMEOUT_SECONDS = 900
 
 pytestmark = pytest.mark.skipif(
     shutil.which("release-plz") is None,
-    reason="release-plz is installed by `just install-tools`; run bootstrap first",
+    reason=(
+        "release-plz is installed by `just install-tools release-plz`, which "
+        "`just test-e2e` runs before this tier"
+    ),
 )
 
 

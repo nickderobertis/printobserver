@@ -15,7 +15,7 @@ from repo_checks.checks_release import (
     release_gating,
     release_targets,
 )
-from repo_checks.expect import accepted, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -162,28 +162,131 @@ def test_a_release_workflow_with_no_release_step_is_refused(
     refused(findings, "no committed workflow performs releases")
 
 
-#: How the committed release workflow installs the release-plz the toolchain holds.
-HELD_INSTALL = "release-plz@${{ steps.held.outputs.version }},"
+#: How the committed release workflow installs the release-plz the toolchain
+#: holds: one recipe, which reads the held release off the policy and verifies
+#: what it downloads before anything reaches PATH.
+HELD_INSTALL = "- run: just install-tools release-plz"
 
 
 @pytest.mark.parametrize(
     ("installed", "why"),
     [
-        ("release-plz,", "unpinned, it is whatever the registry serves newest"),
-        ("release-plz@0.3.160,", "pinned to a literal, it is a second statement a bump misses"),
+        ("cargo install release-plz --locked", "it is whatever the registry serves newest"),
+        (
+            "cargo install release-plz --locked --version 0.3.160",
+            "it is a second statement of the release a bump misses",
+        ),
     ],
 )
-def test_a_prebuilt_release_program_not_at_the_held_release_is_refused(
+def test_a_release_program_installed_by_cargo_install_pinned_or_not_is_refused(
     tree: Callable[[], Tree], installed: str, why: str
 ) -> None:
-    """The release job installs the release-plz the gate's toolchain holds, and no other."""
+    """The release job installs the release-plz the toolchain holds, through the one command."""
     broken = tree()
-    broken.write(RELEASE, broken.read(RELEASE).replace(HELD_INSTALL, installed))
+    broken.write(RELEASE, broken.read(RELEASE).replace(HELD_INSTALL, f"- run: {installed}"))
 
     findings = release_automation(broken.repo)
 
-    refused(findings, f"installs `{installed.rstrip(',')}` through `taiki-e/install-action@v2`")
+    refused(findings, f"installs `release-plz` by running `{installed}`")
+    refused(findings, "the one command that takes the release `repo-policy.toml` holds")
+
+
+@pytest.mark.parametrize(
+    ("workflow", "original", "installed"),
+    [
+        (
+            ".github/workflows/ci.yml",
+            "just install-gh ${{ steps.held.outputs.version }}",
+            "just install-gh 2.99.0",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "just install-gh ${{ steps.held.outputs.version }}",
+            "just install-gh ${{ steps.elsewhere.outputs.version }}",
+        ),
+        (
+            RELEASE,
+            "just install-tools release-plz",
+            "uv run -q python -m repo_checks install-release-plz 0.3.160",
+        ),
+    ],
+)
+def test_a_held_tools_installer_handed_a_release_the_policy_did_not_is_refused(
+    tree: Callable[[], Tree], workflow: str, original: str, installed: str
+) -> None:
+    """An installer verb installs what it is handed, so a literal is a second statement of it."""
+    broken = tree()
+    before = broken.read(workflow)
+    contains(before, original, describing=workflow)
+    broken.write(workflow, before.replace(original, installed, 1))
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, f"by running `{installed}`, which hands `install-")
+    refused(findings, "a release of its own rather than the one `repo-policy.toml` holds")
+
+
+def test_the_committed_installer_steps_hand_each_the_release_the_policy_holds(
+    tree: Callable[[], Tree],
+) -> None:
+    """`ci.yml`'s `just install-gh` reads gh's release off the policy, and so is accepted."""
+    findings = release_automation(tree().repo)
+
+    accepted([f for f in findings if "hands `install-" in f])
+
+
+def test_an_action_installing_a_held_tool_unpinned_is_refused(tree: Callable[[], Tree]) -> None:
+    """The other shape a step installs a held tool in, and its own accepted form.
+
+    Nothing committed installs a held tool through an action any more, so the
+    rule over that shape is proven by putting one back: unpinned, it is whatever
+    the registry serves newest.
+    """
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace(
+            HELD_INSTALL,
+            "- uses: taiki-e/install-action@v2\n        with:\n          tool: release-plz",
+        ),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "installs `release-plz` through `taiki-e/install-action@v2`")
     refused(findings, "rather than the release `repo-policy.toml` holds `release-plz` at")
+
+
+def test_a_step_that_runs_a_held_tool_is_not_one_that_installs_it(
+    tree: Callable[[], Tree],
+) -> None:
+    """`gh skill install <skill>` installs a skill with gh, and states no release of gh."""
+    unchanged = tree()
+    unchanged.write(
+        RELEASE,
+        unchanged.read(RELEASE).replace(
+            HELD_INSTALL, "- run: gh skill install nickderobertis/printobserver printobserver"
+        ),
+    )
+
+    findings = release_automation(unchanged.repo)
+
+    accepted([f for f in findings if "install" in f and "gh" in f])
+
+
+def test_running_a_held_tool_before_installing_it_does_not_hide_the_install(
+    tree: Callable[[], Tree],
+) -> None:
+    """Each command in a compound run step must account for its own install."""
+    broken = tree()
+    broken.write(
+        RELEASE,
+        broken.read(RELEASE).replace(HELD_INSTALL, "- run: gh --version && cargo install gh"),
+    )
+
+    findings = release_automation(broken.repo)
+
+    refused(findings, "installs `gh` by running `cargo install gh`")
 
 
 def test_a_held_release_that_is_not_a_release_is_refused(tree: Callable[[], Tree]) -> None:
@@ -202,15 +305,15 @@ def test_a_held_release_that_is_not_a_release_is_refused(tree: Callable[[], Tree
     refused(findings, "which is not a release")
 
 
-def test_a_prebuilt_release_program_whose_release_no_step_reads_is_refused(
-    tree: Callable[[], Tree],
-) -> None:
+def test_an_action_whose_release_no_step_reads_is_refused(tree: Callable[[], Tree]) -> None:
     """A step output nothing wrote is an empty release, which installs the newest."""
     broken = tree()
     broken.write(
         RELEASE,
         broken.read(RELEASE).replace(
-            'run: just tool-version release-plz >> "$GITHUB_OUTPUT"', "run: true"
+            HELD_INSTALL,
+            "- uses: taiki-e/install-action@v2\n        with:\n          "
+            "tool: release-plz@${{ steps.held.outputs.version }}",
         ),
     )
 
