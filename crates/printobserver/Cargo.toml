@@ -9,8 +9,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-printobserver-sdk = { path = "../printobserver-sdk", version = "0.2.0" }
-printobserver-server = { path = "../printobserver-server", version = "0.2.0" }
+printobserver-sdk = { path = "../printobserver-sdk", version = "0.3.0" }
+printobserver-server = { path = "../printobserver-server", version = "0.3.0" }
 printobserver-types.workspace = true
 # `sync` for the one channel the Windows service's stop control is handed to
 # the server through.
@@ -73,8 +73,8 @@ toml = { version = "0.9", default-features = false, features = ["display", "pars
 # print's context — which is the one thing a supervision turn does. The edge
 # table admits these two under `dev-dependencies` alone: the program itself
 # reaches the store only through the server it starts.
-printobserver-core = { path = "../printobserver-core", version = "0.2.0" }
-printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.2.0" }
+printobserver-core = { path = "../printobserver-core", version = "0.3.0" }
+printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version = "0.3.0" }
 # The validator the format journey holds a machine-readable answer to its own
 # declared response schema with — a real parser and a real schema validator
 # rather than a comparison of field names.
