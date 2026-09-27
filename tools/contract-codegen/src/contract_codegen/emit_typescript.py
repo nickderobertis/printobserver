@@ -298,7 +298,10 @@ def _contract_version() -> list[str]:
         'import { fileURLToPath } from "node:url";',
         'import { parse } from "smol-toml";',
         "",
-        *doc_lines("The workspace manifest of the tree this module sits in."),
+        *doc_lines(
+            "Found from this module's own location rather than the working directory, "
+            "so a client imported from any checkout reads that checkout's version."
+        ),
         f'const WORKSPACE_MANIFEST = fileURLToPath(new URL("{manifest}", import.meta.url));',
         "",
         *doc_lines("One key of a TOML table, or `undefined` where `table` is not a table."),

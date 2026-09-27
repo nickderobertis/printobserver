@@ -14,7 +14,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse } from "smol-toml";
 
-/** The workspace manifest of the tree this module sits in. */
+/**
+ * Found from this module's own location rather than the working directory,
+ * so a client imported from any checkout reads that checkout's version.
+ */
 const WORKSPACE_MANIFEST = fileURLToPath(new URL("../../../Cargo.toml", import.meta.url));
 
 /** One key of a TOML table, or `undefined` where `table` is not a table. */

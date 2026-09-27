@@ -36,10 +36,10 @@ NODE_MODULE = "npm/printobserver-sdk/src/contract.ts"
 #: JavaScript's regular expressions share, because both clients test it.
 VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
 
-#: The comment text opening the computation in a module used from a checkout.
+#: The two comment lines around the computation in each generated module. They
+#: are what `release_artifacts` finds it by: the stamp replaces exactly what lies
+#: between them and refuses a module in which they are not both there once.
 BEGIN = "contract-version: read from the workspace manifest, from here"
-
-#: The comment text closing it.
 END = "contract-version: read from the workspace manifest, to here"
 
 

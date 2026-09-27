@@ -175,6 +175,7 @@ def _moved(**fields: object) -> str:
         (_moved(releases=None), "releases at least one package"),
         (_moved(releases=[{"package_name": "left-pad", "version": "1.0.0"}]), "only crates"),
         (_moved(releases=["printobserver"]), "only crates"),
+        (_moved(releases=[{"package_name": ["printobserver"]}]), "only crates"),
     ],
     ids=[
         "not-json",
@@ -190,6 +191,7 @@ def _moved(**fields: object) -> str:
         "no-releases",
         "releasing-another-projects-package",
         "release-not-an-object",
+        "package-name-not-a-string",
     ],
 )
 def test_an_answer_that_is_not_the_programs_is_refused_arming_nothing(

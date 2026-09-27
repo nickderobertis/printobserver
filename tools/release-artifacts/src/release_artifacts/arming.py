@@ -169,7 +169,9 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
             release.get(PACKAGE) if isinstance(release, dict) else None
             for release in (released if isinstance(released, list) else [])
         ]
-        if not packages or not all(package in ours.crates for package in packages):
+        if not packages or not all(
+            isinstance(package, str) and package in ours.crates for package in packages
+        ):
             msg = (
                 f"{where} names #{number}, which releases {packages!r}: a release pull "
                 f"request releases at least one package and only crates "
