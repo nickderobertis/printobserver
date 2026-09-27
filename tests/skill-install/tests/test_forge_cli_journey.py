@@ -13,9 +13,16 @@ that happened to carry none.
 
 from __future__ import annotations
 
+import re
+
 from release_artifacts.arming import ARM
-from repo_checks.expect import contains, equal
+from repo_checks.expect import equal, truth
 from repo_checks.shell import run
+
+#: A long option as a help text lists one: the whole name, so `--body` is not
+#: found inside `--body-file` and a `gh` that dropped the one while keeping the
+#: other is noticed.
+OPTION = re.compile(r"(?<![\w-])--[a-z0-9][a-z0-9-]*")
 
 
 def test_the_held_gh_takes_every_option_arming_passes(gh: str) -> None:
@@ -25,5 +32,9 @@ def test_the_held_gh_takes_every_option_arming_passes(gh: str) -> None:
     said = helped.stdout + helped.stderr
 
     equal(helped.returncode, 0, describing=f"`gh pr merge --help`: {said}")
+    listed = set(OPTION.findall(said))
     for option in ARM[3:]:
-        contains(said, option, describing="what `gh pr merge --help` lists")
+        truth(
+            option in listed,
+            describing=f"`gh pr merge --help` to list `{option}` among {sorted(listed)}",
+        )
