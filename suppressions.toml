@@ -1436,6 +1436,42 @@ site = "class DraftingForge:"
 reason = "GitHub's API, stood in because the real `release-pr` opens a branch, a commit and a pull request on github.com, and no journey may do that. It answers only the four requests the held release makes to open a pull request, with the fields GitHub's documents carry that the program reads, and answers `404` to anything else, so a release that began asking for something new fails here naming the request. What it exists to observe is the program's own output: the answer `release-plz release-pr --output json` writes once it has opened a pull request, which the program alone writes and nothing here restates. That answer is the committed sample's drift gate, and the real arming recipe then reads it."
 
 [[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "def answer(self, method: str, path: str, body: dict[str, object]) -> tuple[int, object]:"
+reason = "The one method that decides what the stand-in GitHub answers. It is a lookup from the method and path of a request to a status code and a document, and it recognises only the requests the held release sends when it opens a pull request. Every response the program reads comes from here, so a release that begins asking for anything else gets a `404` naming nothing it expected and fails the journey. The thing under test is the program's own answer, and nothing in this method writes it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "return 200, []"
+reason = "The answer to the first thing the held release asks: which release pull requests are open already. An empty list is what GitHub gives a repository with none, and it sends the program down the branch that opens a new one. That branch is the one whose answer the committed sample records, and the reason arming exists."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "return 201, {\"ref\": body.get(\"ref\"), \"object\": {\"sha\": body.get(\"sha\")}}"
+reason = "GitHub's `201` for creating the release branch's ref, echoing back the ref and commit the program sent. The program reads nothing else from it before it goes on to commit to that branch, and taking its own values back means the stand-in adds no data of its own to the run."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "return 200, {\"data\": {\"createCommitOnBranch\": {\"commit\": {\"oid\": digest}}}}"
+reason = "The GraphQL `createCommitOnBranch` result the held release commits the version bump with. It returns the one field the program checks (the new commit's `oid`), and the program stops with `did not return commit object` if that field is missing, which is how the fields to give it were established. The `oid` is a digest of the request, since no git object store sits behind the stand-in and none is needed for the answer being compared."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "return 201, {"
+reason = "The opened pull request, carrying the fields the held release deserialises from it (it refuses a document missing `id` or `user.id`) and the URL GitHub gives a pull request of this repository. From this document the program takes the `number` and `html_url` that its own answer reports, and those two values are what the real arming recipe then checks and arms, so they have to be the ones a real GitHub would give."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "return 404, {\"message\": \"Not Found\"}"
+reason = "GitHub's own `404` for any request the stand-in does not recognise. If the held release starts asking for something new, it gets this answer and the journey fails with the program's own words, so the stand-in never answers a request nobody checked."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_armed("

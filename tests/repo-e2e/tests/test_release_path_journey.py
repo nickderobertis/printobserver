@@ -415,20 +415,25 @@ class DraftingForge:
         self._server.shutdown()
         self._server.server_close()
 
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     def answer(self, method: str, path: str, body: dict[str, object]) -> tuple[int, object]:
         """GitHub's status and document for one request, or `404`."""
         repository = f"/api/v3/repos/{self.owner}/{self.name}"
         digest = hashlib.sha1(json.dumps(body).encode(), usedforsecurity=False).hexdigest()
         if method == "GET" and path == f"{repository}/pulls":
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             return 200, []
         if method == "POST" and path == f"{repository}/git/refs":
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             return 201, {"ref": body.get("ref"), "object": {"sha": body.get("sha")}}
         if method == "POST" and path == "/api/graphql":
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             return 200, {"data": {"createCommitOnBranch": {"commit": {"oid": digest}}}}
         if method == "POST" and path == f"{repository}/pulls":
             number = len(self.opened) + 1
             url = f"https://github.com/{self.owner}/{self.name}/pull/{number}"
             self.opened.append(url)
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             return 201, {
                 "id": number,
                 "node_id": f"PR_{number}",
@@ -441,6 +446,7 @@ class DraftingForge:
                 "user": {"login": "release-plz", "id": 1},
                 "labels": [],
             }
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         return 404, {"message": "Not Found"}
 
     def _handler(self) -> type[BaseHTTPRequestHandler]:
