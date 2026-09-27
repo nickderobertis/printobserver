@@ -463,7 +463,7 @@ reason = "The judged tier read this suite as expensive work that belongs in a ti
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
-reason = "The committed step is `release-plz release-pr`, and that command is `release-plz update` followed by opening a pull request on a forge: the computation this journey exists to prove — each package's next version, compared against what the registry serves — is the whole of `update`, and the pull request is the one part a journey cannot drive, because it needs a forge and a token and leaves a pull request on a real repository. So the journey runs the real program's real computation against a real (stand-in) registry over a real copy, and stops before the one step that is somebody else's server. Driving `release-pr` instead would prove the same computation and then fail on the forge whatever the tree looked like."
+reason = "The committed step is `release-plz release-pr`, and that command is `release-plz update` followed by opening a pull request on a forge: the computation this journey exists to prove — each package's next version, compared against what the registry serves — is the whole of `update`, and the pull request is the one part a journey cannot drive, because it needs a forge and a token and leaves a pull request on a real repository. So these journeys run the real program's real computation against a real (stand-in) registry over a real copy, and stop before the one step that is somebody else's server. The one journey whose subject is that step's answer — the drift gate for the drafting answer the arming step reads — does drive `release-pr`, against a loopback stand-in of GitHub's API; the computation journeys do not need a forge to answer what they ask."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -1400,12 +1400,6 @@ site = "GH = "
 reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a real pull request on github.com, which no test may do. What is under test is this repository's own arming command, driven through its real command line over the drafting program's real answer shape; the stand-in is only the forge beyond it, recording each call so the tests can prove exactly the named pull request is armed and nothing else, and refusing one where told so the collected refusal is proven too. The end-to-end journey over the committed workflow's `release-pr` job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."
 
 [[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tools/release-artifacts/src/release_artifacts/arming.py"
-site = "PRS, NUMBER, URL, BASE, RELEASES, PACKAGE = ("
-reason = "The same ground as `registries.py`'s entry for release-plz's other answer: `samples/release-plz-release-pr.json` is the one committed copy of what `release-plz release-pr --output json` answers, the module docstring records the release-plz 0.3.167 source it was read from (`main.rs` and `release_plz_core`'s `ReleasePr`), and every fixture is built from it; the keys the reader reads are one constant, and `test_arming.py` holds the sample to carrying every one. A drift gate against the live program cannot exist here, because it writes this answer only having opened a pull request on a forge, which no tier may do. What can be reconciled is: `tests/repo-e2e/tests/test_release_program.py` runs the held release-plz with the committed drafting step's own argument list and holds it to parsing every argument, `--output json` included, up to the point it needs the forge; and a shape that moved fails the arming step naming the field rather than arming nothing in silence."
-
-[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/arming.py"
 site = "done = run([*ARM, pull.url], timeout=TIMEOUT_SECONDS)"
@@ -1434,6 +1428,30 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "with EmptyIndex() as registry:"
 reason = "The same stand-in registry this file's entry at `llmlint: ignore[e2e_not_mocked]` covers, used by the two loop-guard journeys: crates.io is stood in because nothing here may publish to it, and everything under test is real — the real `release-plz` program, its real `release_commits` decision over a real git history of a real copy. The directive sits at each use because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "class DraftingForge:"
+reason = "GitHub's API, stood in because the real `release-pr` opens a branch, a commit and a pull request on github.com, and no journey may do that. It answers only the four requests the held release makes to open a pull request, with the fields GitHub's documents carry that the program reads, and answers `404` to anything else, so a release that began asking for something new fails here naming the request. What it exists to observe is the program's own output: the answer `release-plz release-pr --output json` writes once it has opened a pull request, which the program alone writes and nothing here restates. That answer is the committed sample's drift gate, and the real arming recipe then reads it."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_armed("
+reason = "A drift gate for a third-party answer has to run the third-party program, and this repository's end-to-end tier is where the held `release-plz` is installed (`just test-e2e` runs `install-tools release-plz` first) and the only project with a `test-e2e` target. One run costs one drafting computation of about eight seconds plus a `just` recipe, and a project of its own would carry the same target name under the same `nx run-many`, so there is no narrower edge that would spare an unrelated change this journey."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "gh_stand_in(stand_ins)"
+reason = "The drift gate ends by handing the program's real answer to the real `just release-pr-arm`, so a reader that no longer accepts what the program writes fails here and not in a release. The `gh` that recipe calls last is stood in because the real one would arm auto-merge on a real pull request. It is the same stand-in the workflow journey installs, imported from there rather than written a second time, and it records the arguments it was called with so the journey can show that only the pull request the stand-in forge opened was armed."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "GH_STANDIN_RECORD=str(armings),"
+reason = "Where the `gh` stand-in in the drift-gate journey records its calls, and the only thing the journey reads from it: the argument lists `release_artifacts arm-release-pr` passed. The recipe, the module and the answer it read are all real (the answer is what the held release-plz wrote a moment earlier), so this line points at where the far side of the forge boundary is observed and replaces nothing under test."
 
 [[suppression]]
 rule = "e2e_not_mocked"

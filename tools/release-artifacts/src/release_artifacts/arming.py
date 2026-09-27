@@ -16,7 +16,10 @@ and `perf` alone, so that commit drafts no further release pull request.
 The answer's shape is the program's own, read from release-plz 0.3.167's
 `main.rs` (`{"prs": [...]}`, empty when it drafted nothing) and its core's
 `ReleasePr` (`head_branch`, `base_branch`, `html_url`, `number`, `releases`).
-`samples/release-plz-release-pr.json` is a committed copy of it.
+`samples/release-plz-release-pr.json` is a committed copy of it, and
+`tests/repo-e2e/tests/test_release_path_journey.py` holds that copy to the
+fields and types the held release actually writes, by running it against a
+stand-in forge and arming what it answered.
 """
 
 from __future__ import annotations
@@ -53,7 +56,6 @@ FORGE = "https://github.com"
 #: of pull requests, and of each its number, URL, base branch and the packages
 #: it releases, and of each of those its name. `test_arming.py` holds the
 #: committed sample to carrying every one.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 PRS, NUMBER, URL, BASE, RELEASES, PACKAGE = (
     "prs",
     "number",

@@ -20,19 +20,27 @@ tree that returned to a tagged version is refused there, naming the tag.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import secrets
 import shutil
 import threading
 import tomllib
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, run
-from release_artifacts import bumping
+from release_artifacts import arming, bumping
+from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
+from test_release_program import step_arguments
+from test_release_workflow_journey import gh_stand_in
 
 #: The baseline of occupied versions, taken 2026-09-10 before the repair and
 #: fixed here rather than re-read: the one tag this repository carried, which is
@@ -359,4 +367,194 @@ def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
         decided(said).get("printobserver-types"),
         "release",
         describing=f"what the tool decided for the crate the fix touched, having said:\n{said}",
+    )
+
+
+#: What the drafting forge stand-in authenticates the program by: minted per
+#: stand-in, never a real token.
+FORGE_CREDENTIAL = f"drafting-{secrets.token_hex(8)}"
+
+
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+class DraftingForge:
+    """GitHub's API as `release-plz release-pr` reaches it to open a pull request.
+
+    It answers the four requests the held release makes, in GitHub's shapes: no
+    release pull request open yet, the branch's ref created, the release commit
+    made on it through GraphQL's `createCommitOnBranch`, and the pull request
+    opened — numbered, and at the URL GitHub gives a pull request of this
+    repository. Anything else is `404`, and every request is recorded.
+    """
+
+    def __init__(self, owner: str, name: str) -> None:
+        """Start answering on a port the operating system chooses."""
+        self.owner, self.name = owner, name
+        self.asked: list[str] = []
+        self.opened: list[str] = []
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._serving.start()
+
+    @property
+    def repo_url(self) -> str:
+        """The repository URL the program is pointed at, from which it derives the API."""
+        host, port = self._server.server_address[:2]
+        return f"http://{host}:{port}/{self.owner}/{self.name}"
+
+    def __enter__(self) -> Self:
+        """Serve for the duration of a `with` block."""
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        """Stop serving when the block ends."""
+        self._server.shutdown()
+        self._server.server_close()
+
+    def answer(self, method: str, path: str, body: dict[str, object]) -> tuple[int, object]:
+        """GitHub's status and document for one request, or `404`."""
+        repository = f"/api/v3/repos/{self.owner}/{self.name}"
+        digest = hashlib.sha1(json.dumps(body).encode(), usedforsecurity=False).hexdigest()
+        if method == "GET" and path == f"{repository}/pulls":
+            return 200, []
+        if method == "POST" and path == f"{repository}/git/refs":
+            return 201, {"ref": body.get("ref"), "object": {"sha": body.get("sha")}}
+        if method == "POST" and path == "/api/graphql":
+            return 200, {"data": {"createCommitOnBranch": {"commit": {"oid": digest}}}}
+        if method == "POST" and path == f"{repository}/pulls":
+            number = len(self.opened) + 1
+            url = f"https://github.com/{self.owner}/{self.name}/pull/{number}"
+            self.opened.append(url)
+            return 201, {
+                "id": number,
+                "node_id": f"PR_{number}",
+                "number": number,
+                "html_url": url,
+                "title": body.get("title"),
+                "body": body.get("body"),
+                "head": {"ref": body.get("head"), "sha": digest},
+                "base": {"ref": body.get("base")},
+                "user": {"login": "release-plz", "id": 1},
+                "labels": [],
+            }
+        return 404, {"message": "Not Found"}
+
+    def _handler(self) -> type[BaseHTTPRequestHandler]:
+        forge = self
+
+        class Handler(BaseHTTPRequestHandler):
+            """Answer each request as `DraftingForge.answer` says, under its credential."""
+
+            protocol_version = "HTTP/1.1"
+
+            def _any(self) -> None:
+                """Record the request and send what the forge answers it."""
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b""
+                path = self.path.split("?", 1)[0]
+                forge.asked.append(f"{self.command} {path}")
+                token = self.headers.get("Authorization", "").split()[-1:]
+                parsed = json.loads(raw) if raw else {}
+                code, document = (
+                    forge.answer(self.command, path, parsed if isinstance(parsed, dict) else {})
+                    if token == [FORGE_CREDENTIAL]
+                    else (401, {"message": "Bad credentials"})
+                )
+                payload = json.dumps(document).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_GET(self) -> None:
+                """Answer one read."""
+                self._any()
+
+            def do_POST(self) -> None:
+                """Answer one write."""
+                self._any()
+
+            def log_message(self, format: str, *args: object) -> None:
+                """Say nothing: a stand-in whose log is the output is not signal."""
+
+        return Handler
+
+
+def shape(value: object) -> object:
+    """The fields of a JSON document and the JSON type of each, with no values.
+
+    A list is its first element's shape: every pull request and every release
+    in the answer is one of a kind.
+    """
+    if isinstance(value, dict):
+        return {key: shape(entry) for key, entry in sorted(value.items())}
+    if isinstance(value, list):
+        return [shape(value[0])] if value else []
+    return type(value).__name__
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_armed(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """The drift gate for `samples/release-plz-release-pr.json`.
+
+    The held `release-plz` runs the committed drafting step's own arguments over
+    a copy carrying a `fix:` since its last release, against the empty stand-in
+    registry and a stand-in GitHub, and opens its release pull request there.
+    Its answer has to have the committed sample's fields and types, and the
+    real `just release-pr-arm` has to arm that pull request and no other: a
+    release of the program that renamed a field would fail here rather than
+    leave the release pull request unarmed.
+    """
+    ours = arming.repository(Repo(REPO_ROOT))
+    copy = merged_release(gate_copy, "fix(types): a change worth releasing")
+
+    with EmptyIndex() as registry, DraftingForge(ours.owner, ours.name) as forge:
+        result = capture(
+            [
+                *step_arguments("release-plz release-pr"),
+                "--registry",
+                STANDIN,
+                "--repo-url",
+                forge.repo_url,
+                "--git-token",
+                FORGE_CREDENTIAL,
+            ],
+            copy.root,
+            timeout=DRAFT_TIMEOUT_SECONDS,
+            env=clean_environment(**registry.environment()),
+        )
+
+    passing((result.returncode, output(result)), describing="drafting against the stand-ins")
+    equal(len(forge.opened), 1, describing=f"the pull requests opened, having asked {forge.asked}")
+    answer = json.loads(result.stdout)
+    sample = json.loads((REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))
+    equal(shape(answer), shape(sample), describing="the program's answer against the sample")
+
+    stand_ins = tmp_path / "stand-ins"
+    stand_ins.mkdir()
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    gh_stand_in(stand_ins)
+    armings = stand_ins / "armed"
+    answered = tmp_path / "release-pr.json"
+    answered.write_text(result.stdout, encoding="utf-8")
+    armed = capture(
+        ["just", "release-pr-arm", str(answered)],
+        copy.root,
+        timeout=DRAFT_TIMEOUT_SECONDS,
+        env=clean_environment(
+            PATH=f"{stand_ins}{os.pathsep}{os.environ['PATH']}",
+            UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
+            GH_TOKEN=FORGE_CREDENTIAL,
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+            GH_STANDIN_RECORD=str(armings),
+        ),
+    )
+
+    passing((armed.returncode, output(armed)), describing="`just release-pr-arm` over the answer")
+    equal(
+        [json.loads(line)["argv"] for line in armings.read_text(encoding="utf-8").splitlines()],
+        [["pr", "merge", "--auto", "--squash", *forge.opened]],
+        describing="every call arming made to the forge's CLI",
     )
