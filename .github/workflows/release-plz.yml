@@ -1,7 +1,8 @@
 # Automated releases from Conventional Commits. Two triggers, and no manual
-# step inside either. A push to `main` drafts the next release's pull request
-# and publishes what is already due — merging that pull request is the only
-# human action in a release. A hand dispatch on `main` names an EXISTING
+# step inside either. A push to `main` drafts the next release's pull request,
+# arms its auto-merge so the forge merges it once its required checks pass,
+# and publishes what is already due — so a release needs no human action at
+# all. A hand dispatch on `main` names an EXISTING
 # release tag and finishes that release: it builds the tag's own tree's
 # artifacts and publishes them with the publisher at the dispatched ref, which
 # is how a release cut before the publisher could resume, or one whose publish
@@ -70,10 +71,21 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-semver-checks
-      - run: release-plz release-pr --backend github
+      # Asked for its answer, which names the pull request it opened or
+      # refreshed — the one the step after it arms.
+      - run: release-plz release-pr --backend github --output json > "$RUNNER_TEMP/release-pr.json"
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      # Opening the pull request under RELEASE_PLZ_TOKEN is what makes its
+      # gating workflows run; arming its auto-merge under the same token is
+      # what lets the forge merge it once they pass, so a release needs no
+      # person. Only the pull request that answer names is armed. It cannot
+      # loop: the merge leaves a `chore(...): release` commit on `main`, and
+      # `release-plz.toml`'s `release_commits` drafts nothing for a `chore`.
+      - run: just release-pr-arm "$RUNNER_TEMP/release-pr.json"
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
 
   # Deliberately NOT `needs: release-pr`. Drafting the next release's pull
   # request and publishing what is already due are two jobs, and the first

@@ -739,7 +739,7 @@ reason = "The same ground as the two entries above it: the `github` and `inputs`
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "RELEASE_PLZ_STANDIN = "
-reason = "The stand-in itself, beside the entry for the function that installs it: what the real `release-plz` does at this step is publish thirteen crates to crates.io and cut a tag and a release on github.com, which no journey may do. The layer under test is the committed workflow's own scheduling over the program's ANSWER, and the stand-in behaves as the real one does at the point that matters — its `release` prints the answer only when asked with `--output json`, its `release-pr` fails the way the wedged one did, and every invocation is recorded so that the dispatched shape can prove the program was never reached."
+reason = "The stand-in itself, beside the entry for the function that installs it: what the real `release-plz` does at this step is publish thirteen crates to crates.io and cut a tag and a release on github.com, which no journey may do. The layer under test is the committed workflow's own scheduling over the program's ANSWER, and the stand-in behaves as the real one does at the point that matters — its `release` prints the answer only when asked with `--output json`, its `release-pr` either fails the way the wedged one did or, where a journey hands it a drafted pull request, prints that answer only when asked with `--output json` as the real one does, and every invocation is recorded so that the dispatched shape can prove the program was never reached."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -1386,3 +1386,15 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "RELEASES = \"https://github.com/PowerShell/PowerShell/releases/download\""
 reason = "This is the producer's own release route on the forge, the same kind of name as `HASHES`, `FLAVOURS` and the archive name beside it, and it fails closed the same way: an install fetches the release's `hashes.sha256` from this address before anything else, and a route the producer moved answers no file, so the install is refused naming the address it could not download and nothing is unpacked or linked. What no deterministic tier does is reach this address, and that is stated rather than hidden: bootstrap reaches it only on a host that carries neither `pwsh` nor `powershell`, which a gate host carrying PowerShell never is, and the installer's journeys serve a stand-in release on loopback. A drift gate would have to fetch from github.com on every change, putting the network and the producer's availability inside a deterministic tier to re-check a route the first real install checks anyway. `test_verified_download.py` holds this address to the rule that admits the producer's forge, so it cannot drift onto one an installer would refuse."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "GH_STANDIN = "
+reason = "GitHub's CLI, stood in because the real one arms auto-merge on a real pull request of a real repository, which no journey may do. The layer under test is the committed `release-pr` job — its drafting step's answer handed to the real `just release-pr-arm` recipe and the real `release_artifacts arm-release-pr` over the copy — and the stand-in is the forge at the far side of that: it records every call with the token it was given, so the journey can prove the job armed exactly the pull request the answer named under RELEASE_PLZ_TOKEN and nothing else, and refuses with the forge's own words where a journey tells it to, so the job's loud failure is proven as well."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_arming.py"
+site = "GH = "
+reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a real pull request on github.com, which no test may do. What is under test is this repository's own arming command, driven through its real command line over the drafting program's real answer shape; the stand-in is only the forge beyond it, recording each call so the tests can prove exactly the named pull request is armed and nothing else, and refusing one where told so the collected refusal is proven too. The end-to-end journey over the committed workflow's `release-pr` job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."

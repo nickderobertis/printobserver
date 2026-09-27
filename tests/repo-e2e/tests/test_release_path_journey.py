@@ -30,6 +30,7 @@ from typing import Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, run
+from repo_checks import scratch
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
 
@@ -255,3 +256,91 @@ def test_a_tree_at_a_version_a_tag_already_names_cannot_be_drafted_from(
 
     failing((code, said), naming=WEDGED)
     contains(said, f"v{version}", describing="the tag the tool named")
+
+
+#: The subject the merge of a release pull request leaves on `main`: the title
+#: release-plz gives that pull request, which squash-merging makes the subject.
+RELEASE_SUBJECT = "chore: release v{version}"
+
+#: What the drafting tool says of a package no commit since its release names
+#: under a subject `release_commits` releases on, and of one it will release —
+#: the decision a release pull request is opened on, per package.
+NO_RELEASE_COMMIT = "no commit matches the `release_commits` regex"
+NEXT_VERSION = "next version is"
+
+
+def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
+    """A copy whose `main` ends at a merged release pull request, then at `after`.
+
+    The copy's own history is one `chore:` commit; on it lands exactly what the
+    release pull request carries — the workspace moved as release-plz moves it —
+    under the subject that pull request is merged as. Each subject in `after`
+    then lands as a commit touching one crate's sources.
+    """
+    copy = gate_copy(node_modules=False)
+    version = scratch.next_minor(scratch.workspace_version(copy.root))
+    scratch.release_plz_bump(copy.root, version)
+    shell_run(
+        ["git", "commit", "-qam", RELEASE_SUBJECT.format(version=version)],
+        cwd=copy.root,
+        check=True,
+    )
+    for index, subject in enumerate(after):
+        touched = copy.root / "crates" / "printobserver-types" / "src" / f"touched_{index}.rs"
+        touched.write_text("//! A change the next release would carry.\n", encoding="utf-8")
+        shell_run(["git", "add", "-A"], cwd=copy.root, check=True)
+        shell_run(["git", "commit", "-qm", subject], cwd=copy.root, check=True)
+    shell_run(["git", "repack", "-ad"], cwd=copy.root, check=True)
+    return copy
+
+
+def decided(said: str) -> dict[str, str]:
+    """What the drafting tool decided for each crate: `release` or `skip`."""
+    decisions: dict[str, str] = {}
+    for line in said.splitlines():
+        for marker, decision in ((NO_RELEASE_COMMIT, "skip"), (NEXT_VERSION, "release")):
+            if f": {marker}" in line:
+                crate = line.split(f": {marker}")[0].split()[-1]
+                decisions[crate] = decision
+    return decisions
+
+
+def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_release(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """Arming the release pull request's auto-merge cannot loop.
+
+    The drafting tool, driven for real over `main` as a merged release pull
+    request leaves it, proposes nothing: `release-plz.toml`'s `release_commits`
+    does not release on a `chore`, so no second release pull request is opened
+    for the auto-merge that follows to merge.
+    """
+    copy = merged_release(gate_copy)
+
+    with EmptyIndex() as registry:
+        code, said = drafted(copy, registry)
+
+    passing((code, said), describing="drafting over a merged release pull request")
+    crates = sorted(path.name for path in (copy.root / "crates").iterdir() if path.is_dir())
+    equal(
+        decided(said),
+        dict.fromkeys(crates, "skip"),
+        describing=f"what the tool decided for each crate, having said:\n{said}",
+    )
+
+
+def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """The same drive with a `fix:` after it releases that crate: the skip above is the guard."""
+    copy = merged_release(gate_copy, "fix(types): a change worth releasing")
+
+    with EmptyIndex() as registry:
+        code, said = drafted(copy, registry)
+
+    passing((code, said), describing="drafting over a fix after the release")
+    equal(
+        decided(said).get("printobserver-types"),
+        "release",
+        describing=f"what the tool decided for the crate the fix touched, having said:\n{said}",
+    )

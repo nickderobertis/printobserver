@@ -241,6 +241,19 @@ release-version COMMIT ROOT:
 release-answer ANSWER:
     @uv run -q python -m release_artifacts answered --answer {{quote(ANSWER)}}
 
+# Arm auto-merge on the release pull request named in ANSWER, and nothing else.
+#
+# ANSWER is the file `release-plz release-pr --output json` wrote: the pull
+# request it just opened or refreshed, or none. That pull request is armed to
+# squash-merge through `gh`, under whatever token `GH_TOKEN` carries, so the
+# forge merges it once its required checks pass and the release follows with no
+# person acting. It cannot loop: the `chore(...): release` commit that merge
+# leaves is not a type `release-plz.toml`'s `release_commits` releases on. A
+# refusal fails naming the pull request, rather than leaving it blocked in
+# silence.
+release-pr-arm ANSWER:
+    @uv run -q python -m release_artifacts arm-release-pr --answer {{quote(ANSWER)}}
+
 # Which release a hand-dispatched run publishes, as `released=<tag>`, off TAG.
 #
 # The same line `release-answer` prints for a cut release, so the artifact

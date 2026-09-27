@@ -1100,7 +1100,12 @@ finished.
 push to `main`. `release-plz release-pr` opens the release pull request under
 `RELEASE_PLZ_TOKEN` — the workflow's built-in token is deliberately not used,
 because a pull request opened by it does not trigger the workflows that gate
-it — and `release-plz release` tags, cuts the GitHub Release and publishes
+it. The same job then arms auto-merge, under the same token, on exactly the
+pull request that step answered it drafted (`just release-pr-arm`), so the
+forge merges it once its required checks pass and no person has to. That
+cannot loop: the merge leaves a `chore(...): release` commit on `main`, and
+`release_commits` below drafts nothing for a `chore`. On the push that merge
+makes, `release-plz release` tags, cuts the GitHub Release and publishes
 every crate under `CARGO_REGISTRY_TOKEN`. Nobody hand-edits a version,
 hand-tags, or runs a publish with their own credentials. The same workflow
 dispatched by hand on `main` for an existing release tag is not that hand-run:
