@@ -264,10 +264,20 @@ def test_every_platform_a_wheel_is_built_for_is_read_back_off_its_tag(identifier
     equal(platform_of(tag), identifier, describing=f"the platform `{tag}` names")
 
 
-def test_a_tag_naming_no_platform_is_refused() -> None:
+@pytest.mark.parametrize(
+    "tag",
+    [
+        pytest.param("linux_riscv64", id="no-such-platform"),
+        pytest.param("manylinux_invalid_x86_64", id="baseline-not-a-version"),
+        pytest.param("manylinux_x86_64", id="baseline-missing"),
+        pytest.param("win_10_0_arm64", id="baseline-where-none-is-stated"),
+        pytest.param("manylinux_2_17_x86_64.win_amd64", id="two-platforms"),
+    ],
+)
+def test_a_tag_naming_no_platform_is_refused(tag: str) -> None:
     """A tag no platform here builds is not read as whichever one it resembles."""
-    with pytest.raises(InstallError, match="linux_riscv64"):
-        platform_of("linux_riscv64")
+    with pytest.raises(InstallError, match=re.escape(tag)):
+        platform_of(tag)
 
 
 def test_an_environment_made_here_holds_an_interpreter_of_this_hosts_processor(

@@ -219,9 +219,10 @@ def platform_of(tag: str) -> str | None:
     """The supported platform a wheel's platform tag names, or `None` for `any`.
 
     Read against `repo_checks.platforms`' own naming of each platform's tag
-    rather than a second table: a tag is its family, an optional baseline, and
-    its processor, and the family and processor are what that naming states.
-    A compressed tag set names one platform in each of its parts.
+    rather than a second table: a tag is its family, a `<major>_<minor>`
+    baseline exactly where that naming says the platform states one, and its
+    processor — the shape `Platform.wheel_tag` writes, and nothing looser. A
+    compressed tag set names one platform in each of its parts.
 
     Raises:
         InstallError: If the tag names no platform this repository builds for.
@@ -229,8 +230,11 @@ def platform_of(tag: str) -> str | None:
     if tag == ANY_PLATFORM:
         return None
     for identifier, naming in platforms.NAMING.items():
-        family, machine = f"{naming.wheel_family}_", f"_{naming.wheel_machine}"
-        if all(part.startswith(family) and part.endswith(machine) for part in tag.split(".")):
+        baseline = r"_\d+_\d+" if naming.wheel_versioned else ""
+        shape = re.compile(
+            rf"{re.escape(naming.wheel_family)}{baseline}_{re.escape(naming.wheel_machine)}"
+        )
+        if all(shape.fullmatch(part) for part in tag.split(".")):
             return identifier
     msg = f"the platform tag `{tag}` names no platform this repository builds a wheel for"
     raise InstallError(msg)
