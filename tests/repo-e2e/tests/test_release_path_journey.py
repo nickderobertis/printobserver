@@ -20,6 +20,7 @@ tree that returned to a tagged version is refused there, naming the tag.
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -367,6 +368,88 @@ def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
         decided(said).get("printobserver-types"),
         "release",
         describing=f"what the tool decided for the crate the fix touched, having said:\n{said}",
+    )
+
+
+#: Every file a release pull request moves the version in, as the tree names them.
+VERSIONED = ("Cargo.toml", "Cargo.lock", "crates/*/Cargo.toml")
+
+
+def versioned(root: Path) -> dict[str, str]:
+    """The text of every file a release pull request moves the version in, by path."""
+    return {
+        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+        for pattern in VERSIONED
+        for path in sorted(root.glob(pattern))
+    }
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """The drift gate for `release_artifacts.bumping`, against the held release-plz.
+
+    The drafting tool is driven for real over a copy whose `main` carries a
+    `fix` in every crate, so that every crate is released as release pull
+    request #41 released every one. It compares against a second, untouched copy
+    standing where the registry's packages would — `--registry-manifest-path`,
+    its own way of reading a release that is already available locally. The
+    helper then moves an untouched copy to the version the tool chose, and
+    every manifest and the lock file must read byte for byte as the tool wrote
+    them.
+    """
+    released = gate_copy(node_modules=False)
+    drafted_copy = gate_copy(node_modules=False)
+    for crate in sorted((drafted_copy.root / "crates").glob("*/src")):
+        touched = crate / "touched_by_fix.rs"
+        touched.write_text("//! A change the release carries.\n", encoding="utf-8")
+    shell_run(["git", "add", "-A"], cwd=drafted_copy.root, check=True)
+    shell_run(
+        ["git", "commit", "-qm", "fix: a change to every crate"], cwd=drafted_copy.root, check=True
+    )
+    shell_run(["git", "repack", "-ad"], cwd=drafted_copy.root, check=True)
+    was = bumping.workspace_version(released.root)
+
+    result = capture(
+        [
+            "release-plz",
+            "update",
+            "--no-changelog",
+            "--registry-manifest-path",
+            str(released.root / "Cargo.toml"),
+        ],
+        drafted_copy.root,
+        timeout=DRAFT_TIMEOUT_SECONDS,
+        env=clean_environment(),
+    )
+    passing(result, describing="drafting a release of every crate")
+    version = bumping.workspace_version(drafted_copy.root)
+    truth(version != was, describing=f"the tool to have moved the workspace from {was}")
+
+    equal(
+        bumping.bump_workspace_version(released.root, version),
+        was,
+        describing="what the helper moved the untouched copy from",
+    )
+    by_helper, by_tool = versioned(released.root), versioned(drafted_copy.root)
+    equal(sorted(by_helper), sorted(by_tool), describing="the versioned files of the two copies")
+    differing = [path for path in by_tool if by_helper[path] != by_tool[path]]
+    moved = "".join(
+        "".join(
+            difflib.unified_diff(
+                by_tool[path].splitlines(keepends=True),
+                by_helper[path].splitlines(keepends=True),
+                f"{path} (release-plz)",
+                f"{path} (bumping)",
+            )
+        )
+        for path in differing
+    )
+    equal(
+        differing,
+        [],
+        describing=f"the files the helper moved to {version} otherwise than the tool:\n{moved}",
     )
 
 

@@ -1409,7 +1409,7 @@ reason = "The same ground as this program's entry at `registries.py`'s `urllib.r
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "bumping.bump_workspace_version(copy.root, version)"
-reason = "What this fixture builds is the tree a merged release pull request leaves, and the helper writes exactly that: applied to the committed tree it reproduces release pull request #41's `Cargo.toml`, every crate manifest and `Cargo.lock` byte for byte (checked against its head, `6f380a9`, when it was written). Having the real `release-plz update` write it instead would need a registry serving every crate at the version before — twelve real `cargo publish` uploads to a loopback registry before the one computation this journey is about — and would produce the same bytes. The program under test, the real `release-plz` deciding whether to draft, is not what is substituted: it runs for real over the result."
+reason = "What this fixture builds is the tree a merged release pull request leaves, and the helper writes exactly that: `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes` in this file is its drift gate, driving the real `release-plz update` over one copy and the helper over another and requiring every manifest and `Cargo.lock` to match byte for byte. Each loop-guard case would otherwise pay for a second copy of the tree and a second drafting run to set up the state its one drafting run is about. The program under test, the real `release-plz` deciding whether to draft, is not what is substituted: it runs for real over the result."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1422,6 +1422,12 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release("
 reason = "The control for the journey above it, and the same ground: one project for the end-to-end tier by design, no narrower edge to hang it from, one run of the drafting computation. Without it the journey above could pass on a tool that drafted nothing for any reason."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes("
+reason = "This is the drift gate for `release_artifacts.bumping`, and a gate for how the helper matches `release-plz` needs the held `release-plz`, which only the end-to-end tier installs (`just test-e2e` runs `just install-tools release-plz` first, and this module skips without it). No narrower edge exists that carries that program, so it sits with the other journeys that drive it. It costs two copies of the tree and one run of the drafting computation, about ten seconds."
 
 [[suppression]]
 rule = "e2e_not_mocked"

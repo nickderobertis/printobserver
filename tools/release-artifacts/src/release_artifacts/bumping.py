@@ -47,12 +47,15 @@ def next_minor(version: str) -> str:
 def bump_workspace_version(root: Path, version: str) -> str:
     """Move the workspace at `root` to `version`, as a release pull request moves it.
 
-    The version half of what `release-plz release-pr` writes, exactly: the
-    `[workspace.package]` version, every internal crate's version requirement
-    wherever a manifest names one by path, and the lock file's record of every
-    workspace crate. The changelog sections that pull request also writes are
-    not written, because nothing a client or the gate reads is in them; and
-    nothing is regenerated, which is the point.
+    The version half of what `release-plz release-pr` writes for a release of
+    every crate, exactly: the `[workspace.package]` version, every internal
+    crate's version requirement wherever a manifest names one by path, and the
+    lock file's record of every workspace crate. `tests/repo-e2e`'s
+    `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes` holds
+    that to the held `release-plz`'s own output, byte for byte. The changelog
+    sections that pull request also writes are not written, because nothing a
+    client or the gate reads is in them; and nothing is regenerated, which is
+    the point.
 
     Returns:
         The version the workspace declared before.
