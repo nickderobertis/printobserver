@@ -15,6 +15,7 @@ import json
 import platform as host_platform
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,60 @@ def test_an_environment_is_read_where_its_own_hosts_layout_put_it(
         program_in(environment, "pip", host),
         environment / LAYOUTS[host]["pip"],
         describing=f"the `pip` of an environment made on `{host}`",
+    )
+
+
+def _probe_wheel(into: Path) -> Path:
+    """The smallest wheel an installer takes: metadata alone, tagged `any`."""
+    dist = "layout_probe-0.0.0"
+    wheel = into / f"{dist}-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as written:
+        written.writestr(
+            f"{dist}.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: layout-probe\nVersion: 0.0.0\n",
+        )
+        written.writestr(
+            f"{dist}.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nGenerator: layout-probe\nRoot-Is-Purelib: true\n"
+            "Tag: py3-none-any\n",
+        )
+        written.writestr(f"{dist}.dist-info/RECORD", "")
+    return wheel
+
+
+def test_the_installer_finds_the_interpreter_of_a_windows_layout_where_the_helper_says(
+    tmp_path: Path,
+) -> None:
+    """A real environment in Windows' layout, and the real installer handed the helper's path.
+
+    On a Windows host that is the layout `uv venv` makes; elsewhere the same
+    environment is moved into it — `Scripts`, and `python.exe` with nothing at
+    `Scripts/python` — which is exactly the file the installer on a Windows
+    runner looked for and did not find when a tier assembled the path itself.
+    """
+    environment = tmp_path / "env"
+    passing(
+        run(["uv", "venv", "-q", "--python", "3.11", str(environment)], cwd=tmp_path),
+        describing="making the environment",
+    )
+    if sys.platform != "win32":
+        (environment / "bin").rename(environment / "Scripts")
+        (environment / "Scripts" / "python").rename(environment / "Scripts" / "python.exe")
+
+    passing(
+        run(
+            [
+                "uv",
+                "pip",
+                "install",
+                "-q",
+                "--python",
+                str(interpreter_in(environment, "win32")),
+                str(_probe_wheel(tmp_path)),
+            ],
+            cwd=tmp_path,
+        ),
+        describing="installing into the environment at the interpreter the helper names",
     )
 
 
