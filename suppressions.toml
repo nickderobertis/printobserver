@@ -1510,6 +1510,12 @@ reason = "The drift gate ends by handing the program's real answer to the real `
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "PATH=f\"{stand_ins}{os.pathsep}{os.environ['PATH']}\","
+reason = "The line that makes the drift-gate journey's `gh` the stand-in installed at `gh_stand_in(stand_ins)` rather than the real one, by putting its directory first on the search path the real `just release-pr-arm` resolves `gh` through. The real `gh` is not reached here because it would arm auto-merge on a real pull request on github.com. Everything before it on that path runs unsubstituted: the recipe, `release_artifacts arm-release-pr`, and the answer the held `release-plz` wrote a moment earlier. Only the forge's own CLI, the far side of the boundary, is replaced, and the journey reads what it was called with."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "GH_STANDIN_RECORD=str(armings),"
 reason = "Where the `gh` stand-in in the drift-gate journey records its calls, and the only thing the journey reads from it: the argument lists `release_artifacts arm-release-pr` passed. The recipe, the module and the answer it read are all real (the answer is what the held release-plz wrote a moment earlier), so this line points at where the far side of the forge boundary is observed and replaces nothing under test."
 

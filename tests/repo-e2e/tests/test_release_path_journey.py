@@ -719,6 +719,7 @@ def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_ar
         copy.root,
         timeout=DRAFT_TIMEOUT_SECONDS,
         env=clean_environment(
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             PATH=f"{stand_ins}{os.pathsep}{os.environ['PATH']}",
             UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
             GH_TOKEN=FORGE_CREDENTIAL,
