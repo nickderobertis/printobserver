@@ -375,8 +375,8 @@ def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
 #: release pull request changes, base64-encoded: well under a megabyte here.
 MAX_FORGE_BODY_BYTES = 16 * 1024 * 1024
 
-#: What the drafting forge stand-in authenticates the program by: minted per
-#: stand-in, never a real token.
+#: What the drafting forge stand-in authenticates the program by: minted when
+#: this module is loaded, and never a real token.
 FORGE_CREDENTIAL = f"drafting-{secrets.token_hex(8)}"
 
 

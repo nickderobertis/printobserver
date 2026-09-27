@@ -137,6 +137,7 @@ def test_a_refusal_fails_naming_the_pull_request_after_attempting_every_one(
     contains(err, "#41", describing="the refusal")
     contains(err, refused, describing="the refusal")
     contains(err, "not mergeable", describing="the forge's own words")
+    contains(err, arming_module.REFUSED_NEXT, describing="what the refusal says to do")
     contains(err, "armed #42", describing="what the refusal says was armed")
 
 
@@ -206,6 +207,7 @@ def test_an_answer_that_is_not_the_programs_is_refused_arming_nothing(
 
     equal(code, 1, describing=f"arming {answer!r}")
     contains(err, naming, describing="the refusal")
+    contains(err, arming_module.ANSWER_NEXT, describing="what the refusal says to do")
     equal(forge.asked, [], describing="what the forge was asked")
 
 
@@ -219,6 +221,7 @@ def test_an_answer_that_is_not_there_is_refused(
 
     equal(code, 1, describing="arming an answer that is not there")
     contains(err, str(missing), describing="the refusal")
+    contains(err, arming_module.ANSWER_NEXT, describing="what the refusal says to do")
     equal(forge.asked, [], describing="what the forge was asked")
 
 

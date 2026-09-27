@@ -251,7 +251,7 @@ record. A client run or compiled from a checkout reports that checkout's
 workspace version. A Python or Node client used from a checkout reads that
 version from the workspace's `Cargo.toml` when imported, and refuses to import,
 naming the manifest, when it cannot find that file or the file declares no
-version. The Python client requires Python 3.12 or later.
+version.
 
 #### new
 

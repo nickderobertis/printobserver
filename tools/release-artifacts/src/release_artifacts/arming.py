@@ -66,6 +66,22 @@ PRS, NUMBER, URL, BASE, RELEASES, PACKAGE = (
 )
 
 
+#: What to do about an answer that is not the program's, or names a pull request
+#: this step may not arm: nothing was armed, and the release waits on it.
+ANSWER_NEXT = (
+    "Next: read what release-plz answered in the drafting step's log above. If the held "
+    "release changed the shape of that answer, `tests/repo-e2e/tests/"
+    "test_release_path_journey.py`'s drift gate names the field that moved: update "
+    "`samples/release-plz-release-pr.json` and this reader to it, then re-run the job."
+)
+
+#: What to do about a pull request the forge would not arm.
+REFUSED_NEXT = (
+    "Next: merge it by hand once its checks pass, or allow auto-merge in the repository's "
+    "settings and let RELEASE_PLZ_TOKEN merge pull requests, then re-run the job."
+)
+
+
 class ArmingError(RuntimeError):
     """The release pull request could not be named, or could not be armed."""
 
@@ -106,7 +122,10 @@ def repository(repo: Repo) -> Repository:
     try:
         declared = repo.policy.get("repository", {})
     except OSError as unreadable:
-        msg = f"{repo.root} carries no readable `repo-policy.toml`: {unreadable}"
+        msg = (
+            f"{repo.root} carries no readable `repo-policy.toml`: {unreadable}. Next: run "
+            f"the step from a checkout of this repository."
+        )
         raise ArmingError(msg) from unreadable
     fields = [
         declared.get(key) if isinstance(declared, dict) else None
@@ -115,7 +134,8 @@ def repository(repo: Repo) -> Repository:
     if not all(isinstance(value, str) and value.strip() for value in fields):
         msg = (
             f"{repo.root}'s `repo-policy.toml` does not declare `repository.owner`, `.name` "
-            f"and `.base_branch`, so nothing says which pull request is this repository's"
+            f"and `.base_branch`, so nothing says which pull request is this repository's. "
+            f"Next: run the step from a checkout of this repository."
         )
         raise ArmingError(msg)
     owner, name, base = (str(value).strip() for value in fields)
@@ -141,11 +161,17 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
     try:
         parsed = json.loads(answer)
     except json.JSONDecodeError as error:
-        msg = f"{where} is not the JSON `release-plz release-pr --output json` writes: {error}"
+        msg = (
+            f"{where} is not the JSON `release-plz release-pr --output json` writes: "
+            f"{error}. {ANSWER_NEXT}"
+        )
         raise ArmingError(msg) from error
     prs = parsed.get(PRS) if isinstance(parsed, dict) else None
     if not isinstance(prs, list):
-        msg = f"{where} carries no `{PRS}` list, which `release-plz release-pr` always answers"
+        msg = (
+            f"{where} carries no `{PRS}` list, which `release-plz release-pr` always "
+            f"answers. {ANSWER_NEXT}"
+        )
         raise ArmingError(msg)
     named: list[Drafted] = []
     for entry in prs:
@@ -162,7 +188,7 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
             msg = (
                 f"{where} names {entry!r}, which is not a pull request of "
                 f"{FORGE}/{ours.owner}/{ours.name} into `{ours.base_branch}`, so it is "
-                f"not armed"
+                f"not armed. {ANSWER_NEXT}"
             )
             raise ArmingError(msg)
         # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
@@ -177,7 +203,7 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
             msg = (
                 f"{where} names #{number}, which releases {packages!r}: a release pull "
                 f"request releases at least one package and only crates "
-                f"`release-targets.toml` declares, so it is not armed"
+                f"`release-targets.toml` declares, so it is not armed. {ANSWER_NEXT}"
             )
             raise ArmingError(msg)
         named.append(Drafted(number, url))
@@ -199,7 +225,7 @@ def arm(answer: Path, repo: Repo) -> list[str]:
     except (OSError, UnicodeDecodeError) as error:
         msg = (
             f"{answer} could not be read as what `release-plz release-pr --output json` "
-            f"answered: {error}"
+            f"answered: {error}. {ANSWER_NEXT}"
         )
         raise ArmingError(msg) from error
     pulls = drafted(text, str(answer), repository(repo))
@@ -226,5 +252,5 @@ def arm(answer: Path, repo: Repo) -> list[str]:
         )
         if said:
             msg += ". What was armed: " + "; ".join(said)
-        raise ArmingError(msg)
+        raise ArmingError(f"{msg}. {REFUSED_NEXT}")
     return said
