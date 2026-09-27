@@ -421,22 +421,27 @@ def python_environment(
 
 
 #: What an environment's own interpreter is asked, so what it holds is read off
-#: it rather than taken on `uv`'s word: its release, and the operating system
-#: and processor it reports as `repo_checks.platforms.HOSTS` reads them.
+#: it rather than taken on `uv`'s word: its release, the operating system and
+#: processor it reports as `repo_checks.platforms.HOSTS` reads them, and the C
+#: library it was built against in `uv`'s words — `gnu` for glibc, `musl` for
+#: any other Linux C library, and `none` where the platform has no such choice.
 HOLDS_PROBE = (
     "import platform, sys; "
-    "print(sys.version_info[0], sys.version_info[1], platform.system(), platform.machine())"
+    "system = platform.system(); "
+    "libc = 'gnu' if platform.libc_ver()[0] == 'glibc' "
+    "else ('musl' if system == 'Linux' else 'none'); "
+    "print(sys.version_info[0], sys.version_info[1], system, platform.machine(), libc)"
 )
 
 
 def confirm(environment: Path, chosen: Interpreter, artifact: str) -> None:
-    """The environment holds the interpreter chosen for it: its release, system and processor.
+    """The environment holds the interpreter chosen for it: release, platform and C library.
 
     `uv` is handed an installed interpreter's path or a downloadable one's key,
     and either could name something other than the entry the choice read; so
     the interpreter the environment ended up with is asked, and one that is not
-    the chosen release on the chosen platform is refused before anything is
-    installed onto it.
+    the chosen release, on the chosen platform, built against the chosen C
+    library, is refused before anything is installed onto it.
 
     Raises:
         InstallError: If it could not be asked, or answered something other
@@ -447,11 +452,13 @@ def confirm(environment: Path, chosen: Interpreter, artifact: str) -> None:
         cwd=environment.parent,
         describing=f"asking the environment made for {artifact} which interpreter it holds",
     ).split()
-    wanted = f"{chosen.version[0]} {chosen.version[1]} {chosen.system}-{chosen.processor}"
+    wanted = (
+        f"{chosen.version[0]} {chosen.version[1]} {chosen.system}-{chosen.processor} {chosen.libc}"
+    )
     held = "unreadable"
-    if len(answer) == 4 and all(part.isdigit() for part in answer[:2]):
+    if len(answer) == 5 and all(part.isdigit() for part in answer[:2]):
         platform = platforms.HOSTS.get((answer[2], answer[3]), f"{answer[2]}-{answer[3]}")
-        held = f"{answer[0]} {answer[1]} {platform}"
+        held = f"{answer[0]} {answer[1]} {platform} {answer[4]}"
     if held != wanted:
         msg = (
             f"the environment made for {artifact} on {chosen.key} holds Python {held} "

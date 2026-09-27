@@ -16,6 +16,7 @@ import platform as host_platform
 import re
 import sys
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -301,20 +302,33 @@ def test_an_environment_made_here_holds_an_interpreter_of_this_hosts_processor(
     )
 
 
+@pytest.mark.parametrize("differs", ["processor", "libc"])
 def test_an_environment_holding_other_than_the_chosen_interpreter_is_refused(
-    repo: Repo, tmp_path: Path
+    repo: Repo, tmp_path: Path, differs: str
 ) -> None:
-    """What the environment holds is read off its own interpreter, not taken on `uv`'s word."""
+    """What the environment holds is read off its own interpreter, not taken on `uv`'s word.
+
+    Its processor, and its C library: a `manylinux` wheel admits a glibc
+    interpreter and not a musl one on the same processor.
+    """
     host = platforms.host(repo).id
     environment = tmp_path / "env"
     python_environment(environment, CLIENT_REQUIRES_PYTHON, platform=host, artifact=host)
-    system = host.split("-", 1)[0]
-    other = "x86_64" if host.endswith("aarch64") else "aarch64"
-    stated = Interpreter(f"cpython-3.11.0-{system}-{other}-none", (3, 11), system, other, "", None)
+    # The same choice over the same offer is the interpreter the environment was made on.
+    held = choose(offered(), CLIENT_REQUIRES_PYTHON, host, host)
+    other = {
+        "processor": replace(
+            held, processor="x86_64" if held.processor == "aarch64" else "aarch64"
+        ),
+        "libc": replace(held, libc="musl" if held.libc == "gnu" else "gnu"),
+    }[differs]
 
+    confirm(environment, held, "a wheel")
     with pytest.raises(InstallError) as refused:
-        confirm(environment, stated, "a wheel")
+        confirm(environment, other, "a wheel")
 
     contains(
-        str(refused.value), f"{system}-{other}", describing="the refusal naming what was chosen"
+        str(refused.value),
+        f"{other.system}-{other.processor} {other.libc}",
+        describing="the refusal naming what was chosen",
     )
