@@ -640,6 +640,7 @@ def test_the_drafting_forge_answers_a_length_it_cannot_read_as_malformed(declare
     """
     with DraftingForge("owner", "name") as forge:
         host, port = urlsplit(forge.repo_url).netloc.split(":")
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection = http.client.HTTPConnection(host, int(port), timeout=30)
         connection.putrequest("POST", "/api/graphql")
         connection.putheader("Authorization", f"Bearer {FORGE_CREDENTIAL}")

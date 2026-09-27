@@ -1430,6 +1430,12 @@ site = "def test_a_merge_body_quoting_the_breaking_footer_would_draft_a_release(
 reason = "The control that makes the arming's fixed merge body load-bearing rather than decorative: without it the loop-guard journey could pass because the tool ignored bodies altogether, and a later change could drop `SQUASH_BODY` with nothing failing. It needs the held `release-plz` to decide, which only this tier installs, and costs one more run of the drafting computation, about eight seconds."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "connection = http.client.HTTPConnection(host, int(port), timeout=30)"
+reason = "What this journey sends is a request no typed client can be made to send: a `Content-Length` header that is not the body's length and not an ASCII count at all. Every typed HTTP client computes that header from the body it is given, so the only way to put `²` on the wire is to write the header by hand with `putheader`, which the standard library's connection alone allows. The journey makes one request and reads one answer, with nothing to run concurrently, and the stand-in it reaches is this module's own, on loopback."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "bumping.bump_workspace_version(released.root, version),"
