@@ -41,7 +41,12 @@ def _workspace_version() -> str:
     workspace = declared.get("workspace")
     package = workspace.get("package") if isinstance(workspace, dict) else None
     found = package.get("version") if isinstance(package, dict) else None
-    shaped = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+    shaped = (
+        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+        r"(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+        r"(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?"
+        r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    )
     if not isinstance(found, str) or not re.fullmatch(shaped, found):
         msg = (
             f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "

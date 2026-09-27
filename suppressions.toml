@@ -1495,3 +1495,20 @@ file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "done = drafting("
 reason = "The three drafting journeys' calls into the helper whose own entry (at `return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}`) states the ground: the committed workflow's own text run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy, with only the two programs that would reach a forge stood in. Each journey hands it the answer those programs would give — a pull request drafted, one refused, none drafted — because those are the three outcomes the job must handle and none can be caused on the real forge by a test. The directive sits at each call because an `ignore` covers only the line beneath it."
 
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "done = drafting("
+reason = "The three drafting journeys' calls into the helper that installs the stand-ins the entries at `GH_STANDIN = ` and `if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then` cover, on the same ground: the only two programs stood in are the two that would reach the real forge, where `release-plz release-pr` would open a real pull request and `gh pr merge --auto` would arm one, and this node's task forbids both (no hosted run, no live pull request). Everything under test is real: the committed workflow's text run under the forge's documented rules by `actions.py`, every `run:` step executed over a copy of the tree, the real `just release-pr-arm` recipe and the real `release_artifacts arm-release-pr` command reading the answer. Each journey hands in one of the three answers the job must handle — a pull request drafted, the forge refusing to arm it, none drafted — which no test can cause on the real forge. The directive sits at each call because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/contract-codegen/tests/test_version_bump.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "This node's acceptance criteria place this proof in `tools/contract-codegen/tests/`: the Rust client compiled in a version-bumped copy of the tree is one half of the correspondence the generator's own suite holds, beside the regeneration half it pairs with, and the copy it compiles in is the one the same fixture bumps. It carries no marker and is not split from a faster tier by one; it is one example compiled against a shared target directory, and a project of its own would run the same pytest over the same fixtures under a second `test` target and leave the regeneration half and the client half in two places."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/release-artifacts/tests/test_contract_version.py"
+site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+reason = "This node's acceptance criteria place this proof in `tools/release-artifacts/tests/`, and it is where its neighbours are, on the ground the entry for this rule at `tools/release-artifacts/tests/test_registries.py` states: `test_artifacts.py` in the same directory already builds every package this project ships, so what edges this project's `test` target is what it proves rather than what it costs. Moving it out would leave the stamp in `build.py` measured by no tier carrying a coverage floor, since the end-to-end tier is not measured."

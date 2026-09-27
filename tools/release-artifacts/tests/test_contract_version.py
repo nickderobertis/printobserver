@@ -101,6 +101,7 @@ def _stating_only(module: str, version: str, *, describing: str) -> None:
         absent(module, spelling, describing=describing)
 
 
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
 def test_the_built_clients_state_the_bumped_version_and_read_no_manifest(
     bumped: tuple[Repo, str], program: Path, tmp_path: Path
 ) -> None:
@@ -161,19 +162,22 @@ def test_a_node_client_carrying_no_computation_refuses_the_build(
         build(Repo(copy), "npm:@printobserver/sdk", tmp_path / "node", program)
 
 
+@pytest.mark.parametrize("declared", ["latest", "01.2.3"])
 @pytest.mark.parametrize("target", ["pypi:printobserver-sdk", "npm:@printobserver/sdk"])
 def test_a_workspace_declaring_no_release_version_refuses_the_client_build(
-    copy: Path, program: Path, tmp_path: Path, target: str
+    copy: Path, program: Path, tmp_path: Path, target: str, declared: str
 ) -> None:
     """What the source clients refuse to report, no package is stamped with."""
     manifest = copy / "Cargo.toml"
     was = bumping.workspace_version(copy)
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(f'version = "{was}"', 'version = "latest"', 1),
+        manifest.read_text(encoding="utf-8").replace(
+            f'version = "{was}"', f'version = "{declared}"', 1
+        ),
         encoding="utf-8",
     )
 
-    with pytest.raises(BuildError, match="'latest'"):
+    with pytest.raises(BuildError, match=re.escape(repr(declared))):
         build(Repo(copy), target, tmp_path / "built", program)
 
 

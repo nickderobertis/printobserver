@@ -31,10 +31,23 @@ RUST_MODULE = "crates/printobserver-sdk/src/contract.rs"
 PYTHON_MODULE = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
 NODE_MODULE = "npm/printobserver-sdk/src/contract.ts"
 
+#: SemVer's numeric identifier, which carries no leading zero: `01.2.3` is no
+#: version Cargo accepts, so no client may report one.
+_NUMBER = r"(?:0|[1-9]\d*)"
+_PRERELEASE = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+_BUILD = r"[0-9A-Za-z-]+"
+
 #: What a version the workspace declares must look like for a client to report
 #: it: Cargo's own shape, a SemVer version. Written in the syntax Python's and
-#: JavaScript's regular expressions share, because both clients test it.
-VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+#: JavaScript's regular expressions share, because both clients test it, and in
+#: pieces short enough that a generated module can state it one piece per line.
+VERSION_PATTERN_PIECES = (
+    rf"{_NUMBER}\.{_NUMBER}\.{_NUMBER}",
+    rf"(?:-{_PRERELEASE}",
+    rf"(?:\.{_PRERELEASE})*)?",
+    rf"(?:\+{_BUILD}(?:\.{_BUILD})*)?",
+)
+VERSION_PATTERN = "".join(VERSION_PATTERN_PIECES)
 
 #: The two comment lines around the computation in each generated module. They
 #: are what `release_artifacts` finds it by: the stamp replaces exactly what lies

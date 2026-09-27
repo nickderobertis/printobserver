@@ -138,6 +138,7 @@ def test_the_node_client_from_a_bumped_trees_sources_reports_the_bumped_version(
     equal(said, version, describing="CONTRACT_VERSION from the Node client")
 
 
+# llmlint: ignore[test_tiers_split_by_project_not_by_marker] suppressions.toml has the reason.
 def test_the_rust_client_compiled_in_a_bumped_tree_reports_the_bumped_version(
     bumped: tuple[Path, str],
 ) -> None:
@@ -176,6 +177,7 @@ REFUSED_MANIFESTS = {
     "missing": None,
     "versionless": '[workspace]\nmembers = ["crates/*"]\n',
     "not-a-version": '[workspace.package]\nversion = "latest"\n',
+    "leading-zero": '[workspace.package]\nversion = "01.2.3"\n',
     "unquoted": "[workspace.package]\nversion = 0.3\n",
     "not-a-table": '[workspace]\npackage = "0.3.0"\n',
 }

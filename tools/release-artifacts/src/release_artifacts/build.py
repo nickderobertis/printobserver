@@ -194,10 +194,7 @@ def recorded(text: str) -> str | None:
     return None if found is None else found["version"]
 
 
-#: How the published Python client states the constant.
 PYTHON_STATEMENT = "CONTRACT_VERSION: str = {version}"
-
-#: How the published Node client's compiled module states it.
 NODE_STATEMENT = "export const CONTRACT_VERSION = {version};"
 
 
@@ -264,7 +261,6 @@ NODE_BUILD = "npm/printobserver-sdk/tsconfig.build.json"
 #: Where that compilation leaves what it wrote.
 NODE_OUTPUT = "dist/npm-sdk"
 
-#: The compiled module declaring `CONTRACT_VERSION`, relative to that output.
 NODE_COMPILED = "contract.js"
 
 #: The committed program the launcher package puts on the path. Named here
