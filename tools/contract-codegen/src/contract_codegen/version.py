@@ -31,6 +31,11 @@ RUST_MODULE = "crates/printobserver-sdk/src/contract.rs"
 PYTHON_MODULE = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
 NODE_MODULE = "npm/printobserver-sdk/src/contract.ts"
 
+#: What a version the workspace declares must look like for a client to report
+#: it: Cargo's own shape, a SemVer version. Written in the syntax Python's and
+#: JavaScript's regular expressions share, because both clients test it.
+VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+
 #: The comment text opening the computation in a module used from a checkout.
 BEGIN = "contract-version: read from the workspace manifest, from here"
 

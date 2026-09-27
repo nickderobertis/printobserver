@@ -29,20 +29,28 @@ function workspaceVersion(): string {
       `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,
     );
   }
+  // Read line by line, and strictly: the section it wants must carry exactly
+  // one `version` key, its value one quoted string shaped as a release version.
   let section = "";
+  const found: string[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const heading = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+    const heading = /^\s*\[\s*([A-Za-z0-9_.-]+)\s*\]\s*(?:#.*)?$/.exec(line);
     if (heading) {
-      section = heading[1]?.trim() ?? "";
+      section = heading[1] ?? "";
       continue;
     }
-    const found = /^\s*version\s*=\s*"([^"]+)"/.exec(line);
-    if (section === "workspace.package" && found?.[1]) {
-      return found[1];
+    const key = /^\s*version\s*=\s*(.*?)\s*(?:#[^"]*)?$/.exec(line);
+    if (section === "workspace.package" && key) {
+      found.push(key[1] ?? "");
     }
   }
+  const quoted = found.length === 1 ? /^"([^"]*)"$/.exec(found[0] ?? "") : null;
+  const declared = quoted?.[1] ?? "";
+  if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(declared)) {
+    return declared;
+  }
   throw new Error(
-    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which declares no [workspace.package] version`,
+    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which declares no [workspace.package] version a release could carry: ${JSON.stringify(found)}`,
   );
 }
 

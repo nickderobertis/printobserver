@@ -24,6 +24,7 @@ def _workspace_version() -> str:
     Raises `ImportError` naming the manifest when it cannot be read or
     declares no version, rather than answering a guess.
     """
+    import re
     import tomllib
     from pathlib import Path
 
@@ -37,11 +38,15 @@ def _workspace_version() -> str:
             f"{manifest}, which could not be read: {error}"
         )
         raise ImportError(msg) from error
-    found = declared.get("workspace", {}).get("package", {}).get("version")
-    if not isinstance(found, str) or not found:
+    workspace = declared.get("workspace")
+    package = workspace.get("package") if isinstance(workspace, dict) else None
+    found = package.get("version") if isinstance(package, dict) else None
+    shaped = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+    if not isinstance(found, str) or not re.fullmatch(shaped, found):
         msg = (
             f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "
-            f"{manifest}, which declares no [workspace.package] version"
+            f"{manifest}, which declares no [workspace.package] version a release "
+            f"could carry: {found!r}"
         )
         raise ImportError(msg)
     return found

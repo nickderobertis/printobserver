@@ -226,8 +226,8 @@ def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     module = repo.path(computation.PYTHON_MODULE)
     wheel.add_tree(module.parent, module.parent.name)
     version = contract_version(repo)
-    # Put over the tree's copy of the same name, which it replaces: this one
-    # states the version as a literal.
+    # The tree's copy reads the version out of a workspace manifest, which an
+    # installed wheel has none of: it would refuse to import on every host.
     wheel.add(
         f"{module.parent.name}/{module.name}",
         stamped(

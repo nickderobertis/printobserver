@@ -279,6 +279,7 @@ def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
     """
     copy = gate_copy(node_modules=False)
     version = scratch.next_minor(scratch.workspace_version(copy.root))
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     scratch.release_plz_bump(copy.root, version)
     shell_run(
         ["git", "commit", "-qam", RELEASE_SUBJECT.format(version=version)],
@@ -305,6 +306,7 @@ def decided(said: str) -> dict[str, str]:
     return decisions
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_release(
     gate_copy: Callable[..., GateCopy],
 ) -> None:
@@ -317,6 +319,7 @@ def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_relea
     """
     copy = merged_release(gate_copy)
 
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     with EmptyIndex() as registry:
         code, said = drafted(copy, registry)
 
@@ -329,12 +332,14 @@ def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_relea
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
     gate_copy: Callable[..., GateCopy],
 ) -> None:
     """The same drive with a `fix:` after it releases that crate: the skip above is the guard."""
     copy = merged_release(gate_copy, "fix(types): a change worth releasing")
 
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     with EmptyIndex() as registry:
         code, said = drafted(copy, registry)
 

@@ -341,6 +341,7 @@ def driven(
         program = stand_ins / name
         program.write_text(text, encoding="utf-8")
         program.chmod(0o755)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     gh_stand_in(stand_ins)
     answer_file = stand_ins / "answer.json"
     answer_file.write_text(answered, encoding="utf-8")
@@ -835,6 +836,7 @@ REFUSED = (
 
 def drafting(copy: GateCopy, tmp_path: Path, drafted: str, refusal: str = "") -> Driven:
     """Run the release workflow's drafting job alone, on a push, over `copy`."""
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}, drafted=drafted, refusal=refusal)
 
 

@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
             case "answered":
                 return _answered(arguments)
             case "arm-release-pr":
-                return _arm_release_pr(arguments)
+                return _arm_release_pr(repo, arguments)
             case "dispatched":
                 return _dispatched(repo, arguments)
             case "recorded":
@@ -302,7 +302,7 @@ def _answered(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _arm_release_pr(arguments: argparse.Namespace) -> int:
+def _arm_release_pr(repo: Repo, arguments: argparse.Namespace) -> int:
     """Arm auto-merge on the release pull request the drafting step just answered.
 
     Only the pull request the program's own answer names is touched; an answer
@@ -317,7 +317,7 @@ def _arm_release_pr(arguments: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    for line in arm(arguments.answer):
+    for line in arm(arguments.answer, repo):
         print(line)
     return 0
 

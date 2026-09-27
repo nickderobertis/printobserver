@@ -30,6 +30,7 @@ from release_artifacts.registries import (
 )
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.scratch import next_minor
 from repo_checks.shell import run
 
 #: A version no tree of this repository declares, tagged at the same commit as
@@ -172,14 +173,20 @@ def test_a_checkout_declaring_no_base_branch_cannot_say_where_a_dispatch_runs(
 def test_a_tag_the_checkout_does_not_carry_is_refused_naming_it(
     tagged: Tagged, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A dispatch names an existing release, and one nothing tagged is not that."""
-    record = tmp_path / "record"
+    """A dispatch names an existing release, and one nothing tagged is not that.
 
-    code, out, err = dispatch("v0.3.0", tagged.path, record, capsys)
+    The next release after the checkout's own, which no tree has tagged yet —
+    derived rather than written down, because a number written here is the
+    checkout's own version on the release pull request that moves it there.
+    """
+    record = tmp_path / "record"
+    untagged = f"v{next_minor(tagged.version)}"
+
+    code, out, err = dispatch(untagged, tagged.path, record, capsys)
 
     equal(code, 1, describing="the exit a tag nothing carries gets")
     equal(out, "", describing="the output a job would have read a field from")
-    contains(err, "v0.3.0", describing="the tag named")
+    contains(err, untagged, describing="the tag named")
     contains(err, str(tagged.path), describing="the checkout named")
     contains(err, "existing release tag", describing="what a dispatch names")
     truth(not record.exists(), describing="no record for a refused dispatch")

@@ -26,8 +26,8 @@ ARGUMENT_ERRORS = ("unexpected argument", "unrecognized subcommand", "invalid va
 CONFIG_ERRORS = ("invalid config file", "unknown field", "TOML parse error")
 
 
-def release_step_arguments() -> list[str]:
-    """The argument list the committed release step carries.
+def step_arguments(program: str) -> list[str]:
+    """The argument list of the committed step running `program`.
 
     Up to the shell's redirection of the program's answer into the file the
     step after it reads: that is the shell's rather than the program's, and a
@@ -37,11 +37,16 @@ def release_step_arguments() -> list[str]:
     for job in workflow["jobs"].values():
         for step in job.get("steps", []):
             command = str(step.get("run", "")).strip()
-            if command.startswith("release-plz release "):
+            if command.startswith(f"{program} "):
                 words = command.split()
                 return words[: words.index(">")] if ">" in words else words
-    message = "no committed step runs `release-plz release`"
+    message = f"no committed step runs `{program}`"
     raise AssertionError(message)
+
+
+def release_step_arguments() -> list[str]:
+    """The argument list the committed release step carries."""
+    return step_arguments("release-plz release")
 
 
 pytestmark = pytest.mark.skipif(
@@ -69,6 +74,29 @@ def test_the_program_accepts_the_committed_arguments_and_configuration() -> None
     said = output(result)
 
     contains(said, "using release-plz config file release-plz.toml")
+    for error in ARGUMENT_ERRORS + CONFIG_ERRORS:
+        absent(said, error)
+
+
+#: What the drafting program says having parsed its arguments and reached the
+#: point where it needs the forge: the one thing a journey may not hand it.
+NEEDS_THE_FORGE = "please provide the git token"
+
+
+def test_the_program_accepts_the_committed_drafting_arguments() -> None:
+    """The drafting step's argument list, `--output json` included, parses.
+
+    The arming step after it reads that answer, so an option the held release
+    no longer takes would leave nothing to arm. Run with no token, the program
+    stops exactly where it would first reach the forge — after every argument
+    has been parsed.
+    """
+    arguments = step_arguments("release-plz release-pr")
+    contains(arguments, "--output", describing="the drafting step's arguments")
+
+    said = output(run(arguments, cwd=REPO_ROOT, timeout=300))
+
+    contains(said, NEEDS_THE_FORGE, describing="what the drafting program said")
     for error in ARGUMENT_ERRORS + CONFIG_ERRORS:
         absent(said, error)
 

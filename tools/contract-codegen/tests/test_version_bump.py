@@ -170,23 +170,31 @@ def test_the_rust_client_compiled_in_a_bumped_tree_reports_the_bumped_version(
     )
 
 
-#: A workspace manifest that parses and declares no version.
-VERSIONLESS = '[workspace]\nmembers = ["crates/*"]\n'
+#: Workspace manifests from which no client may report a version, by what is
+#: wrong with each; `None` is no manifest at all.
+REFUSED_MANIFESTS = {
+    "missing": None,
+    "versionless": '[workspace]\nmembers = ["crates/*"]\n',
+    "not-a-version": '[workspace.package]\nversion = "latest"\n',
+    "unquoted": "[workspace.package]\nversion = 0.3\n",
+    "not-a-table": '[workspace]\npackage = "0.3.0"\n',
+}
 
 
-@pytest.mark.parametrize("manifest", ["missing", "versionless"])
+@pytest.mark.parametrize("manifest", REFUSED_MANIFESTS)
 def test_a_from_source_client_without_a_workspace_version_refuses_to_import(
     scratch: Callable[[], Path], manifest: str
 ) -> None:
-    """No manifest, or one declaring no version, is a refusal naming it — never a guess."""
+    """No manifest, or one declaring no release version, is a refusal naming it — never a guess."""
     copy = scratch()
     path = copy / WORKSPACE_MANIFEST
-    if manifest == "missing":
+    text = REFUSED_MANIFESTS[manifest]
+    if text is None:
         path.unlink()
     else:
-        path.write_text(VERSIONLESS, encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
     named = str(path.resolve())
-    reason = "could not be read" if manifest == "missing" else "declares no"
+    reason = "could not be read" if text is None else "declares no"
 
     python = python_from_source(copy, PYTHONS[-1])
     failing(python, naming="ImportError")

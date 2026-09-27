@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
+from release_artifacts import arming as arming_module
 from release_artifacts.__main__ import main
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import contains, equal
@@ -26,6 +27,10 @@ import sys
 
 with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(json.dumps(sys.argv[1:]) + "\\n")
+if os.environ.get("GH_STANDIN_SLEEPS"):
+    import time
+
+    time.sleep(float(os.environ["GH_STANDIN_SLEEPS"]))
 refused = os.environ.get("GH_STANDIN_REFUSES", "")
 if refused and refused in sys.argv:
     print("GraphQL: Pull request is not mergeable (enablePullRequestAutoMerge)", file=sys.stderr)
@@ -66,9 +71,11 @@ def forge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Forge:
     return Forge(root, monkeypatch)
 
 
-def arming(answer: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str, str]:
-    """Run the command `just release-pr-arm` runs, as it runs it."""
-    code = main(["arm-release-pr", "--answer", str(answer)])
+def arming(
+    answer: Path, capsys: pytest.CaptureFixture[str], root: Path = REPO_ROOT
+) -> tuple[int, str, str]:
+    """Run the command `just release-pr-arm` runs, as it runs it, in the checkout `root`."""
+    code = main(["arm-release-pr", "--answer", str(answer), "--root", str(root)])
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 
@@ -130,15 +137,50 @@ def test_a_refusal_fails_naming_the_pull_request_after_attempting_every_one(
     contains(err, "armed #42", describing="what the refusal says was armed")
 
 
+#: One pull request as the program answers it, for the refusals below to move
+#: one field of.
+OURS = {
+    "head_branch": "release-plz-2026-09-14T05-34-33Z",
+    "base_branch": "main",
+    "html_url": "https://github.com/nickderobertis/printobserver/pull/41",
+    "number": 41,
+    "releases": [],
+}
+
+
+def _moved(**fields: object) -> str:
+    """An answer naming one pull request, `OURS` with `fields` moved."""
+    return json.dumps({"prs": [{**OURS, **fields}]})
+
+
 @pytest.mark.parametrize(
     ("answer", "naming"),
     [
         ("not json", "is not the JSON"),
         ('{"releases": []}', "carries no `prs` list"),
-        ('{"prs": [{"number": 41}]}', "is not a pull request"),
-        ('{"prs": [{"number": true, "html_url": "https://x/pull/1"}]}', "is not a pull request"),
-        ('{"prs": [{"number": 41, "html_url": "https://x/pull/40"}]}', "is not a pull request"),
-        ('{"prs": [{"number": 41, "html_url": "http://x/pull/41"}]}', "is not a pull request"),
+        ('{"prs": ["41"]}', "is not a release pull request"),
+        (_moved(number=True), "is not a release pull request"),
+        (_moved(number=0, html_url=OURS["html_url"][:-2] + "0"), "is not a release pull request"),
+        (_moved(html_url=OURS["html_url"][:-2] + "40"), "is not a release pull request"),
+        (
+            _moved(html_url="https://github.com/somebody/else/pull/41"),
+            "is not a release pull request",
+        ),
+        (_moved(html_url="http" + OURS["html_url"][5:]), "is not a release pull request"),
+        (_moved(head_branch="feature/anything"), "from a release-plz branch"),
+        (_moved(base_branch="develop"), "into `main`"),
+    ],
+    ids=[
+        "not-json",
+        "no-prs",
+        "not-an-object",
+        "boolean-number",
+        "number-zero",
+        "url-of-another-number",
+        "another-repository",
+        "not-https",
+        "not-a-release-branch",
+        "another-base-branch",
     ],
 )
 def test_an_answer_that_is_not_the_programs_is_refused_arming_nothing(
@@ -169,6 +211,38 @@ def test_an_answer_that_is_not_there_is_refused(
 
     equal(code, 1, describing="arming an answer that is not there")
     contains(err, str(missing), describing="the refusal")
+    equal(forge.asked, [], describing="what the forge was asked")
+
+
+def test_a_forge_that_never_answers_fails_naming_the_pull_request(
+    forge: Forge,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A hung forge is that pull request's refusal, reported, rather than a traceback."""
+    monkeypatch.setattr(arming_module, "TIMEOUT_SECONDS", 1)
+    monkeypatch.setenv("GH_STANDIN_SLEEPS", "10")
+
+    code, _, err = arming(answer_of(tmp_path, 41), capsys)
+
+    equal(code, 1, describing="arming with the forge silent")
+    contains(err, "#41", describing="the refusal")
+    contains(err, "no answer within 1 s", describing="the refusal")
+
+
+def test_a_checkout_declaring_no_repository_arms_nothing(
+    forge: Forge, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Nothing says which pull request is this repository's, so none is armed."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "repo-policy.toml").write_text("schema_version = 1\n", encoding="utf-8")
+
+    code, _, err = arming(REPO_ROOT / DRAFTED_SAMPLE, capsys, elsewhere)
+
+    equal(code, 1, describing="arming from a checkout of something else")
+    contains(err, "repository.owner", describing="the refusal")
     equal(forge.asked, [], describing="what the forge was asked")
 
 
