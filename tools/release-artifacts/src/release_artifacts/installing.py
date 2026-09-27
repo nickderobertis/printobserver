@@ -31,7 +31,15 @@ from repo_checks.model import Repo
 from repo_checks.shell import run
 
 from release_artifacts import targets
-from release_artifacts.build import PROGRAM, Built, build, program, staged_release
+from release_artifacts.build import (
+    CLIENT_REQUIRES_PYTHON,
+    PROGRAM,
+    REQUIRES_PYTHON,
+    Built,
+    build,
+    program,
+    staged_release,
+)
 from release_artifacts.world import World
 
 #: Where an install script route is told to put it.
@@ -140,6 +148,33 @@ def programs_in(environment: Path) -> Path:
 def interpreter_in(environment: Path) -> Path:
     """The Python interpreter of a virtual environment made on this host."""
     return programs_in(environment) / executable("python")
+
+
+def python_environment(environment: Path, requires_python: str, *, seeded: bool = False) -> None:
+    """Make a virtual environment on an interpreter a distribution declares it supports.
+
+    `requires_python` is the distribution's own declaration, handed to `uv` as
+    the interpreter request, so the environment satisfies whatever floor the
+    package being installed carries rather than whichever interpreter this host
+    offers first — a floor raised past the host's default cannot leave a proof
+    resolving against an interpreter the package excludes.
+
+    Raises:
+        InstallError: If no such interpreter could be found or made.
+    """
+    ran(
+        [
+            "uv",
+            "venv",
+            *(["--seed"] if seeded else []),
+            "--clear",
+            "--python",
+            requires_python,
+            str(environment),
+        ],
+        cwd=environment.parent,
+        describing=f"making a Python environment on an interpreter `{requires_python}` admits",
+    )
 
 
 def powershell() -> str:
@@ -295,11 +330,7 @@ def _only(paths: tuple[Path, ...], suffix: str, describing: str) -> Path:
 def python_client(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python client, installed the way an application takes it."""
     environment = into / "env"
-    ran(
-        ["uv", "venv", "--clear", str(environment)],
-        cwd=into,
-        describing="making a Python environment",
-    )
+    python_environment(environment, CLIENT_REQUIRES_PYTHON)
     wheel = _only(built.paths, ".whl", built.target)
     ran(
         ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
@@ -388,11 +419,7 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python-registry route, taken with no Rust toolchain on the path."""
     environment = into / "env"
-    ran(
-        ["uv", "venv", "--clear", str(environment)],
-        cwd=into,
-        describing="making a Python environment",
-    )
+    python_environment(environment, REQUIRES_PYTHON)
     wheel = _only(built.paths, ".whl", built.target)
     ran(
         ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],

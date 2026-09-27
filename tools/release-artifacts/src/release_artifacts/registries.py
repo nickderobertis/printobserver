@@ -86,7 +86,7 @@ from repo_checks.model import Repo
 from repo_checks.shell import run
 
 from release_artifacts import targets
-from release_artifacts.build import PROGRAM
+from release_artifacts.build import CLIENT_REQUIRES_PYTHON, PROGRAM, REQUIRES_PYTHON
 from release_artifacts.installing import (
     NODE_RUNTIME,
     SCRIPT_DIRECTORY,
@@ -101,6 +101,7 @@ from release_artifacts.installing import (
     npm_global_program,
     programs_in,
     prove_client,
+    python_environment,
     ran,
     without_rust,
 )
@@ -1223,11 +1224,7 @@ def _pypi_route(repo: Repo, target: targets.Target, version: str, into: Path, ba
             failed.
     """
     environment = into / "env"
-    ran(
-        ["uv", "venv", "--seed", "--clear", str(environment)],
-        cwd=into,
-        describing="making a Python environment holding no copy of these sources",
-    )
+    python_environment(environment, REQUIRES_PYTHON, seeded=True)
     pinned = f"{target.name}=={version}"
     ran(
         [str(programs_in(environment) / executable("pip")), "install", pinned],
@@ -1326,11 +1323,7 @@ def _python_client(
             failed.
     """
     environment = into / "env"
-    ran(
-        ["uv", "venv", "--clear", str(environment)],
-        cwd=into,
-        describing="making a Python environment holding no copy of these sources",
-    )
+    python_environment(environment, CLIENT_REQUIRES_PYTHON)
     pinned = f"{target.name}=={version}"
     ran(
         [
