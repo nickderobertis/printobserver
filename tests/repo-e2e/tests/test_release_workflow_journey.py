@@ -157,6 +157,7 @@ case "$1" in
       previous=""
       for argument in "$@"; do
         if [ "$previous" = "--output" ] || [ "$previous" = "-o" ]; then
+          # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
           if [ "$argument" = "json" ]; then cat "$RELEASE_PLZ_STANDIN_DRAFTED"; fi
         fi
         previous="$argument"
@@ -210,6 +211,7 @@ import sys
 with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(json.dumps({"argv": sys.argv[1:], "token": os.environ.get("GH_TOKEN", "")}))
     record.write("\\n")
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 refusal = os.environ.get("GH_STANDIN_REFUSAL", "")
 if refusal:
     print(refusal, file=sys.stderr)
@@ -849,6 +851,7 @@ def test_the_drafting_job_arms_the_release_pull_request_it_drafted_and_no_other(
     """The one pull request the drafting answer names is armed, under the drafting token."""
     copy = gate_copy()
 
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     done = drafting(copy, tmp_path, (REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))
 
     equal(done.run.result(DRAFTING), Result.SUCCESS, describing="the drafting job")
@@ -880,6 +883,7 @@ def test_a_drafting_job_the_forge_refuses_to_arm_fails_naming_the_pull_request(
     """A refusal fails the job loudly rather than leaving the release blocked in silence."""
     copy = gate_copy()
 
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     done = drafting(
         copy, tmp_path, (REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"), REFUSED
     )
@@ -897,6 +901,7 @@ def test_a_drafting_job_that_drafted_nothing_arms_nothing(
     """With no release pull request to arm, nothing is asked of the forge and the job passes."""
     copy = gate_copy()
 
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     done = drafting(copy, tmp_path, '{"prs":[]}')
 
     equal(done.run.result(DRAFTING), Result.SUCCESS, describing="the drafting job")

@@ -1477,3 +1477,21 @@ file = "tools/release-artifacts/src/release_artifacts/arming.py"
 site = "released = fields.get(RELEASES)"
 reason = "The judged tier asked in one round for the answer's `head_branch` to be checked against release-plz's branch prefix, and in the next refused that same check as a restatement of release-plz's default with no drift gate; both objections are at this site. The validation here answers the first without the second: a pull request is armed only if it is this repository's own (the URL `repo-policy.toml`'s owner and name give that number), into the declared base branch, and releases at least one package, every one a crate `release-targets.toml` declares — which an ordinary pull request's answer cannot claim without the drafting program itself having written it. The head branch is deliberately not read, because the only thing to hold it to would be a copy of a third-party default."
 
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "if [ \"$argument\" = \"json\" ]; then cat \"$RELEASE_PLZ_STANDIN_DRAFTED\"; fi"
+reason = "The line of the drafting branch that prints the answer, and the same ground as the entry at that branch's opening `if`: the real `release-pr` opens a pull request on github.com, and the answer printed is the committed sample of what release-plz 0.3.167 writes. The directive sits here because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "refusal = os.environ.get(\"GH_STANDIN_REFUSAL\", \"\")"
+reason = "The refusal the `gh` stand-in the entry at `GH_STANDIN = ` covers answers with where a journey asks, and the same ground: the forge's refusal is the one outcome a journey cannot cause on the real forge without breaking a real repository's settings, and it is the one the job must fail loudly on. The directive sits here because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "done = drafting("
+reason = "The three drafting journeys' calls into the helper whose own entry (at `return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}`) states the ground: the committed workflow's own text run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy, with only the two programs that would reach a forge stood in. Each journey hands it the answer those programs would give — a pull request drafted, one refused, none drafted — because those are the three outcomes the job must handle and none can be caused on the real forge by a test. The directive sits at each call because an `ignore` covers only the line beneath it."
+

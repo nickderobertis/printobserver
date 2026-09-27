@@ -161,6 +161,22 @@ def test_a_node_client_carrying_no_computation_refuses_the_build(
         build(Repo(copy), "npm:@printobserver/sdk", tmp_path / "node", program)
 
 
+@pytest.mark.parametrize("target", ["pypi:printobserver-sdk", "npm:@printobserver/sdk"])
+def test_a_workspace_declaring_no_release_version_refuses_the_client_build(
+    copy: Path, program: Path, tmp_path: Path, target: str
+) -> None:
+    """What the source clients refuse to report, no package is stamped with."""
+    manifest = copy / "Cargo.toml"
+    was = bumping.workspace_version(copy)
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(f'version = "{was}"', 'version = "latest"', 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(BuildError, match="'latest'"):
+        build(Repo(copy), target, tmp_path / "built", program)
+
+
 def _importing(interpreter: str) -> Run:
     """Import the committed Python client from its sources on one interpreter."""
     sources = REPO_ROOT / Path(PYTHON_MODULE).parents[1]

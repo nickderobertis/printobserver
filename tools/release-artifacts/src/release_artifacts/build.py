@@ -129,8 +129,22 @@ def contract_version(repo: Repo) -> str:
     the Rust client reports as its own. A Python or Node client used from this
     tree reads the same version at import time; the packages built from it
     carry it stamped in as a literal by `stamped`.
+
+    Raises:
+        BuildError: If the workspace declares something that is not a release
+            version. A client from the same tree refuses to import over it, so
+            a package stamped with it would state a version no source could.
     """
-    return targets.workspace(repo.root)["version"]
+    import re
+
+    declared = targets.workspace(repo.root)["version"]
+    if not re.fullmatch(computation.VERSION_PATTERN, declared):
+        msg = (
+            f"{repo.root / computation.WORKSPACE_MANIFEST} declares {declared!r} as the "
+            f"workspace version, which is not a release version a client can carry"
+        )
+        raise BuildError(msg)
+    return declared
 
 
 def stamped(text: str, version: str, where: str, statement: str) -> str:
