@@ -163,6 +163,7 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
                 f"not armed"
             )
             raise ArmingError(msg)
+        # llmlint: ignore[boundary_inputs_validated] suppressions.toml has the reason.
         released = fields.get(RELEASES)
         packages = [
             release.get(PACKAGE) if isinstance(release, dict) else None

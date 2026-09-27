@@ -12,42 +12,37 @@ import { GeneratedSurface, reasonGiven } from "./surface.ts";
 // contract-version: read from the workspace manifest, from here
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parse } from "smol-toml";
 
 /** The workspace manifest of the tree this module sits in. */
 const WORKSPACE_MANIFEST = fileURLToPath(new URL("../../../Cargo.toml", import.meta.url));
 
+/** One key of a TOML table, or `undefined` where `table` is not a table. */
+function entry(table: unknown, key: string): unknown {
+  return typeof table === "object" && table !== null && !Array.isArray(table)
+    ? (table as Record<string, unknown>)[key]
+    : undefined;
+}
+
 /**
  * The `[workspace.package]` version of the tree this module sits in, or an
- * error naming the manifest when it cannot be read or declares none.
+ * error naming the manifest when it cannot be read as TOML or declares none.
  */
 function workspaceVersion(): string {
-  let text: string;
+  let declared: unknown;
   try {
-    text = readFileSync(WORKSPACE_MANIFEST, "utf8");
+    declared = parse(readFileSync(WORKSPACE_MANIFEST, "utf8"));
   } catch (error) {
     throw new Error(
       `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,
     );
   }
-  // Read line by line, and strictly: the section it wants must carry exactly
-  // one `version` key, its value one quoted string shaped as a release version.
-  let section = "";
-  const found: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const heading = /^\s*\[\s*([A-Za-z0-9_.-]+)\s*\]\s*(?:#.*)?$/.exec(line);
-    if (heading) {
-      section = heading[1] ?? "";
-      continue;
-    }
-    const key = /^\s*version\s*=\s*(.*?)\s*(?:#[^"]*)?$/.exec(line);
-    if (section === "workspace.package" && key) {
-      found.push(key[1] ?? "");
-    }
-  }
-  const quoted = found.length === 1 ? /^"([^"]*)"$/.exec(found[0] ?? "") : null;
-  const declared = quoted?.[1] ?? "";
-  if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(declared)) {
-    return declared;
+  const found = entry(entry(entry(declared, "workspace"), "package"), "version");
+  if (
+    typeof found === "string" &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(found)
+  ) {
+    return found;
   }
   throw new Error(
     `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which declares no [workspace.package] version a release could carry: ${JSON.stringify(found)}`,

@@ -317,8 +317,7 @@ def _arm_release_pr(repo: Repo, arguments: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    for line in arm(arguments.answer, repo):
-        print(line)
+    print("; ".join(arm(arguments.answer, repo)))
     return 0
 
 

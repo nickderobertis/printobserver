@@ -226,6 +226,7 @@ def gh_stand_in(directory: Path) -> None:
     resolves a name through `PATHEXT`, and an extensionless script is one it
     would pass over for the runner's own `gh.exe`.
     """
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     if sys.platform == "win32":
         (directory / "gh.py").write_text(GH_STANDIN, encoding="utf-8")
         (directory / "gh.cmd").write_text(

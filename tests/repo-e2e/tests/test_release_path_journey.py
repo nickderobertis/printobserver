@@ -258,9 +258,17 @@ def test_a_tree_at_a_version_a_tag_already_names_cannot_be_drafted_from(
     contains(said, f"v{version}", describing="the tag the tool named")
 
 
-#: The subject the merge of a release pull request leaves on `main`: the title
-#: release-plz gives that pull request, which squash-merging makes the subject.
-RELEASE_SUBJECT = "chore: release v{version}"
+#: The subjects the merge of a release pull request can leave on `main`: every
+#: title release-plz can give that pull request, which squash-merging makes the
+#: subject. They are the three arms of `release_plz_core::pr::pr_title` at the
+#: release `repo-policy.toml` holds, for a configuration naming no `pr_name`:
+#: one package of several, packages at differing versions, and one version.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+RELEASE_SUBJECTS = (
+    "chore(printobserver-types): release v{version}",
+    "chore: release",
+    "chore: release v{version}",
+)
 
 #: What the drafting tool says of a package no commit since its release names
 #: under a subject `release_commits` releases on, and of one it will release —
@@ -269,7 +277,9 @@ NO_RELEASE_COMMIT = "no commit matches the `release_commits` regex"
 NEXT_VERSION = "next version is"
 
 
-def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
+def merged_release(
+    gate_copy: Callable[..., GateCopy], *after: str, subject: str = RELEASE_SUBJECTS[-1]
+) -> GateCopy:
     """A copy whose `main` ends at a merged release pull request, then at `after`.
 
     The copy's own history is one `chore:` commit; on it lands exactly what the
@@ -282,7 +292,7 @@ def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     bumping.bump_workspace_version(copy.root, version)
     shell_run(
-        ["git", "commit", "-qam", RELEASE_SUBJECT.format(version=version)],
+        ["git", "commit", "-qam", subject.format(version=version)],
         cwd=copy.root,
         check=True,
     )
@@ -306,9 +316,10 @@ def decided(said: str) -> dict[str, str]:
     return decisions
 
 
+@pytest.mark.parametrize("subject", RELEASE_SUBJECTS)
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_release(
-    gate_copy: Callable[..., GateCopy],
+    gate_copy: Callable[..., GateCopy], subject: str
 ) -> None:
     """Arming the release pull request's auto-merge cannot loop.
 
@@ -317,7 +328,7 @@ def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_relea
     does not release on a `chore`, so no second release pull request is opened
     for the auto-merge that follows to merge.
     """
-    copy = merged_release(gate_copy)
+    copy = merged_release(gate_copy, subject=subject)
 
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     with EmptyIndex() as registry:

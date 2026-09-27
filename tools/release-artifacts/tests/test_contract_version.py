@@ -38,7 +38,16 @@ from repo_checks.shell import run
 
 #: Every spelling by which a module could go looking for a workspace manifest
 #: or read a file at all. A published module carries none of them.
-LOOKING = ("Cargo.toml", "tomllib", "open(", "Path", "node:fs", "readFileSync", "import.meta")
+LOOKING = (
+    "Cargo.toml",
+    "tomllib",
+    "smol-toml",
+    "open(",
+    "Path",
+    "node:fs",
+    "readFileSync",
+    "import.meta",
+)
 
 #: What each built module is asked, printing the constant and nothing else.
 PYTHON_PROBE = (
