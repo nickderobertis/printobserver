@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT
 from contract_codegen.version import BEGIN, END, NODE_MODULE, PYTHON_MODULE
+from release_artifacts import bumping
 from release_artifacts.build import (
     CLIENT_REQUIRES_PYTHON,
     CONTRACT_FIELD,
@@ -58,8 +59,8 @@ def copy(tmp_path: Path) -> Path:
 @pytest.fixture
 def bumped(copy: Path) -> tuple[Repo, str]:
     """That copy, its version moved as a release pull request moves it."""
-    version = scratch.next_minor(scratch.workspace_version(copy))
-    scratch.release_plz_bump(copy, version)
+    version = bumping.next_minor(bumping.workspace_version(copy))
+    bumping.release_plz_bump(copy, version)
     return Repo(copy), version
 
 

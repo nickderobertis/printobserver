@@ -30,7 +30,7 @@ from typing import Self
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, run
-from repo_checks import scratch
+from release_artifacts import bumping
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
 
@@ -278,9 +278,9 @@ def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
     then lands as a commit touching one crate's sources.
     """
     copy = gate_copy(node_modules=False)
-    version = scratch.next_minor(scratch.workspace_version(copy.root))
+    version = bumping.next_minor(bumping.workspace_version(copy.root))
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
-    scratch.release_plz_bump(copy.root, version)
+    bumping.release_plz_bump(copy.root, version)
     shell_run(
         ["git", "commit", "-qam", RELEASE_SUBJECT.format(version=version)],
         cwd=copy.root,

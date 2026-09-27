@@ -1414,7 +1414,7 @@ reason = "The same ground as this program's entry at `registries.py`'s `urllib.r
 [[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
-site = "scratch.release_plz_bump(copy.root, version)"
+site = "bumping.release_plz_bump(copy.root, version)"
 reason = "What this fixture builds is the tree a merged release pull request leaves, and the helper writes exactly that: applied to the committed tree it reproduces release pull request #41's `Cargo.toml`, every crate manifest and `Cargo.lock` byte for byte (checked against its head, `6f380a9`, when it was written). Having the real `release-plz update` write it instead would need a registry serving every crate at the version before — twelve real `cargo publish` uploads to a loopback registry before the one computation this journey is about — and would produce the same bytes. The program under test, the real `release-plz` deciding whether to draft, is not what is substituted: it runs for real over the result."
 
 [[suppression]]

@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from release_artifacts import targets
 from release_artifacts.__main__ import main
+from release_artifacts.bumping import next_minor
 from release_artifacts.registries import (
     RELEASED_FIELD,
     VERSION_FIELD,
@@ -30,7 +31,6 @@ from release_artifacts.registries import (
 )
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
-from repo_checks.scratch import next_minor
 from repo_checks.shell import run
 
 #: A version no tree of this repository declares, tagged at the same commit as

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from release_artifacts import bumping
 from repo_checks import scratch as scratch_trees
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -45,6 +46,6 @@ def bumped(scratch: Callable[[], Path]) -> tuple[Path, str]:
     Answered beside the version it now declares, which no committed file names.
     """
     copy = scratch()
-    version = scratch_trees.next_minor(scratch_trees.workspace_version(copy))
-    scratch_trees.release_plz_bump(copy, version)
+    version = bumping.next_minor(bumping.workspace_version(copy))
+    bumping.release_plz_bump(copy, version)
     return copy, version

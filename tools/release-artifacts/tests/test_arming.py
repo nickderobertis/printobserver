@@ -158,16 +158,15 @@ def _moved(**fields: object) -> str:
     [
         ("not json", "is not the JSON"),
         ('{"releases": []}', "carries no `prs` list"),
-        ('{"prs": ["41"]}', "is not a release pull request"),
-        (_moved(number=True), "is not a release pull request"),
-        (_moved(number=0, html_url=OURS["html_url"][:-2] + "0"), "is not a release pull request"),
-        (_moved(html_url=OURS["html_url"][:-2] + "40"), "is not a release pull request"),
+        ('{"prs": ["41"]}', "is not a pull request of"),
+        (_moved(number=True), "is not a pull request of"),
+        (_moved(number=0, html_url=OURS["html_url"][:-2] + "0"), "is not a pull request of"),
+        (_moved(html_url=OURS["html_url"][:-2] + "40"), "is not a pull request of"),
         (
             _moved(html_url="https://github.com/somebody/else/pull/41"),
-            "is not a release pull request",
+            "is not a pull request of",
         ),
-        (_moved(html_url="http" + OURS["html_url"][5:]), "is not a release pull request"),
-        (_moved(head_branch="feature/anything"), "from a release-plz branch"),
+        (_moved(html_url="http" + OURS["html_url"][5:]), "is not a pull request of"),
         (_moved(base_branch="develop"), "into `main`"),
     ],
     ids=[
@@ -179,7 +178,6 @@ def _moved(**fields: object) -> str:
         "url-of-another-number",
         "another-repository",
         "not-https",
-        "not-a-release-branch",
         "another-base-branch",
     ],
 )

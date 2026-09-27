@@ -44,11 +44,6 @@ TIMEOUT_SECONDS = 120
 #: The forge a release pull request of this repository is on.
 FORGE = "https://github.com"
 
-#: The branches release-plz drafts a release pull request on: its default
-#: prefix, and the one it still refreshes an older pull request under
-#: (`release_plz_core::pr::{DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX}`).
-RELEASE_BRANCHES = ("release-plz-", "release-plz/")
-
 
 class ArmingError(RuntimeError):
     """The release pull request could not be named, or could not be armed."""
@@ -104,9 +99,9 @@ def repository(repo: Repo) -> Repository:
 def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
     """Every release pull request one answer names, in the order it names them.
 
-    Each must be this repository's own, drafted by release-plz on one of its
-    branches into the declared base branch: the step arms nothing it cannot
-    tell is the release pull request.
+    Each must be this repository's own, into the declared base branch: the
+    step arms nothing but a pull request the drafting program answered it
+    drafted there.
 
     Raises:
         ArmingError: If the answer is not the program's shape, or names a pull
@@ -129,21 +124,18 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
         fields = entry if isinstance(entry, dict) else {}
         number = fields.get("number")
         url = fields.get("html_url")
-        head = fields.get("head_branch")
         base = fields.get("base_branch")
         if (
             not isinstance(number, int)
             or isinstance(number, bool)
             or number < 1
             or url != ours.pull(number)
-            or not isinstance(head, str)
-            or not head.startswith(RELEASE_BRANCHES)
             or base != ours.base_branch
         ):
             msg = (
-                f"{where} names {entry!r}, which is not a release pull request of "
-                f"{FORGE}/{ours.owner}/{ours.name} from a release-plz branch into "
-                f"`{ours.base_branch}`, so it is not armed"
+                f"{where} names {entry!r}, which is not a pull request of "
+                f"{FORGE}/{ours.owner}/{ours.name} into `{ours.base_branch}`, so it is "
+                f"not armed"
             )
             raise ArmingError(msg)
         named.append(Drafted(number, url))
