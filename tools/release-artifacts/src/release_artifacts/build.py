@@ -15,6 +15,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from contract_codegen import version as computation
 from repo_checks import platforms
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -37,8 +38,20 @@ RELEASE_DIRECTORY = "release"
 #: `sha256sum` itself writes and reads.
 CHECKSUMS = "SHA256SUMS"
 
-#: The interpreter versions the Python distributions declare support for.
+#: The interpreter versions the command-line distribution declares support
+#: for. It carries a program rather than Python, so any interpreter that can
+#: install a wheel can install it.
 REQUIRES_PYTHON = ">=3.9"
+
+#: The interpreter versions the Python client declares support for: the lowest
+#: one the committed client actually imports on. That is the first to carry
+#: `tomllib`, which the client reads its version with from a checkout, and
+#: `typing.NotRequired`, which its generated types use; the generator writes no
+#: syntax newer than it. `tools/release-artifacts/tests/test_contract_version.py`
+#: imports the client from source and installs and imports the built wheel on
+#: this floor, and refuses both on the release before it, to hold the
+#: declaration to what is true.
+CLIENT_REQUIRES_PYTHON = ">=3.11"
 
 #: What `built_by` says about a target this tool assembles, rather than one
 #: release automation publishes straight from the workspace.
@@ -97,33 +110,107 @@ def program(repo: Repo, given: Path | None = None) -> Path:
     return path
 
 
-def contract_version(repo: Repo, generated: str) -> str:
-    """The server contract one generated client was written from.
-
-    Read out of the client's own generated module rather than out of the
-    workspace: what a consumer wants to know is which contract the package they
-    installed was generated against, and that is what the module records.
+def floor(requires: str) -> str:
+    """The lowest interpreter release a `>=X.Y` declaration admits, as `X.Y`.
 
     Raises:
-        BuildError: If the generated module records none.
+        BuildError: If the declaration is not that shape.
     """
     import re
 
-    found = re.search(rf'{CONTRACT_CONSTANT}[^"\n]*"(?P<version>[^"]+)"', repo.read(generated))
+    found = re.fullmatch(r">=(?P<floor>\d+\.\d+)", requires)
     if found is None:
-        msg = f"{generated} records no `{CONTRACT_CONSTANT}` for its package to carry"
+        msg = f"{requires!r} is not a `>=X.Y` interpreter floor"
         raise BuildError(msg)
-    return found["version"]
+    return found["floor"]
 
 
-def _distribution(repo: Repo, target: targets.Target) -> wheels.Distribution:
+def contract_version(repo: Repo) -> str:
+    """The server contract the clients of this tree are generated against.
+
+    The workspace's version, which every crate of this tree inherits and which
+    the Rust client reports as its own. A Python or Node client used from this
+    tree reads the same version at import time; the packages built from it
+    carry it stamped in as a literal by `stamped`.
+
+    Raises:
+        BuildError: If the workspace declares something that is not a release
+            version. A client from the same tree refuses to import over it, so
+            a package stamped with it would state a version no source could.
+    """
+    import re
+
+    declared = targets.workspace(repo.root)["version"]
+    if not re.fullmatch(computation.VERSION_PATTERN, declared):
+        msg = (
+            f"{repo.root / computation.WORKSPACE_MANIFEST} declares {declared!r} as the "
+            f"workspace version, which is not a release version a client can carry"
+        )
+        raise BuildError(msg)
+    return declared
+
+
+def stamped(text: str, version: str, where: str, statement: str) -> str:
+    """One client module with its workspace-version computation replaced by `version`.
+
+    Everything between the generator's two markers is replaced, so what a
+    package ships states the version it was built at and carries no code that
+    goes looking for a workspace manifest — which an installed package does not
+    have. `statement` is the module's own language's spelling of the constant,
+    with `{version}` where the literal goes.
+
+    Raises:
+        BuildError: If `where` carries no such computation, or the stamped
+            module does not then state `version`: a stamp that silently missed
+            would ship a module that fails at import on every consumer's host.
+    """
+    import re
+
+    found = re.compile(
+        rf"^[^\n]*{re.escape(computation.BEGIN)}\n.*?^[^\n]*{re.escape(computation.END)}\n",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    replaced, count = found.subn(
+        lambda _: statement.format(version=json.dumps(version)) + "\n", text
+    )
+    if count != 1:
+        msg = (
+            f"{where} carries {count} `{CONTRACT_CONSTANT}` computations where the stamp "
+            f"replaces exactly one, so the package cannot be built from it"
+        )
+        raise BuildError(msg)
+    if recorded(replaced) != version:
+        msg = f"{where} does not state {version} as `{CONTRACT_CONSTANT}` once stamped"
+        raise BuildError(msg)
+    return replaced
+
+
+def recorded(text: str) -> str | None:
+    """The literal `CONTRACT_VERSION` one module states, or `None` where it states none."""
+    import re
+
+    found = re.search(
+        rf'^(?:export const )?{CONTRACT_CONSTANT}(?:: str)? = "(?P<version>[^"]+)";?$',
+        text,
+        flags=re.MULTILINE,
+    )
+    return None if found is None else found["version"]
+
+
+PYTHON_STATEMENT = "CONTRACT_VERSION: str = {version}"
+NODE_STATEMENT = "export const CONTRACT_VERSION = {version};"
+
+
+def _distribution(
+    repo: Repo, target: targets.Target, requires_python: str = REQUIRES_PYTHON
+) -> wheels.Distribution:
     """What one Python distribution of this repository says about itself."""
     inherited = targets.workspace(repo.root)
     return wheels.Distribution(
         name=target.name,
         version=inherited["version"],
         summary=target.description,
-        requires_python=REQUIRES_PYTHON,
+        requires_python=requires_python,
         license=inherited["license"],
         homepage=inherited["repository"],
     )
@@ -148,11 +235,23 @@ def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     consumer can read that off the installed distribution rather than off this
     tree.
     """
-    distribution = _distribution(repo, target)
+    distribution = _distribution(repo, target, CLIENT_REQUIRES_PYTHON)
     wheel = wheels.Wheel(distribution, wheels.PURE_TAG)
-    wheel.add_tree(repo.path("python/printobserver-sdk/src/printobserver_sdk"), "printobserver_sdk")
-    recorded = contract_version(repo, "python/printobserver-sdk/src/printobserver_sdk/contract.py")
-    wheel.add(f"{distribution.dist_info}/{CONTRACT_FILE}", f"{recorded}\n".encode())
+    module = repo.path(computation.PYTHON_MODULE)
+    wheel.add_tree(module.parent, module.parent.name)
+    version = contract_version(repo)
+    # The tree's copy reads the version out of a workspace manifest, which an
+    # installed wheel has none of: it would refuse to import on every host.
+    wheel.add(
+        f"{module.parent.name}/{module.name}",
+        stamped(
+            repo.read(computation.PYTHON_MODULE),
+            version,
+            computation.PYTHON_MODULE,
+            PYTHON_STATEMENT,
+        ).encode(),
+    )
+    wheel.add(f"{distribution.dist_info}/{CONTRACT_FILE}", f"{version}\n".encode())
     return Built(target.id, (wheel.write(into),))
 
 
@@ -164,6 +263,8 @@ NODE_BUILD = "npm/printobserver-sdk/tsconfig.build.json"
 
 #: Where that compilation leaves what it wrote.
 NODE_OUTPUT = "dist/npm-sdk"
+
+NODE_COMPILED = "contract.js"
 
 #: The committed program the launcher package puts on the path. Named here
 #: because what stands the JavaScript registry up serves the same one: a
@@ -193,19 +294,28 @@ def node_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     if not any(path.name == "index.js" for path in written):
         msg = f"the Node client compiled to {root} with no entry point in it"
         raise BuildError(msg)
+    version = contract_version(repo)
+    module = root / NODE_COMPILED
+    if not module.is_file():
+        msg = f"the Node client compiled to {root} with no {NODE_COMPILED} in it"
+        raise BuildError(msg)
     for path in written:
-        if path.is_file():
-            archive.add(
-                f"{packages.PACKAGE_ROOT}/dist/{path.relative_to(root).as_posix()}",
-                path.read_bytes(),
-            )
+        if not path.is_file():
+            continue
+        name = path.relative_to(root).as_posix()
+        content = path.read_bytes()
+        if path == module or computation.BEGIN.encode() in content:
+            content = stamped(
+                content.decode("utf-8"), version, f"{NODE_OUTPUT}/{name}", NODE_STATEMENT
+            ).encode()
+        archive.add(f"{packages.PACKAGE_ROOT}/dist/{name}", content)
     manifest = package.manifest(
         type="module",
         main="dist/index.js",
         types="dist/index.d.ts",
         exports={".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
         files=["dist"],
-        **{CONTRACT_FIELD: contract_version(repo, "npm/printobserver-sdk/src/contract.ts")},
+        **{CONTRACT_FIELD: version},
     )
     return Built(target.id, (packages.packed(package, manifest, archive, into),))
 

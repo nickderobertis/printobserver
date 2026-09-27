@@ -10,6 +10,7 @@ from pathlib import Path
 
 from repo_checks.model import Repo
 
+from release_artifacts.arming import ArmingError, arm
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
@@ -45,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
             "standin",
             "released",
             "answered",
+            "arm-release-pr",
             "dispatched",
             "recorded",
             "list",
@@ -111,7 +113,10 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         metavar="PATH",
-        help="what `release-plz release --output json` answered, as the file it was written to",
+        help=(
+            "what `release-plz release --output json` (or, for arm-release-pr, "
+            "`release-plz release-pr --output json`) answered, as the file it was written to"
+        ),
     )
     parser.add_argument(
         "--tag",
@@ -165,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _released(repo, arguments)
             case "answered":
                 return _answered(arguments)
+            case "arm-release-pr":
+                return _arm_release_pr(repo, arguments)
             case "dispatched":
                 return _dispatched(repo, arguments)
             case "recorded":
@@ -180,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             case _:
                 return _build(repo, arguments)
     except (
+        ArmingError,
         BuildError,
         InstallError,
         PublishError,
@@ -291,6 +299,25 @@ def _answered(arguments: argparse.Namespace) -> int:
         raise RegistryError(msg) from unreadable
     tags = released_by(answer)
     print(f"{RELEASED_FIELD}={' '.join(tags)}")
+    return 0
+
+
+def _arm_release_pr(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Arm auto-merge on the release pull request the drafting step just answered.
+
+    Only the pull request the program's own answer names is touched; an answer
+    naming none arms nothing and says so. A refusal fails the step, naming the
+    pull request and the forge's words, rather than leaving the release blocked
+    in silence.
+    """
+    if arguments.answer is None:
+        print(
+            "arm-release-pr takes --answer <path>: the file `release-plz release-pr "
+            "--output json` wrote its answer to",
+            file=sys.stderr,
+        )
+        return 2
+    print("; ".join(arm(arguments.answer, repo)))
     return 0
 
 

@@ -43,14 +43,16 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 from actions import ArtifactStore, Event, Result, Runner, WorkflowRun
 from journey import REPO_ROOT, GateCopy, clean_environment
 from release_artifacts import targets
+from release_artifacts.arming import ARM, DRAFTED_SAMPLE, SQUASH_BODY
 from release_artifacts.publishing import PRINTOBSERVER_PUBLISH_VERSION
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
@@ -130,7 +132,7 @@ CHAINED_BEHIND_DRAFTING = (
     "  release:\n    name: release\n",
     "  release:\n    name: release\n    needs: release-pr\n",
 )
-NO_ANSWER_ASKED_FOR = ("--output json > ", "> ")
+NO_ANSWER_ASKED_FOR = ("release --backend github --output json > ", "release --backend github > ")
 ARTIFACTS_UNGATED = (
     "    if: needs.release.outputs.released != ''\n    strategy:\n",
     "    strategy:\n",
@@ -150,6 +152,18 @@ case "$1" in
     exit 0
     ;;
   release-pr)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    if [ -n "${RELEASE_PLZ_STANDIN_DRAFTED:-}" ]; then
+      previous=""
+      for argument in "$@"; do
+        if [ "$previous" = "--output" ] || [ "$previous" = "-o" ]; then
+          # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+          if [ "$argument" = "json" ]; then cat "$RELEASE_PLZ_STANDIN_DRAFTED"; fi
+        fi
+        previous="$argument"
+      done
+      exit 0
+    fi
     echo "ERROR failed to determine next versions: package \\`printobserver-sdk\\` not found" \\
       "in the registry, but the git tag v0.1.0 exists" >&2
     exit 1
@@ -188,6 +202,62 @@ exec "$RELEASE_STANDIN_REAL_JUST" "$@"
 """
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+GH_STANDIN = """import json
+import os
+import sys
+
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    record.write(json.dumps({"argv": sys.argv[1:], "token": os.environ.get("GH_TOKEN", "")}))
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    record.write("\\n")
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+refusal = os.environ.get("GH_STANDIN_REFUSAL", "")
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+if refusal:
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    print(refusal, file=sys.stderr)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    raise SystemExit(1)
+"""
+
+
+def gh_stand_in(directory: Path) -> None:
+    """Put the `gh` stand-in in `directory`, runnable by name on this host.
+
+    A POSIX host runs it by its interpreter line. A Windows host finds a
+    program by its suffix, so there it is a `.cmd` handing the code beside it
+    to this interpreter: `gh` is asked for by a Python program there, which
+    resolves a name through `PATHEXT`, and an extensionless script is one it
+    would pass over for the runner's own `gh.exe`.
+    """
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    if sys.platform == "win32":
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        (directory / "gh.py").write_text(GH_STANDIN, encoding="utf-8")
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        launcher = f'@"{sys.executable}" "%~dp0gh.py" %*\r\n'
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        (directory / "gh.cmd").write_text(launcher, encoding="utf-8")
+        return
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    program = directory / "gh"
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    program.write_text(f"#!{sys.executable}\n{GH_STANDIN}", encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    program.chmod(0o755)
+
+
+@dataclass(frozen=True, slots=True)
+class Armed:
+    """One invocation of the forge's CLI: what it was asked, under which token."""
+
+    argv: list[str]
+    token: str
+
+
 @dataclass(frozen=True, slots=True)
 class Recorded:
     """One recorded recipe: its name, and the versions it was handed."""
@@ -210,6 +280,8 @@ class Driven:
     recorded: list[Recorded]
     #: Every invocation of the release program, as its argument list.
     invoked: list[str]
+    #: Every invocation of the forge's CLI, in order.
+    armed: list[Armed] = field(default_factory=list)
 
     @property
     def reached(self) -> list[str]:
@@ -267,12 +339,16 @@ def driven(
     store: ArtifactStore | None = None,
     run_id: str = "1",
     only: set[str] | None = None,
+    drafted: str = "",
+    refusal: str = "",
 ) -> Driven:
     """Run one committed workflow over `copy` under `event`, the stand-ins first on the PATH.
 
     `answered` is what the release program answers it released, where the run
     asks it; `store` is the artifact store the run shares with another, or one
-    of its own.
+    of its own. `drafted` is what its drafting answers it opened or refreshed —
+    where it is empty, drafting fails as the wedged one did — and `refusal` is
+    what the forge's CLI says refusing to arm a pull request, where it refuses.
     """
     stand_ins = tmp_path / f"stand-ins-{run_id}"
     stand_ins.mkdir()
@@ -280,8 +356,14 @@ def driven(
         program = stand_ins / name
         program.write_text(text, encoding="utf-8")
         program.chmod(0o755)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    gh_stand_in(stand_ins)
     answer_file = stand_ins / "answer.json"
     answer_file.write_text(answered, encoding="utf-8")
+    drafted_file = stand_ins / "drafted.json"
+    drafted_file.write_text(drafted, encoding="utf-8")
+    armings = stand_ins / "armed"
+    armings.touch()
     record = stand_ins / "reached"
     record.touch()
     invocations = stand_ins / "invoked"
@@ -298,6 +380,12 @@ def driven(
             UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
             RELEASE_PLZ_STANDIN_ANSWER=str(answer_file),
             RELEASE_PLZ_STANDIN_RECORD=str(invocations),
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+            RELEASE_PLZ_STANDIN_DRAFTED=str(drafted_file) if drafted else "",
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+            GH_STANDIN_RECORD=str(armings),
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+            GH_STANDIN_REFUSAL=refusal,
             # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
             RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ,
             RELEASE_STANDIN_RECORD=str(record),
@@ -315,7 +403,12 @@ def driven(
         if line.strip()
     ]
     invoked = [line for line in invocations.read_text(encoding="utf-8").splitlines() if line]
-    return Driven(run, copy, store, run_id, recorded, invoked)
+    armed = [
+        Armed(**json.loads(line))
+        for line in armings.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return Driven(run, copy, store, run_id, recorded, invoked, armed)
 
 
 def released(
@@ -746,3 +839,83 @@ def test_the_proof_after_a_refused_dispatch_fails_naming_the_missing_record(
     for job in PROVING:
         equal(proof.run.result(job), Result.SKIPPED, describing=f"the `{job}` job")
     equal(proof.reached, [], describing="the route proofs reached")
+
+
+#: The pull request the committed sample of the drafting answer names.
+DRAFTED = json.loads((REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))["prs"][0]
+
+#: What the forge's CLI says refusing to arm auto-merge where the repository
+#: does not allow it.
+REFUSED = (
+    "GraphQL: Pull request Auto merge is not allowed for this repository "
+    "(enablePullRequestAutoMerge)"
+)
+
+
+def drafting(copy: GateCopy, tmp_path: Path, drafted: str, refusal: str = "") -> Driven:
+    """Run the release workflow's drafting job alone, on a push, over `copy`."""
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+    return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}, drafted=drafted, refusal=refusal)
+
+
+def test_the_drafting_job_arms_the_release_pull_request_it_drafted_and_no_other(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """The one pull request the drafting answer names is armed, under the drafting token."""
+    copy = gate_copy()
+
+    # llmlint: ignore[tests_mirror_real_usage, e2e_not_mocked] suppressions.toml has the reason.
+    done = drafting(copy, tmp_path, (REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))
+
+    equal(done.run.result(DRAFTING), Result.SUCCESS, describing="the drafting job")
+    contains(
+        done.invoked,
+        "release-pr --backend github --output json",
+        describing="how the drafting step asked the release program",
+    )
+    equal(
+        done.armed,
+        [
+            Armed(
+                [*ARM[1:], SQUASH_BODY, DRAFTED["html_url"]],
+                "<secret RELEASE_PLZ_TOKEN>",
+            )
+        ],
+        describing="every call the job made to the forge's CLI",
+    )
+    contains(
+        done.run.jobs[DRAFTING].steps[-1].output,
+        f"armed #{DRAFTED['number']}",
+        describing="what the arming step said",
+    )
+
+
+def test_a_drafting_job_the_forge_refuses_to_arm_fails_naming_the_pull_request(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """A refusal fails the job loudly rather than leaving the release blocked in silence."""
+    copy = gate_copy()
+
+    # llmlint: ignore[tests_mirror_real_usage, e2e_not_mocked] suppressions.toml has the reason.
+    done = drafting(
+        copy, tmp_path, (REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"), REFUSED
+    )
+
+    equal(done.run.result(DRAFTING), Result.FAILURE, describing="the drafting job")
+    said = done.run.jobs[DRAFTING].steps[-1].output
+    contains(said, DRAFTED["html_url"], describing="what the failed arming step said")
+    contains(said, REFUSED, describing="what the failed arming step said")
+    equal(len(done.armed), 1, describing="the calls the job made to the forge's CLI")
+
+
+def test_a_drafting_job_that_drafted_nothing_arms_nothing(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """With no release pull request to arm, nothing is asked of the forge and the job passes."""
+    copy = gate_copy()
+
+    # llmlint: ignore[tests_mirror_real_usage, e2e_not_mocked] suppressions.toml has the reason.
+    done = drafting(copy, tmp_path, '{"prs":[]}')
+
+    equal(done.run.result(DRAFTING), Result.SUCCESS, describing="the drafting job")
+    equal(done.armed, [], describing="the calls the job made to the forge's CLI")

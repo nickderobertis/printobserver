@@ -346,10 +346,12 @@ def emit(contract: Contract) -> str:
         "use crate::{Client, ClientError};",
         "",
         *doc_lines(
-            "The version of the server contract these types were generated from, which "
-            "is the version the type crate declares in the tree they came from."
+            "The version of the server contract these types were generated from: the "
+            "version of the workspace this crate is compiled from. A published crate "
+            "reports the release version it was built at, and a crate compiled from a "
+            "checkout reports that checkout's workspace version."
         ),
-        f'pub const CONTRACT_VERSION: &str = "{contract.version}";',
+        'pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");',
         "",
         *doc_lines(
             "Every operation this client exposes a method for, which is every operation "

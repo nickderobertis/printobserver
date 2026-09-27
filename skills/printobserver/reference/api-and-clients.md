@@ -240,9 +240,18 @@ action answer. Image answers preserve absolute paths on the server's host.
 The Python distribution `printobserver-sdk` and npm distribution
 `@printobserver/sdk`, implemented at `python/printobserver-sdk` and
 `npm/printobserver-sdk`, expose the same generated operation names and response
-shapes. Their package metadata records the server contract version, as does
-Rust's `CONTRACT_VERSION`. The `printobserver-cli` registry distributions carry
-the command-line program; they are separate from these client libraries.
+shapes. The `printobserver-cli` registry distributions carry the command-line
+program; they are separate from these client libraries.
+
+Each client exports `CONTRACT_VERSION`, the server contract version it was
+generated against. A published crate, wheel or npm package reports the release
+version it was built at, which the wheel's `printobserver-contract-version`
+metadata and the npm manifest's `printobserverContractVersion` field also
+record. A client run or compiled from a checkout reports that checkout's
+workspace version. A Python or Node client used from a checkout reads that
+version from the workspace's `Cargo.toml` when imported, and refuses to import,
+naming the manifest, when it cannot find that file or the file declares no
+version.
 
 #### new
 

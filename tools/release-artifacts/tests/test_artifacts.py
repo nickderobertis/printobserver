@@ -23,12 +23,15 @@ from release_artifacts import targets, wheels
 from release_artifacts.build import (
     CONTRACT_FIELD,
     CONTRACT_FILE,
+    PYTHON_STATEMENT,
     BuildError,
     assembled,
     build,
     contract_version,
     manifest_of,
+    recorded,
     staged_release,
+    stamped,
 )
 from release_artifacts.installing import InstallError, install
 from release_artifacts.packages import checksums, digest_of
@@ -195,23 +198,35 @@ def test_a_staged_release_has_the_shape_the_forge_serves(
 def test_the_client_packages_record_the_contract_they_were_generated_from(
     repo: Repo, program: Path, into: Callable[[str], Path]
 ) -> None:
-    """A consumer reads it off the installed package rather than off this tree."""
-    recorded = contract_version(repo, "python/printobserver-sdk/src/printobserver_sdk/contract.py")
-    equal(recorded, targets.workspace(repo.root)["version"])
+    """A consumer reads it off the installed package rather than off this tree.
+
+    The tree's own workspace version, which is the contract its clients are
+    generated against: stated as a literal in each package's module, in the
+    wheel's metadata and in the package manifest, all four agreeing.
+    """
+    version = contract_version(repo)
+    equal(version, targets.workspace(repo.root)["version"])
 
     wheel = build(repo, "pypi:printobserver-sdk", into("python-client"), program).paths[0]
     with zipfile.ZipFile(wheel) as opened:
         stated = next(name for name in opened.namelist() if name.endswith(CONTRACT_FILE))
-        equal(opened.read(stated).decode().strip(), recorded)
+        equal(opened.read(stated).decode().strip(), version)
+        module = opened.read("printobserver_sdk/contract.py").decode()
+    equal(recorded(module), version, describing="the wheel's own contract module")
 
     tarball = build(repo, "npm:@printobserver/sdk", into("node-client"), program).paths[0]
-    equal(manifest_of(tarball)[CONTRACT_FIELD], recorded)
+    equal(manifest_of(tarball)[CONTRACT_FIELD], version)
+    with tarfile.open(tarball, "r:gz") as archive:
+        handle = archive.extractfile("package/dist/contract.js")
+        truth(handle is not None, describing="the package's compiled contract module")
+        compiled = handle.read().decode() if handle is not None else ""
+    equal(recorded(compiled), version, describing="the package's own contract module")
 
 
 def test_a_generated_module_recording_no_contract_is_refused(repo: Repo) -> None:
-    """A package that recorded none would leave a consumer unable to tell."""
-    with pytest.raises(BuildError, match="records no"):
-        contract_version(repo, "justfile")
+    """A module with no computation to stamp would ship recording nothing."""
+    with pytest.raises(BuildError, match="justfile carries 0 `CONTRACT_VERSION` computations"):
+        stamped(repo.read("justfile"), "1.2.3", "justfile", PYTHON_STATEMENT)
 
 
 def test_an_artifact_nothing_here_takes_is_refused(repo: Repo, into: Callable[[str], Path]) -> None:

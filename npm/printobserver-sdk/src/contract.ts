@@ -9,11 +9,59 @@
 
 import { GeneratedSurface, reasonGiven } from "./surface.ts";
 
+// contract-version: read from the workspace manifest, from here
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parse } from "smol-toml";
+
 /**
- * The version of the server contract these types were generated from, which
- * is the version the type crate declares in the tree they came from.
+ * Found from this module's own location rather than the working directory,
+ * so a client imported from any checkout reads that checkout's version.
  */
-export const CONTRACT_VERSION = "0.2.0";
+const WORKSPACE_MANIFEST = fileURLToPath(new URL("../../../Cargo.toml", import.meta.url));
+
+/** One key of a TOML table, or `undefined` where `table` is not a table. */
+function entry(table: unknown, key: string): unknown {
+  return typeof table === "object" && table !== null && !Array.isArray(table)
+    ? (table as Record<string, unknown>)[key]
+    : undefined;
+}
+
+/**
+ * The `[workspace.package]` version of the tree this module sits in, or an
+ * error naming the manifest when it cannot be read as TOML or declares none.
+ */
+function workspaceVersion(): string {
+  let declared: unknown;
+  try {
+    declared = parse(readFileSync(WORKSPACE_MANIFEST, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,
+    );
+  }
+  const found = entry(entry(entry(declared, "workspace"), "package"), "version");
+  if (
+    typeof found === "string" &&
+    /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+      found,
+    )
+  ) {
+    return found;
+  }
+  throw new Error(
+    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which declares no [workspace.package] version a release could carry: ${JSON.stringify(found)}`,
+  );
+}
+
+/**
+ * The version of the server contract these types were generated from. A
+ * published package reports the release version it was built at; used from a
+ * checkout, this module reports that checkout's workspace version, and
+ * refuses to import when it cannot read one.
+ */
+export const CONTRACT_VERSION: string = workspaceVersion();
+// contract-version: read from the workspace manifest, to here
 
 /**
  * Every operation this client exposes a method for, which is every operation

@@ -9,6 +9,7 @@ transformed in.
 
 from __future__ import annotations
 
+from contract_codegen import version
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
@@ -144,13 +145,25 @@ def _payload_class(union: str, variant: Variant) -> list[str]:
     return lines
 
 
+def _alias(name: str, value: str) -> str:
+    """One named type, as an alias every interpreter the wheel supports parses.
+
+    Written as a `TypeAlias` assignment rather than a `type` statement, which no
+    interpreter before 3.12 parses: the client's floor is the first interpreter
+    carrying `tomllib`, which it reads its version with from a checkout. The
+    value is evaluated at import, so it may only name what is declared above it:
+    a union's arms, which precede it, and `str` and `Literal`.
+    """
+    return f"{name}: TypeAlias = {value}"
+
+
 def _union_alias(name: str, variants: tuple[Variant, ...]) -> str:
     """One union, as the alias a caller annotates with."""
     units = [variant.tag for variant in variants if variant.unit]
     arms = [f"{name}{pascal(variant.tag)}" for variant in variants if not variant.unit]
     if units:
         arms.append(_literal(units))
-    return f"type {name} = " + " | ".join(arms)
+    return _alias(name, " | ".join(arms))
 
 
 def _declaration(declaration: Declaration) -> list[str]:
@@ -159,12 +172,12 @@ def _declaration(declaration: Declaration) -> list[str]:
         case Alias(name, target, doc):
             return [
                 *comment(doc, ""),
-                f"type {name} = {type_name(target)}",
+                _alias(name, type_name(target)),
             ]
         case Enumeration(name, doc, values):
             return [
                 *comment(doc, ""),
-                f"type {name} = {_literal([value for value, _ in values])}",
+                _alias(name, _literal([value for value, _ in values])),
             ]
         case Struct(name, doc, fields, variants, tag_field) if tag_field:
             lines = [f"class {name}Common(TypedDict):"]
@@ -363,9 +376,68 @@ def _kind_table(contract: Contract) -> list[str]:
     return lines
 
 
+def _contract_version() -> list[str]:
+    """`CONTRACT_VERSION`, read at import time from the workspace this module sits in.
+
+    Nothing here states a version: a checkout reports its own workspace's, and
+    the wheel a release publishes carries the release version as a literal
+    stamped over everything between the two markers.
+    """
+    manifest = version.manifest_from(version.PYTHON_MODULE)
+    return [
+        *comment(
+            "The version of the server contract these types were generated from. A "
+            "published wheel reports the release version it was built at; used from "
+            "a checkout, this module reports that checkout's workspace version, and "
+            "refuses to import when it cannot read one.",
+            "",
+        ),
+        f"# {version.BEGIN}",
+        "def _workspace_version() -> str:",
+        *docstring(
+            "The `[workspace.package]` version of the tree this module sits in.",
+            "Raises `ImportError` naming the manifest when it cannot be read or "
+            "declares no version, rather than answering a guess.",
+            "    ",
+        ),
+        "    import re",
+        "    import tomllib",
+        "    from pathlib import Path",
+        "",
+        f'    manifest = (Path(__file__).resolve().parent / "{manifest}").resolve()',
+        "    try:",
+        '        with manifest.open("rb") as handle:',
+        "            declared = tomllib.load(handle)",
+        "    except (OSError, tomllib.TOMLDecodeError) as error:",
+        "        msg = (",
+        '            f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "',
+        '            f"{manifest}, which could not be read: {error}"',
+        "        )",
+        "        raise ImportError(msg) from error",
+        '    workspace = declared.get("workspace")',
+        '    package = workspace.get("package") if isinstance(workspace, dict) else None',
+        '    found = package.get("version") if isinstance(package, dict) else None',
+        "    shaped = (",
+        *(f'        r"{piece}"' for piece in version.VERSION_PATTERN_PIECES),
+        "    )",
+        "    if not isinstance(found, str) or not re.fullmatch(shaped, found):",
+        "        msg = (",
+        '            f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "',
+        '            f"{manifest}, which declares no [workspace.package] version a release "',
+        '            f"could carry: {found!r}"',
+        "        )",
+        "        raise ImportError(msg)",
+        "    return found",
+        "",
+        "",
+        "CONTRACT_VERSION: str = _workspace_version()",
+        f"# {version.END}",
+    ]
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
-    typing_names = ["Literal", "NotRequired", "TypedDict", "cast"]
+    typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
     if contract.event_kinds:
         typing_names.append("overload")
     lines = [
@@ -378,9 +450,7 @@ def emit(contract: Contract) -> str:
         "",
         "from printobserver_sdk._surface import GeneratedSurface, reason_given",
         "",
-        "# The version of the server contract these types were generated from, which",
-        "# is the version the type crate declares in the tree they came from.",
-        f'CONTRACT_VERSION = "{contract.version}"',
+        *_contract_version(),
         "",
         "# Every operation this client exposes a method for, which is every operation",
         "# the server declares and no other.",

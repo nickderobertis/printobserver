@@ -38,6 +38,11 @@ ROUTE_JOURNEY = pytest.mark.skipif(NO_ROUTE_HERE is not None, reason=NO_ROUTE_HE
 # Every escape sequence a terminal-aware program writes here: a CSI sequence —
 # introducer, numeric and private parameters, intermediates, final byte — and an
 # OSC sequence, which `nx` uses for hyperlinks and which ends at BEL or at ST.
+#: The author and committer every commit a journey writes is made under, as
+#: `git` options: a runner holds no configured identity, and `git commit` with
+#: none exits 128 saying nothing a test would show.
+COMMIT_IDENTITY = ("-c", "user.email=e2e@printobserver.test", "-c", "user.name=e2e")
+
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)")
 
 
@@ -187,16 +192,7 @@ class GateCopy:
         for args in (
             ["init", "-q", "-b", "main"],
             ["add", "-A"],
-            [
-                "-c",
-                "user.email=e2e@printobserver.test",
-                "-c",
-                "user.name=e2e",
-                "commit",
-                "-q",
-                "-m",
-                "chore: the committed tree, copied",
-            ],
+            [*COMMIT_IDENTITY, "commit", "-q", "-m", "chore: the committed tree, copied"],
         ):
             shell_run(["git", *args], cwd=self.root, check=True)
 

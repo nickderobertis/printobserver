@@ -20,7 +20,7 @@ from pathlib import Path
 
 from repo_checks.shell import run
 
-from contract_codegen import emit_python, emit_rust, emit_typescript
+from contract_codegen import emit_python, emit_rust, emit_typescript, version
 from contract_codegen.model import Contract
 from contract_codegen.schemas import load
 
@@ -45,7 +45,7 @@ class Output:
 #: Every file the generator owns, in the order it writes them.
 OUTPUTS: tuple[Output, ...] = (
     Output(
-        path="crates/printobserver-sdk/src/contract.rs",
+        path=version.RUST_MODULE,
         client="rust",
         emit=emit_rust.emit,
     ),
@@ -60,7 +60,7 @@ OUTPUTS: tuple[Output, ...] = (
         emit=emit_rust.emit_live,
     ),
     Output(
-        path="python/printobserver-sdk/src/printobserver_sdk/contract.py",
+        path=version.PYTHON_MODULE,
         client="python",
         emit=emit_python.emit,
     ),
@@ -75,7 +75,7 @@ OUTPUTS: tuple[Output, ...] = (
         emit=emit_python.emit_live,
     ),
     Output(
-        path="npm/printobserver-sdk/src/contract.ts",
+        path=version.NODE_MODULE,
         client="typescript",
         emit=emit_typescript.emit,
     ),

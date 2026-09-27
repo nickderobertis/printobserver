@@ -697,13 +697,14 @@ class Registries:
     def _serve_wheel(self, version: str, program: Path | None) -> None:
         """Assemble a wheel and serve it, with the index an installer reads."""
         from release_artifacts import wheels
+        from release_artifacts.build import REQUIRES_PYTHON
 
         name = self.names["pypi"]
         distribution = wheels.Distribution(
             name=name,
             version=version,
             summary="A stand-in for the command-line distribution.",
-            requires_python=">=3.9",
+            requires_python=REQUIRES_PYTHON,
             license="MIT",
             homepage=self.base,
         )
@@ -993,7 +994,7 @@ def _hollow(repo: Repo, target: targets.Target, into: Path) -> tuple[Path, ...]:
     does not work.
     """
     from release_artifacts import wheels
-    from release_artifacts.build import REQUIRES_PYTHON
+    from release_artifacts.build import CLIENT_REQUIRES_PYTHON
 
     version = targets.workspace(repo.root)["version"]
     into.mkdir(parents=True, exist_ok=True)
@@ -1004,7 +1005,7 @@ def _hollow(repo: Repo, target: targets.Target, into: Path) -> tuple[Path, ...]:
                     name=target.name,
                     version=version,
                     summary="a client carrying nothing",
-                    requires_python=REQUIRES_PYTHON,
+                    requires_python=CLIENT_REQUIRES_PYTHON,
                     license="MIT",
                     homepage="https://example.invalid",
                 ),

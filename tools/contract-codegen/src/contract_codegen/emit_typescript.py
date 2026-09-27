@@ -8,6 +8,7 @@ the two for a field to be transformed in.
 
 from __future__ import annotations
 
+from contract_codegen import version
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
@@ -283,6 +284,70 @@ def _kind_table(contract: Contract) -> list[str]:
     return lines
 
 
+def _contract_version() -> list[str]:
+    """`CONTRACT_VERSION`, read at import time from the workspace this module sits in.
+
+    Nothing here states a version: a checkout reports its own workspace's, and
+    the package a release publishes carries the release version as a literal
+    stamped over everything between the two markers of its compiled module.
+    """
+    manifest = version.manifest_from(version.NODE_MODULE)
+    return [
+        f"// {version.BEGIN}",
+        'import { readFileSync } from "node:fs";',
+        'import { fileURLToPath } from "node:url";',
+        'import { parse } from "smol-toml";',
+        "",
+        *doc_lines(
+            "Found from this module's own location rather than the working directory, "
+            "so a client imported from any checkout reads that checkout's version."
+        ),
+        f'const WORKSPACE_MANIFEST = fileURLToPath(new URL("{manifest}", import.meta.url));',
+        "",
+        *doc_lines("One key of a TOML table, or `undefined` where `table` is not a table."),
+        "function entry(table: unknown, key: string): unknown {",
+        '  return typeof table === "object" && table !== null && !Array.isArray(table)',
+        "    ? (table as Record<string, unknown>)[key]",
+        "    : undefined;",
+        "}",
+        "",
+        *doc_lines(
+            "The `[workspace.package]` version of the tree this module sits in, or an "
+            "error naming the manifest when it cannot be read as TOML or declares none."
+        ),
+        "function workspaceVersion(): string {",
+        "  let declared: unknown;",
+        "  try {",
+        '    declared = parse(readFileSync(WORKSPACE_MANIFEST, "utf8"));',
+        "  } catch (error) {",
+        "    throw new Error(",
+        "      `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest "
+        "${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,",
+        "    );",
+        "  }",
+        '  const found = entry(entry(entry(declared, "workspace"), "package"), "version");',
+        f'  if (typeof found === "string" && /^{version.VERSION_PATTERN}$/.test(found)) {{',
+        "    return found;",
+        "  }",
+        "  throw new Error(",
+        "    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest "
+        "${WORKSPACE_MANIFEST}, which declares no [workspace.package] version a release "
+        "could carry: ${JSON.stringify(found)}`,",
+        "  );",
+        "}",
+        "",
+        *doc_lines(
+            "The version of the server contract these types were generated from. A "
+            "published package reports the release version it was built at; used from "
+            "a checkout, this module reports that checkout's workspace version, and "
+            "refuses to import when it cannot read one."
+        ),
+        "export const CONTRACT_VERSION: string = workspaceVersion();",
+        f"// {version.END}",
+        "",
+    ]
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Node client."""
     lines = [
@@ -295,11 +360,7 @@ def emit(contract: Contract) -> str:
         "",
         'import { GeneratedSurface, reasonGiven } from "./surface.ts";',
         "",
-        *doc_lines(
-            "The version of the server contract these types were generated from, which "
-            "is the version the type crate declares in the tree they came from."
-        ),
-        f'export const CONTRACT_VERSION = "{contract.version}";',
+        *_contract_version(),
         "",
         *doc_lines(
             "Every operation this client exposes a method for, which is every operation "

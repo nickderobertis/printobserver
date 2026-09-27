@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 from environment import SCRIPT, answer, said, script
+from release_artifacts.installing import program_in
 from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
 
 # What the server is replaced with to induce an instance that starts and never
@@ -92,12 +93,12 @@ def test_an_instance_that_never_answers_is_reported_by_name(
     provisioned = script("install", "--state-dir", state)
     passing(provisioned, describing="provisioning the instance the stub server replaces")
     venv = Path(str(answer(provisioned)["state_dir"])) / "venv"
+    server = program_in(venv, "octoprint")
     if sys.platform == "win32":
         # A program Windows will run in the server's place, and one that answers
         # nothing: this interpreter, handed arguments it refuses.
-        shutil.copyfile(sys.executable, venv / "Scripts" / "octoprint.exe")
+        shutil.copyfile(sys.executable, server)
     else:
-        server = venv / "bin" / "octoprint"
         server.write_text(SILENT_SERVER, encoding="utf-8")
         server.chmod(0o755)
 
