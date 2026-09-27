@@ -1524,3 +1524,57 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "program = directory / \"gh\""
 reason = "Where the same stand-in is written onto a POSIX host's path, on the ground the entry at `GH_STANDIN = ` states: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "launcher = f'@\"{sys.executable}\" \"%~dp0gh.py\" %*\\r\\n'"
+reason = "The one line a Windows host needs to find the `gh` stand-in by name: a Python program resolves `gh` through `PATHEXT`, so the stand-in is a `.cmd` handing its code to this interpreter, and without it the runner's own `gh.exe` — which reaches github.com and would arm auto-merge on a live pull request — is what the arming step would run. What is under test is which pull request `release_artifacts arm-release-pr` asks the forge to arm, and that is answered by what the stand-in records, not by a live forge."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "(directory / \"gh.cmd\").write_text(launcher, encoding=\"utf-8\")"
+reason = "Writes that launcher where the drafting job's path finds it ahead of the runner's installed `gh`; the ground is the launcher's own entry. Only with this file in place does a Windows run of the journey arm nothing on github.com, where the real CLI would act on a real pull request of this repository."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "program.write_text(f\"#!{sys.executable}\\n{GH_STANDIN}\", encoding=\"utf-8\")"
+reason = "Writes the POSIX form of the `gh` stand-in, run by its interpreter line, onto the path the drafting job searches first. The real CLI there would reach github.com under RELEASE_PLZ_TOKEN's stand-in value and try to arm a live pull request; the journey instead reads back, from this program's record, the exact `pr merge --auto --squash <url>` call and token the committed job made."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "program.chmod(0o755)"
+reason = "Makes that POSIX stand-in executable so the job's `gh` lookup lands on it rather than passing it over for the host's installed CLI, which reaches github.com. It is part of installing the stand-in rather than a separate substitution, and carries the ground of the entry for the line above it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "record.write(json.dumps({\"argv\": sys.argv[1:], \"token\": os.environ.get(\"GH_TOKEN\", \"\")}))"
+reason = "The stand-in's record of each call — its arguments and the token it was handed — which is the observation the journeys assert on: that the job armed exactly the pull request its drafting answer named, under RELEASE_PLZ_TOKEN, and made no other call. A live `gh` records nothing a test could read back and would act on github.com instead."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "record.write(\"\\\\n\")"
+reason = "Ends each recorded call with a newline so the journey reads one call per line; the record exists only because the real CLI, which would arm a live pull request on github.com, cannot be run, and this line is part of writing it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "print(refusal, file=sys.stderr)"
+reason = "Answers with the forge's own refusal text where a journey asks for one, so the job's loud failure is proven. No test can make github.com refuse to arm a real pull request of this repository on demand — that needs the repository's auto-merge setting switched off — so the refusal is the stand-in's, in the words `gh` reports it with."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "raise SystemExit(1)"
+reason = "Exits non-zero as the real CLI does when the forge refuses, which is what the committed arming step must turn into a failed job naming the pull request. It is the exit half of the refusal the entry at `print(refusal, file=sys.stderr)` covers, and is stood in on the same ground: a live refusal cannot be caused on github.com by a test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "if refusal:"
+reason = "The branch selecting the stand-in's refusal answer, taken only when a journey hands it the forge's refusal text; the ground is the entry at `print(refusal, file=sys.stderr)`. The real `gh` has no such switch, and making github.com refuse to arm a live pull request is not something a test may do."

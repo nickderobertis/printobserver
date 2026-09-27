@@ -209,12 +209,17 @@ import sys
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     record.write(json.dumps({"argv": sys.argv[1:], "token": os.environ.get("GH_TOKEN", "")}))
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     record.write("\\n")
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 refusal = os.environ.get("GH_STANDIN_REFUSAL", "")
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 if refusal:
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     print(refusal, file=sys.stderr)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     raise SystemExit(1)
 """
 
@@ -232,13 +237,16 @@ def gh_stand_in(directory: Path) -> None:
     if sys.platform == "win32":
         # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         (directory / "gh.py").write_text(GH_STANDIN, encoding="utf-8")
-        (directory / "gh.cmd").write_text(
-            f'@"{sys.executable}" "%~dp0gh.py" %*\r\n', encoding="utf-8"
-        )
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        launcher = f'@"{sys.executable}" "%~dp0gh.py" %*\r\n'
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        (directory / "gh.cmd").write_text(launcher, encoding="utf-8")
         return
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     program = directory / "gh"
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     program.write_text(f"#!{sys.executable}\n{GH_STANDIN}", encoding="utf-8")
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     program.chmod(0o755)
 
 
