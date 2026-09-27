@@ -1565,7 +1565,7 @@ reason = "The drafting branch of the same `release-plz` stand-in the entry at `R
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "with open(os.environ[\"GH_STANDIN_RECORD\"], \"a\", encoding=\"utf-8\") as record:"
-reason = "The body of the `gh` stand-in the entry at `GH_STANDIN = ` covers, and the same ground: the real `gh pr merge --auto` arms a real pull request on github.com. It records every call with its token and refuses with the forge's own words where told to. That the real `gh` still takes every option the arming step hands it is proven against the installed `gh` by `tools/release-artifacts/tests/test_arming.py`. The directive sits here because an `ignore` covers only the line beneath it."
+reason = "The body of the `gh` stand-in the entry at `GH_STANDIN = ` covers, and the same ground: the real `gh pr merge --auto` arms a real pull request on github.com. It records every call with its token and refuses with the forge's own words where told to. That the real `gh` still takes every option the arming step hands it is proven against the `gh` release `repo-policy.toml` holds by `tests/skill-install/tests/test_forge_cli_journey.py`. The directive sits here because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"

@@ -1,0 +1,29 @@
+"""The held GitHub CLI takes every option the release pull request is armed with.
+
+`release_artifacts.arming` arms the release pull request by running `gh pr
+merge` with the options its `ARM` names, and every suite that drives that step
+does it through a stand-in `gh` that accepts anything, because the real one
+would arm a real pull request. So this is what notices a `gh` that no longer
+takes one of them: it reads the options against the real `gh`'s own help, at
+the release `repo-policy.toml` holds. It is here rather than in the gate for
+the reason the rest of this project is: that `gh` is given to this project's
+job alone, and a case that skipped where it was absent would pass on any host
+that happened to carry none.
+"""
+
+from __future__ import annotations
+
+from release_artifacts.arming import ARM
+from repo_checks.expect import contains, equal
+from repo_checks.shell import run
+
+
+def test_the_held_gh_takes_every_option_arming_passes(gh: str) -> None:
+    """`gh pr merge --help` lists every option `ARM` hands it."""
+    _, *subcommand = ARM[:3]
+    helped = run([gh, *subcommand, "--help"], timeout=60)
+    said = helped.stdout + helped.stderr
+
+    equal(helped.returncode, 0, describing=f"`gh pr merge --help`: {said}")
+    for option in ARM[3:]:
+        contains(said, option, describing="what `gh pr merge --help` lists")

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -20,7 +19,6 @@ from release_artifacts import arming as arming_module
 from release_artifacts.__main__ import main
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import contains, equal
-from repo_checks.shell import run
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 GH = """import json
@@ -275,19 +273,3 @@ def test_the_committed_sample_carries_every_key_the_reader_reads() -> None:
             contains(pull, key, describing="a pull request of the sample")
         for release in pull[arming_module.RELEASES]:
             contains(release, arming_module.PACKAGE, describing="a release of the sample")
-
-
-@pytest.mark.skipif(shutil.which("gh") is None, reason="GitHub CLI is not on this host")
-def test_the_forge_cli_takes_every_option_arming_passes() -> None:
-    """The options `ARM` hands `gh`, read against the installed `gh`'s own help.
-
-    The stand-in above accepts anything, so this is what notices a `gh` that no
-    longer takes one of them.
-    """
-    program, *subcommand = arming_module.ARM[:3]
-    helped = run([program, *subcommand, "--help"], timeout=60)
-    said = helped.stdout + helped.stderr
-
-    equal(helped.returncode, 0, describing=f"`gh pr merge --help`: {said}")
-    for option in arming_module.ARM[3:]:
-        contains(said, option, describing="what `gh pr merge --help` lists")
