@@ -1455,6 +1455,12 @@ reason = "Where the `gh` stand-in in the drift-gate journey records its calls, a
 
 [[suppression]]
 rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "with EmptyIndex() as registry, DraftingForge(ours.owner, ours.name) as forge:"
+reason = "Where the drift-gate journey starts both stand-ins the held `release-plz release-pr` is pointed at. Opening a pull request on the real forge and reading the real crates.io are the two things no journey may do, and every other part of the run is real: the held program, the committed step's own arguments, and a real copy of the tree carrying a `fix:` since its last release. What the journey checks is the answer that program writes, compared with the committed sample and handed to the real arming recipe, and neither stand-in produces any part of that answer."
+
+[[suppression]]
+rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "gh_stand_in(stand_ins)"
 reason = "Where the stand-in the entry at `GH_STANDIN = ` covers is installed, beside the release program's and `just`'s stand-ins that `driven`'s own entries cover, and on the same ground: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."

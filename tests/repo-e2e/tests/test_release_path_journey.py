@@ -370,6 +370,11 @@ def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
     )
 
 
+#: The most the drafting forge stand-in reads of one request body. The largest
+#: the held release sends is the GraphQL commit, which carries every file the
+#: release pull request changes, base64-encoded: well under a megabyte here.
+MAX_FORGE_BODY_BYTES = 16 * 1024 * 1024
+
 #: What the drafting forge stand-in authenticates the program by: minted per
 #: stand-in, never a real token.
 FORGE_CREDENTIAL = f"drafting-{secrets.token_hex(8)}"
@@ -446,19 +451,32 @@ class DraftingForge:
 
             protocol_version = "HTTP/1.1"
 
+            def _body(self) -> dict[str, object] | None:
+                """The request's JSON object, `{}` for none, or `None` where it is not one."""
+                declared = self.headers.get("Content-Length") or "0"
+                if not declared.isdigit() or int(declared) > MAX_FORGE_BODY_BYTES:
+                    return None
+                raw = self.rfile.read(int(declared))
+                if not raw:
+                    return {}
+                try:
+                    parsed = json.loads(raw)
+                except UnicodeDecodeError, json.JSONDecodeError:
+                    return None
+                return parsed if isinstance(parsed, dict) else None
+
             def _any(self) -> None:
                 """Record the request and send what the forge answers it."""
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length else b""
                 path = self.path.split("?", 1)[0]
                 forge.asked.append(f"{self.command} {path}")
                 token = self.headers.get("Authorization", "").split()[-1:]
-                parsed = json.loads(raw) if raw else {}
-                code, document = (
-                    forge.answer(self.command, path, parsed if isinstance(parsed, dict) else {})
-                    if token == [FORGE_CREDENTIAL]
-                    else (401, {"message": "Bad credentials"})
-                )
+                body = self._body()
+                if token != [FORGE_CREDENTIAL]:
+                    code, document = 401, {"message": "Bad credentials"}
+                elif body is None:
+                    code, document = 400, {"message": "Problems parsing JSON"}
+                else:
+                    code, document = forge.answer(self.command, path, body)
                 payload = json.dumps(document).encode()
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
@@ -510,6 +528,7 @@ def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_ar
     ours = arming.repository(Repo(REPO_ROOT))
     copy = merged_release(gate_copy, "fix(types): a change worth releasing")
 
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     with EmptyIndex() as registry, DraftingForge(ours.owner, ours.name) as forge:
         result = capture(
             [
