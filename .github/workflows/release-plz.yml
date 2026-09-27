@@ -71,8 +71,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-semver-checks
-      # Asked for its answer, which names the pull request it opened or
-      # refreshed — the one the step after it arms.
       - run: release-plz release-pr --backend github --output json > "$RUNNER_TEMP/release-pr.json"
         env:
           GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}

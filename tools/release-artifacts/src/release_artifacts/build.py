@@ -301,8 +301,6 @@ def node_client(repo: Repo, target: targets.Target, into: Path) -> Built:
             continue
         name = path.relative_to(root).as_posix()
         content = path.read_bytes()
-        # Every compiled file carrying the computation is stamped, and the
-        # compiled module is refused if it carries none.
         if path == module or computation.BEGIN.encode() in content:
             content = stamped(
                 content.decode("utf-8"), version, f"{NODE_OUTPUT}/{name}", NODE_STATEMENT
