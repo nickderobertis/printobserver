@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import sys
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -264,3 +265,23 @@ def test_the_client_wheel_declares_the_lowest_interpreter_the_client_imports_on(
 
     refused, _ = _installed(wheel, below, tmp_path / "below")
     failing(refused, naming=CLIENT_REQUIRES_PYTHON)
+
+
+#: The ruff configuration the shipped Python client's sources are linted under.
+CLIENT_RUFF = REPO_ROOT / Path(PYTHON_MODULE).parents[1] / "ruff.toml"
+
+
+def test_the_client_sources_are_linted_at_the_floor_the_wheel_declares() -> None:
+    """Ruff's target for the client is the declared floor, so the two cannot drift.
+
+    Linted at a newer target, ruff would ask the generator for syntax the floor
+    cannot parse; at an older one, it would let through syntax the floor can.
+    """
+    with CLIENT_RUFF.open("rb") as handle:
+        declared = tomllib.load(handle)
+
+    equal(
+        declared.get("target-version"),
+        "py" + floor(CLIENT_REQUIRES_PYTHON).replace(".", ""),
+        describing=f"the target-version {CLIENT_RUFF.relative_to(REPO_ROOT)} lints at",
+    )
