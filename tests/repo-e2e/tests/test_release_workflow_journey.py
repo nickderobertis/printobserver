@@ -230,11 +230,13 @@ def gh_stand_in(directory: Path) -> None:
     """
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     if sys.platform == "win32":
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         (directory / "gh.py").write_text(GH_STANDIN, encoding="utf-8")
         (directory / "gh.cmd").write_text(
             f'@"{sys.executable}" "%~dp0gh.py" %*\r\n', encoding="utf-8"
         )
         return
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     program = directory / "gh"
     program.write_text(f"#!{sys.executable}\n{GH_STANDIN}", encoding="utf-8")
     program.chmod(0o755)

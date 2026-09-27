@@ -1512,3 +1512,15 @@ rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/release-artifacts/tests/test_contract_version.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "This node's acceptance criteria place this proof in `tools/release-artifacts/tests/`, and it is where its neighbours are, on the ground the entry for this rule at `tools/release-artifacts/tests/test_registries.py` states: `test_artifacts.py` in the same directory already builds every package this project ships, so what edges this project's `test` target is what it proves rather than what it costs. Moving it out would leave the stamp in `build.py` measured by no tier carrying a coverage floor, since the end-to-end tier is not measured."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "(directory / \"gh.py\").write_text(GH_STANDIN, encoding=\"utf-8\")"
+reason = "Where the stand-in the entry at `GH_STANDIN = ` covers is written onto a Windows host's path, on that entry's ground: the real `gh` would arm auto-merge on a real pull request, which this node's task forbids a test to do. The directive sits here as well because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "program = directory / \"gh\""
+reason = "Where the same stand-in is written onto a POSIX host's path, on the ground the entry at `GH_STANDIN = ` states: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."
