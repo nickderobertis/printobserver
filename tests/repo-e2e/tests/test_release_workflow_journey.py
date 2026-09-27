@@ -380,8 +380,11 @@ def driven(
             UV_PROJECT_ENVIRONMENT=str(copy.shared_venv),
             RELEASE_PLZ_STANDIN_ANSWER=str(answer_file),
             RELEASE_PLZ_STANDIN_RECORD=str(invocations),
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             RELEASE_PLZ_STANDIN_DRAFTED=str(drafted_file) if drafted else "",
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             GH_STANDIN_RECORD=str(armings),
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             GH_STANDIN_REFUSAL=refusal,
             # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
             RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ,

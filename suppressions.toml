@@ -1442,6 +1442,24 @@ site = "gh_stand_in(stand_ins)"
 reason = "Where the stand-in the entry at `GH_STANDIN = ` covers is installed, beside the release program's and `just`'s stand-ins that `driven`'s own entries cover, and on the same ground: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."
 
 [[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RELEASE_PLZ_STANDIN_DRAFTED=str(drafted_file) if drafted else \"\","
+reason = "Hands the `release-plz` stand-in the pull request a journey says was drafted, which is the one input the drafting branch at `if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then` answers from. The real `release-pr` would open that pull request on github.com, which no journey may do; what the journey tests is the committed job's handling of the answer, through the real `just release-pr-arm` over a real copy. Left empty, the stand-in fails as the wedged drafting run did, so the journeys that predate arming run unchanged."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "GH_STANDIN_RECORD=str(armings),"
+reason = "Where the `gh` stand-in writes each call it receives and the token it received it under. That record is how the journey shows the job armed only the pull request the drafting answer named, under RELEASE_PLZ_TOKEN, and nothing else. A real `gh` would leave nothing a journey could read without arming a real pull request, and the arming code the record observes (`release_artifacts arm-release-pr`, reached through the real recipe) runs unsubstituted."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "GH_STANDIN_REFUSAL=refusal,"
+reason = "Makes the `gh` stand-in refuse arming in the forge's own words, so the journey can show that a refused arming fails the drafting job and names the pull request instead of leaving the release blocked without a word. Getting a real forge to refuse needs a real pull request that cannot be merged, and no journey may create one. The code that turns the refusal into a failed job is the real recipe and module, run over the copy."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}, drafted=drafted, refusal=refusal)"

@@ -13,18 +13,29 @@ import re
 import tomllib
 from pathlib import Path
 
-#: The workspace manifest, whose `[workspace.package]` version every crate
-#: inherits.
-WORKSPACE_MANIFEST = "Cargo.toml"
+from contract_codegen.version import VERSION_PATTERN, WORKSPACE_MANIFEST
 
 #: The lock file release automation rewrites beside the manifests.
 LOCK_FILE = "Cargo.lock"
 
 
 def workspace_version(root: Path) -> str:
-    """The version the workspace at `root` declares."""
-    with (root / WORKSPACE_MANIFEST).open("rb") as handle:
-        return str(tomllib.load(handle)["workspace"]["package"]["version"])
+    """The version the workspace at `root` declares.
+
+    Raises:
+        RuntimeError: Naming the manifest, where it declares no version a
+            release could be cut at.
+    """
+    manifest = root / WORKSPACE_MANIFEST
+    with manifest.open("rb") as handle:
+        declared = tomllib.load(handle)
+    workspace = declared.get("workspace")
+    package = workspace.get("package") if isinstance(workspace, dict) else None
+    found = package.get("version") if isinstance(package, dict) else None
+    if not isinstance(found, str) or not re.fullmatch(VERSION_PATTERN, found):
+        msg = f"{manifest} declares no [workspace.package] version a release could carry: {found!r}"
+        raise RuntimeError(msg)
+    return found
 
 
 def next_minor(version: str) -> str:
