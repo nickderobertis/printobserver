@@ -54,6 +54,11 @@ PYTHON_PROBE = (
     "import sys; sys.path.insert(0, sys.argv[1]); "
     "from printobserver_sdk.contract import CONTRACT_VERSION; print(CONTRACT_VERSION)"
 )
+WHEEL_PROBE = (
+    "import sys, printobserver_sdk; "
+    "print(f'{sys.version_info.major}.{sys.version_info.minor}', "
+    "printobserver_sdk.CONTRACT_VERSION)"
+)
 NODE_PROBE = (
     "const { CONTRACT_VERSION } = await import(process.argv[1]); console.log(CONTRACT_VERSION);"
 )
@@ -203,10 +208,29 @@ def _importing(interpreter: str) -> Run:
     )
 
 
+def _installed(wheel: Path, interpreter: str, into: Path) -> tuple[Run, Path]:
+    """Install `wheel` into a fresh environment on one interpreter, as a consumer does.
+
+    Answered beside that environment's own interpreter, which the install puts
+    the package where it imports from.
+    """
+    passing(
+        run(["uv", "venv", "-q", "--python", interpreter, str(into)], cwd=into.parent),
+        describing=f"making a Python {interpreter} environment",
+    )
+    python = into / ("Scripts" if sys.platform == "win32" else "bin") / "python"
+    installed = run(
+        ["uv", "pip", "install", "-q", "--python", str(python), str(wheel)],
+        cwd=into.parent,
+        timeout=1800,
+    )
+    return installed, python
+
+
 def test_the_client_wheel_declares_the_lowest_interpreter_the_client_imports_on(
     repo: Repo, program: Path, tmp_path: Path
 ) -> None:
-    """Imported on its declared floor and refused on the release before it.
+    """Imported and installed on its declared floor, and refused on the release before it.
 
     Real interpreters, not a reading of the source: the declaration is too low
     the moment the generator emits syntax the floor cannot parse, and too high
@@ -217,7 +241,7 @@ def test_the_client_wheel_declares_the_lowest_interpreter_the_client_imports_on(
     below = f"{major}.{int(minor) - 1}"
 
     passing(_importing(lowest), describing=f"importing the client on Python {lowest}")
-    failing(_importing(below), naming="SyntaxError")
+    failing(_importing(below), naming="ImportError")
 
     wheel = build(repo, "pypi:printobserver-sdk", tmp_path / "python", program).paths[0]
     with zipfile.ZipFile(wheel) as opened:
@@ -226,3 +250,17 @@ def test_the_client_wheel_declares_the_lowest_interpreter_the_client_imports_on(
             f"Requires-Python: {CLIENT_REQUIRES_PYTHON}\n" in opened.read(metadata).decode(),
             describing=f"the wheel's metadata to declare {CLIENT_REQUIRES_PYTHON}",
         )
+
+    installed, python = _installed(wheel, lowest, tmp_path / "floor")
+    passing(installed, describing=f"installing the wheel on Python {lowest}")
+    # Run from a directory with no workspace above it, so only the wheel answers.
+    ran = run([str(python), "-I", "-c", WHEEL_PROBE], cwd=tmp_path / "floor")
+    passing(ran, describing=f"importing the installed wheel on Python {lowest}")
+    equal(
+        ran.stdout.strip(),
+        f"{lowest} {bumping.workspace_version(repo.root)}",
+        describing="the interpreter and the contract the installed wheel reports",
+    )
+
+    refused, _ = _installed(wheel, below, tmp_path / "below")
+    failing(refused, naming=CLIENT_REQUIRES_PYTHON)

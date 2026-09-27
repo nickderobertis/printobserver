@@ -44,11 +44,14 @@ CHECKSUMS = "SHA256SUMS"
 REQUIRES_PYTHON = ">=3.9"
 
 #: The interpreter versions the Python client declares support for: the lowest
-#: one the committed client actually imports on. Its generated types use the
-#: `type` statement, which no interpreter before 3.12 parses, and
-#: `tools/release-artifacts/tests/test_contract_version.py` imports it on this
-#: floor and on the release before it to hold the declaration to what is true.
-CLIENT_REQUIRES_PYTHON = ">=3.12"
+#: one the committed client actually imports on. That is the first to carry
+#: `tomllib`, which the client reads its version with from a checkout, and
+#: `typing.NotRequired`, which its generated types use; the generator writes no
+#: syntax newer than it. `tools/release-artifacts/tests/test_contract_version.py`
+#: imports the client from source and installs and imports the built wheel on
+#: this floor, and refuses both on the release before it, to hold the
+#: declaration to what is true.
+CLIENT_REQUIRES_PYTHON = ">=3.11"
 
 #: What `built_by` says about a target this tool assembles, rather than one
 #: release automation publishes straight from the workspace.

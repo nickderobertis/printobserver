@@ -8,7 +8,7 @@ generate-clients`, and commit what that writes.
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict, cast, overload
+from typing import Literal, NotRequired, TypeAlias, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
 
@@ -84,7 +84,7 @@ OPERATION_NAMES: tuple[str, ...] = (
 
 
 # What an operator's acknowledgement of a failure event asks for next.
-type AcknowledgementDisposition = Literal["continue", "watch", "stop"]
+AcknowledgementDisposition: TypeAlias = Literal["continue", "watch", "stop"]
 
 
 class ActionAnswer(TypedDict):
@@ -116,7 +116,7 @@ class ActionExecutedPayload(TypedDict):
 
 
 # A lowercase hyphenated version 7 UUID identifying one requested action.
-type ActionId = str
+ActionId: TypeAlias = str
 
 
 # One action of the closed vocabulary, named without its payload.
@@ -124,7 +124,7 @@ type ActionId = str
 # This is what a safety envelope grants and what a policy rejection names;
 # the
 # payload lives on `PrintAction` itself.
-type ActionKind = Literal[
+ActionKind: TypeAlias = Literal[
     "pause",
     "resume",
     "cancel",
@@ -224,15 +224,15 @@ class ActorAgent(TypedDict):
 
 
 # Who asked for something.
-type Actor = ActorAgent | Literal["operator", "system"]
+Actor: TypeAlias = ActorAgent | Literal["operator", "system"]
 
 
 # An actor class, which is what a safety envelope grants actions to.
-type ActorClass = Literal["agent", "operator", "system"]
+ActorClass: TypeAlias = Literal["agent", "operator", "system"]
 
 
 # One thing an adjustment may change.
-type Adjustable = str
+Adjustable: TypeAlias = str
 
 
 class AgentAssessment(TypedDict):
@@ -274,7 +274,7 @@ class AgentAssessmentPayload(TypedDict):
 #
 # A closed vocabulary rather than a number, because a number invites a
 # precision the agent does not have.
-type Confidence = Literal["low", "medium", "high"]
+Confidence: TypeAlias = Literal["low", "medium", "high"]
 
 
 class ContextAnswer(TypedDict):
@@ -324,12 +324,12 @@ class ErrorAnswer(TypedDict):
 
 
 # A lowercase hyphenated version 7 UUID identifying one event.
-type EventId = str
+EventId: TypeAlias = str
 
 
 # The name one kind of event is written down under: lowercase `snake_case`,
 # declared by the domain that owns the event.
-type EventKind = str
+EventKind: TypeAlias = str
 
 
 class EventRecord(TypedDict):
@@ -367,7 +367,7 @@ class EventRecord(TypedDict):
 
 # Where an event came from, as the bare string the domain that raised it
 # declares for itself.
-type EventSource = str
+EventSource: TypeAlias = str
 
 
 class ExecutionOutcomeFailedPayload(TypedDict):
@@ -390,12 +390,12 @@ class ExecutionOutcomeFailed(TypedDict):
 
 
 # What happened when an accepted action reached the printer.
-type ExecutionOutcome = ExecutionOutcomeFailed | Literal["succeeded"]
+ExecutionOutcome: TypeAlias = ExecutionOutcomeFailed | Literal["succeeded"]
 
 
 # A file name a printer's own file API can be asked for: no path separator,
 # no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.
-type FileName = str
+FileName: TypeAlias = str
 
 
 class HeaterSnapshot(TypedDict):
@@ -447,7 +447,7 @@ class ImageAnswer(TypedDict):
 
 
 # A lowercase hyphenated version 7 UUID identifying one image.
-type ImageId = str
+ImageId: TypeAlias = str
 
 
 class ImageRecord(TypedDict):
@@ -544,7 +544,7 @@ class InterventionExpiredPayload(TypedDict):
 
 # A lowercase hyphenated version 7 UUID identifying one bounded
 # intervention.
-type InterventionId = str
+InterventionId: TypeAlias = str
 
 
 class InterventionOutcomeRestoreFailedPayload(TypedDict):
@@ -586,7 +586,7 @@ class InterventionOutcomeSuperseded(TypedDict):
 
 
 # What became of a bounded change.
-type InterventionOutcome = (
+InterventionOutcome: TypeAlias = (
     InterventionOutcomeRestoreFailed
     | InterventionOutcomeSuperseded
     | Literal["still_active", "restored", "restore_unavailable"]
@@ -726,7 +726,7 @@ class ObicoFailureAlertPayload(TypedDict):
 
 
 # The kind of printer notification Obico sent, normalized.
-type ObicoNotificationType = Literal[
+ObicoNotificationType: TypeAlias = Literal[
     "started",
     "done",
     "cancelled",
@@ -784,7 +784,7 @@ class PolicyDecisionRejected(TypedDict):
 
 
 # The decision policy took on one request.
-type PolicyDecision = PolicyDecisionRejected | Literal["accepted"]
+PolicyDecision: TypeAlias = PolicyDecisionRejected | Literal["accepted"]
 
 
 class PortFailurePayload(TypedDict):
@@ -820,7 +820,9 @@ class PortFailurePayload(TypedDict):
 # expiring; those are not sites here, because a second record of them would
 # be
 # a second version of one fact.
-type PortFailureSite = Literal["printer_snapshot", "printer_job", "image_write", "supervision_turn"]
+PortFailureSite: TypeAlias = Literal[
+    "printer_snapshot", "printer_job", "image_write", "supervision_turn"
+]
 
 
 class PrintActionPause(TypedDict):
@@ -984,7 +986,7 @@ class PrintActionAcknowledgeFailure(TypedDict):
 
 
 # The whole vocabulary an actor may ask for, and there is no other.
-type PrintAction = (
+PrintAction: TypeAlias = (
     PrintActionPause
     | PrintActionResume
     | PrintActionCancel
@@ -1023,7 +1025,7 @@ class PrintContext(TypedDict):
 
 
 # A lowercase hyphenated version 7 UUID identifying one print.
-type PrintId = str
+PrintId: TypeAlias = str
 
 
 class PrintRecord(TypedDict):
@@ -1093,7 +1095,7 @@ class PrinterStateUnknown(TypedDict):
 #
 # The `unknown` arm exists so that a state nobody anticipated is recorded
 # carrying the source's own word for it rather than lost.
-type PrinterState = (
+PrinterState: TypeAlias = (
     PrinterStateUnknown
     | Literal["operational", "paused", "printing", "cancelling", "error", "offline"]
 )
@@ -1135,7 +1137,7 @@ class Range(TypedDict):
 
 
 # Bytes exactly as received, base64-encoded.
-type RawBytes = str
+RawBytes: TypeAlias = str
 
 
 class RejectionReasonOutOfBoundsPayload(TypedDict):
@@ -1245,7 +1247,7 @@ class RejectionReasonUnsupportedAdjustable(TypedDict):
 #
 # Each rejection is a distinct variant, so a consumer distinguishes them by
 # matching rather than by reading a message.
-type RejectionReason = (
+RejectionReason: TypeAlias = (
     RejectionReasonOutOfBounds
     | RejectionReasonActorMayNotRequest
     | RejectionReasonInvalidFromState
@@ -1319,7 +1321,7 @@ class StartupOutcomeInterventionExpired(TypedDict):
 # restart and one that was started again look identical afterwards unless
 # the
 # history says which happened.
-type StartupOutcome = (
+StartupOutcome: TypeAlias = (
     StartupOutcomeSessionResumed | StartupOutcomeInterventionExpired | Literal["print_adopted"]
 )
 
@@ -1401,7 +1403,7 @@ class SupervisionSessionOpenedPayload(TypedDict):
 
 
 # An instant in UTC, as an RFC 3339 string with a zero offset.
-type Timestamp = str
+Timestamp: TypeAlias = str
 
 
 # Every kind the server declares a payload type for, and the type each

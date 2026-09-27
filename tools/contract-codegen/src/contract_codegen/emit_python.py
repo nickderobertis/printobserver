@@ -145,13 +145,25 @@ def _payload_class(union: str, variant: Variant) -> list[str]:
     return lines
 
 
+def _alias(name: str, value: str) -> str:
+    """One named type, as an alias every interpreter the wheel supports parses.
+
+    Written as a `TypeAlias` assignment rather than a `type` statement, which no
+    interpreter before 3.12 parses: the client's floor is the first interpreter
+    carrying `tomllib`, which it reads its version with from a checkout. The
+    value is evaluated at import, so it may only name what is declared above it:
+    a union's arms, which precede it, and `str` and `Literal`.
+    """
+    return f"{name}: TypeAlias = {value}"
+
+
 def _union_alias(name: str, variants: tuple[Variant, ...]) -> str:
     """One union, as the alias a caller annotates with."""
     units = [variant.tag for variant in variants if variant.unit]
     arms = [f"{name}{pascal(variant.tag)}" for variant in variants if not variant.unit]
     if units:
         arms.append(_literal(units))
-    return f"type {name} = " + " | ".join(arms)
+    return _alias(name, " | ".join(arms))
 
 
 def _declaration(declaration: Declaration) -> list[str]:
@@ -160,12 +172,12 @@ def _declaration(declaration: Declaration) -> list[str]:
         case Alias(name, target, doc):
             return [
                 *comment(doc, ""),
-                f"type {name} = {type_name(target)}",
+                _alias(name, type_name(target)),
             ]
         case Enumeration(name, doc, values):
             return [
                 *comment(doc, ""),
-                f"type {name} = {_literal([value for value, _ in values])}",
+                _alias(name, _literal([value for value, _ in values])),
             ]
         case Struct(name, doc, fields, variants, tag_field) if tag_field:
             lines = [f"class {name}Common(TypedDict):"]
@@ -425,7 +437,7 @@ def _contract_version() -> list[str]:
 
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
-    typing_names = ["Literal", "NotRequired", "TypedDict", "cast"]
+    typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
     if contract.event_kinds:
         typing_names.append("overload")
     lines = [

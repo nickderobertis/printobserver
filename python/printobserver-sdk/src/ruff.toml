@@ -1,0 +1,7 @@
+# The shipped Python client is held to the interpreter its wheel declares as
+# its floor (`release_artifacts.build.CLIENT_REQUIRES_PYTHON`) rather than to
+# the one this repository's tooling runs on, so ruff reports syntax that floor
+# cannot parse and suggests none. Every rule the root configuration selects
+# still runs here; only the target version differs.
+extend = "../../../pyproject.toml"
+target-version = "py311"
