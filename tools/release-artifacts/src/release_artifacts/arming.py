@@ -11,7 +11,12 @@ makes to `main` is the one that cuts the release.
 
 It cannot loop. The merge leaves one `chore(...): release v<version>` commit on
 `main`, and `release-plz.toml`'s `release_commits` releases on `feat`, `fix`
-and `perf` alone, so that commit drafts no further release pull request.
+and `perf` alone, so that commit drafts no further release pull request. That
+rule also releases on `BREAKING CHANGE:` anywhere in a message, body included,
+and a squash commit's body is by default the pull request's description — here
+release-plz's changelog, which quotes other commits' words. So the arming names
+the merge commit's body itself, `SQUASH_BODY`, and what the merge leaves on
+`main` never depends on what the changelog happens to say.
 
 The answer's shape is the program's own, read from release-plz 0.3.167's
 `main.rs` (`{"prs": [...]}`, empty when it drafted nothing) and its core's
@@ -39,9 +44,18 @@ from release_artifacts import targets
 DRAFTED_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release-pr.json")
 
 #: What arms one pull request: the forge's own auto-merge, squashing, as every
-#: pull request of this repository is merged. The pull request is named by its
-#: URL, which names the repository too, so nothing is inferred from a remote.
-ARM = ("gh", "pr", "merge", "--auto", "--squash")
+#: pull request of this repository is merged, with the merge commit's body
+#: given as `SQUASH_BODY`. The pull request is named by its URL after that, which
+#: names the repository too, so nothing is inferred from a remote.
+ARM = ("gh", "pr", "merge", "--auto", "--squash", "--body")
+
+#: The body of the commit the armed merge leaves on `main`, in place of the
+#: pull request's description. It names no commit type and carries no
+#: `BREAKING CHANGE:`, so `release_commits` drafts nothing for it.
+SQUASH_BODY = (
+    "Release automation's release pull request, merged by the forge once its "
+    "required checks passed. What it releases is in each crate's CHANGELOG.md."
+)
 
 #: How long the forge is given to answer one arming before that pull request is
 #: reported refused: a hung `gh` must fail the step naming it rather than hold
@@ -236,7 +250,7 @@ def arm(answer: Path, repo: Repo) -> list[str]:
     for pull in pulls:
         try:
             # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
-            done = run([*ARM, pull.url], timeout=TIMEOUT_SECONDS)
+            done = run([*ARM, SQUASH_BODY, pull.url], timeout=TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             refused.append(f"#{pull.number} ({pull.url}): no answer within {TIMEOUT_SECONDS} s")
             continue

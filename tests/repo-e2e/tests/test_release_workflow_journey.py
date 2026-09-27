@@ -52,7 +52,7 @@ import pytest
 from actions import ArtifactStore, Event, Result, Runner, WorkflowRun
 from journey import REPO_ROOT, GateCopy, clean_environment
 from release_artifacts import targets
-from release_artifacts.arming import DRAFTED_SAMPLE
+from release_artifacts.arming import ARM, DRAFTED_SAMPLE, SQUASH_BODY
 from release_artifacts.publishing import PRINTOBSERVER_PUBLISH_VERSION
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
@@ -877,7 +877,7 @@ def test_the_drafting_job_arms_the_release_pull_request_it_drafted_and_no_other(
         done.armed,
         [
             Armed(
-                ["pr", "merge", "--auto", "--squash", DRAFTED["html_url"]],
+                [*ARM[1:], SQUASH_BODY, DRAFTED["html_url"]],
                 "<secret RELEASE_PLZ_TOKEN>",
             )
         ],

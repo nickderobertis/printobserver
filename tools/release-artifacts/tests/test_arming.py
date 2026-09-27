@@ -104,7 +104,7 @@ def test_the_committed_sample_is_armed_by_its_url_and_nothing_else(
     code, out, err = arming(REPO_ROOT / DRAFTED_SAMPLE, capsys)
 
     equal((code, err), (0, ""), describing="arming the sample")
-    equal(forge.asked, [["pr", "merge", "--auto", "--squash", sample["html_url"]]])
+    equal(forge.asked, [[*arming_module.ARM[1:], arming_module.SQUASH_BODY, sample["html_url"]]])
     contains(out, f"armed #{sample['number']}", describing="what arming said")
 
 

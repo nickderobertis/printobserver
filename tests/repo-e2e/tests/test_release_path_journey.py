@@ -287,21 +287,25 @@ NEXT_VERSION = "next version is"
 
 
 def merged_release(
-    gate_copy: Callable[..., GateCopy], *after: str, subject: str = RELEASE_SUBJECTS[-1]
+    gate_copy: Callable[..., GateCopy],
+    *after: str,
+    subject: str = RELEASE_SUBJECTS[-1],
+    body: str = arming.SQUASH_BODY,
 ) -> GateCopy:
     """A copy whose `main` ends at a merged release pull request, then at `after`.
 
     The copy's own history is one `chore:` commit; on it lands exactly what the
     release pull request carries — the workspace moved as release-plz moves it —
-    under the subject that pull request is merged as. Each subject in `after`
-    then lands as a commit touching one crate's sources.
+    under the subject that pull request is merged as and the body the arming
+    names for it. Each subject in `after` then lands as a commit touching one
+    crate's sources.
     """
     copy = gate_copy(node_modules=False)
     version = bumping.next_minor(bumping.workspace_version(copy.root))
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     bumping.bump_workspace_version(copy.root, version)
     shell_run(
-        ["git", "commit", "-qam", subject.format(version=version)],
+        ["git", "commit", "-qam", f"{subject.format(version=version)}\n\n{body}"],
         cwd=copy.root,
         check=True,
     )
@@ -368,6 +372,40 @@ def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release(
         decided(said).get("printobserver-types"),
         "release",
         describing=f"what the tool decided for the crate the fix touched, having said:\n{said}",
+    )
+
+
+#: A release pull request's description as release-plz writes it, quoting a
+#: commit whose own words carry the footer `release_commits` releases on. It is
+#: what a squash merge would put in the body were the arming not to name one.
+QUOTING_CHANGELOG = """## `printobserver-types`
+
+### Fixed
+
+- *(types)* read a `BREAKING CHANGE:` footer the way the convention spells it
+"""
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_a_merge_body_quoting_the_breaking_footer_would_draft_a_release(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """The control for naming the merge commit's body: a changelog body would loop.
+
+    The same drive as the loop guard's, with the body a squash merge takes from
+    the pull request's description by default. The drafting tool releases on
+    it, which is why `arming.SQUASH_BODY` is what the merge leaves instead.
+    """
+    copy = merged_release(gate_copy, body=QUOTING_CHANGELOG)
+
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with EmptyIndex() as registry:
+        code, said = drafted(copy, registry)
+
+    passing((code, said), describing="drafting over a merge carrying the changelog")
+    truth(
+        "release" in decided(said).values(),
+        describing=f"the tool to release on the quoted footer, having said:\n{said}",
     )
 
 
@@ -663,6 +701,6 @@ def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_ar
     passing((armed.returncode, output(armed)), describing="`just release-pr-arm` over the answer")
     equal(
         [json.loads(line)["argv"] for line in armings.read_text(encoding="utf-8").splitlines()],
-        [["pr", "merge", "--auto", "--squash", *forge.opened]],
+        [[*arming.ARM[1:], arming.SQUASH_BODY, *forge.opened]],
         describing="every call arming made to the forge's CLI",
     )
