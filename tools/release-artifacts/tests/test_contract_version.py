@@ -32,6 +32,7 @@ from release_artifacts.build import (
     manifest_of,
     recorded,
 )
+from release_artifacts.installing import interpreter_in
 from repo_checks import scratch
 from repo_checks.expect import Run, absent, equal, failing, passing, truth
 from repo_checks.model import Repo
@@ -219,7 +220,7 @@ def _installed(wheel: Path, interpreter: str, into: Path) -> tuple[Run, Path]:
         run(["uv", "venv", "-q", "--python", interpreter, str(into)], cwd=into.parent),
         describing=f"making a Python {interpreter} environment",
     )
-    python = into / ("Scripts" if sys.platform == "win32" else "bin") / "python"
+    python = interpreter_in(into)
     installed = run(
         ["uv", "pip", "install", "-q", "--python", str(python), str(wheel)],
         cwd=into.parent,

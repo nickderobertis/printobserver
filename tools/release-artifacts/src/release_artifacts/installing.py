@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -37,6 +38,7 @@ from release_artifacts.build import (
     REQUIRES_PYTHON,
     Built,
     build,
+    floor,
     program,
     staged_release,
 )
@@ -74,16 +76,21 @@ TOOLCHAIN_REPORT = "Rust toolchain on the install path: {}"
 NO_TOOLCHAIN = TOOLCHAIN_REPORT.format("none")
 
 
-def executable(name: str) -> str:
-    """What a program called `name` is called on disk on this host.
+def executable(name: str, host: str | None = None) -> str:
+    """What a program called `name` is called on disk on a host.
 
     Windows finds a program by its suffix, and every program a Rust build or a
     virtual environment puts there carries `.exe`; everywhere else the name is
     the whole of it. The `printobserver` program itself is not asked about
     here: `repo_checks.platforms` declares what it is called on every platform,
     and a caller reads that instead.
+
+    Args:
+        name: The program's name, without a suffix.
+        host: The `sys.platform` answer of the host asked about; this host's
+            own when not given.
     """
-    return f"{name}.exe" if sys.platform == "win32" else name
+    return f"{name}.exe" if (host or sys.platform) == "win32" else name
 
 
 def release_program(target_directory: Path, name: str) -> Path:
@@ -134,34 +141,235 @@ def consumer_program(consumer: Path, name: str, env: dict[str, str] | None = Non
     return release_program(Path(directory), name)
 
 
-def programs_in(environment: Path) -> Path:
-    """Where a virtual environment made on this host keeps its programs.
+def programs_in(environment: Path, host: str | None = None) -> Path:
+    """Where a virtual environment made on a host keeps its programs.
 
     The layout is the interpreter's own rather than this repository's choice:
     `Scripts` on Windows and `bin` everywhere else. A route proven against `bin`
     on a Windows host would report a program missing that the install put one
     directory over.
+
+    Args:
+        environment: The virtual environment.
+        host: The `sys.platform` answer of the host that made it; this host's
+            own when not given.
     """
-    return environment / ("Scripts" if sys.platform == "win32" else "bin")
+    return environment / ("Scripts" if (host or sys.platform) == "win32" else "bin")
 
 
-def interpreter_in(environment: Path) -> Path:
-    """The Python interpreter of a virtual environment made on this host."""
-    return programs_in(environment) / executable("python")
+def program_in(environment: Path, name: str, host: str | None = None) -> Path:
+    """The program called `name` in a virtual environment made on a host.
+
+    Where the environment keeps its programs and what a program is called
+    there, together — the path an installer looks for, suffix included. A path
+    missing the suffix names nothing on Windows: a process spawner that appends
+    one itself finds the program anyway, and an installer handed the same path
+    does not.
+    """
+    return programs_in(environment, host) / executable(name, host)
 
 
-def python_environment(environment: Path, requires_python: str, *, seeded: bool = False) -> None:
-    """Make a virtual environment on an interpreter a distribution declares it supports.
+def interpreter_in(environment: Path, host: str | None = None) -> Path:
+    """The Python interpreter of a virtual environment made on a host."""
+    return program_in(environment, "python", host)
 
-    `requires_python` is the distribution's own declaration, handed to `uv` as
-    the interpreter request, so the environment satisfies whatever floor the
-    package being installed carries rather than whichever interpreter this host
-    offers first — a floor raised past the host's default cannot leave a proof
-    resolving against an interpreter the package excludes.
+
+#: The platform tag of a wheel that carries no compiled code, which every
+#: interpreter admits.
+ANY_PLATFORM = "any"
+
+#: The C library an interpreter must be built against for a wheel family to
+#: admit it. A `manylinux` wheel's program is linked against glibc, so an
+#: interpreter built against musl is one its tag excludes; a family absent here
+#: states nothing about a C library.
+WHEEL_LIBC = {"manylinux": "gnu"}
+
+#: How an interpreter release `uv` reports is spelled when it is a final one:
+#: a release candidate satisfies a floor numerically and is still not an
+#: interpreter anybody installing printobserver runs.
+FINAL_RELEASE = re.compile(r"\d+\.\d+\.\d+")
+
+
+@dataclass(frozen=True, slots=True)
+class Interpreter:
+    """One Python interpreter a machine offers, as `uv` reports it."""
+
+    #: `uv`'s own name for it, which is also how it is requested.
+    key: str
+    #: Its release, as `(major, minor)`.
+    version: tuple[int, int]
+    #: The operating system it runs on, in `uv`'s words (`linux`, `macos`,
+    #: `windows`) — which are the operating-system half of every platform
+    #: identifier `repo_checks.platforms` names.
+    system: str
+    #: The processor it was built for, in the same words (`x86_64`, `aarch64`).
+    processor: str
+    #: The C library it was built against (`gnu`, `musl`, `none`).
+    libc: str
+    #: Where it is installed, or `None` for one `uv` would download.
+    path: str | None
+
+
+def platform_of(tag: str) -> str | None:
+    """The supported platform a wheel's platform tag names, or `None` for `any`.
+
+    Read against `repo_checks.platforms`' own naming of each platform's tag
+    rather than a second table: a tag is its family, an optional baseline, and
+    its processor, and the family and processor are what that naming states.
+    A compressed tag set names one platform in each of its parts.
+
+    Raises:
+        InstallError: If the tag names no platform this repository builds for.
+    """
+    if tag == ANY_PLATFORM:
+        return None
+    for identifier, naming in platforms.NAMING.items():
+        family, machine = f"{naming.wheel_family}_", f"_{naming.wheel_machine}"
+        if all(part.startswith(family) and part.endswith(machine) for part in tag.split(".")):
+            return identifier
+    msg = f"the platform tag `{tag}` names no platform this repository builds a wheel for"
+    raise InstallError(msg)
+
+
+def wheel_tag(wheel: Path) -> str:
+    """The platform tag a wheel's own file name carries: the last of its three tags."""
+    return wheel.name.removesuffix(".whl").rsplit("-", 1)[-1]
+
+
+def tag_of(platform: str) -> str:
+    """The platform tag a wheel built for `platform` carries, its baseline left as `*`.
+
+    For naming the artifact a proof resolves from a registry, whose baseline is
+    the build host's and not known before the registry answers.
+    """
+    naming = platforms.NAMING[platform]
+    if not naming.wheel_versioned:
+        return f"{naming.wheel_family}_{naming.wheel_machine}"
+    return f"{naming.wheel_family}_*_{naming.wheel_machine}"
+
+
+def _runs(interpreter: Interpreter, platform: str | None) -> bool:
+    """Whether a wheel built for `platform` (`None` for any) admits `interpreter`."""
+    if platform is None:
+        return True
+    system, processor = platform.split("-", 1)
+    libc = WHEEL_LIBC.get(platforms.NAMING[platform].wheel_family)
+    return (
+        interpreter.system == system
+        and interpreter.processor == processor
+        and (libc is None or interpreter.libc == libc)
+    )
+
+
+def offered() -> list[Interpreter]:
+    """Every final CPython release this machine offers, installed or downloadable.
+
+    In `uv`'s own order, newest first, and each with the operating system and
+    processor it was built for — which is what a request by version alone
+    throws away, and why one got an x86_64 interpreter on an arm64 host.
+
+    Raises:
+        InstallError: If `uv` would not list them.
+    """
+    asking = "asking `uv` which Python interpreters this machine offers"
+    listed = run(
+        ["uv", "python", "list", "--output-format", "json"],
+        cwd=Path.cwd(),
+        timeout=INSTALL_TIMEOUT_SECONDS,
+    )
+    if listed.returncode != 0:
+        msg = f"{asking} failed ({listed.returncode}):\n{listed.stderr}"
+        raise InstallError(msg)
+    try:
+        entries = json.loads(listed.stdout)
+    except json.JSONDecodeError as error:
+        msg = f"{asking} answered something other than JSON ({error}):\n{listed.stdout}"
+        raise InstallError(msg) from error
+    found: list[Interpreter] = []
+    for entry in entries:
+        version = str(entry.get("version", ""))
+        if (
+            entry.get("implementation") != "cpython"
+            or entry.get("variant") != "default"
+            or not FINAL_RELEASE.fullmatch(version)
+        ):
+            continue
+        major, minor, _ = (int(part) for part in version.split("."))
+        found.append(
+            Interpreter(
+                str(entry["key"]),
+                (major, minor),
+                str(entry["os"]),
+                str(entry["arch"]),
+                str(entry["libc"]),
+                entry.get("path"),
+            )
+        )
+    return found
+
+
+def choose(
+    candidates: list[Interpreter], requires: str, platform: str | None, artifact: str
+) -> Interpreter:
+    """The interpreter an artifact is proven on: at or above its floor, and admitted by its tag.
+
+    Both, because either alone proves the artifact somewhere it is not
+    installed: an interpreter below the floor is one the distribution excludes,
+    and one of another processor is one its platform tag excludes — an installer
+    then refuses the artifact, or worse resolves a different one. An installed
+    interpreter is taken over one to download, and otherwise `uv`'s own order
+    stands.
+
+    Args:
+        candidates: What the machine offers, as `offered` answers it.
+        requires: The distribution's own `>=X.Y` declaration.
+        platform: The platform the artifact's tag names, as `platform_of`
+            answers it; `None` for a tag every interpreter admits.
+        artifact: The artifact, named with its tag, for the refusal.
+
+    Raises:
+        InstallError: If no candidate satisfies both, naming the artifact's
+            tag, the floor and every interpreter the machine offered.
+    """
+    lowest = tuple(int(part) for part in floor(requires).split("."))
+    fitting = [
+        candidate
+        for candidate in candidates
+        if candidate.version >= lowest and _runs(candidate, platform)
+    ]
+    if fitting:
+        return sorted(fitting, key=lambda candidate: candidate.path is None)[0]
+    wanted = platform or "any platform"
+    was = ", ".join(dict.fromkeys(candidate.key for candidate in candidates)) or "nothing"
+    msg = (
+        f"{artifact} admits an interpreter built for `{wanted}` satisfying `{requires}`, and "
+        f"this machine offers none: it offered {was}; install a CPython for `{wanted}` "
+        f"(`uv python install cpython-{floor(requires)}-{wanted}`) and prove it again"
+    )
+    raise InstallError(msg)
+
+
+def python_environment(
+    environment: Path,
+    requires: str,
+    *,
+    platform: str | None,
+    artifact: str,
+    seeded: bool = False,
+) -> None:
+    """Make a virtual environment on an interpreter a distribution admits.
+
+    `requires` is the distribution's own declaration and `platform` what its
+    own platform tag names, and the interpreter is chosen by both from what
+    this machine offers — never whichever interpreter it offers first, so a
+    floor raised past the host's default, or a host whose default is built for
+    another processor, cannot leave a proof resolving against an interpreter
+    the artifact excludes.
 
     Raises:
         InstallError: If no such interpreter could be found or made.
     """
+    chosen = choose(offered(), requires, platform, artifact)
     ran(
         [
             "uv",
@@ -169,11 +377,11 @@ def python_environment(environment: Path, requires_python: str, *, seeded: bool 
             *(["--seed"] if seeded else []),
             "--clear",
             "--python",
-            requires_python,
+            chosen.path or chosen.key,
             str(environment),
         ],
         cwd=environment.parent,
-        describing=f"making a Python environment on an interpreter `{requires_python}` admits",
+        describing=f"making a Python environment on {chosen.key} for {artifact}",
     )
 
 
@@ -330,8 +538,13 @@ def _only(paths: tuple[Path, ...], suffix: str, describing: str) -> Path:
 def python_client(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python client, installed the way an application takes it."""
     environment = into / "env"
-    python_environment(environment, CLIENT_REQUIRES_PYTHON)
     wheel = _only(built.paths, ".whl", built.target)
+    python_environment(
+        environment,
+        CLIENT_REQUIRES_PYTHON,
+        platform=platform_of(wheel_tag(wheel)),
+        artifact=wheel.name,
+    )
     ran(
         ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
         cwd=into,
@@ -419,8 +632,10 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:
     """The Python-registry route, taken with no Rust toolchain on the path."""
     environment = into / "env"
-    python_environment(environment, REQUIRES_PYTHON)
     wheel = _only(built.paths, ".whl", built.target)
+    python_environment(
+        environment, REQUIRES_PYTHON, platform=platform_of(wheel_tag(wheel)), artifact=wheel.name
+    )
     ran(
         ["uv", "pip", "install", "--python", str(interpreter_in(environment)), str(wheel)],
         cwd=into,

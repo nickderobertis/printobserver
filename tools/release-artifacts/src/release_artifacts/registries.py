@@ -88,6 +88,7 @@ from repo_checks.shell import run
 from release_artifacts import targets
 from release_artifacts.build import CLIENT_REQUIRES_PYTHON, PROGRAM, REQUIRES_PYTHON
 from release_artifacts.installing import (
+    ANY_PLATFORM,
     NODE_RUNTIME,
     SCRIPT_DIRECTORY,
     TOOLCHAIN,
@@ -95,14 +96,16 @@ from release_artifacts.installing import (
     Installed,
     InstallError,
     consumer_program,
-    executable,
     install_script_argv,
     interpreter_in,
     npm_global_program,
+    platform_of,
+    program_in,
     programs_in,
     prove_client,
     python_environment,
     ran,
+    tag_of,
     without_rust,
 )
 from release_artifacts.world import WorldError
@@ -1224,10 +1227,20 @@ def _pypi_route(repo: Repo, target: targets.Target, version: str, into: Path, ba
             failed.
     """
     environment = into / "env"
-    python_environment(environment, REQUIRES_PYTHON, seeded=True)
     pinned = f"{target.name}=={version}"
+    # What the registry serves this host is the wheel built for this host's own
+    # platform, so the environment is made on an interpreter that wheel's tag
+    # admits: one of another processor would resolve another platform's wheel.
+    host = platforms.host(repo)
+    python_environment(
+        environment,
+        REQUIRES_PYTHON,
+        platform=host.id,
+        artifact=f"the `{host.id}` wheel of `{pinned}` (`{tag_of(host.id)}`)",
+        seeded=True,
+    )
     ran(
-        [str(programs_in(environment) / executable("pip")), "install", pinned],
+        [str(program_in(environment, "pip")), "install", pinned],
         cwd=into,
         env=without_rust(
             {
@@ -1323,8 +1336,14 @@ def _python_client(
             failed.
     """
     environment = into / "env"
-    python_environment(environment, CLIENT_REQUIRES_PYTHON)
     pinned = f"{target.name}=={version}"
+    # The client carries no compiled code, so its wheel is tagged `any`.
+    python_environment(
+        environment,
+        CLIENT_REQUIRES_PYTHON,
+        platform=platform_of(ANY_PLATFORM),
+        artifact=f"`{pinned}` ({ANY_PLATFORM})",
+    )
     ran(
         [
             "uv",
