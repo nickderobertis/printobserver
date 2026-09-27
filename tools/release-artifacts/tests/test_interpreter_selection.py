@@ -25,6 +25,7 @@ from release_artifacts.installing import (
     InstallError,
     Interpreter,
     choose,
+    confirm,
     interpreter_in,
     interpreters,
     offered,
@@ -287,4 +288,23 @@ def test_an_environment_made_here_holds_an_interpreter_of_this_hosts_processor(
         platforms.HOSTS[(host_platform.system(), asked.stdout.strip())],
         host,
         describing="the platform of the interpreter the environment holds",
+    )
+
+
+def test_an_environment_holding_other_than_the_chosen_interpreter_is_refused(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """What the environment holds is read off its own interpreter, not taken on `uv`'s word."""
+    host = platforms.host(repo).id
+    environment = tmp_path / "env"
+    python_environment(environment, CLIENT_REQUIRES_PYTHON, platform=host, artifact=host)
+    system = host.split("-", 1)[0]
+    other = "x86_64" if host.endswith("aarch64") else "aarch64"
+    stated = Interpreter(f"cpython-3.11.0-{system}-{other}-none", (3, 11), system, other, "", None)
+
+    with pytest.raises(InstallError) as refused:
+        confirm(environment, stated, "a wheel")
+
+    contains(
+        str(refused.value), f"{system}-{other}", describing="the refusal naming what was chosen"
     )

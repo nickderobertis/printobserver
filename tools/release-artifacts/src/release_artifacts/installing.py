@@ -413,6 +413,47 @@ def python_environment(
         cwd=environment.parent,
         describing=f"making a Python environment on {chosen.key} for {artifact}",
     )
+    confirm(environment, chosen, artifact)
+
+
+#: What an environment's own interpreter is asked, so what it holds is read off
+#: it rather than taken on `uv`'s word: its release, and the operating system
+#: and processor it reports as `repo_checks.platforms.HOSTS` reads them.
+HOLDS_PROBE = (
+    "import platform, sys; "
+    "print(sys.version_info[0], sys.version_info[1], platform.system(), platform.machine())"
+)
+
+
+def confirm(environment: Path, chosen: Interpreter, artifact: str) -> None:
+    """The environment holds the interpreter chosen for it: its release, system and processor.
+
+    `uv` is handed an installed interpreter's path or a downloadable one's key,
+    and either could name something other than the entry the choice read; so
+    the interpreter the environment ended up with is asked, and one that is not
+    the chosen release on the chosen platform is refused before anything is
+    installed onto it.
+
+    Raises:
+        InstallError: If it could not be asked, or answered something other
+            than the chosen interpreter.
+    """
+    answer = ran(
+        [str(interpreter_in(environment)), "-c", HOLDS_PROBE],
+        cwd=environment.parent,
+        describing=f"asking the environment made for {artifact} which interpreter it holds",
+    ).split()
+    wanted = f"{chosen.version[0]} {chosen.version[1]} {chosen.system}-{chosen.processor}"
+    held = "unreadable"
+    if len(answer) == 4 and all(part.isdigit() for part in answer[:2]):
+        platform = platforms.HOSTS.get((answer[2], answer[3]), f"{answer[2]}-{answer[3]}")
+        held = f"{answer[0]} {answer[1]} {platform}"
+    if held != wanted:
+        msg = (
+            f"the environment made for {artifact} on {chosen.key} holds Python {held} "
+            f"({' '.join(answer)}), and {wanted} was chosen for it"
+        )
+        raise InstallError(msg)
 
 
 def powershell() -> str:
