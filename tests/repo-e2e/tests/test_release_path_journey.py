@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import http.client
 import json
 import os
 import secrets
@@ -32,6 +33,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlsplit
 
 import pytest
 from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, run
@@ -466,6 +468,7 @@ def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
     truth(version != was, describing=f"the tool to have moved the workspace from {was}")
 
     equal(
+        # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
         bumping.bump_workspace_version(released.root, version),
         was,
         describing="what the helper moved the untouched copy from",
@@ -581,7 +584,10 @@ class DraftingForge:
             def _body(self) -> dict[str, object] | None:
                 """The request's JSON object, `{}` for none, or `None` where it is not one."""
                 declared = self.headers.get("Content-Length") or "0"
-                if not declared.isdigit() or int(declared) > MAX_FORGE_BODY_BYTES:
+                # ASCII digits alone: `isdigit` also admits `²`, which `int` refuses.
+                if not (declared.isascii() and declared.isdigit()):
+                    return None
+                if int(declared) > MAX_FORGE_BODY_BYTES:
                     return None
                 raw = self.rfile.read(int(declared))
                 if not raw:
@@ -623,6 +629,28 @@ class DraftingForge:
                 """Say nothing: a stand-in whose log is the output is not signal."""
 
         return Handler
+
+
+@pytest.mark.parametrize("declared", ["\u00b2", "-1", "1e3", str(MAX_FORGE_BODY_BYTES + 1)])
+def test_the_drafting_forge_answers_a_length_it_cannot_read_as_malformed(declared: str) -> None:
+    """A `Content-Length` that is no ASCII count, or one past the bound, is GitHub's `400`.
+
+    Sent over a real connection with the stand-in's own credential, so the only
+    thing wrong with the request is the length it declares.
+    """
+    with DraftingForge("owner", "name") as forge:
+        host, port = urlsplit(forge.repo_url).netloc.split(":")
+        connection = http.client.HTTPConnection(host, int(port), timeout=30)
+        connection.putrequest("POST", "/api/graphql")
+        connection.putheader("Authorization", f"Bearer {FORGE_CREDENTIAL}")
+        connection.putheader("Content-Length", declared)
+        connection.endheaders()
+        answered = connection.getresponse()
+        said = json.loads(answered.read())
+        connection.close()
+
+    equal(answered.status, 400, describing=f"the status for a length of {declared!r}")
+    equal(said, {"message": "Problems parsing JSON"}, describing="what the stand-in said")
 
 
 def shape(value: object) -> object:

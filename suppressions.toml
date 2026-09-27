@@ -1430,6 +1430,12 @@ site = "def test_a_merge_body_quoting_the_breaking_footer_would_draft_a_release(
 reason = "The control that makes the arming's fixed merge body load-bearing rather than decorative: without it the loop-guard journey could pass because the tool ignored bodies altogether, and a later change could drop `SQUASH_BODY` with nothing failing. It needs the held `release-plz` to decide, which only this tier installs, and costs one more run of the drafting computation, about eight seconds."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "bumping.bump_workspace_version(released.root, version),"
+reason = "The helper is the subject of this journey rather than a shortcut through it: this is its drift gate, and what it asserts is that the helper's output equals what the real `release-plz update` wrote over a second copy, byte for byte. No user-facing command runs the helper — the suites that simulate a release pull request are its only callers — so calling it directly is how its only callers use it, and the user-facing program it is compared with does run for real, unsubstituted, on the line above."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes("
