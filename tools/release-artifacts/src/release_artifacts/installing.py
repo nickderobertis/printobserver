@@ -189,6 +189,11 @@ WHEEL_LIBC = {"manylinux": "gnu"}
 #: interpreter anybody installing printobserver runs.
 FINAL_RELEASE = re.compile(r"\d+\.\d+\.\d+")
 
+#: The fields of each entry `uv python list --output-format json` answers that
+#: choosing an interpreter reads, each a string; `path` beside them is a string
+#: for an installed interpreter and null for one `uv` would download.
+INTERPRETER_FIELDS = ("key", "version", "implementation", "variant", "os", "arch", "libc")
+
 
 @dataclass(frozen=True, slots=True)
 class Interpreter:
@@ -280,29 +285,54 @@ def offered() -> list[Interpreter]:
     if listed.returncode != 0:
         msg = f"{asking} failed ({listed.returncode}):\n{listed.stderr}"
         raise InstallError(msg)
+    return interpreters(listed.stdout)
+
+
+def interpreters(answer: str) -> list[Interpreter]:
+    """The final CPython releases in what `uv python list --output-format json` answered.
+
+    Raises:
+        InstallError: If the answer is not a list of entries each carrying the
+            fields choosing an interpreter reads, of the types it reads them as.
+    """
+    asking = "`uv python list`"
     try:
-        entries = json.loads(listed.stdout)
+        entries = json.loads(answer)
     except json.JSONDecodeError as error:
-        msg = f"{asking} answered something other than JSON ({error}):\n{listed.stdout}"
+        msg = f"{asking} answered something other than JSON ({error}):\n{answer}"
         raise InstallError(msg) from error
+    if not isinstance(entries, list):
+        msg = f"{asking} answered something other than a list:\n{answer}"
+        raise InstallError(msg)
     found: list[Interpreter] = []
     for entry in entries:
-        version = str(entry.get("version", ""))
+        fields = entry if isinstance(entry, dict) else {}
+        named = {name: fields.get(name) for name in INTERPRETER_FIELDS}
+        path = fields.get("path")
+        if not all(isinstance(value, str) for value in named.values()) or not (
+            path is None or isinstance(path, str)
+        ):
+            msg = (
+                f"{asking} answered an entry without a string {', '.join(INTERPRETER_FIELDS)} "
+                f"and a string or null `path`: {entry!r}"
+            )
+            raise InstallError(msg)
+        version = str(named["version"])
         if (
-            entry.get("implementation") != "cpython"
-            or entry.get("variant") != "default"
+            named["implementation"] != "cpython"
+            or named["variant"] != "default"
             or not FINAL_RELEASE.fullmatch(version)
         ):
             continue
         major, minor, _ = (int(part) for part in version.split("."))
         found.append(
             Interpreter(
-                str(entry["key"]),
+                str(named["key"]),
                 (major, minor),
-                str(entry["os"]),
-                str(entry["arch"]),
-                str(entry["libc"]),
-                entry.get("path"),
+                str(named["os"]),
+                str(named["arch"]),
+                str(named["libc"]),
+                path,
             )
         )
     return found

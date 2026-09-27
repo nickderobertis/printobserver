@@ -11,8 +11,10 @@ same selection, and reads back what it holds.
 
 from __future__ import annotations
 
+import json
 import platform as host_platform
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,13 +25,15 @@ from release_artifacts.installing import (
     Interpreter,
     choose,
     interpreter_in,
+    interpreters,
+    offered,
     platform_of,
     program_in,
     python_environment,
     wheel_tag,
 )
 from repo_checks import platforms
-from repo_checks.expect import contains, equal, passing
+from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
@@ -131,6 +135,69 @@ def test_the_interpreter_chosen_is_the_one_both_tag_and_floor_admit() -> None:
         choose(offered[:1], CLIENT_REQUIRES_PYTHON, platform_of(ANY_PLATFORM), "any").key,
         "cpython-3.13.15-windows-x86_64-none",
         describing="the interpreter a wheel tagged `any` admits",
+    )
+
+
+#: One entry of `uv python list --output-format json`, as `uv` itself writes one.
+UV_ENTRY = {
+    "key": "cpython-3.12.3-linux-x86_64-gnu",
+    "version": "3.12.3",
+    "implementation": "cpython",
+    "variant": "default",
+    "os": "linux",
+    "arch": "x86_64",
+    "libc": "gnu",
+    "path": "/usr/bin/python3.12",
+}
+
+
+def test_what_uv_offers_is_read_with_its_platform_and_only_final_cpython_kept() -> None:
+    """A release candidate or a free-threaded build is not what a consumer runs."""
+    answer = [
+        UV_ENTRY,
+        {**UV_ENTRY, "key": "cpython-3.15.0rc2-linux-x86_64-gnu", "version": "3.15.0rc2"},
+        {**UV_ENTRY, "key": "cpython-3.13.1+freethreaded", "variant": "freethreaded"},
+        {**UV_ENTRY, "key": "pypy-3.11.13-linux-x86_64-gnu", "implementation": "pypy"},
+        {**UV_ENTRY, "path": None},
+    ]
+    equal(
+        interpreters(json.dumps(answer)),
+        [
+            Interpreter(UV_ENTRY["key"], (3, 12), "linux", "x86_64", "gnu", UV_ENTRY["path"]),
+            Interpreter(UV_ENTRY["key"], (3, 12), "linux", "x86_64", "gnu", None),
+        ],
+        describing="the interpreters read from what uv answered",
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "naming"),
+    [
+        pytest.param("not json", "other than JSON", id="not-json"),
+        pytest.param(json.dumps(UV_ENTRY), "other than a list", id="not-a-list"),
+        pytest.param(json.dumps(["an entry"]), "an entry", id="entry-not-an-object"),
+        pytest.param(
+            json.dumps([{k: v for k, v in UV_ENTRY.items() if k != "arch"}]),
+            "without a string",
+            id="field-missing",
+        ),
+        pytest.param(json.dumps([{**UV_ENTRY, "path": 3}]), "string or null", id="path-mistyped"),
+    ],
+)
+def test_an_answer_uv_did_not_write_is_refused_naming_what_it_lacked(
+    answer: str, naming: str
+) -> None:
+    """An interpreter chosen off a misread answer is one nobody chose."""
+    with pytest.raises(InstallError, match=re.escape(naming)):
+        interpreters(answer)
+
+
+def test_this_machine_offers_the_interpreter_this_suite_runs_on() -> None:
+    """What `uv` really answers here reads back, and carries this suite's own release."""
+    running = (sys.version_info.major, sys.version_info.minor)
+    truth(
+        any(candidate.version == running for candidate in offered()),
+        describing=f"Python {running} among the interpreters this machine offers",
     )
 
 
