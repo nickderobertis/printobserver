@@ -1402,8 +1402,8 @@ reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/release-artifacts/src/release_artifacts/arming.py"
-site = "prs = parsed.get(\"prs\")"
-reason = "The same ground as `registries.py`'s entry for release-plz's other answer: `samples/release-plz-release-pr.json` is the one committed copy of what `release-plz release-pr --output json` answers, the module docstring records the release-plz 0.3.167 source it was read from (`main.rs` and `release_plz_core`'s `ReleasePr`), and every fixture is built from it. A drift gate against the live program cannot exist here, because it writes this answer only having opened a pull request on a forge, which no tier may do. What can be reconciled is: `tests/repo-e2e/tests/test_release_program.py` runs the held release-plz with the committed drafting step's own argument list and holds it to parsing every argument, `--output json` included, up to the point it needs the forge; and a shape that moved fails the arming step naming the field rather than arming nothing in silence."
+site = "PRS, NUMBER, URL, BASE, RELEASES, PACKAGE = ("
+reason = "The same ground as `registries.py`'s entry for release-plz's other answer: `samples/release-plz-release-pr.json` is the one committed copy of what `release-plz release-pr --output json` answers, the module docstring records the release-plz 0.3.167 source it was read from (`main.rs` and `release_plz_core`'s `ReleasePr`), and every fixture is built from it; the keys the reader reads are one constant, and `test_arming.py` holds the sample to carrying every one. A drift gate against the live program cannot exist here, because it writes this answer only having opened a pull request on a forge, which no tier may do. What can be reconciled is: `tests/repo-e2e/tests/test_release_program.py` runs the held release-plz with the committed drafting step's own argument list and holds it to parsing every argument, `--output json` included, up to the point it needs the forge; and a shape that moved fails the arming step naming the field rather than arming nothing in silence."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -1414,7 +1414,7 @@ reason = "The same ground as this program's entry at `registries.py`'s `urllib.r
 [[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
-site = "bumping.release_plz_bump(copy.root, version)"
+site = "bumping.bump_workspace_version(copy.root, version)"
 reason = "What this fixture builds is the tree a merged release pull request leaves, and the helper writes exactly that: applied to the committed tree it reproduces release pull request #41's `Cargo.toml`, every crate manifest and `Cargo.lock` byte for byte (checked against its head, `6f380a9`, when it was written). Having the real `release-plz update` write it instead would need a registry serving every crate at the version before — twelve real `cargo publish` uploads to a loopback registry before the one computation this journey is about — and would produce the same bytes. The program under test, the real `release-plz` deciding whether to draft, is not what is substituted: it runs for real over the result."
 
 [[suppression]]
@@ -1446,4 +1446,16 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}, drafted=drafted, refusal=refusal)"
 reason = "The same ground as `driven`'s own entries: a journey cannot fire the forge, so the committed workflow's own text is run under the forge's documented scheduling rules by `actions.py`, with every `run:` step — here the drafting step and the real `just release-pr-arm` recipe — executed for real over a copy of the tree. The forge's hosted run of the same text is what every push to `main` shows."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then"
+reason = "The drafting branch of the same `release-plz` stand-in the entry at `RELEASE_PLZ_STANDIN = ` covers, and the same ground: the real `release-pr` opens a pull request on github.com, which no journey may do. It answers what a journey says was drafted, and only when asked with `--output json`, exactly as the real program's `main.rs` does; what is under test is the committed job's handling of that answer — the real `just release-pr-arm` over a real copy — and the real program's drafting decision is proven for real by `test_release_path_journey.py`'s loop-guard journeys. The directive sits here because an `ignore` covers only the line beneath it."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "with open(os.environ[\"GH_STANDIN_RECORD\"], \"a\", encoding=\"utf-8\") as record:"
+reason = "The body of the `gh` stand-in the entry at `GH_STANDIN = ` covers, and the same ground: the real `gh pr merge --auto` arms a real pull request on github.com. It records every call with its token and refuses with the forge's own words where told to. That the real `gh` still takes every option the arming step hands it is proven against the installed `gh` by `tools/release-artifacts/tests/test_arming.py`. The directive sits here because an `ignore` covers only the line beneath it."
 

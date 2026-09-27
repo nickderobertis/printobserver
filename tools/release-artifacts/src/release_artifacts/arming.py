@@ -29,6 +29,8 @@ from pathlib import Path
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
+from release_artifacts import targets
+
 #: A committed answer of `release-plz release-pr --output json`, as the program
 #: writes one having refreshed a release pull request.
 DRAFTED_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release-pr.json")
@@ -38,11 +40,28 @@ DRAFTED_SAMPLE = Path("tools/release-artifacts/samples/release-plz-release-pr.js
 #: URL, which names the repository too, so nothing is inferred from a remote.
 ARM = ("gh", "pr", "merge", "--auto", "--squash")
 
-#: How long the forge is given to answer one arming.
+#: How long the forge is given to answer one arming before that pull request is
+#: reported refused: a hung `gh` must fail the step naming it rather than hold
+#: the job until the runner's own limit, which would say nothing about why.
 TIMEOUT_SECONDS = 120
 
-#: The forge a release pull request of this repository is on.
+#: Every pull request this repository has is on github.com, and `ARM` names one
+#: by its URL there, so an answer naming any other host is never one of ours.
 FORGE = "https://github.com"
+
+#: The keys of the drafting program's answer this reads, and no other: the list
+#: of pull requests, and of each its number, URL, base branch and the packages
+#: it releases, and of each of those its name. `test_arming.py` holds the
+#: committed sample to carrying every one.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+PRS, NUMBER, URL, BASE, RELEASES, PACKAGE = (
+    "prs",
+    "number",
+    "html_url",
+    "base_branch",
+    "releases",
+    "package_name",
+)
 
 
 class ArmingError(RuntimeError):
@@ -59,11 +78,16 @@ class Drafted:
 
 @dataclass(frozen=True, slots=True)
 class Repository:
-    """Where a release pull request of this repository is, as `repo-policy.toml` says."""
+    """Where a release pull request of this repository is, and what it can release.
+
+    The owner, name and base branch as `repo-policy.toml` declares them, and
+    the crates as `release-targets.toml` does.
+    """
 
     owner: str
     name: str
     base_branch: str
+    crates: frozenset[str]
 
     def pull(self, number: int) -> str:
         """The URL the forge gives this repository's pull request `number`."""
@@ -93,15 +117,18 @@ def repository(repo: Repo) -> Repository:
         )
         raise ArmingError(msg)
     owner, name, base = (str(value).strip() for value in fields)
-    return Repository(owner, name, base)
+    crates = frozenset(
+        target.name for target in targets.declared(repo.root) if target.registry == "crate"
+    )
+    return Repository(owner, name, base, crates)
 
 
 def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
     """Every release pull request one answer names, in the order it names them.
 
-    Each must be this repository's own, into the declared base branch: the
-    step arms nothing but a pull request the drafting program answered it
-    drafted there.
+    Each must be this repository's own, into the declared base branch, and a
+    release pull request: one releasing at least one package, every one of
+    them a crate this repository publishes. The step arms nothing else.
 
     Raises:
         ArmingError: If the answer is not the program's shape, or names a pull
@@ -114,28 +141,38 @@ def drafted(answer: str, where: str, ours: Repository) -> tuple[Drafted, ...]:
     except json.JSONDecodeError as error:
         msg = f"{where} is not the JSON `release-plz release-pr --output json` writes: {error}"
         raise ArmingError(msg) from error
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-    prs = parsed.get("prs") if isinstance(parsed, dict) else None
+    prs = parsed.get(PRS) if isinstance(parsed, dict) else None
     if not isinstance(prs, list):
-        msg = f"{where} carries no `prs` list, which `release-plz release-pr` always answers"
+        msg = f"{where} carries no `{PRS}` list, which `release-plz release-pr` always answers"
         raise ArmingError(msg)
     named: list[Drafted] = []
     for entry in prs:
         fields = entry if isinstance(entry, dict) else {}
-        number = fields.get("number")
-        url = fields.get("html_url")
-        base = fields.get("base_branch")
+        number = fields.get(NUMBER)
+        url = fields.get(URL)
         if (
             not isinstance(number, int)
             or isinstance(number, bool)
             or number < 1
             or url != ours.pull(number)
-            or base != ours.base_branch
+            or fields.get(BASE) != ours.base_branch
         ):
             msg = (
                 f"{where} names {entry!r}, which is not a pull request of "
                 f"{FORGE}/{ours.owner}/{ours.name} into `{ours.base_branch}`, so it is "
                 f"not armed"
+            )
+            raise ArmingError(msg)
+        released = fields.get(RELEASES)
+        packages = [
+            release.get(PACKAGE) if isinstance(release, dict) else None
+            for release in (released if isinstance(released, list) else [])
+        ]
+        if not packages or not all(package in ours.crates for package in packages):
+            msg = (
+                f"{where} names #{number}, which releases {packages!r}: a release pull "
+                f"request releases at least one package and only crates "
+                f"`release-targets.toml` declares, so it is not armed"
             )
             raise ArmingError(msg)
         named.append(Drafted(number, url))

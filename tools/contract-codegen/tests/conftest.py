@@ -47,5 +47,5 @@ def bumped(scratch: Callable[[], Path]) -> tuple[Path, str]:
     """
     copy = scratch()
     version = bumping.next_minor(bumping.workspace_version(copy))
-    bumping.release_plz_bump(copy, version)
+    bumping.bump_workspace_version(copy, version)
     return copy, version

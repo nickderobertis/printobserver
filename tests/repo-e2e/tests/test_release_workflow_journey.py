@@ -152,6 +152,7 @@ case "$1" in
     exit 0
     ;;
   release-pr)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     if [ -n "${RELEASE_PLZ_STANDIN_DRAFTED:-}" ]; then
       previous=""
       for argument in "$@"; do
@@ -205,6 +206,7 @@ GH_STANDIN = """import json
 import os
 import sys
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write(json.dumps({"argv": sys.argv[1:], "token": os.environ.get("GH_TOKEN", "")}))
     record.write("\\n")

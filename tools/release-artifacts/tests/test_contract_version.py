@@ -60,7 +60,7 @@ def copy(tmp_path: Path) -> Path:
 def bumped(copy: Path) -> tuple[Repo, str]:
     """That copy, its version moved as a release pull request moves it."""
     version = bumping.next_minor(bumping.workspace_version(copy))
-    bumping.release_plz_bump(copy, version)
+    bumping.bump_workspace_version(copy, version)
     return Repo(copy), version
 
 

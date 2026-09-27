@@ -280,7 +280,7 @@ def merged_release(gate_copy: Callable[..., GateCopy], *after: str) -> GateCopy:
     copy = gate_copy(node_modules=False)
     version = bumping.next_minor(bumping.workspace_version(copy.root))
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
-    bumping.release_plz_bump(copy.root, version)
+    bumping.bump_workspace_version(copy.root, version)
     shell_run(
         ["git", "commit", "-qam", RELEASE_SUBJECT.format(version=version)],
         cwd=copy.root,

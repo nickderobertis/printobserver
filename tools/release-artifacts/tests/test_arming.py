@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -19,10 +20,12 @@ from release_artifacts import arming as arming_module
 from release_artifacts.__main__ import main
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import contains, equal
+from repo_checks.shell import run
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 GH = """import json
 import os
+import shutil
 import sys
 
 with open(os.environ["GH_STANDIN_RECORD"], "a", encoding="utf-8") as record:
@@ -144,7 +147,7 @@ OURS = {
     "base_branch": "main",
     "html_url": "https://github.com/nickderobertis/printobserver/pull/41",
     "number": 41,
-    "releases": [],
+    "releases": [{"package_name": "printobserver", "version": "0.3.0"}],
 }
 
 
@@ -168,6 +171,10 @@ def _moved(**fields: object) -> str:
         ),
         (_moved(html_url="http" + OURS["html_url"][5:]), "is not a pull request of"),
         (_moved(base_branch="develop"), "into `main`"),
+        (_moved(releases=[]), "releases at least one package"),
+        (_moved(releases=None), "releases at least one package"),
+        (_moved(releases=[{"package_name": "left-pad", "version": "1.0.0"}]), "only crates"),
+        (_moved(releases=["printobserver"]), "only crates"),
     ],
     ids=[
         "not-json",
@@ -179,6 +186,10 @@ def _moved(**fields: object) -> str:
         "another-repository",
         "not-https",
         "another-base-branch",
+        "releasing-nothing",
+        "no-releases",
+        "releasing-another-projects-package",
+        "release-not-an-object",
     ],
 )
 def test_an_answer_that_is_not_the_programs_is_refused_arming_nothing(
@@ -250,3 +261,31 @@ def test_arming_without_an_answer_is_a_usage_error(capsys: pytest.CaptureFixture
 
     equal(code, 2, describing="arming with no answer named")
     contains(capsys.readouterr().err, "--answer", describing="what it said")
+
+
+def test_the_committed_sample_carries_every_key_the_reader_reads() -> None:
+    """The sample and the reader name one shape, so neither can move without the other."""
+    sample = json.loads((REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))
+
+    contains(sample, arming_module.PRS, describing="the sample")
+    for pull in sample[arming_module.PRS]:
+        for key in (arming_module.NUMBER, arming_module.URL, arming_module.BASE):
+            contains(pull, key, describing="a pull request of the sample")
+        for release in pull[arming_module.RELEASES]:
+            contains(release, arming_module.PACKAGE, describing="a release of the sample")
+
+
+@pytest.mark.skipif(shutil.which("gh") is None, reason="GitHub CLI is not on this host")
+def test_the_forge_cli_takes_every_option_arming_passes() -> None:
+    """The options `ARM` hands `gh`, read against the installed `gh`'s own help.
+
+    The stand-in above accepts anything, so this is what notices a `gh` that no
+    longer takes one of them.
+    """
+    program, *subcommand = arming_module.ARM[:3]
+    helped = run([program, *subcommand, "--help"], timeout=60)
+    said = helped.stdout + helped.stderr
+
+    equal(helped.returncode, 0, describing=f"`gh pr merge --help`: {said}")
+    for option in arming_module.ARM[3:]:
+        contains(said, option, describing="what `gh pr merge --help` lists")

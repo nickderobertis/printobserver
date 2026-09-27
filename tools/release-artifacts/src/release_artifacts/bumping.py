@@ -4,7 +4,7 @@
 request and regenerates nothing, so anything in the tree that restates that
 version as text is stale on that pull request, and fails the gate on the one
 change a release is cut from. The suites that hold the tree to surviving that
-change apply it to a scratch copy with `release_plz_bump`.
+change apply its version half to a scratch copy with `bump_workspace_version`.
 """
 
 from __future__ import annotations
@@ -33,13 +33,15 @@ def next_minor(version: str) -> str:
     return f"{major}.{int(minor) + 1}.0"
 
 
-def release_plz_bump(root: Path, version: str) -> str:
-    """Move the workspace at `root` to `version` the way a release pull request does.
+def bump_workspace_version(root: Path, version: str) -> str:
+    """Move the workspace at `root` to `version`, as a release pull request moves it.
 
-    Exactly what `release-plz release-pr` writes: the `[workspace.package]`
-    version, every internal crate's version requirement wherever a manifest
-    names one by path, and the lock file's record of every workspace crate.
-    Nothing is regenerated, which is the point.
+    The version half of what `release-plz release-pr` writes, exactly: the
+    `[workspace.package]` version, every internal crate's version requirement
+    wherever a manifest names one by path, and the lock file's record of every
+    workspace crate. The changelog sections that pull request also writes are
+    not written, because nothing a client or the gate reads is in them; and
+    nothing is regenerated, which is the point.
 
     Returns:
         The version the workspace declared before.
