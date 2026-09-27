@@ -9,11 +9,51 @@
 
 import { GeneratedSurface, reasonGiven } from "./surface.ts";
 
+// contract-version: read from the workspace manifest, from here
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+/** The workspace manifest of the tree this module sits in. */
+const WORKSPACE_MANIFEST = fileURLToPath(new URL("../../../Cargo.toml", import.meta.url));
+
 /**
- * The version of the server contract these types were generated from, which
- * is the version the type crate declares in the tree they came from.
+ * The `[workspace.package]` version of the tree this module sits in, or an
+ * error naming the manifest when it cannot be read or declares none.
  */
-export const CONTRACT_VERSION = "0.2.0";
+function workspaceVersion(): string {
+  let text: string;
+  try {
+    text = readFileSync(WORKSPACE_MANIFEST, "utf8");
+  } catch (error) {
+    throw new Error(
+      `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,
+    );
+  }
+  let section = "";
+  for (const line of text.split(/\r?\n/)) {
+    const heading = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(line);
+    if (heading) {
+      section = heading[1]?.trim() ?? "";
+      continue;
+    }
+    const found = /^\s*version\s*=\s*"([^"]+)"/.exec(line);
+    if (section === "workspace.package" && found?.[1]) {
+      return found[1];
+    }
+  }
+  throw new Error(
+    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest ${WORKSPACE_MANIFEST}, which declares no [workspace.package] version`,
+  );
+}
+
+/**
+ * The version of the server contract these types were generated from. A
+ * published package reports the release version it was built at; used from a
+ * checkout, this module reports that checkout's workspace version, and
+ * refuses to import when it cannot read one.
+ */
+export const CONTRACT_VERSION: string = workspaceVersion();
+// contract-version: read from the workspace manifest, to here
 
 /**
  * Every operation this client exposes a method for, which is every operation

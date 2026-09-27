@@ -42,7 +42,6 @@ from contract_codegen.schemas import (
     declaration_of,
     load,
     type_of,
-    workspace_version,
 )
 from repo_checks.expect import equal, truth
 
@@ -166,18 +165,9 @@ def test_a_schema_file_that_is_not_a_schema_is_refused(scratch: Callable[[], Pat
         load(copy)
 
 
-def test_a_workspace_declaring_no_version_is_refused(tmp_path: Path) -> None:
-    """A client records the contract it was generated against, from the workspace."""
-    (tmp_path / "Cargo.toml").write_text("[workspace]\nmembers = []\n", encoding="utf-8")
-
-    with pytest.raises(ContractError, match="declares no version"):
-        workspace_version(tmp_path)
-
-
 def _contract(*declarations: Declaration) -> Contract:
     """A contract carrying nothing but the declarations one journey is about."""
     return Contract(
-        version="0.0.0",
         version_prefix="/v1",
         media_type="application/json",
         declarations=declarations,

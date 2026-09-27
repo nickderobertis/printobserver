@@ -8,6 +8,7 @@ the two for a field to be transformed in.
 
 from __future__ import annotations
 
+from contract_codegen import version
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
 from contract_codegen.model import (
@@ -283,6 +284,66 @@ def _kind_table(contract: Contract) -> list[str]:
     return lines
 
 
+def _contract_version() -> list[str]:
+    """`CONTRACT_VERSION`, read at import time from the workspace this module sits in.
+
+    Nothing here states a version: a checkout reports its own workspace's, and
+    the package a release publishes carries the release version as a literal
+    stamped over everything between the two markers of its compiled module.
+    """
+    manifest = version.manifest_from(version.NODE_MODULE)
+    return [
+        f"// {version.BEGIN}",
+        'import { readFileSync } from "node:fs";',
+        'import { fileURLToPath } from "node:url";',
+        "",
+        *doc_lines("The workspace manifest of the tree this module sits in."),
+        f'const WORKSPACE_MANIFEST = fileURLToPath(new URL("{manifest}", import.meta.url));',
+        "",
+        *doc_lines(
+            "The `[workspace.package]` version of the tree this module sits in, or an "
+            "error naming the manifest when it cannot be read or declares none."
+        ),
+        "function workspaceVersion(): string {",
+        "  let text: string;",
+        "  try {",
+        '    text = readFileSync(WORKSPACE_MANIFEST, "utf8");',
+        "  } catch (error) {",
+        "    throw new Error(",
+        "      `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest "
+        "${WORKSPACE_MANIFEST}, which could not be read: ${String(error)}`,",
+        "    );",
+        "  }",
+        '  let section = "";',
+        "  for (const line of text.split(/\\r?\\n/)) {",
+        "    const heading = /^\\s*\\[([^\\]]+)\\]\\s*(?:#.*)?$/.exec(line);",
+        "    if (heading) {",
+        '      section = heading[1]?.trim() ?? "";',
+        "      continue;",
+        "    }",
+        '    const found = /^\\s*version\\s*=\\s*"([^"]+)"/.exec(line);',
+        '    if (section === "workspace.package" && found?.[1]) {',
+        "      return found[1];",
+        "    }",
+        "  }",
+        "  throw new Error(",
+        "    `@printobserver/sdk reads CONTRACT_VERSION from the workspace manifest "
+        "${WORKSPACE_MANIFEST}, which declares no [workspace.package] version`,",
+        "  );",
+        "}",
+        "",
+        *doc_lines(
+            "The version of the server contract these types were generated from. A "
+            "published package reports the release version it was built at; used from "
+            "a checkout, this module reports that checkout's workspace version, and "
+            "refuses to import when it cannot read one."
+        ),
+        "export const CONTRACT_VERSION: string = workspaceVersion();",
+        f"// {version.END}",
+        "",
+    ]
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Node client."""
     lines = [
@@ -295,11 +356,7 @@ def emit(contract: Contract) -> str:
         "",
         'import { GeneratedSurface, reasonGiven } from "./surface.ts";',
         "",
-        *doc_lines(
-            "The version of the server contract these types were generated from, which "
-            "is the version the type crate declares in the tree they came from."
-        ),
-        f'export const CONTRACT_VERSION = "{contract.version}";',
+        *_contract_version(),
         "",
         *doc_lines(
             "Every operation this client exposes a method for, which is every operation "

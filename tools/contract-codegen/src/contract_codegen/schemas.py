@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import re
-import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -538,7 +537,6 @@ def load(root: Path) -> Contract:
     if event_kinds and (finding := _kind_table_findings(by_name, schemas, event_kinds)):
         raise ContractError(finding)
     return Contract(
-        version=workspace_version(root),
         version_prefix=str(description["version_prefix"]),
         media_type=str(description["media_type"]),
         declarations=declarations,
@@ -546,23 +544,3 @@ def load(root: Path) -> Contract:
         by_name=by_name,
         event_kinds=event_kinds,
     )
-
-
-def workspace_version(root: Path) -> str:
-    """The version the type crate declares in the tree the clients come from.
-
-    It is the workspace's, which release automation owns and every crate of
-    this repository inherits — including the type crate whose schemas these
-    are. A client records it so that a consumer of an installed package can
-    tell which contract it was generated against.
-
-    Raises:
-        ContractError: If the workspace declares no version.
-    """
-    with (root / "Cargo.toml").open("rb") as handle:
-        manifest = tomllib.load(handle)
-    version = manifest.get("workspace", {}).get("package", {}).get("version")
-    if not isinstance(version, str) or not version:
-        msg = "the workspace declares no version for the contract to be recorded against"
-        raise ContractError(msg)
-    return version

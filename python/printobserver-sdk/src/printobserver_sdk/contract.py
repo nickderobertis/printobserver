@@ -12,9 +12,43 @@ from typing import Literal, NotRequired, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
 
-# The version of the server contract these types were generated from, which
-# is the version the type crate declares in the tree they came from.
-CONTRACT_VERSION = "0.2.0"
+
+# The version of the server contract these types were generated from. A
+# published wheel reports the release version it was built at; used from a
+# checkout, this module reports that checkout's workspace version, and
+# refuses to import when it cannot read one.
+# contract-version: read from the workspace manifest, from here
+def _workspace_version() -> str:
+    """The `[workspace.package]` version of the tree this module sits in.
+
+    Raises `ImportError` naming the manifest when it cannot be read or
+    declares no version, rather than answering a guess.
+    """
+    import tomllib
+    from pathlib import Path
+
+    manifest = (Path(__file__).resolve().parent / "../../../../Cargo.toml").resolve()
+    try:
+        with manifest.open("rb") as handle:
+            declared = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        msg = (
+            f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "
+            f"{manifest}, which could not be read: {error}"
+        )
+        raise ImportError(msg) from error
+    found = declared.get("workspace", {}).get("package", {}).get("version")
+    if not isinstance(found, str) or not found:
+        msg = (
+            f"printobserver_sdk reads CONTRACT_VERSION from the workspace manifest "
+            f"{manifest}, which declares no [workspace.package] version"
+        )
+        raise ImportError(msg)
+    return found
+
+
+CONTRACT_VERSION: str = _workspace_version()
+# contract-version: read from the workspace manifest, to here
 
 # Every operation this client exposes a method for, which is every operation
 # the server declares and no other.

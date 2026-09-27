@@ -264,9 +264,6 @@ class EventKind:
 class Contract:
     """Everything the three clients are generated from."""
 
-    #: The version of the contract the clients are generated against, which is
-    #: the version the type crate declares in the tree they were generated from.
-    version: str
     version_prefix: str
     media_type: str
     declarations: tuple[Declaration, ...] = ()
