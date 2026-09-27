@@ -140,15 +140,12 @@ def test_a_refusal_fails_naming_the_pull_request_after_attempting_every_one(
     contains(err, "armed #42", describing="what the refusal says was armed")
 
 
-#: One pull request as the program answers it, for the refusals below to move
-#: one field of.
-OURS = {
-    "head_branch": "release-plz-2026-09-14T05-34-33Z",
-    "base_branch": "main",
-    "html_url": "https://github.com/nickderobertis/printobserver/pull/41",
-    "number": 41,
-    "releases": [{"package_name": "printobserver", "version": "0.3.0"}],
-}
+#: One pull request as the program answers it — the committed sample's — for
+#: the refusals below to move one field of.
+OURS = json.loads((REPO_ROOT / DRAFTED_SAMPLE).read_text(encoding="utf-8"))["prs"][0]
+
+#: Where that pull request's URL names pull requests of its repository.
+PULLS = OURS["html_url"].rsplit("/", 1)[0]
 
 
 def _moved(**fields: object) -> str:
@@ -163,8 +160,8 @@ def _moved(**fields: object) -> str:
         ('{"releases": []}', "carries no `prs` list"),
         ('{"prs": ["41"]}', "is not a pull request of"),
         (_moved(number=True), "is not a pull request of"),
-        (_moved(number=0, html_url=OURS["html_url"][:-2] + "0"), "is not a pull request of"),
-        (_moved(html_url=OURS["html_url"][:-2] + "40"), "is not a pull request of"),
+        (_moved(number=0, html_url=f"{PULLS}/0"), "is not a pull request of"),
+        (_moved(html_url=f"{PULLS}/{OURS['number'] - 1}"), "is not a pull request of"),
         (
             _moved(html_url="https://github.com/somebody/else/pull/41"),
             "is not a pull request of",
