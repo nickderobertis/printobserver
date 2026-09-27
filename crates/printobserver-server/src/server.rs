@@ -26,7 +26,8 @@ use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_oneharness::{
-    AssessmentSchema, HarnessSignIn, OneharnessSupervisor, SupervisorConfig,
+    AgentCommand, AssessmentSchema, EnvAssignment, HarnessSignIn, OneharnessSupervisor,
+    SupervisorConfig,
 };
 use printobserver_printer_api::{PrinterError, PrinterPort};
 use printobserver_store_sqlite::SqliteStore;
@@ -38,7 +39,7 @@ use tokio::task::JoinHandle;
 use crate::api::{ApiState, router};
 use crate::config::{ApiCredential, ConfigError, ConfigField, ServerConfig};
 use crate::ingress::{IngressState, receive};
-use crate::operations::INGRESS_PATH;
+use crate::operations::{INGRESS_PATH, OPERATIONS, command_for};
 use crate::reconcile::{ReconcileStores, Reconciliation, overdue, reconcile};
 
 /// The program a supervision turn runs to read its print's context.
@@ -561,11 +562,11 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
     let schema_path = materialize(
         &assets,
         SCHEMA_FILE,
-        &printobserver_types::serde_json::to_string_pretty(
-            &printobserver_types::contract::schema_of::<
+        &printobserver_types::serde_json::to_string_pretty(&without_dialect(
+            printobserver_types::contract::schema_of::<
                 printobserver_supervisor_api::AgentAssessment,
             >(),
-        )
+        ))
         .map_err(|error| StartError::State {
             detail: error.to_string(),
         })?,
@@ -578,7 +579,7 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
     // directory — the one place the service's unit lets it write — and every
     // turn is pointed at the directory `printobserver sign-in` wrote it to. A
     // harness outside the table is handed nothing extra.
-    let harness_env = match HarnessSignIn::of(&config.harness) {
+    let mut harness_env = match HarnessSignIn::of(&config.harness) {
         Some(sign_in) => {
             let directory =
                 sign_in
@@ -599,6 +600,7 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
         }
         None => Vec::new(),
     };
+    harness_env.extend(path_to_this_program()?);
     Ok(SupervisorConfig {
         state_dir: config.state_dir.clone(),
         skill_path: config.skill_path.clone(),
@@ -611,9 +613,91 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
         // it resolve from where the agent is standing as well as from the skill.
         working_dir: beside_the_skill(&config.skill_path),
         turn_timeout: printobserver_oneharness::TurnTimeout::DEFAULT,
-        harness_bin: None,
+        // Found by name, unless npm's launcher is all a search finds: then the
+        // program behind it, which `OneHarness` can start where the launcher
+        // cannot be.
+        harness_bin: HarnessSignIn::of(&config.harness).and_then(|harness| {
+            harness.program_behind_launcher(&std::env::var_os("PATH").unwrap_or_default())
+        }),
         harness_env,
+        agent_commands: agent_commands()?,
     })
+}
+
+/// The key a JSON Schema declares its dialect under.
+const DIALECT_KEY: &str = "$schema";
+
+/// The assessment schema with its dialect declaration taken off, and nothing
+/// else changed.
+///
+/// The generated schema declares draft 2020-12, and Claude Code refuses a
+/// `--json-schema` that names a dialect its validator was not given ("no schema
+/// with key or ref `https://json-schema.org/draft/2020-12/schema`"), so every
+/// turn ended before the agent was asked anything. Left undeclared, the harness
+/// reads the schema in its own dialect and `OneHarness` in its default, and the
+/// keywords this schema uses mean the same in both.
+fn without_dialect(
+    mut schema: printobserver_types::serde_json::Value,
+) -> printobserver_types::serde_json::Value {
+    if let Some(object) = schema.as_object_mut() {
+        object.remove(DIALECT_KEY);
+    }
+    schema
+}
+
+/// The commands the supervising agent may run: this program's own, one per
+/// operation the server serves, and no other.
+///
+/// Every one of them is a request to this server, so what the agent can change
+/// is still exactly what the policy grants its actor. Derived from
+/// [`OPERATIONS`] through the command-line program's own spelling, so an
+/// operation the server gains is a command the agent may run from the same
+/// change.
+fn agent_commands() -> Result<Vec<AgentCommand>, StartError> {
+    OPERATIONS
+        .iter()
+        .map(|operation| {
+            AgentCommand::new(&format!(
+                "{CONTEXT_PROGRAM} {}",
+                command_for(operation.name)
+            ))
+        })
+        .collect::<Result<_, _>>()
+        .map_err(|error| StartError::Supervisor {
+            detail: error.to_string(),
+        })
+}
+
+/// A turn's `PATH`, led by the directory this program is running from.
+///
+/// The context command, and every command the agent may run, names this
+/// program by name rather than by path. Nothing makes that name resolve in a
+/// service's environment: neither installer puts the program's directory on a
+/// `PATH`, and Windows' service control manager hands a service the
+/// environment it had at boot. Leading the turn's `PATH` with this program's
+/// own directory makes the name the program that is serving.
+///
+/// Nothing is added when the running program's path cannot be read, which
+/// leaves the turn the `PATH` it inherits.
+fn path_to_this_program() -> Result<Option<EnvAssignment>, StartError> {
+    let Some(directory) = std::env::current_exe()
+        .ok()
+        .and_then(|program| program.parent().map(Path::to_path_buf))
+    else {
+        return Ok(None);
+    };
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let joined = std::env::join_paths(
+        std::iter::once(directory).chain(std::env::split_paths(&inherited)),
+    )
+    .map_err(|error| StartError::Supervisor {
+        detail: format!("a turn's PATH cannot lead with this program's directory: {error}"),
+    })?;
+    EnvAssignment::new(&format!("PATH={}", joined.to_string_lossy()))
+        .map(Some)
+        .map_err(|error| StartError::Supervisor {
+            detail: error.to_string(),
+        })
 }
 
 /// One server, serving.

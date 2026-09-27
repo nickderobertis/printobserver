@@ -10,8 +10,8 @@
 use std::collections::BTreeMap;
 
 use printobserver_core::{
-    AcknowledgementDisposition, ActionKind, Actor, ActorClass, PolicyDecision, PrintAction,
-    RejectionReason, SafetyEnvelope,
+    AcknowledgementDisposition, ActionKind, Actor, ActorClass, ExecutionOutcome, PolicyDecision,
+    PrintAction, RejectionReason, SafetyEnvelope,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::{EventId, FileName};
@@ -85,23 +85,25 @@ pub(crate) const fn state_for(kind: ActionKind) -> PrinterState {
     }
 }
 
-/// The call each kind is expected to make at the printer port.
+/// The call each kind is expected to make at the printer port, if any.
 ///
-/// Acknowledging a failure with the `stop` disposition is the one kind whose
-/// call is another kind's: stopping a print is cancelling it, and one decision
-/// still stands in front of the one call.
-pub(crate) fn expected_call(kind: ActionKind) -> Call {
-    match kind {
+/// Acknowledging a failure is the one kind that makes none, whatever its
+/// disposition: it is a decision written into the print's record. Stopping a
+/// print is cancelling it, which the policy grants each actor on its own, so an
+/// acknowledgement asking for `stop` cancels nothing.
+pub(crate) fn expected_call(kind: ActionKind) -> Option<Call> {
+    Some(match kind {
         ActionKind::Pause => Call::Pause,
         ActionKind::Resume => Call::Resume,
-        ActionKind::Cancel | ActionKind::AcknowledgeFailure => Call::Cancel,
+        ActionKind::Cancel => Call::Cancel,
+        ActionKind::AcknowledgeFailure => return None,
         ActionKind::StartPrint => Call::Start("benchy.gcode".to_owned()),
         ActionKind::SetFeedrateFactor => Call::SetFeedrateFactor(1.5),
         ActionKind::SetFlowrateFactor => Call::SetFlowrateFactor(1.1),
         ActionKind::SetToolTargetC => Call::SetToolTargetC(0, 220.0),
         ActionKind::SetBedTargetC => Call::SetBedTargetC(65.0),
         ActionKind::SetFanPercent => Call::SetFanPercent(80.0),
-    }
+    })
 }
 
 /// What the adjustable and value one kind changes, when it changes one.
@@ -167,7 +169,9 @@ fn the_walk_covers_every_variant_the_vocabulary_declares() {
     );
 }
 
-/// Every variant reaches the printer with a bounded value, behind a decision.
+/// Every variant that asks something of the machine reaches the printer with a
+/// bounded value, behind a decision, and an acknowledgement reaches it not at
+/// all.
 #[test]
 fn every_variant_reaches_the_printer_only_behind_a_recorded_decision() {
     for kind in ACTION_KINDS {
@@ -184,22 +188,30 @@ fn every_variant_reaches_the_printer_only_behind_a_recorded_decision() {
             PolicyDecision::Accepted,
             "{kind:?} was not accepted"
         );
+        let expected = expected_call(kind);
         assert_eq!(
             world.journal.printer_actions(),
-            vec![expected_call(kind)],
+            expected.iter().cloned().collect::<Vec<_>>(),
             "{kind:?} did not reach the printer as expected"
         );
         let decided = world
             .journal
             .position(&Call::RecordAction(PolicyDecision::Accepted))
             .unwrap_or_else(|| panic!("{kind:?} recorded no decision"));
-        let acted = world
-            .journal
-            .position(&expected_call(kind))
-            .unwrap_or_else(|| panic!("{kind:?} reached no printer call"));
-        assert!(
-            decided < acted,
-            "{kind:?} acted before its decision was recorded"
+        if let Some(call) = &expected {
+            let acted = world
+                .journal
+                .position(call)
+                .unwrap_or_else(|| panic!("{kind:?} reached no printer call"));
+            assert!(
+                decided < acted,
+                "{kind:?} acted before its decision was recorded"
+            );
+        }
+        assert_eq!(
+            outcome.record.outcome,
+            Some(ExecutionOutcome::Succeeded),
+            "{kind:?} was accepted and not carried out"
         );
 
         if let Some((adjustable, value)) = adjusts(kind) {

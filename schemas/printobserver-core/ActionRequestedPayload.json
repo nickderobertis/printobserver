@@ -15,7 +15,7 @@
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]

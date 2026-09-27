@@ -274,6 +274,10 @@ fn record_what_was_seen() {
         "cwd_error": here.as_ref().err(),
         "system": system.as_ref().ok(),
         "system_error": system.as_ref().err(),
+        // Everything after the program's own name, and the search path the
+        // turn's commands would be found on.
+        "arguments": arguments.get(1..).unwrap_or_default(),
+        "path": std::env::var("PATH").ok(),
     });
     // A record nobody can read is a journey that cannot see what it asserts
     // on, so failing to write one ends the run rather than passing unseen.

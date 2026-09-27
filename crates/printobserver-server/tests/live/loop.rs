@@ -183,9 +183,9 @@ fn live(name: &str) -> Live {
                 ("event_id", json!(printobserver_types::EventId::new())),
                 ("disposition", json!("continue")),
             ]),
-            // Stopping a print is cancelling it, which is what the machine
-            // reports afterwards.
-            reaches: Some("operational"),
+            // An acknowledgement asks nothing of the machine, `stop` included,
+            // so the print it is about carries on.
+            reaches: None,
             reported: None,
             received: Vec::new(),
             adjustable: None,

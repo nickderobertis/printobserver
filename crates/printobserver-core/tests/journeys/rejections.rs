@@ -17,12 +17,13 @@
 use std::collections::BTreeMap;
 
 use printobserver_core::{
-    ActionKind, Actor, ActorClass, PolicyDecision, PrintAction, RejectionReason,
+    AcknowledgementDisposition, ActionKind, Actor, ActorClass, PolicyDecision, PrintAction,
+    RejectionReason,
 };
 use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
-use printobserver_types::{EventPayload as _, PrintId, Range};
+use printobserver_types::{EventId, EventPayload as _, PrintId, Range};
 
 use crate::journal::{Call, Port};
 use crate::source::{crate_dir, enum_variant_names, parse, read};
@@ -351,5 +352,71 @@ fn an_agent_action_after_its_minimum_interval_is_accepted() {
 
     assert_eq!(later.record.decision, PolicyDecision::Accepted);
     assert!(world.journal.printer_actions().contains(&Call::Resume));
+    world.journal.assert_no_violations();
+}
+
+/// The agent's minimum interval spaces out changes to the machine and nothing
+/// else: an acknowledgement straight after a pause is accepted, and it does
+/// not start the interval again for the next change.
+#[test]
+fn an_acknowledgement_neither_waits_on_the_interval_nor_restarts_it() {
+    let mut envelope = permissive_envelope();
+    envelope.agent_min_interval_s = 300;
+    let world = World::with_envelope(envelope);
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+
+    let paused = world
+        .request(
+            print.id,
+            PrintAction::Pause {
+                reason: "the agent saw spaghetti".to_owned(),
+                actor: agent_actor(print.id),
+            },
+        )
+        .expect("the pause is recorded");
+    assert_eq!(paused.record.decision, PolicyDecision::Accepted);
+    world.printer.reports_state(PrinterState::Paused);
+
+    world.clock.advance(5);
+    let acknowledged = world
+        .request(
+            print.id,
+            PrintAction::AcknowledgeFailure {
+                event_id: EventId::new(),
+                disposition: AcknowledgementDisposition::Stop,
+                reason: "spaghetti; a person has to clear it".to_owned(),
+                actor: agent_actor(print.id),
+            },
+        )
+        .expect("the acknowledgement is recorded");
+    assert_eq!(
+        acknowledged.record.decision,
+        PolicyDecision::Accepted,
+        "an acknowledgement waited on the interval a change to the machine starts"
+    );
+
+    // 301 seconds after the pause, and 296 after the acknowledgement: only the
+    // pause counts.
+    world.clock.advance(296);
+    let resumed = world
+        .request(
+            print.id,
+            PrintAction::Resume {
+                reason: "the agent waited out the interval its pause started".to_owned(),
+                actor: agent_actor(print.id),
+            },
+        )
+        .expect("the resume is recorded");
+    assert_eq!(
+        resumed.record.decision,
+        PolicyDecision::Accepted,
+        "the acknowledgement started the interval again"
+    );
+    assert_eq!(
+        world.journal.printer_actions(),
+        vec![Call::Pause, Call::Resume],
+        "the acknowledgement reached the printer"
+    );
     world.journal.assert_no_violations();
 }

@@ -81,6 +81,34 @@ def powershell_providers(repo: Repo) -> list[str]:
     return []
 
 
+# Directories a walk for this repository's own PowerShell never enters: what a
+# tool installed or built, rather than what the tree carries.
+UNOWNED_DIRECTORIES = frozenset({".git", "node_modules", "target", ".venv", ".nx"})
+
+
+def powershell_ascii(repo: Repo) -> list[str]:
+    """Every PowerShell script the tree carries is ASCII, so every PowerShell reads it alike.
+
+    Windows PowerShell 5.1 reads a script file with no byte-order mark in the
+    system's ANSI code page, where the bytes of a UTF-8 em dash include a curly
+    quote that ends a string early: the installer then fails to parse when run
+    with `-File`, though `irm | iex` (which decodes UTF-8) runs it. ASCII reads
+    the same under every encoding, with no mark to keep through a download.
+    """
+    findings: list[str] = []
+    for script in sorted(repo.root.rglob("*.ps1")):
+        relative = script.relative_to(repo.root)
+        if UNOWNED_DIRECTORIES.intersection(relative.parts):
+            continue
+        for number, line in enumerate(script.read_bytes().splitlines(), start=1):
+            if any(byte > 0x7F for byte in line):
+                findings.append(
+                    f"{relative.as_posix()}:{number} carries a character outside ASCII, which "
+                    f"Windows PowerShell 5.1 misreads in a file run with `-File`"
+                )
+    return findings
+
+
 def agent_layer(repo: Repo) -> list[str]:
     """AGENTS.md, the CLAUDE.md symlink, and the composition record."""
     findings: list[str] = []

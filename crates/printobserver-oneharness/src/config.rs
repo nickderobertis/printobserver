@@ -43,6 +43,14 @@ pub enum ConfigError {
         /// Why nothing there constrains an answer.
         detail: String,
     },
+    /// A command the agent is allowed to run is not one a permission rule can
+    /// name.
+    AgentCommandInvalid {
+        /// What was offered as a command.
+        text: String,
+        /// Why no rule can name it.
+        detail: &'static str,
+    },
 }
 
 impl fmt::Display for ConfigError {
@@ -66,6 +74,12 @@ impl fmt::Display for ConfigError {
             Self::ModelNameEmpty => write!(formatter, "the model is named as nothing"),
             Self::AssessmentSchemaInvalid { path, detail } => {
                 write!(formatter, "`{path}` does not constrain an answer: {detail}")
+            }
+            Self::AgentCommandInvalid { text, detail } => {
+                write!(
+                    formatter,
+                    "`{text}` cannot be allowed as an agent command: {detail}"
+                )
             }
         }
     }
@@ -104,6 +118,61 @@ impl HarnessIdentity {
 }
 
 impl fmt::Display for HarnessIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// One command line prefix a supervising agent may run during a turn, such as
+/// `printobserver context`.
+///
+/// A turn reads its print's context, and acts, through this program's own
+/// commands; a harness that withholds a shell entirely cannot do either. So the
+/// shell is granted, and every command line it runs must begin with one of
+/// these prefixes. Every other command is refused.
+///
+/// A prefix is one line of words. It carries no character a permission rule
+/// gives a meaning to, because a prefix that could close the rule early or
+/// widen it with a wildcard would allow more than it names.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AgentCommand(String);
+
+impl AgentCommand {
+    /// The command prefix spelled by this text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::AgentCommandInvalid`] when the text is empty or
+    /// only whitespace, or carries a line break or a character a permission
+    /// rule interprets (`(`, `)`, `*` or `:`).
+    pub fn new(text: &str) -> Result<Self, ConfigError> {
+        let trimmed = text.trim();
+        let refuse = |detail| ConfigError::AgentCommandInvalid {
+            text: text.to_owned(),
+            detail,
+        };
+        if trimmed.is_empty() {
+            return Err(refuse("it is empty"));
+        }
+        if trimmed.contains(['\n', '\r']) {
+            return Err(refuse("it spans more than one line"));
+        }
+        if trimmed.contains(['(', ')', '*', ':']) {
+            return Err(refuse(
+                "it carries a character a permission rule interprets",
+            ));
+        }
+        Ok(Self(trimmed.to_owned()))
+    }
+
+    /// The prefix as it is written.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AgentCommand {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)
     }
@@ -357,6 +426,9 @@ pub struct SupervisorConfig {
     pub harness_bin: Option<PathBuf>,
     /// Extra environment for each harness process.
     pub harness_env: Vec<EnvAssignment>,
+    /// The command prefixes the agent may run during a turn. Empty keeps the
+    /// turn read-only with no shell at all.
+    pub agent_commands: Vec<AgentCommand>,
 }
 
 /// Receives every run request this port builds.

@@ -10,15 +10,17 @@ use std::sync::Arc;
 
 use std::fs;
 
+use oneharness_core::domain::mode::PermissionMode;
 use printobserver_oneharness::{
-    AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, TurnTimeout,
+    AgentCommand, AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName,
+    TurnTimeout,
 };
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, assignment, block_on, config, event,
-    generated_assessment_schema, port, schema, schema_read_lock, turn, unreadable,
+    Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, assignment, block_on, config,
+    event, generated_assessment_schema, port, schema, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
@@ -93,6 +95,143 @@ fn a_model_named_as_nothing_is_not_a_pin() {
             .as_str(),
         "claude-opus-5"
     );
+}
+
+/// An agent command is a prefix a permission rule can name, and nothing that
+/// could close the rule early, widen it or spill onto a second line.
+#[test]
+fn an_agent_command_no_rule_could_name_is_refused() {
+    for unnamable in [
+        "",
+        "   ",
+        "printobserver\ncontext",
+        "printobserver context)",
+        "printobserver (context",
+        "printobserver *",
+        "printobserver: context",
+    ] {
+        let refused = AgentCommand::new(unnamable)
+            .expect_err(&format!("`{unnamable:?}` was accepted as an agent command"));
+        assert!(
+            matches!(refused, ConfigError::AgentCommandInvalid { .. }),
+            "`{unnamable:?}` was refused as something else: {refused:?}"
+        );
+        assert!(
+            refused.to_string().contains("cannot be allowed as an agent command"),
+            "the refusal does not say what was refused: {refused}"
+        );
+    }
+    let named = AgentCommand::new("  printobserver context  ").expect("a command prefix");
+    assert_eq!(named.as_str(), "printobserver context");
+    assert_eq!(named.to_string(), "printobserver context");
+}
+
+/// The commands a configuration allows.
+fn allowed(commands: &[&str]) -> Vec<AgentCommand> {
+    commands
+        .iter()
+        .map(|command| AgentCommand::new(command).expect("a command prefix"))
+        .collect()
+}
+
+/// A Claude Code turn with agent commands has a shell, and the shell runs
+/// those commands and no other: the argument vector `OneHarness` built for the
+/// harness says so, not only the request this port handed it.
+#[test]
+fn a_turn_with_agent_commands_has_a_shell_narrowed_to_them() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("configuration-commands");
+    let watch = Arc::new(Watch::default());
+    let mut configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-COMMANDS", &assessment("the print is fine", "high")),
+    );
+    configured.agent_commands = allowed(&["printobserver context", "printobserver pause"]);
+    let supervisor = port(configured, &watch);
+
+    let print_id = PrintId::new();
+    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
+        .expect("the turn runs");
+
+    let request = watch
+        .requests()
+        .into_iter()
+        .next()
+        .expect("the port built a run request");
+    assert_eq!(request.mode, Some(PermissionMode::Default));
+    assert_eq!(
+        request.passthrough,
+        [
+            "--tools",
+            "Read",
+            "Grep",
+            "Glob",
+            "Bash",
+            "--allowedTools",
+            "Read",
+            "Grep",
+            "Glob",
+            "Bash(printobserver context:*)",
+            "Bash(printobserver pause:*)",
+        ]
+    );
+    let report = watch.reports().into_iter().next().expect("the run reported");
+    let command = &report.results.first().expect("one result").command;
+    for expected in [
+        ["--permission-mode", "dontAsk"].as_slice(),
+        ["--tools", "Read", "Grep", "Glob", "Bash"].as_slice(),
+    ] {
+        assert!(
+            command.windows(expected.len()).any(|window| window == expected),
+            "the harness was not started with {expected:?}: {command:?}"
+        );
+    }
+    assert!(
+        !command.iter().any(|argument| argument == "bypassPermissions"),
+        "a turn with a shell was started with every permission granted: {command:?}"
+    );
+}
+
+/// With no agent commands, or on a harness the rules are not written for, a
+/// turn keeps `OneHarness`'s read-only mode and no shell.
+#[test]
+fn a_turn_without_rules_for_its_harness_stays_read_only() {
+    let schemas = schema_read_lock();
+    for (harness, commands) in [
+        (HARNESS, Vec::new()),
+        (OTHER_HARNESS, allowed(&["printobserver context"])),
+    ] {
+        let fixture = Fixture::new(&format!("configuration-read-only-{harness}"));
+        let watch = Arc::new(Watch::default());
+        let mut configured = config(
+            &schemas,
+            &fixture,
+            harness,
+            &generated_assessment_schema(),
+            always("SID-READ-ONLY", &assessment("the print is fine", "high")),
+        );
+        configured.agent_commands = commands;
+        let supervisor = port(configured, &watch);
+
+        let print_id = PrintId::new();
+        block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
+            .expect("the turn runs");
+
+        let request = watch
+            .requests()
+            .into_iter()
+            .next()
+            .expect("the port built a run request");
+        assert_eq!(request.mode, Some(PermissionMode::ReadOnly), "{harness}");
+        assert!(
+            request.passthrough.is_empty(),
+            "{harness} was handed arguments of its own: {:?}",
+            request.passthrough
+        );
+    }
 }
 
 /// A file that constrains no answer is refused where it is named, rather than

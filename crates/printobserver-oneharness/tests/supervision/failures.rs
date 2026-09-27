@@ -265,6 +265,32 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
     );
 }
 
+/// An answer that is no assessment at all is refused carrying what the agent
+/// said, because the refusal alone names the symptom and the agent's words
+/// usually name the cause.
+#[test]
+fn an_answer_with_no_assessment_is_refused_with_what_the_agent_said() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("failures-prose");
+    let said = "I could not run `printobserver context`: the Bash tool is not available.";
+    let configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-PROSE", said),
+    );
+    let refused = watched_turn(configured).expect_err("prose was accepted as an assessment");
+    assert!(
+        matches!(refused, SupervisorError::InvalidAnswer { .. }),
+        "prose was refused as something else: {refused:?}"
+    );
+    assert!(
+        detail(&refused).contains(said),
+        "the refusal does not carry what the agent said: {refused}"
+    );
+}
+
 /// A ledger that cannot be read is reported by every method that reads one.
 #[test]
 fn a_ledger_that_cannot_be_read_is_reported() {

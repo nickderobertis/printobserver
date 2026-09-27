@@ -28,6 +28,27 @@ use crate::skill::skill_prose;
 /// that a differently-configured process would not find.
 pub const HARNESS_SESSIONS_DIRECTORY: &str = "harness-sessions";
 
+/// The harness whose turns are granted a shell narrowed to the agent's
+/// commands. Another harness keeps `OneHarness`'s read-only mode, which gives it
+/// no shell at all.
+const CLAUDE_CODE: &str = "claude-code";
+
+/// The Claude Code tools a turn with agent commands has, and there is no other:
+/// the three that only read, and the shell those commands run in. Naming the
+/// whole set rather than denying the rest matters, because a tool Claude Code
+/// adds later is then out of reach, and so is `Task`, whose subagent would carry
+/// a shell of its own.
+const CLAUDE_TURN_TOOLS: &[&str] = &["Read", "Grep", "Glob", "Bash"];
+
+/// The tools of [`CLAUDE_TURN_TOOLS`] that are allowed outright. The shell is
+/// allowed only for the configured commands.
+const CLAUDE_READ_TOOLS: &[&str] = &["Read", "Grep", "Glob"];
+
+/// How much of an answer that failed validation is kept with the failure: enough
+/// to read what the agent said, bounded so a runaway answer cannot swell the
+/// record it lands in.
+const ANSWER_EXCERPT_CHARS: usize = 2000;
+
 /// The supervising agent, reached through `OneHarness` in this process.
 #[derive(Debug)]
 pub struct OneharnessSupervisor {
@@ -140,8 +161,45 @@ impl OneharnessSupervisor {
         Ok(self.template.fill(&event, &image, &request.context_command))
     }
 
+    /// How the harness is permitted to act during a turn, and the arguments that
+    /// narrow it.
+    ///
+    /// With no agent commands configured, or on a harness other than Claude
+    /// Code, a turn is `OneHarness`'s read-only mode: the agent reads files and
+    /// has no shell. The prompt asks it to read its print's context through a
+    /// command, though, and the skill has it act through commands, so a turn
+    /// that has agent commands runs Claude Code in `dontAsk` mode (what
+    /// [`PermissionMode::Default`] maps to), which refuses any tool call no rule
+    /// allows and carries on. The tool set is narrowed to
+    /// [`CLAUDE_TURN_TOOLS`], and the rules allow the read tools and a shell
+    /// command only when it begins with one of the configured prefixes.
+    fn permissions(&self) -> (PermissionMode, Vec<String>) {
+        let base = self
+            .config
+            .harness
+            .as_str()
+            .split(':')
+            .next()
+            .unwrap_or_default();
+        if base != CLAUDE_CODE || self.config.agent_commands.is_empty() {
+            return (PermissionMode::ReadOnly, Vec::new());
+        }
+        let mut arguments = vec!["--tools".to_owned()];
+        arguments.extend(CLAUDE_TURN_TOOLS.iter().map(|&tool| tool.to_owned()));
+        arguments.push("--allowedTools".to_owned());
+        arguments.extend(CLAUDE_READ_TOOLS.iter().map(|&tool| tool.to_owned()));
+        arguments.extend(
+            self.config
+                .agent_commands
+                .iter()
+                .map(|command| format!("Bash({command}:*)")),
+        );
+        (PermissionMode::Default, arguments)
+    }
+
     /// The run request for one turn in one session.
     fn build_request(&self, session: &SessionName, prompt: &str) -> RunRequest {
+        let (mode, passthrough) = self.permissions();
         RunRequest {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
@@ -158,7 +216,8 @@ impl OneharnessSupervisor {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
-            mode: Some(PermissionMode::ReadOnly),
+            mode: Some(mode),
+            passthrough,
             // The supervisor's turns are decided here, not by whatever
             // configuration happens to be on the host it runs on.
             no_config: true,
@@ -371,6 +430,22 @@ fn read(path: &Path) -> Result<String, SupervisorError> {
     })
 }
 
+/// Why an answer was refused, followed by what the agent actually said.
+///
+/// The reason alone ("no JSON value could be extracted") names the symptom and
+/// not the cause. The agent's own words usually name the cause — a command it
+/// was refused, a sign-in the harness is missing — and nothing else keeps them.
+fn with_answer(why: String, text: Option<&str>) -> String {
+    match text.map(str::trim).filter(|said| !said.is_empty()) {
+        None => why,
+        Some(said) => {
+            let excerpt: String = said.chars().take(ANSWER_EXCERPT_CHARS).collect();
+            let cut = if excerpt.len() < said.len() { " …" } else { "" };
+            format!("{why}; the agent answered: {excerpt}{cut}")
+        }
+    }
+}
+
 /// Whatever `OneHarness` refused a run for, as this port's own error.
 fn unavailable(error: &OneharnessError) -> SupervisorError {
     SupervisorError::Unavailable {
@@ -405,8 +480,9 @@ fn assessment(result: &RunResult) -> Result<AgentAssessment, SupervisorError> {
         });
     }
     if result.schema_valid != Some(true) {
+        let why = result.schema_error.clone().unwrap_or(NO_ANSWER.to_owned());
         return Err(SupervisorError::InvalidAnswer {
-            detail: result.schema_error.clone().unwrap_or(NO_ANSWER.to_owned()),
+            detail: with_answer(why, result.text.as_deref()),
         });
     }
     // The value is read back as the assessment itself rather than trusted for

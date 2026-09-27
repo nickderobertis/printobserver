@@ -67,8 +67,8 @@ mod turn;
 pub const DEFAULT_TURN_PROMPT: &str = include_str!("../assets/turn-prompt.md");
 
 pub use config::{
-    AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
-    RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
+    AgentCommand, AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName,
+    RunReportObserver, RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
 pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{

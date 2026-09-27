@@ -89,7 +89,12 @@ pub fn sign_in(config: &Path) -> Result<u8, Failure> {
     // Run inside its own directory rather than wherever this was run from: the
     // documented invocation is `sudo -u` from an operator's own shell, whose
     // working directory is somewhere the service's user cannot read.
-    let status = Command::new(harness.program())
+    // The program by its own name, or the one npm's launcher runs where the
+    // launcher is all a search finds (Windows).
+    let program = harness
+        .program_behind_launcher(&std::env::var_os("PATH").unwrap_or_default())
+        .unwrap_or_else(|| harness.program().into());
+    let status = Command::new(&program)
         .args(harness.arguments())
         .env(harness.config_env(), &directory)
         .current_dir(&directory)

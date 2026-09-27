@@ -604,6 +604,17 @@ const fn read(name: &'static str, path: &'static str) -> Operation {
     }
 }
 
+/// How one operation's name is spelled as a command of the `printobserver`
+/// program: each underscore a hyphen.
+///
+/// The one spelling both the command-line program and the supervising agent's
+/// allowed commands are made from, so the command the agent is allowed to run
+/// is the command the program has.
+#[must_use]
+pub fn command_for(operation: &str) -> String {
+    operation.replace('_', "-")
+}
+
 /// Every public operation this server serves, and there is no other.
 pub const OPERATIONS: [Operation; 17] = [
     // Takes nothing: it is how a caller finds the identifier every other

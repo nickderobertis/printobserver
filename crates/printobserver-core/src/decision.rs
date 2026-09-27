@@ -92,6 +92,18 @@ pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
     }
 }
 
+/// Whether one action changes something at the machine.
+///
+/// Acknowledging a failure is the one action that does not: it writes a
+/// decision into the print's record and asks nothing of the printer. The agent's
+/// minimum interval spaces out changes to the machine, so that each one's effect
+/// can show before the next is asked for; an acknowledgement neither waits on it
+/// nor restarts it.
+#[must_use]
+pub const fn changes_the_machine(kind: ActionKind) -> bool {
+    !matches!(kind, ActionKind::AcknowledgeFailure)
+}
+
 /// Whether a print is one an action may still be taken against.
 fn is_active(print: Option<&PrintRecord>) -> bool {
     print.is_some_and(|record| record.ended_at.is_none())
@@ -120,6 +132,7 @@ pub fn decide(input: &DecisionInput<'_>) -> PolicyDecision {
     }
 
     if actor_class == ActorClass::Agent
+        && changes_the_machine(kind)
         && let Some(last) = input.last_agent_action
     {
         let since_last_s = seconds_between(last, input.requested_at);

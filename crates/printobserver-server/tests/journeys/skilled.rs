@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use printobserver_oneharness::{EnvAssignment, OneharnessSupervisor};
-use printobserver_server::{ServerConfig, agent_config};
+use printobserver_server::{OPERATIONS, SCHEMA_FILE, ServerConfig, agent_config, command_for};
 use printobserver_supervisor_api::{SupervisorPort as _, TurnRequest};
 use printobserver_types::serde_json::{Value, json};
 use printobserver_types::{
@@ -76,14 +76,14 @@ fn resolved(path: &Path) -> PathBuf {
         .unwrap_or_else(|error| panic!("{} resolves: {error}", path.display()))
 }
 
-/// A skill installed on its own is the turn's system prompt, and the turn runs
-/// in the directory it was installed in.
-#[tokio::test(flavor = "multi_thread")]
-async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it() {
-    let root = TempDir::new().expect("a journey's own root");
+/// One turn of an agent composed exactly as `Server::start` composes it, over a
+/// copy of the committed skill installed on its own under `root`: what the
+/// harness process wrote down about how it was started, the configuration it
+/// was composed from, and where the skill was installed.
+async fn one_composed_turn(root: &Path) -> (Value, ServerConfig, PathBuf) {
     // The shape `gh skill install --dir <root>/skills` lays down: the skill's
     // directory, holding nothing but the skill's own files.
-    let installed = root.path().join("skills").join("printobserver");
+    let installed = root.join("skills").join("printobserver");
     copy_tree(
         committed_skill()
             .parent()
@@ -92,20 +92,20 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
     );
     let skill = installed.join("SKILL.md");
 
-    let mut configuration = document(root.path(), "http://127.0.0.1:9");
+    let mut configuration = document(root, "http://127.0.0.1:9");
     set(
         &mut configuration,
         "supervisor.skill_path",
         toml::Value::String(skill.display().to_string()),
     );
-    let loaded = ServerConfig::load(write(root.path(), &configuration))
+    let loaded = ServerConfig::load(write(root, &configuration))
         .expect("a configuration naming an installed skill is accepted");
     let mut composed =
         agent_config(&loaded).expect("the agent is composed over the installed skill");
 
     // Only the paid provider process is replaced, and it writes down what it
     // was started with.
-    let seen = root.path().join("seen.json");
+    let seen = root.join("seen.json");
     composed.harness_bin = Some(PathBuf::from(env!(
         "CARGO_BIN_EXE_printobserver-server-responder"
     )));
@@ -137,6 +137,92 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
         &std::fs::read_to_string(&seen).expect("the harness wrote down what it was started with"),
     )
     .expect("what the harness wrote down is a document");
+    (recorded, loaded, installed)
+}
+
+/// The agent composed for a turn runs this program's commands and no other:
+/// the harness is started refusing every tool call no rule allows, with a shell
+/// and the three read tools only, and one rule per operation the server serves.
+/// Its search path leads with this program's own directory, so the commands
+/// those rules name are this program. And the assessment schema it is handed
+/// names no dialect, which Claude Code refuses to read.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_composed_agent_runs_this_programs_commands_and_no_other() {
+    let root = TempDir::new().expect("a journey's own root");
+    let (recorded, loaded, _) = one_composed_turn(root.path()).await;
+
+    let arguments: Vec<String> = recorded["arguments"]
+        .as_array()
+        .expect("the harness recorded its arguments")
+        .iter()
+        .map(|argument| argument.as_str().expect("an argument").to_owned())
+        .collect();
+    for expected in [
+        ["--permission-mode", "dontAsk"].as_slice(),
+        ["--tools", "Read", "Grep", "Glob", "Bash"].as_slice(),
+        ["--allowedTools", "Read", "Grep", "Glob"].as_slice(),
+    ] {
+        assert!(
+            arguments.windows(expected.len()).any(|window| window == expected),
+            "the harness was not started with {expected:?}: {arguments:?}"
+        );
+    }
+    assert!(
+        !arguments.iter().any(|argument| argument == "bypassPermissions"),
+        "the harness was started with every permission granted: {arguments:?}"
+    );
+    let rules: Vec<&String> = arguments
+        .iter()
+        .filter(|argument| argument.starts_with("Bash("))
+        .collect();
+    let expected: Vec<String> = OPERATIONS
+        .iter()
+        .map(|operation| format!("Bash(printobserver {}:*)", command_for(operation.name)))
+        .collect();
+    assert_eq!(
+        rules.iter().map(|rule| rule.as_str()).collect::<Vec<_>>(),
+        expected.iter().map(String::as_str).collect::<Vec<_>>(),
+        "the shell is not allowed exactly one command per operation"
+    );
+
+    let path = recorded["path"].as_str().expect("the harness recorded its PATH");
+    let first = std::env::split_paths(path)
+        .next()
+        .expect("the PATH names a directory");
+    let this_program = std::env::current_exe()
+        .expect("this program's path")
+        .parent()
+        .expect("a directory")
+        .to_path_buf();
+    assert_eq!(
+        resolved(&first),
+        resolved(&this_program),
+        "the turn's PATH does not lead with this program's directory: {path}"
+    );
+
+    let schema: Value = printobserver_types::serde_json::from_str(
+        &std::fs::read_to_string(loaded.assets_dir().join(SCHEMA_FILE))
+            .expect("the assessment schema was written"),
+    )
+    .expect("the assessment schema is a document");
+    assert!(
+        schema.get("$schema").is_none(),
+        "the schema handed to the harness names a dialect: {}",
+        schema["$schema"]
+    );
+    assert!(
+        schema.get("properties").is_some(),
+        "the schema handed to the harness constrains nothing: {schema}"
+    );
+}
+
+/// A skill installed on its own is the turn's system prompt, and the turn runs
+/// in the directory it was installed in.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it() {
+    let root = TempDir::new().expect("a journey's own root");
+    let (recorded, _, installed) = one_composed_turn(root.path()).await;
+    let skill = installed.join("SKILL.md");
     let ran_in = PathBuf::from(recorded["cwd"].as_str().unwrap_or_else(|| {
         panic!(
             "the harness recorded no working directory: {}",

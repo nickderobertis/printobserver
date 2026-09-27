@@ -166,7 +166,10 @@ impl Supervisor {
                 intervention: None,
             });
         }
-        if actor.class() == ActorClass::Agent {
+        // Only a change to the machine starts the agent's interval again.
+        if actor.class() == ActorClass::Agent
+            && crate::decision::changes_the_machine(action.kind())
+        {
             self.note_agent_action(print_id, requested_at);
         }
         if let PrintAction::StartPrint { manifest, .. } = &action {

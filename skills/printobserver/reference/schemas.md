@@ -46,7 +46,7 @@ Declared by `printobserver-core`.
     },
     {
       "const": "stop",
-      "description": "Stop the print.",
+      "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
       "type": "string"
     }
   ],
@@ -76,7 +76,7 @@ Declared by `printobserver-server`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]
@@ -1304,7 +1304,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]
@@ -2588,7 +2588,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]
@@ -3115,7 +3115,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]
@@ -7649,7 +7649,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]
@@ -8141,7 +8141,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself cancels nothing.",
           "type": "string"
         }
       ]

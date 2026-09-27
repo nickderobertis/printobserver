@@ -322,20 +322,13 @@ impl Supervisor {
             PrintAction::SetFanPercent { percent, .. } => {
                 self.printer.set_fan_percent(*percent).await
             }
-            // Acknowledging a failure is a decision about the print rather than
-            // a movement of the machine. `Stop` is the one disposition that
-            // asks for something at the printer, and cancelling is how a print
-            // is stopped; the other two ask for nothing there.
-            PrintAction::AcknowledgeFailure { disposition, .. } => {
-                if matches!(
-                    disposition,
-                    crate::records::AcknowledgementDisposition::Stop
-                ) {
-                    self.printer.cancel().await
-                } else {
-                    Ok(())
-                }
-            }
+            // Acknowledging a failure is a decision about the print written into
+            // its record, and asks nothing of the machine, whatever the
+            // disposition. Stopping a print is cancelling it, which the policy
+            // grants each actor on its own: an acknowledgement that cancelled
+            // would let an actor granted acknowledgements and not cancellation
+            // stop a print all the same.
+            PrintAction::AcknowledgeFailure { .. } => Ok(()),
         };
         let outcome = match &executed {
             Ok(()) => ExecutionOutcome::Succeeded,

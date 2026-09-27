@@ -153,9 +153,10 @@ fn movement(kind: ActionKind) -> Asked {
                 ],
             ),
             from: PrinterState::Printing,
-            // Stopping is what an acknowledgement asks of the machine, and
-            // cancelling is how a print is stopped.
-            call: Some(Call::Cancel),
+            // An acknowledgement is written into the record and asks nothing
+            // of the machine, `stop` included: stopping a print is cancelling
+            // it, which the policy grants on its own.
+            call: None,
             adjustable: None,
         },
         _ => unreachable!("this is an adjustment rather than a movement"),

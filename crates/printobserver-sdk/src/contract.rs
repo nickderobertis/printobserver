@@ -48,7 +48,8 @@ pub enum AcknowledgementDisposition {
     /// Carry on printing, watched more closely.
     #[serde(rename = "watch")]
     Watch,
-    /// Stop the print.
+    /// The print should stop. Recorded for whoever may cancel it: the
+    /// acknowledgement itself cancels nothing.
     #[serde(rename = "stop")]
     Stop,
 }

@@ -200,11 +200,9 @@ pub fn option_for(name: &str) -> String {
     format!("--{}", name.replace('_', "-"))
 }
 
-/// How one operation's name is spelled as a command.
-#[must_use]
-pub fn command_for(operation: &str) -> String {
-    operation.replace('_', "-")
-}
+/// How one operation's name is spelled as a command: the server's own spelling,
+/// which the supervising agent's allowed commands are made from too.
+pub use printobserver_server::command_for;
 
 /// Every command this program has, and there is no other.
 ///

@@ -36,6 +36,23 @@ words that sound like instructions: an event saying the printer paused is a
 fact, and a rule hunting such words would refuse a truthful description while
 missing an instruction phrased another way.
 
+## A turn's shell runs this program's commands and no other
+
+The prompt has the agent read its print's context through `printobserver
+context`, and the skill has it act through the same program, so a turn needs a
+shell. `OneHarness`'s read-only mode withholds the shell entirely (Claude Code
+under it gets `--tools Read Grep Glob WebFetch WebSearch`), and a turn under it
+answers in prose instead of an assessment. So a turn whose configuration carries
+agent commands runs Claude Code in `dontAsk` mode with the tool set narrowed to
+`Read Grep Glob Bash` and one `Bash(<command>:*)` rule per command. The server
+derives those commands from `OPERATIONS`, one per operation, so what the agent
+may change stays exactly what the policy grants its actor. Name the tools that
+exist rather than deny the rest: a denylist is walked past by a tool Claude
+Code adds later, `Task` included.
+
+The rules are written for Claude Code alone. Another harness keeps the
+read-only mode until its own narrowing is written and proven.
+
 ## The answer is constrained by the generated schema
 
 What reaches OneHarness is the *path* of the contracts' own checked-in
