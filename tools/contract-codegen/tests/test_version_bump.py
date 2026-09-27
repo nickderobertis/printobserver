@@ -175,6 +175,7 @@ def test_the_rust_client_compiled_in_a_bumped_tree_reports_the_bumped_version(
 #: wrong with each; `None` is no manifest at all.
 REFUSED_MANIFESTS = {
     "missing": None,
+    "not-toml": '[workspace.package\nversion = "0.3.0"\n',
     "versionless": '[workspace]\nmembers = ["crates/*"]\n',
     "not-a-version": '[workspace.package]\nversion = "latest"\n',
     "leading-zero": '[workspace.package]\nversion = "01.2.3"\n',
@@ -182,10 +183,18 @@ REFUSED_MANIFESTS = {
     "not-a-table": '[workspace]\npackage = "0.3.0"\n',
 }
 
+#: The two clients that read the manifest at import, by how each is imported
+#: and what its refusal is raised as.
+FROM_SOURCE: dict[str, tuple[Callable[[Path], Completed], str]] = {
+    "python": (lambda root: python_from_source(root, PYTHONS[-1]), "ImportError"),
+    "node": (node_from_source, "Error"),
+}
 
+
+@pytest.mark.parametrize("client", FROM_SOURCE)
 @pytest.mark.parametrize("manifest", REFUSED_MANIFESTS)
 def test_a_from_source_client_without_a_workspace_version_refuses_to_import(
-    scratch: Callable[[], Path], manifest: str
+    scratch: Callable[[], Path], manifest: str, client: str
 ) -> None:
     """No manifest, or one declaring no release version, is a refusal naming it — never a guess."""
     copy = scratch()
@@ -195,16 +204,12 @@ def test_a_from_source_client_without_a_workspace_version_refuses_to_import(
         path.unlink()
     else:
         path.write_text(text, encoding="utf-8")
-    named = str(path.resolve())
-    reason = "could not be read" if text is None else "declares no"
+    reason = "could not be read" if text is None or manifest == "not-toml" else "declares no"
+    importing, raised = FROM_SOURCE[client]
 
-    python = python_from_source(copy, PYTHONS[-1])
-    failing(python, naming="ImportError")
-    contains(python.stderr, named, describing="the Python client's refusal")
-    contains(python.stderr, reason, describing="the Python client's refusal")
-    equal(python.stdout, "", describing="what the Python client reported")
+    result = importing(copy)
 
-    node = node_from_source(copy)
-    failing(node, naming=named)
-    contains(node.stderr, reason, describing="the Node client's refusal")
-    equal(node.stdout, "", describing="what the Node client reported")
+    failing(result, naming=raised)
+    contains(result.stderr, str(path.resolve()), describing=f"the {client} client's refusal")
+    contains(result.stderr, reason, describing=f"the {client} client's refusal")
+    equal(result.stdout, "", describing=f"what the {client} client reported")
