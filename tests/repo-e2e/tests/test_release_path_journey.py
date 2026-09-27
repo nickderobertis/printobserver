@@ -36,7 +36,7 @@ from typing import Self
 from urllib.parse import urlsplit
 
 import pytest
-from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, run
+from journey import COMMIT_IDENTITY, REPO_ROOT, GateCopy, capture, clean_environment, output, run
 from release_artifacts import arming, bumping
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
@@ -307,7 +307,7 @@ def merged_release(
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     bumping.bump_workspace_version(copy.root, version)
     shell_run(
-        ["git", "commit", "-qam", f"{subject.format(version=version)}\n\n{body}"],
+        ["git", *COMMIT_IDENTITY, "commit", "-qam", f"{subject.format(version=version)}\n\n{body}"],
         cwd=copy.root,
         check=True,
     )
@@ -315,7 +315,7 @@ def merged_release(
         touched = copy.root / "crates" / "printobserver-types" / "src" / f"touched_{index}.rs"
         touched.write_text("//! A change the next release would carry.\n", encoding="utf-8")
         shell_run(["git", "add", "-A"], cwd=copy.root, check=True)
-        shell_run(["git", "commit", "-qm", subject], cwd=copy.root, check=True)
+        shell_run(["git", *COMMIT_IDENTITY, "commit", "-qm", subject], cwd=copy.root, check=True)
     shell_run(["git", "repack", "-ad"], cwd=copy.root, check=True)
     return copy
 
@@ -446,7 +446,9 @@ def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
         touched.write_text("//! A change the release carries.\n", encoding="utf-8")
     shell_run(["git", "add", "-A"], cwd=drafted_copy.root, check=True)
     shell_run(
-        ["git", "commit", "-qm", "fix: a change to every crate"], cwd=drafted_copy.root, check=True
+        ["git", *COMMIT_IDENTITY, "commit", "-qm", "fix: a change to every crate"],
+        cwd=drafted_copy.root,
+        check=True,
     )
     shell_run(["git", "repack", "-ad"], cwd=drafted_copy.root, check=True)
     was = bumping.workspace_version(released.root)
@@ -594,7 +596,9 @@ class DraftingForge:
                     return {}
                 try:
                     parsed = json.loads(raw)
-                except UnicodeDecodeError, json.JSONDecodeError:
+                except ValueError:
+                    # Undecodable bytes and text that is not JSON: `loads`
+                    # refuses both as a `ValueError`.
                     return None
                 return parsed if isinstance(parsed, dict) else None
 
@@ -660,11 +664,13 @@ def shape(value: object) -> object:
     A list is its first element's shape: every pull request and every release
     in the answer is one of a kind.
     """
-    if isinstance(value, dict):
-        return {key: shape(entry) for key, entry in sorted(value.items())}
-    if isinstance(value, list):
-        return [shape(value[0])] if value else []
-    return type(value).__name__
+    match value:
+        case dict():
+            return {key: shape(entry) for key, entry in sorted(value.items())}
+        case list():
+            return [shape(value[0])] if value else []
+        case _:
+            return type(value).__name__
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
