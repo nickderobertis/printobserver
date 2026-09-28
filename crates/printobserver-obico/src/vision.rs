@@ -4,7 +4,9 @@ use core::fmt;
 use core::time::Duration;
 
 use printobserver_types::{RawBytes, Timestamp};
-use printobserver_vision_api::{BoxFuture, FetchedImage, NormalizedAlert, VisionError, VisionPort};
+use printobserver_vision_api::{
+    BoxFuture, Detection, FetchedImage, NormalizedAlert, VisionError, VisionPort,
+};
 
 use crate::{fetch, normalize};
 
@@ -73,6 +75,37 @@ impl fmt::Display for ObicoVisionError {
 
 impl core::error::Error for ObicoVisionError {}
 
+/// Where Obico's own API answers, and the token it is reached with.
+///
+/// Obico's user API accepts an OAuth2 bearer token or a browser session and
+/// nothing else, so this is a bearer token a self-hosted instance's own
+/// administration issued. The token is never shown: this type's debug form
+/// omits it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ObicoApi {
+    /// The server's own address, such as `http://127.0.0.1:3334`.
+    pub url: String,
+    /// The bearer token its API is reached with.
+    pub access_token: String,
+}
+
+impl fmt::Debug for ObicoApi {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ObicoApi")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The alert overwrite a handled detection is acknowledged with.
+///
+/// `FAILED` rather than `NOT_FAILED`: the detection was right, and it was
+/// handled by adjusting the print rather than by dismissing it. Obico's
+/// suppression reads only that an acknowledgement happened, so either would
+/// re-arm it; this one is the truthful one.
+pub const HANDLED_OVERWRITE: &str = "FAILED";
+
 /// The Obico adapter: one body read, one snapshot retrieved.
 #[derive(Debug, Clone)]
 pub struct ObicoVision {
@@ -80,6 +113,8 @@ pub struct ObicoVision {
     client: reqwest::Client,
     /// The bounds the fetch runs under.
     config: ObicoVisionConfig,
+    /// Obico's own API, when this adapter was given a way to reach it.
+    api: Option<ObicoApi>,
 }
 
 impl ObicoVision {
@@ -97,13 +132,55 @@ impl ObicoVision {
             .map_err(|error| ObicoVisionError {
                 detail: error.to_string(),
             })?;
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            api: None,
+        })
+    }
+
+    /// The same adapter, able to reach Obico's own API.
+    #[must_use]
+    pub fn with_api(mut self, api: Option<ObicoApi>) -> Self {
+        self.api = api;
+        self
     }
 
     /// The bounds this adapter runs under.
     #[must_use]
     pub const fn config(&self) -> &ObicoVisionConfig {
         &self.config
+    }
+
+    /// Acknowledge the alert Obico holds against one printer's current print.
+    async fn acknowledge(&self, provider_printer_id: i64) -> Result<(), VisionError> {
+        let Some(api) = &self.api else {
+            return Err(VisionError::NotConfigured {
+                detail: "no [obico] url and access_token are configured, so Obico cannot be \
+                         told its detection was handled"
+                    .to_owned(),
+            });
+        };
+        let url = format!(
+            "{}/api/v1/printers/{provider_printer_id}/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE}",
+            api.url.trim_end_matches('/')
+        );
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&api.access_token)
+            .send()
+            .await
+            .map_err(|error| VisionError::Unreachable {
+                detail: error.to_string(),
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        Err(VisionError::Unreachable {
+            detail: format!("Obico answered {status} acknowledging the alert"),
+        })
     }
 }
 
@@ -123,6 +200,10 @@ impl VisionPort for ObicoVision {
         Box::pin(async move {
             fetch::image(&self.client, &source_url, self.config.max_image_bytes).await
         })
+    }
+
+    fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>> {
+        Box::pin(async move { self.acknowledge(detection.provider_printer_id).await })
     }
 }
 

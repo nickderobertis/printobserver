@@ -303,6 +303,12 @@ pub struct ContextAnswer {
     pub image_path: Option<PathBuf>,
 }
 
+/// What a fresh look answers: the look, as core took it.
+///
+/// Its `image_path` is absolute on this server's own filesystem, exactly as
+/// [`ContextAnswer`]'s is.
+pub type LookAnswer = printobserver_core::Look;
+
 /// What an image read answers.
 ///
 /// The path is absolute on this server's own filesystem, and is the whole of

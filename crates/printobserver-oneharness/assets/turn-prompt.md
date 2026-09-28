@@ -12,6 +12,16 @@ role may change.
 {{event}}
 ```
 
+## The situation when this turn began
+
+Whether the printer is paused, whether the detector only warned, and whether
+the detector paused the print itself. Events that arrived while an earlier turn
+on this print was running, and that it never saw, are listed here too.
+
+```json
+{{situation}}
+```
+
 ## The picture
 
 {{image_path}}
@@ -26,6 +36,11 @@ Run this command and read what it answers:
 
 Give every other command you run the same `--config` file this one takes. It
 names the supervisor this turn belongs to and the credential it answers to.
+
+This picture and that context are from when the event arrived. Your skill says
+how to take a fresh look at the print and how to watch it for a while before
+deciding; new events for this print reach you through those looks rather than
+through a second turn.
 
 ## What to answer with
 

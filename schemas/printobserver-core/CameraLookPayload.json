@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Somebody took a fresh look at the print.\n\nWritten down before the camera is asked for a frame, so that a frame the\ncamera would not give is recorded against a look that is already in the\nhistory; the frame itself, when there is one, is this event's image.",
+  "properties": {
+    "delivered": {
+      "description": "The events that arrived while it waited and that it handed over,\noldest first.",
+      "items": {
+        "$ref": "#/$defs/EventId"
+      },
+      "type": "array"
+    },
+    "waited_s": {
+      "description": "How long the look waited for something to happen before it was taken,\nin whole seconds.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "waited_s"
+  ],
+  "title": "CameraLookPayload",
+  "type": "object",
+  "x-event-kind": "camera_look"
+}

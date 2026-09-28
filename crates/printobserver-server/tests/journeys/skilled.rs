@@ -67,6 +67,7 @@ fn a_turn() -> TurnRequest {
         },
         image_path: None,
         context_command: format!("printobserver context --print-id {print_id}"),
+        situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }
 

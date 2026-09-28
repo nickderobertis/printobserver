@@ -57,6 +57,7 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
 #[test]
 fn normalized_alert_carries_exactly_the_stated_fields() {
     let expected = vec![
+        field("detection", "Detection", false),
         field("image_url", "string", false),
         field("kind", "EventKind", true),
         field("payload", "any", true),

@@ -24,7 +24,7 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    CameraLookPayload, InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
     PortFailureSite, PrintContext, agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
@@ -83,6 +83,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<AgentAssessmentPayload>("AgentAssessmentPayload"),
         kind_of::<OperatorAcknowledgementPayload>("OperatorAcknowledgementPayload"),
         kind_of::<PortFailurePayload>("PortFailurePayload"),
+        kind_of::<CameraLookPayload>("CameraLookPayload"),
     ]
 }
 
@@ -137,6 +138,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("AgentAssessmentPayload", "agent_assessment"),
             ("OperatorAcknowledgementPayload", "operator_acknowledgement"),
             ("PortFailurePayload", "port_failure"),
+            ("CameraLookPayload", "camera_look"),
         ]
     );
     for declared in declared_kinds() {

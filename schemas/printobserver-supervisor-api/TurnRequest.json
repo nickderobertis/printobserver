@@ -127,6 +127,41 @@
       "format": "date-time",
       "title": "Timestamp",
       "type": "string"
+    },
+    "TurnSituation": {
+      "additionalProperties": false,
+      "description": "What the supervisor knew about the moment one turn began, beside its event.\n\nFacts rather than instructions: whether the print is paused, and whether\nthe detector paused it itself, are exactly what decides whether an agent's\nadjustment would be applied to a moving print or held until it moves again.",
+      "properties": {
+        "arrived_while_busy": {
+          "description": "Events for this print that arrived while its previous turn was running\nand that turn never saw, oldest first. The event above is the newest of\nthem.",
+          "items": {
+            "$ref": "#/$defs/EventRecord"
+          },
+          "type": "array"
+        },
+        "detector_paused_the_print": {
+          "description": "Whether the detector paused the print itself, when the event is one of\nits detections.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "detector_warned": {
+          "description": "Whether the detector only warned, when the event is one of its\ndetections.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "printer_state": {
+          "description": "The printer's state when the turn began, in the printer contract's own\nspelling, absent when the printer could not be read.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -151,6 +186,11 @@
     "print_id": {
       "$ref": "#/$defs/PrintId",
       "description": "The print the turn is about."
+    },
+    "situation": {
+      "$ref": "#/$defs/TurnSituation",
+      "default": {},
+      "description": "What the supervisor knew about the moment the turn began."
     }
   },
   "required": [

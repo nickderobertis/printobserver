@@ -214,6 +214,44 @@ impl Sample for OperatorAcknowledgementPayload {
     }
 }
 
+/// Somebody took a fresh look at the print.
+///
+/// Written down before the camera is asked for a frame, so that a frame the
+/// camera would not give is recorded against a look that is already in the
+/// history; the frame itself, when there is one, is this event's image.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct CameraLookPayload {
+    /// How long the look waited for something to happen before it was taken,
+    /// in whole seconds.
+    pub waited_s: u32,
+    /// The events that arrived while it waited and that it handed over,
+    /// oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delivered: Vec<EventId>,
+}
+
+impl EventPayload for CameraLookPayload {
+    const KIND: &'static str = "camera_look";
+}
+
+impl Sample for CameraLookPayload {
+    fn sample_full() -> Self {
+        Self {
+            waited_s: 60,
+            delivered: vec![EventId::sample_full()],
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            waited_s: 0,
+            delivered: Vec::new(),
+        }
+    }
+}
+
 /// Where a port failed while an event was being handled.
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
@@ -238,6 +276,10 @@ pub enum PortFailureSite {
     ImageWrite,
     /// Running the supervision turn the event prompted.
     SupervisionTurn,
+    /// Taking a fresh frame from the camera for a look at the print.
+    CameraLook,
+    /// Telling the detector that paused the print its detection was handled.
+    DetectorAcknowledgement,
 }
 
 impl Sample for PortFailureSite {

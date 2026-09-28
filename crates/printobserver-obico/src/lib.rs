@@ -55,8 +55,8 @@ pub use events::{
 };
 pub use ingress::{IngressError, ObicoIngress, Receipt};
 pub use vision::{
-    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, ObicoVision, ObicoVisionConfig,
-    ObicoVisionError,
+    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, ObicoApi, ObicoVision,
+    ObicoVisionConfig, ObicoVisionError,
 };
 pub use wire::{
     ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,

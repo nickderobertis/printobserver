@@ -37,7 +37,7 @@
 //! but a name.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::records::{ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction};
 use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot};
@@ -51,6 +51,8 @@ use crate::store::{StoreError, Stores};
 use crate::block_on::block_on;
 use crate::clock::Clock;
 use crate::config::CoreConfig;
+use crate::detector::DetectorPauses;
+use crate::inbox::Inboxes;
 use crate::turn_lock::TurnLocks;
 
 /// What became of one request that reached [`Supervisor::issue_decided_action`].
@@ -113,6 +115,10 @@ pub struct Supervisor {
     last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
     /// The context collected for the turn currently running on each print.
     pending_context: Mutex<BTreeMap<PrintId, PrintContext>>,
+    /// What reaches each print's running turn, and which prints have one.
+    inboxes: Inboxes,
+    /// The prints the detector paused and nobody has resumed yet.
+    detector_pauses: Mutex<DetectorPauses>,
 }
 
 impl core::fmt::Debug for Supervisor {
@@ -160,6 +166,8 @@ impl Supervisor {
             resolving_key: PrintId::new(),
             last_agent_action: Mutex::new(BTreeMap::new()),
             pending_context: Mutex::new(BTreeMap::new()),
+            inboxes: Inboxes::default(),
+            detector_pauses: Mutex::new(BTreeMap::new()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -167,6 +175,7 @@ impl Supervisor {
             .spawn(move || {
                 while let Some(supervisor) = weak.upgrade() {
                     let _ = block_on(supervisor.sweep_expired());
+                    block_on(supervisor.resume_due_detector_pauses());
                     drop(supervisor);
                     std::thread::sleep(poll);
                 }
@@ -204,6 +213,18 @@ impl Supervisor {
     /// One supervision turn per print at a time.
     pub(crate) const fn turns(&self) -> &TurnLocks {
         &self.turns
+    }
+
+    /// What reaches each print's running turn.
+    pub(crate) const fn inboxes(&self) -> &Inboxes {
+        &self.inboxes
+    }
+
+    /// The prints the detector paused and nobody has resumed yet.
+    pub(crate) fn detector_pauses(&self) -> MutexGuard<'_, DetectorPauses> {
+        self.detector_pauses
+            .lock()
+            .expect("the detector's pauses are not poisoned")
     }
 
     /// Wait until no other resolution of a print is running, then hold it.

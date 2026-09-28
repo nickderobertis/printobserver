@@ -33,6 +33,7 @@ fn trivial_alert() -> NormalizedAlert {
             id: 4211,
             file_name: Some("benchy.gcode".to_owned()),
         }),
+        detection: None,
     }
 }
 
@@ -57,6 +58,14 @@ impl VisionPort for TrivialVision {
                 content_type: String::new(),
             })
         })
+    }
+
+    fn clear_detection(
+        &self,
+        detection: printobserver_vision_api::Detection,
+    ) -> BoxFuture<'_, Result<(), VisionError>> {
+        let _ = detection;
+        Box::pin(async { Ok(()) })
     }
 }
 

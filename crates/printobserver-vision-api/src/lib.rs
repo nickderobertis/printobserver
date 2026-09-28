@@ -62,6 +62,25 @@ pub struct ProviderPrint {
     pub file_name: Option<String>,
 }
 
+/// What a provider's failure detector did about a print, when an alert is one
+/// of its detections.
+///
+/// Named for what it is rather than for the provider, like [`ProviderPrint`]:
+/// whether the detector only warned, whether it paused the print itself, and
+/// the provider's own identifier for the printer, which is what telling it the
+/// detection was handled is addressed to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct Detection {
+    /// Whether the detector called it a warning rather than a failure.
+    pub warning: bool,
+    /// Whether the detector paused the print itself before alerting.
+    pub paused_the_print: bool,
+    /// The provider's own identifier for the printer the detection is about.
+    pub provider_printer_id: i64,
+}
+
 /// One external body, read into an event under the adapter's own kind.
 ///
 /// `kind` and `payload` are the [`EventBody`] flattened into this shape, so an
@@ -87,6 +106,10 @@ pub struct NormalizedAlert {
     /// the file it named, when the alert is about a print at all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub print: Option<ProviderPrint>,
+    /// What the provider's detector did, when this alert is one of its
+    /// detections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detection: Option<Detection>,
 }
 
 impl NormalizedAlert {
@@ -162,6 +185,11 @@ pub enum VisionError {
         /// What went wrong reaching it.
         detail: String,
     },
+    /// The adapter was given nothing to reach the provider with for this.
+    NotConfigured {
+        /// What is missing, naming the configuration it would be read from.
+        detail: String,
+    },
 }
 
 impl core::fmt::Display for VisionError {
@@ -186,6 +214,9 @@ impl core::fmt::Display for VisionError {
             Self::Unreachable { detail } => {
                 write!(formatter, "the source is unreachable: {detail}")
             }
+            Self::NotConfigured { detail } => {
+                write!(formatter, "the provider is not configured for this: {detail}")
+            }
         }
     }
 }
@@ -207,4 +238,11 @@ pub trait VisionPort: Send + Sync {
 
     /// Retrieve the image a source URL names.
     fn fetch_image(&self, source_url: String) -> BoxFuture<'_, Result<FetchedImage, VisionError>>;
+
+    /// Tell the provider one of its detections has been handled.
+    ///
+    /// A detector that paused a print and was never told the pause was dealt
+    /// with may stay silent about that print for the rest of it; this is what
+    /// re-arms it once the print has been adjusted and resumed.
+    fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>>;
 }

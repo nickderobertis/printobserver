@@ -96,9 +96,10 @@ pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
 ///
 /// Acknowledging a failure is the one action that does not: it writes a
 /// decision into the print's record and asks nothing of the printer. The agent's
-/// minimum interval spaces out changes to the machine, so that each one's effect
-/// can show before the next is asked for; an acknowledgement neither waits on it
-/// nor restarts it.
+/// minimum interval spaces out changes to a moving print, so that each one's
+/// effect can show before the next is asked for; an acknowledgement neither
+/// waits on it nor restarts it, and an adjustment asked for while the print is
+/// paused does not wait on it either.
 #[must_use]
 pub const fn changes_the_machine(kind: ActionKind) -> bool {
     !matches!(kind, ActionKind::AcknowledgeFailure)
@@ -131,8 +132,15 @@ pub fn decide(input: &DecisionInput<'_>) -> PolicyDecision {
         });
     }
 
+    // Nothing an adjustment does can show while the print is paused, so the
+    // interval that waits for it to show does not hold adjustments to a paused
+    // print back. Resuming, pausing and cancelling still wait on it: those are
+    // the flapping it exists to stop.
+    let adjusting_a_paused_print = adjustment(input.action).is_some()
+        && matches!(input.printer_state, Some(PrinterState::Paused));
     if actor_class == ActorClass::Agent
         && changes_the_machine(kind)
+        && !adjusting_a_paused_print
         && let Some(last) = input.last_agent_action
     {
         let since_last_s = seconds_between(last, input.requested_at);

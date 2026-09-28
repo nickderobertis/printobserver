@@ -1128,6 +1128,15 @@ impl VisionPort for FakeVision {
             .map_or_else(|| Ok(self.served()), Err);
         Box::pin(async move { answer })
     }
+
+    fn clear_detection(
+        &self,
+        detection: printobserver_vision_api::Detection,
+    ) -> printobserver_vision_api::BoxFuture<'_, Result<(), VisionError>> {
+        self.journal
+            .record(Call::ClearDetection(detection.provider_printer_id));
+        Box::pin(async move { Ok(()) })
+    }
 }
 
 /// What the fake supervisor observed about the turns it ran.

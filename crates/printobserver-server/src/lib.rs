@@ -68,6 +68,6 @@ pub use server::{
     SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, context_command,
 };
 pub use wire::{
-    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
+    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer, LookAnswer,
     IngressAnswer, ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer, reason_of,
 };

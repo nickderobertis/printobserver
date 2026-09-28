@@ -54,11 +54,14 @@ pub mod clock;
 pub mod config;
 pub mod context;
 pub mod decision;
+pub mod detector;
 pub mod error;
 pub mod events;
 pub mod expiry;
+pub mod inbox;
 pub mod kinds;
 pub mod listing;
+pub mod look;
 pub mod records;
 pub mod store;
 pub mod supervisor;
@@ -68,15 +71,20 @@ pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
-pub use config::{CoreConfig, DEFAULT_EXPIRY_POLL, DEFAULT_RECENT_EVENTS, PRINT_ID_PLACEHOLDER};
+pub use config::{
+    CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_RECENT_EVENTS,
+    MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER,
+};
 pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, decide, valid_from};
 pub use error::CoreError;
-pub use events::TERMINAL_STATES;
+pub use events::{PendingTurn, Received, TERMINAL_STATES};
+pub use inbox::{Arrival, Inboxes};
+pub use look::Look;
 pub use expiry::{rejection_detail, restoring_action};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    CameraLookPayload, InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
     PortFailureSite, agent_source, operator_source, system_source,
 };
 pub use records::{

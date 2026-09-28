@@ -126,6 +126,7 @@ fn turn_request_carries_exactly_the_stated_fields() {
         field("event", "EventRecord", true),
         field("image_path", "string", false),
         field("print_id", "PrintId", true),
+        field("situation", "TurnSituation", false),
     ];
     assert_eq!(wire_fields(&schema_of::<TurnRequest>()), expected);
 }

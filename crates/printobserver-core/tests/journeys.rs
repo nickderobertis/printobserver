@@ -59,6 +59,9 @@ mod terminal_cleanup;
 #[path = "journeys/messages.rs"]
 mod messages;
 
+#[path = "journeys/detector_pause.rs"]
+mod detector_pause;
+
 #[path = "journeys/surface.rs"]
 mod surface;
 

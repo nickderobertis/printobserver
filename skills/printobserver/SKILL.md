@@ -19,7 +19,7 @@ yours to build on.
 
 ## The normal workflow
 
-Five steps, in this order, every turn. The commands are in
+Six steps, in this order, every turn. The commands are in
 [the command surface](reference/command-surface.md), and
 [common operations](reference/common-operations.md) shows a worked example
 of each one you can follow as it is written.
@@ -35,21 +35,50 @@ of each one you can follow as it is written.
    reading detail into it. Loose curling strands where a wall should be, a part
    that has come off the bed, thin or missing layers, a first layer that is not
    sticking: those are what a failing print looks like.
-3. **Decide.** Weigh what you see against what the history says, and say which
+3. **Look again, and watch if you need to.** The event's picture and the
+   context are from when the event arrived. `printobserver look --print-id
+   <id>` takes a fresh frame from the camera and reads the printer as it is
+   now; `--wait-s <seconds>` (at most 90) waits that long first, so a few looks
+   in a row let you watch a defect grow or settle before you commit. Open the
+   frame at the `image_path` it answers exactly as you opened the first. A look
+   returns early when a new event arrives for this print, and answers it under
+   `arrived`: that is how later alerts reach you while you are working, rather
+   than as a separate turn. Read anything that arrives before you go on.
+4. **Decide.** Weigh what you see against what the history says, and say which
    way you are going and how sure you are. A single frame is one moment. When
    the picture and the history disagree, prefer the history and say that they
    did.
-4. **Act, and say why.** If something should change, ask for it — with a reason
+5. **Act, and say why.** If something should change, ask for it — with a reason
    somebody reading the record afterwards can act on, and, when the change is
    meant to be temporary, with the time it should stand for. Every adjustment
    goes through the same policy an operator's does, and
    [the intervention policy](reference/intervention-policy.md) is where the
    bounds, the rejections and what happens when a bounded change expires are
-   written down. If nothing should change, do not ask for anything.
-5. **Record what you saw.** Acknowledge the failure event you were handed, with
+   written down. If nothing should change, do not ask for anything. After
+   acting, look again to see whether it helped.
+6. **Record what you saw.** Acknowledge the failure event you were handed, with
    a reason that says what you saw and what you made of it. That is what puts
    your reading in the print's own record, where the next turn and the operator
    both find it. It asks nothing of the machine.
+
+## When the detector has already paused the print
+
+The turn's situation says whether the detector paused the print itself before
+you were asked; a look says whether that pause still holds
+(`detector_paused`). A paused print is safe, so take the time to look.
+
+- **If one of your adjustments addresses what you see** — a fan too low for an
+  overhang, a speed too high for a thin wall — ask for it while the print is
+  paused. You may ask for two or three together: while the print is paused the
+  minimum interval does not apply. The supervisor resumes the print itself
+  twenty seconds after your last such adjustment, or when your turn ends,
+  whichever is first, so your changes take effect as the print moves again.
+  You do not resume it and cannot. Then look again, with a wait, to see the
+  print carry on under the change.
+- **If none of your adjustments reaches the cause**, or you are not sure, ask
+  for nothing that changes the machine and acknowledge the failure with the
+  disposition `stop`: the print stays paused for a person, and your reason is
+  what they read.
 
 ## The boundaries you work inside
 
@@ -78,7 +107,9 @@ of your adjustments reaches, or the safe thing to do is outside what you may ask
 for.
 
 To escalate, pause the print and give as your reason what the person has to
-look at. A paused print and your reason in the record are what reaches the
+look at. A print that is already paused is already held: do not ask to pause
+it again, acknowledge the failure with the disposition `stop` and put what the
+person has to look at in that reason. A paused print and your reason in the record are what reaches the
 operator; nothing else here pages anybody. Do not keep adjusting a print you
 have decided needs a person.
 

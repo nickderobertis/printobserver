@@ -353,9 +353,22 @@ shared_secret = ""
 # credential key holds a long random value; the generated file is then neither
 # read nor written.
 
+# Optional: a fresh look at the print. A URL answering one still image, such as
+# go2rtc's frame.jpeg for the printer's camera. Left out, a supervising agent's
+# looks carry the printer's state but no frame.
+# [camera]
+# snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=camera"
+
+# Optional: Obico's own API, so that a print Obico paused and the agent adjusted
+# and resumed is acknowledged to Obico, which re-arms its detection for the rest
+# of the print. The token is an OAuth2 access token from the Obico instance's
+# own administration.
+# [obico]
+# url = "http://127.0.0.1:3334"
+# access_token = ""
+
 # What any actor may ask for at all. A manifest may narrow these; nothing may
-# widen them.
-[safety]
+# widen them.[safety]
 agent_min_interval_s = 30
 
 [safety.allowed]
@@ -371,7 +384,7 @@ operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_fan_percent", "acknowledge_failure"]
 agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
          "set_fan_percent", "acknowledge_failure"]
-system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
+system = ["resume", "set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
 CONFIG
     chown "$SERVICE_USER" "$INSTALLED_CONFIG" ||

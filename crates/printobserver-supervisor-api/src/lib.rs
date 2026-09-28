@@ -56,6 +56,37 @@ pub struct TurnRequest {
     pub image_path: Option<PathBuf>,
     /// The command the turn runs to read the print's context.
     pub context_command: String,
+    /// What the supervisor knew about the moment the turn began.
+    #[serde(default)]
+    pub situation: TurnSituation,
+}
+
+/// What the supervisor knew about the moment one turn began, beside its event.
+///
+/// Facts rather than instructions: whether the print is paused, and whether
+/// the detector paused it itself, are exactly what decides whether an agent's
+/// adjustment would be applied to a moving print or held until it moves again.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct TurnSituation {
+    /// The printer's state when the turn began, in the printer contract's own
+    /// spelling, absent when the printer could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer_state: Option<String>,
+    /// Whether the detector only warned, when the event is one of its
+    /// detections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detector_warned: Option<bool>,
+    /// Whether the detector paused the print itself, when the event is one of
+    /// its detections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detector_paused_the_print: Option<bool>,
+    /// Events for this print that arrived while its previous turn was running
+    /// and that turn never saw, oldest first. The event above is the newest of
+    /// them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arrived_while_busy: Vec<EventRecord>,
 }
 
 /// What one supervision turn answered with.

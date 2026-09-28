@@ -16,11 +16,11 @@
 //! crate that reaches an action method of the printer port.
 
 use crate::records::{
-    ActionRecord, ActionRequest, Actor, ActorClass, Intervention, InterventionOutcome,
-    PolicyDecision, PrintAction, PrintRecord,
+    AcknowledgementDisposition, ActionRecord, ActionRequest, Actor, ActorClass, Intervention,
+    InterventionOutcome, PolicyDecision, PrintAction, PrintRecord,
 };
 use printobserver_printer_api::Adjustable;
-use printobserver_printer_api::PrinterSnapshot;
+use printobserver_printer_api::{PrinterSnapshot, PrinterState};
 use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
@@ -171,6 +171,21 @@ impl Supervisor {
             && crate::decision::changes_the_machine(action.kind())
         {
             self.note_agent_action(print_id, requested_at);
+        }
+        if actor.class() == ActorClass::Agent {
+            let paused = snapshot
+                .as_ref()
+                .is_some_and(|taken| taken.connection == PrinterState::Paused);
+            if adjustment(&action).is_some() && paused && self.detector_paused(print_id) {
+                self.note_adjustment_while_paused(print_id, action.reason());
+            }
+            if let PrintAction::AcknowledgeFailure {
+                disposition: AcknowledgementDisposition::Stop,
+                ..
+            } = &action
+            {
+                self.leave_detector_pause(print_id);
+            }
         }
         if let PrintAction::StartPrint { manifest, .. } = &action {
             self.attach_manifest(print_id, manifest.clone()).await?;

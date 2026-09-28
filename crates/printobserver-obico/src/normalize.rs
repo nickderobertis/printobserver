@@ -12,7 +12,7 @@ use core::time::Duration;
 use chrono::DateTime;
 use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{EventBody, RawBytes, Timestamp};
-use printobserver_vision_api::{NormalizedAlert, ProviderPrint, VisionError};
+use printobserver_vision_api::{Detection, NormalizedAlert, ProviderPrint, VisionError};
 
 use crate::events::{
     ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload, obico_source,
@@ -141,6 +141,8 @@ struct Read {
     image_url: Option<String>,
     /// The print the body is about, when it is about one.
     print: Option<ProviderPrint>,
+    /// What the detector did, when the body is one of its detections.
+    detection: Option<Detection>,
 }
 
 /// Render one payload as a body, which a payload this adapter declares never
@@ -158,6 +160,11 @@ fn read_failure_alert(parsed: Value, body: &RawBytes) -> Result<Read, VisionErro
     let alert: ObicoFailureAlert = serde_json::from_value(parsed)
         .map_err(|error| malformed(format!("the body is not a failure alert: {error}"), body))?;
     let image_url = alert.img_url;
+    let detection = Detection {
+        warning: alert.event.is_warning,
+        paused_the_print: alert.event.print_paused,
+        provider_printer_id: alert.printer.id,
+    };
     let correlation = Correlation::of(alert.print, body)?;
     let payload = ObicoFailureAlertPayload {
         is_warning: alert.event.is_warning,
@@ -171,6 +178,7 @@ fn read_failure_alert(parsed: Value, body: &RawBytes) -> Result<Read, VisionErro
         body: body_of(&payload, body)?,
         image_url: Some(image_url),
         print: correlation.provider_print(),
+        detection: Some(detection),
     })
 }
 
@@ -198,6 +206,7 @@ fn read_printer_notification(parsed: Value, body: &RawBytes) -> Result<Read, Vis
         body: body_of(&payload, body)?,
         image_url: notification.img_url,
         print: correlation.provider_print(),
+        detection: None,
     })
 }
 
@@ -239,6 +248,7 @@ pub(crate) fn read(
         raw: body.clone(),
         image_url: read.image_url,
         print: read.print,
+        detection: read.detection,
     })
 }
 
