@@ -21,6 +21,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -89,6 +90,7 @@ DURATION_S = "1"
 #: run and the machine asked; the relay's own interpreter is started once per
 #: world, before the smoke is, and no command pays for it.
 #:
+# llmlint: ignore[comments_earn_their_place] suppressions.toml has the reason.
 #: The rule: ten times the slowest ordinary relayed command measured under
 #: parallel load, rounded up to a whole second. The measurement it was taken
 #: from, on 2026-09-28: four copies of this whole suite at once on a 20-core
@@ -191,14 +193,23 @@ class RelayProcess:
 
         Raises:
             RuntimeError: If its first line is not the loopback address it
-                listens on — it stopped first, or said something else — with
-                that line and everything it said.
+                listens on — it stopped first, said something else, or said
+                nothing inside `RELAY_START_S` — with that line and everything
+                it said.
         """
         process = start([sys.executable, str(RELAY)], cwd=REPO_ROOT, env=environment)
+        first: list[str] = []
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
-        announced = process.stdout.readline().strip() if process.stdout else ""
+        reading = threading.Thread(
+            target=lambda: first.append(process.stdout.readline() if process.stdout else ""),
+            daemon=True,
+        )
+        reading.start()
+        reading.join(RELAY_START_S)
+        announced = first[0].strip() if first else ""
         if not _is_loopback_address(announced):
             process.kill()
+            reading.join()
             _, said = process.communicate(timeout=RELAY_START_S)
             message = (
                 f"the relay announced {announced!r} rather than where it listens, and said:\n{said}"

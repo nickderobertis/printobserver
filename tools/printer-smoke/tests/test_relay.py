@@ -21,20 +21,37 @@ that the other did not follow fails here.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from relay import ADDRESS, AFTER, LISTEN_ON, SERVED_BY, STAGING_SUFFIX, RelayState
+from relay import (
+    ADDRESS,
+    AFTER,
+    LISTEN_ON,
+    MOST_ARGUMENTS,
+    PROGRAM,
+    SERVED_BY,
+    STAGING_SUFFIX,
+    STATE,
+    RelayState,
+)
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import PROGRAM_NOT_FOUND, run, start
-from world import RELAY_CLIENT, RELAY_CLIENT_SOURCE, REPO_ROOT, World
+from world import RELAY_CLIENT, RELAY_CLIENT_SOURCE, REPO_ROOT, RelayProcess, World
+
+#: The program the relay stands in front of, whose declared exits the client's
+#: own must stay clear of.
+EXITS_SOURCE = REPO_ROOT / "crates" / "printobserver" / "src" / "failure.rs"
 
 #: The command the relay is told to count. It is never given reason to hang.
 COUNTED = "set-feedrate-factor"
@@ -102,6 +119,29 @@ def relay(
     return run(
         [str(RELAY_CLIENT), *arguments], cwd=REPO_ROOT, env=environment, timeout=60, stdin=stdin
     )
+
+
+def unanswered_exit() -> int:
+    """The exit the client gives a command its relay never answered, read from its source."""
+    found = re.search(
+        r"const UNANSWERED: i32 = (\d+);", RELAY_CLIENT_SOURCE.read_text(encoding="utf-8")
+    )
+    truth(found is not None, describing="the client's exit for an unanswered command")
+    return int(found.group(1)) if found else -1
+
+
+def connected(environment: dict[str, str]) -> socket.socket:
+    """A raw connection to the relay `environment` names, as a client that misbehaves makes."""
+    host, _, port = environment[ADDRESS].rpartition(":")
+    return socket.create_connection((host, int(port)), timeout=SETTLE_S)
+
+
+def received(connection: socket.socket) -> bytes:
+    """Everything the relay sends on `connection` before it closes it."""
+    chunks = []
+    while chunk := connection.recv(65536):
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def a_closed_address() -> str:
@@ -209,7 +249,12 @@ def test_a_command_the_relay_does_not_count_writes_nothing(world: World) -> None
     )
 
 
-def test_a_state_the_relay_did_not_write_stops_it_before_the_program(world: World) -> None:
+@pytest.mark.parametrize(
+    "held", [{"armed": "yes", "seen": 3}, {"armed": True, "seen": -1}], ids=["armed", "seen"]
+)
+def test_a_state_the_relay_did_not_write_stops_it_before_the_program(
+    world: World, held: dict[str, object]
+) -> None:
     """A file holding anything but a relay state is a defect to stop on, not to count from.
 
     Nothing but the relay writes its state file, so what is not a state there
@@ -217,7 +262,7 @@ def test_a_state_the_relay_did_not_write_stops_it_before_the_program(world: Worl
     it held, and the program is never run.
     """
     state_file = world.relay_state_file
-    state_file.write_text(json.dumps({"armed": "yes", "seen": 3}), encoding="utf-8")
+    state_file.write_text(json.dumps(held), encoding="utf-8")
 
     answered = relay(relayed(world), "-c", ECHO, COUNTED, "--json")
 
@@ -301,7 +346,11 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
 
     answered = relay(environment, "status", "--json")
 
-    equal(answered.returncode, 70, describing="the exit of a command the relay never answered")
+    equal(
+        answered.returncode,
+        unanswered_exit(),
+        describing="the exit of a command the relay never answered",
+    )
     contains(answered.stderr, "the smoke's relay did not answer", describing="what it said")
     equal(answered.stdout, "", describing="what it printed, which is no answer")
 
@@ -315,7 +364,11 @@ def test_an_argument_that_is_not_utf8_is_refused_rather_than_altered(world: Worl
 
     answered = relay(environment, "-c", ECHO, os.fsdecode(b"\xffstatus"))
 
-    equal(answered.returncode, 70, describing="the exit of a command the relay never answered")
+    equal(
+        answered.returncode,
+        unanswered_exit(),
+        describing="the exit of a command the relay never answered",
+    )
     contains(answered.stderr, "is not UTF-8", describing="what it said")
     equal(answered.stdout, "", describing="what the program printed, which never ran")
 
@@ -335,3 +388,76 @@ def test_the_client_reads_the_address_the_relay_names() -> None:
         f'const ADDRESS: &str = "{ADDRESS}";',
         describing="the relay's client, which must read the variable the relay's world sets",
     )
+
+
+@pytest.mark.parametrize("missing", [PROGRAM, STATE])
+def test_a_relay_missing_what_it_needs_says_so_before_listening(world: World, missing: str) -> None:
+    """A relay started without a program or a state file refuses naming the variable."""
+    environment = world.environment({PROGRAM: sys.executable, STATE: str(world.relay_state_file)})
+    environment.pop(missing)
+
+    with pytest.raises(RuntimeError, match=f"{missing} is not set"):
+        RelayProcess.start(environment)
+
+
+def test_a_client_that_goes_away_mid_message_costs_the_relay_nothing(world: World) -> None:
+    """A connection closed partway through its arguments is dropped, and the next is served."""
+    environment = relayed(world)
+    with connected(environment) as connection:
+        connection.sendall((1).to_bytes(4, "big") + (10).to_bytes(4, "big") + b"sta")
+
+    answered = relay(environment, "-c", ECHO, "status")
+
+    passing(answered, describing="the command after one that went away mid-message")
+    equal(answered.stdout.strip(), json.dumps(["status"]), describing="what it answered")
+
+
+def test_a_client_sending_more_arguments_than_any_is_refused(world: World) -> None:
+    """An argument count past the most the relay takes is refused on the wire, naming it."""
+    with connected(relayed(world)) as connection:
+        connection.sendall((MOST_ARGUMENTS + 1).to_bytes(4, "big"))
+        reply = received(connection)
+
+    equal(int.from_bytes(reply[:4], "big", signed=True), 1, describing="the refusal's exit")
+    contains(
+        reply.decode("utf-8", errors="replace"),
+        f"sent a length of {MOST_ARGUMENTS + 1}, over the most it takes",
+        describing="what the relay said",
+    )
+
+
+def test_a_relay_answering_more_than_any_answer_is_refused_by_the_client(
+    world: World,
+) -> None:
+    """A reply frame past the most the client takes is not read, and the command is unanswered."""
+    listener = socket.create_server(LISTEN_ON)
+    host, port = listener.getsockname()[:2]
+
+    def answer_too_much() -> None:
+        connection, _ = listener.accept()
+        with connection:
+            connection.sendall((0).to_bytes(4, "big") + (2**32 - 1).to_bytes(4, "big"))
+            with contextlib.suppress(OSError):
+                received(connection)
+
+    answering = threading.Thread(target=answer_too_much, daemon=True)
+    answering.start()
+    environment = world.environment({ADDRESS: f"{host}:{port}"})
+
+    answered = relay(environment, "status", stdin="")
+    answering.join(SETTLE_S)
+    listener.close()
+
+    equal(answered.returncode, unanswered_exit(), describing="the client's exit")
+    contains(answered.stderr, "over the most this takes", describing="what the client said")
+
+
+def test_the_client_s_unanswered_exit_is_none_of_the_program_s_own() -> None:
+    """The exit that means the relay never answered is one the program it relays never gives."""
+    declared = {
+        int(status)
+        for status in re.findall(r"Self::\w+ => (\d+),", EXITS_SOURCE.read_text(encoding="utf-8"))
+    }
+
+    truth(bool(declared), describing="the program's declared exits, read from failure.rs")
+    absent(declared, unanswered_exit(), describing="the program's declared exits")

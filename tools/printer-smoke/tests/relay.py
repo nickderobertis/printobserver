@@ -92,6 +92,8 @@ class RelayState:
         armed, seen = document.get("armed"), document.get("seen")
         if not isinstance(armed, bool) or isinstance(seen, bool) or not isinstance(seen, int):
             return None
+        if seen < 0:
+            return None
         return cls(armed=armed, seen=seen)
 
     @classmethod
@@ -179,18 +181,24 @@ class Relay:
         """The relay the environment this process was started under describes.
 
         Raises:
-            ValueError: If `SMOKE_RELAY_AFTER` is not a count of commands.
+            ValueError: If `SMOKE_RELAY_PROGRAM` or `SMOKE_RELAY_STATE` is unset
+                or empty, or `SMOKE_RELAY_AFTER` is not a count of commands.
         """
+        program, state_file = os.environ.get(PROGRAM, ""), os.environ.get(STATE, "")
+        for name, value in ((PROGRAM, program), (STATE, state_file)):
+            if not value:
+                message = f"{name} is not set, and a relay cannot run without it"
+                raise ValueError(message)
         after = os.environ.get(AFTER, "0")
         if not after.isdecimal():
             message = f"{AFTER} is {after!r}, which is not a count of commands"
             raise ValueError(message)
         return cls(
-            program=os.environ[PROGRAM],
+            program=program,
             hang_on=os.environ.get(HANG_ON, ""),
             after=int(after),
             armed_by=os.environ.get(ARMED_BY, ""),
-            state_file=Path(os.environ[STATE]),
+            state_file=Path(state_file),
         )
 
     def count_and_hold(self, argv: list[str]) -> bool:
