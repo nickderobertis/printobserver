@@ -15,6 +15,10 @@ Each directory holds one print:
 - `obico-predictions.json` — the detector's score for every frame it saw,
   as Obico recorded them.
 
-In neither print so far did Obico alert, so no agent turn ran. The cases
-record what the agent should do if a detector — or the agent looking for
-itself — does raise one.
+- `printobserver-history.json`, where a turn ran — every event printobserver
+  recorded for the print, the agent's requests and its assessment included.
+
+Obico alerted on `spaghetti-small-nest` alone, and that is the one print a
+turn ran on. On `fan-cut-bridge` and `under-extrusion-lace` it stayed silent,
+so those cases record what the agent should do if a detector — or the agent
+looking for itself — does raise an alert.
