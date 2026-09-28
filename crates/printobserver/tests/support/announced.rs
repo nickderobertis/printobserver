@@ -139,7 +139,12 @@ pub fn within(child: &mut Child, deadline: Duration) -> Result<(SocketAddr, Stre
     let started = Instant::now();
     let mut stream = Stream::of(child);
     let why = loop {
-        let remaining = deadline.saturating_sub(started.elapsed());
+        // Checked before each line rather than left to the receive: a line
+        // already queued is handed over whatever the timeout, so a supervisor
+        // printing without pause would otherwise never reach the deadline.
+        let Some(remaining) = deadline.checked_sub(started.elapsed()) else {
+            break Why::Deadline;
+        };
         match stream.lines.recv_timeout(remaining) {
             Ok(line) => {
                 stream.printed.push_str(&line);
