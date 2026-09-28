@@ -82,7 +82,7 @@ class Job:
     environment: dict[str, str]
     error_log: Path | None
     run_at_load: bool
-    keep_alive: bool | dict[str, object]
+    keep_alive: bool | dict[str, bool]
     throttle: float
 
 
@@ -104,6 +104,7 @@ def _job(document: object) -> Job | None:
     environment = document.get("EnvironmentVariables", {})
     log = document.get("StandardErrorPath")
     keep_alive = document.get("KeepAlive", False)
+    run_at_load = document.get("RunAtLoad", False)
     throttle = document.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS)
     if not isinstance(label, str) or not label or not arguments or not isinstance(user, str):
         return None
@@ -111,7 +112,15 @@ def _job(document: object) -> Job | None:
         return None
     if not isinstance(environment, dict) or _strings([*environment, *environment.values()]) is None:
         return None
-    if not isinstance(keep_alive, bool | dict) or not isinstance(throttle, int) or throttle < 0:
+    if not isinstance(run_at_load, bool) or not isinstance(throttle, int) or throttle < 0:
+        return None
+    # The two shapes of `KeepAlive` this stand-in implements; any other key is
+    # one launchd would act on and this would not, so it is refused.
+    if not isinstance(keep_alive, bool) and (
+        not isinstance(keep_alive, dict)
+        or set(keep_alive) != {"SuccessfulExit"}
+        or not isinstance(keep_alive["SuccessfulExit"], bool)
+    ):
         return None
     return Job(
         label=label,
@@ -120,8 +129,10 @@ def _job(document: object) -> Job | None:
         working_directory=Path(directory) if directory is not None else None,
         environment={str(key): str(value) for key, value in environment.items()},
         error_log=Path(log) if log is not None else None,
-        run_at_load=document.get("RunAtLoad") is True,
-        keep_alive=keep_alive,
+        run_at_load=run_at_load,
+        keep_alive=keep_alive
+        if isinstance(keep_alive, bool)
+        else {"SuccessfulExit": bool(keep_alive["SuccessfulExit"])},
         throttle=float(throttle),
     )
 
@@ -359,7 +370,7 @@ def _bootout(arguments: list[str]) -> int:
     return 0
 
 
-def _restarts(keep_alive: bool | dict[str, object], exit_code: int) -> bool:
+def _restarts(keep_alive: bool | dict[str, bool], exit_code: int) -> bool:
     """Whether launchd starts a job again after it ended with `exit_code`.
 
     A process killed by a signal ends with a negative code here, which launchd
@@ -369,7 +380,7 @@ def _restarts(keep_alive: bool | dict[str, object], exit_code: int) -> bool:
         case bool():
             return keep_alive
         case {"SuccessfulExit": successful}:
-            return (exit_code == 0) == bool(successful)
+            return (exit_code == 0) == successful
         case _:
             return False
 

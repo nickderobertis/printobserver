@@ -603,6 +603,7 @@ def _stand_in_launchd(scratch: Path, monkeypatch: pytest.MonkeyPatch) -> StandIn
         shim.chmod(0o755)
     stand_in = StandIn(scratch / "machine", scratch / "launchd")
     stand_in.root.mkdir()
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     monkeypatch.setenv("PATH", f"{shims}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv(launchctl_standin.ROOT, str(stand_in.root))
     monkeypatch.setenv(launchctl_standin.STATE, str(stand_in.state))

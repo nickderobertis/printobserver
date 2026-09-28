@@ -1126,6 +1126,12 @@ reason = "The one boundary stood in for on purpose, as the manager ruled for iss
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "monkeypatch.setenv(\"PATH\""
+reason = "Where the two shims above reach the adapter: the launchd stand-in and its `uname` are put first on `PATH` for the one Linux case that walks the launchd adapter, as the manager ruled for issue #99, because launchd exists on macOS alone. The program the stand-in starts, kills and restarts is the real `printobserver`, and the macOS cell walks the same adapter against the real launchd with `PATH` untouched."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "(shims / \"uname\")"
 reason = "The installer chooses the service manager it writes a definition for from `uname -s`, so the launchd stand-in's machine has to answer `Darwin` there or the installer writes a systemd unit instead. The shim answers that one question and passes every other `uname` invocation to the real program; it exists only on Linux, beside the `launchctl` stand-in, and the macOS cell runs the same adapter against the real `uname` and the real launchd."
 
