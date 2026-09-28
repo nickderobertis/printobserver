@@ -72,7 +72,8 @@ pub use config::{
 };
 pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{
-    CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SITUATION_SLOT, SLOTS, TemplateError,
+    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate,
+    SITUATION_SLOT, SLOTS, TemplateError,
 };
 pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use skill::{UnclosedFrontmatter, skill_prose};

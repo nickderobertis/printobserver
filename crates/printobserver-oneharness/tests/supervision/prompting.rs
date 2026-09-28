@@ -1,6 +1,6 @@
 //! The port composes nothing of its own into a turn.
 //!
-//! The prompt is the committed template with its three slots filled and nothing
+//! The prompt is the committed template with its slots filled and nothing
 //! else, and the system prompt is the prose of the skill file at the configured
 //! path rather than text this crate carries.
 
@@ -8,8 +8,8 @@ use std::fs;
 use std::sync::Arc;
 
 use printobserver_oneharness::{
-    CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor, SLOTS,
-    UnclosedFrontmatter, skill_prose,
+    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor,
+    SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{PrintId, serde_json};
@@ -72,7 +72,8 @@ fn fillings(literals: &[String], prompt: &str) -> Option<Vec<String>> {
     Some(found)
 }
 
-/// Every prompt is the committed template with only its three slots differing.
+/// Every prompt is the committed template with only its slots differing, and
+/// the actor it hands the agent is the agent in the session the turn ran in.
 #[test]
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     // Every answer this journey drives is judged by the checked-in assessment
@@ -115,6 +116,12 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
         let expected_command = request.context_command.clone();
+        let expected_situation =
+            serde_json::to_string_pretty(&request.situation).expect("the situation is writable");
+        // A print's first turn runs in that print's first session.
+        let expected_actor =
+            serde_json::json!({ "agent": { "session_name": format!("print-{print_id}") } })
+                .to_string();
         block_on(supervisor.run_turn(request)).expect("the turn runs");
 
         let prompt = watch
@@ -133,6 +140,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
                 EVENT_SLOT => assert_eq!(filling, &expected_event),
                 IMAGE_SLOT => assert_eq!(filling, &expected_image),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
+                SITUATION_SLOT => assert_eq!(filling, &expected_situation),
+                ACTOR_SLOT => assert_eq!(filling, &expected_actor),
                 other => panic!("the template declares an unknown slot {other}"),
             }
         }

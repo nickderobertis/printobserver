@@ -51,6 +51,13 @@ fn unreadable(root: &std::path::Path) -> PathBuf {
     root.join("nothing-is-here.md")
 }
 
+/// A table of one string entry, for a section the base document leaves out.
+fn table(key: &str, value: &str) -> toml::Value {
+    let mut table = toml::Table::new();
+    table.insert(key.to_owned(), toml::Value::String(value.to_owned()));
+    toml::Value::Table(table)
+}
+
 /// One configuration in which exactly `field` is unacceptable.
 ///
 /// Answers the document, and the path of anything it had to put on disk first.
@@ -131,6 +138,23 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             );
             set(&mut document, "api", toml::Value::Table(api));
         }
+        ConfigField::CameraSnapshotUrl => set(
+            &mut document,
+            "camera",
+            table("snapshot_url", "not a web address"),
+        ),
+        // Obico's API is reached with both or neither, so each is refused by
+        // being written down without the other.
+        ConfigField::ObicoUrl => set(
+            &mut document,
+            "obico",
+            table("access_token", "a token with no address"),
+        ),
+        ConfigField::ObicoAccessToken => set(
+            &mut document,
+            "obico",
+            table("url", "http://127.0.0.1:3334"),
+        ),
     }
     document
 }

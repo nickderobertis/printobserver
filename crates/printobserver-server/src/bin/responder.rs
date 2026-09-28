@@ -123,17 +123,20 @@ fn client_value(configuration: &str, key: &str) -> Option<String> {
 fn turn_from_the_prompt() -> Option<Turn> {
     let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
-    let mut words = after.split_whitespace();
+    // The path is single-quoted for a shell, and the scratch directories this
+    // responder runs under never carry a quote of their own.
+    let (path, rest) = after.strip_prefix('\'')?.split_once('\'')?;
     // The command names a configuration file rather than an address, because
     // no client command of that program takes an address. This responder is
     // not that program, so it reads the two values it needs out of the file the
     // server wrote — which is where a real client reads them from too.
-    let configuration = std::fs::read_to_string(words.next()?).ok()?;
+    let configuration = std::fs::read_to_string(path).ok()?;
     let server = client_value(&configuration, "server")?
         .trim_end_matches('/')
         .to_owned();
     let credential = Credential::admitted(client_value(&configuration, "credential")?)?;
-    let print = words
+    let print = rest
+        .split_whitespace()
         .skip_while(|word| *word != "--print-id")
         .nth(1)?
         .trim()

@@ -1,4 +1,4 @@
-//! The committed prompt template, and the four slots one turn fills.
+//! The committed prompt template, and the five slots one turn fills.
 //!
 //! The template is the whole of what a prompt may say. This module fills its
 //! slots and composes nothing beside them, which is why a rule about what the
@@ -16,9 +16,18 @@ pub const CONTEXT_COMMAND_SLOT: &str = "{{context_command}}";
 /// The slot what the supervisor knew about the moment the turn began is
 /// written into.
 pub const SITUATION_SLOT: &str = "{{situation}}";
+/// The slot the actor document the agent names itself by in this turn's
+/// session is written into.
+pub const ACTOR_SLOT: &str = "{{actor}}";
 
 /// Every slot the template declares, and there is no other.
-pub const SLOTS: [&str; 4] = [EVENT_SLOT, SITUATION_SLOT, IMAGE_SLOT, CONTEXT_COMMAND_SLOT];
+pub const SLOTS: [&str; 5] = [
+    EVENT_SLOT,
+    SITUATION_SLOT,
+    IMAGE_SLOT,
+    CONTEXT_COMMAND_SLOT,
+    ACTOR_SLOT,
+];
 
 /// What the image slot carries when the event arrived with no image.
 ///
@@ -101,7 +110,7 @@ impl PromptTemplate {
         Ok(Self { segments, order })
     }
 
-    /// The prompt for one turn: this template, with its four slots filled and
+    /// The prompt for one turn: this template, with its five slots filled and
     /// nothing else.
     ///
     /// Every slot is filled in one pass over the template's own segments, so
@@ -113,6 +122,7 @@ impl PromptTemplate {
         situation: &str,
         image_path: &str,
         context_command: &str,
+        actor: &str,
     ) -> String {
         let mut filled = String::new();
         for (index, segment) in self.segments.iter().enumerate() {
@@ -122,6 +132,7 @@ impl PromptTemplate {
                 Some(&SITUATION_SLOT) => filled.push_str(situation),
                 Some(&IMAGE_SLOT) => filled.push_str(image_path),
                 Some(&CONTEXT_COMMAND_SLOT) => filled.push_str(context_command),
+                Some(&ACTOR_SLOT) => filled.push_str(actor),
                 Some(_) | None => {}
             }
         }

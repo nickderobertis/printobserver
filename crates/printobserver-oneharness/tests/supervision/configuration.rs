@@ -52,7 +52,7 @@ fn a_turn_timeout_of_zero_seconds_is_not_a_bound() {
         45,
         "a bound did not answer the seconds it was made from"
     );
-    assert_eq!(TurnTimeout::DEFAULT.to_string(), "300s");
+    assert_eq!(TurnTimeout::DEFAULT.to_string(), "900s");
 }
 
 /// An environment assignment is a name and a value, or it is nothing.

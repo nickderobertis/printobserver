@@ -37,6 +37,13 @@ Run this command and read what it answers:
 Give every other command you run the same `--config` file this one takes. It
 names the supervisor this turn belongs to and the credential it answers to.
 
+Every request you make names who is asking. In this turn that is you, in the
+session this turn runs in, so give each request this actor, quoted as written:
+
+```console
+--actor '{{actor}}'
+```
+
 This picture and that context are from when the event arrived. Your skill says
 how to take a fresh look at the print and how to watch it for a while before
 deciding; new events for this print reach you through those looks rather than

@@ -76,12 +76,22 @@ const PRIVATE: u32 = 0o600;
 /// authenticates to it are configuration, and a command line that could carry
 /// them is a command line that could be pointed anywhere — and one that lands a
 /// credential in a process table.
+///
+/// The path is quoted for a POSIX shell, which is what a turn's shell is on
+/// every host, Windows included: unquoted, that shell strips a Windows path's
+/// backslashes and the agent's first command fails on a file that is not there.
 #[must_use]
 pub fn context_command(client_config: &Path) -> String {
     format!(
         "{CONTEXT_PROGRAM} context --config {} --print-id {{print_id}}",
-        client_config.display()
+        shell_quoted(&client_config.display().to_string())
     )
+}
+
+/// One word as a POSIX shell reads it back unchanged: single-quoted, with each
+/// single quote it carries closed, escaped and reopened.
+fn shell_quoted(word: &str) -> String {
+    format!("'{}'", word.replace('\'', r"'\''"))
 }
 
 /// Write the configuration the clients beside this server read it by.

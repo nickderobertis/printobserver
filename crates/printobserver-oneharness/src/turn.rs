@@ -146,9 +146,17 @@ impl OneharnessSupervisor {
             })
     }
 
-    /// The prompt for one turn: the committed template with its four slots
+    /// The prompt for one turn: the committed template with its five slots
     /// filled, and nothing else.
-    fn prompt_for(&self, request: &TurnRequest) -> Result<String, SupervisorError> {
+    ///
+    /// Built for the session the turn runs in, because the actor the agent
+    /// names itself by is that session's, and the agent would otherwise have to
+    /// guess its shape.
+    fn prompt_for(
+        &self,
+        request: &TurnRequest,
+        session: &SessionName,
+    ) -> Result<String, SupervisorError> {
         let event = serde_json::to_string_pretty(&request.event).map_err(|error| {
             SupervisorError::Unavailable {
                 detail: format!("the triggering event cannot be written down: {error}"),
@@ -163,9 +171,14 @@ impl OneharnessSupervisor {
             .image_path
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
-        Ok(self
-            .template
-            .fill(&event, &situation, &image, &request.context_command))
+        let actor = serde_json::json!({ "agent": { "session_name": session.as_str() } });
+        Ok(self.template.fill(
+            &event,
+            &situation,
+            &image,
+            &request.context_command,
+            &actor.to_string(),
+        ))
     }
 
     /// How the harness is permitted to act during a turn, and the arguments that
@@ -259,11 +272,10 @@ impl OneharnessSupervisor {
     /// One supervision turn, from the ledger through the run and back.
     fn take_turn(&self, request: &TurnRequest) -> Result<TurnOutcome, SupervisorError> {
         let print_id = &request.print_id;
-        let prompt = self.prompt_for(request)?;
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
 
-        let outcome = match self.drive(&session, &prompt) {
+        let outcome = match self.drive(&session, &self.prompt_for(request, &session)?) {
             Ok(outcome) => outcome,
             // The harness binds a session to the identity that created it and
             // refuses to continue it on another. That is a session that has
@@ -277,7 +289,7 @@ impl OneharnessSupervisor {
                 ledger.close_current(&reason, Timestamp::now());
                 session = ledger.name_after_current();
                 self.save(&ledger, print_id)?;
-                self.drive(&session, &prompt)
+                self.drive(&session, &self.prompt_for(request, &session)?)
                     .map_err(|error| unavailable(&error))?
             }
             Err(error) => return Err(unavailable(&error)),
