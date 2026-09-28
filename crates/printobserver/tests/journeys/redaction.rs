@@ -172,7 +172,7 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
 
     let _ = serving.kill();
     let finished = serving.wait_with_output().expect("the server exits");
-    let mut printed = stream.through_the_end();
+    let mut printed = stream.collected();
     printed.push_str(&String::from_utf8_lossy(&finished.stdout));
     assert!(
         !printed.contains(&credential),
@@ -368,7 +368,7 @@ fn a_second_server(world: &World, credential: &str) -> String {
     );
     let _ = child.kill();
     let said = child.wait_with_output().expect("the server exits");
-    let mut printed = stream.through_the_end();
+    let mut printed = stream.collected();
     printed.push_str(&String::from_utf8_lossy(&said.stdout));
     world.wants(Reports::Printing);
     printed

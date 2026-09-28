@@ -28,7 +28,8 @@ const ON_THE_WAY_UP: [&str; 2] = [
 /// one the wait left running.
 const STANDS_FOR: Duration = Duration::from_secs(600);
 
-/// The address the announcing stand-in names.
+/// The address the announcing stand-in names. Nothing listens there: the
+/// wait reads the announcement and never connects.
 const ANNOUNCED: &str = "127.0.0.1:4242";
 
 /// A supervisor that never says it is serving is stopped within the deadline,
@@ -82,7 +83,11 @@ pub fn a_supervisor_that_announces_is_answered_at_once() {
         .unwrap_or_else(|unannounced| panic!("the stand-in: {unannounced}"));
     let waited = started.elapsed();
 
-    assert_eq!(address, ANNOUNCED, "the wait answered another address");
+    assert_eq!(
+        address.to_string(),
+        ANNOUNCED,
+        "the wait answered another address"
+    );
     assert!(
         waited < Duration::from_secs(60),
         "the wait took {waited:?} to answer an announcement made at once"
@@ -94,7 +99,7 @@ pub fn a_supervisor_that_announces_is_answered_at_once() {
     assert!(running, "the stand-in stopped before it was asked to");
     let _ = child.kill();
     let _ = child.wait();
-    let said = stream.through_the_end();
+    let said = stream.collected();
     for line in ON_THE_WAY_UP {
         assert!(
             said.contains(line),

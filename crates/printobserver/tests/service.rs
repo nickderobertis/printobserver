@@ -1584,7 +1584,9 @@ fn absent_print() -> &'static str {
 
 /// Where the started program says it is serving.
 fn serving_on(child: &mut Child) -> String {
-    announced::serving(child, "the unit's own start command").0
+    announced::serving(child, "the unit's own start command")
+        .0
+        .to_string()
 }
 
 /// One request, written out over a socket, and the whole answer.

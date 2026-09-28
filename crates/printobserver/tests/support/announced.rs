@@ -17,11 +17,18 @@
 
 use std::fmt;
 use std::io::{BufRead as _, BufReader};
+use std::net::SocketAddr;
 use std::process::Child;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
 
 /// What the announcement begins with; the address follows it.
+///
+/// Spelled as the program prints it rather than imported, because the program
+/// prints it from its binary rather than from anything a test can link. It is
+/// not left to drift: every journey here that starts the real program waits
+/// for this line, and fails naming everything the program printed when the
+/// two differ.
 pub const SERVING_ON: &str = "printobserver is serving on ";
 
 /// How long a started supervisor is given to announce itself.
@@ -38,11 +45,10 @@ pub const DEADLINE: Duration = Duration::from_secs(180);
 /// the rest can never be the unbounded wait this module exists to remove.
 const DRAIN: Duration = Duration::from_secs(10);
 
-/// A child's standard error, as far as it has been read.
+/// A child's standard error: what the wait has taken off the reading thread,
+/// and the handle it takes the rest through.
 pub struct Stream {
-    /// Every line read so far, each with its line ending.
     printed: String,
-    /// The lines the reading thread has handed over since.
     lines: Receiver<String>,
 }
 
@@ -77,9 +83,10 @@ impl Stream {
         }
     }
 
-    /// Everything the child printed, once it has been stopped: what was read
-    /// before, and the rest until the stream closes or [`DRAIN`] runs out.
-    pub fn through_the_end(mut self) -> String {
+    /// What the child printed, once it has been stopped: what was read before,
+    /// and the rest until the stream closes — or, where something still holds
+    /// it open, until [`DRAIN`] runs out.
+    pub fn collected(mut self) -> String {
         let until = Instant::now() + DRAIN;
         while let Some(remaining) = until.checked_duration_since(Instant::now()) {
             match self.lines.recv_timeout(remaining) {
@@ -91,23 +98,30 @@ impl Stream {
     }
 }
 
-/// A supervisor that did not announce itself, and everything it printed.
+/// Why a wait ended without an address.
+enum Why {
+    /// The deadline ran out with the stream still open.
+    Deadline,
+    /// The stream closed first, which is a child that exited.
+    Closed,
+    /// The announcement came, naming something that is not a socket address.
+    NoAddress(String),
+}
+
+/// A supervisor that did not say where it is serving, and everything it
+/// printed — the rest read after it was stopped included.
 pub struct Unannounced {
-    /// How long the wait lasted.
+    why: Why,
     waited: Duration,
-    /// Whether its stream closed before the deadline, rather than the deadline
-    /// running out with the stream still open.
-    closed: bool,
-    /// Every line it printed, the rest read after it was stopped included.
     printed: String,
 }
 
 impl fmt::Display for Unannounced {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let why = if self.closed {
-            "its output ended"
-        } else {
-            "the deadline ran out"
+        let why = match &self.why {
+            Why::Deadline => "the deadline ran out".to_owned(),
+            Why::Closed => "its output ended".to_owned(),
+            Why::NoAddress(named) => format!("it announced `{named}`, which is no address"),
         };
         write!(
             formatter,
@@ -121,37 +135,41 @@ impl fmt::Display for Unannounced {
 /// Wait up to `deadline` for `child` to say where it is serving; answer the
 /// address and its stream as read so far.
 ///
-/// Where the line does not come — the deadline runs out, or the stream closes
-/// first — the child is stopped and reaped before this answers, and what is
-/// answered carries everything it printed.
-pub fn within(child: &mut Child, deadline: Duration) -> Result<(String, Stream), Unannounced> {
+/// Where no address comes — the deadline runs out, the stream closes first, or
+/// the announcement names no socket address — the child is stopped and reaped
+/// before this answers, and what is answered carries everything it printed.
+pub fn within(child: &mut Child, deadline: Duration) -> Result<(SocketAddr, Stream), Unannounced> {
     let started = Instant::now();
     let mut stream = Stream::of(child);
-    let closed = loop {
+    let why = loop {
         let remaining = deadline.saturating_sub(started.elapsed());
         match stream.lines.recv_timeout(remaining) {
             Ok(line) => {
                 stream.printed.push_str(&line);
-                if let Some(address) = line.strip_prefix(SERVING_ON) {
-                    return Ok((address.trim().to_owned(), stream));
+                if let Some(named) = line.strip_prefix(SERVING_ON) {
+                    let named = named.trim();
+                    match named.parse() {
+                        Ok(address) => return Ok((address, stream)),
+                        Err(_) => break Why::NoAddress(named.to_owned()),
+                    }
                 }
             }
-            Err(RecvTimeoutError::Timeout) => break false,
-            Err(RecvTimeoutError::Disconnected) => break true,
+            Err(RecvTimeoutError::Timeout) => break Why::Deadline,
+            Err(RecvTimeoutError::Disconnected) => break Why::Closed,
         }
     };
     let waited = started.elapsed();
     let _ = child.kill();
     let _ = child.wait();
     Err(Unannounced {
+        why,
         waited,
-        closed,
-        printed: stream.through_the_end(),
+        printed: stream.collected(),
     })
 }
 
 /// Wait for `child` — `what` names it — to say where it is serving, within
 /// [`DEADLINE`]; fail with everything it printed where it does not.
-pub fn serving(child: &mut Child, what: &str) -> (String, Stream) {
+pub fn serving(child: &mut Child, what: &str) -> (SocketAddr, Stream) {
     within(child, DEADLINE).unwrap_or_else(|unannounced| panic!("{what}: {unannounced}"))
 }

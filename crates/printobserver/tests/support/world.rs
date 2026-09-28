@@ -803,6 +803,5 @@ fn toml_of(document: &Value) -> String {
 
 /// Where the started program says it is serving.
 fn serving_on(child: &mut Child) -> SocketAddr {
-    let (address, _) = announced::serving(child, "the command that runs the supervisor");
-    address.parse().expect("an address and a port")
+    announced::serving(child, "the command that runs the supervisor").0
 }
