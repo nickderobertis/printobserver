@@ -1,0 +1,99 @@
+{
+  "events": [
+    {
+      "id": "01a0e638-e648-7b91-8418-b33d80f54496",
+      "kind": "startup_reconciliation",
+      "payload": {
+        "outcome": "print_adopted",
+        "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "received_at": "2026-09-28T04:14:43.784960700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e565-daa1-7b83-aa8b-23b798a2628c",
+      "kind": "startup_reconciliation",
+      "payload": {
+        "outcome": "print_adopted",
+        "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "received_at": "2026-09-28T00:24:12.705555600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e532-a08e-7f21-92ce-82880966e3d7",
+      "kind": "startup_reconciliation",
+      "payload": {
+        "outcome": "print_adopted",
+        "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "received_at": "2026-09-27T23:28:15.502151300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e4d5-0d20-7923-aa3a-068e505d366f",
+      "kind": "port_failure",
+      "payload": {
+        "detail": "the agent's answer failed validation: no JSON value could be extracted from the response",
+        "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed",
+        "site": "supervision_turn"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "received_at": "2026-09-27T21:46:02.912323Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e4d4-f282-7303-a7b4-d147e98219ed",
+      "image": {
+        "id": "01a0e4d4-f291-7473-8c7a-ea94914c50b5",
+        "sha256": "a9c4b945c95df9815ad1953f164ce8d2794b2afe1eabfe34f720a662708e7305"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "spaghetti-test.gcode",
+        "is_warning": false,
+        "obico_print_id": 1,
+        "print_paused": true,
+        "started_at": "2026-09-27T21:25:47.573451042Z"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IGZhbHNlLCAicHJpbnRfcGF1c2VkIjogdHJ1ZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMSwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10ZXN0Lmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkwNTQ0MzQ3LjU3MzQ1MSwgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vMTkyLjE2OC4xLjE4NzozMzM0L21lZGlhL3RzZC1waWNzL3NuYXBzaG90cy8xLzE3OTA1NDU1NTUuNTk4MDYxX3JvdGF0ZWQuanBnP2RpZ2VzdD1ZaWRjZURoa1hIaGtZbHg0T0RVdlhIZzROek5jZURFelYxeDRZVEJjZURnM1hIZzVNRzBqU0Z4NFpUaGNlR0kyVlZ4NFpqUmNlREExV0Z4NFptSmNlR0l6WEhnd01seDRPVEZjZUdJMlhIZ3dNV05jZURBMlhIaGlOMXg0WWpSY2VHRmxYSGd3T0NjPSJ9",
+      "received_at": "2026-09-27T21:45:56.098092300Z",
+      "source": "obico"
+    },
+    {
+      "id": "01a0e4d4-9308-75b0-9b16-517bcb03e065",
+      "kind": "port_failure",
+      "payload": {
+        "detail": "the agent's answer failed validation: no JSON value could be extracted from the response",
+        "event_id": "01a0e4d4-75c7-7cb1-be49-cfae47158f83",
+        "site": "supervision_turn"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "received_at": "2026-09-27T21:45:31.656265800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e4d4-75c7-7cb1-be49-cfae47158f83",
+      "image": {
+        "id": "01a0e4d4-75d7-7440-95b6-29c3af836c24",
+        "sha256": "17d22f75754f0a7b59996d9b0bfc25dfa96e4625cc6d71aa373a9a6c12a2f959"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "spaghetti-test.gcode",
+        "is_warning": true,
+        "obico_print_id": 1,
+        "print_paused": false,
+        "started_at": "2026-09-27T21:25:47.573451042Z"
+      },
+      "print_id": "01a0e4c8-17c7-7720-8ddd-dccd3267c0d9",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMSwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10ZXN0Lmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkwNTQ0MzQ3LjU3MzQ1MSwgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vMTkyLjE2OC4xLjE4NzozMzM0L21lZGlhL3RzZC1waWNzL3NuYXBzaG90cy8xLzE3OTA1NDU1MjMuNjQ5MTI4X3JvdGF0ZWQuanBnP2RpZ2VzdD1ZaWQ4VWx4NE1EUXVYSGc0WTF4NFltRmNlR0kwUmlWY2VERTNYSGhoTkUxY2VHUTNWRHBjZUdNMVhIaGlNM1JiWEhoa00ybHZYSGd4Tmx4NE9UbHZlbnBjZURGaWJseDRPR1JjZURrMlhIaGtaaWM9In0=",
+      "received_at": "2026-09-27T21:45:24.167369600Z",
+      "source": "obico"
+    }
+  ]
+}

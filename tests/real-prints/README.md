@@ -1,24 +1,61 @@
 # Real prints
 
-Camera frames from real prints on a Prusa CORE One+ with a fault baked into
-the G-code, kept as cases for testing what the supervising agent concludes
-from a picture. Every case here is a valid failure: the defect happened and
-is visible in the frames labelled `defect`.
+Frames from the Buddy camera of a Prusa CORE One+ (through go2rtc,
+1280x720). They were taken on 2026-09-27 and 28 while printobserver,
+self-hosted Obico and OctoPrint supervised real prints. They are kept as
+cases for testing what the supervising agent concludes from a picture and
+from the events around it. Most prints had a fault planted in the G-code.
+One failed on its own.
 
-Each directory holds one print:
+| Case | What happened | Obico | Agent turn | Right action |
+|---|---|---|---|---|
+| `spaghetti-floating-slab` | slab printed into the air, nest | warned, then paused | failed: no Bash in the turn | acknowledge `stop` |
+| `spaghetti-small-nest` | the same, smaller | warned, then paused | acknowledged `stop` | acknowledge `stop` |
+| `spaghetti-debris-warning` | the same file again; the debris stops growing | warned only | acknowledged `watch` | `watch`, or pause and `stop` |
+| `filament-stall-air-print` | the printer stalls on stuck filament, then prints nothing | silent | none: nothing alerted | escalate; never resume |
+| `fan-cut-bridge` | part fan off at the bridge | silent | none | `set-fan-percent 100` |
+| `under-extrusion-lace` | flow cut to 40%, then 30% | silent | none | `set-flowrate-factor 1.0` |
+| `healthy-printing` | nothing wrong, including two detector false positives | silent | none | carry on; acknowledge `continue` |
+| `bed-clear-check` | the bed between prints, clear and not | n/a | n/a | start only on a clear bed |
 
-- `case.json` — the fault, when it starts, what it looks like, the action a
-  supervising agent should take, what the detector made of it, and a label
-  for every frame.
-- The frames, named in print order with the progress they were taken at.
-  Files named `crop-*` are enlarged crops made afterwards, not camera frames.
-- `obico-predictions.json` — the detector's score for every frame it saw,
-  as Obico recorded them.
+Each directory holds one case:
 
-- `printobserver-history.json`, where a turn ran — every event printobserver
-  recorded for the print, the agent's requests and its assessment included.
+- `case.json`:
+  - the fault, when it starts, and what it looks like;
+  - the action a supervising agent should take, and what it must never do;
+  - what the detector made of it, and what the agent's turn did, where one ran;
+  - a label for every frame.
+- The frames, named in order with the progress or local time they were taken
+  at:
+  - Files ending `-obico` are frames from Obico's tagged timelapse. Obico
+    draws its green detection boxes on them when it saw something, and leaves
+    them plain when it didn't.
+  - Files named `*alert-image*` are the images Obico's own alerts carried.
+    These are what printobserver received.
+  - Files named `crop-*` are enlarged crops made afterwards, not camera
+    frames.
+- `obico-predictions.json`, where Obico watched: the detector's score for every
+  frame it saw, as Obico recorded them.
+  - Obico's timelapse holds one frame per scored upload, so frame n of the
+    video is row n of this file.
+  - `normalized_p` is the smoothed score Obico alerts on.
+- `printobserver-history.json`, where a turn ran: every event printobserver
+  recorded for the print, including the agent's requests, its assessment and
+  any port failure.
 
-Obico alerted on `spaghetti-small-nest` alone, and that is the one print a
-turn ran on. On `fan-cut-bridge` and `under-extrusion-lace` it stayed silent,
-so those cases record what the agent should do if a detector — or the agent
-looking for itself — does raise an alert.
+Only Buddy camera and Obico frames are kept here. Phone photos of the printer
+were left out.
+
+## What these are for
+
+These cases are the basis for skill tests that give the agent a case's
+pictures and simulated event data:
+- an Obico alert with its image;
+- the `situation` and `context` a turn begins with;
+- the frames later `look`s answer;
+- for `filament-stall-air-print`, the OctoPrint telemetry of a stall that
+  raised no event.
+
+The `printobserver` CLI is mocked, and the tests check that the agent's
+commands match the case's `expected_agent_action`, including every action
+it must never take.

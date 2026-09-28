@@ -1,0 +1,23 @@
+{
+  "case": "healthy-printing",
+  "verdict": "no defect visible in any frame",
+  "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27 to 2026-09-28",
+  "times": "local, MDT (UTC-6)",
+  "caveat": "no print on this camera ran start to finish without a fault: every one had a fault planted in its G-code, or failed on its own. These frames are from before each fault began, so a test can use them as a healthy print does",
+  "expected_agent_action": {
+    "on_a_look": "carry on; no request",
+    "on_a_detector_alert": "acknowledge-failure continue, after a fresh look confirms nothing is wrong",
+    "never": ["pause", "any adjustment", "escalating to a person"]
+  },
+  "frames": [
+    {"file": "01-first-layer-p01.jpg", "progress_pct": 1.5, "source": "spaghetti-debris-warning", "label": "healthy; the first layer, too thin to see"},
+    {"file": "02-grid-infill-box-p09.jpg", "progress_pct": 9.4, "source": "under-extrusion-lace", "label": "healthy"},
+    {"file": "03-pillars-far-from-camera-p20.jpg", "progress_pct": 20.5, "source": "fan-cut-bridge", "label": "healthy; small and at the back of the bed, partly hidden by the head"},
+    {"file": "04-two-parts-p31.jpg", "progress_pct": 30.6, "source": "spaghetti-small-nest", "label": "healthy; two parts on the plate"},
+    {"file": "05-grid-infill-block-1539.jpg", "time": "15:39:15", "source": "spaghetti-floating-slab", "label": "healthy"},
+    {"file": "06-warm-up-obico-boxes-toolhead-2223-obico.jpg", "time": "22:23:19", "source": "spaghetti-debris-warning", "label": "healthy; Obico's tagged frame boxes the toolhead while the bed is raised to the camera (frame score 0.61): a detector false positive"},
+    {"file": "07-warm-up-obico-boxes-toolhead-1528-obico.jpg", "time": "15:28:48", "source": "spaghetti-floating-slab", "label": "healthy; the same false positive on another print (frame score 0.48)"}
+  ],
+  "detector_note": "neither false positive crossed Obico's warning threshold (smoothed 0.17 and 0.03), so no alert was sent; they are here so a test can send one and check the agent does not act on the box alone"
+}
