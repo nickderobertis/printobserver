@@ -1109,7 +1109,13 @@ reason = "On Windows a service comes to be registered by the first install, and 
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def _systemctl("
-reason = "The boundary is systemd's own command-line tool, driven as an operator drives it — `systemctl` under `sudo`, one command at a time, each answer asserted on before the next is issued. There is no official typed client of systemd for Python, no concurrency for an async one to win, and the journey's whole point is that the manager's own tool reports what the operator would see."
+reason = "The boundary is systemd's own command-line tool, driven as an operator drives it — `systemctl` as root inside the journey's container, one command at a time, each answer asserted on before the next is issued. There is no official typed client of systemd for Python, no concurrency for an async one to win, and the journey's whole point is that the manager's own tool reports what the operator would see."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _launchctl("
+reason = "The boundary is launchd's own command-line tool, `launchctl`, driven as an operator drives it — under `sudo` against the host's launchd, or as the stand-in on a host with none — one command at a time, each answer asserted on before the next is issued and `launchctl print` read line by line. There is no typed client of launchd for Python, and nothing here to overlap."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -1199,7 +1205,7 @@ reason = "The exit of a job that ran is that job's own by design — `test_platf
 
 [[suppression]]
 rule = "least_privilege_grants"
-file = "crates/printobserver/tests/service_manager.rs"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "\"--privileged\","
 reason = "The container runs systemd as PID 1 to activate, kill and restart the installed service through the real manager, and systemd as PID 1 mounts its own cgroup hierarchy, mounts the tmpfs under `/run`, and starts units as other users — capabilities that a narrower `--cap-add` set does not reliably cover across the Docker and kernel versions the hosted runners carry. The grant is to a throwaway container of this journey's own, on a private cgroup namespace, removed on every exit path, and the journey is the only thing that starts it."
 [[suppression]]

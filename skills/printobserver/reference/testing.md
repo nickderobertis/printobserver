@@ -123,11 +123,13 @@ copies of the tree carrying one defect each and asserts the gate refuses every
 one of them.
 
 **Where it runs.** Every supported platform, in the gate's cell for it. Its
-journey over the installed service drives the real service manager on the
-platforms that have one it can reach — systemd on the Linux cells, the
-service control manager on the Windows cells — and skips the macOS cell,
-where the same journey over launchd is `crates/printobserver/tests/service_manager.rs`'s,
-in the `test` tier.
+journey over the installed service drives each cell's own service manager
+through one adapter per manager — systemd in a Docker container on the Linux
+cells, launchd through a password-free `sudo` on the macOS cell, and the
+service control manager on the Windows cells — and on the Linux cells also
+walks the launchd adapter against a `launchctl` stand-in. The gate sets
+`PRINTOBSERVER_SERVICE_JOURNEY=required`, so a cell missing Docker or `sudo`
+fails that journey rather than skipping it.
 
 ## The tiers outside the gate
 

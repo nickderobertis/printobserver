@@ -1,8 +1,8 @@
-"""A `launchctl` for a host that has no launchd: the one boundary the launchd back end stands in.
+"""A `launchctl` for a host that has no launchd: the one boundary the launchd adapter stands in.
 
-`test_service_manager_journey.py` drives its launchd back end against real
-launchd on the macOS cell. Everywhere else this program is put on that back
-end's `PATH` under the name `launchctl`, so the same walk — the documented
+`test_service_manager_journey.py` drives its launchd adapter against real
+launchd on the macOS cell. On Linux this program is put on that adapter's
+`PATH` under the name `launchctl`, so the same walk — the documented
 `bootstrap`, the manager's reports, a kill, a `bootout` — runs against a
 manager that does to the property list what launchd does with it: it starts
 the program the list names with the list's own arguments, environment, working
@@ -11,7 +11,7 @@ says it should come back from, no sooner than `ThrottleInterval` after the last
 start, and stops it on `bootout`. The program it starts is the real
 `printobserver`, so what answers the journey is the real service.
 
-Only what the back end asks of launchd is implemented, answered in launchd's
+Only what the adapter asks of launchd is implemented, answered in launchd's
 own words; any other verb is refused with launchd's usage exit rather than
 guessed at. Every invocation is recorded, one JSON array per line, so the
 journey can read back what it asked of the manager.
