@@ -93,12 +93,13 @@ DURATION_S = "1"
 #:
 #: The rule: ten times the slowest ordinary relayed command measured under
 #: parallel load, rounded up to a whole second. The measurement it was taken
-#: from: four copies of this whole suite at once on a 20-core Linux host
-#: already loaded to between 38 and 58, over 520 relayed commands that
-#: answered — median 0.041s, 99th percentile 0.140s, slowest 0.178s. So 2s.
+#: from, on 2026-09-28: four copies of this whole suite at once on a 20-core
+#: Linux host already loaded to between 44 and 60, timing each relayed command
+#: the smoke ran from start to answer, over 520 that answered — median 0.040s,
+#: 99th percentile 0.166s, slowest 0.224s. So 3s.
 #: A bound that stops a command meant to answer is a hang the test did not ask
 #: for, and every hang the test did ask for costs the whole bound.
-RELAY_BOUND_S = "2"
+RELAY_BOUND_S = "3"
 
 #: The manifest the print carries, which is one for the smoke's own payload.
 MANIFEST: dict[str, Any] = {
