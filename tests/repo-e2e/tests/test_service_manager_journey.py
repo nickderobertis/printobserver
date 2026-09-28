@@ -70,6 +70,7 @@ from typing import Protocol
 
 import launchctl_standin
 import pytest
+import yaml
 from journey import (
     HERE,
     REPO_ROOT,
@@ -86,9 +87,12 @@ from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
 
-#: The variable a lane sets to `required` so that a case missing a prerequisite
-#: fails rather than skips.
+#: The variable, and its value, with which a lane makes a case missing a
+#: prerequisite fail rather than skip. The gate's own setting of it is held to
+#: these by `test_the_gate_fails_a_case_it_cannot_run_rather_than_skipping_it`.
 REQUIRED = "PRINTOBSERVER_SERVICE_JOURNEY"
+REQUIRED_VALUE = "required"
+GATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 #: Where a Windows journey's root goes: a directory a virtual account can
 #: traverse, named after this journey so that a leftover is recognisable.
@@ -100,7 +104,6 @@ BINARY_DIRECTORY = PurePosixPath("/usr/local/lib/printobserver")
 CONFIGURATION = PurePosixPath("/etc/printobserver/config.toml")
 STATE = PurePosixPath("/var/lib/printobserver")
 
-#: The user the installer creates when it runs as root.
 SERVICE_USER = "printobserver"
 
 #: Where the journey's container carries what it mounts from this host.
@@ -108,13 +111,10 @@ CONTAINED_INSTALLER = "/journey/install-service.sh"
 CONTAINED_PROGRAM = "/journey/printobserver"
 CONTAINED_SKILL = "/journey/skill/printobserver"
 
-#: How long the program build is given the first time this tier runs.
 BUILD_TIMEOUT_SECONDS = 2400
 
-#: How long a manager is given to report a state it was asked for.
 WITHIN_SECONDS = 120
 
-#: One state the API is asked for.
 QUESTION = "/v1/prints"
 
 
@@ -158,8 +158,10 @@ def _unmet(prerequisite: str) -> None:
     Raises:
         AssertionError: If `PRINTOBSERVER_SERVICE_JOURNEY` is `required`.
     """
-    if os.environ.get(REQUIRED) == "required":
-        message = f"{prerequisite}; {REQUIRED}=required, so this case fails rather than skips"
+    if os.environ.get(REQUIRED) == REQUIRED_VALUE:
+        message = (
+            f"{prerequisite}; {REQUIRED}={REQUIRED_VALUE}, so this case fails rather than skips"
+        )
         raise AssertionError(message)
     pytest.skip(prerequisite)
 
@@ -225,6 +227,9 @@ class Manager(Protocol):
 
     def starts_automatically(self) -> Reported:
         """Whether the manager reports the service as one it starts by itself."""
+
+    def switch_off(self) -> None:
+        """Tell the manager not to start the service at boot, as an operator would."""
 
     def is_running(self) -> bool:
         """Whether the manager reports the service running."""
@@ -348,6 +353,7 @@ class Systemd:
         self.container = f"printobserver-service-journey-{stamp}"
         self.image = f"{self.container}:root"
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _docker(
         self, *arguments: str, stdin: str | None = None, timeout: float = 120
     ) -> subprocess.CompletedProcess[str]:
@@ -467,6 +473,10 @@ class Systemd:
         said = self._systemctl("is-enabled", self.name).strip()
         return Reported(said == "enabled", f"systemctl is-enabled says `{said}`")
 
+    def switch_off(self) -> None:
+        """`systemctl disable`, which unlinks the unit from its boot target."""
+        self._systemctl("disable", self.name, check=True)
+
     def is_running(self) -> bool:
         """`active`, and a main process the manager knows."""
         return self._systemctl("is-active", self.name).strip() == "active" and self.main_pid() > 0
@@ -574,12 +584,14 @@ def _stand_in_launchd(scratch: Path, monkeypatch: pytest.MonkeyPatch) -> StandIn
     # absolute path whatever directory `launchctl` is run from.
     packages = os.pathsep.join(str(REPO_ROOT / entry) for entry in pythonpath().split(os.pathsep))
     standin = Path(launchctl_standin.__file__).resolve()
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     (shims / "launchctl").write_text(
         f'#!/bin/sh\nPYTHONPATH="{packages}" exec "{sys.executable}" "{standin}" "$@"\n',
         encoding="utf-8",
     )
     real_uname = shutil.which("uname")
     truth(real_uname is not None, describing="`uname` on this host's PATH")
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     (shims / "uname").write_text(
         f'#!/bin/sh\n[ "$*" = "-s" ] && {{ echo Darwin; exit 0; }}\nexec "{real_uname}" "$@"\n',
         encoding="utf-8",
@@ -622,14 +634,18 @@ class Launchd:
         """Where one of the paths the service sees is, on the machine the adapter drives."""
         return self.root / path.relative_to("/")
 
-    def _as_root(self, *argv: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
-        """One command as root on the host, or as the invoking user on the stand-in's machine."""
+    def _on_machine(self, *argv: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        """One command on the machine this adapter drives.
+
+        As root through `sudo` on the host, and as the invoking user on the
+        stand-in's machine, which that user owns.
+        """
         prefix = ["sudo", "-n"] if self.stand_in is None else []
         return shell_run([*prefix, *argv], stdin=stdin, timeout=120)
 
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _launchctl(self, *arguments: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-        result = self._as_root("launchctl", *arguments)
+        result = self._on_machine("launchctl", *arguments)
         if check:
             passing(
                 (result.returncode, _said(result)),
@@ -660,7 +676,7 @@ class Launchd:
         """The committed shell installer: as root on the host, or into the stand-in's root."""
         installer = str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.LAUNCHD))
         if self.stand_in is None:
-            result = self._as_root("sh", installer, "--binary", str(self.program))
+            result = self._on_machine("sh", installer, "--binary", str(self.program))
         else:
             result = shell_run(
                 [
@@ -683,7 +699,7 @@ class Launchd:
     def read(self, path: PurePath) -> str | None:
         """`cat` as root on the host; the file itself on the stand-in's machine."""
         if self.stand_in is None:
-            result = self._as_root("cat", str(path))
+            result = self._on_machine("cat", str(path))
             return result.stdout if result.returncode == 0 else None
         try:
             return Path(path).read_text(encoding="utf-8")
@@ -695,7 +711,7 @@ class Launchd:
         if self.stand_in is not None:
             Path(path).write_text(text, encoding="utf-8")
             return
-        result = self._as_root("sh", "-c", 'cat > "$1"', "sh", str(path), stdin=text)
+        result = self._on_machine("sh", "-c", 'cat > "$1"', "sh", str(path), stdin=text)
         passing((result.returncode, _said(result)), describing=f"writing {path}")
 
     def lay_down_skill(self, installed: Installed) -> None:
@@ -706,7 +722,7 @@ class Launchd:
                 ("mkdir", "-p", str(target.parent)),
                 ("cp", "-R", str(SKILL_DIRECTORY), str(target)),
             ):
-                result = self._as_root(*argv)
+                result = self._on_machine(*argv)
                 passing((result.returncode, _said(result)), describing="laying the skill down")
             return
         # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
@@ -715,7 +731,7 @@ class Launchd:
     def activate(self) -> None:
         """The documented command: through `sudo` on the host, and without it on the stand-in."""
         equal(self.words[:1], ["sudo"], describing="the documented command running as root")
-        result = self._as_root(*self.words[1:])
+        result = self._on_machine(*self.words[1:])
         passing((result.returncode, _said(result)), describing=f"`{' '.join(self.words)}`")
         if self.stand_in is not None:
             equal(
@@ -736,12 +752,19 @@ class Launchd:
             return Reported(
                 False, f"launchd does not report it loaded from {self.definition}:\n{printed}"
             )
-        listed = self._launchctl("print-disabled", "system").stdout
+        disabled = self._launchctl("print-disabled", "system")
+        if disabled.returncode != 0:
+            return Reported(False, f"launchd could not list what is disabled:\n{_said(disabled)}")
+        listed = disabled.stdout
         switched_off = any(
             f'"{self.label}"' in line and ("=> disabled" in line or "=> true" in line)
             for line in listed.splitlines()
         )
         return Reported(not switched_off, f"launchd lists it as disabled:\n{listed}")
+
+    def switch_off(self) -> None:
+        """`launchctl disable`, which adds the service to the domain's disabled set."""
+        self._launchctl("disable", f"system/{self.label}", check=True)
 
     def is_running(self) -> bool:
         """Loaded, and a process the manager knows."""
@@ -760,11 +783,11 @@ class Launchd:
         with Path(self._beneath(self.definition)).open("rb") as handle:
             named = plistlib.load(handle).get("UserName")
         equal(named, self.user, describing="the user the installed property list runs it as")
-        return _compare_users(self._as_root, pid, self.user)
+        return _compare_users(self._on_machine, pid, self.user)
 
     def end_abruptly(self, pid: int) -> None:
         """`SIGKILL`, which the process cannot answer, as a crash is."""
-        result = self._as_root("kill", "-KILL", str(pid))
+        result = self._on_machine("kill", "-KILL", str(pid))
         passing((result.returncode, _said(result)), describing=f"killing process {pid}")
 
     def stop(self) -> None:
@@ -793,7 +816,7 @@ class Launchd:
             if self.stand_in is not None:
                 shutil.rmtree(self.root, ignore_errors=True)
             else:
-                self._as_root(
+                self._on_machine(
                     "rm",
                     "-rf",
                     str(BINARY_DIRECTORY),
@@ -802,9 +825,9 @@ class Launchd:
                     str(self.definition),
                 )
                 if not self.had_var_lib:
-                    self._as_root("rmdir", "/var/lib")
+                    self._on_machine("rmdir", "/var/lib")
                 for record in ("Users", "Groups"):
-                    self._as_root("dscl", ".", "-delete", f"/{record}/{SERVICE_USER}")
+                    self._on_machine("dscl", ".", "-delete", f"/{record}/{SERVICE_USER}")
 
     def is_present(self) -> bool:
         """Whether launchd has the service loaded at all."""
@@ -820,9 +843,9 @@ class Launchd:
         present.extend(
             str(path)
             for path in (BINARY_DIRECTORY, CONFIGURATION, STATE, self.definition)
-            if self._as_root("test", "-e", str(path)).returncode == 0
+            if self._on_machine("test", "-e", str(path)).returncode == 0
         )
-        if self._as_root("id", "-u", SERVICE_USER).returncode == 0:
+        if self._on_machine("id", "-u", SERVICE_USER).returncode == 0:
             present.append(f"the user {SERVICE_USER}")
         if Path("/var/lib").exists() != self.had_var_lib:
             present.append("/var/lib, which the journey found absent")
@@ -937,6 +960,10 @@ class WindowsService:
         _, listing = self._sc("qc", self.name)
         start_type = self._field(listing, "START_TYPE")
         return Reported("AUTO_START" in start_type, f"START_TYPE : {start_type}")
+
+    def switch_off(self) -> None:
+        """`sc.exe config start= demand`, which the manager starts only when asked."""
+        self._sc("config", self.name, "start=", "demand", check=True)
 
     def is_running(self) -> bool:
         """`RUNNING`, and a process the manager knows."""
@@ -1077,17 +1104,15 @@ def manager(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Manager:
     """One adapter this host walks the journey through."""
-    if request.param == ServiceManager.WINDOWS_SERVICE:
-        return WindowsService(_service_name(ServiceManager.WINDOWS_SERVICE), program)
-    if request.param == ServiceManager.SYSTEMD:
-        truth(
-            HERE.service_manager == ServiceManager.SYSTEMD,
-            describing="a Linux host to be a systemd platform",
-        )
-        return Systemd(_service_name(ServiceManager.SYSTEMD), program)
-    if request.param == ServiceManager.LAUNCHD:
-        return Launchd(program, None)
-    return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
+    match request.param:
+        case ServiceManager.WINDOWS_SERVICE:
+            return WindowsService(_service_name(ServiceManager.WINDOWS_SERVICE), program)
+        case ServiceManager.SYSTEMD:
+            return Systemd(_service_name(ServiceManager.SYSTEMD), program)
+        case ServiceManager.LAUNCHD:
+            return Launchd(program, None)
+        case _:
+            return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 
 def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
@@ -1205,6 +1230,7 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
     equal(manager.leftovers(), [], describing="what the journey left on the host once removed")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
     activated: Activated,
 ) -> None:
@@ -1229,6 +1255,7 @@ def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
     _holds(manager.stopped_gracefully(), "a graceful stop recorded by the manager")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     activated: Activated,
 ) -> None:
@@ -1264,4 +1291,21 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     _holds(
         manager.runs_as_the_service_user(manager.main_pid()),
         "the brought-back service running as the user it is installed to run as",
+    )
+
+    manager.switch_off()
+    truth(
+        not manager.starts_automatically().held,
+        describing="the manager no longer reporting a service switched off as one it starts",
+    )
+
+
+def test_the_gate_fails_a_case_it_cannot_run_rather_than_skipping_it() -> None:
+    """Every gate cell sets the variable that turns a missing prerequisite into a failure."""
+    workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
+    environment = workflow["jobs"]["gate"].get("env", {})
+    equal(
+        environment.get(REQUIRED),
+        REQUIRED_VALUE,
+        describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW.relative_to(REPO_ROOT)}",
     )

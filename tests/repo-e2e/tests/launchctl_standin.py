@@ -23,8 +23,8 @@ Two variables configure it:
   `/Library/LaunchDaemons/<label>.plist` — and read from beneath this root, so
   the journey installs into a throwaway root and runs the documented command
   unchanged.
-- `LAUNCHCTL_STANDIN_STATE`: where it keeps each loaded job's record and the
-  recording of its invocations.
+- `LAUNCHCTL_STANDIN_STATE`: where it keeps each loaded job's record, the
+  services switched off, and the recording of its invocations.
 
 It runs a job as the user that invoked it and no other, because it cannot
 become another user: a property list naming anybody else is refused.
@@ -33,6 +33,7 @@ become another user: a property list naming anybody else is refused.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import getpass
 import json
 import os
@@ -42,19 +43,18 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
 from repo_checks.shell import start
 
-#: The variable naming the stand-in machine's root.
 ROOT = "LAUNCHCTL_STANDIN_ROOT"
-
-#: The variable naming where the stand-in keeps its records.
 STATE = "LAUNCHCTL_STANDIN_STATE"
-
-#: The file every invocation is recorded in, beneath the state directory.
 RECORDING = "invocations.jsonl"
+
+#: Every label `launchctl disable` switched off, beneath the state directory.
+DISABLED = "disabled.json"
 
 #: The one domain a system daemon is loaded into.
 DOMAIN = "system"
@@ -65,12 +65,78 @@ NO_SUCH_PROCESS = 3
 INPUT_OUTPUT_ERROR = 5
 NOT_FOUND = 113
 
-#: launchd's defaults for the keys a property list may leave out.
+#: launchd's default for a property list that leaves `ThrottleInterval` out.
 DEFAULT_THROTTLE_SECONDS = 10
 EXIT_TIMEOUT_SECONDS = 20
-
-#: How often the supervisor looks at its job.
 TICK_SECONDS = 0.2
+
+
+@dataclass(frozen=True, slots=True)
+class Job:
+    """The keys of a property list this stand-in acts on, each checked for its type."""
+
+    label: str
+    arguments: tuple[str, ...]
+    user: str
+    working_directory: Path | None
+    environment: dict[str, str]
+    error_log: Path | None
+    run_at_load: bool
+    keep_alive: bool | dict[str, object]
+    throttle: float
+
+
+def _strings(value: object) -> list[str] | None:
+    """`value` as a list of strings, or `None` where it is anything else."""
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return [str(item) for item in value]
+
+
+def _job(document: object) -> Job | None:
+    """The job a loaded property list describes, or `None` where it is not one launchd runs."""
+    if not isinstance(document, dict):
+        return None
+    label = document.get("Label")
+    arguments = _strings(document.get("ProgramArguments"))
+    user = document.get("UserName", getpass.getuser())
+    directory = document.get("WorkingDirectory")
+    environment = document.get("EnvironmentVariables", {})
+    log = document.get("StandardErrorPath")
+    keep_alive = document.get("KeepAlive", False)
+    throttle = document.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS)
+    if not isinstance(label, str) or not label or not arguments or not isinstance(user, str):
+        return None
+    if not isinstance(directory, str | None) or not isinstance(log, str | None):
+        return None
+    if not isinstance(environment, dict) or _strings([*environment, *environment.values()]) is None:
+        return None
+    if not isinstance(keep_alive, bool | dict) or not isinstance(throttle, int) or throttle < 0:
+        return None
+    return Job(
+        label=label,
+        arguments=tuple(arguments),
+        user=user,
+        working_directory=Path(directory) if directory is not None else None,
+        environment={str(key): str(value) for key, value in environment.items()},
+        error_log=Path(log) if log is not None else None,
+        run_at_load=document.get("RunAtLoad") is True,
+        keep_alive=keep_alive,
+        throttle=float(throttle),
+    )
+
+
+@dataclass(slots=True)
+class Record:
+    """What `launchctl print` reports of one loaded job, kept by the job's supervisor."""
+
+    path: str
+    program: str
+    supervisor: int
+    pid: int | None = None
+    runs: int = 0
+    last_exit_code: int | None = None
+    last_signal: str | None = None
 
 
 def _state() -> Path:
@@ -81,23 +147,32 @@ def _record_path(label: str) -> Path:
     return _state() / f"{label}.json"
 
 
-def _read_record(label: str) -> dict[str, object] | None:
+def _read_record(label: str) -> Record | None:
     """A loaded job's record, or `None` where no live supervisor holds one."""
     try:
-        record = json.loads(_record_path(label).read_text(encoding="utf-8"))
-    except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
+        document = json.loads(_record_path(label).read_text(encoding="utf-8"))
+        record = Record(**document) if isinstance(document, dict) else None
+    except OSError, ValueError, TypeError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
-    supervisor = record.get("supervisor")
-    if not isinstance(supervisor, int) or not _alive(supervisor):
+    if record is None or not _alive(record.supervisor):
         return None
     return record
 
 
-def _write_record(label: str, record: dict[str, object]) -> None:
+def _write_record(label: str, record: Record) -> None:
     """Replace a job's record whole, so a reader never sees half of one."""
     written = _record_path(label).with_suffix(".tmp")
-    written.write_text(json.dumps(record), encoding="utf-8")
+    written.write_text(json.dumps(dataclasses.asdict(record)), encoding="utf-8")
     written.replace(_record_path(label))
+
+
+def _disabled() -> list[str]:
+    """Every label switched off in the system domain."""
+    try:
+        listed = json.loads((_state() / DISABLED).read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return []
+    return [str(label) for label in listed] if isinstance(listed, list) else []
 
 
 def _alive(pid: int) -> bool:
@@ -115,7 +190,22 @@ def _say(stream: IO[str], text: str) -> None:
 def _label_of(target: str) -> str | None:
     """The label a `system/<label>` service target names, or `None` for any other domain."""
     domain, _, label = target.partition("/")
-    return label if domain == DOMAIN and label else None
+    return label if domain == DOMAIN and label and "/" not in label else None
+
+
+def _beneath_root(given: str) -> Path | None:
+    """Where a path the machine names is beneath the stand-in's root, or `None` outside it."""
+    root = Path(os.environ[ROOT]).resolve()
+    resolved = (root / given.lstrip("/")).resolve()
+    return resolved if resolved.is_relative_to(root) else None
+
+
+def _load(resolved: Path) -> Job | None:
+    try:
+        with resolved.open("rb") as handle:
+            return _job(plistlib.load(handle))
+    except OSError, plistlib.InvalidFileException:
+        return None
 
 
 def _bootstrap(arguments: list[str]) -> int:
@@ -123,23 +213,16 @@ def _bootstrap(arguments: list[str]) -> int:
         _say(sys.stderr, "Usage: launchctl bootstrap <domain-target> <path>")
         return USAGE
     given = arguments[1]
-    resolved = Path(os.environ[ROOT]) / given.lstrip("/")
-    try:
-        with resolved.open("rb") as handle:
-            job = plistlib.load(handle)
-    except OSError, plistlib.InvalidFileException:
+    resolved = _beneath_root(given)
+    job = _load(resolved) if resolved is not None else None
+    if resolved is None or job is None or _read_record(job.label) is not None:
         _say(sys.stderr, f"Bootstrap failed: {INPUT_OUTPUT_ERROR}: Input/output error")
         return INPUT_OUTPUT_ERROR
-    label = job.get("Label")
-    if not isinstance(label, str) or _read_record(label) is not None:
-        _say(sys.stderr, f"Bootstrap failed: {INPUT_OUTPUT_ERROR}: Input/output error")
-        return INPUT_OUTPUT_ERROR
-    user = job.get("UserName", getpass.getuser())
-    if user != getpass.getuser():
+    if job.user != getpass.getuser():
         _say(
             sys.stderr,
-            f"launchctl stand-in: {given} runs as {user}, and this stand-in runs a job as the "
-            f"user that invoked it ({getpass.getuser()}) and no other",
+            f"launchctl stand-in: {given} runs as {job.user}, and this stand-in runs a job as "
+            f"the user that invoked it ({getpass.getuser()}) and no other",
         )
         return INPUT_OUTPUT_ERROR
     # The supervisor outlives this command, as launchd outlives `launchctl`; its
@@ -147,7 +230,7 @@ def _bootstrap(arguments: list[str]) -> int:
     # caller reading this command's output is not held open by it.
     supervisor = start([sys.executable, __file__, "--supervise", given, str(resolved)])
     deadline = time.monotonic() + EXIT_TIMEOUT_SECONDS
-    while _read_record(label) is None:
+    while _read_record(job.label) is None:
         if supervisor.poll() is not None or time.monotonic() > deadline:
             _say(sys.stderr, f"Bootstrap failed: {INPUT_OUTPUT_ERROR}: Input/output error")
             return INPUT_OUTPUT_ERROR
@@ -164,22 +247,21 @@ def _print(arguments: list[str]) -> int:
     if record is None:
         _say(sys.stderr, f'Could not find service "{label}" in domain for system')
         return NOT_FOUND
-    pid = record.get("pid")
     lines = [
         f"{DOMAIN}/{label} = {{",
-        f"\tactive count = {1 if pid else 0}",
-        f"\tpath = {record['path']}",
+        f"\tactive count = {1 if record.pid else 0}",
+        f"\tpath = {record.path}",
         "\ttype = LaunchDaemon",
-        f"\tstate = {'running' if pid else 'not running'}",
-        f"\tprogram = {record['program']}",
-        f"\truns = {record['runs']}",
+        f"\tstate = {'running' if record.pid else 'not running'}",
+        f"\tprogram = {record.program}",
+        f"\truns = {record.runs}",
     ]
-    if pid:
-        lines.append(f"\tpid = {pid}")
-    exit_code = record.get("last_exit_code")
-    lines.append(f"\tlast exit code = {'(never exited)' if exit_code is None else exit_code}")
-    if record.get("last_signal"):
-        lines.append(f"\tlast terminating signal = {record['last_signal']}")
+    if record.pid:
+        lines.append(f"\tpid = {record.pid}")
+    code = record.last_exit_code
+    lines.append(f"\tlast exit code = {'(never exited)' if code is None else code}")
+    if record.last_signal:
+        lines.append(f"\tlast terminating signal = {record.last_signal}")
     lines.append("}")
     _say(sys.stdout, "\n".join(lines))
     return 0
@@ -189,24 +271,42 @@ def _print_disabled(arguments: list[str]) -> int:
     if arguments != [DOMAIN]:
         _say(sys.stderr, "Usage: launchctl print-disabled <domain-target>")
         return USAGE
-    # Nothing is ever switched off here: `launchctl disable` is no verb of this stand-in.
-    _say(sys.stdout, "disabled services = {\n}")
+    listed = "".join(f'\t"{label}" => disabled\n' for label in _disabled())
+    _say(sys.stdout, f"disabled services = {{\n{listed}}}")
     return 0
+
+
+def _disable(arguments: list[str]) -> int:
+    label = _label_of(arguments[0]) if len(arguments) == 1 else None
+    if label is None:
+        _say(sys.stderr, "Usage: launchctl disable <service-target>")
+        return USAGE
+    labels = [*_disabled(), label] if label not in _disabled() else _disabled()
+    (_state() / DISABLED).write_text(json.dumps(labels), encoding="utf-8")
+    return 0
+
+
+def _signal(named: str) -> signal.Signals | None:
+    """A signal given by number or by name, with or without `SIG`, or `None` for neither."""
+    try:
+        if named.isdigit():
+            return signal.Signals(int(named))
+        return signal.Signals[f"SIG{named.removeprefix('SIG')}"]
+    except ValueError, KeyError:
+        return None
 
 
 def _kill(arguments: list[str]) -> int:
     label = _label_of(arguments[1]) if len(arguments) == 2 else None
-    if label is None:
+    chosen = _signal(arguments[0]) if len(arguments) == 2 else None
+    if label is None or chosen is None:
         _say(sys.stderr, "Usage: launchctl kill <signal-name|signal-number> <service-target>")
         return USAGE
-    name = arguments[0].removeprefix("SIG")
-    number = int(name) if name.isdigit() else getattr(signal, f"SIG{name}", None)
     record = _read_record(label)
-    pid = record.get("pid") if record is not None else None
-    if number is None or not isinstance(pid, int):
+    if record is None or record.pid is None:
         _say(sys.stderr, f"Could not kill service: {NO_SUCH_PROCESS}: No such process")
         return NO_SUCH_PROCESS
-    os.kill(pid, number)
+    os.kill(record.pid, chosen)
     return 0
 
 
@@ -216,28 +316,32 @@ def _bootout(arguments: list[str]) -> int:
         _say(sys.stderr, "Usage: launchctl bootout <service-target>")
         return USAGE
     record = _read_record(label)
-    supervisor = record.get("supervisor") if record is not None else None
-    if not isinstance(supervisor, int):
+    if record is None:
         _say(sys.stderr, f"Boot-out failed: {NO_SUCH_PROCESS}: No such process")
         return NO_SUCH_PROCESS
-    os.kill(supervisor, signal.SIGTERM)
+    os.kill(record.supervisor, signal.SIGTERM)
     deadline = time.monotonic() + 2 * EXIT_TIMEOUT_SECONDS
-    while _alive(supervisor) and time.monotonic() < deadline:
+    while _alive(record.supervisor):
+        if time.monotonic() > deadline:
+            _say(sys.stderr, f"Boot-out failed: {INPUT_OUTPUT_ERROR}: Input/output error")
+            return INPUT_OUTPUT_ERROR
         time.sleep(TICK_SECONDS)
     return 0
 
 
-def _restarts(keep_alive: object, exit_code: int) -> bool:
+def _restarts(keep_alive: bool | dict[str, object], exit_code: int) -> bool:
     """Whether launchd starts a job again after it ended with `exit_code`.
 
     A process killed by a signal ends with a negative code here, which launchd
     counts as an unsuccessful exit.
     """
-    if isinstance(keep_alive, bool):
-        return keep_alive
-    if isinstance(keep_alive, dict) and "SuccessfulExit" in keep_alive:
-        return (exit_code == 0) == bool(keep_alive["SuccessfulExit"])
-    return False
+    match keep_alive:
+        case bool():
+            return keep_alive
+        case {"SuccessfulExit": successful}:
+            return (exit_code == 0) == bool(successful)
+        case _:
+            return False
 
 
 def _drain(stream: IO[str], log: Path | None) -> None:
@@ -254,53 +358,36 @@ def _drain(stream: IO[str], log: Path | None) -> None:
 
 def _supervise(given: str, resolved: Path) -> int:
     """Be launchd for one job until it is booted out."""
-    with resolved.open("rb") as handle:
-        job = plistlib.load(handle)
-    label: str = job["Label"]
-    arguments: list[str] = job["ProgramArguments"]
-    throttle = float(job.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS))
-    error_log = job.get("StandardErrorPath")
+    job = _load(resolved)
+    if job is None:
+        return INPUT_OUTPUT_ERROR
     stopping = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopping.set())
-    record: dict[str, object] = {
-        "path": given,
-        "program": arguments[0],
-        "supervisor": os.getpid(),
-        "pid": None,
-        "runs": 0,
-        "last_exit_code": None,
-        "last_signal": None,
-    }
-    child = None
+    record = Record(path=given, program=job.arguments[0], supervisor=os.getpid())
+    child: subprocess.Popen[str] | None = None
     last_start = float("-inf")
-    wanted = bool(job.get("RunAtLoad", False))
+    wanted = job.run_at_load
     try:
-        _write_record(label, record)
+        _write_record(job.label, record)
         while not stopping.is_set():
             if child is not None and (code := child.poll()) is not None:
-                record["pid"] = None
-                record["last_exit_code"] = code if code >= 0 else None
-                record["last_signal"] = f"{signal.strsignal(-code)}: {-code}" if code < 0 else None
-                _write_record(label, record)
+                record.pid = None
+                record.last_exit_code = code if code >= 0 else None
+                record.last_signal = f"{signal.strsignal(-code)}: {-code}" if code < 0 else None
+                _write_record(job.label, record)
                 child = None
-                wanted = _restarts(job.get("KeepAlive", False), code)
-            if child is None and wanted and time.monotonic() - last_start >= throttle:
+                wanted = _restarts(job.keep_alive, code)
+            if child is None and wanted and time.monotonic() - last_start >= job.throttle:
                 child = start(
-                    list(arguments),
-                    cwd=Path(job["WorkingDirectory"]) if "WorkingDirectory" in job else None,
-                    env=dict(job.get("EnvironmentVariables", {})),
+                    list(job.arguments), cwd=job.working_directory, env=dict(job.environment)
                 )
                 last_start = time.monotonic()
-                for stream, log in ((child.stdout, None), (child.stderr, error_log)):
+                for stream, log in ((child.stdout, None), (child.stderr, job.error_log)):
                     if stream is not None:
-                        threading.Thread(
-                            target=_drain,
-                            args=(stream, Path(log) if isinstance(log, str) else None),
-                            daemon=True,
-                        ).start()
-                record["pid"] = child.pid
-                record["runs"] = int(str(record["runs"])) + 1
-                _write_record(label, record)
+                        threading.Thread(target=_drain, args=(stream, log), daemon=True).start()
+                record.pid = child.pid
+                record.runs += 1
+                _write_record(job.label, record)
             stopping.wait(TICK_SECONDS)
         if child is not None:
             child.terminate()
@@ -311,13 +398,14 @@ def _supervise(given: str, resolved: Path) -> int:
                 child.wait()
     finally:
         with contextlib.suppress(OSError):
-            _record_path(label).unlink()
+            _record_path(job.label).unlink()
     return 0
 
 
 VERBS = {
     "bootstrap": _bootstrap,
     "bootout": _bootout,
+    "disable": _disable,
     "print": _print,
     "print-disabled": _print_disabled,
     "kill": _kill,
@@ -327,6 +415,9 @@ VERBS = {
 def main(argv: list[str]) -> int:
     """Answer one `launchctl` invocation, recording it first."""
     if argv[:1] == ["--supervise"]:
+        if len(argv) != 3:
+            _say(sys.stderr, "Usage: launchctl_standin.py --supervise <given-path> <plist>")
+            return USAGE
         return _supervise(argv[1], Path(argv[2]))
     _state().mkdir(parents=True, exist_ok=True)
     with (_state() / RECORDING).open("a", encoding="utf-8") as recording:

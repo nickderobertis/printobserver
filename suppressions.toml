@@ -1114,6 +1114,36 @@ reason = "The boundary is systemd's own command-line tool, driven as an operator
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _docker("
+reason = "The boundary is Docker's own command-line tool, driven the way a person brings a container up and runs a command in it — `docker import`, `docker run`, `docker exec`, `docker rm` — one command at a time, each answer asserted on before the next is issued. The journey's subject is the systemd inside that container rather than Docker, there is nothing concurrent for an async client to win, and a Docker SDK between the journey and the container would be a second thing under test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "(shims / \"launchctl\")"
+reason = "The one boundary stood in for on purpose, as the manager ruled for issue #99: launchd exists on macOS alone, and this stand-in is what walks the launchd adapter's whole sequence — the documented `bootstrap`, the reports, a kill, a `launchctl kill` stop, a `bootout` — on every Linux cell. It starts and kills the real `printobserver` exactly as the property list the committed installer wrote tells launchd to, so the service under it is real; the same adapter drives the real launchd on the macOS cell, where the gate requires the case to run."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "(shims / \"uname\")"
+reason = "The installer chooses the service manager it writes a definition for from `uname -s`, so the launchd stand-in's machine has to answer `Darwin` there or the installer writes a systemd unit instead. The shim answers that one question and passes every other `uname` invocation to the real program; it exists only on Linux, beside the `launchctl` stand-in, and the macOS cell runs the same adapter against the real `uname` and the real launchd."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly("
+reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS.md` places this coverage in the end-to-end tier, which is one project by design with no narrower per-project end-to-end target for it to hang from. What the case costs beyond the build every journey shares is a container booting systemd, or a stand-in launchd, starting the service — seconds, and the thing under test."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end("
+reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS.md` places this coverage in the end-to-end tier, which is one project by design with no narrower per-project end-to-end target for it to hang from. What the case costs beyond the build every journey shares is the manager restarting a killed process after its throttle, about ten seconds, which is the thing under test."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def _launchctl("
 reason = "The boundary is launchd's own command-line tool, `launchctl`, driven as an operator drives it — under `sudo` against the host's launchd, or as the stand-in on a host with none — one command at a time, each answer asserted on before the next is issued and `launchctl print` read line by line. There is no typed client of launchd for Python, and nothing here to overlap."
 
