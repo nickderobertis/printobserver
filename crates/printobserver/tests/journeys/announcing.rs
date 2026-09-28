@@ -43,18 +43,13 @@ const SHORT: Duration = Duration::from_secs(3);
 /// What a stand-in does once it has printed [`ON_THE_WAY_UP`].
 #[derive(Clone, Copy)]
 enum Behaviour {
-    /// Goes silent and stays running.
     Silent,
-    /// Says where it is serving and stays running.
     Announces,
-    /// Says it is serving somewhere that is no socket address.
     Misannounces,
-    /// Exits.
     Exits,
     /// Starts a silent process sharing its standard error, which outlives it
     /// once it is stopped, and goes silent itself.
     HandsItsStreamOn,
-    /// What [`Behaviour::HandsItsStreamOn`] starts.
     Holds,
 }
 
@@ -184,8 +179,6 @@ pub fn a_supervisor_that_announces_is_answered_at_once() {
     );
 }
 
-/// Wait on a stand-in that is expected not to announce; answer the failure as
-/// it reads, how long the wait took and the stand-in.
 fn unannounced(behaviour: Behaviour, deadline: Duration) -> (String, Duration, Child) {
     let mut child = stand_in(behaviour);
     let started = Instant::now();
@@ -219,7 +212,6 @@ fn assert_reported(said: &str, why: &str) {
     }
 }
 
-/// Start the stand-in, behaving as `behaviour`, with its standard error piped.
 fn stand_in(behaviour: Behaviour) -> Child {
     stand_in_command(behaviour)
         .stderr(Stdio::piped())
@@ -243,7 +235,7 @@ fn stand_in_command(behaviour: Behaviour) -> Command {
     command
 }
 
-/// A supervisor on the way up, doing what [`STANDING_IN`] names.
+// llmlint: ignore[tests_assert_real_behavior] suppressions.toml has the reason.
 #[test]
 #[ignore = "run in a process of its own by the journeys in this module"]
 fn the_stand_in() {
