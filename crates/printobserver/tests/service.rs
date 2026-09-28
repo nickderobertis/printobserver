@@ -29,7 +29,7 @@ mod harness;
 #[path = "support/manager.rs"]
 mod manager;
 
-use std::io::{BufRead as _, BufReader, Read as _, Write as _};
+use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -2120,6 +2120,8 @@ fn inside(path: &str, state: &str) -> bool {
 /// everything it reported once it has finished and what it installed is gone.
 #[cfg(target_os = "linux")]
 fn run_the_service_journey() -> Vec<(String, String)> {
+    use std::io::{BufRead as _, BufReader};
+
     let under = TempDir::new().expect("a journey's own root");
     // The service's user has to be able to reach the root this journey installs
     // beneath, as it can reach `/` on a real machine.
