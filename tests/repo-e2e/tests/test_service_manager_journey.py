@@ -52,6 +52,7 @@ import io
 import json
 import os
 import plistlib
+import shlex
 import shutil
 import signal
 import socket
@@ -586,14 +587,16 @@ def _stand_in_launchd(scratch: Path, monkeypatch: pytest.MonkeyPatch) -> StandIn
     standin = Path(launchctl_standin.__file__).resolve()
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     (shims / "launchctl").write_text(
-        f'#!/bin/sh\nPYTHONPATH="{packages}" exec "{sys.executable}" "{standin}" "$@"\n',
+        f"#!/bin/sh\nPYTHONPATH={shlex.quote(packages)} "
+        f'exec {shlex.quote(sys.executable)} {shlex.quote(str(standin))} "$@"\n',
         encoding="utf-8",
     )
     real_uname = shutil.which("uname")
     truth(real_uname is not None, describing="`uname` on this host's PATH")
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     (shims / "uname").write_text(
-        f'#!/bin/sh\n[ "$*" = "-s" ] && {{ echo Darwin; exit 0; }}\nexec "{real_uname}" "$@"\n',
+        f'#!/bin/sh\n[ "$*" = "-s" ] && {{ echo Darwin; exit 0; }}\n'
+        f'exec {shlex.quote(str(real_uname))} "$@"\n',
         encoding="utf-8",
     )
     for shim in shims.iterdir():
@@ -634,14 +637,17 @@ class Launchd:
         """Where one of the paths the service sees is, on the machine the adapter drives."""
         return self.root / path.relative_to("/")
 
-    def _on_machine(self, *argv: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    def _on_machine(
+        self, *argv: str, stdin: str | None = None, timeout: float = 120
+    ) -> subprocess.CompletedProcess[str]:
         """One command on the machine this adapter drives.
 
         As root through `sudo` on the host, and as the invoking user on the
         stand-in's machine, which that user owns.
         """
         prefix = ["sudo", "-n"] if self.stand_in is None else []
-        return shell_run([*prefix, *argv], stdin=stdin, timeout=120)
+        return shell_run([*prefix, *argv], stdin=stdin, timeout=timeout)
 
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _launchctl(self, *arguments: str, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -660,7 +666,7 @@ class Launchd:
         """On the host: need a password-free `sudo`, and a Mac carrying nothing it would install."""
         if self.stand_in is not None:
             return
-        if shell_run(["sudo", "-n", "true"], timeout=30).returncode != 0:
+        if self._on_machine("true", timeout=30).returncode != 0:
             _unmet(
                 "this journey loads a real launchd daemon and needs password-free `sudo`, "
                 "which this host does not grant"
@@ -675,25 +681,24 @@ class Launchd:
     def install(self) -> Installed:
         """The committed shell installer: as root on the host, or into the stand-in's root."""
         installer = str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.LAUNCHD))
-        if self.stand_in is None:
-            result = self._on_machine("sh", installer, "--binary", str(self.program))
-        else:
-            result = shell_run(
-                [
-                    "sh",
-                    installer,
-                    "--root",
-                    str(self.root),
-                    "--binary",
-                    str(self.program),
-                    "--user",
-                    self.user,
-                ],
-                cwd=self.root,
-                env=clean_environment(),
-                timeout=300,
-            )
+        # The stand-in's machine is one the invoking user owns, so the installer
+        # is told its root and that user rather than creating a system user.
+        into = [] if self.stand_in is None else ["--root", str(self.root), "--user", self.user]
+        result = self._on_machine(
+            "sh", installer, *into, "--binary", str(self.program), timeout=300
+        )
         passing((result.returncode, _said(result)), describing="the committed installer")
+        with Path(self._beneath(self.definition)).open("rb") as handle:
+            written = plistlib.load(handle)
+        binary = self._beneath(BINARY_DIRECTORY / "printobserver")
+        equal(
+            (written.get("ProgramArguments"), written.get("WorkingDirectory")),
+            (
+                [str(binary), "server", "--config", str(self._beneath(CONFIGURATION))],
+                str(self._beneath(STATE)),
+            ),
+            describing="the places the installed property list names, which teardown removes",
+        )
         return Installed(self._beneath(CONFIGURATION), self._beneath(STATE))
 
     def read(self, path: PurePath) -> str | None:
@@ -755,12 +760,19 @@ class Launchd:
         disabled = self._launchctl("print-disabled", "system")
         if disabled.returncode != 0:
             return Reported(False, f"launchd could not list what is disabled:\n{_said(disabled)}")
-        listed = disabled.stdout
-        switched_off = any(
+        return Reported(
+            not self._switched_off(disabled.stdout),
+            f"launchd lists it as disabled:\n{disabled.stdout}",
+        )
+
+    def _switched_off(self, listed: str | None = None) -> bool:
+        """Whether the system domain's disabled set lists the service."""
+        if listed is None:
+            listed = self._launchctl("print-disabled", "system").stdout
+        return any(
             f'"{self.label}"' in line and ("=> disabled" in line or "=> true" in line)
             for line in listed.splitlines()
         )
-        return Reported(not switched_off, f"launchd lists it as disabled:\n{listed}")
 
     def switch_off(self) -> None:
         """`launchctl disable`, which adds the service to the domain's disabled set."""
@@ -812,6 +824,9 @@ class Launchd:
         try:
             self._launchctl("bootout", f"system/{self.label}")
             _eventually(self, "the service gone once booted out", lambda: not self.is_present())
+            # launchd keeps the disabled set across a bootout, so a switch-off is undone too.
+            if self._switched_off():
+                self._launchctl("enable", f"system/{self.label}", check=True)
         finally:
             if self.stand_in is not None:
                 shutil.rmtree(self.root, ignore_errors=True)
@@ -838,6 +853,8 @@ class Launchd:
         present: list[str] = []
         if self.is_present():
             present.append(f"a loaded launchd service {self.label}")
+        if self._switched_off():
+            present.append(f"{self.label} in launchd's disabled set")
         if self.stand_in is not None:
             return [*present, *([str(self.root)] if self.root.exists() else [])]
         present.extend(
@@ -878,8 +895,14 @@ class WindowsService:
         raise AssertionError(message)
 
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    def _run(
+        self, *argv: str, cwd: Path | None = None, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        """One command from the elevated shell the operator runs the pair in."""
+        return shell_run(list(argv), cwd=cwd, env=env, timeout=300)
+
     def _sc(self, *arguments: str, check: bool = False) -> tuple[int, str]:
-        result = shell_run(["sc.exe", *arguments], timeout=120)
+        result = self._run("sc.exe", *arguments)
         if check:
             passing(
                 (result.returncode, _said(result)),
@@ -912,20 +935,17 @@ class WindowsService:
     def install(self) -> Installed:
         """The committed PowerShell installer into the journey's own root."""
         self.root.mkdir(parents=True, exist_ok=True)
-        result = shell_run(
-            [
-                self._powershell(),
-                "-NoProfile",
-                "-File",
-                str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.WINDOWS_SERVICE)),
-                "-Root",
-                str(self.root),
-                "-Binary",
-                str(self.program),
-            ],
+        result = self._run(
+            self._powershell(),
+            "-NoProfile",
+            "-File",
+            str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.WINDOWS_SERVICE)),
+            "-Root",
+            str(self.root),
+            "-Binary",
+            str(self.program),
             cwd=self.root,
             env=clean_environment(),
-            timeout=300,
         )
         passing((result.returncode, _said(result)), describing="the committed installer")
         return Installed(
@@ -952,7 +972,7 @@ class WindowsService:
     def activate(self) -> None:
         """Run the documented command verbatim, in PowerShell."""
         activation = _activation(self.manager)
-        result = shell_run([self._powershell(), "-NoProfile", "-Command", activation], timeout=120)
+        result = self._run(self._powershell(), "-NoProfile", "-Command", activation)
         passing((result.returncode, _said(result)), describing=f"`{activation}`")
 
     def starts_automatically(self) -> Reported:
@@ -980,16 +1000,13 @@ class WindowsService:
         """The process's owner against the account the manager was told to run it as."""
         _, listing = self._sc("qc", self.name)
         account = self._field(listing, "SERVICE_START_NAME")
-        owner = shell_run(
-            [
-                self._powershell(),
-                "-NoProfile",
-                "-Command",
-                f'$owner = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}" | '
-                f"Invoke-CimMethod -MethodName GetOwner; "
-                f'"$($owner.Domain)\\$($owner.User)"',
-            ],
-            timeout=120,
+        owner = self._run(
+            self._powershell(),
+            "-NoProfile",
+            "-Command",
+            f'$owner = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}" | '
+            f"Invoke-CimMethod -MethodName GetOwner; "
+            f'"$($owner.Domain)\\$($owner.User)"',
         ).stdout.strip()
         return Reported(
             bool(account) and owner.lower() == account.lower(),
@@ -998,7 +1015,7 @@ class WindowsService:
 
     def end_abruptly(self, pid: int) -> None:
         """Terminate the process the way a crash does; it is another account's, so elevated."""
-        result = shell_run(["taskkill.exe", "/F", "/PID", str(pid)], timeout=60)
+        result = self._run("taskkill.exe", "/F", "/PID", str(pid))
         passing((result.returncode, _said(result)), describing=f"ending process {pid} abruptly")
 
     def stop(self) -> None:

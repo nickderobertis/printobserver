@@ -1144,14 +1144,20 @@ reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def _on_machine("
+reason = "The launchd adapter's one seam for every command it runs on the machine it drives — the committed installer, `launchctl`, `cat`, `ps`, `id`, `kill`, `rm`, `dscl` — through `sudo` on a Mac, as an operator runs them, and as the invoking user on the stand-in's machine. Each is one sequential command whose answer is asserted on before the next is issued; there is no typed client of launchd or of these tools for Python, and nothing concurrent for an async one to win."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def _launchctl("
 reason = "The boundary is launchd's own command-line tool, `launchctl`, driven as an operator drives it — under `sudo` against the host's launchd, or as the stand-in on a host with none — one command at a time, each answer asserted on before the next is issued and `launchctl print` read line by line. There is no typed client of launchd for Python, and nothing here to overlap."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "def _sc("
-reason = "The boundary is the service control manager's own command-line tool, `sc.exe`, driven as an operator drives it, one command at a time with each answer asserted on before the next; its listings are read field by field. There is no typed client of the manager for Python to adopt and nothing here to overlap."
+site = "def _run("
+reason = "The boundary is the Windows service control manager's own tools — `sc.exe`, the committed PowerShell installer, `Set-Service`, `Get-CimInstance` and `taskkill.exe` — driven from the elevated shell an operator runs the pair in, one command at a time with each answer asserted on before the next; `sc.exe`'s listings are read field by field. This is the adapter's one seam for all of them. There is no typed client of the manager for Python to adopt and nothing here to overlap."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"

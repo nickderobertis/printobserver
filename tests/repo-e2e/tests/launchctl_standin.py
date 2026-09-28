@@ -147,12 +147,29 @@ def _record_path(label: str) -> Path:
     return _state() / f"{label}.json"
 
 
+def _record(document: object) -> Record | None:
+    """A job's record as its supervisor wrote it, or `None` where it is not one."""
+    if not isinstance(document, dict):
+        return None
+    path, program = document.get("path"), document.get("program")
+    supervisor, pid, runs = document.get("supervisor"), document.get("pid"), document.get("runs")
+    code, killed = document.get("last_exit_code"), document.get("last_signal")
+    if not isinstance(path, str) or not isinstance(program, str):
+        return None
+    if not isinstance(supervisor, int) or not isinstance(runs, int):
+        return None
+    if not isinstance(pid, int | None) or not isinstance(code, int | None):
+        return None
+    if not isinstance(killed, str | None) or supervisor <= 0 or (pid is not None and pid <= 0):
+        return None
+    return Record(path, program, supervisor, pid, runs, code, killed)
+
+
 def _read_record(label: str) -> Record | None:
     """A loaded job's record, or `None` where no live supervisor holds one."""
     try:
-        document = json.loads(_record_path(label).read_text(encoding="utf-8"))
-        record = Record(**document) if isinstance(document, dict) else None
-    except OSError, ValueError, TypeError:  # the 3.14 form (PEP 758); ruff format writes it
+        record = _record(json.loads(_record_path(label).read_text(encoding="utf-8")))
+    except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
     if record is None or not _alive(record.supervisor):
         return None
@@ -172,7 +189,9 @@ def _disabled() -> list[str]:
         listed = json.loads((_state() / DISABLED).read_text(encoding="utf-8"))
     except OSError, ValueError:
         return []
-    return [str(label) for label in listed] if isinstance(listed, list) else []
+    if not isinstance(listed, list):
+        return []
+    return [label for label in listed if isinstance(label, str) and _label_of(f"{DOMAIN}/{label}")]
 
 
 def _alive(pid: int) -> bool:
@@ -276,14 +295,25 @@ def _print_disabled(arguments: list[str]) -> int:
     return 0
 
 
-def _disable(arguments: list[str]) -> int:
+def _switch(arguments: list[str], *, off: bool, verb: str) -> int:
+    """Add a service to the disabled set, or take it out."""
     label = _label_of(arguments[0]) if len(arguments) == 1 else None
     if label is None:
-        _say(sys.stderr, "Usage: launchctl disable <service-target>")
+        _say(sys.stderr, f"Usage: launchctl {verb} <service-target>")
         return USAGE
-    labels = [*_disabled(), label] if label not in _disabled() else _disabled()
+    labels = [listed for listed in _disabled() if listed != label]
+    if off:
+        labels.append(label)
     (_state() / DISABLED).write_text(json.dumps(labels), encoding="utf-8")
     return 0
+
+
+def _disable(arguments: list[str]) -> int:
+    return _switch(arguments, off=True, verb="disable")
+
+
+def _enable(arguments: list[str]) -> int:
+    return _switch(arguments, off=False, verb="enable")
 
 
 def _signal(named: str) -> signal.Signals | None:
@@ -358,8 +388,11 @@ def _drain(stream: IO[str], log: Path | None) -> None:
 
 def _supervise(given: str, resolved: Path) -> int:
     """Be launchd for one job until it is booted out."""
-    job = _load(resolved)
+    job = _load(resolved) if _beneath_root(given) == resolved else None
     if job is None:
+        _say(
+            sys.stderr, f"launchctl stand-in: {resolved} is not {given} beneath the machine's root"
+        )
         return INPUT_OUTPUT_ERROR
     stopping = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopping.set())
@@ -406,6 +439,7 @@ VERBS = {
     "bootstrap": _bootstrap,
     "bootout": _bootout,
     "disable": _disable,
+    "enable": _enable,
     "print": _print,
     "print-disabled": _print_disabled,
     "kill": _kill,
