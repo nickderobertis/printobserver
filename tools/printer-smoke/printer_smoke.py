@@ -349,11 +349,8 @@ class Smoke:
         Returns:
             The exit it earned, the document it printed and everything it said.
         """
-        program = (
-            [sys.executable, self.program] if Path(self.program).suffix == ".py" else [self.program]
-        )
         argv = [
-            *program,
+            self.program,
             command,
             "--print-id",
             self.print_id,
@@ -828,9 +825,7 @@ def _action_ids(events: Sequence[object], kind: str) -> set[str]:
 
 def _command_present(smoke: Smoke) -> str | None:
     """The program this smoke drives is on this host."""
-    program = Path(smoke.program)
-    python_script = program.suffix.casefold() == ".py" and program.is_file()
-    if not python_script and shutil.which(smoke.program) is None:
+    if shutil.which(smoke.program) is None:
         return (
             f"`{smoke.program}` is not on PATH: install this stack's own command, or name "
             f"another with {PROGRAM_ENV}"

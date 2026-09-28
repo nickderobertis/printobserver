@@ -14,21 +14,24 @@ pseudo-terminal, and there the device is the null device — see
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
-from relay import RelayState
+from relay import AFTER, ARMED_BY, HANG_ON, STATE, RelayState
+from relay import PROGRAM as RELAYED_PROGRAM
 from repo_checks import platforms
 from repo_checks.expect import truth
 from repo_checks.model import Repo
@@ -37,6 +40,14 @@ from repo_checks.shell import run, start
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
 RELAY = Path(__file__).resolve().parent / "relay.py"
+RELAY_CLIENT_SOURCE = Path(__file__).resolve().parent / "relay_client.rs"
+
+#: The variable naming where a relay listens, which its client reads.
+RELAY_ADDRESS = "SMOKE_RELAY_ADDRESS"
+
+#: How long a relay is given to say where it listens, and then to stop.
+RELAY_START_S = 60.0
+RELAY_STOP_S = 30.0
 
 #: The device a Windows host names for the smoke: its null device, which the
 #: system's device table carries on every Windows machine.
@@ -55,19 +66,39 @@ def built_program() -> Path:
 
 PROGRAM = built_program()
 
+
+def relay_client() -> Path:
+    """Where the relay's client is compiled to, which the smoke runs in front of a relay.
+
+    It sits in the build directory beside the program, named the way this host
+    names a program, and after the source it was compiled from: two suites
+    compiling at once then produce the same file rather than racing to write
+    one, and a source that changed is never answered by a stale build.
+    """
+    digest = hashlib.sha256(RELAY_CLIENT_SOURCE.read_bytes()).hexdigest()[:16]
+    return REPO_ROOT / "target" / "printer-smoke" / f"relay-client-{digest}{PROGRAM.suffix}"
+
+
+RELAY_CLIENT = relay_client()
+
 #: What the smoke asks a machine for, and how long this harness lets it wait.
 #: A socket answers at once, so a run against one needs no minute of patience.
 SETTLE_S = "4"
 DURATION_S = "1"
 
-#: The bound a relayed command is given. A command that answers needs a Python
-#: relay started, the program run and the machine asked — well under a second
-#: on an idle host, and almost all of it the interpreter's own start-up, which
-#: is what a loaded host stretches: two seconds on a runner building the
-#: workspace beside this suite, and once past five on a host at four times its
-#: cores. A bound that stops a command meant to answer is a hang the test did
-#: not ask for, and every hang the test did ask for costs the whole bound.
-RELAY_BOUND_S = "10"
+#: The bound a relayed command is given. A command that answers needs the relay's
+#: compiled client started, one loopback round trip to the relay, the program
+#: run and the machine asked; the relay's own interpreter is started once per
+#: world, before the smoke is, and no command pays for it.
+#:
+#: The rule: ten times the slowest ordinary relayed command measured under
+#: parallel load, rounded up to a whole second. Measured on 2026-09-28 on a
+#: 20-core Linux x86_64 host whose load average was 38 to 58 from other work,
+#: running four copies of this whole suite at once: 520 relayed commands that
+#: answered, median 0.041s, 99th percentile 0.140s, slowest 0.178s — so 2s.
+#: A bound that stops a command meant to answer is a hang the test did not ask
+#: for, and every hang the test did ask for costs the whole bound.
+RELAY_BOUND_S = "2"
 
 #: The manifest the print carries, which is one for the smoke's own payload.
 MANIFEST: dict[str, Any] = {
@@ -98,6 +129,93 @@ def build_the_program() -> Path:
     return PROGRAM
 
 
+def build_the_relay_client() -> Path:
+    """Compile the relay's client, and answer where it is.
+
+    It is one file of the standard library alone, so it is compiled by `rustc`
+    directly — with the toolchain this workspace pins — rather than made a crate
+    of the workspace: it is a test's instrument, not something this repository
+    ships.
+
+    Returns:
+        The compiled client.
+
+    Raises:
+        RuntimeError: If it could not be compiled, with everything rustc said.
+    """
+    if RELAY_CLIENT.is_file():
+        return RELAY_CLIENT
+    RELAY_CLIENT.parent.mkdir(parents=True, exist_ok=True)
+    # Compiled in a directory of this build's own and moved into place whole,
+    # so a suite running beside this one never sees a part-written client.
+    with tempfile.TemporaryDirectory(dir=RELAY_CLIENT.parent) as building:
+        compiled = Path(building) / RELAY_CLIENT.name
+        built = run(
+            [
+                "rustc",
+                "--edition",
+                "2021",
+                "-C",
+                "opt-level=2",
+                "-o",
+                str(compiled),
+                str(RELAY_CLIENT_SOURCE),
+            ],
+            cwd=REPO_ROOT,
+            timeout=600,
+        )
+        if built.returncode != 0 or not compiled.is_file():
+            message = f"the relay's client could not be compiled:\n{built.stderr}"
+            raise RuntimeError(message)
+        if not RELAY_CLIENT.is_file():
+            compiled.replace(RELAY_CLIENT)
+    return RELAY_CLIENT
+
+
+@dataclass
+class RelayProcess:
+    """One running relay: the process, and the address its client reaches it at."""
+
+    process: subprocess.Popen[str]
+    address: str
+
+    @classmethod
+    def start(cls, environment: dict[str, str]) -> RelayProcess:
+        """Start a relay under `environment`, and answer it once it is listening.
+
+        Args:
+            environment: What it runs under, which says what it relays and
+                hangs, and which every program it runs inherits.
+
+        Returns:
+            The relay, listening.
+
+        Raises:
+            RuntimeError: If it stopped before saying where it listens, with
+                everything it said.
+        """
+        process = start([sys.executable, str(RELAY)], cwd=REPO_ROOT, env=environment)
+        address = process.stdout.readline().strip() if process.stdout else ""
+        if not address:
+            process.kill()
+            _, said = process.communicate(timeout=RELAY_START_S)
+            message = f"the relay stopped before saying where it listens:\n{said}"
+            raise RuntimeError(message)
+        return cls(process=process, address=address)
+
+    def stop(self) -> None:
+        """Stop it by ending its input, and kill it if that does not.
+
+        Ending its input is how it is asked: that releases every command it
+        holds unanswered and stops every program it started before it exits.
+        """
+        try:
+            self.process.communicate(timeout=RELAY_STOP_S)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.communicate()
+
+
 @dataclass
 class World:
     """One machine the test controls, and the smoke run pointed at it."""
@@ -109,6 +227,14 @@ class World:
     print_id: str
     program: Path
     state_dir: Path
+    relay: RelayProcess | None = field(default=None)
+
+    def stop(self) -> None:
+        """Stop everything this world started: its relay, and its machine."""
+        if self.relay is not None:
+            self.relay.stop()
+            self.relay = None
+        self.substitute.stop()
 
     def environment(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         """The environment a smoke run is started under.
@@ -169,13 +295,21 @@ class World:
         )
 
     def relaying(
-        self, *, hang_on: str, after: int = 0, armed_by: str = "", timeout_s: str = RELAY_BOUND_S
+        self,
+        *,
+        hang_on: str,
+        after: int = 0,
+        armed_by: str = "",
+        timeout_s: str = RELAY_BOUND_S,
+        program: Path | None = None,
     ) -> dict[str, str]:
         """Put a relay in front of the program, which stops answering on one command.
 
         A command that never answers is the failure a controlled machine cannot
         be scripted into — it answers or it does not — so it is made here, by a
         stand-in that passes every invocation through except the ones named.
+        The relay is one process, started here and stopped with this world;
+        what the smoke runs per command is its compiled client.
 
         Args:
             hang_on: The client command it stops answering on.
@@ -187,21 +321,28 @@ class World:
                 may shorten it — but not below what a command that does answer
                 needs on a loaded host, or the bound stops the ones that were
                 meant to answer.
+            program: What the relay passes commands to, or the built program.
 
         Returns:
             What this changes about the environment the smoke runs under.
         """
-        relay = self.root / "printobserver-relay.py"
-        relay.write_text(RELAY.read_text(encoding="utf-8"), encoding="utf-8")
-        relay.chmod(0o755)
+        if self.relay is not None:
+            self.relay.stop()
+        self.relay = RelayProcess.start(
+            self.environment(
+                {
+                    RELAYED_PROGRAM: str(self.program if program is None else program),
+                    HANG_ON: hang_on,
+                    AFTER: str(after),
+                    ARMED_BY: armed_by,
+                    STATE: str(self.relay_state_file),
+                }
+            )
+        )
         return {
-            "PRINTOBSERVER_SMOKE_PROGRAM": str(relay),
+            "PRINTOBSERVER_SMOKE_PROGRAM": str(RELAY_CLIENT),
             "PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S": timeout_s,
-            "SMOKE_RELAY_PROGRAM": str(self.program),
-            "SMOKE_RELAY_HANG_ON": hang_on,
-            "SMOKE_RELAY_AFTER": str(after),
-            "SMOKE_RELAY_ARMED_BY": armed_by,
-            "SMOKE_RELAY_STATE": str(self.relay_state_file),
+            RELAY_ADDRESS: self.relay.address,
         }
 
     @property
@@ -212,9 +353,9 @@ class World:
     def relay_state(self, run: subprocess.CompletedProcess[str]) -> RelayState:
         """What the relay counted over `run`, as the state it left.
 
-        Read after the run rather than trusted: the relay is killed by the
-        smoke's own bound on every command it hangs, so what it left is the
-        evidence that it was let write before it was stopped. A file that holds
+        Read after the run rather than trusted: the smoke's own bound stops
+        every command the relay hangs, so what the relay left is the evidence
+        that it counted the command before the command was stopped. A file that holds
         no state fails naming what it did hold, beside everything the run said,
         rather than failing inside the decoder with neither.
 
