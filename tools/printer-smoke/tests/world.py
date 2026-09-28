@@ -30,7 +30,8 @@ from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
-from relay import AFTER, ARMED_BY, HANG_ON, STATE, RelayState
+from relay import ADDRESS as RELAY_ADDRESS
+from relay import AFTER, ARMED_BY, HANG_ON, LISTEN_ON, STATE, RelayState
 from relay import PROGRAM as RELAYED_PROGRAM
 from repo_checks import platforms
 from repo_checks.expect import truth
@@ -41,9 +42,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
 RELAY = Path(__file__).resolve().parent / "relay.py"
 RELAY_CLIENT_SOURCE = Path(__file__).resolve().parent / "relay_client.rs"
-
-#: The variable naming where a relay listens, which its client reads.
-RELAY_ADDRESS = "SMOKE_RELAY_ADDRESS"
 
 #: How long a relay is given to say where it listens, and then to stop.
 RELAY_START_S = 60.0
@@ -192,17 +190,21 @@ class RelayProcess:
             The relay, listening.
 
         Raises:
-            RuntimeError: If it stopped before saying where it listens, with
-                everything it said.
+            RuntimeError: If its first line is not the loopback address it
+                listens on — it stopped first, or said something else — with
+                that line and everything it said.
         """
         process = start([sys.executable, str(RELAY)], cwd=REPO_ROOT, env=environment)
-        address = process.stdout.readline().strip() if process.stdout else ""
-        if not address:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+        announced = process.stdout.readline().strip() if process.stdout else ""
+        if not _is_loopback_address(announced):
             process.kill()
             _, said = process.communicate(timeout=RELAY_START_S)
-            message = f"the relay stopped before saying where it listens:\n{said}"
+            message = (
+                f"the relay announced {announced!r} rather than where it listens, and said:\n{said}"
+            )
             raise RuntimeError(message)
-        return cls(process=process, address=address)
+        return cls(process=process, address=announced)
 
     def stop(self) -> None:
         """Stop it by ending its input, and kill it if that does not.
@@ -215,6 +217,12 @@ class RelayProcess:
         except subprocess.TimeoutExpired:
             self.process.kill()
             self.process.communicate()
+
+
+def _is_loopback_address(announced: str) -> bool:
+    """Whether `announced` is a port on the loopback host the relay listens on."""
+    host, _, port = announced.rpartition(":")
+    return host == LISTEN_ON[0] and port.isdecimal() and 0 < int(port) < 2**16
 
 
 @dataclass
@@ -329,6 +337,7 @@ class World:
         """
         if self.relay is not None:
             self.relay.stop()
+            self.relay = None
         self.relay = RelayProcess.start(
             self.environment(
                 {

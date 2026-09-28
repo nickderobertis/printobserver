@@ -51,6 +51,11 @@ AFTER = "SMOKE_RELAY_AFTER"
 ARMED_BY = "SMOKE_RELAY_ARMED_BY"
 STATE = "SMOKE_RELAY_STATE"
 
+#: The variable naming where a relay listens, as `host:port`, which its client
+#: reads. `relay_client.rs` spells it too, and `test_relay.py` holds the two to
+#: one name.
+ADDRESS = "SMOKE_RELAY_ADDRESS"
+
 #: What the relay sets in the environment of every program it runs: its own
 #: process id, so a program can say which relay it was run by.
 SERVED_BY = "SMOKE_RELAY_SERVED_BY"
@@ -171,17 +176,28 @@ class Relay:
 
     @classmethod
     def from_environment(cls) -> Relay:
-        """The relay the environment this process was started under describes."""
+        """The relay the environment this process was started under describes.
+
+        Raises:
+            ValueError: If `SMOKE_RELAY_AFTER` is not a count of commands.
+        """
+        after = os.environ.get(AFTER, "0")
+        if not after.isdecimal():
+            message = f"{AFTER} is {after!r}, which is not a count of commands"
+            raise ValueError(message)
         return cls(
             program=os.environ[PROGRAM],
             hang_on=os.environ.get(HANG_ON, ""),
-            after=int(os.environ.get(AFTER, "0")),
+            after=int(after),
             armed_by=os.environ.get(ARMED_BY, ""),
             state_file=Path(os.environ[STATE]),
         )
 
-    def hangs(self, argv: list[str]) -> bool:
-        """Count one command, and answer whether it is one never to answer.
+    def count_and_hold(self, argv: list[str]) -> bool:
+        """Count one command in the state file, and answer whether to hold it unanswered.
+
+        Counting the selected command and arming on the arming one are written
+        to the state file as they happen, whatever is answered.
 
         Args:
             argv: The arguments the smoke ran the program with.
@@ -213,7 +229,7 @@ class Relay:
                     _frame(connection).decode("utf-8")
                     for _ in range(_length(connection, most=MOST_ARGUMENTS))
                 ]
-                hanging = self.hangs(argv)
+                hanging = self.count_and_hold(argv)
             except ValueError as error:
                 Reply.refusing(error).send(connection)
                 return
@@ -342,9 +358,16 @@ def main() -> int:
     """Listen, answer commands until this process's input ends, and stop.
 
     Returns:
-        Zero, once every command held and every program started has been stopped.
+        Zero, once every command held and every program started has been
+        stopped; two, having listened on nothing, when the environment does not
+        describe a relay.
     """
-    relay = Relay.from_environment()
+    try:
+        relay = Relay.from_environment()
+    except ValueError as error:
+        sys.stderr.write(f"{error}\n")
+        return 2
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     listener = socket.create_server(LISTEN_ON)
     host, port = listener.getsockname()[:2]
     sys.stdout.write(f"{host}:{port}\n")

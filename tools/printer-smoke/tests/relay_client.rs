@@ -15,7 +15,9 @@
 //! * from the relay: the exit status (`i32`), then standard output and
 //!   standard error as one frame each.
 //!
-//! A frame is a `u32` length followed by that many bytes.
+//! A frame is a `u32` length followed by that many bytes. `relay.py` is the
+//! other half of this wire, and every test in `test_relay.py` drives this
+//! client against it, so the two cannot drift apart without one failing.
 
 use std::env;
 use std::io::{self, Read, Write};
@@ -23,10 +25,12 @@ use std::net::TcpStream;
 use std::process;
 use std::thread;
 
-/// The variable naming where the relay listens, as `host:port`.
+/// The variable naming where the relay listens, as `host:port`: `relay.py`'s
+/// `ADDRESS`, which `test_relay.py` holds this to.
 const ADDRESS: &str = "SMOKE_RELAY_ADDRESS";
 
 /// The exit of a command the relay never answered: none of the program's own.
+// llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
 const UNANSWERED: i32 = 70;
 
 /// The most bytes one frame from the relay may carry: far beyond any answer
@@ -51,10 +55,16 @@ fn relay() -> io::Result<i32> {
     let mut stream = TcpStream::connect(&address)?;
     stream.set_nodelay(true)?;
 
-    let arguments: Vec<String> = env::args_os()
+    // Refused rather than converted: a lossy conversion would run the program
+    // with arguments the smoke never gave it.
+    let arguments = env::args_os()
         .skip(1)
-        .map(|argument| argument.to_string_lossy().into_owned())
-        .collect();
+        .map(|argument| {
+            argument.into_string().map_err(|argument| {
+                io::Error::other(format!("the argument {argument:?} is not UTF-8"))
+            })
+        })
+        .collect::<io::Result<Vec<String>>>()?;
     let mut header = Vec::new();
     header.extend_from_slice(&length(arguments.len())?.to_be_bytes());
     for argument in &arguments {

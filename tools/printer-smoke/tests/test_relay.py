@@ -13,40 +13,41 @@ staging file an interrupted write got as far as.
 
 Every relay here is started through `World`, the way the suite starts one, and
 driven through its client, the way the smoke drives it, in front of a program
-that is the interpreter itself told what to answer.
+that is the interpreter itself told what to answer. So every test here is also
+the drift check between the relay's two halves: `relay.py` and
+`relay_client.rs` each write their own side of one wire, and a change to either
+that the other did not follow fails here.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import socket
 import subprocess
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-from relay import SERVED_BY, STAGING_SUFFIX, RelayState
+import pytest
+from relay import ADDRESS, AFTER, LISTEN_ON, SERVED_BY, STAGING_SUFFIX, RelayState
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
-from repo_checks.shell import run, start
-from world import RELAY_CLIENT, REPO_ROOT, World
+from repo_checks.shell import PROGRAM_NOT_FOUND, run, start
+from world import RELAY_CLIENT, RELAY_CLIENT_SOURCE, REPO_ROOT, World
 
 #: The command the relay is told to count. It is never given reason to hang.
 COUNTED = "set-feedrate-factor"
 
-#: What the program answers: the arguments the relay ran it with.
 ECHO = "import json, sys; print(json.dumps(sys.argv[1:]))"
 
-#: What the program answers: the process id of the relay that ran it.
 SERVED = f"import os; print(os.environ[{SERVED_BY!r}])"
 
-#: A program that answers with every stream and an exit of its own, and echoes
-#: what it was fed.
 ANSWERING = (
     "import sys; sys.stdout.write('fed ' + sys.stdin.read()); "
     "sys.stderr.write('said on stderr'); sys.exit(3)"
 )
 
-#: A program that never ends, and says it is still running by rewriting a file.
 HEARTBEAT = (
     "import sys, time\n"
     "from pathlib import Path\n"
@@ -57,12 +58,16 @@ HEARTBEAT = (
     "    time.sleep(0.05)\n"
 )
 
-#: How long a test here waits for something the relay is doing to show.
 SETTLE_S = 30.0
 
 
 def relayed(
-    world: World, *, hang_on: str = COUNTED, after: int = 99, armed_by: str = ""
+    world: World,
+    *,
+    hang_on: str = COUNTED,
+    after: int = 99,
+    armed_by: str = "",
+    program: Path = Path(sys.executable),
 ) -> dict[str, str]:
     """Start `world`'s relay in front of the interpreter, and answer the environment it needs.
 
@@ -71,14 +76,13 @@ def relayed(
         hang_on: The command it hangs.
         after: How many of that command it answers first.
         armed_by: The command that arms the hang.
+        program: What it passes commands to.
 
     Returns:
         The environment its client is run under, as the smoke's commands are.
     """
     return world.environment(
-        world.relaying(
-            hang_on=hang_on, after=after, armed_by=armed_by, program=Path(sys.executable)
-        )
+        world.relaying(hang_on=hang_on, after=after, armed_by=armed_by, program=program)
     )
 
 
@@ -98,6 +102,13 @@ def relay(
     return run(
         [str(RELAY_CLIENT), *arguments], cwd=REPO_ROOT, env=environment, timeout=60, stdin=stdin
     )
+
+
+def a_closed_address() -> str:
+    """A loopback address nothing listens on: a port the system handed out, then let go."""
+    with socket.create_server(LISTEN_ON) as listener:
+        host, port = listener.getsockname()[:2]
+    return f"{host}:{port}"
 
 
 def until(condition: Callable[[], bool], *, describing: str) -> None:
@@ -257,4 +268,70 @@ def test_stopping_the_world_leaves_nothing_the_relay_started_running(
         beating.read_text(encoding="utf-8"),
         last,
         describing="the program's heartbeat, which a program the relay left running would go on",
+    )
+
+
+def test_a_program_that_is_not_there_is_answered_as_one(world: World, tmp_path: Path) -> None:
+    """The relay answers a program it cannot start as the smoke's own runner does: not found."""
+    environment = relayed(world, program=tmp_path / "no-such-printobserver")
+
+    answered = relay(environment, "status", "--json")
+
+    equal(answered.returncode, PROGRAM_NOT_FOUND, describing="the exit of a program not found")
+    contains(answered.stderr, "no-such-printobserver", describing="what it said")
+    relay_process = world.relay.process if world.relay else None
+    truth(
+        relay_process is not None and relay_process.poll() is None,
+        describing="the relay to be serving still, after a program it could not start",
+    )
+
+
+@pytest.mark.parametrize("reachable", ["closed", "unnamed"])
+def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) -> None:
+    """A client with no relay to hand its command to exits as unanswered, saying why.
+
+    That is a command that never answered, which is what the smoke's bound
+    reports too, rather than a program exit the smoke would read as an answer.
+    """
+    environment = world.environment()
+    if reachable == "closed":
+        environment[ADDRESS] = a_closed_address()
+    else:
+        environment.pop(ADDRESS, None)
+
+    answered = relay(environment, "status", "--json")
+
+    equal(answered.returncode, 70, describing="the exit of a command the relay never answered")
+    contains(answered.stderr, "the smoke's relay did not answer", describing="what it said")
+    equal(answered.stdout, "", describing="what it printed, which is no answer")
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows arguments are UTF-16, so none is not UTF-8"
+)
+def test_an_argument_that_is_not_utf8_is_refused_rather_than_altered(world: World) -> None:
+    """The client runs nothing with an argument it would have to change to send."""
+    environment = relayed(world)
+
+    answered = relay(environment, "-c", ECHO, os.fsdecode(b"\xffstatus"))
+
+    equal(answered.returncode, 70, describing="the exit of a command the relay never answered")
+    contains(answered.stderr, "is not UTF-8", describing="what it said")
+    equal(answered.stdout, "", describing="what the program printed, which never ran")
+
+
+def test_a_relay_the_environment_does_not_describe_is_refused_by_the_world(world: World) -> None:
+    """A relay that cannot start says why, and the world raises that rather than a bare wait."""
+    with pytest.raises(RuntimeError, match=f"{AFTER} is '-1', which is not a count of commands"):
+        world.relaying(hang_on=COUNTED, after=-1)
+
+    equal(world.relay, None, describing="the relay the world holds after one failed to start")
+
+
+def test_the_client_reads_the_address_the_relay_names() -> None:
+    """The variable naming where the relay listens is spelled once, and the client follows it."""
+    contains(
+        RELAY_CLIENT_SOURCE.read_text(encoding="utf-8"),
+        f'const ADDRESS: &str = "{ADDRESS}";',
+        describing="the relay's client, which must read the variable the relay's world sets",
     )
