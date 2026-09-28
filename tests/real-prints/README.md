@@ -49,6 +49,23 @@ Each directory holds one case:
 - `printobserver-history.json`, where a turn ran: every event printobserver
   recorded for the print, including the agent's requests, its assessment and
   any port failure.
+- `agent-turn.json`, where a turn ran to the end. It is the turn as Claude
+  Code ran it:
+  - the filled turn prompt and the skill's system prompt;
+  - every command in order, with the exact output the agent got back;
+  - each image it opened, named by its `agent-*` file;
+  - the assessment it answered with.
+
+  This is what a mocked CLI replays. It was reduced from Claude Code's
+  transcript and scrubbed of anything identifying. Claude Code's own system
+  prompt and bookkeeping are left out.
+- The G-code OctoPrint printed, and where there is one, the `.clean.gcode`
+  slice before the fault was injected and the script that made the part.
+- `case.json`'s `sources` names the printobserver build each turn ran.
+
+`service-config.toml` is the supervisor's configuration for these prints, with
+its credentials redacted. It holds the safety bounds and what each actor may
+ask for.
 
 Only Buddy camera and Obico frames are kept here. Phone photos of the printer
 were left out.

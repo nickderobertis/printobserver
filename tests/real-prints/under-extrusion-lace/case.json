@@ -34,5 +34,11 @@
     {"file": "05-finished.jpg", "progress_pct": 100.0, "label": "finished with a porous top half"},
     {"file": "crop-03-porous-sheet-p58-61.png", "progress_pct": 61.1, "label": "defect; 2x crops of four frames p58-p61, derived, not a camera frame"}
   ],
+  "sources": {
+    "gcode": "lace-test.gcode is the file OctoPrint printed; lace-test.clean.gcode is the same slice before the flow changes were injected; make_box.py writes the part's STL (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4)",
+    "agent_turn": "none: Obico never alerted",
+    "build": "97ee107 on fix/windows-supervision-turns",
+    "service_config": "../service-config.toml"
+  },
   "obico_scores": "obico-predictions.json"
 }

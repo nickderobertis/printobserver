@@ -47,5 +47,11 @@
     {"file": "agent-look-2-2104.jpg", "event_id": "01a0e5f8-b726-7902-8f36-8c187c0b46a3", "event": "camera_look, waited_s 0, delivered the pausing alert", "label": "defect; paused by Obico"}
   ],
   "agent_images_source": "the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
+  "sources": {
+    "gcode": "spaghetti-two-stage.gcode, the file OctoPrint printed: make_plate.py's plate sliced in PrusaSlicer 2.9.6 (0.20mm BALANCED @COREONE HF0.4, no supports)",
+    "agent_turn": "agent-turn.json: the turn as Claude Code ran it, with the filled prompt, the skill's system prompt, every command with the exact output the agent was given, each image it opened (named by the agent-* file) and its assessment",
+    "build": "97ee107 on fix/windows-supervision-turns; the skill and turn prompt are as of that commit",
+    "service_config": "../service-config.toml"
+  },
   "obico_scores": "obico-predictions.json"
 }

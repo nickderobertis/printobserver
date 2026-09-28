@@ -47,5 +47,11 @@
     {"file": "agent-alert-2-paused-1545.jpg", "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed", "event": "obico_failure_alert, is_warning false, print_paused true", "label": "defect; Obico's alert image with its detection boxes"}
   ],
   "frame_sources": "02-04 are frames of Obico's untagged timelapse and the -obico files of its tagged timelapse: Obico keeps one frame per scored upload, so frame n of either video is row n of obico-predictions.json. 05 is a go2rtc snapshot. The agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
+  "sources": {
+    "gcode": "spaghetti-test.gcode, the file OctoPrint printed, sliced in PrusaSlicer 2.9.6 (0.20mm BALANCED @COREONE HF0.4, no supports)",
+    "agent_turn": "none: both turns failed before Claude Code kept a transcript, so printobserver-history.json's port_failure events are the whole record",
+    "build": "printobserver 0.3.0 as released",
+    "service_config": "../service-config.toml, less the [camera] and [obico] tables and the system actor's resume, which were added later"
+  },
   "obico_scores": "obico-predictions.json"
 }
