@@ -43,7 +43,7 @@ pub const DEADLINE: Duration = Duration::from_secs(180);
 /// A stopped child's stream closes at once. This bounds the one case where it
 /// does not — a process the child started still holding it open — so reading
 /// the rest can never be the unbounded wait this module exists to remove.
-const DRAIN: Duration = Duration::from_secs(10);
+pub const DRAIN: Duration = Duration::from_secs(10);
 
 /// A child's standard error: what the wait has taken off the reading thread,
 /// and the handle it takes the rest through.
@@ -53,7 +53,6 @@ pub struct Stream {
 }
 
 impl Stream {
-    /// Read `child`'s standard error on a thread of its own.
     fn of(child: &mut Child) -> Self {
         let stderr = child
             .stderr
@@ -98,13 +97,11 @@ impl Stream {
     }
 }
 
-/// Why a wait ended without an address.
 enum Why {
-    /// The deadline ran out with the stream still open.
     Deadline,
-    /// The stream closed first, which is a child that exited.
+    /// The stream closed first: the child exited, or closed its standard
+    /// error, before it announced.
     Closed,
-    /// The announcement came, naming something that is not a socket address.
     NoAddress(String),
 }
 
