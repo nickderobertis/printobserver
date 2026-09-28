@@ -109,14 +109,14 @@ fn forward_input(upstream: &mut TcpStream) {
     }
 }
 
-/// Append `bytes` to `into` as one frame.
 fn frame(into: &mut Vec<u8>, bytes: &[u8]) -> io::Result<()> {
     into.extend_from_slice(&length(bytes.len())?.to_be_bytes());
     into.extend_from_slice(bytes);
     Ok(())
 }
 
-/// Read one frame from `stream`.
+/// Read one frame from `stream`, refusing one past `MOST_FRAME_BYTES` before
+/// allocating anything for it.
 fn read_frame(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut size = [0_u8; 4];
     stream.read_exact(&mut size)?;
@@ -131,7 +131,6 @@ fn read_frame(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// A length as the wire carries one.
 fn length(size: usize) -> io::Result<u32> {
     u32::try_from(size).map_err(|_| io::Error::other(format!("{size} bytes is too long to frame")))
 }

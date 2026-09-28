@@ -39,6 +39,7 @@ from relay import (
     AFTER,
     LISTEN_ON,
     MOST_ARGUMENTS,
+    MOST_FRAME_BYTES,
     PROGRAM,
     SERVED_BY,
     STAGING_SUFFIX,
@@ -426,21 +427,34 @@ def test_a_client_sending_more_arguments_than_any_is_refused(world: World) -> No
     )
 
 
-def test_a_relay_answering_more_than_any_answer_is_refused_by_the_client(
-    world: World,
+#: What a relay that misbehaves sends, and what the client says of it.
+BROKEN_REPLIES = {
+    "oversized": (
+        (0).to_bytes(4, "big") + (2**32 - 1).to_bytes(4, "big"),
+        "over the most this takes",
+    ),
+    "truncated": ((0).to_bytes(4, "big"), "the smoke's relay did not answer"),
+}
+
+
+@pytest.mark.parametrize("broken", sorted(BROKEN_REPLIES))
+def test_a_reply_the_client_cannot_read_leaves_the_command_unanswered(
+    world: World, broken: str
 ) -> None:
-    """A reply frame past the most the client takes is not read, and the command is unanswered."""
+    """A reply frame past the most the client takes, or one cut short, is no answer."""
+    reply, said = BROKEN_REPLIES[broken]
     listener = socket.create_server(LISTEN_ON)
     host, port = listener.getsockname()[:2]
 
-    def answer_too_much() -> None:
+    def answer_brokenly() -> None:
         connection, _ = listener.accept()
         with connection:
-            connection.sendall((0).to_bytes(4, "big") + (2**32 - 1).to_bytes(4, "big"))
-            with contextlib.suppress(OSError):
-                received(connection)
+            connection.sendall(reply)
+            if broken == "oversized":
+                with contextlib.suppress(OSError):
+                    received(connection)
 
-    answering = threading.Thread(target=answer_too_much, daemon=True)
+    answering = threading.Thread(target=answer_brokenly, daemon=True)
     answering.start()
     environment = world.environment({ADDRESS: f"{host}:{port}"})
 
@@ -449,7 +463,46 @@ def test_a_relay_answering_more_than_any_answer_is_refused_by_the_client(
     listener.close()
 
     equal(answered.returncode, unanswered_exit(), describing="the client's exit")
-    contains(answered.stderr, "over the most this takes", describing="what the client said")
+    contains(answered.stderr, said, describing="what the client said")
+    equal(answered.stdout, "", describing="what it printed, which is no answer")
+
+
+def test_input_past_the_most_the_relay_takes_stops_the_program_and_is_refused(
+    world: World, tmp_path: Path
+) -> None:
+    """An input frame too long to take kills the program it was for, and the reply says why."""
+    ran = tmp_path / "ran"
+    reading = f"import sys; from pathlib import Path; sys.stdin.read(); Path({str(ran)!r}).touch()"
+    argv = [b"-c", reading.encode()]
+    with connected(relayed(world)) as connection:
+        connection.sendall(
+            len(argv).to_bytes(4, "big")
+            + b"".join(len(argument).to_bytes(4, "big") + argument for argument in argv)
+            + (MOST_FRAME_BYTES + 1).to_bytes(4, "big")
+        )
+        reply = received(connection)
+
+    equal(int.from_bytes(reply[:4], "big", signed=True), 1, describing="the refusal's exit")
+    contains(
+        reply.decode("utf-8", errors="replace"),
+        f"sent a length of {MOST_FRAME_BYTES + 1}, over the most it takes",
+        describing="what the relay said",
+    )
+    equal(ran.exists(), False, describing="whether the program ran on past its input")
+
+
+def test_a_relay_that_will_not_stop_when_asked_is_killed(world: World) -> None:
+    """A relay still running once its stop is overdue is killed rather than waited on."""
+    deaf = start(
+        [sys.executable, "-c", "import time; time.sleep(600)"],
+        cwd=REPO_ROOT,
+        env=world.environment(),
+    )
+    relay_process = RelayProcess(process=deaf, address=f"{LISTEN_ON[0]}:1")
+
+    relay_process.stop(within_s=0.5)
+
+    truth(deaf.poll() is not None, describing="the relay that would not stop to have ended")
 
 
 def test_the_client_s_unanswered_exit_is_none_of_the_program_s_own() -> None:

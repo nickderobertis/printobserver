@@ -44,7 +44,6 @@ SMOKE = REPO_ROOT / "tools" / "printer-smoke" / "printer_smoke.py"
 RELAY = Path(__file__).resolve().parent / "relay.py"
 RELAY_CLIENT_SOURCE = Path(__file__).resolve().parent / "relay_client.rs"
 
-#: How long a relay is given to say where it listens, and then to stop.
 RELAY_START_S = 60.0
 RELAY_STOP_S = 30.0
 
@@ -217,14 +216,14 @@ class RelayProcess:
             raise RuntimeError(message)
         return cls(process=process, address=announced)
 
-    def stop(self) -> None:
-        """Stop it by ending its input, and kill it if that does not.
+    def stop(self, *, within_s: float = RELAY_STOP_S) -> None:
+        """Stop it by ending its input, and kill it if that does not within `within_s`.
 
         Ending its input is how it is asked: that releases every command it
         holds unanswered and stops every program it started before it exits.
         """
         try:
-            self.process.communicate(timeout=RELAY_STOP_S)
+            self.process.communicate(timeout=within_s)
         except subprocess.TimeoutExpired:
             self.process.kill()
             self.process.communicate()

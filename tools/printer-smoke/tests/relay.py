@@ -153,7 +153,7 @@ class Reply:
         return cls(status=1, output=b"", error=f"{reason}\n".encode())
 
     def send(self, connection: socket.socket) -> None:
-        """Send this to the client."""
+        """Send the exit status, then each stream as one frame, as `relay_client.rs` reads them."""
         connection.sendall(
             self.status.to_bytes(4, "big", signed=True)
             + len(self.output).to_bytes(4, "big")
@@ -265,11 +265,16 @@ class Relay:
             return Reply(status=PROGRAM_NOT_FOUND, output=b"", error=f"{error}\n".encode())
         with self.lock:
             self.running.add(process)
+        refused: list[ValueError] = []
         try:
-            threading.Thread(target=_forward_input, args=(connection, process), daemon=True).start()
+            threading.Thread(
+                target=_forward_input, args=(connection, process, refused), daemon=True
+            ).start()
             error = _drain(process.stderr)
             output = _read(_raw(process.stdout))
             status = process.wait()
+            if refused:
+                return Reply.refusing(refused[0])
             return Reply(status=status, output=output, error=error())
         finally:
             with self.lock:
@@ -311,18 +316,27 @@ def _length(connection: socket.socket, *, most: int) -> int:
 
 
 def _frame(connection: socket.socket) -> bytes:
-    """Read one frame off the wire."""
     return _exactly(connection, _length(connection, most=MOST_FRAME_BYTES))
 
 
-def _forward_input(connection: socket.socket, process: subprocess.Popen[str]) -> None:
-    """Feed the program what the client forwards of its input, and close it at the end."""
+def _forward_input(
+    connection: socket.socket, process: subprocess.Popen[str], refused: list[ValueError]
+) -> None:
+    """Feed the program what the client forwards of its input, and close it at the end.
+
+    A frame past the most the relay takes is not input the program may run on:
+    the program is killed, and the refusal is put in `refused` for its reply.
+    """
     sink = _raw(process.stdin)
     try:
         while sink is not None and (chunk := _frame(connection)):
             sink.write(chunk)
             sink.flush()
-    except OSError, ValueError:
+    except ValueError as error:
+        refused.append(error)
+        with contextlib.suppress(OSError):
+            process.kill()
+    except OSError:
         # The client went away, or the program stopped reading: either way
         # there is no more input for it.
         pass
@@ -341,7 +355,6 @@ def _raw(stream: IO[str] | None) -> BinaryIO | None:
 
 
 def _read(stream: BinaryIO | None) -> bytes:
-    """Everything `stream` holds, to its end."""
     return stream.read() if stream is not None else b""
 
 
