@@ -153,15 +153,11 @@ fn a_supervisor_that_never_announces_itself_fails_within_the_deadline() {
     announcing::a_supervisor_that_never_announces_is_stopped_and_reported();
 }
 
-/// A supervisor that exits before announcing itself fails the wait when its
-/// output ends, not at the deadline.
 #[test]
 fn a_supervisor_that_exits_unannounced_fails_when_its_output_ends() {
     announcing::a_supervisor_that_exits_unannounced_is_answered_when_its_output_ends();
 }
 
-/// A supervisor that announces something other than an address fails the
-/// wait, stopped, naming what it announced.
 #[test]
 fn a_supervisor_announcing_no_address_fails_naming_it() {
     announcing::a_supervisor_announcing_no_address_is_stopped_and_reported();

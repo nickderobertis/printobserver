@@ -1687,8 +1687,6 @@ file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "if refusal:"
 reason = "The branch selecting the stand-in's refusal answer, taken only when a journey hands it the forge's refusal text; the ground is the entry at `print(refusal, file=sys.stderr)`. The real `gh` has no such switch, and making github.com refuse to arm a live pull request is not something a test may do."
 
-# --- crates/printobserver/tests/journeys/announcing.rs ------------------------
-
 [[suppression]]
 rule = "tests_assert_real_behavior"
 file = "crates/printobserver/tests/journeys/announcing.rs"

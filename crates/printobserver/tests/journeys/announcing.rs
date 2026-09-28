@@ -92,8 +92,6 @@ pub fn a_supervisor_that_never_announces_is_stopped_and_reported() {
     assert_reported(&said, "the deadline ran out");
 }
 
-/// A supervisor that exits before it says it is serving is answered the moment
-/// its output ends, rather than at the deadline.
 pub fn a_supervisor_that_exits_unannounced_is_answered_when_its_output_ends() {
     let (said, waited, mut child) = unannounced(Behaviour::Exits, STANDS_FOR);
 
@@ -105,8 +103,6 @@ pub fn a_supervisor_that_exits_unannounced_is_answered_when_its_output_ends() {
     assert_reported(&said, "its output ended");
 }
 
-/// A supervisor announcing something that is no address is stopped at once,
-/// and the failure names what it announced.
 pub fn a_supervisor_announcing_no_address_is_stopped_and_reported() {
     let (said, waited, mut child) = unannounced(Behaviour::Misannounces, STANDS_FOR);
 
