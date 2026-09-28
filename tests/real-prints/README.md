@@ -30,8 +30,15 @@ Each directory holds one case:
   - Files ending `-obico` are frames from Obico's tagged timelapse. Obico
     draws its green detection boxes on them when it saw something, and leaves
     them plain when it didn't.
-  - Files named `*alert-image*` are the images Obico's own alerts carried.
-    These are what printobserver received.
+  - Files named `agent-*` are the exact pictures the agent's turn was given,
+    listed in `case.json` under `agent_images` with the event each belongs
+    to:
+    - an Obico alert's image, with Obico's boxes;
+    - the frame a `look` answered.
+
+    They were copied from printobserver's state directory and match the
+    sha256 recorded in `printobserver-history.json`. On Windows only an
+    administrator can read that directory.
   - Files named `crop-*` are enlarged crops made afterwards, not camera
     frames.
 - `obico-predictions.json`, where Obico watched: the detector's score for every

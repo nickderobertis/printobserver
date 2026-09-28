@@ -40,5 +40,12 @@
     {"file": "05-paused-by-obico-p49.jpg", "progress_pct": 49.2, "label": "defect; paused by Obico"},
     {"file": "obico-tagged-paused-p49.jpg", "progress_pct": 49.2, "label": "defect; the frame Obico tagged, with its three detection boxes"}
   ],
+  "agent_images": [
+    {"file": "agent-alert-1-warning-2103.jpg", "event_id": "01a0e5f7-7e0d-7bd0-b2a9-6cfdfbdf9ce0", "event": "obico_failure_alert, is_warning true, print_paused false", "label": "defect; Obico's alert image, three boxes"},
+    {"file": "agent-look-1-2103.jpg", "event_id": "01a0e5f7-d9cc-7193-a1ed-63752d271ce2", "event": "camera_look, waited_s 0", "label": "defect; still printing"},
+    {"file": "agent-alert-2-paused-2103.jpg", "event_id": "01a0e5f8-1d7b-7b03-bfb7-c01d192a6268", "event": "obico_failure_alert, is_warning false, print_paused true; arrived mid-turn and was delivered by the second look", "label": "defect; Obico's alert image with its boxes"},
+    {"file": "agent-look-2-2104.jpg", "event_id": "01a0e5f8-b726-7902-8f36-8c187c0b46a3", "event": "camera_look, waited_s 0, delivered the pausing alert", "label": "defect; paused by Obico"}
+  ],
+  "agent_images_source": "the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
   "obico_scores": "obico-predictions.json"
 }

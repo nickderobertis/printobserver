@@ -40,10 +40,12 @@
     {"file": "03-last-healthy-frame-1544.jpg", "time": "15:44:20", "label": "healthy; the last frame before the slab falls"},
     {"file": "04-nest-forming-1544.jpg", "time": "15:44:52", "label": "defect"},
     {"file": "04-nest-forming-1544-obico.jpg", "time": "15:44:52", "label": "defect; the same frame from Obico's tagged timelapse, three detection boxes"},
-    {"file": "05-obico-warning-alert-image-1545.jpg", "time": "15:45:23", "label": "defect; the image Obico's warning carried, with its detection boxes"},
-    {"file": "06-obico-pause-alert-image-1545.jpg", "time": "15:45:55", "label": "defect; the image Obico's pausing alert carried, with its detection boxes"},
-    {"file": "07-paused-by-obico-1546.jpg", "time": "15:46:13", "label": "defect; paused by Obico, bed lowered"}
+    {"file": "05-paused-by-obico-1546.jpg", "time": "15:46:13", "label": "defect; paused by Obico, bed lowered"}
   ],
-  "frame_sources": "02-04 are frames of Obico's untagged timelapse and the -obico files of its tagged timelapse: Obico keeps one frame per scored upload, so frame n of either video is row n of obico-predictions.json. 05-06 are Obico's own alert images and 07 is a go2rtc snapshot",
+  "agent_images": [
+    {"file": "agent-alert-1-warning-1545.jpg", "event_id": "01a0e4d4-75c7-7cb1-be49-cfae47158f83", "event": "obico_failure_alert, is_warning true, print_paused false", "label": "defect; Obico's alert image with its detection boxes"},
+    {"file": "agent-alert-2-paused-1545.jpg", "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed", "event": "obico_failure_alert, is_warning false, print_paused true", "label": "defect; Obico's alert image with its detection boxes"}
+  ],
+  "frame_sources": "02-04 are frames of Obico's untagged timelapse and the -obico files of its tagged timelapse: Obico keeps one frame per scored upload, so frame n of either video is row n of obico-predictions.json. 05 is a go2rtc snapshot. The agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
   "obico_scores": "obico-predictions.json"
 }

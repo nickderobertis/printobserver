@@ -36,8 +36,13 @@
     "file": "printobserver-history.json",
     "what_it_did": "context, opened the alert image, look --wait-s 30, look --wait-s 60, then acknowledge-failure watch at medium confidence, not escalating",
     "harness_friction": "its first look passed --actor, which look refuses; fixed in the prompt by c056a4a, which was not yet deployed. The quoted config path and the actor document from 34454a9 both worked first time",
-    "looks": "the look images live in the supervisor's state directory and are not kept here; 06 and 07 are the capture frames nearest them (22:41:18 and 22:42:26)"
+    "images": "the agent-* files are the exact pictures the turn was given: the alert's image and the two looks"
   },
+  "agent_images": [
+    {"file": "agent-alert-warning-2240.jpg", "event_id": "01a0e650-820a-72a3-be40-f85f5b2d2c41", "event": "obico_failure_alert, is_warning true, print_paused false", "label": "defect, static; Obico's alert image, two boxes"},
+    {"file": "agent-look-1-2241.jpg", "event_id": "01a0e651-3951-7b41-a388-2f04468974e6", "event": "camera_look, waited_s 30", "label": "defect, static; the large block printing cleanly"},
+    {"file": "agent-look-2-2242.jpg", "event_id": "01a0e652-44ea-7e53-b0c0-4036cda60729", "event": "camera_look, waited_s 60", "label": "defect, static; unchanged from the first look"}
+  ],
   "frames": [
     {"file": "01-first-layer-p01.jpg", "progress_pct": 1.5, "label": "healthy"},
     {"file": "02-healthy-before-fault-p31.jpg", "progress_pct": 30.7, "label": "healthy"},
@@ -45,13 +50,12 @@
     {"file": "04-nest-on-small-block-p41.jpg", "progress_pct": 41.4, "label": "defect"},
     {"file": "04-nest-on-small-block-p40-obico.jpg", "time": "22:38:05", "label": "defect; Obico's tagged frame, two boxes (frame score 0.70)"},
     {"file": "05-at-obico-warning-p51.jpg", "progress_pct": 50.7, "label": "defect, static"},
-    {"file": "05-obico-warning-alert-image-p51.jpg", "time": "22:40:31", "label": "defect; the image Obico's warning carried, two boxes"},
-    {"file": "06-near-agent-look-1-p53.jpg", "progress_pct": 52.5, "label": "defect, static"},
+    {"file": "06-debris-static-p53.jpg", "progress_pct": 52.5, "label": "defect, static"},
     {"file": "07-obico-peak-score-p55-obico.jpg", "time": "22:42:06", "label": "defect, static; Obico's highest smoothed score"},
-    {"file": "07-near-agent-look-2-p56.jpg", "progress_pct": 56.1, "label": "defect, static"},
+    {"file": "07-debris-static-p56.jpg", "progress_pct": 56.1, "label": "defect, static"},
     {"file": "08-debris-unchanged-large-block-clean-p67-obico.jpg", "time": "22:46:42", "label": "defect, static; Obico's highest frame score (0.77)"},
     {"file": "09-large-block-clean-p76.jpg", "progress_pct": 75.8, "label": "defect, static; the large block is sound"}
   ],
-  "frame_sources": "numbered frames with a progress are go2rtc captures every 20 s; the -obico files are frames of Obico's tagged timelapse (frame n is row n of obico-predictions.json); 05-obico-warning-alert-image is Obico's own alert image",
+  "frame_sources": "numbered frames with a progress are go2rtc captures every 20 s; the -obico files are frames of Obico's tagged timelapse (frame n is row n of obico-predictions.json); the agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
   "obico_scores": "obico-predictions.json, the whole print: 1401 rows from 22:20 to its end at 04:14 the next morning"
 }
