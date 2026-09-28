@@ -92,10 +92,10 @@ DURATION_S = "1"
 #: world, before the smoke is, and no command pays for it.
 #:
 #: The rule: ten times the slowest ordinary relayed command measured under
-#: parallel load, rounded up to a whole second. Measured on 2026-09-28 on a
-#: 20-core Linux x86_64 host whose load average was 38 to 58 from other work,
-#: running four copies of this whole suite at once: 520 relayed commands that
-#: answered, median 0.041s, 99th percentile 0.140s, slowest 0.178s — so 2s.
+#: parallel load, rounded up to a whole second. The measurement it was taken
+#: from: four copies of this whole suite at once on a 20-core Linux host
+#: already loaded to between 38 and 58, over 520 relayed commands that
+#: answered — median 0.041s, 99th percentile 0.140s, slowest 0.178s. So 2s.
 #: A bound that stops a command meant to answer is a hang the test did not ask
 #: for, and every hang the test did ask for costs the whole bound.
 RELAY_BOUND_S = "2"

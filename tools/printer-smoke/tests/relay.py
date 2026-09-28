@@ -58,6 +58,11 @@ SERVED_BY = "SMOKE_RELAY_SERVED_BY"
 #: Where the relay listens: loopback, on a port the system chooses.
 LISTEN_ON = ("127.0.0.1", 0)
 
+#: The most arguments one command may carry, and the most bytes one frame may:
+#: far beyond anything the smoke sends, and short of what would exhaust a host.
+MOST_ARGUMENTS = 1024
+MOST_FRAME_BYTES = 16 * 1024 * 1024
+
 #: Where a state is written before it is moved over the file: beside it, so
 #: that the move is within one directory and the platform does it as one step.
 STAGING_SUFFIX = ".next"
@@ -127,6 +132,30 @@ class RelayState:
         staging.replace(state_file)
 
 
+@dataclass(frozen=True)
+class Reply:
+    """What the client is answered with: the program's exit status and both of its streams."""
+
+    status: int
+    output: bytes
+    error: bytes
+
+    @classmethod
+    def refusing(cls, reason: object) -> Reply:
+        """A reply refusing the command, saying why on its error stream."""
+        return cls(status=1, output=b"", error=f"{reason}\n".encode())
+
+    def send(self, connection: socket.socket) -> None:
+        """Send this to the client."""
+        connection.sendall(
+            self.status.to_bytes(4, "big", signed=True)
+            + len(self.output).to_bytes(4, "big")
+            + self.output
+            + len(self.error).to_bytes(4, "big")
+            + self.error
+        )
+
+
 @dataclass
 class Relay:
     """One relay: what it passes commands to, what it hangs, and what it has started."""
@@ -179,20 +208,23 @@ class Relay:
             connection: The client's connection, its arguments already waiting.
         """
         with connection:
-            argv = [_frame(connection).decode("utf-8") for _ in range(_count(connection))]
             try:
+                argv = [
+                    _frame(connection).decode("utf-8")
+                    for _ in range(_length(connection, most=MOST_ARGUMENTS))
+                ]
                 hanging = self.hangs(argv)
             except ValueError as error:
-                _reply(connection, 1, b"", f"{error}\n".encode())
+                Reply.refusing(error).send(connection)
                 return
             if hanging:
                 # Held open, unanswered, until the caller's own bound stops the
                 # client — or until this relay is stopped.
                 self.stopping.wait()
                 return
-            _reply(connection, *self.run(argv, connection))
+            self.run(argv, connection).send(connection)
 
-    def run(self, argv: list[str], connection: socket.socket) -> tuple[int, bytes, bytes]:
+    def run(self, argv: list[str], connection: socket.socket) -> Reply:
         """Run the program with `argv`, fed what the client forwards, and collect its answer.
 
         Args:
@@ -206,7 +238,7 @@ class Relay:
         try:
             process = start([self.program, *argv], env=environment)
         except FileNotFoundError as error:
-            return PROGRAM_NOT_FOUND, b"", f"{error}\n".encode()
+            return Reply(status=PROGRAM_NOT_FOUND, output=b"", error=f"{error}\n".encode())
         with self.lock:
             self.running.add(process)
         try:
@@ -214,7 +246,7 @@ class Relay:
             error = _drain(process.stderr)
             output = _read(_raw(process.stdout))
             status = process.wait()
-            return status, output, error()
+            return Reply(status=status, output=output, error=error())
         finally:
             with self.lock:
                 self.running.discard(process)
@@ -241,25 +273,22 @@ def _exactly(connection: socket.socket, size: int) -> bytes:
     return bytes(received)
 
 
-def _count(connection: socket.socket) -> int:
-    """Read one length off the wire."""
-    return int.from_bytes(_exactly(connection, 4), "big")
+def _length(connection: socket.socket, *, most: int) -> int:
+    """Read one length off the wire.
+
+    Raises:
+        ValueError: If it is more than `most`, which no client of this relay sends.
+    """
+    length = int.from_bytes(_exactly(connection, 4), "big")
+    if length > most:
+        message = f"the relay's client sent a length of {length}, over the most it takes ({most})"
+        raise ValueError(message)
+    return length
 
 
 def _frame(connection: socket.socket) -> bytes:
     """Read one frame off the wire."""
-    return _exactly(connection, _count(connection))
-
-
-def _reply(connection: socket.socket, status: int, output: bytes, error: bytes) -> None:
-    """Send the client its exit status and both of its streams."""
-    connection.sendall(
-        status.to_bytes(4, "big", signed=True)
-        + len(output).to_bytes(4, "big")
-        + output
-        + len(error).to_bytes(4, "big")
-        + error
-    )
+    return _exactly(connection, _length(connection, most=MOST_FRAME_BYTES))
 
 
 def _forward_input(connection: socket.socket, process: subprocess.Popen[str]) -> None:

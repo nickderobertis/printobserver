@@ -29,6 +29,10 @@ const ADDRESS: &str = "SMOKE_RELAY_ADDRESS";
 /// The exit of a command the relay never answered: none of the program's own.
 const UNANSWERED: i32 = 70;
 
+/// The most bytes one frame from the relay may carry: far beyond any answer
+/// the program gives, and short of what would exhaust a host.
+const MOST_FRAME_BYTES: u32 = 64 * 1024 * 1024;
+
 fn main() {
     let code = match relay() {
         Ok(code) => code,
@@ -106,7 +110,13 @@ fn frame(into: &mut Vec<u8>, bytes: &[u8]) -> io::Result<()> {
 fn read_frame(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut size = [0_u8; 4];
     stream.read_exact(&mut size)?;
-    let mut bytes = vec![0_u8; u32::from_be_bytes(size) as usize];
+    let size = u32::from_be_bytes(size);
+    if size > MOST_FRAME_BYTES {
+        return Err(io::Error::other(format!(
+            "the relay sent a frame of {size} bytes, over the most this takes ({MOST_FRAME_BYTES})"
+        )));
+    }
+    let mut bytes = vec![0_u8; size as usize];
     stream.read_exact(&mut bytes)?;
     Ok(bytes)
 }
