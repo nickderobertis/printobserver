@@ -1055,13 +1055,11 @@ matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
 
-The record is what the committed workflows report, and it can move ahead of the
-live protection, which a person applies. The integration job's five
-platform-qualified contexts below are that case: the swap onto them is pending
-(issue #95), and until it is applied `main`'s protection still requires the
-runner-qualified contexts the job reported before, `integration (<platform>,
-<runner>)`, which nothing reports any more. So the protection swap and the merge
-that renames the job belong to one window.
+The record names the contexts the committed workflows report, which is not
+always what the live protection requires: a person applies that. A change that
+renames a required context lands with its protection swap still pending — the
+protection goes on requiring the old names, which nothing reports any more — so
+the swap and the merge of that change belong to one window.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
