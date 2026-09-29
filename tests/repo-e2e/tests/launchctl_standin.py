@@ -257,15 +257,24 @@ def _write_record(label: str, record: Record) -> None:
     written.replace(_record_path(label))
 
 
-def _disabled() -> list[str]:
-    """Every label switched off in the system domain."""
+def _disabled() -> list[str] | None:
+    """Every label switched off in the system domain, or `None` where the record is corrupt.
+
+    No record is nothing switched off; one that is not a list of labels is not
+    read as that, since it would report a switched-off service as enabled.
+    """
+    record = _state() / DISABLED
+    if not record.exists():
+        return []
     try:
-        listed = json.loads((_state() / DISABLED).read_text(encoding="utf-8"))
+        listed = json.loads(record.read_text(encoding="utf-8"))
     except OSError, ValueError:
-        return []
-    if not isinstance(listed, list):
-        return []
-    return [label for label in listed if isinstance(label, str) and _label_of(f"{DOMAIN}/{label}")]
+        return None
+    if not isinstance(listed, list) or not all(
+        isinstance(label, str) and _label_of(f"{DOMAIN}/{label}") for label in listed
+    ):
+        return None
+    return [str(label) for label in listed]
 
 
 def _exists(pid: int) -> bool:
@@ -395,7 +404,11 @@ def _print_disabled(arguments: list[str]) -> int:
     if arguments != [DOMAIN]:
         _say(sys.stderr, "Usage: launchctl print-disabled <domain-target>")
         return USAGE
-    listed = "".join(f'\t"{label}" => disabled\n' for label in _disabled())
+    disabled = _disabled()
+    if disabled is None:
+        _say(sys.stderr, f"Could not print disabled services: {INPUT_OUTPUT_ERROR}: I/O error")
+        return INPUT_OUTPUT_ERROR
+    listed = "".join(f'\t"{label}" => disabled\n' for label in disabled)
     _say(sys.stdout, f"disabled services = {{\n{listed}}}")
     return 0
 
@@ -406,7 +419,11 @@ def _switch(arguments: list[str], *, off: bool, verb: str) -> int:
     if label is None:
         _say(sys.stderr, f"Usage: launchctl {verb} <service-target>")
         return USAGE
-    labels = [listed for listed in _disabled() if listed != label]
+    disabled = _disabled()
+    if disabled is None:
+        _say(sys.stderr, f"Could not {verb} service: {INPUT_OUTPUT_ERROR}: I/O error")
+        return INPUT_OUTPUT_ERROR
+    labels = [listed for listed in disabled if listed != label]
     if off:
         labels.append(label)
     (_state() / DISABLED).write_text(json.dumps(labels), encoding="utf-8")
@@ -507,6 +524,10 @@ def _supervise(given: str, resolved: Path) -> int:
         _say(
             sys.stderr, f"launchctl stand-in: {resolved} is not {given} beneath the machine's root"
         )
+        return INPUT_OUTPUT_ERROR
+    # The same refusal as `bootstrap`'s, since this is the path that starts the job.
+    if job.user != getpass.getuser():
+        _say(sys.stderr, f"launchctl stand-in: {given} runs as {job.user}, not as this user")
         return INPUT_OUTPUT_ERROR
     stopping = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopping.set())

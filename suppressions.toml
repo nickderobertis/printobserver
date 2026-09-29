@@ -1198,6 +1198,12 @@ reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "return shell_run([\"launchctl\", *arguments], timeout=60)"
+reason = "The seam through which a test asks the launchctl stand-in one thing directly, as an operator types `launchctl` — here a `bootstrap` it must refuse, then a `print` and a `bootout` — one command at a time, each answer asserted on before the next is issued. There is no typed client of launchd for Python, and nothing concurrent for an async one to win."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "ran = shell_run(case, cwd=REPO_ROOT"
 reason = "What this test proves is how the journey itself ends when a prerequisite is missing — failed under the gate's own setting, skipped without it — and the only way to observe a pytest outcome is to run pytest, as the gate does, and read what it reports. Two sequential runs of one case, each asserted on before the next; there is no typed client of pytest's outcome for an async one to replace."
 

@@ -1480,6 +1480,12 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
             contains(said, fragment, describing=f"how the case ended:\n{said}")
 
 
+def _stand_in_launchctl(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """One `launchctl` command, answered by the stand-in `_stand_in_launchd` put on `PATH`."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    return shell_run(["launchctl", *arguments], timeout=60)
+
+
 @pytest.mark.skipif(
     "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
 )
@@ -1506,19 +1512,56 @@ def test_the_launchctl_stand_in_refuses_a_relative_property_list_path(
             handle,
         )
 
-    refused = shell_run(["launchctl", "bootstrap", "system", relative], timeout=60)
+    refused = _stand_in_launchctl("bootstrap", "system", relative)
 
     try:
         equal(refused.returncode, launchctl_standin.USAGE, describing=_said(refused))
         contains(_said(refused), f"{relative} is not an absolute path", describing="the refusal")
-        printed = shell_run(["launchctl", "print", f"system/{label}"], timeout=60)
+        printed = _stand_in_launchctl("print", f"system/{label}")
         equal(
             printed.returncode,
             launchctl_standin.NOT_FOUND,
             describing=f"the stand-in to have loaded nothing:\n{_said(printed)}",
         )
     finally:
-        shell_run(["launchctl", "bootout", f"system/{label}"], timeout=60)
+        _stand_in_launchctl("bootout", f"system/{label}")
+
+
+@pytest.mark.skipif(
+    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
+)
+def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A disabled record it cannot read, and a job naming another user, are refused, not guessed.
+
+    A corrupt record read as empty would report a switched-off service as one
+    launchd starts; a job for another user started through `--supervise` would
+    skip the refusal `bootstrap` makes.
+    """
+    stand_in = _stand_in_launchd(tmp_path, monkeypatch)
+    stand_in.state.mkdir()
+    (stand_in.state / launchctl_standin.DISABLED).write_text('{"not": "a list"}', encoding="utf-8")
+    listed = _stand_in_launchctl("print-disabled", "system")
+    equal(listed.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(listed))
+    equal(_disabled_services(listed.stdout), None, describing="no listing read out of it")
+
+    given = "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.foreign.plist"
+    written = stand_in.root / given.lstrip("/")
+    written.parent.mkdir(parents=True)
+    with written.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "io.github.nickderobertis.printobserver.foreign",
+                "ProgramArguments": ["/bin/sleep", "60"],
+                "UserName": f"not-{getpass.getuser()}",
+                "RunAtLoad": True,
+            },
+            handle,
+        )
+    supervised = _stand_in_launchctl("--supervise", given, str(written.resolve()))
+    equal(supervised.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(supervised))
+    contains(_said(supervised), "not as this user", describing="the refusal")
 
 
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
