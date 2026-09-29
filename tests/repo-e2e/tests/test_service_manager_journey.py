@@ -52,6 +52,7 @@ import io
 import json
 import os
 import plistlib
+import re
 import shlex
 import shutil
 import signal
@@ -940,8 +941,13 @@ class WindowsService:
                 f"installed"
             )
         self._unregister()
-        for leftover in WINDOWS_ROOT.glob("journey-*"):
-            shutil.rmtree(leftover, ignore_errors=True)
+        # The leftover's own root, read off the registration just removed: the
+        # directory under the journeys' parent that its program was placed in.
+        prefix = f"{str(WINDOWS_ROOT).lower()}\\"
+        at = binary.lower().find(prefix)
+        placed = binary[at + len(prefix) :].split("\\", 1)[0] if at >= 0 else ""
+        if re.fullmatch(r"journey-\d+-\d+", placed):
+            shutil.rmtree(WINDOWS_ROOT / placed, ignore_errors=True)
 
     def install(self) -> Installed:
         """The committed PowerShell installer into the journey's own root."""
