@@ -22,7 +22,6 @@
 //! ways of configuring it are set up: a file this world writes, and the
 //! variables the environment carries.
 
-use std::io::{BufRead as _, BufReader};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -31,6 +30,7 @@ use printobserver_core::store::{EventStore as _, ImageStore as _, PrintStore as 
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
+use crate::announced;
 use crate::machine::{Machine, Reports};
 use crate::proxy::Proxy;
 
@@ -803,18 +803,5 @@ fn toml_of(document: &Value) -> String {
 
 /// Where the started program says it is serving.
 fn serving_on(child: &mut Child) -> SocketAddr {
-    let stderr = child.stderr.take().expect("the program's own output");
-    let mut lines = BufReader::new(stderr).lines();
-    for _ in 0..20 {
-        let Some(line) = lines.next() else { break };
-        let line = line.expect("the program's output reads");
-        if let Some(address) = line.strip_prefix("printobserver is serving on ") {
-            return address.trim().parse().expect("an address and a port");
-        }
-        assert!(
-            !line.contains("will not start"),
-            "the command that runs the supervisor refused to start: {line}"
-        );
-    }
-    panic!("the supervisor never said where it was serving");
+    announced::serving(child, "the command that runs the supervisor").0
 }

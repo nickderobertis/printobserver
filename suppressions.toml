@@ -1710,3 +1710,9 @@ rule = "comments_earn_their_place"
 file = "tools/printer-smoke/tests/world.py"
 site = "#: The rule: ten times the slowest ordinary relayed command measured under"
 reason = "The dated measurement is the justification the task that set this bound required to be recorded beside it (issue #97): the bound is derived from it by the rule stated in the same comment, and without the host, the load and the numbers a later reader cannot tell whether a flake means the bound is wrong or the host is slower than the one it was measured on, nor re-derive the number the same way."
+
+[[suppression]]
+rule = "tests_assert_real_behavior"
+file = "crates/printobserver/tests/journeys/announcing.rs"
+site = "fn the_stand_in()"
+reason = "Not a test of anything: it is the stand-in supervisor process the announcement-wait journeys in the same file start, reached as an ignored test of this binary because that is how a Rust test binary runs one of its own functions in a process of its own (the store crate's `child::run` does the same). It is ignored so nothing else runs it, and it refuses to run unless a journey set its behaviour. What it does is observed and asserted from outside, by those journeys: that the wait stops it, how long that took, and that the failure carries what it printed. An assertion inside the child would assert on the fixture rather than on the wait under test."

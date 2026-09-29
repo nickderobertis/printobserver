@@ -29,13 +29,13 @@
 //! on. All of them are driven here, and the fragment search is what rules.
 
 use std::collections::BTreeSet;
-use std::io::{BufRead as _, BufReader, Read as _};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use printobserver::failure::Exit;
 use printobserver_server::{API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE};
 
+use crate::announced;
 use crate::machine::Reports;
 use crate::walk;
 use crate::world::{CREDENTIAL, OTHER_CREDENTIAL, World};
@@ -131,19 +131,7 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the command that runs the server runs");
-    let mut printed = String::new();
-    let mut lines = BufReader::new(serving.stderr.take().expect("the server's own output"));
-    while !printed.contains("is serving on") {
-        let mut line = String::new();
-        if lines.read_line(&mut line).expect("the output reads") == 0 {
-            break;
-        }
-        printed.push_str(&line);
-    }
-    assert!(
-        printed.contains("is serving on"),
-        "the generating supervisor did not start: {printed}"
-    );
+    let (_, stream) = announced::serving(&mut serving, "the generating supervisor did not start");
 
     let credential = std::fs::read_to_string(state.join(API_CREDENTIAL_FILE))
         .expect("the server wrote the credential it generated");
@@ -183,8 +171,8 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
     );
 
     let _ = serving.kill();
-    let _ = lines.read_to_string(&mut printed);
     let finished = serving.wait_with_output().expect("the server exits");
+    let mut printed = stream.collected();
     printed.push_str(&String::from_utf8_lossy(&finished.stdout));
     assert!(
         !printed.contains(&credential),
@@ -374,25 +362,13 @@ fn a_second_server(world: &World, credential: &str) -> String {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the command that runs the server runs");
-    let mut printed = String::new();
-    let mut lines = BufReader::new(child.stderr.take().expect("the server's own output"));
-    while !printed.contains("is serving on") {
-        let mut line = String::new();
-        if lines.read_line(&mut line).expect("the output reads") == 0 {
-            break;
-        }
-        printed.push_str(&line);
-    }
-    assert!(
-        printed.contains("is serving on"),
-        "the second supervisor did not start, so this says nothing about what it prints: \
-         {printed}"
+    let (_, stream) = announced::serving(
+        &mut child,
+        "the second supervisor did not start, so this says nothing about what it prints",
     );
     let _ = child.kill();
     let said = child.wait_with_output().expect("the server exits");
-    lines
-        .read_to_string(&mut printed)
-        .expect("the rest of the output reads");
+    let mut printed = stream.collected();
     printed.push_str(&String::from_utf8_lossy(&said.stdout));
     world.wants(Reports::Printing);
     printed
