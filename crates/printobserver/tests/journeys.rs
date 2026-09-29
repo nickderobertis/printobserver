@@ -25,6 +25,8 @@
 //! lets it run in every gate. `tests/integration.rs` runs the same walk over
 //! the `OctoPrint` `just octoprint-up` provisioned.
 
+#[path = "support/announced.rs"]
+mod announced;
 #[cfg(unix)]
 #[path = "support/harness.rs"]
 mod harness;
@@ -44,6 +46,8 @@ mod walk;
 #[path = "support/world.rs"]
 mod world;
 
+#[path = "journeys/announcing.rs"]
+mod announcing;
 #[path = "journeys/answers.rs"]
 mod answers;
 #[path = "journeys/carrying.rs"]
@@ -139,4 +143,36 @@ fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone(
 #[test]
 fn the_configured_skill_directory_carries_the_documented_operator_workflow() {
     documenting::the_configured_skill_directory_carries_the_turn();
+}
+
+/// A supervisor that never says where it is serving fails the wait within its
+/// deadline, stopped, with everything it printed in the failure — rather than
+/// holding the whole tier with no verdict.
+#[test]
+fn a_supervisor_that_never_announces_itself_fails_within_the_deadline() {
+    announcing::a_supervisor_that_never_announces_is_stopped_and_reported();
+}
+
+#[test]
+fn a_supervisor_that_exits_unannounced_fails_when_its_output_ends() {
+    announcing::a_supervisor_that_exits_unannounced_is_answered_when_its_output_ends();
+}
+
+#[test]
+fn a_supervisor_announcing_no_address_fails_naming_it() {
+    announcing::a_supervisor_announcing_no_address_is_stopped_and_reported();
+}
+
+/// Reading what a stopped supervisor printed is bounded too, even where
+/// another process still holds its output open.
+#[test]
+fn a_stopped_supervisors_output_is_read_no_longer_than_the_drain() {
+    announcing::a_stream_held_open_is_read_no_longer_than_the_drain();
+}
+
+/// The deadline is a backstop and never the signal: a supervisor that says
+/// where it is serving is answered the moment it does.
+#[test]
+fn a_supervisor_that_announces_itself_is_answered_at_once() {
+    announcing::a_supervisor_that_announces_is_answered_at_once();
 }

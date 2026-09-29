@@ -22,12 +22,14 @@
 // service is the `windows-service` node's delivery, and its tier with it.
 #![cfg(unix)]
 
+#[path = "support/announced.rs"]
+mod announced;
 #[path = "support/harness.rs"]
 mod harness;
 #[path = "support/manager.rs"]
 mod manager;
 
-use std::io::{BufRead as _, BufReader, Read as _, Write as _};
+use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -1582,20 +1584,9 @@ fn absent_print() -> &'static str {
 
 /// Where the started program says it is serving.
 fn serving_on(child: &mut Child) -> String {
-    let stderr = child.stderr.take().expect("the program's own output");
-    let mut lines = BufReader::new(stderr).lines();
-    for _ in 0..20 {
-        let Some(line) = lines.next() else { break };
-        let line = line.expect("the program's output reads");
-        if let Some(address) = line.strip_prefix("printobserver is serving on ") {
-            return address.trim().to_owned();
-        }
-        assert!(
-            !line.contains("will not start"),
-            "the unit's own start command refused to start: {line}"
-        );
-    }
-    panic!("the program never said where it was serving");
+    announced::serving(child, "the unit's own start command")
+        .0
+        .to_string()
 }
 
 /// One request, written out over a socket, and the whole answer.
@@ -2129,6 +2120,8 @@ fn inside(path: &str, state: &str) -> bool {
 /// everything it reported once it has finished and what it installed is gone.
 #[cfg(target_os = "linux")]
 fn run_the_service_journey() -> Vec<(String, String)> {
+    use std::io::{BufRead as _, BufReader};
+
     let under = TempDir::new().expect("a journey's own root");
     // The service's user has to be able to reach the root this journey installs
     // beneath, as it can reach `/` on a real machine.
