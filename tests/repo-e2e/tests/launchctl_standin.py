@@ -324,6 +324,8 @@ def _label_of(target: str) -> str | None:
 def _beneath_root(given: str) -> Path | None:
     """Where a path the machine names is beneath the stand-in's root, or `None` outside it."""
     root = Path(os.environ[ROOT]).resolve()
+    if not root.is_dir():
+        return None
     resolved = (root / given.lstrip("/")).resolve()
     return resolved if resolved.is_relative_to(root) else None
 
@@ -587,12 +589,22 @@ def main(argv: list[str]) -> int:
         if not Path(os.environ.get(variable, "")).is_absolute():
             _say(sys.stderr, f"launchctl stand-in: {variable} must name an absolute directory")
             return USAGE
+    # The state directory is made on first use and must be one this user can
+    # write; the root is only read by `bootstrap`, which refuses a missing one.
+    with contextlib.suppress(OSError):
+        _state().mkdir(parents=True, exist_ok=True)
+    if not _state().is_dir() or not os.access(_state(), os.W_OK | os.X_OK):
+        _say(
+            sys.stderr,
+            f"launchctl stand-in: {STATE}={_state()} is not a directory it can use: "
+            f"{INPUT_OUTPUT_ERROR}: Input/output error",
+        )
+        return INPUT_OUTPUT_ERROR
     if argv[:1] == ["--supervise"]:
         if len(argv) != 3:
             _say(sys.stderr, "Usage: launchctl_standin.py --supervise <given-path> <plist>")
             return USAGE
         return _supervise(argv[1], Path(argv[2]))
-    _state().mkdir(parents=True, exist_ok=True)
     with (_state() / RECORDING).open("a", encoding="utf-8") as recording:
         recording.write(json.dumps(argv) + "\n")
     verb = VERBS.get(argv[0]) if argv else None

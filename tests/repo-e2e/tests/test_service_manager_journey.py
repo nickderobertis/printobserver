@@ -85,7 +85,7 @@ from journey import (
 )
 from repo_checks import install_path as ip
 from repo_checks.checks_service import ACTIVATION_NAMES, installer_for
-from repo_checks.expect import contains, equal, passing, truth
+from repo_checks.expect import absent, contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
@@ -1289,6 +1289,11 @@ def _ask(served: Served) -> str:
     return answer.decode(errors="replace")
 
 
+def _status_line(answer: str) -> str:
+    """An HTTP answer's first line, which alone says whether the request succeeded."""
+    return answer.partition("\r\n")[0]
+
+
 def _answered(manager: Manager, state: PurePath, *, not_by: str | None = None) -> Answer:
     """The API's answer, and the address it came from, once the service answers.
 
@@ -1309,7 +1314,7 @@ def _answered(manager: Manager, state: PurePath, *, not_by: str | None = None) -
         except OSError:
             return False
         latest.append(Answer(answer, served.address))
-        return "HTTP/1.1 200" in answer
+        return _status_line(answer).startswith("HTTP/1.1 200 ")
 
     _eventually(manager, "a service answering its API", answers)
     return latest[-1]
@@ -1358,9 +1363,8 @@ def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
 
     _eventually(manager, "the service running", manager.is_running)
     answer = _answered(manager, activated.installed.state)
-    contains(
-        answer.text,
-        "HTTP/1.1 200",
+    truth(
+        _status_line(answer.text).startswith("HTTP/1.1 200 "),
         describing=f"the running service's API answering:\n{answer.text}",
     )
     contains(answer.text, "application/json", describing="the answer's type")
@@ -1398,10 +1402,9 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         lambda: manager.is_running() and manager.main_pid() not in {0, before},
     )
     again = _answered(manager, activated.installed.state, not_by=first.address)
-    contains(
-        again.text,
-        "HTTP/1.1 200",
-        describing="the API answering again from the process the manager brought back",
+    truth(
+        _status_line(again.text).startswith("HTTP/1.1 200 "),
+        describing=f"the API answering again from the brought-back process:\n{again.text}",
     )
     truth(
         again.address != first.address,
@@ -1546,7 +1549,16 @@ def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_
     (stand_in.state / launchctl_standin.DISABLED).write_text('{"not": "a list"}', encoding="utf-8")
     listed = _stand_in_launchctl("print-disabled", "system")
     equal(listed.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(listed))
-    equal(_disabled_services(listed.stdout), None, describing="no listing read out of it")
+    absent(listed.stdout, "disabled services", describing="the answer to a corrupt record")
+
+    # A state directory that is a file is refused before anything is recorded in it.
+    unusable = tmp_path / "not-a-directory"
+    unusable.write_text("", encoding="utf-8")
+    monkeypatch.setenv(launchctl_standin.STATE, str(unusable))
+    refused = _stand_in_launchctl("print-disabled", "system")
+    equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
+    contains(_said(refused), "is not a directory it can use", describing="the refusal")
+    monkeypatch.setenv(launchctl_standin.STATE, str(stand_in.state))
 
     given = "/Library/LaunchDaemons/io.github.nickderobertis.printobserver.foreign.plist"
     written = stand_in.root / given.lstrip("/")
