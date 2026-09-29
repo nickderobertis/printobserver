@@ -6,10 +6,11 @@ launchd on the macOS cell. On Linux this program is put on that adapter's
 `bootstrap`, the manager's reports, a kill, a `bootout` — runs against a
 manager that does to the property list what launchd does with it: it starts
 the program the list names with the list's own arguments, environment, working
-directory and error log, starts it again after it ends in a way `KeepAlive`
-says it should come back from, no sooner than `ThrottleInterval` after the last
-start, and stops it on `bootout`. The program it starts is the real
-`printobserver`, so what answers the journey is the real service.
+directory and error log, starts it again after it ends unsuccessfully — the one
+`KeepAlive` the installer writes, and the only one this stand-in accepts — no
+sooner than `ThrottleInterval` after the last start, and stops it on `bootout`.
+The program it starts is the real `printobserver`, so what answers the journey
+is the real service.
 
 Only what the adapter asks of launchd is implemented, answered in launchd's
 own words; any other verb is refused with launchd's usage exit rather than
@@ -38,7 +39,6 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import enum
 import getpass
 import json
 import os
@@ -98,24 +98,10 @@ EXIT_TIMEOUT_SECONDS = 20
 TICK_SECONDS = 0.2
 
 
-class Restart(enum.Enum):
-    """When launchd starts a job again after its process ends, per its `KeepAlive`."""
-
-    NEVER = enum.auto()
-    ALWAYS = enum.auto()
-    AFTER_SUCCESS = enum.auto()
-    AFTER_FAILURE = enum.auto()
-
-
-def _restart(keep_alive: object) -> Restart | None:
-    """The policy one `KeepAlive` value states, or `None` for a shape this stand-in lacks."""
-    match keep_alive:
-        case bool():
-            return Restart.ALWAYS if keep_alive else Restart.NEVER
-        case {"SuccessfulExit": bool() as successful} if len(keep_alive) == 1:
-            return Restart.AFTER_SUCCESS if successful else Restart.AFTER_FAILURE
-        case _:
-            return None
+#: The one `KeepAlive` this stand-in implements, the installer's own: start the
+#: job again whenever it ends other than successfully. Any other is refused
+#: rather than carried untried.
+KEEP_ALIVE_AFTER_FAILURE = {"SuccessfulExit": False}
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +115,6 @@ class Job:
     environment: dict[str, str]
     error_log: Path | None
     run_at_load: bool
-    restart: Restart
     throttle: float
 
 
@@ -167,7 +152,7 @@ def _job(document: object) -> Job | None:
     directory = document.get("WorkingDirectory")
     environment = document.get("EnvironmentVariables", {})
     log = document.get("StandardErrorPath")
-    restart = _restart(document.get("KeepAlive", False))
+    keep_alive = document.get("KeepAlive")
     run_at_load = document.get("RunAtLoad", False)
     throttle = document.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS)
     if not isinstance(label, str) or _label_of(f"{DOMAIN}/{label}") is None:
@@ -181,7 +166,12 @@ def _job(document: object) -> Job | None:
     # What an operating system can put in a process's environment at all.
     if any(not key or "=" in key for key in environment):
         return None
-    if not isinstance(run_at_load, bool) or restart is None:
+    # `0 == False` in Python, so equal alone would take an integer for the boolean.
+    if not isinstance(run_at_load, bool) or not (
+        keep_alive == KEEP_ALIVE_AFTER_FAILURE
+        and isinstance(keep_alive, dict)
+        and keep_alive["SuccessfulExit"] is False
+    ):
         return None
     if isinstance(throttle, bool) or not isinstance(throttle, int) or throttle < 0:
         return None
@@ -193,7 +183,6 @@ def _job(document: object) -> Job | None:
         environment={str(key): str(value) for key, value in environment.items()},
         error_log=Path(log) if log is not None else None,
         run_at_load=run_at_load,
-        restart=restart,
         throttle=float(throttle),
     )
 
@@ -490,23 +479,6 @@ def _bootout(arguments: list[str]) -> int:
     return 0
 
 
-def _restarts(restart: Restart, exit_code: int) -> bool:
-    """Whether launchd starts a job again after it ended with `exit_code`.
-
-    A process killed by a signal ends with a negative code here, which launchd
-    counts as an unsuccessful exit.
-    """
-    match restart:
-        case Restart.ALWAYS:
-            return True
-        case Restart.AFTER_SUCCESS:
-            return exit_code == 0
-        case Restart.AFTER_FAILURE:
-            return exit_code != 0
-        case Restart.NEVER:
-            return False
-
-
 def _drain(stream: IO[str], log: Path | None) -> None:
     """Copy a job's stream into the file its property list names, as launchd does."""
     if log is None:
@@ -552,7 +524,9 @@ def _supervise(given: str, resolved: Path) -> int:
                 record.last_signal = f"{signal.strsignal(-code)}: {-code}" if code < 0 else None
                 _write_record(job.label, record)
                 child = None
-                wanted = _restarts(job.restart, code)
+                # A process killed by a signal ends with a negative code here,
+                # which launchd counts as an unsuccessful exit.
+                wanted = code != 0
             if child is None and wanted and time.monotonic() - last_start >= job.throttle:
                 child = _start_job(job)
                 last_start = time.monotonic()

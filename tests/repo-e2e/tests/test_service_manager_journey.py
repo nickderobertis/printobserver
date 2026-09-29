@@ -866,8 +866,22 @@ class Launchd:
         return self.main_pid() > 0
 
     def main_pid(self) -> int:
-        """The `pid = ` launchd prints for the service, or zero while it has none."""
-        for line in self._print().stdout.splitlines():
+        """The `pid = ` launchd prints for the service, or zero while it has none.
+
+        A service launchd has not loaded has no process; any other failure to
+        report one says nothing about whether it runs, so it fails the walk.
+
+        Raises:
+            AssertionError: If `launchctl print` fails for any reason but the
+                service not being loaded.
+        """
+        printed = self._print()
+        if printed.returncode == launchctl_standin.NOT_FOUND:
+            return 0
+        passing(
+            (printed.returncode, _said(printed)), describing=f"`launchctl print` of {self.label}"
+        )
+        for line in printed.stdout.splitlines():
             pid = line.strip().removeprefix("pid = ")
             if pid != line.strip() and pid.isdigit():
                 return int(pid)
@@ -1161,9 +1175,16 @@ class WindowsService:
                 WINDOWS_ROOT.rmdir()
 
     def is_present(self) -> bool:
-        """Whether the manager knows a service of this name at all."""
-        code, _ = self._sc("query", self.name)
-        return code == 0
+        """Whether the manager knows a service of this name at all.
+
+        Raises:
+            AssertionError: If `sc.exe` fails for any reason but the service being unknown.
+        """
+        code, said = self._sc("query", self.name)
+        if code == SERVICE_DOES_NOT_EXIST:
+            return False
+        passing((code, said), describing=f"`sc.exe query {self.name}`")
+        return True
 
     def leftovers(self) -> list[str]:
         """A registered service, and the journey's root."""
@@ -1531,6 +1552,7 @@ def test_the_launchctl_stand_in_refuses_a_relative_property_list_path(
                 "ProgramArguments": ["/bin/sleep", "60"],
                 "UserName": getpass.getuser(),
                 "RunAtLoad": False,
+                "KeepAlive": launchctl_standin.KEEP_ALIVE_AFTER_FAILURE,
             },
             handle,
         )
@@ -1590,6 +1612,7 @@ def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_
                 "ProgramArguments": ["/bin/sleep", "60"],
                 "UserName": f"not-{getpass.getuser()}",
                 "RunAtLoad": True,
+                "KeepAlive": launchctl_standin.KEEP_ALIVE_AFTER_FAILURE,
             },
             handle,
         )
@@ -1599,6 +1622,62 @@ def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_
     supervised = _stand_in_launchctl("--supervise", given, str(written.resolve()))
     equal(supervised.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(supervised))
     contains(_said(supervised), "not as this user", describing="the refusal")
+
+
+@pytest.mark.skipif(
+    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
+)
+def test_the_launchctl_stand_in_reports_no_job_for_a_record_no_supervisor_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A corrupt or stale job record reports nothing loaded, signals nothing, and is loaded over.
+
+    A stale record names a process that is not one of the stand-in's
+    supervisors — here this test's own — so a stand-in that trusted it would
+    report a job launchd never loaded and would signal a process nobody gave it.
+    """
+    stand_in = _stand_in_launchd(tmp_path, monkeypatch)
+    stand_in.state.mkdir()
+    label = "io.github.nickderobertis.printobserver.recorded"
+    target = f"system/{label}"
+    stale = {"path": "/elsewhere.plist", "program": "/bin/sleep", "runs": 1}
+    for name, record in (
+        ("corrupt", "not a record"),
+        ("stale", json.dumps({**stale, "supervisor": os.getpid(), "pid": os.getpid()})),
+    ):
+        # No `launchctl` verb writes a record no supervisor holds, so it is put there directly.
+        # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+        (stand_in.state / f"{label}.json").write_text(record, encoding="utf-8")
+        for argv, code in (
+            (("print", target), launchctl_standin.NOT_FOUND),
+            (("kill", "SIGTERM", target), launchctl_standin.NO_SUCH_PROCESS),
+            (("bootout", target), launchctl_standin.NO_SUCH_PROCESS),
+        ):
+            answered = _stand_in_launchctl(*argv)
+            equal(answered.returncode, code, describing=f"`{argv[0]}` over a {name} record")
+
+    given = f"/Library/LaunchDaemons/{label}.plist"
+    written = stand_in.root / given.lstrip("/")
+    written.parent.mkdir(parents=True)
+    with written.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": label,
+                "ProgramArguments": ["/bin/sleep", "60"],
+                "UserName": getpass.getuser(),
+                "RunAtLoad": True,
+                "KeepAlive": launchctl_standin.KEEP_ALIVE_AFTER_FAILURE,
+            },
+            handle,
+        )
+    try:
+        loaded = _stand_in_launchctl("bootstrap", "system", given)
+        passing((loaded.returncode, _said(loaded)), describing="bootstrapping over a stale record")
+        printed = _stand_in_launchctl("print", target)
+        passing((printed.returncode, _said(printed)), describing="`launchctl print` once loaded")
+        contains(printed.stdout, f"path = {given}", describing="the record the load wrote")
+    finally:
+        _stand_in_launchctl("bootout", target)
 
 
 @pytest.mark.skipif(
@@ -1620,10 +1699,13 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
         "ProgramArguments": ["/bin/sleep", "60"],
         "UserName": getpass.getuser(),
         "RunAtLoad": False,
+        "KeepAlive": launchctl_standin.KEEP_ALIVE_AFTER_FAILURE,
     }
     for name, departure in (
         ("unimplemented-key", {"Sockets": {}}),
         ("unimplemented-keep-alive", {"KeepAlive": {"Crashed": True}}),
+        ("unconditional-keep-alive", {"KeepAlive": True}),
+        ("integer-keep-alive", {"KeepAlive": {"SuccessfulExit": 0}}),
         ("boolean-throttle", {"ThrottleInterval": True}),
         ("foreign-user", {"UserName": f"not-{getpass.getuser()}"}),
     ):
@@ -1655,6 +1737,28 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
     equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
 
 
+@pytest.mark.skipif(
+    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
+)
+def test_a_disabled_listing_is_read_as_launchctl_answers_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What `launchctl disable` and `enable` switch is what the adapter reads back."""
+    _stand_in_launchd(tmp_path, monkeypatch)
+    label = "io.github.nickderobertis.printobserver.switched"
+    for verb, expected in (("disable", {label}), ("enable", set())):
+        switched = _stand_in_launchctl(verb, f"system/{label}")
+        passing((switched.returncode, _said(switched)), describing=f"`launchctl {verb}`")
+        listed = _stand_in_launchctl("print-disabled", "system")
+        passing((listed.returncode, _said(listed)), describing="`launchctl print-disabled system`")
+        equal(
+            _disabled_services(listed.stdout),
+            expected,
+            describing=f"the labels switched off after `{verb}`:\n{listed.stdout}",
+        )
+
+
+# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
     """The answer to `print-disabled` is read as a listing, and anything else as none."""
     listing = (

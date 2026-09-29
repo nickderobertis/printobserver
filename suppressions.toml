@@ -1160,6 +1160,18 @@ site = "class _AnswersEveryRead(BaseHTTPRequestHandler):"
 reason = "The definition of the one OctoPrint this journey stands in, the one the entry for its fixture accounts for and unchanged from before this change: the service refuses to start while nothing answers at its configured OctoPrint address, and what this journey proves is the service manager — activation, boot start, restart after a kill, teardown — not a printer. The real OctoPrint is driven by the printer integration tier and the real printer by the smoke test."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:"
+reason = "The listings this test hands the adapter's reader are what real launchd can print and the launchctl stand-in never does — an enabled entry, the older `=> true` spelling, a further block after the listing, an unterminated or unquoted one, an unknown state — so no `launchctl` on a Linux host can put them in front of the adapter, and a stand-in taught to print them would be a fixture with extra steps. What the stand-in does print is read through `launchctl` itself by `test_a_disabled_listing_is_read_as_launchctl_answers_it`, and the macOS cell reads real launchd's listing through the walk."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "(stand_in.state / f\"{label}.json\").write_text(record, encoding=\"utf-8\")"
+reason = "The state this test proves the stand-in's answer to — a job record that is not one, or one naming a process no supervisor of the stand-in's is — is left by a supervisor that died mid-write or by a process id reused after one exited, and no `launchctl` verb writes either on demand. So the record is put in the stand-in's state directory directly, and everything asserted about it is asserted through `launchctl` itself: `print`, `kill` and `bootout` over it, and a `bootstrap` that loads over it."
+
+[[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = ".replace('url = \"http://127.0.0.1:5000\"'"
