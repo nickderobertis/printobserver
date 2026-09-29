@@ -343,13 +343,17 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
     """
     environment = world.environment()
     said = "the smoke's relay did not answer"
-    if reachable == "closed":
-        environment[ADDRESS] = a_closed_address()
-    elif reachable == "unnamed":
-        environment.pop(ADDRESS, None)
-    else:
-        environment[ADDRESS] = "192.0.2.1:9" if reachable == "elsewhere" else "a relay"
-        said = "not a loopback host:port"
+    match reachable:
+        case "closed":
+            environment[ADDRESS] = a_closed_address()
+        case "unnamed":
+            environment.pop(ADDRESS, None)
+        case "elsewhere":
+            environment[ADDRESS] = "192.0.2.1:9"
+            said = "not a loopback host:port"
+        case _:
+            environment[ADDRESS] = "a relay"
+            said = "not a loopback host:port"
 
     answered = relay(environment, "status", "--json")
 
