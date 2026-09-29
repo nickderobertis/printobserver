@@ -139,9 +139,26 @@ def _strings(value: object) -> list[str] | None:
     return [str(item) for item in value]
 
 
+def _carries_nul(value: object) -> bool:
+    """Whether any string anywhere in a property-list value holds a NUL.
+
+    No argument, path or environment entry a process is given can hold one,
+    so a list carrying one anywhere is refused whole rather than field by field.
+    """
+    match value:
+        case str():
+            return "\0" in value
+        case dict():
+            return any(_carries_nul(key) or _carries_nul(item) for key, item in value.items())
+        case list():
+            return any(_carries_nul(item) for item in value)
+        case _:
+            return False
+
+
 def _job(document: object) -> Job | None:
     """The job a loaded property list describes, or `None` where it is not one launchd runs."""
-    if not isinstance(document, dict) or not set(document) <= KEYS:
+    if not isinstance(document, dict) or not set(document) <= KEYS or _carries_nul(document):
         return None
     label = document.get("Label")
     arguments = _strings(document.get("ProgramArguments"))
@@ -161,7 +178,7 @@ def _job(document: object) -> Job | None:
     if not isinstance(environment, dict) or _strings([*environment, *environment.values()]) is None:
         return None
     # What an operating system can put in a process's environment at all.
-    if any(not key or "=" in key or "\0" in f"{key}{value}" for key, value in environment.items()):
+    if any(not key or "=" in key for key in environment):
         return None
     if not isinstance(run_at_load, bool) or restart is None:
         return None
