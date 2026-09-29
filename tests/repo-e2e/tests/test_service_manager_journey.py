@@ -155,13 +155,27 @@ def _said(result: subprocess.CompletedProcess[str]) -> str:
     return f"{result.stdout or ''}{result.stderr or ''}"
 
 
+def _required() -> bool:
+    """Whether this run requires every case to run, read from `PRINTOBSERVER_SERVICE_JOURNEY`.
+
+    Raises:
+        AssertionError: If it is set to anything but `required`, since a misspelt
+            setting would otherwise turn a lane's failures back into skips.
+    """
+    setting = os.environ.get(REQUIRED, "")
+    if setting not in {"", REQUIRED_VALUE}:
+        message = f"{REQUIRED}={setting!r} is neither unset nor {REQUIRED_VALUE!r}"
+        raise AssertionError(message)
+    return setting == REQUIRED_VALUE
+
+
 def _unmet(prerequisite: str) -> None:
     """Skip a case whose prerequisite this host lacks, or fail where a lane requires it.
 
     Raises:
         AssertionError: If `PRINTOBSERVER_SERVICE_JOURNEY` is `required`.
     """
-    if os.environ.get(REQUIRED) == REQUIRED_VALUE:
+    if _required():
         message = (
             f"{prerequisite}; {REQUIRED}={REQUIRED_VALUE}, so this case fails rather than skips"
         )
@@ -545,6 +559,32 @@ class Systemd:
         )
 
 
+#: One entry of `launchctl print-disabled`: a quoted label and whether it is switched off,
+#: spelled `disabled`/`enabled` by current launchd and `true`/`false` by older ones.
+DISABLED_ENTRY = re.compile(r'"(?P<label>[^"]+)" => (?P<state>disabled|enabled|true|false)')
+
+
+def _disabled_services(listed: str) -> set[str] | None:
+    """The labels a `launchctl print-disabled` listing switches off, or `None` for no listing.
+
+    The listing opens `disabled services = {`, holds one entry per line and closes
+    with `}`; launchd may print further blocks after it, which say nothing of this.
+    """
+    lines = [line.strip() for line in listed.splitlines() if line.strip()]
+    if lines[:1] != ["disabled services = {"]:
+        return None
+    switched_off: set[str] = set()
+    for line in lines[1:]:
+        if line == "}":
+            return switched_off
+        entry = DISABLED_ENTRY.fullmatch(line)
+        if entry is None:
+            return None
+        if entry["state"] in {"disabled", "true"}:
+            switched_off.add(entry["label"])
+    return None
+
+
 def _compare_users(
     on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int, user: str
 ) -> Reported:
@@ -780,19 +820,25 @@ class Launchd:
         disabled = self._launchctl("print-disabled", "system")
         if disabled.returncode != 0:
             return Reported(False, f"launchd could not list what is disabled:\n{_said(disabled)}")
+        switched_off = _disabled_services(disabled.stdout)
+        if switched_off is None:
+            return Reported(False, f"launchd's disabled listing is not one:\n{disabled.stdout}")
         return Reported(
-            not self._switched_off(disabled.stdout),
-            f"launchd lists it as disabled:\n{disabled.stdout}",
+            self.label not in switched_off, f"launchd lists it as disabled:\n{disabled.stdout}"
         )
 
-    def _switched_off(self, listed: str | None = None) -> bool:
-        """Whether the system domain's disabled set lists the service."""
-        if listed is None:
-            listed = self._launchctl("print-disabled", "system", check=True).stdout
-        return any(
-            f'"{self.label}"' in line and ("=> disabled" in line or "=> true" in line)
-            for line in listed.splitlines()
-        )
+    def _switched_off(self) -> bool:
+        """Whether the system domain's disabled set lists the service.
+
+        Raises:
+            AssertionError: If launchd's answer is not a disabled listing.
+        """
+        listed = self._launchctl("print-disabled", "system", check=True).stdout
+        switched_off = _disabled_services(listed)
+        if switched_off is None:
+            message = f"`launchctl print-disabled system` answered no listing:\n{listed}"
+            raise AssertionError(message)
+        return self.label in switched_off
 
     def switch_off(self) -> None:
         """`launchctl disable`, which adds the service to the domain's disabled set."""
@@ -1289,6 +1335,7 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
     Torn down on every exit path, and the host then held to carrying nothing of
     the journey, whether or not an assertion held.
     """
+    _required()
     manager.prepare()
     try:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
@@ -1391,7 +1438,10 @@ PREREQUISITES = {
 def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping(
     adapter: str, tmp_path: Path
 ) -> None:
-    """A case whose prerequisite does not answer: failed under the gate's setting, else skipped."""
+    """A case whose prerequisite does not answer: failed under the gate's setting, else skipped.
+
+    A setting that is neither unset nor the gate's own fails before that question arises.
+    """
     workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
     setting = workflow["jobs"]["gate"].get("env", {}).get(REQUIRED)
     equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
@@ -1407,17 +1457,94 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
     path = f"{unanswering}{os.pathsep}{os.environ['PATH']}"
     ungated = clean_environment(PATH=path)
     ungated.pop(REQUIRED, None)
-    for environment, fails in (
-        (clean_environment(PATH=path, **{REQUIRED: str(setting)}), True),
-        (ungated, False),
+    misspelt = "requried"
+    for environment, fails, fragments in (
+        (
+            clean_environment(PATH=path, **{REQUIRED: str(setting)}),
+            True,
+            (prerequisite.named, "so this case fails rather than skips"),
+        ),
+        (ungated, False, (prerequisite.named, "SKIPPED")),
+        # A misspelt setting is refused before any prerequisite is looked at.
+        (
+            clean_environment(PATH=path, **{REQUIRED: misspelt}),
+            True,
+            (f"{REQUIRED}={misspelt!r} is neither unset nor {REQUIRED_VALUE!r}",),
+        ),
     ):
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         ran = shell_run(case, cwd=REPO_ROOT, env=environment, timeout=BUILD_TIMEOUT_SECONDS)
         said = plain(_said(ran))
         equal(ran.returncode != 0, fails, describing=f"whether the case failed:\n{said}")
-        contains(said, prerequisite.named, describing="the prerequisite it names")
-        contains(
-            said,
-            "so this case fails rather than skips" if fails else "SKIPPED",
-            describing=f"how the case ended:\n{said}",
+        for fragment in fragments:
+            contains(said, fragment, describing=f"how the case ended:\n{said}")
+
+
+@pytest.mark.skipif(
+    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
+)
+def test_the_launchctl_stand_in_refuses_a_relative_property_list_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative `bootstrap` path is refused with launchd's usage exit, and nothing is loaded.
+
+    The property list it names is a loadable one beneath the stand-in's root, so
+    what is refused is the path's shape rather than what it points at.
+    """
+    stand_in = _stand_in_launchd(tmp_path, monkeypatch)
+    label = "io.github.nickderobertis.printobserver.relative"
+    relative = f"Library/LaunchDaemons/{label}.plist"
+    (stand_in.root / relative).parent.mkdir(parents=True)
+    with (stand_in.root / relative).open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": label,
+                "ProgramArguments": ["/bin/sleep", "60"],
+                "UserName": getpass.getuser(),
+                "RunAtLoad": False,
+            },
+            handle,
+        )
+
+    refused = shell_run(["launchctl", "bootstrap", "system", relative], timeout=60)
+
+    try:
+        equal(refused.returncode, launchctl_standin.USAGE, describing=_said(refused))
+        contains(_said(refused), f"{relative} is not an absolute path", describing="the refusal")
+        printed = shell_run(["launchctl", "print", f"system/{label}"], timeout=60)
+        equal(
+            printed.returncode,
+            launchctl_standin.NOT_FOUND,
+            describing=f"the stand-in to have loaded nothing:\n{_said(printed)}",
+        )
+    finally:
+        shell_run(["launchctl", "bootout", f"system/{label}"], timeout=60)
+
+
+def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
+    """The answer to `print-disabled` is read as a listing, and anything else as none."""
+    listing = (
+        "disabled services = {\n"
+        '\t"com.example.off" => disabled\n'
+        '\t"com.example.on" => enabled\n'
+        '\t"com.example.older" => true\n'
+        "}\n"
+        "login item associations = {\n}\n"
+    )
+    equal(
+        _disabled_services(listing),
+        {"com.example.off", "com.example.older"},
+        describing="the labels a well-formed listing switches off",
+    )
+    for malformed in (
+        "",
+        "Unrecognized subcommand: print-disabled\n",
+        'disabled services = {\n\t"com.example.off" => disabled\n',
+        "disabled services = {\n\tcom.example.off => disabled\n}\n",
+        'disabled services = {\n\t"com.example.off" => maybe\n}\n',
+    ):
+        equal(
+            _disabled_services(malformed),
+            None,
+            describing=f"no listing read out of {malformed!r}",
         )

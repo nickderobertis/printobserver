@@ -331,6 +331,11 @@ def _bootstrap(arguments: list[str]) -> int:
         _say(sys.stderr, "Usage: launchctl bootstrap <domain-target> <path>")
         return USAGE
     given = arguments[1]
+    # launchd names a property list by its absolute path; a relative one names
+    # nothing on the machine, so it is refused rather than guessed at.
+    if not given.startswith("/"):
+        _say(sys.stderr, f"Bootstrap failed: {given} is not an absolute path")
+        return USAGE
     resolved = _beneath_root(given)
     job = _load(resolved) if resolved is not None else None
     if resolved is None or job is None or _read_record(job.label) is not None:
