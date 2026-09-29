@@ -1688,6 +1688,30 @@ site = "if refusal:"
 reason = "The branch selecting the stand-in's refusal answer, taken only when a journey hands it the forge's refusal text; the ground is the entry at `print(refusal, file=sys.stderr)`. The real `gh` has no such switch, and making github.com refuse to arm a live pull request is not something a test may do."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "listener = socket.create_server(LISTEN_ON)"
+reason = "The relay is not a service this repository calls: it is the printer-smoke suite's own instrument, one child process a test's `World` starts on loopback and stops with it, standing in front of the program so a command can be made never to answer. What it serves is `relay_client.rs`, a compiled client the smoke runs as a blocking subprocess per command, and what it does for each is run one program to its end — a blocking subprocess too. A thread per connection is what lets one command be held while others are answered; an event loop would add nothing but a second concurrency model under a blocking subprocess boundary, and there is no typed client to adopt for a wire this suite defines and drives from both ends in `test_relay.py`."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/world.py"
+site = "reading = threading.Thread("
+reason = "This is not a call to a service but the one line a child process this test just started prints on its own standard output: the relay's loopback address, read on a thread so the wait for it is bounded by `RELAY_START_S`, then validated and refused, with everything the process said, if it is anything else. The test is synchronous from end to end and waits for exactly that line before going on; an async reader would put an event loop under one bounded read of a pipe it owns."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tools/printer-smoke/tests/relay_client.rs"
+site = "const UNANSWERED: i32 = 70;"
+reason = "The client's contract is to exit with whatever the relayed program exited with, so no status it could reserve is disjoint from every program's. The program it relays is `printobserver`, whose declared exits are 0 and 2 through 7 (`crates/printobserver/src/failure.rs`'s `Exit::ALL`); 70 is none of them, and a relay that did not answer also says so on standard error, prefixed `the smoke's relay did not answer:`, which no answer of the program carries. `test_relay.py` reads those declared exits out of `failure.rs` and fails if one of them becomes 70."
+
+[[suppression]]
+rule = "comments_earn_their_place"
+file = "tools/printer-smoke/tests/world.py"
+site = "#: The rule: ten times the slowest ordinary relayed command measured under"
+reason = "The dated measurement is the justification the task that set this bound required to be recorded beside it (issue #97): the bound is derived from it by the rule stated in the same comment, and without the host, the load and the numbers a later reader cannot tell whether a flake means the bound is wrong or the host is slower than the one it was measured on, nor re-derive the number the same way."
+
+[[suppression]]
 rule = "tests_assert_real_behavior"
 file = "crates/printobserver/tests/journeys/announcing.rs"
 site = "fn the_stand_in()"
