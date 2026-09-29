@@ -1176,7 +1176,7 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
     table = written.get("client")
     server = table.get("server") if isinstance(table, dict) else None
     credential = table.get("credential") if isinstance(table, dict) else None
-    if not isinstance(server, str) or not isinstance(credential, str):
+    if not isinstance(server, str) or not isinstance(credential, str) or not credential.strip():
         # The file is written in place, so a read can land between its lines.
         return None
     address = server.removeprefix("http://")
@@ -1333,23 +1333,30 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     )
 
 
-@pytest.mark.skipif(
-    ServiceManager.SYSTEMD.value not in _adapters(), reason="the systemd case runs on Linux alone"
-)
+#: The program each host-backed case needs, and how its absence is named.
+PREREQUISITES = {
+    ServiceManager.SYSTEMD.value: ("docker", "no `docker` that answers"),
+    ServiceManager.LAUNCHD.value: ("sudo", "needs password-free `sudo`"),
+}
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+@pytest.mark.parametrize("adapter", [name for name in _adapters() if name in PREREQUISITES])
 def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping(
-    tmp_path: Path,
+    adapter: str, tmp_path: Path
 ) -> None:
-    """The systemd case with a `docker` that does not answer: failed in the gate, else skipped."""
+    """A case whose prerequisite does not answer: failed under the gate's setting, else skipped."""
     workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
     setting = workflow["jobs"]["gate"].get("env", {}).get(REQUIRED)
     equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
+    program, named = PREREQUISITES[adapter]
     unanswering = tmp_path / "bin"
     unanswering.mkdir()
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    (unanswering / "docker").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-    (unanswering / "docker").chmod(0o755)
+    (unanswering / program).write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (unanswering / program).chmod(0o755)
     case = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rs", "-q", __file__]
-    case += ["-k", "systemd and documented_command"]
+    case += ["-k", f"{adapter}] and documented_command"]
     path = f"{unanswering}{os.pathsep}{os.environ['PATH']}"
     ungated = clean_environment(PATH=path)
     ungated.pop(REQUIRED, None)
@@ -1361,7 +1368,7 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
         ran = shell_run(case, cwd=REPO_ROOT, env=environment, timeout=BUILD_TIMEOUT_SECONDS)
         said = plain(_said(ran))
         equal(ran.returncode != 0, fails, describing=f"whether the case failed:\n{said}")
-        contains(said, "no `docker` that answers", describing="the prerequisite it names")
+        contains(said, named, describing="the prerequisite it names")
         contains(
             said,
             "so this case fails rather than skips" if fails else "SKIPPED",

@@ -1172,6 +1172,12 @@ site = "return shell_run([*prefix, *argv]"
 reason = "The launchd adapter's one seam for every command it runs on the machine it drives — the committed installer, `launchctl`, `cat`, `ps`, `id`, `kill`, `rm`, `dscl` — through `sudo` on a Mac, as an operator runs them, and as the invoking user on the stand-in's machine. Each is one sequential command whose answer is asserted on before the next is issued; there is no typed client of launchd or of these tools for Python, and nothing concurrent for an async one to win."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping("
+reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS.md` places the service journey in the end-to-end tier, which is one project by design with no narrower per-project end-to-end target for it to hang from. This case runs one other case of the same file twice, which stops at its prerequisite before anything is installed — a few seconds once the program is built."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "ran = shell_run(case, cwd=REPO_ROOT"
@@ -1180,8 +1186,8 @@ reason = "What this test proves is how the journey itself ends when a prerequisi
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "(unanswering / \"docker\").write_text("
-reason = "The subject of this test is the journey's own handling of a host with no Docker that answers, which is the prerequisite the systemd case checks by running `docker version`; a `docker` that exits non-zero is exactly that host, placed first on `PATH` for two nested runs of one case. The systemd case's real walk against real Docker is the neighbouring test in this file, which the gate runs on every Linux cell."
+site = "(unanswering / program).write_text("
+reason = "The subject of this test is the journey's own handling of a host whose prerequisite does not answer — `docker version` for the systemd case, `sudo -n true` for the launchd case on a Mac — so a program of that name that exits non-zero is exactly that host, placed first on `PATH` for two nested runs of one case. Each case's real walk against real Docker or a real `sudo` is the neighbouring test in this file, which the gate runs on that platform's cells."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
