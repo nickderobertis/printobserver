@@ -932,6 +932,8 @@ class WindowsService:
                 f"installed"
             )
         self._unregister()
+        for leftover in WINDOWS_ROOT.glob("journey-*"):
+            shutil.rmtree(leftover, ignore_errors=True)
 
     def install(self) -> Installed:
         """The committed PowerShell installer into the journey's own root."""
@@ -1130,6 +1132,7 @@ def manager(
         case ServiceManager.LAUNCHD:
             return Launchd(program, None)
         case _:
+            # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
             return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 

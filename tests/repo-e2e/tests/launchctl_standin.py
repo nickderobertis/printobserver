@@ -56,6 +56,23 @@ RECORDING = "invocations.jsonl"
 #: Every label `launchctl disable` switched off, beneath the state directory.
 DISABLED = "disabled.json"
 
+#: Every property-list key this stand-in acts on. A list carrying any other is
+#: refused rather than half-honoured, so an installer that starts writing a key
+#: launchd would act on fails this walk until the stand-in implements it.
+KEYS = frozenset(
+    {
+        "Label",
+        "ProgramArguments",
+        "UserName",
+        "WorkingDirectory",
+        "EnvironmentVariables",
+        "StandardErrorPath",
+        "RunAtLoad",
+        "KeepAlive",
+        "ThrottleInterval",
+    }
+)
+
 #: The one domain a system daemon is loaded into.
 DOMAIN = "system"
 
@@ -95,7 +112,7 @@ def _strings(value: object) -> list[str] | None:
 
 def _job(document: object) -> Job | None:
     """The job a loaded property list describes, or `None` where it is not one launchd runs."""
-    if not isinstance(document, dict):
+    if not isinstance(document, dict) or not set(document) <= KEYS:
         return None
     label = document.get("Label")
     arguments = _strings(document.get("ProgramArguments"))
@@ -459,6 +476,10 @@ VERBS = {
 
 def main(argv: list[str]) -> int:
     """Answer one `launchctl` invocation, recording it first."""
+    for variable in (ROOT, STATE):
+        if not Path(os.environ.get(variable, "")).is_absolute():
+            _say(sys.stderr, f"launchctl stand-in: {variable} must name an absolute directory")
+            return USAGE
     if argv[:1] == ["--supervise"]:
         if len(argv) != 3:
             _say(sys.stderr, "Usage: launchctl_standin.py --supervise <given-path> <plist>")

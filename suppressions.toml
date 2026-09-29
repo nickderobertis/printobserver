@@ -1132,6 +1132,12 @@ reason = "Where the two shims above reach the adapter: the launchd stand-in and 
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "return Launchd(program, _stand_in_launchd("
+reason = "The Linux case that selects the launchd adapter's stand-in backing, which the manager ruled for issue #99: launchd exists on macOS alone, so on Linux the adapter's whole sequence runs against `launchctl_standin.py`, which starts, kills and restarts the real `printobserver` as the installed property list says. The macOS cell selects the real backing, and the gate requires that case to run there."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "(shims / \"uname\")"
 reason = "The installer chooses the service manager it writes a definition for from `uname -s`, so the launchd stand-in's machine has to answer `Darwin` there or the installer writes a systemd unit instead. The shim answers that one question and passes every other `uname` invocation to the real program; it exists only on Linux, beside the `launchctl` stand-in, and the macOS cell runs the same adapter against the real `uname` and the real launchd."
 
