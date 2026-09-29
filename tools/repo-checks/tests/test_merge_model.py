@@ -105,18 +105,75 @@ def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
     refused_naming(findings, "some but not all", "gate (linux-aarch64)")
 
 
-def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
+def test_the_integration_job_is_required_once_per_platform_under_its_id_alone(
     committed: Repo,
 ) -> None:
-    """A name interpolating nothing is qualified by GitHub, not by its author.
+    """The integration contexts carry the platform and never the runner.
 
-    The committed integration job is that shape, and the contexts it reports
-    carry the cell's runner beside its platform because GitHub appends the whole
-    matrix entry. Those are the names a branch-protection rule requires it under,
-    so deriving them wrongly is what makes a record strand a required check.
+    A context carrying the runner label is renamed by moving that platform to a
+    newer runner image, which strands the required check and blocks every merge
+    until somebody edits the protection. So the committed job interpolates the
+    platform id into its own name, and the record names exactly those contexts.
     """
     reported = sorted(
         context.name for context in status_contexts(committed) if context.job == "integration"
+    )
+    required = sorted(name for name in _required(committed) if name.startswith("integration"))
+    platform_qualified = [
+        "integration (linux-aarch64)",
+        "integration (linux-x86_64)",
+        "integration (macos-aarch64)",
+        "integration (windows-aarch64)",
+        "integration (windows-x86_64)",
+    ]
+
+    equal(
+        reported,
+        platform_qualified,
+        describing="the contexts the committed integration job reports",
+    )
+    equal(required, platform_qualified, describing="the integration entries of the required record")
+
+
+def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The contexts the job reported before it was qualified are reported by nothing now."""
+    stale = tree()
+    stale.edit(
+        "AGENTS.md",
+        "- `integration (linux-x86_64)`\n",
+        "- `integration (linux-x86_64, ubuntu-24.04)`\n",
+    )
+
+    findings = merge_model(stale.repo)
+
+    refused_naming(
+        findings,
+        "`integration (linux-x86_64, ubuntu-24.04)` as a required check",
+        "reports a status context",
+    )
+
+
+def test_unqualifying_a_matrix_job_has_github_append_the_whole_cell(
+    tree: Callable[[], Tree],
+) -> None:
+    """A name interpolating nothing is qualified by GitHub, not by its author.
+
+    GitHub appends the cell's whole matrix entry to such a name, runner and all,
+    so the two rules are different and moving between them is a rename: dropping
+    the integration job's qualifier does not tidy its contexts — it replaces them
+    with ones carrying the runner, stranding whatever required the old ones.
+    """
+    renamed = tree()
+    renamed.edit(
+        CI,
+        "    name: integration (${{ matrix.platform.id }})\n",
+        "    name: integration\n",
+    )
+
+    reported = sorted(
+        context.name for context in status_contexts(renamed.repo) if context.job == "integration"
     )
 
     equal(
@@ -128,34 +185,9 @@ def test_an_unqualified_matrix_job_reports_the_cells_github_appends(
             "integration (windows-aarch64, windows-11-arm)",
             "integration (windows-x86_64, windows-2025)",
         ],
-        describing="the contexts the committed integration job reports",
+        describing="the contexts an unqualified integration job reports",
     )
-
-
-def test_qualifying_an_unqualified_matrix_job_renames_every_context_it_reports(
-    tree: Callable[[], Tree],
-) -> None:
-    """The two rules are different, and moving between them is a rename.
-
-    GitHub takes a name interpolating a matrix value verbatim instead of
-    appending to it, so qualifying the integration job does not tidy its contexts
-    — it replaces them, stranding whatever required the old ones.
-    """
-    renamed = tree()
-    renamed.edit(
-        CI,
-        "    name: integration\n",
-        "    name: integration (${{ matrix.platform.id }})\n",
-    )
-
-    reported = {context.name for context in status_contexts(renamed.repo)}
-
-    contains(reported, "integration (linux-x86_64)", describing="the derived contexts")
-    absent(
-        reported,
-        "integration (linux-x86_64, ubuntu-24.04)",
-        describing="the derived contexts",
-    )
+    refused_naming(merge_model(renamed.repo), "`integration (linux-x86_64)` as a required check")
 
 
 def test_a_matrix_job_whose_cells_share_one_name_is_refused(

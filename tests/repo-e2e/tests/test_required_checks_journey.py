@@ -11,13 +11,24 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from journey import GateCopy
-from repo_checks.expect import failing
+from repo_checks.expect import failing, passing
 
 AGENTS = "AGENTS.md"
 CI = ".github/workflows/ci.yml"
 QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
 X86 = "- `gate (linux-x86_64)`\n"
 AARCH64 = "- `gate (linux-aarch64)`\n"
+
+
+def test_the_committed_record_is_accepted(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """The record, platform-qualified integration contexts included, is what CI reports."""
+    clean = gate_copy()
+
+    result = clean.just("check-repo")
+
+    passing(result)
 
 
 def test_a_stale_bare_matrix_job_name_is_refused(
@@ -42,6 +53,31 @@ def test_a_record_naming_only_one_of_the_gates_cells_is_refused(
     result = broken.just("check-repo")
 
     failing(result, naming="some but not all of job `gate`'s status contexts as required")
+
+
+def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """The integration job reports under its platform id alone, never its runner.
+
+    A context carrying the runner label is renamed by a new runner image, so the
+    job names its cells by platform and the record has to follow: the contexts
+    it reported before that are reported by nothing now.
+    """
+    stale = gate_copy()
+    stale.edit(
+        AGENTS,
+        "- `integration (linux-x86_64)`\n",
+        "- `integration (linux-x86_64, ubuntu-24.04)`\n",
+    )
+
+    result = stale.just("check-repo")
+
+    failing(
+        result,
+        naming="`integration (linux-x86_64, ubuntu-24.04)` as a required check, but no "
+        "committed workflow reports a status context by that name",
+    )
 
 
 def test_a_required_name_several_cells_report_under_is_refused(
