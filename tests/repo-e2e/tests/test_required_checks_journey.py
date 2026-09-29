@@ -11,13 +11,24 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from journey import GateCopy
-from repo_checks.expect import failing
+from repo_checks.expect import failing, passing
 
 AGENTS = "AGENTS.md"
 CI = ".github/workflows/ci.yml"
 QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
 X86 = "- `gate (linux-x86_64)`\n"
 AARCH64 = "- `gate (linux-aarch64)`\n"
+
+
+def test_the_committed_record_is_accepted(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """The record, platform-qualified integration contexts included, is what CI reports."""
+    clean = gate_copy()
+
+    result = clean.just("check-repo")
+
+    passing(result)
 
 
 def test_a_stale_bare_matrix_job_name_is_refused(

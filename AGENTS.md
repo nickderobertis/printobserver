@@ -1050,10 +1050,18 @@ qualify it instead, appending the cell's whole matrix entry — which puts the
 runner in the context beside the platform, so moving a platform to a newer
 runner image would rename a required check and block every pull request until
 somebody edited the protection. Do not unqualify either name: that is a rename,
-and it strands the five contexts branch protection requires for that job. What
+and it strands the five contexts the record below names for that job. What
 matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
+
+The record is what the committed workflows report, and it can move ahead of the
+live protection, which a person applies. The integration job's five
+platform-qualified contexts below are that case: the swap onto them is pending
+(issue #95), and until it is applied `main`'s protection still requires the
+runner-qualified contexts the job reported before, `integration (<platform>,
+<runner>)`, which nothing reports any more. So the protection swap and the merge
+that renames the job belong to one window.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
