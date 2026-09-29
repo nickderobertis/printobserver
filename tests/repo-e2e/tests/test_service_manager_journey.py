@@ -773,7 +773,10 @@ class Launchd:
         and lists a service the operator switched off in the domain's disabled
         set; one loaded from anywhere else is gone at the next boot.
         """
-        printed = self._print().stdout
+        printing = self._print()
+        if printing.returncode != 0:
+            return Reported(False, f"launchd does not report it loaded:\n{_said(printing)}")
+        printed = printing.stdout
         if not any(line.strip() == f"path = {self.definition}" for line in printed.splitlines()):
             return Reported(
                 False, f"launchd does not report it loaded from {self.definition}:\n{printed}"
@@ -789,7 +792,7 @@ class Launchd:
     def _switched_off(self, listed: str | None = None) -> bool:
         """Whether the system domain's disabled set lists the service."""
         if listed is None:
-            listed = self._launchctl("print-disabled", "system").stdout
+            listed = self._launchctl("print-disabled", "system", check=True).stdout
         return any(
             f'"{self.label}"' in line and ("=> disabled" in line or "=> true" in line)
             for line in listed.splitlines()
@@ -865,8 +868,17 @@ class Launchd:
                     self._on_machine("dscl", ".", "-delete", f"/{record}/{SERVICE_USER}")
 
     def is_present(self) -> bool:
-        """Whether launchd has the service loaded at all."""
-        return self._print().returncode == 0
+        """Whether launchd has the service loaded at all.
+
+        Raises:
+            AssertionError: If launchd answers neither with the service nor with
+                its own not-found exit, since that says nothing about presence.
+        """
+        printing = self._print()
+        if printing.returncode not in {0, launchctl_standin.NOT_FOUND}:
+            message = f"`launchctl print system/{self.label}` failed:\n{_said(printing)}"
+            raise AssertionError(message)
+        return printing.returncode == 0
 
     def leftovers(self) -> list[str]:
         """What of an installation this host carries, and a loaded service."""
@@ -1139,6 +1151,7 @@ def _adapters() -> list[str]:
         return [ServiceManager.WINDOWS_SERVICE.value]
     if HERE.service_manager == ServiceManager.LAUNCHD:
         return [ServiceManager.LAUNCHD.value]
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     return [ServiceManager.SYSTEMD.value, "launchd-stand-in"]
 
 
@@ -1170,6 +1183,7 @@ def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
         (template or "")
         .replace('api_key = ""', 'api_key = "a-provisioned-key"')
         .replace('shared_secret = ""', 'shared_secret = "a-shared-secret"')
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
         .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
     )

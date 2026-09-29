@@ -1144,6 +1144,18 @@ reason = "Where the two shims above reach the adapter: the launchd stand-in and 
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "return [ServiceManager.SYSTEMD.value, \"launchd-stand-in\"]"
+reason = "Where the Linux cells gain the launchd adapter's stand-in case, as the manager ruled for issue #99: launchd exists on macOS alone, so on Linux the adapter's whole sequence runs against `launchctl_standin.py`, which starts, kills and restarts the real `printobserver` as the installed property list says. Linux's own manager is walked for real beside it, and the macOS cell walks the same adapter against the real launchd."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = ".replace('url = \"http://127.0.0.1:5000\"'"
+reason = "The service refuses to start while nothing answers at its configured OctoPrint address, and this journey is about the service manager rather than a printer: the configuration is pointed at a local HTTP server that answers every read with an empty document, as it was before this change. The real OctoPrint is driven by the printer integration tier, and the real printer by the smoke test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "return Launchd(program, _stand_in_launchd("
 reason = "The Linux case that selects the launchd adapter's stand-in backing, which the manager ruled for issue #99: launchd exists on macOS alone, so on Linux the adapter's whole sequence runs against `launchctl_standin.py`, which starts, kills and restarts the real `printobserver` as the installed property list says. The macOS cell selects the real backing, and the gate requires that case to run there."
 

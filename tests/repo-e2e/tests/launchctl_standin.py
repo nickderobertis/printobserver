@@ -217,7 +217,7 @@ def _read_record(label: str) -> Record | None:
         record = _record(json.loads(_record_path(label).read_text(encoding="utf-8")))
     except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
-    if record is None or not _alive(record.supervisor):
+    if record is None or not _exists(record.supervisor):
         return None
     return record
 
@@ -240,7 +240,13 @@ def _disabled() -> list[str]:
     return [label for label in listed if isinstance(label, str) and _label_of(f"{DOMAIN}/{label}")]
 
 
-def _alive(pid: int) -> bool:
+def _exists(pid: int) -> bool:
+    """Whether a process of this id exists, an unreaped one included.
+
+    A supervisor is started by a `launchctl bootstrap` that exits at once, so
+    the process that reaps it is init's rather than this program's; an id it
+    has not reaped yet still names the job's own supervisor, finishing.
+    """
     try:
         os.kill(pid, 0)
     except OSError:
@@ -398,7 +404,7 @@ def _bootout(arguments: list[str]) -> int:
         return NO_SUCH_PROCESS
     os.kill(record.supervisor, signal.SIGTERM)
     deadline = time.monotonic() + 2 * EXIT_TIMEOUT_SECONDS
-    while _alive(record.supervisor):
+    while _exists(record.supervisor):
         if time.monotonic() > deadline:
             _say(sys.stderr, f"Boot-out failed: {INPUT_OUTPUT_ERROR}: Input/output error")
             return INPUT_OUTPUT_ERROR
