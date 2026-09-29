@@ -1179,6 +1179,9 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
     if not isinstance(server, str) or not isinstance(credential, str) or not credential.strip():
         # The file is written in place, so a read can land between its lines.
         return None
+    # The service writes a plain-HTTP address; anything else is not one `_ask` can dial.
+    if not server.startswith("http://"):
+        return None
     address = server.removeprefix("http://")
     hostname, _, port = address.rpartition(":")
     if not hostname or not port.isdigit() or not 0 < int(port) < 65536:

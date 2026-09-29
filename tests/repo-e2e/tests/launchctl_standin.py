@@ -202,7 +202,7 @@ def _record(document: object) -> Record | None:
     # JSON's `true` is a Python `int`; a process id or a count is never one.
     if any(isinstance(value, bool) for value in (supervisor, pid, runs, code)):
         return None
-    if not isinstance(supervisor, int) or not isinstance(runs, int):
+    if not isinstance(supervisor, int) or not isinstance(runs, int) or runs < 0:
         return None
     if not isinstance(pid, int | None) or not isinstance(code, int | None):
         return None
