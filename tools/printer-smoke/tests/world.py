@@ -29,7 +29,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from machine import Machine
-from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
+from printer_smoke import (
+    COMMAND_TIMEOUT_ENV,
+    CONSERVATIVE_ENVELOPE,
+    FILE_NAME,
+    PROGRAM_ENV,
+    address_of,
+)
 from relay import ADDRESS as RELAY_ADDRESS
 from relay import AFTER, ARMED_BY, HANG_ON, LISTEN_ON, STATE, RelayState
 from relay import PROGRAM as RELAYED_PROGRAM
@@ -364,8 +370,8 @@ class World:
             )
         )
         return {
-            "PRINTOBSERVER_SMOKE_PROGRAM": str(RELAY_CLIENT),
-            "PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S": timeout_s,
+            PROGRAM_ENV: str(RELAY_CLIENT),
+            COMMAND_TIMEOUT_ENV: timeout_s,
             RELAY_ADDRESS: self.relay.address,
         }
 

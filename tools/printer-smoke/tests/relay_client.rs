@@ -21,7 +21,7 @@
 
 use std::env;
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::process;
 use std::thread;
 
@@ -52,7 +52,18 @@ fn main() {
 fn relay() -> io::Result<i32> {
     let address = env::var(ADDRESS)
         .map_err(|_| io::Error::other(format!("{ADDRESS} names no relay to hand this to")))?;
-    let mut stream = TcpStream::connect(&address)?;
+    // The relay is always this host's own, so an address that names another
+    // host is refused before anything of this command is sent to it.
+    let relay: SocketAddr = address
+        .parse()
+        .ok()
+        .filter(|relay: &SocketAddr| relay.ip().is_loopback())
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "{ADDRESS} is {address:?}, not a loopback host:port"
+            ))
+        })?;
+    let mut stream = TcpStream::connect(relay)?;
     stream.set_nodelay(true)?;
 
     // Refused rather than converted: a lossy conversion would run the program

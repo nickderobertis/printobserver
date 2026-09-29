@@ -35,6 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from printer_smoke import PROGRAM_ENV
 from relay import (
     ADDRESS,
     AFTER,
@@ -181,7 +182,7 @@ def test_one_relay_process_serves_every_command(world: World) -> None:
     )
     truth(served[0].stdout.strip().isdigit(), describing="a relay's process id to be named")
     equal(
-        environment["PRINTOBSERVER_SMOKE_PROGRAM"],
+        environment[PROGRAM_ENV],
         str(RELAY_CLIENT),
         describing="the program the smoke runs per command, which is the compiled client",
     )
@@ -333,7 +334,7 @@ def test_a_program_that_is_not_there_is_answered_as_one(world: World, tmp_path: 
     )
 
 
-@pytest.mark.parametrize("reachable", ["closed", "unnamed"])
+@pytest.mark.parametrize("reachable", ["closed", "unnamed", "elsewhere", "unparsable"])
 def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) -> None:
     """A client with no relay to hand its command to exits as unanswered, saying why.
 
@@ -341,10 +342,14 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
     reports too, rather than a program exit the smoke would read as an answer.
     """
     environment = world.environment()
+    said = "the smoke's relay did not answer"
     if reachable == "closed":
         environment[ADDRESS] = a_closed_address()
-    else:
+    elif reachable == "unnamed":
         environment.pop(ADDRESS, None)
+    else:
+        environment[ADDRESS] = "192.0.2.1:9" if reachable == "elsewhere" else "a relay"
+        said = "not a loopback host:port"
 
     answered = relay(environment, "status", "--json")
 
@@ -353,7 +358,7 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
         unanswered_exit(),
         describing="the exit of a command the relay never answered",
     )
-    contains(answered.stderr, "the smoke's relay did not answer", describing="what it said")
+    contains(answered.stderr, said, describing="what it said")
     equal(answered.stdout, "", describing="what it printed, which is no answer")
 
 
@@ -435,7 +440,6 @@ def test_a_client_sending_more_arguments_than_any_is_refused(world: World) -> No
     )
 
 
-#: What a relay that misbehaves sends, and what the client says of it.
 BROKEN_REPLIES = {
     "oversized": (
         (0).to_bytes(4, "big") + (2**32 - 1).to_bytes(4, "big"),
@@ -524,14 +528,16 @@ def test_the_client_s_unanswered_exit_is_none_of_the_program_s_own() -> None:
     absent(declared, unanswered_exit(), describing="the program's declared exits")
 
 
-def test_output_past_the_most_one_reply_carries_is_refused(world: World) -> None:
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_output_past_the_most_one_reply_carries_is_refused(world: World, stream: str) -> None:
     """A program answering more than the client would take is refused, naming the stream."""
-    flooding = f"import sys; sys.stdout.buffer.write(b'x' * {MOST_FRAME_BYTES + 1})"
+    flooding = f"import sys; sys.{stream}.buffer.write(b'x' * {MOST_FRAME_BYTES + 1})"
 
     answered = relay(relayed(world), "-c", flooding)
 
-    failing(answered, naming=f"more than {MOST_FRAME_BYTES} bytes on stdout, over the most")
+    failing(answered, naming=f"more than {MOST_FRAME_BYTES} bytes on {stream}, over the most")
     equal(answered.stdout, "", describing="what reached the smoke of the flood")
+    truth(len(answered.stderr) < 1024, describing="the refusal, rather than the flood, on stderr")
 
 
 def test_an_argument_frame_that_is_not_utf8_is_refused_by_the_relay(world: World) -> None:
