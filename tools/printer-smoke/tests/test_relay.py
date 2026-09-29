@@ -11,12 +11,14 @@ landed inside a write on purpose, so what is driven here is what one leaves
 behind: the state file as the last completed write left it, and beside it the
 staging file an interrupted write got as far as.
 
-Every relay here is started through `World`, the way the suite starts one, and
-driven through its client, the way the smoke drives it, in front of a program
-that is the interpreter itself told what to answer. So every test here is also
-the drift check between the relay's two halves: `relay.py` and
-`relay_client.rs` each write their own side of one wire, and a change to either
-that the other did not follow fails here.
+Every relay here is started through `World`, the way the suite starts one, in
+front of a program that is the interpreter itself told what to answer. Every
+command relayed here goes through its client, the way the smoke drives it, so
+those tests are also the drift check between the relay's two halves:
+`relay.py` and `relay_client.rs` each write their own side of one wire, and a
+change to either that the other did not follow fails here. The tests of a
+message the client never sends — one cut short, malformed, or past a bound —
+write that wire over a raw socket instead, the way a misbehaving client would.
 """
 
 from __future__ import annotations
@@ -664,8 +666,8 @@ def test_output_that_is_not_text_reaches_the_smoke_byte_for_byte(world: World) -
     equal(error, bytes([0x80, 0x0D, 0x0A]), describing="the bytes on stderr")
 
 
-def test_a_changed_client_source_is_compiled_afresh(tmp_path: Path) -> None:
-    """The compiled client is named after its source, so a changed source is never served stale."""
+def test_a_changed_client_source_is_given_a_compiled_file_of_its_own(tmp_path: Path) -> None:
+    """A changed client source names a compiled file of its own, never a stale build."""
     changed = tmp_path / RELAY_CLIENT_SOURCE.name
     changed.write_text(
         RELAY_CLIENT_SOURCE.read_text(encoding="utf-8") + "// changed\n", encoding="utf-8"

@@ -16,8 +16,8 @@
 //!   standard error as one frame each.
 //!
 //! A frame is a `u32` length followed by that many bytes. `relay.py` is the
-//! other half of this wire, and every test in `test_relay.py` drives this
-//! client against it, so the two cannot drift apart without one failing.
+//! other half of this wire, and every command `test_relay.py` relays goes
+//! through this client, so the two cannot drift apart without one failing.
 
 use std::env;
 use std::io::{self, Read, Write};
