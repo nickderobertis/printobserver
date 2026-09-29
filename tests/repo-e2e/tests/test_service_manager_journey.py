@@ -90,9 +90,8 @@ from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
 
-#: The variable, and its value, with which a lane makes a case missing a
-#: prerequisite fail rather than skip. The gate's own setting of it is held to
-#: these by `test_the_gate_fails_a_case_it_cannot_run_rather_than_skipping_it`.
+#: The gate job in `ci.yml` sets this, so that on the merge path a case whose
+#: prerequisite is missing fails instead of skipping out of sight.
 REQUIRED = "PRINTOBSERVER_SERVICE_JOURNEY"
 REQUIRED_VALUE = "required"
 GATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -140,6 +139,7 @@ class _AnswersEveryRead(BaseHTTPRequestHandler):
 @pytest.fixture
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEveryRead)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
