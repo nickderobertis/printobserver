@@ -958,20 +958,22 @@ class WindowsService:
         if code != 0:
             return
         binary = self._field(listing, "BINARY_PATH_NAME")
-        if str(WINDOWS_ROOT).lower() not in binary.lower():
+        # A leftover of this journey's own runs the program its installer placed
+        # in a root of the journey's shape, and nothing else is one to remove.
+        owned = re.match(
+            rf'"?{re.escape(str(WINDOWS_ROOT).lower())}\\(journey-\d+-\d+)'
+            r'\\program files\\printobserver\\printobserver\.exe"?(?:\s|$)',
+            binary.lower(),
+        )
+        if owned is None:
             _unmet(
                 f"this host already has a `{self.name}` service running {binary}, which is "
                 f"not this journey's own, and the journey will not touch a service somebody "
                 f"installed"
             )
+            return
         self._unregister()
-        # The leftover's own root, read off the registration just removed: the
-        # directory under the journeys' parent that its program was placed in.
-        prefix = f"{str(WINDOWS_ROOT).lower()}\\"
-        at = binary.lower().find(prefix)
-        placed = binary[at + len(prefix) :].split("\\", 1)[0] if at >= 0 else ""
-        if re.fullmatch(r"journey-\d+-\d+", placed):
-            shutil.rmtree(WINDOWS_ROOT / placed, ignore_errors=True)
+        shutil.rmtree(WINDOWS_ROOT / owned[1], ignore_errors=True)
 
     def install(self) -> Installed:
         """The committed PowerShell installer into the journey's own root."""
