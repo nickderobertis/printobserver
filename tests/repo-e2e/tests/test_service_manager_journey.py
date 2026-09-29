@@ -546,11 +546,15 @@ class Systemd:
 
 
 def _compare_users(
-    as_root: Callable[..., subprocess.CompletedProcess[str]], pid: int, user: str
+    on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int, user: str
 ) -> Reported:
-    """Whether `pid` runs as `user`, compared by user id rather than a name `ps` may shorten."""
-    running = as_root("ps", "-o", "uid=", "-p", str(pid)).stdout.strip()
-    expected = as_root("id", "-u", user).stdout.strip()
+    """Whether `pid` runs as `user`, compared by user id rather than a name `ps` may shorten.
+
+    `on_machine` runs a command on the machine the service is on, with whatever
+    privilege the adapter runs its commands there with.
+    """
+    running = on_machine("ps", "-o", "uid=", "-p", str(pid)).stdout.strip()
+    expected = on_machine("id", "-u", user).stdout.strip()
     return Reported(
         bool(expected) and running == expected,
         f"process {pid} runs as uid {running or '(none)'}; {user} is uid {expected or '(none)'}",
@@ -662,6 +666,16 @@ class Launchd:
             )
         return result
 
+    def _installed_definition(self) -> dict[str, object]:
+        """The property list the installer wrote, which launchd reads as a dictionary."""
+        with Path(self._beneath(self.definition)).open("rb") as handle:
+            written = plistlib.load(handle)
+        truth(
+            isinstance(written, dict),
+            describing=f"the installed {self.definition} to be a dictionary; it is {written!r}",
+        )
+        return written if isinstance(written, dict) else {}
+
     def _print(self) -> subprocess.CompletedProcess[str]:
         return self._launchctl("print", f"system/{self.label}")
 
@@ -691,8 +705,7 @@ class Launchd:
             "sh", installer, *into, "--binary", str(self.program), timeout=300
         )
         passing((result.returncode, _said(result)), describing="the committed installer")
-        with Path(self._beneath(self.definition)).open("rb") as handle:
-            written = plistlib.load(handle)
+        written = self._installed_definition()
         equal(
             set(written),
             set(launchctl_standin.KEYS),
@@ -800,8 +813,7 @@ class Launchd:
 
     def runs_as_the_service_user(self, pid: int) -> Reported:
         """The process's user id against the id of the user the property list names."""
-        with Path(self._beneath(self.definition)).open("rb") as handle:
-            named = plistlib.load(handle).get("UserName")
+        named = self._installed_definition().get("UserName")
         equal(named, self.user, describing="the user the installed property list runs it as")
         return _compare_users(self._on_machine, pid, self.user)
 
