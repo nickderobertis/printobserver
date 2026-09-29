@@ -515,6 +515,33 @@ def test_input_past_the_most_the_relay_takes_stops_the_program_and_is_refused(
     equal(ran.exists(), False, describing="whether the program ran on past its input")
 
 
+def test_input_refused_after_a_program_that_ended_first_is_still_refused(world: World) -> None:
+    """An input frame the relay refuses is refused even when the program ended before it.
+
+    The program exits without reading, so the frame before the refused one
+    cannot be written to it; the reply still waits for that refusal rather
+    than answering with the program's own exit.
+    """
+    unread = b"x" * (1024 * 1024)
+    argv = [b"-c", b"pass"]
+    with connected(relayed(world)) as connection:
+        connection.sendall(
+            len(argv).to_bytes(4, "big")
+            + b"".join(len(argument).to_bytes(4, "big") + argument for argument in argv)
+            + len(unread).to_bytes(4, "big")
+            + unread
+            + (MOST_FRAME_BYTES + 1).to_bytes(4, "big")
+        )
+        reply = received(connection)
+
+    equal(int.from_bytes(reply[:4], "big", signed=True), 1, describing="the refusal's exit")
+    contains(
+        reply.decode("utf-8", errors="replace"),
+        f"sent a length of {MOST_FRAME_BYTES + 1}, over the most it takes",
+        describing="what the relay said",
+    )
+
+
 def test_a_relay_that_will_not_stop_when_asked_is_killed(world: World) -> None:
     """A relay still running once its stop is overdue is killed rather than waited on."""
     deaf = start(

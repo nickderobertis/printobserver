@@ -34,6 +34,7 @@ import contextlib
 import io
 import json
 import os
+import select
 import socket
 import subprocess
 import sys
@@ -270,13 +271,20 @@ class Relay:
                 process.kill()
             self.running.add(process)
         refused: list[ValueError] = []
+        ended, exited = socket.socketpair()
         try:
-            threading.Thread(
-                target=_forward_input, args=(connection, process, refused), daemon=True
-            ).start()
+            reader = threading.Thread(
+                target=_forward_input, args=(connection, process, refused, exited), daemon=True
+            )
+            reader.start()
             error = _drain(process.stderr, process)
             output = _read(_raw(process.stdout), process)
             status = process.wait()
+            # The reply is chosen only once every input frame that arrived
+            # before the program ended has been checked, so a program that
+            # ended quickly cannot answer over an input the relay refuses.
+            ended.close()
+            reader.join()
             if refused:
                 return Reply.refusing(refused[0])
             said = error()
@@ -288,6 +296,8 @@ class Relay:
                     )
             return Reply(status=status, output=output, error=said)
         finally:
+            ended.close()
+            exited.close()
             with self.lock:
                 self.running.discard(process)
 
@@ -352,25 +362,41 @@ def _frame(connection: socket.socket) -> bytes:
 
 
 def _forward_input(
-    connection: socket.socket, process: subprocess.Popen[str], refused: list[ValueError]
+    connection: socket.socket,
+    process: subprocess.Popen[str],
+    refused: list[ValueError],
+    exited: socket.socket,
 ) -> None:
     """Feed the program what the client forwards of its input, and close it at the end.
 
-    A frame past the most the relay takes is not input the program may run on:
-    the program is killed, and the refusal is put in `refused` for its reply.
+    Reading stops at the end of the input, or once `exited` becomes readable —
+    the program has ended — with nothing more of the input waiting. Every frame
+    that arrived before then is checked, whether or not the program was still
+    there to take it. A frame past the most the relay takes is not input the
+    program may run on: the program is killed, and the refusal is put in
+    `refused` for its reply.
     """
     sink = _raw(process.stdin)
     try:
-        while sink is not None and (chunk := _frame(connection)):
-            sink.write(chunk)
-            sink.flush()
+        while sink is not None:
+            waiting, _, _ = select.select([connection, exited], [], [])
+            if connection not in waiting:
+                return
+            chunk = _frame(connection)
+            if not chunk:
+                return
+            try:
+                sink.write(chunk)
+                sink.flush()
+            except OSError:
+                # The program stopped reading; what follows is still checked.
+                continue
     except ValueError as error:
         refused.append(error)
         with contextlib.suppress(OSError):
             process.kill()
     except OSError:
-        # The client went away, or the program stopped reading: either way
-        # there is no more input for it.
+        # The client went away: there is no more input for the program.
         pass
     finally:
         if sink is not None:
