@@ -199,6 +199,9 @@ def _record(document: object) -> Record | None:
     code, killed = document.get("last_exit_code"), document.get("last_signal")
     if not isinstance(path, str) or not isinstance(program, str):
         return None
+    # JSON's `true` is a Python `int`; a process id or a count is never one.
+    if any(isinstance(value, bool) for value in (supervisor, pid, runs, code)):
+        return None
     if not isinstance(supervisor, int) or not isinstance(runs, int):
         return None
     if not isinstance(pid, int | None) or not isinstance(code, int | None):
