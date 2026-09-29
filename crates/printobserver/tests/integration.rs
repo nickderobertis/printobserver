@@ -20,6 +20,8 @@
 //! starts it again, so a second run against one environment finds it where the
 //! first left it.
 
+#[path = "support/announced.rs"]
+mod announced;
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]

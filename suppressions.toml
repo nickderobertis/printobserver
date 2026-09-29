@@ -1686,3 +1686,9 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "if refusal:"
 reason = "The branch selecting the stand-in's refusal answer, taken only when a journey hands it the forge's refusal text; the ground is the entry at `print(refusal, file=sys.stderr)`. The real `gh` has no such switch, and making github.com refuse to arm a live pull request is not something a test may do."
+
+[[suppression]]
+rule = "tests_assert_real_behavior"
+file = "crates/printobserver/tests/journeys/announcing.rs"
+site = "fn the_stand_in()"
+reason = "Not a test of anything: it is the stand-in supervisor process the announcement-wait journeys in the same file start, reached as an ignored test of this binary because that is how a Rust test binary runs one of its own functions in a process of its own (the store crate's `child::run` does the same). It is ignored so nothing else runs it, and it refuses to run unless a journey set its behaviour. What it does is observed and asserted from outside, by those journeys: that the wait stops it, how long that took, and that the failure carries what it printed. An assertion inside the child would assert on the fixture rather than on the wait under test."
