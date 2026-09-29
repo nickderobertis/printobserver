@@ -290,14 +290,16 @@ def _is_supervisor(pid: int, given: str) -> bool:
     this file, `--supervise`, the path the operator named and where it resolved;
     a process merely mentioning any of those anywhere in its arguments is not one.
     """
+    resolved = _beneath_root(given)
     try:
         argv = Path(f"/proc/{pid}/cmdline").read_bytes().removesuffix(b"\0").split(b"\0")
     except OSError:
         return False
-    return len(argv) == 5 and argv[1:4] == [
+    return resolved is not None and argv[1:] == [
         os.fsencode(__file__),
         b"--supervise",
         os.fsencode(given),
+        os.fsencode(resolved),
     ]
 
 

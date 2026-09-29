@@ -1773,10 +1773,9 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
     equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
 
 
-# llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
     """The answer to `print-disabled` is read as a listing, and anything else as none."""
-    listing = (
+    well_formed = (
         "disabled services = {\n"
         '\t"com.example.off" => disabled\n'
         '\t"com.example.on" => enabled\n'
@@ -1784,20 +1783,20 @@ def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
         "}\n"
         "login item associations = {\n}\n"
     )
-    equal(
-        _disabled_services(listing),
-        {"com.example.off", "com.example.older"},
-        describing="the labels a well-formed listing switches off",
-    )
-    for malformed in (
-        "",
-        "Unrecognized subcommand: print-disabled\n",
-        'disabled services = {\n\t"com.example.off" => disabled\n',
-        "disabled services = {\n\tcom.example.off => disabled\n}\n",
-        'disabled services = {\n\t"com.example.off" => maybe\n}\n',
-    ):
-        equal(
-            _disabled_services(malformed),
-            None,
-            describing=f"no listing read out of {malformed!r}",
-        )
+    cases: list[tuple[str, set[str] | None]] = [
+        (well_formed, {"com.example.off", "com.example.older"}),
+        *(
+            (malformed, None)
+            for malformed in (
+                "",
+                "Unrecognized subcommand: print-disabled\n",
+                'disabled services = {\n\t"com.example.off" => disabled\n',
+                "disabled services = {\n\tcom.example.off => disabled\n}\n",
+                'disabled services = {\n\t"com.example.off" => maybe\n}\n',
+            )
+        ),
+    ]
+    for listing, switched_off in cases:
+        # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+        read = _disabled_services(listing)
+        equal(read, switched_off, describing=f"the labels read out of {listing!r}")
