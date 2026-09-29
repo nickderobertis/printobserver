@@ -1333,10 +1333,17 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     )
 
 
-#: The program each host-backed case needs, and how its absence is named.
+@dataclass(frozen=True, slots=True)
+class Prerequisite:
+    """The program a host-backed case needs, and the words its absence is reported in."""
+
+    program: str
+    named: str
+
+
 PREREQUISITES = {
-    ServiceManager.SYSTEMD.value: ("docker", "no `docker` that answers"),
-    ServiceManager.LAUNCHD.value: ("sudo", "needs password-free `sudo`"),
+    ServiceManager.SYSTEMD.value: Prerequisite("docker", "no `docker` that answers"),
+    ServiceManager.LAUNCHD.value: Prerequisite("sudo", "needs password-free `sudo`"),
 }
 
 
@@ -1349,7 +1356,8 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
     workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
     setting = workflow["jobs"]["gate"].get("env", {}).get(REQUIRED)
     equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
-    program, named = PREREQUISITES[adapter]
+    prerequisite = PREREQUISITES[adapter]
+    program = prerequisite.program
     unanswering = tmp_path / "bin"
     unanswering.mkdir()
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
@@ -1368,7 +1376,7 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
         ran = shell_run(case, cwd=REPO_ROOT, env=environment, timeout=BUILD_TIMEOUT_SECONDS)
         said = plain(_said(ran))
         equal(ran.returncode != 0, fails, describing=f"whether the case failed:\n{said}")
-        contains(said, named, describing="the prerequisite it names")
+        contains(said, prerequisite.named, describing="the prerequisite it names")
         contains(
             said,
             "so this case fails rather than skips" if fails else "SKIPPED",
