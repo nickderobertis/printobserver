@@ -376,6 +376,53 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
     equal(answered.stdout, "", describing="what it printed, which is no answer")
 
 
+def test_an_input_the_client_cannot_read_is_not_forwarded_as_its_end(
+    world: World, tmp_path: Path
+) -> None:
+    """A standard input the client cannot read leaves the command unanswered, saying why.
+
+    Forwarded as the end of the input, it would run the program on less than
+    the smoke handed the command and report whatever that answered. The input
+    is one the host refuses to read: a directory where a directory can be
+    opened, and a file opened only for writing on Windows, where one cannot.
+    """
+    environment = relayed(world)
+    fed = tmp_path / "fed"
+    unreadable = (
+        f"open({str(tmp_path / 'written')!r}, 'wb')"
+        if sys.platform == "win32"
+        else f"os.open({str(tmp_path)!r}, os.O_RDONLY)"
+    )
+    # A parent that hands the client that input, as the smoke's runner would
+    # hand it the input it was given.
+    handing = (
+        f"import os, subprocess, sys; sys.exit(subprocess.call(sys.argv[1:], stdin={unreadable}))"
+    )
+    reading = (
+        f"import sys; from pathlib import Path; Path({str(fed)!r}).write_text(sys.stdin.read())"
+    )
+
+    answered = run(
+        [sys.executable, "-c", handing, str(RELAY_CLIENT), "-c", reading],
+        cwd=REPO_ROOT,
+        env=environment,
+        timeout=60,
+    )
+
+    equal(
+        answered.returncode,
+        unanswered_exit(),
+        describing="the exit of a command whose input could not be read",
+    )
+    contains(
+        answered.stderr,
+        "the smoke's relay did not answer: its standard input could not be read",
+        describing="what it said",
+    )
+    equal(answered.stdout, "", describing="what it printed, which is no answer")
+    passing(relay(environment, "-c", ECHO, "status"), describing="the next command")
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows arguments are UTF-16, so none is not UTF-8"
 )

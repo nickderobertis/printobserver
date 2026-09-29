@@ -21,8 +21,9 @@
 
 use std::env;
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::process;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
 /// The variable naming where the relay listens, as `host:port`: `relay.py`'s
@@ -87,35 +88,67 @@ fn relay() -> io::Result<i32> {
     // first: an input nothing ever closes would otherwise hold the command up
     // forever, where the program it reaches never reads it at all.
     let mut upstream = stream.try_clone()?;
-    thread::spawn(move || forward_input(&mut upstream));
+    let unreadable: Arc<Mutex<Option<io::Error>>> = Arc::default();
+    let noting = Arc::clone(&unreadable);
+    thread::spawn(move || {
+        if let Err(error) = forward_input(&mut upstream) {
+            // Noted before the connection is cut, so the answer that cut
+            // stops is reported as this rather than as a relay gone away.
+            *noting.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
+            let _ = upstream.shutdown(Shutdown::Both);
+        }
+    });
 
-    let mut status = [0_u8; 4];
-    stream.read_exact(&mut status)?;
-    let output = read_frame(&mut stream)?;
-    let error = read_frame(&mut stream)?;
+    let answer = read_answer(&mut stream);
+    // An input that could not be read is not one that ended: the program on
+    // the far side was given less than the smoke handed this command, so
+    // whatever it answered is not the answer to this command.
+    if let Some(error) = unreadable
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take()
+    {
+        return Err(io::Error::other(format!(
+            "its standard input could not be read: {error}"
+        )));
+    }
+    let (status, output, error) = answer?;
     let mut stdout = io::stdout().lock();
     stdout.write_all(&output)?;
     stdout.flush()?;
     let mut stderr = io::stderr().lock();
     stderr.write_all(&error)?;
     stderr.flush()?;
-    Ok(i32::from_be_bytes(status))
+    Ok(status)
+}
+
+/// Read the relay's answer: the program's exit status and both of its streams.
+fn read_answer(stream: &mut TcpStream) -> io::Result<(i32, Vec<u8>, Vec<u8>)> {
+    let mut status = [0_u8; 4];
+    stream.read_exact(&mut status)?;
+    let output = read_frame(stream)?;
+    let error = read_frame(stream)?;
+    Ok((i32::from_be_bytes(status), output, error))
 }
 
 /// Copy standard input to the relay until it ends, then say that it has.
-fn forward_input(upstream: &mut TcpStream) {
+///
+/// An input that cannot be read is an error rather than an end: forwarding
+/// it as one would run the program on less than it was given. A relay that
+/// stopped taking input is not, because what it answers says why.
+fn forward_input(upstream: &mut TcpStream) -> io::Result<()> {
     let mut buffer = [0_u8; 8192];
     let mut stdin = io::stdin().lock();
     loop {
-        // An input that cannot be read is one that has ended, as far as the
-        // program on the far side can tell.
-        let read = stdin.read(&mut buffer).unwrap_or(0);
+        let read = match stdin.read(&mut buffer) {
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         let mut chunk = Vec::with_capacity(read + 4);
-        if frame(&mut chunk, &buffer[..read]).is_err()
-            || upstream.write_all(&chunk).is_err()
-            || read == 0
-        {
-            return;
+        frame(&mut chunk, &buffer[..read])?;
+        if upstream.write_all(&chunk).is_err() || read == 0 {
+            return Ok(());
         }
     }
 }
