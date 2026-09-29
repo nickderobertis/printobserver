@@ -1113,6 +1113,18 @@ reason = "The boundary is systemd's own command-line tool, driven as an operator
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/launchctl_standin.py"
+site = "supervisor = start([sys.executable, __file__, \"--supervise\""
+reason = "`launchctl bootstrap` hands the job to a supervisor that outlives it, as launchd outlives `launchctl`, and waits only for that supervisor to write the job's record. The one process started here is this stand-in's own Python, through `repo_checks.shell.start`, the repository's one seam for a long-running program; there is no typed client of a process for an async one to replace, and nothing to overlap."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/launchctl_standin.py"
+site = "return start(list(job.arguments)"
+reason = "The stand-in's supervisor starts the job its property list names, as launchd does — the real `printobserver` — through `repo_checks.shell.start`, the repository's one seam for a long-running program, and polls it on one loop that also honours `KeepAlive` and `ThrottleInterval`. One child at a time, sequentially; there is no typed client of a process for an async one to replace."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def _docker("
 reason = "The boundary is Docker's own command-line tool, driven the way a person brings a container up and runs a command in it — `docker import`, `docker run`, `docker exec`, `docker rm` — one command at a time, each answer asserted on before the next is issued. The journey's subject is the systemd inside that container rather than Docker, there is nothing concurrent for an async client to win, and a Docker SDK between the journey and the container would be a second thing under test."

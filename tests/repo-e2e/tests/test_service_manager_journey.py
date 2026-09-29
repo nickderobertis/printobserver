@@ -208,7 +208,7 @@ class Manager(Protocol):
 
     manager: ServiceManager
 
-    def preflight(self) -> None:
+    def prepare(self) -> None:
         """Skip or fail a host this must not touch, and bring the manager's side up."""
 
     def install(self) -> Installed:
@@ -377,7 +377,7 @@ class Systemd:
     def _show(self, prop: str) -> str:
         return self._systemctl("show", "-p", prop, "--value", self.name).strip()
 
-    def preflight(self) -> None:
+    def prepare(self) -> None:
         """Need Docker; start a container whose first process is systemd."""
         if shutil.which("docker") is None or self._docker("version").returncode != 0:
             _unmet(
@@ -663,7 +663,7 @@ class Launchd:
     def _print(self) -> subprocess.CompletedProcess[str]:
         return self._launchctl("print", f"system/{self.label}")
 
-    def preflight(self) -> None:
+    def prepare(self) -> None:
         """On the host: need a password-free `sudo`, and a Mac carrying nothing it would install."""
         if self.stand_in is not None:
             return
@@ -919,7 +919,7 @@ class WindowsService:
                 return value.strip()
         return ""
 
-    def preflight(self) -> None:
+    def prepare(self) -> None:
         """Leave a real installation alone; clear a leftover of this journey's own."""
         code, listing = self._sc("qc", self.name)
         if code != 0:
@@ -1238,7 +1238,7 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
     Torn down on every exit path, and the host then held to carrying nothing of
     the journey, whether or not an assertion held.
     """
-    manager.preflight()
+    manager.prepare()
     try:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
         installed = manager.install()

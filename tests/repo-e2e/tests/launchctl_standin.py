@@ -123,7 +123,9 @@ def _job(document: object) -> Job | None:
     keep_alive = document.get("KeepAlive", False)
     run_at_load = document.get("RunAtLoad", False)
     throttle = document.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS)
-    if not isinstance(label, str) or not label or not arguments or not isinstance(user, str):
+    if not isinstance(label, str) or _label_of(f"{DOMAIN}/{label}") is None:
+        return None
+    if not arguments or not arguments[0] or not isinstance(user, str):
         return None
     if not isinstance(directory, str | None) or not isinstance(log, str | None):
         return None
@@ -275,6 +277,7 @@ def _bootstrap(arguments: list[str]) -> int:
     # The supervisor outlives this command, as launchd outlives `launchctl`; its
     # streams are its own pipes, which close when this command exits, so a
     # caller reading this command's output is not held open by it.
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     supervisor = start([sys.executable, __file__, "--supervise", given, str(resolved)])
     deadline = time.monotonic() + EXIT_TIMEOUT_SECONDS
     while _read_record(job.label) is None:
@@ -414,6 +417,12 @@ def _drain(stream: IO[str], log: Path | None) -> None:
             sink.flush()
 
 
+def _start_job(job: Job) -> subprocess.Popen[str]:
+    """Start the program a job names, with its own arguments, directory and environment."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    return start(list(job.arguments), cwd=job.working_directory, env=dict(job.environment))
+
+
 def _supervise(given: str, resolved: Path) -> int:
     """Be launchd for one job until it is booted out."""
     job = _load(resolved) if _beneath_root(given) == resolved else None
@@ -439,9 +448,7 @@ def _supervise(given: str, resolved: Path) -> int:
                 child = None
                 wanted = _restarts(job.keep_alive, code)
             if child is None and wanted and time.monotonic() - last_start >= job.throttle:
-                child = start(
-                    list(job.arguments), cwd=job.working_directory, env=dict(job.environment)
-                )
+                child = _start_job(job)
                 last_start = time.monotonic()
                 for stream, log in ((child.stdout, None), (child.stderr, job.error_log)):
                     if stream is not None:
