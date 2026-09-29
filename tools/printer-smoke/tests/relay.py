@@ -235,10 +235,7 @@ class Relay:
         """
         with connection:
             try:
-                argv = [
-                    _frame(connection).decode("utf-8")
-                    for _ in range(_length(connection, most=MOST_ARGUMENTS))
-                ]
+                argv = _arguments(connection)
                 hanging = self.count_and_hold(argv)
             except ValueError as error:
                 Reply.refusing(error).send(connection)
@@ -266,14 +263,19 @@ class Relay:
         except FileNotFoundError as error:
             return Reply(status=PROGRAM_NOT_FOUND, output=b"", error=f"{error}\n".encode())
         with self.lock:
+            # Checked under the lock `stop` takes its snapshot under, so a
+            # program started as the relay stops is either in that snapshot or
+            # killed here.
+            if self.stopping.is_set():
+                process.kill()
             self.running.add(process)
         refused: list[ValueError] = []
         try:
             threading.Thread(
                 target=_forward_input, args=(connection, process, refused), daemon=True
             ).start()
-            error = _drain(process.stderr)
-            output = _read(_raw(process.stdout))
+            error = _drain(process.stderr, process)
+            output = _read(_raw(process.stdout), process)
             status = process.wait()
             if refused:
                 return Reply.refusing(refused[0])
@@ -281,8 +283,8 @@ class Relay:
             for stream, written in (("stdout", output), ("stderr", said)):
                 if len(written) > MOST_FRAME_BYTES:
                     return Reply.refusing(
-                        f"the program wrote {len(written)} bytes on {stream}, over the most "
-                        f"one reply carries ({MOST_FRAME_BYTES})"
+                        f"the program wrote more than {MOST_FRAME_BYTES} bytes on {stream}, "
+                        "over the most one reply carries"
                     )
             return Reply(status=status, output=output, error=said)
         finally:
@@ -291,8 +293,8 @@ class Relay:
 
     def stop(self) -> None:
         """Release every command held unanswered, and stop every program still running."""
-        self.stopping.set()
         with self.lock:
+            self.stopping.set()
             running = list(self.running)
         for process in running:
             process.kill()
@@ -322,6 +324,27 @@ def _length(connection: socket.socket, *, most: int) -> int:
         message = f"the relay's client sent a length of {length}, over the most it takes ({most})"
         raise ValueError(message)
     return length
+
+
+def _arguments(connection: socket.socket) -> list[str]:
+    """Read one command's arguments off the wire.
+
+    Raises:
+        ValueError: If there are more than `MOST_ARGUMENTS`, they come to more
+            than `MOST_FRAME_BYTES` together, or one is not UTF-8.
+    """
+    arguments: list[str] = []
+    total = 0
+    for _ in range(_length(connection, most=MOST_ARGUMENTS)):
+        frame = _frame(connection)
+        total += len(frame)
+        if total > MOST_FRAME_BYTES:
+            message = (
+                f"the relay's client sent arguments over the most it takes ({MOST_FRAME_BYTES})"
+            )
+            raise ValueError(message)
+        arguments.append(frame.decode("utf-8"))
+    return arguments
 
 
 def _frame(connection: socket.socket) -> bytes:
@@ -363,18 +386,31 @@ def _raw(stream: IO[str] | None) -> BinaryIO | None:
     return stream.buffer if isinstance(stream, io.TextIOWrapper) else None
 
 
-def _read(stream: BinaryIO | None) -> bytes:
-    return stream.read() if stream is not None else b""
+def _read(stream: BinaryIO | None, process: subprocess.Popen[str]) -> bytes:
+    """Everything `stream` holds, or the first byte past `MOST_FRAME_BYTES`.
+
+    Nothing past that is read: the program is killed there, and what was read
+    is long enough for the reply to refuse it.
+    """
+    if stream is None:
+        return b""
+    read = stream.read(MOST_FRAME_BYTES + 1)
+    if len(read) > MOST_FRAME_BYTES:
+        with contextlib.suppress(OSError):
+            process.kill()
+    return read
 
 
-def _drain(stream: IO[str] | None) -> Callable[[], bytes]:
+def _drain(stream: IO[str] | None, process: subprocess.Popen[str]) -> Callable[[], bytes]:
     """Read `stream` to its end beside the caller, and hand back a way to collect it.
 
     Both of a program's streams are read at once, so that one filling while the
     other is being waited on cannot hold the program up.
     """
     collected: list[bytes] = []
-    reader = threading.Thread(target=lambda: collected.append(_read(_raw(stream))), daemon=True)
+    reader = threading.Thread(
+        target=lambda: collected.append(_read(_raw(stream), process)), daemon=True
+    )
     reader.start()
 
     def collect() -> bytes:

@@ -22,6 +22,7 @@ that the other did not follow fails here.
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import os
 import re
@@ -529,7 +530,7 @@ def test_output_past_the_most_one_reply_carries_is_refused(world: World) -> None
 
     answered = relay(relayed(world), "-c", flooding)
 
-    failing(answered, naming=f"{MOST_FRAME_BYTES + 1} bytes on stdout, over the most")
+    failing(answered, naming=f"more than {MOST_FRAME_BYTES} bytes on stdout, over the most")
     equal(answered.stdout, "", describing="what reached the smoke of the flood")
 
 
@@ -559,3 +560,41 @@ def test_a_relay_that_never_says_where_it_listens_is_refused_in_time(
         RelayProcess.start(world.environment(), within_s=0.5, relay=silent)
 
     truth(time.monotonic() - started < SETTLE_S, describing="the refusal to come inside the bound")
+
+
+@pytest.mark.parametrize("oversized", ["one", "together"])
+def test_arguments_past_the_most_the_relay_takes_are_refused(world: World, oversized: str) -> None:
+    """One argument frame past the bound, or arguments past it together, are refused."""
+    half = MOST_FRAME_BYTES // 2 + 1
+    if oversized == "one":
+        sent = (1).to_bytes(4, "big") + (MOST_FRAME_BYTES + 1).to_bytes(4, "big")
+        said = f"sent a length of {MOST_FRAME_BYTES + 1}, over the most it takes"
+    else:
+        sent = (2).to_bytes(4, "big") + ((half).to_bytes(4, "big") + b"a" * half) * 2
+        said = f"sent arguments over the most it takes ({MOST_FRAME_BYTES})"
+    with connected(relayed(world)) as connection:
+        connection.sendall(sent)
+        reply = received(connection)
+
+    equal(int.from_bytes(reply[:4], "big", signed=True), 1, describing="the refusal's exit")
+    contains(reply.decode("utf-8", errors="replace"), said, describing="what the relay said")
+
+
+def test_output_that_is_not_text_reaches_the_smoke_byte_for_byte(world: World) -> None:
+    """What the program writes, text or not, is what the client writes on each stream."""
+    writing = (
+        "import sys; sys.stdout.buffer.write(bytes([0xff, 0xfe, 0x00, 0x0a])); "
+        "sys.stderr.buffer.write(bytes([0x80, 0x0d, 0x0a]))"
+    )
+    client = start([str(RELAY_CLIENT), "-c", writing], cwd=REPO_ROOT, env=relayed(world))
+    if client.stdin:
+        client.stdin.close()
+    output, error = (
+        stream.buffer.read() if isinstance(stream, io.TextIOWrapper) else b""
+        for stream in (client.stdout, client.stderr)
+    )
+    client.wait(timeout=SETTLE_S)
+
+    equal(client.returncode, 0, describing="the program's exit")
+    equal(output, bytes([0xFF, 0xFE, 0x00, 0x0A]), describing="the bytes on stdout")
+    equal(error, bytes([0x80, 0x0D, 0x0A]), describing="the bytes on stderr")
