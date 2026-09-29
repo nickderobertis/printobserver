@@ -27,7 +27,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from machine import Machine
 from printer_smoke import CONSERVATIVE_ENVELOPE, FILE_NAME, address_of
@@ -101,7 +100,7 @@ DURATION_S = "1"
 RELAY_BOUND_S = "3"
 
 #: The manifest the print carries, which is one for the smoke's own payload.
-MANIFEST: dict[str, Any] = {
+MANIFEST: dict[str, object] = {
     "file_name": FILE_NAME,
     "material": "PLA",
     "nozzle_diameter_mm": 0.4,
@@ -180,12 +179,17 @@ class RelayProcess:
     address: str
 
     @classmethod
-    def start(cls, environment: dict[str, str]) -> RelayProcess:
+    def start(
+        cls, environment: dict[str, str], *, within_s: float = RELAY_START_S, relay: Path = RELAY
+    ) -> RelayProcess:
         """Start a relay under `environment`, and answer it once it is listening.
 
         Args:
             environment: What it runs under, which says what it relays and
                 hangs, and which every program it runs inherits.
+            within_s: How long it is given to say where it listens.
+            relay: The script it is, which a test replaces to make one that
+                never says.
 
         Returns:
             The relay, listening.
@@ -193,10 +197,10 @@ class RelayProcess:
         Raises:
             RuntimeError: If its first line is not the loopback address it
                 listens on — it stopped first, said something else, or said
-                nothing inside `RELAY_START_S` — with that line and everything
-                it said.
+                nothing inside `within_s` — with that line and everything it
+                said.
         """
-        process = start([sys.executable, str(RELAY)], cwd=REPO_ROOT, env=environment)
+        process = start([sys.executable, str(relay)], cwd=REPO_ROOT, env=environment)
         first: list[str] = []
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         reading = threading.Thread(
@@ -204,7 +208,7 @@ class RelayProcess:
             daemon=True,
         )
         reading.start()
-        reading.join(RELAY_START_S)
+        reading.join(within_s)
         announced = first[0].strip() if first else ""
         if not _is_loopback_address(announced):
             process.kill()

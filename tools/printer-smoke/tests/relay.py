@@ -63,10 +63,12 @@ SERVED_BY = "SMOKE_RELAY_SERVED_BY"
 #: Where the relay listens: loopback, on a port the system chooses.
 LISTEN_ON = ("127.0.0.1", 0)
 
-#: The most arguments one command may carry, and the most bytes one frame may:
-#: far beyond anything the smoke sends, and short of what would exhaust a host.
+#: The most arguments one command may carry, and the most bytes one frame may,
+#: either way: far beyond anything the smoke sends or the program answers, and
+#: short of what would exhaust a host. `relay_client.rs` takes the same frame
+#: bound, and `test_relay.py` holds the two to one number.
 MOST_ARGUMENTS = 1024
-MOST_FRAME_BYTES = 16 * 1024 * 1024
+MOST_FRAME_BYTES = 64 * 1024 * 1024
 
 #: Where a state is written before it is moved over the file: beside it, so
 #: that the move is within one directory and the platform does it as one step.
@@ -275,7 +277,14 @@ class Relay:
             status = process.wait()
             if refused:
                 return Reply.refusing(refused[0])
-            return Reply(status=status, output=output, error=error())
+            said = error()
+            for stream, written in (("stdout", output), ("stderr", said)):
+                if len(written) > MOST_FRAME_BYTES:
+                    return Reply.refusing(
+                        f"the program wrote {len(written)} bytes on {stream}, over the most "
+                        f"one reply carries ({MOST_FRAME_BYTES})"
+                    )
+            return Reply(status=status, output=output, error=said)
         finally:
             with self.lock:
                 self.running.discard(process)

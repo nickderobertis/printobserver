@@ -33,8 +33,8 @@ const ADDRESS: &str = "SMOKE_RELAY_ADDRESS";
 // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
 const UNANSWERED: i32 = 70;
 
-/// The most bytes one frame from the relay may carry: far beyond any answer
-/// the program gives, and short of what would exhaust a host.
+/// The most bytes one frame from the relay may carry: `relay.py`'s
+/// `MOST_FRAME_BYTES`, which `test_relay.py` holds this to.
 const MOST_FRAME_BYTES: u32 = 64 * 1024 * 1024;
 
 fn main() {

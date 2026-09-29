@@ -382,12 +382,19 @@ def test_a_relay_the_environment_does_not_describe_is_refused_by_the_world(world
     equal(world.relay, None, describing="the relay the world holds after one failed to start")
 
 
-def test_the_client_reads_the_address_the_relay_names() -> None:
-    """The variable naming where the relay listens is spelled once, and the client follows it."""
+def test_the_client_reads_the_address_and_the_frame_bound_the_relay_names() -> None:
+    """The relay's address variable and frame bound are spelled once, and the client follows."""
+    client = RELAY_CLIENT_SOURCE.read_text(encoding="utf-8")
     contains(
-        RELAY_CLIENT_SOURCE.read_text(encoding="utf-8"),
+        client,
         f'const ADDRESS: &str = "{ADDRESS}";',
         describing="the relay's client, which must read the variable the relay's world sets",
+    )
+    bound = re.search(r"const MOST_FRAME_BYTES: u32 = (\d+) \* (\d+) \* (\d+);", client)
+    equal(
+        bound and int(bound[1]) * int(bound[2]) * int(bound[3]),
+        MOST_FRAME_BYTES,
+        describing="the most bytes one frame may carry, on the client's side of the wire",
     )
 
 
@@ -514,3 +521,41 @@ def test_the_client_s_unanswered_exit_is_none_of_the_program_s_own() -> None:
 
     truth(bool(declared), describing="the program's declared exits, read from failure.rs")
     absent(declared, unanswered_exit(), describing="the program's declared exits")
+
+
+def test_output_past_the_most_one_reply_carries_is_refused(world: World) -> None:
+    """A program answering more than the client would take is refused, naming the stream."""
+    flooding = f"import sys; sys.stdout.buffer.write(b'x' * {MOST_FRAME_BYTES + 1})"
+
+    answered = relay(relayed(world), "-c", flooding)
+
+    failing(answered, naming=f"{MOST_FRAME_BYTES + 1} bytes on stdout, over the most")
+    equal(answered.stdout, "", describing="what reached the smoke of the flood")
+
+
+def test_an_argument_frame_that_is_not_utf8_is_refused_by_the_relay(world: World) -> None:
+    """An argument the relay could only decode by altering it is refused on the wire."""
+    with connected(relayed(world)) as connection:
+        connection.sendall((1).to_bytes(4, "big") + (1).to_bytes(4, "big") + b"\xff")
+        reply = received(connection)
+
+    equal(int.from_bytes(reply[:4], "big", signed=True), 1, describing="the refusal's exit")
+    contains(
+        reply.decode("utf-8", errors="replace"),
+        "can't decode byte 0xff",
+        describing="what the relay said",
+    )
+
+
+def test_a_relay_that_never_says_where_it_listens_is_refused_in_time(
+    world: World, tmp_path: Path
+) -> None:
+    """A relay silent past its bound is killed and reported, rather than waited on forever."""
+    silent = tmp_path / "silent_relay.py"
+    silent.write_text("import time\ntime.sleep(600)\n", encoding="utf-8")
+    started = time.monotonic()
+
+    with pytest.raises(RuntimeError, match="announced '' rather than where it listens"):
+        RelayProcess.start(world.environment(), within_s=0.5, relay=silent)
+
+    truth(time.monotonic() - started < SETTLE_S, describing="the refusal to come inside the bound")
