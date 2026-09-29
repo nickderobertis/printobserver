@@ -48,6 +48,9 @@ POLICY = "repo-policy.toml"
 #: outcomes on `always()`.
 ROUTE = "install-route-pypi"
 
+#: The `gate` job's own environment: its header and every line indented under it.
+JOB_ENV = re.compile(r"^  gate:\n    env:\n(?:      .*\n)+", re.MULTILINE)
+
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """The workflow hands its inputs to the script, and every source job is runnable."""
@@ -407,7 +410,11 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
             "sets `WHEN` to something other than a scalar",
         ),
         (
-            "  gate:\n    env:\n      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}\n",
+            # The whole block, whatever it carries: replacing only its first
+            # entry would leave the rest indented under a sequence, which is
+            # not a workflow with a job env that is not a mapping but no
+            # workflow at all.
+            JOB_ENV,
             "  gate:\n    env: [A]\n",
             "an `env` that is not a mapping",
         ),
@@ -432,11 +439,17 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     ],
 )
 def test_each_shape_the_script_cannot_run_is_refused(
-    tree: Callable[[], Tree], old: str, new: str, why: str
+    tree: Callable[[], Tree], old: str | re.Pattern[str], new: str, why: str
 ) -> None:
     """Every refusal the executor makes names the shape, and the check surfaces it."""
     broken = tree()
-    broken.edit(CI, old, new)
+    if isinstance(old, re.Pattern):
+        text = broken.read(CI)
+        edited = old.sub(new, text, count=1)
+        truth(edited != text, describing=f"{CI} carries the fragment {old.pattern!r}")
+        broken.write(CI, edited)
+    else:
+        broken.edit(CI, old, new)
 
     refused_naming(platform_dispatch(broken.repo), "cannot run ci.yml's job `gate` by hand", why)
 

@@ -30,7 +30,7 @@ impl Manager {
         match std::env::consts::OS {
             "linux" => Self::Systemd,
             "macos" => Self::Launchd,
-            other => panic!("the service journey supports no manager on {other}"),
+            other => panic!("the service tests support no manager on {other}"),
         }
     }
 

@@ -25,6 +25,11 @@ jobs:
   gate:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      # The service-manager journey skips a case whose prerequisite a host lacks
+      # (Docker for systemd, a password-free `sudo` for launchd); every hosted
+      # runner here has its own, so on the merge path a missing one fails the
+      # journey rather than skipping it.
+      PRINTOBSERVER_SERVICE_JOURNEY: required
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
