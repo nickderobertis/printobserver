@@ -73,16 +73,9 @@ jobs:
       - run: just check
 
   integration:
-    # The cell's platform is in the name, as it is in the gate's, and each cell's
-    # name is the status context AGENTS.md's required-checks record names. The
-    # live protection is applied by a person and lags a rename: until its swap
-    # onto these names is applied it requires the old ones, so that swap and the
-    # merge renaming this job belong to one window. A name
-    # interpolating no matrix value would have GitHub append the cell's whole
-    # entry instead, runner label included, so moving a platform to a newer
-    # runner image would rename a required check and block every merge until
-    # somebody edited the protection. Named by platform id alone, the required
-    # contexts follow the platform rather than the machine it runs on.
+    # Named by platform id, not runner, so a new runner image renames no
+    # required check; each cell reports the context AGENTS.md's required-checks
+    # record names, and that record says how the live protection follows a rename.
     name: integration (${{ matrix.platform.id }})
     # The printer integration tier, against a real OctoPrint. It is a job of
     # its own rather than one of `just check`'s tiers because it installs
