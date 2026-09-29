@@ -235,7 +235,9 @@ def _read_record(label: str) -> Record | None:
         record = _record(json.loads(_record_path(label).read_text(encoding="utf-8")))
     except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
-    if record is None or not _exists(record.supervisor) or not _is_supervisor(record.supervisor):
+    if record is None or not _exists(record.supervisor):
+        return None
+    if not _is_supervisor(record.supervisor, record.path):
         return None
     return record
 
@@ -281,13 +283,22 @@ def _exists(pid: int) -> bool:
     return True
 
 
-def _is_supervisor(pid: int) -> bool:
-    """Whether `pid` is a supervisor this stand-in started, read off its command line."""
+def _is_supervisor(pid: int, given: str) -> bool:
+    """Whether `pid` is the supervisor this stand-in started for the list at `given`.
+
+    Read off its whole command line, which `bootstrap` wrote as the interpreter,
+    this file, `--supervise`, the path the operator named and where it resolved;
+    a process merely mentioning any of those anywhere in its arguments is not one.
+    """
     try:
-        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().removesuffix(b"\0").split(b"\0")
     except OSError:
         return False
-    return b"--supervise" in argv and Path(__file__).name.encode() in b" ".join(argv)
+    return len(argv) == 5 and argv[1:4] == [
+        os.fsencode(__file__),
+        b"--supervise",
+        os.fsencode(given),
+    ]
 
 
 def _parent_of(pid: int) -> int | None:

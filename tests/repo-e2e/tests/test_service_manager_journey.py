@@ -89,6 +89,7 @@ from repo_checks.expect import absent, contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
+from repo_checks.shell import start
 
 #: The gate job in `ci.yml` sets this, so that on the merge path a case whose
 #: prerequisite is missing fails instead of skipping out of sight.
@@ -122,6 +123,9 @@ BUILD_TIMEOUT_SECONDS = 2400
 WITHIN_SECONDS = 120
 
 QUESTION = "/v1/prints"
+
+#: What a bearer credential may be spelled with (RFC 6750's `b64token`).
+BEARER_TOKEN = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
@@ -1309,6 +1313,12 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
     # `_fill_in` has the service listen on loopback, so that is the one host it may name.
     if hostname != "127.0.0.1" or not port.isdigit() or not 0 < int(port) < 65536:
         return None
+    # It goes into an `Authorization` header as it is, so it is held to the
+    # bearer-token alphabet a header can carry; the service writes URL-safe base64.
+    truth(
+        BEARER_TOKEN.fullmatch(credential),
+        describing=f"the credential in {state / 'client.toml'} to be one a header can carry",
+    )
     return Served(address, credential)
 
 
@@ -1633,17 +1643,43 @@ def test_the_launchctl_stand_in_reports_no_job_for_a_record_no_supervisor_holds(
     """A corrupt or stale job record reports nothing loaded, signals nothing, and is loaded over.
 
     A stale record names a process that is not one of the stand-in's
-    supervisors — here this test's own — so a stand-in that trusted it would
-    report a job launchd never loaded and would signal a process nobody gave it.
+    supervisors — this test's own, or an impostor whose arguments merely
+    mention `--supervise` and the stand-in's file — so a stand-in that trusted
+    it would report a job launchd never loaded and signal a process nobody gave it.
     """
     stand_in = _stand_in_launchd(tmp_path, monkeypatch)
     stand_in.state.mkdir()
     label = "io.github.nickderobertis.printobserver.recorded"
+    given = f"/Library/LaunchDaemons/{label}.plist"
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    impostor = start(
+        [
+            sys.executable,
+            "-c",
+            "import time; time.sleep(120)",
+            str(Path(launchctl_standin.__file__).resolve()),
+            "--supervise",
+            given,
+        ]
+    )
+    try:
+        _walk_records_no_supervisor_holds(stand_in, label, impostor)
+    finally:
+        impostor.kill()
+        impostor.communicate()
+
+
+def _walk_records_no_supervisor_holds(
+    stand_in: StandIn, label: str, impostor: subprocess.Popen[str]
+) -> None:
+    """Each unheld record reports nothing and signals nothing; a bootstrap then loads over it."""
     target = f"system/{label}"
-    stale = {"path": "/elsewhere.plist", "program": "/bin/sleep", "runs": 1}
+    given = f"/Library/LaunchDaemons/{label}.plist"
+    stale = {"path": given, "program": "/bin/sleep", "runs": 1}
     for name, record in (
-        ("corrupt", "not a record"),
-        ("stale", json.dumps({**stale, "supervisor": os.getpid(), "pid": os.getpid()})),
+        ("a corrupt", "not a record"),
+        ("a stale", json.dumps({**stale, "supervisor": os.getpid(), "pid": os.getpid()})),
+        ("an impostor's", json.dumps({**stale, "supervisor": impostor.pid, "pid": impostor.pid})),
     ):
         # No `launchctl` verb writes a record no supervisor holds, so it is put there directly.
         # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
@@ -1654,9 +1690,9 @@ def test_the_launchctl_stand_in_reports_no_job_for_a_record_no_supervisor_holds(
             (("bootout", target), launchctl_standin.NO_SUCH_PROCESS),
         ):
             answered = _stand_in_launchctl(*argv)
-            equal(answered.returncode, code, describing=f"`{argv[0]}` over a {name} record")
+            equal(answered.returncode, code, describing=f"`{argv[0]}` over {name} record")
+    equal(impostor.poll(), None, describing="the impostor still running, signalled by nothing")
 
-    given = f"/Library/LaunchDaemons/{label}.plist"
     written = stand_in.root / given.lstrip("/")
     written.parent.mkdir(parents=True)
     with written.open("wb") as handle:

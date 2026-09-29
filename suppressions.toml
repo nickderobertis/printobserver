@@ -1172,6 +1172,12 @@ site = "(stand_in.state / f\"{label}.json\").write_text(record, encoding=\"utf-8
 reason = "The state this test proves the stand-in's answer to — a job record that is not one, or one naming a process no supervisor of the stand-in's is — is left by a supervisor that died mid-write or by a process id reused after one exited, and no `launchctl` verb writes either on demand. So the record is put in the stand-in's state directory directly, and everything asserted about it is asserted through `launchctl` itself: `print`, `kill` and `bootout` over it, and a `bootstrap` that loads over it."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "impostor = start("
+reason = "The one process this test starts is the impostor the launchctl stand-in must not mistake for its supervisor — this repository's own Python, sleeping, with arguments that mention `--supervise` and the stand-in's file — through `repo_checks.shell.start`, the repository's one seam for a long-running program. It is started once, asserted still running, and killed by the handle that started it; there is no typed client of a process for an async one to replace, and nothing to overlap."
+
+[[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = ".replace('url = \"http://127.0.0.1:5000\"'"
