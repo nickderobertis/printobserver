@@ -1541,6 +1541,8 @@ def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_
     """
     stand_in = _stand_in_launchd(tmp_path, monkeypatch)
     stand_in.state.mkdir()
+    # No `launchctl` verb writes a corrupt record, so the state is put there directly.
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     (stand_in.state / launchctl_standin.DISABLED).write_text('{"not": "a list"}', encoding="utf-8")
     listed = _stand_in_launchctl("print-disabled", "system")
     equal(listed.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(listed))
@@ -1559,9 +1561,66 @@ def test_the_launchctl_stand_in_refuses_a_corrupt_disabled_record_and_a_foreign_
             },
             handle,
         )
+    # `bootstrap` refuses this job before it reaches a supervisor (the test below
+    # proves it), so the supervisor's own refusal is reached by starting one.
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     supervised = _stand_in_launchctl("--supervise", given, str(written.resolve()))
     equal(supervised.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(supervised))
     contains(_said(supervised), "not as this user", describing="the refusal")
+
+
+@pytest.mark.skipif(
+    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
+)
+def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verb it lacks, and a property list it would not honour whole, are refused and load nothing.
+
+    Each list is otherwise loadable, so what is refused is the one thing wrong with it.
+    """
+    stand_in = _stand_in_launchd(tmp_path, monkeypatch)
+    unknown = _stand_in_launchctl("list")
+    equal(unknown.returncode, launchctl_standin.USAGE, describing=_said(unknown))
+    contains(_said(unknown), "Unrecognized subcommand: list", describing="the refusal")
+
+    loadable: dict[str, object] = {
+        "ProgramArguments": ["/bin/sleep", "60"],
+        "UserName": getpass.getuser(),
+        "RunAtLoad": False,
+    }
+    for name, departure in (
+        ("unimplemented-key", {"Sockets": {}}),
+        ("unimplemented-keep-alive", {"KeepAlive": {"Crashed": True}}),
+        ("boolean-throttle", {"ThrottleInterval": True}),
+        ("foreign-user", {"UserName": f"not-{getpass.getuser()}"}),
+    ):
+        label = f"io.github.nickderobertis.printobserver.{name}"
+        given = f"/Library/LaunchDaemons/{label}.plist"
+        written = stand_in.root / given.lstrip("/")
+        written.parent.mkdir(parents=True, exist_ok=True)
+        with written.open("wb") as handle:
+            plistlib.dump({"Label": label, **loadable, **departure}, handle)
+        try:
+            refused = _stand_in_launchctl("bootstrap", "system", given)
+            equal(
+                refused.returncode,
+                launchctl_standin.INPUT_OUTPUT_ERROR,
+                describing=f"bootstrapping a {name} list:\n{_said(refused)}",
+            )
+            printed = _stand_in_launchctl("print", f"system/{label}")
+            equal(
+                printed.returncode,
+                launchctl_standin.NOT_FOUND,
+                describing=f"nothing loaded from a {name} list:\n{_said(printed)}",
+            )
+        finally:
+            _stand_in_launchctl("bootout", f"system/{label}")
+
+    malformed = stand_in.root / "Library/LaunchDaemons/malformed.plist"
+    malformed.write_text("<plist><dict><key>Label</key>", encoding="utf-8")
+    refused = _stand_in_launchctl("bootstrap", "system", "/Library/LaunchDaemons/malformed.plist")
+    equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
 
 
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:

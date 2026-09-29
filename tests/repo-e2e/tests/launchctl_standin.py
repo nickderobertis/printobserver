@@ -52,6 +52,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
+from xml.parsers.expat import ExpatError
 
 from repo_checks.shell import start
 
@@ -331,7 +332,8 @@ def _load(resolved: Path) -> Job | None:
     try:
         with resolved.open("rb") as handle:
             return _job(plistlib.load(handle))
-    except OSError, plistlib.InvalidFileException:
+    # A malformed XML list surfaces as the parser's own error rather than plistlib's.
+    except OSError, ValueError, ExpatError:
         return None
 
 

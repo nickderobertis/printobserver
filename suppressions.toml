@@ -1202,6 +1202,18 @@ site = "return shell_run([\"launchctl\", *arguments], timeout=60)"
 reason = "The seam through which a test asks the launchctl stand-in one thing directly, as an operator types `launchctl` — here a `bootstrap` it must refuse, then a `print` and a `bootout` — one command at a time, each answer asserted on before the next is issued. There is no typed client of launchd for Python, and nothing concurrent for an async one to win."
 
 [[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "(stand_in.state / launchctl_standin.DISABLED).write_text("
+reason = "The state under test is one no `launchctl` verb can produce: `disable` and `enable` only ever write a list of valid labels. The refusal to read a corrupt record as nothing switched off exists for a record damaged outside the stand-in, so the only way to prove it is to put that record where the stand-in keeps it, and then ask through the public `print-disabled` verb, which is what the assertion reads."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "supervised = _stand_in_launchctl(\"--supervise\", given"
+reason = "`bootstrap` refuses a job for another user before any supervisor starts, which `test_the_launchctl_stand_in_refuses_what_it_does_not_implement` proves through the public verb. The supervisor repeats that refusal because it is the path that actually starts the job, and a supervisor is reachable only by the process that starts it, so its own refusal is proven by starting one the way `bootstrap` does."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "ran = shell_run(case, cwd=REPO_ROOT"
