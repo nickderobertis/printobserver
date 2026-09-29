@@ -43,6 +43,7 @@ import getpass
 import json
 import os
 import plistlib
+import re
 import signal
 import subprocess
 import sys
@@ -77,6 +78,9 @@ KEYS = frozenset(
         "ThrottleInterval",
     }
 )
+
+#: What a label may be spelled with: a reverse-DNS name, as the installer's is.
+LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 #: The one domain a system daemon is loaded into.
 DOMAIN = "system"
@@ -155,6 +159,9 @@ def _job(document: object) -> Job | None:
     if not isinstance(directory, str | None) or not isinstance(log, str | None):
         return None
     if not isinstance(environment, dict) or _strings([*environment, *environment.values()]) is None:
+        return None
+    # What an operating system can put in a process's environment at all.
+    if any(not key or "=" in key or "\0" in f"{key}{value}" for key, value in environment.items()):
         return None
     if not isinstance(run_at_load, bool) or restart is None:
         return None
@@ -284,9 +291,7 @@ def _say(stream: IO[str], text: str) -> None:
 def _label_of(target: str) -> str | None:
     """The label a `system/<label>` service target names, or `None` for any other domain."""
     domain, _, label = target.partition("/")
-    if domain != DOMAIN or label in {"", ".", ".."} or "/" in label:
-        return None
-    return label
+    return label if domain == DOMAIN and LABEL.fullmatch(label) else None
 
 
 def _beneath_root(given: str) -> Path | None:

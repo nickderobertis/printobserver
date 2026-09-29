@@ -1219,7 +1219,8 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
         return None
     address = server.removeprefix("http://")
     hostname, _, port = address.rpartition(":")
-    if not hostname or not port.isdigit() or not 0 < int(port) < 65536:
+    # `_fill_in` has the service listen on loopback, so that is the one host it may name.
+    if hostname != "127.0.0.1" or not port.isdigit() or not 0 < int(port) < 65536:
         return None
     return Served(address, credential)
 
