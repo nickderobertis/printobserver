@@ -70,15 +70,18 @@ def built_program() -> Path:
 PROGRAM = built_program()
 
 
-def relay_client() -> Path:
+def relay_client(source: Path = RELAY_CLIENT_SOURCE) -> Path:
     """Where the relay's client is compiled to, which the smoke runs in front of a relay.
 
     It sits in the build directory beside the program, named the way this host
     names a program, and after the source it was compiled from: two suites
     compiling at once then produce the same file rather than racing to write
     one, and a source that changed is never answered by a stale build.
+
+    Args:
+        source: The client's source, which a test changes to see a new name.
     """
-    digest = hashlib.sha256(RELAY_CLIENT_SOURCE.read_bytes()).hexdigest()[:16]
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
     return REPO_ROOT / "target" / "printer-smoke" / f"relay-client-{digest}{PROGRAM.suffix}"
 
 

@@ -50,7 +50,15 @@ from relay import (
 )
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import PROGRAM_NOT_FOUND, run, start
-from world import RELAY_CLIENT, RELAY_CLIENT_SOURCE, REPO_ROOT, RelayProcess, World
+from world import (
+    RELAY_CLIENT,
+    RELAY_CLIENT_SOURCE,
+    REPO_ROOT,
+    RelayProcess,
+    World,
+    build_the_relay_client,
+    relay_client,
+)
 
 #: The program the relay stands in front of, whose declared exits the client's
 #: own must stay clear of.
@@ -558,18 +566,37 @@ def test_an_argument_frame_that_is_not_utf8_is_refused_by_the_relay(world: World
     )
 
 
-def test_a_relay_that_never_says_where_it_listens_is_refused_in_time(
-    world: World, tmp_path: Path
+@pytest.mark.parametrize(
+    ("announcing", "announced"),
+    [(None, "''"), ("a relay", "'a relay'"), ("192.0.2.1:9", "'192.0.2.1:9'")],
+    ids=["silent", "unparsable", "elsewhere"],
+)
+def test_a_relay_that_does_not_say_where_it_listens_is_refused_and_stopped(
+    world: World, tmp_path: Path, announcing: str | None, announced: str
 ) -> None:
-    """A relay silent past its bound is killed and reported, rather than waited on forever."""
-    silent = tmp_path / "silent_relay.py"
-    silent.write_text("import time\ntime.sleep(600)\n", encoding="utf-8")
+    """A relay silent past its bound, or announcing no loopback address, is killed and reported."""
+    beating = tmp_path / "heartbeat"
+    impostor = tmp_path / "impostor_relay.py"
+    impostor.write_text(
+        f"from pathlib import Path\nPath({str(beating)!r}).write_text('0')\n"
+        + ("" if announcing is None else f"print({announcing!r}, flush=True)\n")
+        + HEARTBEAT.replace("sys.argv[1]", repr(str(beating))),
+        encoding="utf-8",
+    )
     started = time.monotonic()
 
-    with pytest.raises(RuntimeError, match="announced '' rather than where it listens"):
-        RelayProcess.start(world.environment(), within_s=0.5, relay=silent)
+    with pytest.raises(RuntimeError, match=f"announced {re.escape(announced)} rather than"):
+        RelayProcess.start(world.environment(), within_s=0.5, relay=impostor)
 
     truth(time.monotonic() - started < SETTLE_S, describing="the refusal to come inside the bound")
+    until(beating.is_file, describing="the refused relay to have been running")
+    last = beating.read_text(encoding="utf-8")
+    time.sleep(1.0)
+    equal(
+        beating.read_text(encoding="utf-8"),
+        last,
+        describing="the refused relay's heartbeat, which a relay left running would go on",
+    )
 
 
 @pytest.mark.parametrize("oversized", ["one", "together"])
@@ -608,3 +635,66 @@ def test_output_that_is_not_text_reaches_the_smoke_byte_for_byte(world: World) -
     equal(client.returncode, 0, describing="the program's exit")
     equal(output, bytes([0xFF, 0xFE, 0x00, 0x0A]), describing="the bytes on stdout")
     equal(error, bytes([0x80, 0x0D, 0x0A]), describing="the bytes on stderr")
+
+
+def test_a_changed_client_source_is_compiled_afresh(tmp_path: Path) -> None:
+    """The compiled client is named after its source, so a changed source is never served stale."""
+    changed = tmp_path / RELAY_CLIENT_SOURCE.name
+    changed.write_text(
+        RELAY_CLIENT_SOURCE.read_text(encoding="utf-8") + "// changed\n", encoding="utf-8"
+    )
+
+    equal(relay_client(), RELAY_CLIENT, describing="where the committed source is compiled to")
+    equal(build_the_relay_client(), RELAY_CLIENT, describing="what the build answers")
+    truth(RELAY_CLIENT.is_file(), describing="the compiled client to be there")
+    truth(
+        relay_client(changed) != RELAY_CLIENT,
+        describing="a changed source to be compiled to a file of its own",
+    )
+
+
+def test_relaying_again_replaces_the_relay_with_one_under_the_new_configuration(
+    world: World,
+) -> None:
+    """A second relay stops the first, and it is the second that serves, as configured."""
+    before = relayed(world)
+    first = world.relay.process if world.relay else None
+
+    after = relayed(world, hang_on="hold", after=0)
+
+    truth(
+        first is not None and first.poll() is not None, describing="the first relay to have ended"
+    )
+    failing(relay(before, "status"), naming="the smoke's relay did not answer")
+    passing(relay(after, "-c", ECHO, "status"), describing="a command through the second relay")
+    held = start([str(RELAY_CLIENT), "hold"], cwd=REPO_ROOT, env=after)
+    until(
+        lambda: RelayState.read(world.relay_state_file, armed=True).seen == 1,
+        describing="the second relay to hold the command it was configured to hang",
+    )
+    truth(held.poll() is None, describing="the held command to be unanswered")
+    held.kill()
+    held.communicate()
+
+
+def test_a_client_that_goes_away_while_feeding_input_ends_the_program_s_input(
+    world: World, tmp_path: Path
+) -> None:
+    """A client gone mid-input closes the program's input, and the relay serves the next command."""
+    fed = tmp_path / "fed"
+    reading = (
+        f"import sys; from pathlib import Path; Path({str(fed)!r}).write_text(sys.stdin.read())"
+    )
+    argv = [b"-c", reading.encode()]
+    environment = relayed(world)
+    with connected(environment) as connection:
+        connection.sendall(
+            len(argv).to_bytes(4, "big")
+            + b"".join(len(argument).to_bytes(4, "big") + argument for argument in argv)
+            + len(b"partial").to_bytes(4, "big")
+            + b"partial"
+        )
+
+    until(fed.is_file, describing="the program to have been given the end of its input")
+    equal(fed.read_text(encoding="utf-8"), "partial", describing="what the program was fed")
+    passing(relay(environment, "-c", ECHO, "status"), describing="the next command")
