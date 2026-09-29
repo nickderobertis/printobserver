@@ -1043,16 +1043,17 @@ platform, and every cell of a required job is required, because a job required o
 one platform and not the other is a merge path the other never blocked — and why
 the judged tier appears once, with no platform in its name at all.
 
-The two matrixed jobs are spelled differently below, and the difference is
-GitHub's rather than ours. The gate's own `name` interpolates the cell's
-platform, so GitHub takes that name verbatim and the context is `gate
-(<platform>)`. The integration job's `name` interpolates nothing, so GitHub
-qualifies it instead, appending the cell's whole matrix entry — which puts the
-runner in the context beside the platform. Neither is preferred; what matters is
-that the record spells each the way the job is actually reported, because a
-context named here that nothing reports blocks every pull request forever. Do not
-"tidy" the integration contexts by qualifying that job's name: that is a rename,
-and it strands the two contexts branch protection already requires.
+Both matrixed jobs interpolate the cell's platform id into their own `name`,
+so GitHub takes that name verbatim and the contexts are `gate (<platform>)` and
+`integration (<platform>)`. A `name` interpolating nothing would have GitHub
+qualify it instead, appending the cell's whole matrix entry — which puts the
+runner in the context beside the platform, so moving a platform to a newer
+runner image would rename a required check and block every pull request until
+somebody edited the protection. Do not unqualify either name: that is a rename,
+and it strands the five contexts branch protection requires for that job. What
+matters is that the record spells each context the way the job actually reports
+it, because a context named here that nothing reports blocks every pull request
+forever.
 
 [//]: # (BEGIN required-checks)
 - `gate (linux-x86_64)`
@@ -1060,11 +1061,11 @@ and it strands the two contexts branch protection already requires.
 - `gate (macos-aarch64)`
 - `gate (windows-x86_64)`
 - `gate (windows-aarch64)`
-- `integration (linux-x86_64, ubuntu-24.04)`
-- `integration (linux-aarch64, ubuntu-24.04-arm)`
-- `integration (macos-aarch64, macos-15)`
-- `integration (windows-x86_64, windows-2025)`
-- `integration (windows-aarch64, windows-11-arm)`
+- `integration (linux-x86_64)`
+- `integration (linux-aarch64)`
+- `integration (macos-aarch64)`
+- `integration (windows-x86_64)`
+- `integration (windows-aarch64)`
 - `llmlint`
 - `pr-title`
 [//]: # (END required-checks)

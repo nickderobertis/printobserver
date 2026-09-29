@@ -44,6 +44,31 @@ def test_a_record_naming_only_one_of_the_gates_cells_is_refused(
     failing(result, naming="some but not all of job `gate`'s status contexts as required")
 
 
+def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(
+    gate_copy: Callable[[], GateCopy],
+) -> None:
+    """The integration job reports under its platform id alone, never its runner.
+
+    A context carrying the runner label is renamed by a new runner image, so the
+    job names its cells by platform and the record has to follow: the contexts
+    it reported before that are reported by nothing now.
+    """
+    stale = gate_copy()
+    stale.edit(
+        AGENTS,
+        "- `integration (linux-x86_64)`\n",
+        "- `integration (linux-x86_64, ubuntu-24.04)`\n",
+    )
+
+    result = stale.just("check-repo")
+
+    failing(
+        result,
+        naming="`integration (linux-x86_64, ubuntu-24.04)` as a required check, but no "
+        "committed workflow reports a status context by that name",
+    )
+
+
 def test_a_required_name_several_cells_report_under_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:

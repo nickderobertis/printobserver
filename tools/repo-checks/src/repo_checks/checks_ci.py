@@ -297,16 +297,18 @@ def _context_names(job_name: str, job: dict[str, Any], where: str) -> list[str]:
     GitHub names a check run after the job's `name` where it sets one and after
     the job's key otherwise, and it qualifies a matrixed job by one of two rules
     that this derives rather than assumes. A name interpolating a matrix value is
-    taken verbatim with the cell's values put in, which is how `gate` reports
-    `gate (linux-x86_64)`. A name interpolating none has the cell's own values
-    appended in parentheses, which is how `integration` reports
-    `integration (linux-x86_64, ubuntu-24.04)` — a context of GitHub's making,
-    carrying the runner the cell named as well as the platform.
+    taken verbatim with the cell's values put in, which is how `gate` and
+    `integration` report `gate (linux-x86_64)` and `integration (linux-x86_64)`.
+    A name interpolating none has the cell's own values appended in parentheses
+    — `integration (linux-x86_64, ubuntu-24.04)` for that job left bare — a
+    context of GitHub's making, carrying the runner the cell named as well as
+    the platform.
 
     Both shapes are here because the record has to name what is actually
-    reported: reading the second as one name repeated per cell would make the
-    integration job unrequirable and invite qualifying it, which moves the two
-    contexts `main`'s branch protection already requires out from under it.
+    reported: reading the second as one name repeated per cell would make such a
+    job unrequirable, and moving a job between the two shapes renames every
+    context it reports, which moves them out from under a branch protection
+    requiring the old ones.
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
     that deserialization boundary; the name is narrowed here and the cells by
