@@ -26,6 +26,10 @@ Two variables configure it:
 - `LAUNCHCTL_STANDIN_STATE`: where it keeps each loaded job's record, the
   services switched off, and the recording of its invocations.
 
+It keeps its records under `/proc`'s eye: a process is signalled only once
+`/proc` shows it is one of this stand-in's supervisors or the job that
+supervisor started, so it runs on Linux, which is where the journey uses it.
+
 It runs a job as the user that invoked it and no other, because it cannot
 become another user: a property list naming anybody else is refused.
 """
@@ -217,7 +221,7 @@ def _read_record(label: str) -> Record | None:
         record = _record(json.loads(_record_path(label).read_text(encoding="utf-8")))
     except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
-    if record is None or not _exists(record.supervisor):
+    if record is None or not _exists(record.supervisor) or not _is_supervisor(record.supervisor):
         return None
     return record
 
@@ -254,6 +258,25 @@ def _exists(pid: int) -> bool:
     return True
 
 
+def _is_supervisor(pid: int) -> bool:
+    """Whether `pid` is a supervisor this stand-in started, read off its command line."""
+    try:
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    return b"--supervise" in argv and Path(__file__).name.encode() in b" ".join(argv)
+
+
+def _parent_of(pid: int) -> int | None:
+    """The parent of `pid`, from `/proc`, or `None` where it cannot be read."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    fields = stat.rpartition(")")[2].split()
+    return int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else None
+
+
 def _say(stream: IO[str], text: str) -> None:
     stream.write(f"{text}\n")
 
@@ -261,7 +284,9 @@ def _say(stream: IO[str], text: str) -> None:
 def _label_of(target: str) -> str | None:
     """The label a `system/<label>` service target names, or `None` for any other domain."""
     domain, _, label = target.partition("/")
-    return label if domain == DOMAIN and label and "/" not in label else None
+    if domain != DOMAIN or label in {"", ".", ".."} or "/" in label:
+        return None
+    return label
 
 
 def _beneath_root(given: str) -> Path | None:
@@ -386,7 +411,8 @@ def _kill(arguments: list[str]) -> int:
         _say(sys.stderr, "Usage: launchctl kill <signal-name|signal-number> <service-target>")
         return USAGE
     record = _read_record(label)
-    if record is None or record.pid is None:
+    # Only the job its own supervisor started is signalled, never an id a record names.
+    if record is None or record.pid is None or _parent_of(record.pid) != record.supervisor:
         _say(sys.stderr, f"Could not kill service: {NO_SUCH_PROCESS}: No such process")
         return NO_SUCH_PROCESS
     os.kill(record.pid, chosen)

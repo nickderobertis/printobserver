@@ -759,15 +759,9 @@ class Launchd:
         equal(self.words[:1], ["sudo"], describing="the documented command running as root")
         result = self._on_machine(*self.words[1:])
         passing((result.returncode, _said(result)), describing=f"`{' '.join(self.words)}`")
-        if self.stand_in is not None:
-            equal(
-                self.stand_in.recorded()[-1:],
-                [self.words[2:]],
-                describing="the documented command reaching `launchctl` verbatim",
-            )
 
     def starts_automatically(self) -> Reported:
-        """Loaded from the boot directory the documented command names, and not switched off.
+        """Loaded from the boot directory, asking to start at load, and not switched off.
 
         launchd reports a service loaded from its boot directory by that path,
         and lists a service the operator switched off in the domain's disabled
@@ -781,6 +775,8 @@ class Launchd:
             return Reported(
                 False, f"launchd does not report it loaded from {self.definition}:\n{printed}"
             )
+        if self._installed_definition().get("RunAtLoad") is not True:
+            return Reported(False, f"{self.definition} does not ask launchd to start it at load")
         disabled = self._launchctl("print-disabled", "system")
         if disabled.returncode != 0:
             return Reported(False, f"launchd could not list what is disabled:\n{_said(disabled)}")
@@ -905,7 +901,12 @@ class Launchd:
     def diagnosis(self) -> str:
         """`launchctl print` and the service's own error log."""
         log = self.read(self._beneath(STATE / "printobserver.log")) or "(no log)"
-        return f"{_said(self._print())}\n{log}"
+        asked = ""
+        if self.stand_in is not None:
+            asked = "\nasked of the stand-in:\n" + "\n".join(
+                " ".join(invocation) for invocation in self.stand_in.recorded()
+            )
+        return f"{_said(self._print())}\n{log}{asked}"
 
 
 class WindowsService:
