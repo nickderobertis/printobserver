@@ -1773,27 +1773,6 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
     equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
 
 
-@pytest.mark.skipif(
-    "launchd-stand-in" not in _adapters(), reason="the launchctl stand-in runs on Linux alone"
-)
-def test_a_disabled_listing_is_read_as_launchctl_answers_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """What `launchctl disable` and `enable` switch is what the adapter reads back."""
-    _stand_in_launchd(tmp_path, monkeypatch)
-    label = "io.github.nickderobertis.printobserver.switched"
-    for verb, expected in (("disable", {label}), ("enable", set())):
-        switched = _stand_in_launchctl(verb, f"system/{label}")
-        passing((switched.returncode, _said(switched)), describing=f"`launchctl {verb}`")
-        listed = _stand_in_launchctl("print-disabled", "system")
-        passing((listed.returncode, _said(listed)), describing="`launchctl print-disabled system`")
-        equal(
-            _disabled_services(listed.stdout),
-            expected,
-            describing=f"the labels switched off after `{verb}`:\n{listed.stdout}",
-        )
-
-
 # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:
     """The answer to `print-disabled` is read as a listing, and anything else as none."""

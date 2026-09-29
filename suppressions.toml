@@ -1163,7 +1163,7 @@ reason = "The definition of the one OctoPrint this journey stands in, the one th
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:"
-reason = "The listings this test hands the adapter's reader are what real launchd can print and the launchctl stand-in never does — an enabled entry, the older `=> true` spelling, a further block after the listing, an unterminated or unquoted one, an unknown state — so no `launchctl` on a Linux host can put them in front of the adapter, and a stand-in taught to print them would be a fixture with extra steps. What the stand-in does print is read through `launchctl` itself by `test_a_disabled_listing_is_read_as_launchctl_answers_it`, and the macOS cell reads real launchd's listing through the walk."
+reason = "The listings this test hands the adapter's reader are what real launchd can print and the launchctl stand-in never does — an enabled entry, the older `=> true` spelling, a further block after the listing, an unterminated or unquoted one, an unknown state — so no `launchctl` on a Linux host can put them in front of the adapter, and a stand-in taught to print them would be a fixture with extra steps. What the stand-in does print, the walk reads through `launchctl` itself — the adapter's at-boot check before and after `launchctl disable`, and its teardown's re-enable — and the macOS cell reads real launchd's listing through that same walk."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
