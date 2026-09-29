@@ -78,6 +78,7 @@ from journey import (
     SKILL_DIRECTORY,
     clean_environment,
     install_the_skill,
+    plain,
     pythonpath,
     run,
 )
@@ -691,6 +692,11 @@ class Launchd:
         passing((result.returncode, _said(result)), describing="the committed installer")
         with Path(self._beneath(self.definition)).open("rb") as handle:
             written = plistlib.load(handle)
+        equal(
+            set(written),
+            set(launchctl_standin.KEYS),
+            describing="the property list's keys, which the launchctl stand-in acts on",
+        )
         binary = self._beneath(BINARY_DIRECTORY / "printobserver")
         equal(
             (written.get("ProgramArguments"), written.get("WorkingDirectory")),
@@ -865,6 +871,8 @@ class Launchd:
         )
         if self._on_machine("id", "-u", SERVICE_USER).returncode == 0:
             present.append(f"the user {SERVICE_USER}")
+        if self._on_machine("dscl", ".", "-read", f"/Groups/{SERVICE_USER}").returncode == 0:
+            present.append(f"the group {SERVICE_USER}")
         if Path("/var/lib").exists() != self.had_var_lib:
             present.append("/var/lib, which the journey found absent")
         return present
@@ -1171,7 +1179,11 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
     if not isinstance(server, str) or not isinstance(credential, str):
         # The file is written in place, so a read can land between its lines.
         return None
-    return Served(server.removeprefix("http://"), credential)
+    address = server.removeprefix("http://")
+    hostname, _, port = address.rpartition(":")
+    if not hostname or not port.isdigit() or not 0 < int(port) < 65536:
+        return None
+    return Served(address, credential)
 
 
 # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
@@ -1321,12 +1333,35 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     )
 
 
-def test_the_gate_fails_a_case_it_cannot_run_rather_than_skipping_it() -> None:
-    """Every gate cell sets the variable that turns a missing prerequisite into a failure."""
+@pytest.mark.skipif(
+    ServiceManager.SYSTEMD.value not in _adapters(), reason="the systemd case runs on Linux alone"
+)
+def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping(
+    tmp_path: Path,
+) -> None:
+    """The systemd case with a `docker` that does not answer: failed in the gate, else skipped."""
     workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
-    environment = workflow["jobs"]["gate"].get("env", {})
-    equal(
-        environment.get(REQUIRED),
-        REQUIRED_VALUE,
-        describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW.relative_to(REPO_ROOT)}",
-    )
+    setting = workflow["jobs"]["gate"].get("env", {}).get(REQUIRED)
+    equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
+    unanswering = tmp_path / "bin"
+    unanswering.mkdir()
+    (unanswering / "docker").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (unanswering / "docker").chmod(0o755)
+    case = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rs", "-q", __file__]
+    case += ["-k", "systemd and documented_command"]
+    path = f"{unanswering}{os.pathsep}{os.environ['PATH']}"
+    ungated = clean_environment(PATH=path)
+    ungated.pop(REQUIRED, None)
+    for environment, fails in (
+        (clean_environment(PATH=path, **{REQUIRED: str(setting)}), True),
+        (ungated, False),
+    ):
+        ran = shell_run(case, cwd=REPO_ROOT, env=environment, timeout=BUILD_TIMEOUT_SECONDS)
+        said = plain(_said(ran))
+        equal(ran.returncode != 0, fails, describing=f"whether the case failed:\n{said}")
+        contains(said, "no `docker` that answers", describing="the prerequisite it names")
+        contains(
+            said,
+            "so this case fails rather than skips" if fails else "SKIPPED",
+            describing=f"how the case ended:\n{said}",
+        )

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import enum
 import getpass
 import json
 import os
@@ -88,6 +89,26 @@ EXIT_TIMEOUT_SECONDS = 20
 TICK_SECONDS = 0.2
 
 
+class Restart(enum.Enum):
+    """When launchd starts a job again after its process ends, per its `KeepAlive`."""
+
+    NEVER = enum.auto()
+    ALWAYS = enum.auto()
+    AFTER_SUCCESS = enum.auto()
+    AFTER_FAILURE = enum.auto()
+
+
+def _restart(keep_alive: object) -> Restart | None:
+    """The policy one `KeepAlive` value states, or `None` for a shape this stand-in lacks."""
+    match keep_alive:
+        case bool():
+            return Restart.ALWAYS if keep_alive else Restart.NEVER
+        case {"SuccessfulExit": bool() as successful} if len(keep_alive) == 1:
+            return Restart.AFTER_SUCCESS if successful else Restart.AFTER_FAILURE
+        case _:
+            return None
+
+
 @dataclass(frozen=True, slots=True)
 class Job:
     """The keys of a property list this stand-in acts on, each checked for its type."""
@@ -99,7 +120,7 @@ class Job:
     environment: dict[str, str]
     error_log: Path | None
     run_at_load: bool
-    keep_alive: bool | dict[str, bool]
+    restart: Restart
     throttle: float
 
 
@@ -120,7 +141,7 @@ def _job(document: object) -> Job | None:
     directory = document.get("WorkingDirectory")
     environment = document.get("EnvironmentVariables", {})
     log = document.get("StandardErrorPath")
-    keep_alive = document.get("KeepAlive", False)
+    restart = _restart(document.get("KeepAlive", False))
     run_at_load = document.get("RunAtLoad", False)
     throttle = document.get("ThrottleInterval", DEFAULT_THROTTLE_SECONDS)
     if not isinstance(label, str) or _label_of(f"{DOMAIN}/{label}") is None:
@@ -131,15 +152,9 @@ def _job(document: object) -> Job | None:
         return None
     if not isinstance(environment, dict) or _strings([*environment, *environment.values()]) is None:
         return None
-    if not isinstance(run_at_load, bool) or not isinstance(throttle, int) or throttle < 0:
+    if not isinstance(run_at_load, bool) or restart is None:
         return None
-    # The two shapes of `KeepAlive` this stand-in implements; any other key is
-    # one launchd would act on and this would not, so it is refused.
-    if not isinstance(keep_alive, bool) and (
-        not isinstance(keep_alive, dict)
-        or set(keep_alive) != {"SuccessfulExit"}
-        or not isinstance(keep_alive["SuccessfulExit"], bool)
-    ):
+    if isinstance(throttle, bool) or not isinstance(throttle, int) or throttle < 0:
         return None
     return Job(
         label=label,
@@ -149,9 +164,7 @@ def _job(document: object) -> Job | None:
         environment={str(key): str(value) for key, value in environment.items()},
         error_log=Path(log) if log is not None else None,
         run_at_load=run_at_load,
-        keep_alive=keep_alive
-        if isinstance(keep_alive, bool)
-        else {"SuccessfulExit": bool(keep_alive["SuccessfulExit"])},
+        restart=restart,
         throttle=float(throttle),
     )
 
@@ -390,18 +403,20 @@ def _bootout(arguments: list[str]) -> int:
     return 0
 
 
-def _restarts(keep_alive: bool | dict[str, bool], exit_code: int) -> bool:
+def _restarts(restart: Restart, exit_code: int) -> bool:
     """Whether launchd starts a job again after it ended with `exit_code`.
 
     A process killed by a signal ends with a negative code here, which launchd
     counts as an unsuccessful exit.
     """
-    match keep_alive:
-        case bool():
-            return keep_alive
-        case {"SuccessfulExit": successful}:
-            return (exit_code == 0) == successful
-        case _:
+    match restart:
+        case Restart.ALWAYS:
+            return True
+        case Restart.AFTER_SUCCESS:
+            return exit_code == 0
+        case Restart.AFTER_FAILURE:
+            return exit_code != 0
+        case Restart.NEVER:
             return False
 
 
@@ -446,7 +461,7 @@ def _supervise(given: str, resolved: Path) -> int:
                 record.last_signal = f"{signal.strsignal(-code)}: {-code}" if code < 0 else None
                 _write_record(job.label, record)
                 child = None
-                wanted = _restarts(job.keep_alive, code)
+                wanted = _restarts(job.restart, code)
             if child is None and wanted and time.monotonic() - last_start >= job.throttle:
                 child = _start_job(job)
                 last_start = time.monotonic()
