@@ -1178,6 +1178,18 @@ site = "impostor = start("
 reason = "The one process this test starts is the impostor the launchctl stand-in must not mistake for its supervisor — this repository's own Python, sleeping, with arguments that mention `--supervise` and the stand-in's file — through `repo_checks.shell.start`, the repository's one seam for a long-running program. It is started once, asserted still running, and killed by the handle that started it; there is no typed client of a process for an async one to replace, and nothing to overlap."
 
 [[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "if present:"
+reason = "The launchd adapter's refusal to run over a Mac that already carries a printobserver installation is a guard for a real host, reached only on macOS with real launchd, and only on one where that installation exists. The macOS gate runner never carries one, and making one to test the guard would install a daemon on a shared runner that the guard exists to protect, so no end-to-end case reaches it. The outcome it produces is `_unmet`'s, which `test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping` drives end to end for this same adapter on macOS, failing under the gate's setting and skipping otherwise."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "shutil.copyfile(stand_in.state / f\"{label}.json\", stand_in.state / f\"{alias}.json\")"
+reason = "The state proven here — a live job's record present under a second label — is what a copied or restored state directory leaves, and no `launchctl` verb writes it. So the record is copied in the stand-in's state directory directly, and everything asserted about it goes through `launchctl` itself: `print` and `bootout` under the alias answer that nothing is loaded, and the real job is still loaded afterwards."
+
+[[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = ".replace('url = \"http://127.0.0.1:5000\"'"

@@ -750,6 +750,7 @@ class Launchd:
                 "which this host does not grant"
             )
         present = self.leftovers()
+        # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if present:
             _unmet(
                 f"this host already carries {present}, and this journey removes everything it "
@@ -1675,7 +1676,7 @@ def _walk_records_no_supervisor_holds(
     """Each unheld record reports nothing and signals nothing; a bootstrap then loads over it."""
     target = f"system/{label}"
     given = f"/Library/LaunchDaemons/{label}.plist"
-    stale = {"path": given, "program": "/bin/sleep", "runs": 1}
+    stale = {"label": label, "path": given, "program": "/bin/sleep", "runs": 1}
     for name, record in (
         ("a corrupt", "not a record"),
         ("a stale", json.dumps({**stale, "supervisor": os.getpid(), "pid": os.getpid()})),
@@ -1712,6 +1713,18 @@ def _walk_records_no_supervisor_holds(
         printed = _stand_in_launchctl("print", target)
         passing((printed.returncode, _said(printed)), describing="`launchctl print` once loaded")
         contains(printed.stdout, f"path = {given}", describing="the record the load wrote")
+        # The live record copied under another label names this job, not that one.
+        alias = f"{label}.alias"
+        # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+        shutil.copyfile(stand_in.state / f"{label}.json", stand_in.state / f"{alias}.json")
+        for argv, code in (
+            (("print", f"system/{alias}"), launchctl_standin.NOT_FOUND),
+            (("bootout", f"system/{alias}"), launchctl_standin.NO_SUCH_PROCESS),
+        ):
+            answered = _stand_in_launchctl(*argv)
+            equal(answered.returncode, code, describing=f"`{argv[0]}` over a copied record")
+        still = _stand_in_launchctl("print", target)
+        passing((still.returncode, _said(still)), describing="the job still loaded after the alias")
     finally:
         _stand_in_launchctl("bootout", target)
 
@@ -1730,6 +1743,9 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
     unknown = _stand_in_launchctl("list")
     equal(unknown.returncode, launchctl_standin.USAGE, describing=_said(unknown))
     contains(_said(unknown), "Unrecognized subcommand: list", describing="the refusal")
+    unsignalled = _stand_in_launchctl("kill", "NOT-A-SIGNAL", "system/io.github.nickderobertis")
+    equal(unsignalled.returncode, launchctl_standin.USAGE, describing=_said(unsignalled))
+    contains(_said(unsignalled), "Usage: launchctl kill", describing="the refusal")
 
     loadable: dict[str, object] = {
         "ProgramArguments": ["/bin/sleep", "60"],
@@ -1742,6 +1758,10 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
         ("unimplemented-keep-alive", {"KeepAlive": {"Crashed": True}}),
         ("unconditional-keep-alive", {"KeepAlive": True}),
         ("integer-keep-alive", {"KeepAlive": {"SuccessfulExit": 0}}),
+        ("nul-argument", {"ProgramArguments": ["/bin/sleep", "60\0"]}),
+        ("equals-in-environment-name", {"EnvironmentVariables": {"A=B": "c"}}),
+        ("empty-environment-name", {"EnvironmentVariables": {"": "c"}}),
+        ("non-string-environment-value", {"EnvironmentVariables": {"A": 1}}),
         ("boolean-throttle", {"ThrottleInterval": True}),
         ("foreign-user", {"UserName": f"not-{getpass.getuser()}"}),
     ):
@@ -1750,7 +1770,10 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
         written = stand_in.root / given.lstrip("/")
         written.parent.mkdir(parents=True, exist_ok=True)
         with written.open("wb") as handle:
-            plistlib.dump({"Label": label, **loadable, **departure}, handle)
+            # Binary, since only that form can carry a NUL for the stand-in to refuse.
+            plistlib.dump(
+                {"Label": label, **loadable, **departure}, handle, fmt=plistlib.FMT_BINARY
+            )
         try:
             refused = _stand_in_launchctl("bootstrap", "system", given)
             equal(
@@ -1771,6 +1794,17 @@ def test_the_launchctl_stand_in_refuses_what_it_does_not_implement(
     malformed.write_text("<plist><dict><key>Label</key>", encoding="utf-8")
     refused = _stand_in_launchctl("bootstrap", "system", "/Library/LaunchDaemons/malformed.plist")
     equal(refused.returncode, launchctl_standin.INPUT_OUTPUT_ERROR, describing=_said(refused))
+
+    # A root setting that names no absolute directory is refused before anything is recorded.
+    for root in ("", "relative/root"):
+        monkeypatch.setenv(launchctl_standin.ROOT, root)
+        unrooted = _stand_in_launchctl("print-disabled", "system")
+        equal(unrooted.returncode, launchctl_standin.USAGE, describing=_said(unrooted))
+        contains(
+            _said(unrooted),
+            f"{launchctl_standin.ROOT} must name an absolute directory",
+            describing=f"the refusal of {launchctl_standin.ROOT}={root!r}",
+        )
 
 
 def test_a_disabled_listing_is_read_only_when_it_is_one() -> None:

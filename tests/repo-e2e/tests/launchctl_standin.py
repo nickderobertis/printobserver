@@ -191,6 +191,7 @@ def _job(document: object) -> Job | None:
 class Record:
     """What `launchctl print` reports of one loaded job, kept by the job's supervisor."""
 
+    label: str
     path: str
     program: str
     supervisor: int
@@ -212,10 +213,10 @@ def _record(document: object) -> Record | None:
     """A job's record as its supervisor wrote it, or `None` where it is not one."""
     if not isinstance(document, dict):
         return None
-    path, program = document.get("path"), document.get("program")
+    label, path, program = document.get("label"), document.get("path"), document.get("program")
     supervisor, pid, runs = document.get("supervisor"), document.get("pid"), document.get("runs")
     code, killed = document.get("last_exit_code"), document.get("last_signal")
-    if not isinstance(path, str) or not isinstance(program, str):
+    if not isinstance(label, str) or not isinstance(path, str) or not isinstance(program, str):
         return None
     # JSON's `true` is a Python `int`; a process id or a count is never one.
     if any(isinstance(value, bool) for value in (supervisor, pid, runs, code)):
@@ -226,7 +227,7 @@ def _record(document: object) -> Record | None:
         return None
     if not isinstance(killed, str | None) or supervisor <= 0 or (pid is not None and pid <= 0):
         return None
-    return Record(path, program, supervisor, pid, runs, code, killed)
+    return Record(label, path, program, supervisor, pid, runs, code, killed)
 
 
 def _read_record(label: str) -> Record | None:
@@ -235,7 +236,8 @@ def _read_record(label: str) -> Record | None:
         record = _record(json.loads(_record_path(label).read_text(encoding="utf-8")))
     except OSError, ValueError:  # the 3.14 form (PEP 758); ruff format writes it
         return None
-    if record is None or not _exists(record.supervisor):
+    # A record copied under another job's label names that job, not this one.
+    if record is None or record.label != label or not _exists(record.supervisor):
         return None
     if not _is_supervisor(record.supervisor, record.path):
         return None
@@ -295,7 +297,13 @@ def _is_supervisor(pid: int, given: str) -> bool:
         argv = Path(f"/proc/{pid}/cmdline").read_bytes().removesuffix(b"\0").split(b"\0")
     except OSError:
         return False
-    return resolved is not None and argv[1:] == [
+    if (
+        resolved is None
+        or not argv[0]
+        or Path(os.fsdecode(argv[0])).resolve() != Path(sys.executable).resolve()
+    ):
+        return False
+    return argv[1:] == [
         os.fsencode(__file__),
         b"--supervise",
         os.fsencode(given),
@@ -524,7 +532,7 @@ def _supervise(given: str, resolved: Path) -> int:
         return INPUT_OUTPUT_ERROR
     stopping = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopping.set())
-    record = Record(path=given, program=job.arguments[0], supervisor=os.getpid())
+    record = Record(label=job.label, path=given, program=job.arguments[0], supervisor=os.getpid())
     child: subprocess.Popen[str] | None = None
     last_start = float("-inf")
     wanted = job.run_at_load
