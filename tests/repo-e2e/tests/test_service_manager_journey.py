@@ -355,10 +355,10 @@ class Systemd:
         self.container = f"printobserver-service-journey-{stamp}"
         self.image = f"{self.container}:root"
 
-    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _docker(
         self, *arguments: str, stdin: str | None = None, timeout: float = 120
     ) -> subprocess.CompletedProcess[str]:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         return shell_run(["docker", *arguments], stdin=stdin, timeout=timeout)
 
     def _as_root(self, *argv: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -639,7 +639,6 @@ class Launchd:
         """Where one of the paths the service sees is, on the machine the adapter drives."""
         return self.root / path.relative_to("/")
 
-    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _on_machine(
         self, *argv: str, stdin: str | None = None, timeout: float = 120
     ) -> subprocess.CompletedProcess[str]:
@@ -649,6 +648,7 @@ class Launchd:
         stand-in's machine, which that user owns.
         """
         prefix = ["sudo", "-n"] if self.stand_in is None else []
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         return shell_run([*prefix, *argv], stdin=stdin, timeout=timeout)
 
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
@@ -903,11 +903,11 @@ class WindowsService:
         message = "this host has neither `pwsh` nor `powershell` on PATH"
         raise AssertionError(message)
 
-    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     def _run(
         self, *argv: str, cwd: Path | None = None, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
         """One command from the elevated shell the operator runs the pair in."""
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         return shell_run(list(argv), cwd=cwd, env=env, timeout=300)
 
     def _sc(self, *arguments: str, check: bool = False) -> tuple[int, str]:
@@ -1186,10 +1186,10 @@ def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
     return Served(address, credential)
 
 
-# llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
 def _ask(served: Served) -> str:
     """One question to the API, written out over a socket, and the whole answer."""
     hostname, _, port = served.address.rpartition(":")
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     with socket.create_connection((hostname, int(port)), timeout=10) as stream:
         stream.sendall(
             (
@@ -1345,6 +1345,7 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
     equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
     unanswering = tmp_path / "bin"
     unanswering.mkdir()
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     (unanswering / "docker").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     (unanswering / "docker").chmod(0o755)
     case = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-rs", "-q", __file__]
@@ -1356,6 +1357,7 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
         (clean_environment(PATH=path, **{REQUIRED: str(setting)}), True),
         (ungated, False),
     ):
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         ran = shell_run(case, cwd=REPO_ROOT, env=environment, timeout=BUILD_TIMEOUT_SECONDS)
         said = plain(_said(ran))
         equal(ran.returncode != 0, fails, describing=f"whether the case failed:\n{said}")

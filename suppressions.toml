@@ -1126,7 +1126,7 @@ reason = "The stand-in's supervisor starts the job its property list names, as l
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "def _docker("
+site = "return shell_run([\"docker\", *arguments]"
 reason = "The boundary is Docker's own command-line tool, driven the way a person brings a container up and runs a command in it — `docker import`, `docker run`, `docker exec`, `docker rm` — one command at a time, each answer asserted on before the next is issued. The journey's subject is the systemd inside that container rather than Docker, there is nothing concurrent for an async client to win, and a Docker SDK between the journey and the container would be a second thing under test."
 
 [[suppression]]
@@ -1168,8 +1168,20 @@ reason = "The same ground as this file's `def program() -> Path:` entry: `AGENTS
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "def _on_machine("
+site = "return shell_run([*prefix, *argv]"
 reason = "The launchd adapter's one seam for every command it runs on the machine it drives — the committed installer, `launchctl`, `cat`, `ps`, `id`, `kill`, `rm`, `dscl` — through `sudo` on a Mac, as an operator runs them, and as the invoking user on the stand-in's machine. Each is one sequential command whose answer is asserted on before the next is issued; there is no typed client of launchd or of these tools for Python, and nothing concurrent for an async one to win."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "ran = shell_run(case, cwd=REPO_ROOT"
+reason = "What this test proves is how the journey itself ends when a prerequisite is missing — failed under the gate's own setting, skipped without it — and the only way to observe a pytest outcome is to run pytest, as the gate does, and read what it reports. Two sequential runs of one case, each asserted on before the next; there is no typed client of pytest's outcome for an async one to replace."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "(unanswering / \"docker\").write_text("
+reason = "The subject of this test is the journey's own handling of a host with no Docker that answers, which is the prerequisite the systemd case checks by running `docker version`; a `docker` that exits non-zero is exactly that host, placed first on `PATH` for two nested runs of one case. The systemd case's real walk against real Docker is the neighbouring test in this file, which the gate runs on every Linux cell."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -1180,13 +1192,13 @@ reason = "The boundary is launchd's own command-line tool, `launchctl`, driven a
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "def _run("
+site = "return shell_run(list(argv), cwd=cwd"
 reason = "The boundary is the Windows service control manager's own tools — `sc.exe`, the committed PowerShell installer, `Set-Service`, `Get-CimInstance` and `taskkill.exe` — driven from the elevated shell an operator runs the pair in, one command at a time with each answer asserted on before the next; `sc.exe`'s listings are read field by field. This is the adapter's one seam for all of them. There is no typed client of the manager for Python to adopt and nothing here to overlap."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "def _ask("
+site = "with socket.create_connection("
 reason = "The one question this journey asks the API is written out over a socket on purpose, as `crates/printobserver/tests/service.rs` writes its own: the point is what the service the manager started answers, not what a client library does with it, and a typed client between the two would be a second thing under test. It is one sequential request whose answer is asserted on before anything else happens."
 
 [[suppression]]
