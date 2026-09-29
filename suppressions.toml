@@ -1156,6 +1156,12 @@ reason = "The one OctoPrint this journey stands in, unchanged from before this c
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
+site = "class _AnswersEveryRead(BaseHTTPRequestHandler):"
+reason = "The definition of the one OctoPrint this journey stands in, the one the entry for its fixture accounts for and unchanged from before this change: the service refuses to start while nothing answers at its configured OctoPrint address, and what this journey proves is the service manager — activation, boot start, restart after a kill, teardown — not a printer. The real OctoPrint is driven by the printer integration tier and the real printer by the smoke test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = ".replace('url = \"http://127.0.0.1:5000\"'"
 reason = "The service refuses to start while nothing answers at its configured OctoPrint address, and this journey is about the service manager rather than a printer: the configuration is pointed at a local HTTP server that answers every read with an empty document, as it was before this change. The real OctoPrint is driven by the printer integration tier, and the real printer by the smoke test."
 

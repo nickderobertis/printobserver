@@ -100,6 +100,10 @@ GATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 #: traverse, named after this journey so that a leftover is recognisable.
 WINDOWS_ROOT = Path(r"C:\ProgramData\printobserver-journeys")
 
+#: What `sc.exe` exits with for a service name the manager does not know:
+#: Windows' own `ERROR_SERVICE_DOES_NOT_EXIST`.
+SERVICE_DOES_NOT_EXIST = 1060
+
 #: The places the installer puts things when it runs as root, as the service
 #: sees them.
 BINARY_DIRECTORY = PurePosixPath("/usr/local/lib/printobserver")
@@ -120,6 +124,7 @@ WITHIN_SECONDS = 120
 QUESTION = "/v1/prints"
 
 
+# llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 class _AnswersEveryRead(BaseHTTPRequestHandler):
     """An OctoPrint that answers every read with an empty document, and nothing else."""
 
@@ -611,11 +616,23 @@ class StandIn:
     state: Path
 
     def recorded(self) -> list[list[str]]:
-        """Every `launchctl` invocation the stand-in answered, in order."""
+        """Every `launchctl` invocation the stand-in answered, in order.
+
+        Raises:
+            AssertionError: If an entry is not the argument list of one invocation.
+        """
         recording = self.state / launchctl_standin.RECORDING
         if not recording.is_file():
             return []
-        return [json.loads(line) for line in recording.read_text(encoding="utf-8").splitlines()]
+        entries: list[list[str]] = []
+        for line in recording.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            if not isinstance(entry, list) or not all(isinstance(part, str) for part in entry):
+                raise AssertionError(
+                    f"the stand-in recorded {line!r}, which is not one invocation's arguments"
+                )
+            entries.append(entry)
+        return entries
 
 
 def _stand_in_launchd(scratch: Path, monkeypatch: pytest.MonkeyPatch) -> StandIn:
@@ -1002,8 +1019,11 @@ class WindowsService:
     def prepare(self) -> None:
         """Leave a real installation alone; clear a leftover of this journey's own."""
         code, listing = self._sc("qc", self.name)
-        if code != 0:
+        if code == SERVICE_DOES_NOT_EXIST:
             return
+        # Any other failure says nothing about whether a service is there, so
+        # it is not taken as a host clear to install on.
+        passing((code, listing), describing=f"`sc.exe qc {self.name}`")
         binary = self._field(listing, "BINARY_PATH_NAME")
         # A leftover of this journey's own runs the program its installer placed
         # in a root of the journey's shape, and nothing else is one to remove.

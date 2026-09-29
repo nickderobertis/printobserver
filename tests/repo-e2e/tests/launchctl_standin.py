@@ -361,9 +361,13 @@ def _bootstrap(arguments: list[str]) -> int:
             f"the user that invoked it ({getpass.getuser()}) and no other",
         )
         return INPUT_OUTPUT_ERROR
-    # The supervisor outlives this command, as launchd outlives `launchctl`; its
-    # streams are its own pipes, which close when this command exits, so a
-    # caller reading this command's output is not held open by it.
+    # The supervisor outlives this command, as launchd outlives `launchctl`.
+    # `start` gives it pipes this command holds rather than this command's own
+    # streams, so a caller capturing this command's output sees it end when this
+    # command exits rather than when the supervisor does. Neither pipe is read:
+    # the supervisor's own messages on them are its refusals of a job, each made
+    # before it writes a record, so the loop below reports one as a failed
+    # bootstrap from the supervisor's exit rather than from what it said.
     # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     supervisor = start([sys.executable, __file__, "--supervise", given, str(resolved)])
     deadline = time.monotonic() + EXIT_TIMEOUT_SECONDS
