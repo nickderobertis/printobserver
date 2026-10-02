@@ -12,6 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
+use printobserver_core::Actor;
 use printobserver_oneharness::{EnvAssignment, OneharnessSupervisor};
 use printobserver_server::{OPERATIONS, ServerConfig, agent_config, command_for};
 use printobserver_supervisor_api::{SupervisorPort as _, TurnRequest};
@@ -78,9 +79,9 @@ fn resolved(path: &Path) -> PathBuf {
 
 /// One turn of an agent composed exactly as `Server::start` composes it, over a
 /// copy of the committed skill installed on its own under `root`: what the
-/// harness process wrote down about how it was started, and where the skill
-/// was installed.
-async fn one_composed_turn(root: &Path) -> (Value, PathBuf) {
+/// harness process wrote down about how it was started, where the skill was
+/// installed, and the session the turn ran in.
+async fn one_composed_turn(root: &Path) -> (Value, PathBuf, String) {
     // The shape `gh skill install --dir <root>/skills` lays down: the skill's
     // directory, holding nothing but the skill's own files.
     let installed = root.join("skills").join("printobserver");
@@ -131,13 +132,13 @@ async fn one_composed_turn(root: &Path) -> (Value, PathBuf) {
             .expect("an assignment"),
     ]);
     let agent = OneharnessSupervisor::open(composed).expect("the agent opens");
-    agent.run_turn(a_turn()).await.expect("the turn runs");
+    let outcome = agent.run_turn(a_turn()).await.expect("the turn runs");
 
     let recorded: Value = printobserver_types::serde_json::from_str(
         &std::fs::read_to_string(&seen).expect("the harness wrote down what it was started with"),
     )
     .expect("what the harness wrote down is a document");
-    (recorded, installed)
+    (recorded, installed, outcome.session.session_name)
 }
 
 /// The arguments the harness process was started with.
@@ -154,10 +155,15 @@ fn arguments_of(recorded: &Value) -> Vec<String> {
 /// the harness is started refusing every tool call no rule allows, with a
 /// shell and the three read tools only, and one rule per operation the server
 /// serves, spelled as the command-line program spells that operation's command.
+///
+/// The arguments are the boundary this repository owns. Enforcing them is
+/// Claude Code's, and seeing it allow one command and refuse another would take
+/// a paid model choosing to run each, which no gate can make deterministically;
+/// `printobserver-oneharness`'s permission journeys say the same at theirs.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_composed_agent_runs_this_programs_commands_and_no_other() {
     let root = TempDir::new().expect("a journey's own root");
-    let (recorded, _) = one_composed_turn(root.path()).await;
+    let (recorded, _, _) = one_composed_turn(root.path()).await;
     let arguments = arguments_of(&recorded);
 
     for expected in [
@@ -203,7 +209,7 @@ async fn the_composed_agent_runs_this_programs_commands_and_no_other() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_turns_path_leads_with_the_serving_programs_own_directory() {
     let root = TempDir::new().expect("a journey's own root");
-    let (recorded, _) = one_composed_turn(root.path()).await;
+    let (recorded, _, _) = one_composed_turn(root.path()).await;
 
     let path = recorded["path"]
         .as_str()
@@ -229,7 +235,7 @@ async fn a_turns_path_leads_with_the_serving_programs_own_directory() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect() {
     let root = TempDir::new().expect("a journey's own root");
-    let (recorded, _) = one_composed_turn(root.path()).await;
+    let (recorded, _, _) = one_composed_turn(root.path()).await;
     let arguments = arguments_of(&recorded);
 
     let inline = arguments
@@ -267,12 +273,42 @@ async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect()
     );
 }
 
+/// The actor a turn's prompt hands the agent is one the server reads as the
+/// agent acting in the session that turn ran in.
+///
+/// The adapter that writes the document may not depend on the core that
+/// declares the actor, so this is where the two are held to each other: the
+/// document is read off the prompt the harness process was actually handed and
+/// parsed as the core's own type, which is what every action request the agent
+/// sends is parsed as.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_actor_a_turn_hands_the_agent_is_the_cores_agent_in_that_session() {
+    let root = TempDir::new().expect("a journey's own root");
+    let (recorded, _, session_name) = one_composed_turn(root.path()).await;
+    let arguments = arguments_of(&recorded);
+    let prompt = arguments
+        .iter()
+        .position(|argument| argument == "-p")
+        .and_then(|at| arguments.get(at + 1))
+        .unwrap_or_else(|| panic!("the harness was handed no prompt: {arguments:?}"));
+
+    let (_, after) = prompt
+        .split_once("--actor '")
+        .unwrap_or_else(|| panic!("the prompt hands the agent no actor:\n{prompt}"));
+    let (document, _) = after
+        .split_once('\'')
+        .expect("the actor is quoted to its end");
+    let actor: Actor = printobserver_types::serde_json::from_str(document)
+        .unwrap_or_else(|error| panic!("`{document}` is not an actor the server reads: {error}"));
+    assert_eq!(actor, Actor::Agent { session_name });
+}
+
 /// A skill installed on its own is the turn's system prompt, and the turn runs
 /// in the directory it was installed in.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it() {
     let root = TempDir::new().expect("a journey's own root");
-    let (recorded, installed) = one_composed_turn(root.path()).await;
+    let (recorded, installed, _) = one_composed_turn(root.path()).await;
     let skill = installed.join("SKILL.md");
     let ran_in = PathBuf::from(recorded["cwd"].as_str().unwrap_or_else(|| {
         panic!(

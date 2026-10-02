@@ -200,11 +200,13 @@ impl OneharnessSupervisor {
         let mut arguments = vec!["--tools".to_owned()];
         arguments.extend(CLAUDE_TURN_TOOLS.map(str::to_owned));
         arguments.push("--allowedTools".to_owned());
+        // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
         arguments.extend(CLAUDE_READ_TOOLS.map(str::to_owned));
         arguments.extend(
             self.config
                 .agent_commands
                 .iter()
+                // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
                 .map(|command| format!("Bash({command}:*)")),
         );
         (PermissionMode::Default, arguments)

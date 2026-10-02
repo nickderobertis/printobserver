@@ -152,7 +152,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
 }
 
 /// The actor document the agent names itself by in one session, spelled the
-/// way the supervisor's own action requests read one.
+/// way the supervisor's own action requests read one. This crate cannot see
+/// the core's type; the server's suite parses a real turn's actor as it.
 fn actor_in(session_name: &str) -> String {
     serde_json::json!({ "agent": { "session_name": session_name } }).to_string()
 }

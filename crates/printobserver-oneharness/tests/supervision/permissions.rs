@@ -6,6 +6,17 @@
 //! `OneHarness`'s read-only mode. The journeys here drive a real turn through
 //! the real `OneHarness` and read both the run request this port built and the
 //! argument vector `OneHarness` started the harness with.
+//!
+//! # Why the proof stops at the argument vector
+//!
+//! What runs an allowed command and refuses any other is Claude Code itself,
+//! reading those arguments; this repository's boundary with it is the argument
+//! vector, which is what is asserted here. Watching a command allowed and
+//! another refused would mean a real model deciding to run each, which is a
+//! paid, non-deterministic run no gate can make — the deterministic responder
+//! that replaces the provider runs no tools at all. That half was proven on the
+//! real printer, where the deployed build's turns ran `printobserver context`
+//! and acted under exactly these arguments.
 
 use std::sync::Arc;
 
