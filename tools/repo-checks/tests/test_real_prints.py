@@ -351,6 +351,73 @@ def test_an_unknown_operation_or_argument_is_refused(check: Run, tree: Callable[
     refused_with(result, "fan-cut-bridge", "'halt'", "shape refuses")
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new", "name", "naming"),
+    [
+        (
+            "schemas/printobserver-printer-api/PrinterState.json",
+            '"oneOf": [',
+            '"anyOf": [',
+            "real-prints-scenarios",
+            "names no state",
+        ),
+        (
+            "schemas/printobserver-printer-api/PrinterState.json",
+            '"oneOf": [',
+            '"type": 5, "oneOf": [',
+            "real-prints-scenarios",
+            "not a valid JSON Schema",
+        ),
+        (
+            "schemas/printobserver-server/operations.json",
+            '"responses": [',
+            '"responses": [], "was": [',
+            "real-prints-operations",
+            "cannot be read as the server's description",
+        ),
+        (
+            "schemas/printobserver-core/AcknowledgementDisposition.json",
+            '"oneOf": [',
+            '"type": 5, "oneOf": [',
+            "real-prints-operations",
+            "AcknowledgementDisposition is not a valid JSON Schema",
+        ),
+        (
+            "tests/real-prints/case.schema.json",
+            '"type": "object",',
+            '"type": 5,',
+            "real-prints-schema",
+            "case.schema.json is not a valid JSON Schema",
+        ),
+        (
+            "schemas/printobserver-server/HistoryAnswer.json",
+            '"type": "object"',
+            '"type": 5',
+            "real-prints-files",
+            "HistoryAnswer.json is not a valid JSON Schema",
+        ),
+    ],
+)
+def test_a_contract_the_checks_read_must_itself_be_readable(
+    check: Run, tree: Callable[[], Tree], path: str, old: str, new: str, name: str, naming: str
+) -> None:
+    """A committed contract that is not a valid schema is a finding, not a crash."""
+    copy = tree()
+    copy.edit(path, old, new)
+    refused_with(check(name, copy), naming)
+
+
+def test_a_contract_that_is_no_schema_object_is_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A schema file holding a bare JSON value is named, not indexed into."""
+    copy = tree()
+    copy.write("schemas/printobserver-printer-api/PrinterState.json", "true\n")
+    refused_with(
+        check("real-prints-scenarios", copy), "PrinterState.json is not a JSON Schema object"
+    )
+
+
 def test_an_operation_renamed_in_the_server_is_refused(
     check: Run, tree: Callable[[], Tree]
 ) -> None:

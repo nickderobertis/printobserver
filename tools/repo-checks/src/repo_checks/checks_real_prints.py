@@ -27,8 +27,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NewType
 
-from contract_codegen.schemas import read_schemas
+from contract_codegen.schemas import ContractError, load, read_schemas
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
 
 from repo_checks.model import Repo
@@ -64,6 +65,27 @@ REDACTED = "<redacted>"
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
 ScenarioId = NewType("ScenarioId", str)
+
+
+class UnreadableContractError(ValueError):
+    """A committed contract a check reads cannot be read as one."""
+
+
+def _valid_schema(schema: object, named: str) -> dict[str, Any]:
+    """A committed schema, checked to be a valid JSON Schema before it is used.
+
+    Raises:
+        UnreadableContractError: If it is not an object or not a valid schema.
+    """
+    if not isinstance(schema, dict):
+        msg = f"{named} is not a JSON Schema object"
+        raise UnreadableContractError(msg)
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as error:
+        msg = f"{named} is not a valid JSON Schema: {error.message}"
+        raise UnreadableContractError(msg) from error
+    return schema
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,10 +218,12 @@ def _file_fields(value: object) -> Iterator[str]:
 
 
 def _validator(repo: Repo, relative: str) -> Validator:
-    """The validator for one committed schema, itself checked to be a valid schema."""
-    schema = json.loads(repo.read(relative))
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
+    """The validator for one committed schema, itself checked to be a valid schema.
+
+    Raises:
+        UnreadableContractError: If the file is not a valid schema.
+    """
+    return Draft202012Validator(_valid_schema(json.loads(repo.read(relative)), relative))
 
 
 def _problems(validator: Validator, document: object, named: str) -> list[str]:
@@ -263,22 +287,28 @@ def _cases(repo: Repo) -> Iterator[tuple[str, Case | list[str]]]:
 
 
 def _readable(repo: Repo, check: str, findings: list[str]) -> Iterator[Case]:
-    """Each case a check can read; one it cannot is a finding naming it."""
-    for name, case in _cases(repo):
-        if isinstance(case, Case):
-            yield case
-        else:
-            findings.append(f"{name}: its files are unreadable, so {check} could not check it")
+    """Each case a check can read; one it cannot, or an unreadable schema, is a finding."""
+    try:
+        for name, case in _cases(repo):
+            if isinstance(case, Case):
+                yield case
+            else:
+                findings.append(f"{name}: its files are unreadable, so {check} could not check it")
+    except UnreadableContractError as error:
+        findings.append(str(error))
 
 
 def real_prints_schema(repo: Repo) -> list[str]:
     """Every case carries a `case.json` satisfying `case.schema.json`, and a valid history."""
-    return [
-        f"{name}: {problem}"
-        for name, case in _cases(repo)
-        if not isinstance(case, Case)
-        for problem in case
-    ]
+    try:
+        return [
+            f"{name}: {problem}"
+            for name, case in _cases(repo)
+            if not isinstance(case, Case)
+            for problem in case
+        ]
+    except UnreadableContractError as error:
+        return [str(error)]
 
 
 def _is_dropped(path: str) -> bool:
@@ -357,9 +387,22 @@ def real_prints_images(repo: Repo) -> list[str]:
 
 
 def _printer_states(repo: Repo) -> frozenset[str]:
-    """The string spellings the printer contract's `PrinterState` names."""
-    schema = json.loads(repo.read(PRINTER_STATE))
-    return frozenset(arm["const"] for arm in schema["oneOf"] if "const" in arm)
+    """The string spellings the printer contract's `PrinterState` names.
+
+    Raises:
+        UnreadableContractError: If the schema is invalid or names no state.
+    """
+    schema = _valid_schema(json.loads(repo.read(PRINTER_STATE)), PRINTER_STATE)
+    arms = schema.get("oneOf")
+    states = frozenset(
+        arm["const"]
+        for arm in (arms if isinstance(arms, list) else [])
+        if isinstance(arm, dict) and isinstance(arm.get("const"), str)
+    )
+    if not states:
+        msg = f"{PRINTER_STATE} names no state as a string constant of its oneOf"
+        raise UnreadableContractError(msg)
+    return states
 
 
 def _scenario_findings(case: Case, scenario: Scenario, states: frozenset[str]) -> Iterator[str]:
@@ -398,7 +441,10 @@ def _scenario_findings(case: Case, scenario: Scenario, states: frozenset[str]) -
 def real_prints_scenarios(repo: Repo) -> list[str]:
     """Every scenario names events its case's history holds and images its case carries."""
     findings: list[str] = []
-    states = _printer_states(repo)
+    try:
+        states = _printer_states(repo)
+    except UnreadableContractError as error:
+        return [str(error)]
     for case in _readable(repo, "real-prints-scenarios", findings):
         seen: set[ScenarioId] = set()
         for scenario in case.scenarios:
@@ -435,10 +481,13 @@ def _type_definitions(repo: Repo) -> dict[str, Any]:
     A type file's own `$defs` are copies of the types it refers to, so they are
     pooled first and the files themselves, each standing for its own name, win.
     """
-    declared = read_schemas(repo.root)
-    pooled: dict[str, Any] = {}
-    for schema in declared.values():
-        pooled.update(schema.get("$defs", {}))
+    declared = {
+        name: _valid_schema(schema, name) for name, schema in read_schemas(repo.root).items()
+    }
+    pooled: dict[str, dict[str, Any]] = {}
+    for name, schema in declared.items():
+        for inner, definition in schema.get("$defs", {}).items():
+            pooled[inner] = _valid_schema(definition, f"{name}'s $defs.{inner}")
     pooled.update(declared)
     return {
         name: {key: value for key, value in schema.items() if key not in {"$schema", "$defs"}}
@@ -447,7 +496,21 @@ def _type_definitions(repo: Repo) -> dict[str, Any]:
 
 
 def _operations(repo: Repo) -> dict[str, Operation]:
-    """Each printobserver command, hyphenated, read from the server's description."""
+    """Each printobserver command, hyphenated, read from the server's description.
+
+    The description is first read the way the clients are generated from it,
+    which refuses one whose operations, parameters or referenced types are
+    malformed; only then are its parameter shapes taken, each checked to be a
+    valid schema on its own, beside the pool of types it refers into.
+
+    Raises:
+        UnreadableContractError: If the description or a shape cannot be read.
+    """
+    try:
+        load(repo.root)
+    except ContractError as error:
+        msg = f"{OPERATIONS} cannot be read as the server's description: {error}"
+        raise UnreadableContractError(msg) from error
     described = json.loads(repo.read(OPERATIONS))
     definitions = _type_definitions(repo)
     operations = (
@@ -455,7 +518,13 @@ def _operations(repo: Repo) -> dict[str, Operation]:
             operation["name"].replace("_", "-"),
             {
                 parameter["name"]: Draft202012Validator(
-                    {"$defs": definitions, **parameter["shape"]}
+                    {
+                        "$defs": definitions,
+                        **_valid_schema(
+                            parameter["shape"],
+                            f"{operation['name']}'s parameter {parameter['name']}",
+                        ),
+                    }
                 )
                 for parameter in operation["parameters"]
             },
@@ -468,7 +537,10 @@ def _operations(repo: Repo) -> dict[str, Operation]:
 def real_prints_operations(repo: Repo) -> list[str]:
     """Every scenario step is a printobserver command, with that command's own parameters."""
     findings: list[str] = []
-    operations = _operations(repo)
+    try:
+        operations = _operations(repo)
+    except UnreadableContractError as error:
+        return [str(error)]
     for case in _readable(repo, "real-prints-operations", findings):
         for scenario in case.scenarios:
             where = f"{case.name}: scenario {scenario.id}"
