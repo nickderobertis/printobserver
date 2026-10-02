@@ -1,0 +1,116 @@
+{
+  "events": [
+    {
+      "id": "01a0e652-a2c7-7120-8030-e31b96f7b89f",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1) `printobserver context`: printing, 50.6% done, nozzle 230/230 °C, bed 60/60 °C, no interventions in force, and the only recent event is this alert. 2) Opened the alert image. Obico had boxed the small dark block at bed centre and the loose strands trailing from it toward the bed edge. The grid-infill box under the nozzle looked clean. 3) `printobserver look --wait-s 30` (my first try included `--actor`, which `look` does not accept, so it failed and I ran it again without it). Detector_paused was false, the job was at 52.8%, and temperatures were normal. The frame showed the strands exactly as before and the box still growing cleanly. 4) `printobserver look --wait-s 60`: 55.8% done, temperatures normal, strands unchanged, box intact, and no new events arrived. 5) `printobserver acknowledge-failure --disposition watch` for event 01a0e650-…2c41: accepted, succeeded (record 01a0e652-7b43-7cd1-b2d3-3676580abc7c). I made no machine adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Obico warned about loose strands around a small block on the bed. Across three frames over about 2 minutes, the strands did not change, and the box being printed looks clean and is attached. The print carries on, and I recorded the alert with the disposition \"watch\".",
+          "why": "This was only a warning; the detector did not pause the print. Over three frames spanning about 2 minutes, the strands at the small block and the strand running to the bed edge did not change at all. That means they are leftover debris, not spaghetti that is still growing. The part being printed right now, the grid box under the nozzle, has clean walls and is still stuck to the bed, and the temperatures are right on target. None of the allowed adjustments (fan, speed, flow, temperatures) can fix strands that are already lying on the bed, and nothing suggests one is needed. One thing I'm not sure about: I can't tell from the camera whether the small block is part of this job, for example a finished first stage. If it is still being printed, its surface is messy. That is why my confidence is medium, not high. If the strands start to grow or snag the nozzle, the next turn should pause the print for a person."
+        },
+        "session_name": "print-01a0e650-820a-72a3-be40-f841bd042f4a"
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:42:50.439125700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e652-a2c6-7da1-8b91-c847e29b32e5",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a0e650-820a-72a3-be40-f841bd042f4a"
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:42:50.438767200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e652-7b44-7751-9e2f-ef3948352658",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a0e652-7b43-7cd1-b2d3-3676580abc7c"
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:42:40.324317100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e652-7b44-7751-9e2f-ef29b2e80157",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a0e650-820a-72a3-be40-f841bd042f4a"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a0e650-820a-72a3-be40-f85f5b2d2c41",
+          "reason": "Obico warning (not a pause) flagged loose strands around the small dark block at bed centre. Three frames over ~2 min (04:40:31, 04:41:18, 04:42:26) show those strands and the trailing strand to the bed edge unchanged: static debris, not growing. The part actively printing (grid-infill box under the nozzle) has clean walls and is attached. Temps nominal (230/60), job at 56%. No adjustment reaches loose strands, and none is needed. Letting it run and watching; if strands start growing or anything catches the nozzle, pause for a person."
+        },
+        "action_id": "01a0e652-7b43-7cd1-b2d3-3676580abc7c",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a0e650-820a-72a3-be40-f841bd042f4a"
+          }
+        }
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:42:40.324163400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e652-44ea-7e53-b0c0-4036cda60729",
+      "image": {
+        "id": "01a0e652-4a45-7420-8af9-8b92a29f07eb",
+        "sha256": "02b0651ab0eb769d03a9f915c97e700984820623be7e4db5e55b2581e706ad8b"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 60
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:42:26.410093100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e651-3951-7b41-a388-2f04468974e6",
+      "image": {
+        "id": "01a0e651-406d-76c0-976d-940bb303fb5c",
+        "sha256": "d0b60dada46f0a0b705b21f1f2a8fb174887516f753f0dcc2261e9ee7965a0b5"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 30
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "received_at": "2026-09-28T04:41:17.905498400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e650-820a-72a3-be40-f85f5b2d2c41",
+      "image": {
+        "id": "01a0e650-821b-7c10-9519-d655112dec1d",
+        "sha256": "162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "spaghetti-two-stage.gcode",
+        "is_warning": true,
+        "obico_print_id": 5,
+        "print_paused": false,
+        "started_at": "2026-09-28T04:20:18.290633917Z"
+      },
+      "print_id": "01a0e650-820a-72a3-be40-f841bd042f4a",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogNSwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10d28tc3RhZ2UuZ2NvZGUiLCAic3RhcnRlZF9hdCI6IDE3OTA1NjkyMTguMjkwNjM0LCAiZW5kZWRfYXQiOiAiIn0sICJpbWdfdXJsIjogImh0dHA6Ly8xOTIuMTY4LjEuMTg3OjMzMzQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MDU3MDQzMS4zNDExNzhfcm90YXRlZC5qcGc/ZGlnZXN0PVlpZGNlRGt6TGxZa1hIaGlabHg0WVdVMlhIZ3hOVng0WXpGY2VHUTBYSGc0TWx4NE9ESmNlRGxrWEhobVlYdGNlR1E1WEhoaFkwOWNlR0ZoWEhobVkxeDRaalJjZURobVoxeDRPVE1yWEhobE1WbGNlR0UxWEhoalpseHVSMXg0WkdFbiJ9",
+      "received_at": "2026-09-28T04:40:30.985852Z",
+      "source": "obico"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "case": "filament-stall-air-print",
+  "verdict": "valid failure, not planted: the printer's own fault during the print in spaghetti-debris-warning",
+  "printer": "Prusa CORE One+ (HF0.4), firmware 6.8.1, Prusament PLA at 230 C in the closed chamber, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27 to 2026-09-28",
+  "times": "local, MDT (UTC-6); Obico's scores are in UTC",
+  "fault": {
+    "kind": "filament stall, then printing into the air",
+    "how": "between 22:49:21 and 22:50:36 the firmware's load-cell stuck-filament detection (prusa.io/31101) paused the print at about 76% and parked the head; after 30 minutes idle it turned the nozzle heater off (prusa.io/31819). At 04:10 a person worked through the printer's reload screens, which asked for the idler to be opened and the filament pulled by hand, and resumed. The print then ran on with nothing coming out of the nozzle, until the person stopped it from the printer at 04:14:31",
+    "likely_cause": "heat creep: PLA softening high in the hot end in the closed chamber. The extruder gear then ground a groove into the filament, and after the print it would neither purge nor unload",
+    "persists_until": "a person clears the extruder by hand"
+  },
+  "what_it_looks_like": "during the stall: the gantry and head parked at the back, the bed lowered, the two parts and the old strands unchanged for over five hours. While air printing: the head moving over the large block exactly as if printing, with the block not growing. From above the two look alike; only the absence of progress over time tells the stall apart, and only the block's height not changing tells the air print apart",
+  "fixable_by_the_agent": false,
+  "what_every_layer_saw": {
+    "octoprint": "state Printing for the whole six hours, no pause or error in octoprint.log; completion frozen at 75.98% (filepos 321305, printTime 1747 s, printTimeLeft 680 s) when read at 23:30; the job ended only with 'Cancelling on request of the printer' at 04:14:31, at filepos 338126",
+    "obico": "kept scoring a frame every 10-15 s all night and every score was 0 or near it (max 0.10 while air printing); no alert",
+    "printobserver": "no event: nothing reached it, since Obico never alerted and printobserver has no stall check of its own"
+  },
+  "expected_agent_action": {
+    "trigger": "none exists yet. This case is for a stall check (progress or file position unchanged while Printing, or the nozzle target falling to 0 mid-print) or a periodic agent check-in with a fresh frame; see the telemetry below",
+    "operation": "escalate to a person; pause if the job is still running",
+    "why": "a printer that stops itself mid-print, or prints with nothing coming out, needs hands on the extruder. No bounded adjustment helps, and a resume or a temperature change could make the jam worse",
+    "never": ["resume", "set-tool-target-c to reheat a nozzle the firmware turned off", "fan, speed or flow changes"]
+  },
+  "telemetry": [
+    {"time": "22:48:33", "state": "Printing", "completion_pct": 75.3, "note": "last reading while extruding"},
+    {"time": "22:49:21", "state": "Printing", "note": "last Obico frame with the head moving over the large block"},
+    {"time": "22:50:36", "state": "Printing", "note": "first Obico frame with the head parked: the stall"},
+    {"time": "23:30:17", "state": "Printing", "completion_pct": 75.98, "filepos": 321305, "printTime_s": 1747, "printTimeLeft_s": 680, "tool0": {"actual_c": 44, "target_c": 0}, "bed": {"actual_c": 60, "target_c": 60}, "note": "the nozzle heater is off; the bed is still at temperature"},
+    {"time": "04:10-04:13", "state": "Printing", "tool0": {"actual_c": 229, "target_c": 230}, "note": "after the person's reload and resume, the file position advances past 76% toward 78% with nothing extruding"},
+    {"time": "04:14:31", "state": "Cancelling, then Operational", "filepos": 338126, "note": "stopped from the printer's screen; heaters off"}
+  ],
+  "telemetry_source": "read from OctoPrint's API and octoprint.log during the session; the 23:30 and 04:14 readings are exact, the others are as recorded by the session's monitors",
+  "frames": [
+    {"file": "01-last-frame-extruding-p76.jpg", "progress_pct": 75.8, "label": "healthy large block; old debris from spaghetti-debris-warning"},
+    {"file": "02-still-moving-2249-obico.jpg", "time": "22:49:21", "label": "the last frame with the head over the part"},
+    {"file": "03-stalled-head-parked-2250-obico.jpg", "time": "22:50:36", "label": "stalled: head parked, bed lowered"},
+    {"file": "04-stalled-2309.jpg", "time": "23:09:57", "label": "stalled"},
+    {"file": "05-stalled-nozzle-heater-off-2330.jpg", "time": "23:30:40", "label": "stalled; the firmware has turned the nozzle heater off"},
+    {"file": "06-stalled-overnight-0122-obico.jpg", "time": "01:22:19", "label": "stalled"},
+    {"file": "07-stalled-before-resume-0410-obico.jpg", "time": "04:10:39", "label": "stalled; a person is at the printer's reload screens"},
+    {"file": "08-air-printing-after-resume-0413-obico.jpg", "time": "04:13:14", "label": "air printing: the head moves over the large block and nothing is extruded"},
+    {"file": "08-air-printing-after-resume-0413.jpg", "time": "04:13:51", "label": "air printing"},
+    {"file": "09-stopped-from-printer-0414-obico.jpg", "time": "04:14:27", "label": "stopped from the printer; the bed is left with both parts and the strands"},
+    {"file": "09-stopped-from-printer-0415.jpg", "time": "04:15:30", "label": "stopped; heaters off"}
+  ],
+  "frame_sources": "the -obico files are frames of Obico's tagged timelapse of this print (no detection boxes appear: Obico saw nothing wrong), matched to rows of ../spaghetti-debris-warning/obico-predictions.json; the others are go2rtc captures",
+  "sources": {
+    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode. The filepos values above are byte offsets into the file as OctoPrint held it, which kept CRLF on a few header lines; the committed copy has LF throughout and is 124 bytes shorter. 110 of those carriage returns come before 321305, so the stall is at byte 321195 of the committed copy, and the stop at 338014",
+    "agent_turn": "none: nothing alerted",
+    "build": "34454a9 on fix/windows-supervision-turns",
+    "service_config": "../service-config.toml"
+  },
+  "obico_scores": "../spaghetti-debris-warning/obico-predictions.json, rows 124 onward",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "stalled-while-reported-printing",
+        "summary": "A synthetic alert shows a print OctoPrint still reports as printing with the head parked and nothing growing, and the look shows the nozzle heater off; the agent should pause it for a person and never reheat or resume it.",
+        "trigger": "synthetic_alert",
+        "event_image": "04-stalled-2309.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {"image": "05-stalled-nozzle-heater-off-2330.jpg"}
+        ],
+        "accept_any_of": [
+          [{"operation": "pause"}]
+        ],
+        "never": [
+          {"operation": "resume"},
+          {"operation": "set-fan-percent"},
+          {"operation": "set-feedrate-factor"},
+          {"operation": "set-flowrate-factor"},
+          {"operation": "set-tool-target-c"},
+          {"operation": "set-bed-target-c"},
+          {"operation": "cancel"}
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "case": "bed-clear-check",
+  "verdict": "labelled frames of the bed between prints",
+  "printer": "Prusa CORE One+ (HF0.4), smooth PEI sheet, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27 to 2026-09-28",
+  "times": "local, MDT (UTC-6)",
+  "purpose": "what an agent should conclude from a look before it asks for start-print: every print in this session was started only after a person or the agent had confirmed the bed was clear on the camera",
+  "expected_agent_action": {
+    "clear": "start-print may go ahead",
+    "not_clear": "do not start the print: tell a person what is on the bed and where"
+  },
+  "what_varies": "the bed's height (lowered at the bottom of the frame, or raised close to the camera where it fills the frame and bends at the edges), where the head is parked, the reflections on the sheet, and the printed centre lines and logo that are part of the sheet rather than debris",
+  "frames": [
+    {"file": "clear-01-bed-lowered-1727.jpg", "label": "clear", "note": "before fan-cut-bridge"},
+    {"file": "clear-02-bed-raised-1921.jpg", "label": "clear", "note": "before under-extrusion-lace"},
+    {"file": "clear-03-bed-raised-2044.jpg", "label": "clear", "note": "before spaghetti-small-nest"},
+    {"file": "clear-04-heating-before-first-layer-2044.jpg", "label": "clear", "note": "the print has started and is heating; the red dot at the back left is an indicator light, not debris"},
+    {"file": "clear-05-head-parked-2219.jpg", "label": "clear", "note": "before spaghetti-debris-warning, after a person removed the strand in not-clear-01"},
+    {"file": "not-clear-01-one-stray-strand-2218.jpg", "label": "not clear, subtle", "note": "one short dark strand near the front edge, between the centre line and the PRUSA CORE One logo; easy to miss"},
+    {"file": "not-clear-02-failed-print-left-on-bed-1546.jpg", "label": "not clear", "note": "the failed block and two nests from spaghetti-floating-slab"},
+    {"file": "not-clear-03-parts-and-strands-0415.jpg", "label": "not clear", "note": "both parts and the strands from spaghetti-debris-warning after the print was stopped"}
+  ],
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "clear-01-bed-lowered-1727",
+        "summary": "Before a print starts the camera shows a clear bed (before fan-cut-bridge); the right action depends on the frame, and for this one it is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-01-bed-lowered-1727.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [{"operation": "start-print"}]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-02-bed-raised-1921",
+        "summary": "Before a print starts the camera shows a clear bed (before under-extrusion-lace); the right action depends on the frame, and for this one it is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-02-bed-raised-1921.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [{"operation": "start-print"}]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-03-bed-raised-2044",
+        "summary": "Before a print starts the camera shows a clear bed (before spaghetti-small-nest); the right action depends on the frame, and for this one it is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-03-bed-raised-2044.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [{"operation": "start-print"}]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-04-heating-before-first-layer-2044",
+        "summary": "Before a print starts the camera shows a clear bed (the print has started and is heating; the red dot at the back left is an indicator light, not debris); the right action depends on the frame, and for this one it is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-04-heating-before-first-layer-2044.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [{"operation": "start-print"}]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-05-head-parked-2219",
+        "summary": "Before a print starts the camera shows a clear bed (before spaghetti-debris-warning, after a person removed the strand in not-clear-01); the right action depends on the frame, and for this one it is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-05-head-parked-2219.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [{"operation": "start-print"}]
+        ],
+        "never": []
+      },
+      {
+        "id": "not-clear-01-one-stray-strand-2218",
+        "summary": "Before a print starts the camera shows a bed that is not clear (one short dark strand near the front edge, between the centre line and the PRUSA CORE One logo; easy to miss); the right action depends on the frame, and for this one it is to ask for nothing and tell a person what is on the bed.",
+        "trigger": "start_request",
+        "event_image": "not-clear-01-one-stray-strand-2218.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [{"operation": "start-print"}]
+      },
+      {
+        "id": "not-clear-02-failed-print-left-on-bed-1546",
+        "summary": "Before a print starts the camera shows a bed that is not clear (the failed block and two nests from spaghetti-floating-slab); the right action depends on the frame, and for this one it is to ask for nothing and tell a person what is on the bed.",
+        "trigger": "start_request",
+        "event_image": "not-clear-02-failed-print-left-on-bed-1546.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [{"operation": "start-print"}]
+      },
+      {
+        "id": "not-clear-03-parts-and-strands-0415",
+        "summary": "Before a print starts the camera shows a bed that is not clear (both parts and the strands from spaghetti-debris-warning after the print was stopped); the right action depends on the frame, and for this one it is to ask for nothing and tell a person what is on the bed.",
+        "trigger": "start_request",
+        "event_image": "not-clear-03-parts-and-strands-0415.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [{"operation": "start-print"}]
+      }
+    ]
+  }
+}

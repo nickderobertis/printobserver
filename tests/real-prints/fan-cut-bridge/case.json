@@ -1,0 +1,62 @@
+{
+  "case": "fan-cut-bridge",
+  "verdict": "valid failure",
+  "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27",
+  "fault": {
+    "kind": "part-cooling fan cut",
+    "how": "M106 S0 injected at the bridge layer (Z16.2) and every later M106 removed, so the fan stays off until something sets it",
+    "starts_at_progress_pct": 47,
+    "persists_until": "a set_fan_percent from the supervisor"
+  },
+  "what_it_looks_like": "tangled strands where the bridge between the two pillars is being laid (p49), then a bridge edge sagging into a V (p51); the overhang stairs above print uncooled",
+  "fixable_by_the_agent": true,
+  "expected_agent_action": {
+    "operation": "set-fan-percent",
+    "value": 100,
+    "why": "the only thing wrong is cooling; nothing later in the file sets the fan, so the change holds"
+  },
+  "detector": {
+    "provider": "obico (self-hosted, sensitivity highest)",
+    "alerted": false,
+    "paused": false,
+    "max_frame_score_while_printing": 0.0,
+    "note": "the only non-zero scores (peak 0.22) came during warm-up, with the bed raised to the camera"
+  },
+  "frames": [
+    {"file": "01-healthy-before-fault-p41.jpg", "progress_pct": 41.0, "label": "healthy"},
+    {"file": "02-bridge-strands-tangled-p49.jpg", "progress_pct": 48.7, "label": "defect"},
+    {"file": "03-bridge-sagging-p51.jpg", "progress_pct": 50.7, "label": "defect"},
+    {"file": "04-overhang-stairs-uncooled-p80.jpg", "progress_pct": 80.2, "label": "defect, mostly hidden by the toolhead"},
+    {"file": "05-finished.jpg", "progress_pct": 100.0, "label": "finished with a rough bridge"},
+    {"file": "obico-tagged-p62.jpg", "progress_pct": 62.0, "label": "defect; the frame Obico tagged, with no detection boxes"},
+    {"file": "fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/crop-03-bridge-sagging.png", "progress_pct": 50.7, "label": "defect; 4x crop of frame 03, derived, not a camera frame"}
+  ],
+  "sources": {
+    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/fan-cut-test.gcode is the file OctoPrint printed; fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/fan-cut-test.clean.gcode is the same slice before the fault was injected (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4); fault.diff is the unified diff from that clean slice to the printed file",
+    "agent_turn": "none: Obico never alerted",
+    "build": "97ee107 on fix/windows-supervision-turns",
+    "service_config": "../service-config.toml"
+  },
+  "obico_scores": "obico-predictions.json",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "bridge-sagging-uncooled",
+        "summary": "A synthetic alert shows bridge strands tangling with the part-cooling fan off, and the look shows the bridge sagging; the agent should set the fan to 100 percent.",
+        "trigger": "synthetic_alert",
+        "event_image": "02-bridge-strands-tangled-p49.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {"image": "03-bridge-sagging-p51.jpg"}
+        ],
+        "accept_any_of": [
+          [{"operation": "set-fan-percent", "args": {"percent": 100}}]
+        ],
+        "never": [{"operation": "cancel"}, {"operation": "resume"}]
+      }
+    ]
+  }
+}

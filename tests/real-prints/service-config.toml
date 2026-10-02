@@ -1,0 +1,69 @@
+# printobserver's one configuration file.
+#
+# Every value below is validated when the service starts, and a value that
+# cannot work is refused naming this file's own field for it. Fill in the three
+# marked FILL IN before starting the service.
+
+state_dir = 'C:\ProgramData\printobserver\state'
+listen = "127.0.0.1:8420"
+
+[octoprint]
+# FILL IN: where your OctoPrint answers, and the API key it authenticates by.
+url = "http://127.0.0.1:5000"
+api_key = "<redacted>"
+# "commandable" if the machine has a part-cooling fan this service may command,
+# "absent" if it has none.
+fan = "commandable"
+
+[supervisor]
+# The harness identity supervision turns run on.
+harness = "claude-code"
+# The agent's skill, which this program does not carry. Install it here, from
+# an elevated PowerShell, before starting the service:
+#   gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
+skill_path = 'C:\ProgramData\printobserver\state\skills\printobserver\SKILL.md'
+
+[ingress]
+# FILL IN: the shared secret Obico's webhook notification plugin must carry.
+# Anything that can post to the ingress can pause a printer.
+shared_secret = "<redacted>"
+# The answer bound is left out on purpose. The default this program ships is
+# already below the timeout Obico posts under, and writing that number here
+# would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
+# answer bound".
+
+# The API credential every client presents is not written in this file. Left
+# out, the service generates one the first time it starts, into the file
+# api-credential in its state directory, readable by the service's account and
+# the machine's administrators alone, and writes it with the address into
+# client.toml beside it for the clients on this host. To choose the credential
+# yourself, add an [api] table whose credential key holds a long random value;
+# the generated file is then neither read nor written.
+
+[camera]
+snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=buddy"
+
+[obico]
+url = "http://127.0.0.1:3334"
+access_token = "<redacted>"
+
+# What any actor may ask for at all. A manifest may narrow these; nothing may
+# widen them.
+[safety]
+agent_min_interval_s = 30
+
+[safety.allowed]
+feedrate = { min = 0.5, max = 1.5 }
+flowrate = { min = 0.9, max = 1.1 }
+fan = { min = 0.0, max = 100.0 }
+bed_target = { min = 0.0, max = 110.0 }
+"tool_target:0" = { min = 0.0, max = 260.0 }
+
+[safety.actions]
+operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
+            "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
+            "set_fan_percent", "acknowledge_failure"]
+agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
+         "set_fan_percent", "acknowledge_failure"]
+system = ["resume", "set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
+          "set_bed_target_c", "set_fan_percent"]
