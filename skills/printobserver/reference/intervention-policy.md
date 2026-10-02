@@ -19,7 +19,11 @@ Two things are intersected, and they are never confused with each other.
 from its own configuration file in `crates/printobserver-server/src/config.rs`,
 which refuses to start on an envelope that admits nothing. It declares three
 things: the range each adjustable may be set to, the actions each actor class
-may request at all, and the minimum interval between two agent actions.
+may request at all, and the minimum interval between two agent actions that
+change the machine. Acknowledging a failure changes nothing there, whatever its
+disposition — `stop` included, which records that the print should stop and
+cancels nothing — so an acknowledgement neither waits on that interval nor
+starts it again.
 
 **The print's manifest** is attached when a print is started and may be replaced
 while it runs. A manifest may only ever *narrow*. An adjustable it names

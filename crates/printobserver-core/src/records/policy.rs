@@ -23,7 +23,8 @@ pub struct SafetyEnvelope {
     pub allowed: BTreeMap<Adjustable, Range>,
     /// The actions each actor class may request at all.
     pub actions: BTreeMap<ActorClass, Vec<ActionKind>>,
-    /// The minimum interval between agent actions, in whole seconds.
+    /// The minimum interval between two agent actions that change the machine,
+    /// in whole seconds. An acknowledgement neither waits on it nor restarts it.
     pub agent_min_interval_s: i64,
 }
 

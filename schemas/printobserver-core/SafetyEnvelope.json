@@ -92,7 +92,7 @@
       "type": "object"
     },
     "agent_min_interval_s": {
-      "description": "The minimum interval between agent actions, in whole seconds.",
+      "description": "The minimum interval between two agent actions that change the machine,\nin whole seconds. An acknowledgement neither waits on it nor restarts it.",
       "format": "int64",
       "type": "integer"
     },

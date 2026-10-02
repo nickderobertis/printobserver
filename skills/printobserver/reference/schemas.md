@@ -46,7 +46,7 @@ Declared by `printobserver-core`.
     },
     {
       "const": "stop",
-      "description": "Stop the print.",
+      "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
       "type": "string"
     }
   ],
@@ -76,7 +76,7 @@ Declared by `printobserver-server`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -1304,7 +1304,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -2588,7 +2588,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -3115,7 +3115,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -7649,7 +7649,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -8141,7 +8141,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "stop",
-          "description": "Stop the print.",
+          "description": "The print should stop. Recorded for whoever may cancel it: the\nacknowledgement itself asks nothing of the machine.",
           "type": "string"
         }
       ]
@@ -10623,7 +10623,7 @@ Declared by `printobserver-core`.
       "type": "object"
     },
     "agent_min_interval_s": {
-      "description": "The minimum interval between agent actions, in whole seconds.",
+      "description": "The minimum interval between two agent actions that change the machine,\nin whole seconds. An acknowledgement neither waits on it nor restarts it.",
       "format": "int64",
       "type": "integer"
     },

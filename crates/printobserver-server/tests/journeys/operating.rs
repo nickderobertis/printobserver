@@ -42,7 +42,8 @@ struct Asked {
     rejected: Value,
     /// The state the machine has to be in for the accepted body to be valid.
     from: PrinterState,
-    /// What the machine should have been asked once the accepted body is taken.
+    /// What the machine should have been asked once the accepted body is taken,
+    /// or `None` for an operation that asks nothing of it.
     call: Option<Call>,
     /// The adjustable this operation changes, when it changes one.
     adjustable: Option<(Adjustable, f64)>,
@@ -153,9 +154,10 @@ fn movement(kind: ActionKind) -> Asked {
                 ],
             ),
             from: PrinterState::Printing,
-            // Stopping is what an acknowledgement asks of the machine, and
-            // cancelling is how a print is stopped.
-            call: Some(Call::Cancel),
+            // An acknowledgement is written into the record and asks nothing
+            // of the machine, `stop` included: stopping a print is cancelling
+            // it, which the policy grants on its own.
+            call: None,
             adjustable: None,
         },
         _ => unreachable!("this is an adjustment rather than a movement"),
@@ -353,13 +355,19 @@ async fn accepts(operation: &Operation, plan: &Asked) {
         "`{}` answered a decision that is not acceptance: {answer}",
         operation.name
     );
-    if let Some(call) = &plan.call {
-        assert!(
+    match &plan.call {
+        Some(call) => assert!(
             world.printer.calls().contains(call),
             "`{}` was accepted and the machine was never asked {call:?}; it received {:?}",
             operation.name,
             world.printer.calls()
-        );
+        ),
+        None => assert_eq!(
+            world.printer.calls(),
+            Vec::new(),
+            "`{}` asks nothing of the machine, and the machine was asked something",
+            operation.name
+        ),
     }
     if let Some((adjustable, value)) = plan.adjustable {
         assert_eq!(

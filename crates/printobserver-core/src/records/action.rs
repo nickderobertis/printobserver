@@ -84,7 +84,8 @@ pub enum AcknowledgementDisposition {
     Continue,
     /// Carry on printing, watched more closely.
     Watch,
-    /// Stop the print.
+    /// The print should stop. Recorded for whoever may cancel it: the
+    /// acknowledgement itself asks nothing of the machine.
     Stop,
 }
 
