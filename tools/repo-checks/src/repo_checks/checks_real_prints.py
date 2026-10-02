@@ -423,8 +423,15 @@ def _scenario_findings(case: Case, scenario: Scenario, states: frozenset[str]) -
                 f"{where} names event {scenario.event_id}, which is no "
                 f"obico_failure_alert in {HISTORY}"
             )
+        # A recorded alert is handed with the picture it recorded, which the
+        # case keeps as the agent image listed against that event.
         pictured = [name for name, owner in case.agent_images.items() if owner == scenario.event_id]
-        if pictured and scenario.event_image not in pictured:
+        if not pictured:
+            yield (
+                f"{where} names event {scenario.event_id}, but no agent_images entry keeps "
+                "the picture it recorded"
+            )
+        elif scenario.event_image not in pictured:
             yield (
                 f"{where} hands {scenario.event_image} with event {scenario.event_id}, whose "
                 f"image is {pictured[0]}"

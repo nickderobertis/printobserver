@@ -296,6 +296,26 @@ def test_a_recorded_alert_must_be_an_alert_with_its_own_image(
     refused_with(result, "warning-then-detector-pause", "'spinning'")
 
 
+def test_a_recorded_alert_whose_picture_the_case_does_not_keep_is_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A recorded alert's image is the agent image kept against that event."""
+    copy = tree()
+    data = case_json(copy, "spaghetti-floating-slab")
+    data["agent_images"] = [
+        entry
+        for entry in data["agent_images"]
+        if entry["event_id"] != "01a0e4d4-f282-7303-a7b4-d147e98219ed"
+    ]
+    write_case(copy, "spaghetti-floating-slab", data)
+    refused_with(
+        check("real-prints-scenarios", copy),
+        "paused-alert",
+        "01a0e4d4-f282-7303-a7b4-d147e98219ed",
+        "no agent_images entry",
+    )
+
+
 def test_a_recorded_alert_in_a_case_with_no_history_is_refused(
     check: Run, tree: Callable[[], Tree]
 ) -> None:
