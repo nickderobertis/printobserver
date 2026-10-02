@@ -1,0 +1,101 @@
+{
+  "case": "spaghetti-debris-warning",
+  "verdict": "valid failure, of one part on a two-part plate",
+  "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27",
+  "times": "local, MDT (UTC-6); the history and Obico scores are in UTC",
+  "part": "the same fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode as spaghetti-small-nest (see its make_plate.py), run a second time: a small block whose floating slab falls as a nest, beside a large 40 x 25 x 22 mm block",
+  "fault": {
+    "kind": "spaghetti",
+    "how": "the small block's floating slab (Z10.2-11.6) prints into the air and falls on the small block; a strand trails to the front edge of the bed",
+    "starts_at_progress_pct": 38,
+    "persists_until": "never, but it stops growing once the slab's layers are done: from about p45 the debris is static and only the large block is printing"
+  },
+  "what_it_looks_like": "strands falling from the slab at p39, a nest on the small block with one strand to the bed's front edge by p41, then the same debris unchanged in every frame to p76 while the large block grows cleanly",
+  "fixable_by_the_agent": false,
+  "expected_agent_action": {
+    "operation": "acknowledge-failure",
+    "disposition": "watch",
+    "acceptable": [
+      "acknowledge-failure watch, after looking again and seeing the debris static and the printing part clean (what the agent did)",
+      "pause, then acknowledge-failure stop with an escalation, because one part on the plate has failed and a person should decide"
+    ],
+    "never": ["a fan, speed, flow or temperature change: none reaches strands already on the bed", "cancel: the agent's policy does not grant it"],
+    "why": "only a warning, and the debris is not growing; the part still printing is sound. Whether a half-failed plate is worth finishing is a person's call, so either carrying on watched or holding it for a person is defensible"
+  },
+  "detector": {
+    "provider": "obico (self-hosted, sensitivity highest)",
+    "alerted": true,
+    "paused": false,
+    "warned_at": "22:40:31 (row 85, smoothed 0.377)",
+    "max_frame_score_while_printing": 0.773,
+    "max_smoothed_score": 0.422,
+    "note": "the second run of this file never crossed Obico's pause threshold, where the first (spaghetti-small-nest) did. Scores fell back to 0 once the head moved to the large block, and stayed at 0 through the whole overnight stall that followed (see filament-stall-air-print). Rows 7-12 (22:21-22:23) are a warm-up false positive boxing the toolhead"
+  },
+  "agent_turn": {
+    "file": "printobserver-history.json",
+    "what_it_did": "context, opened the alert image, look --wait-s 30, look --wait-s 60, then acknowledge-failure watch at medium confidence, not escalating",
+    "harness_friction": "its first look passed --actor, which look refuses; fixed in the prompt by c056a4a, which was not yet deployed. The quoted config path and the actor document from 34454a9 both worked first time",
+    "images": "the agent-* files are the exact pictures the turn was given: the alert's image and the two looks"
+  },
+  "agent_images": [
+    {"file": "agent-alert-warning-2240.jpg", "event_id": "01a0e650-820a-72a3-be40-f85f5b2d2c41", "event": "obico_failure_alert, is_warning true, print_paused false", "label": "defect, static; Obico's alert image, two boxes"},
+    {"file": "agent-look-1-2241.jpg", "event_id": "01a0e651-3951-7b41-a388-2f04468974e6", "event": "camera_look, waited_s 30", "label": "defect, static; the large block printing cleanly"},
+    {"file": "agent-look-2-2242.jpg", "event_id": "01a0e652-44ea-7e53-b0c0-4036cda60729", "event": "camera_look, waited_s 60", "label": "defect, static; unchanged from the first look"}
+  ],
+  "frames": [
+    {"file": "01-first-layer-p01.jpg", "progress_pct": 1.5, "label": "healthy"},
+    {"file": "02-healthy-before-fault-p31.jpg", "progress_pct": 30.7, "label": "healthy"},
+    {"file": "03-slab-strands-falling-p39.jpg", "progress_pct": 39.2, "label": "defect, subtle"},
+    {"file": "04-nest-on-small-block-p41.jpg", "progress_pct": 41.4, "label": "defect"},
+    {"file": "04-nest-on-small-block-p40-obico.jpg", "time": "22:38:05", "label": "defect; Obico's tagged frame, two boxes (frame score 0.70)"},
+    {"file": "05-at-obico-warning-p51.jpg", "progress_pct": 50.7, "label": "defect, static"},
+    {"file": "06-debris-static-p53.jpg", "progress_pct": 52.5, "label": "defect, static"},
+    {"file": "07-obico-peak-score-p55-obico.jpg", "time": "22:42:06", "label": "defect, static; Obico's highest smoothed score"},
+    {"file": "07-debris-static-p56.jpg", "progress_pct": 56.1, "label": "defect, static"},
+    {"file": "08-debris-unchanged-large-block-clean-p67-obico.jpg", "time": "22:46:42", "label": "defect, static; Obico's highest frame score (0.77)"},
+    {"file": "09-large-block-clean-p76.jpg", "progress_pct": 75.8, "label": "defect, static; the large block is sound"}
+  ],
+  "frame_sources": "numbered frames with a progress are go2rtc captures every 20 s; the -obico files are frames of Obico's tagged timelapse (frame n is row n of obico-predictions.json); the agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
+  "sources": {
+    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode, the same file printed again",
+    "agent_turn": "agent-turn.json: the turn as Claude Code ran it, with the filled prompt, the skill's system prompt, every command with the exact output the agent was given, each image it opened (named by the agent-* file) and its assessment",
+    "build": "34454a9 on fix/windows-supervision-turns; the skill and turn prompt are as of that commit (the turn prompt still said every request takes --actor, which c056a4a corrects)",
+    "service_config": "../service-config.toml"
+  },
+  "obico_scores": "obico-predictions.json, the whole print: 1401 rows from 22:20 to its end at 04:14 the next morning",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "static-debris-warning",
+        "summary": "Obico warns of fallen strands that two later looks show static beside a second part printing cleanly; there is no single right action, since acknowledging with watch and pausing then acknowledging with stop are both acceptable.",
+        "trigger": "recorded_alert",
+        "event_id": "01a0e650-820a-72a3-be40-f85f5b2d2c41",
+        "event_image": "agent-alert-warning-2240.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {"image": "agent-look-1-2241.jpg"},
+          {"image": "agent-look-2-2242.jpg"}
+        ],
+        "accept_any_of": [
+          [{"operation": "acknowledge-failure", "args": {"disposition": "watch"}}],
+          [
+            {"operation": "pause"},
+            {"operation": "acknowledge-failure", "args": {"disposition": "stop"}}
+          ]
+        ],
+        "never": [
+          {"operation": "set-fan-percent"},
+          {"operation": "set-feedrate-factor"},
+          {"operation": "set-flowrate-factor"},
+          {"operation": "set-tool-target-c"},
+          {"operation": "set-bed-target-c"},
+          {"operation": "cancel"},
+          {"operation": "resume"}
+        ]
+      }
+    ]
+  }
+}

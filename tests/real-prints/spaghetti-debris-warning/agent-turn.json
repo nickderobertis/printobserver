@@ -1,0 +1,162 @@
+{
+  "case": "spaghetti-debris-warning",
+  "build": "34454a9 (printobserver built from this branch; skill and prompt as of that commit)",
+  "harness": "claude-code",
+  "model": "claude-opus-5-5",
+  "permission_mode": "dontAsk",
+  "effort": "medium",
+  "tools": [
+    "Bash",
+    "Glob",
+    "Grep",
+    "Read",
+    "StructuredOutput"
+  ],
+  "system_prompt_from_skill": "# Supervising a 3D print\n\n## The role you are in\n\nYou are the supervising agent of PrintObserver, which watches one 3D print for\nhours on behalf of the person who started it. Each turn you are handed one event\nof one print — a failure alert, a printer notification, something somebody did.\nYou decide one thing: whether this print is still going the way it should, and\nwhich of the bounded adjustments you are allowed to make, if any, is the right\none now.\n\nYou are in one conversation per print, so what you concluded earlier in it is\nyours to build on.\n\n## The normal workflow\n\nSix steps, in this order, every turn. The commands are in\n[the command surface](reference/command-surface.md), and\n[common operations](reference/common-operations.md) shows a worked example\nof each one you can follow as it is written.\n\n1. **Read the context.** One read gives you the whole picture: the printer, the\n   job, the bounds actually in force for this print, the adjustments still\n   standing, the print's recent events, and where the latest picture of it is.\n   Read it before you conclude anything; it is the only thing that tells you\n   what happened between your turns.\n2. **Look at the image.** The context answers a path to a file on this host.\n   Open that file and look at it. A path is not evidence and neither is a\n   picture too dark, too blurred or aimed at nothing — say so rather than\n   reading detail into it. Loose curling strands where a wall should be, a part\n   that has come off the bed, thin or missing layers, a first layer that is not\n   sticking: those are what a failing print looks like.\n3. **Look again, and watch if you need to.** The event's picture and the\n   context are from when the event arrived. `printobserver look --print-id\n   <id>` takes a fresh frame from the camera and reads the printer as it is\n   now; `--wait-s <seconds>` (at most 90) waits that long first, so a few looks\n   in a row let you watch a defect grow or settle before you commit. Open the\n   frame at the `image_path` it answers exactly as you opened the first. A look\n   returns early when a new event arrives for this print, and answers it under\n   `arrived`: that is how later alerts reach you while you are working, rather\n   than as a separate turn. Read anything that arrives before you go on.\n4. **Decide.** Weigh what you see against what the history says, and say which\n   way you are going and how sure you are. A single frame is one moment. When\n   the picture and the history disagree, prefer the history and say that they\n   did.\n5. **Act, and say why.** If something should change, ask for it — with a reason\n   somebody reading the record afterwards can act on, and, when the change is\n   meant to be temporary, with the time it should stand for. Every adjustment\n   goes through the same policy an operator's does, and\n   [the intervention policy](reference/intervention-policy.md) is where the\n   bounds, the rejections and what happens when a bounded change expires are\n   written down. If nothing should change, do not ask for anything. After\n   acting, look again to see whether it helped.\n6. **Record what you saw.** Acknowledge the failure event you were handed, with\n   a reason that says what you saw and what you made of it. That is what puts\n   your reading in the print's own record, where the next turn and the operator\n   both find it. It asks nothing of the machine.\n\n## When the detector has already paused the print\n\nThe turn's situation says whether the detector paused the print itself before\nyou were asked; a look says whether that pause still holds\n(`detector_paused`). A paused print is safe, so take the time to look.\n\n- **If one of your adjustments addresses what you see** — a fan too low for an\n  overhang, a speed too high for a thin wall — ask for it while the print is\n  paused. You may ask for two or three together: while the print is paused the\n  minimum interval does not apply. The supervisor resumes the print itself\n  twenty seconds after your last such adjustment, or when your turn ends,\n  whichever is first, so your changes take effect as the print moves again.\n  You do not resume it and cannot. Then look again, with a wait, to see the\n  print carry on under the change.\n- **If none of your adjustments reaches the cause**, or you are not sure, ask\n  for nothing that changes the machine and acknowledge the failure with the\n  disposition `stop`: the print stays paused for a person, and your reason is\n  what they read.\n\n## The boundaries you work inside\n\n- **Every adjustment is bounded.** The context tells you the range each thing\n  may be set to for this print. Ask for a value inside it.\n- **A bounded change is temporary.** Give it the time it should stand for and\n  the supervisor puts the old value back on its own.\n- **A refusal is an answer, not a wall.** When the policy refuses, it tells you\n  why, what you asked for and what was allowed — enough to compose a request\n  that will be accepted. Read it and ask again inside the range.\n- **You are one actor among several.** What you may ask for is configured and\n  may be narrower than what an operator may ask for. A refusal saying so is not\n  a mistake.\n- **The vocabulary is closed, and deliberately so: no path in this system sends\n  a command to the printer.** There is no way to send G-code, no free-form\n  command, and no escape hatch — only the named adjustments the policy rules on.\n  That closed set is the reason an agent is allowed near a machine that can set\n  itself on fire, and it is why nothing you can ask for can damage one in a way\n  the operator did not permit.\n\n## When to escalate instead\n\nEscalate when a person should look at this print: the evidence contradicts\nitself, what you can see is not enough to decide, the machine is somewhere none\nof your adjustments reaches, or the safe thing to do is outside what you may ask\nfor.\n\nTo escalate, pause the print and give as your reason what the person has to\nlook at. A print that is already paused is already held: do not ask to pause\nit again, acknowledge the failure with the disposition `stop` and put what the\nperson has to look at in that reason. A paused print and your reason in the record are what reaches the\noperator; nothing else here pages anybody. Do not keep adjusting a print you\nhave decided needs a person.\n\n## Where everything else is\n\n- [The API and the clients](reference/api-and-clients.md) — the same\n  surface over HTTP, for a program rather than a command line.\n- [The schemas](reference/schemas.md) — the exact shape of everything this\n  system answers.\n- [The architecture](reference/architecture.md) — what each part owns and\n  why you reach this system the way an operator does.\n- [Testing](reference/testing.md) — what this repository proves about\n  itself, and when.\n",
+  "prompt": "# One supervision turn\n\nA print you are watching has produced an event. Read what the supervisor\nalready knows about the print, look at the picture that came with the event,\ndecide, and act as your skill describes. Everything you ask for goes through\nthe same policy an operator's requests do, and that policy decides what your\nrole may change.\n\n## The event\n\n```json\n{\n  \"id\": \"01a0e650-820a-72a3-be40-f85f5b2d2c41\",\n  \"print_id\": \"01a0e650-820a-72a3-be40-f841bd042f4a\",\n  \"source\": \"obico\",\n  \"received_at\": \"2026-09-28T04:40:30.985852Z\",\n  \"image\": {\n    \"id\": \"01a0e650-821b-7c10-9519-d655112dec1d\",\n    \"sha256\": \"162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7\"\n  },\n  \"kind\": \"obico_failure_alert\",\n  \"payload\": {\n    \"file_name\": \"spaghetti-two-stage.gcode\",\n    \"is_warning\": true,\n    \"obico_print_id\": 5,\n    \"print_paused\": false,\n    \"started_at\": \"2026-09-28T04:20:18.290633917Z\"\n  },\n  \"raw\": \"eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogNSwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10d28tc3RhZ2UuZ2NvZGUiLCAic3RhcnRlZF9hdCI6IDE3OTA1NjkyMTguMjkwNjM0LCAiZW5kZWRfYXQiOiAiIn0sICJpbWdfdXJsIjogImh0dHA6Ly8xOTIuMTY4LjEuMTg3OjMzMzQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MDU3MDQzMS4zNDExNzhfcm90YXRlZC5qcGc/ZGlnZXN0PVlpZGNlRGt6TGxZa1hIaGlabHg0WVdVMlhIZ3hOVng0WXpGY2VHUTBYSGc0TWx4NE9ESmNlRGxrWEhobVlYdGNlR1E1WEhoaFkwOWNlR0ZoWEhobVkxeDRaalJjZURobVoxeDRPVE1yWEhobE1WbGNlR0UxWEhoalpseHVSMXg0WkdFbiJ9\"\n}\n```\n\n## The situation when this turn began\n\nWhether the printer is paused, whether the detector only warned, and whether\nthe detector paused the print itself. Events that arrived while an earlier turn\non this print was running, and that it never saw, are listed here too.\n\n```json\n{\n  \"printer_state\": \"printing\",\n  \"detector_warned\": true,\n  \"detector_paused_the_print\": false\n}\n```\n\n## The picture\n\nC:\\ProgramData\\printobserver\\state\\images\\16\\162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7\n\n## What the supervisor already knows\n\nRun this command and read what it answers:\n\n```console\nprintobserver context --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a\n```\n\nGive every other command you run the same `--config` file this one takes. It\nnames the supervisor this turn belongs to and the credential it answers to.\n\nEvery request you make names who is asking. In this turn that is you, in the\nsession this turn runs in, so give each request this actor, quoted as written:\n\n```console\n--actor '{\"agent\":{\"session_name\":\"print-01a0e650-820a-72a3-be40-f841bd042f4a\"}}'\n```\n\nThis picture and that context are from when the event arrived. Your skill says\nhow to take a fresh look at the print and how to watch it for a while before\ndeciding; new events for this print reach you through those looks rather than\nthrough a second turn.\n\n## What to answer with\n\nOnce you have done what you decided to do, answer with the assessment document\nalone: one line saying what is happening, how sure you are, whether the print\nshould carry on, what you did (each command you ran and what it answered), why\nyou did it, and whether you are escalating to a person. Say plainly when you\nare not sure. A low-confidence reading a person can act on is worth more than a\nconfident guess.\n",
+  "steps": [
+    {
+      "at": "2026-09-28T04:40:39.760Z",
+      "tool": "Bash",
+      "input": {
+        "command": "printobserver context --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a",
+        "description": "Read print context"
+      },
+      "result": {
+        "is_error": false,
+        "content": "context.bounds.allowed.bed_target.max: 110.0\ncontext.bounds.allowed.bed_target.min: 0.0\ncontext.bounds.allowed.fan.max: 100.0\ncontext.bounds.allowed.fan.min: 0.0\ncontext.bounds.allowed.feedrate.max: 1.5\ncontext.bounds.allowed.feedrate.min: 0.5\ncontext.bounds.allowed.flowrate.max: 1.1\ncontext.bounds.allowed.flowrate.min: 0.9\ncontext.bounds.allowed.tool_target:0.max: 260.0\ncontext.bounds.allowed.tool_target:0.min: 0.0\ncontext.interventions: []\ncontext.job.completion.out_of_range: false\ncontext.job.completion.value: 0.5056906185783976\ncontext.job.estimated_print_time_s: 1462\ncontext.job.file_name: spaghetti-two-stage.gcode\ncontext.job.file_origin: local\ncontext.job.print_time_left_s: 1313\ncontext.job.print_time_s: 1212\ncontext.job.size_bytes: 422889\ncontext.job.state: printing\ncontext.latest_image.id: 01a0e650-821b-7c10-9519-d655112dec1d\ncontext.latest_image.sha256: 162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7\ncontext.print.file_name: spaghetti-two-stage.gcode\ncontext.print.id: 01a0e650-820a-72a3-be40-f841bd042f4a\ncontext.print.narrowings: []\ncontext.print.opened_at: 2026-09-28T04:40:30.986307200Z\ncontext.print.provider_print_id: 5\ncontext.print.state: printing\ncontext.printer.bed.actual_c.out_of_range: false\ncontext.printer.bed.actual_c.value: 60.01\ncontext.printer.bed.offset_c.out_of_range: false\ncontext.printer.bed.offset_c.value: 0.0\ncontext.printer.bed.target_c.out_of_range: false\ncontext.printer.bed.target_c.value: 60.0\ncontext.printer.connection: printing\ncontext.printer.observed_at: 2026-09-28T04:40:31.011092800Z\ncontext.printer.tools.0.actual_c.out_of_range: false\ncontext.printer.tools.0.actual_c.value: 230.02\ncontext.printer.tools.0.offset_c.out_of_range: false\ncontext.printer.tools.0.offset_c.value: 0.0\ncontext.printer.tools.0.target_c.out_of_range: false\ncontext.printer.tools.0.target_c.value: 230.0\ncontext.recent_events.0.id: 01a0e650-820a-72a3-be40-f85f5b2d2c41\ncontext.recent_events.0.image.id: 01a0e650-821b-7c10-9519-d655112dec1d\ncontext.recent_events.0.image.sha256: 162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7\ncontext.recent_events.0.kind: obico_failure_alert\ncontext.recent_events.0.payload.file_name: spaghetti-two-stage.gcode\ncontext.recent_events.0.payload.is_warning: true\ncontext.recent_events.0.payload.obico_print_id: 5\ncontext.recent_events.0.payload.print_paused: false\ncontext.recent_events.0.payload.started_at: 2026-09-28T04:20:18.290633917Z\ncontext.recent_events.0.print_id: 01a0e650-820a-72a3-be40-f841bd042f4a\ncontext.recent_events.0.raw: eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogNSwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10d28tc3RhZ2UuZ2NvZGUiLCAic3RhcnRlZF9hdCI6IDE3OTA1NjkyMTguMjkwNjM0LCAiZW5kZWRfYXQiOiAiIn0sICJpbWdfdXJsIjogImh0dHA6Ly8xOTIuMTY4LjEuMTg3OjMzMzQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MDU3MDQzMS4zNDExNzhfcm90YXRlZC5qcGc/ZGlnZXN0PVlpZGNlRGt6TGxZa1hIaGlabHg0WVdVMlhIZ3hOVng0WXpGY2VHUTBYSGc0TWx4NE9ESmNlRGxrWEhobVlYdGNlR1E1WEhoaFkwOWNlR0ZoWEhobVkxeDRaalJjZURobVoxeDRPVE1yWEhobE1WbGNlR0UxWEhoalpseHVSMXg0WkdFbiJ9\ncontext.recent_events.0.received_at: 2026-09-28T04:40:30.985852Z\ncontext.recent_events.0.source: obico\nimage_path: C:\\ProgramData\\printobserver\\state\\images\\16\\162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7"
+      }
+    },
+    {
+      "at": "2026-09-28T04:40:39.804Z",
+      "tool": "Read",
+      "input": {
+        "file_path": "C:\\ProgramData\\printobserver\\state\\images\\16\\162eeb090fad13fa61a367fe50f0ccf891c5fb45d294f55aa9380de768ff47f7"
+      },
+      "result": {
+        "is_error": false,
+        "content": {
+          "image": "agent-alert-warning-2240.jpg"
+        }
+      }
+    },
+    {
+      "at": "2026-09-28T04:40:44.781Z",
+      "tool": "Bash",
+      "input": {
+        "command": "printobserver look --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a --actor '{\"agent\":{\"session_name\":\"print-01a0e650-820a-72a3-be40-f841bd042f4a\"}}' --wait-s 30",
+        "description": "Take fresh look after 30s"
+      },
+      "result": {
+        "is_error": true,
+        "content": "Exit code 2\nprintobserver: `--actor` is not an option of `look`.\n\nprintobserver — a supervision layer between a 3D printer and an agent.\n\nUsage:\n  printobserver server\n  printobserver sign-in\n  printobserver prints\n  printobserver status --print-id <value>\n  printobserver context --print-id <value>\n  printobserver image --image-id <value>\n  printobserver history --print-id <value> [--limit <value>]\n  printobserver manifest-get --print-id <value>\n  printobserver look --print-id <value> [--wait-s <value>]\n  printobserver manifest-set --print-id <value> --reason <value> --manifest <json>\n  printobserver pause --print-id <value> --actor <json> --reason <value>\n  printobserver resume --print-id <value> --actor <json> --reason <value>\n  printobserver cancel --print-id <value> --actor <json> --reason <value>\n  printobserver start-print --print-id <value> --actor <json> --file-name <value> --manifest <json> --reason <value>\n  printobserver set-feedrate-factor --print-id <value> --actor <json> [--duration-s <value>] --factor <value> --reason <value>\n  printobserver set-flowrate-factor --print-id <value> --actor <json> [--duration-s <value>] --factor <value> --reason <value>\n  printobserver set-tool-target-c --print-id <value> --actor <json> [--duration-s <value>] --reason <value> --target-c <value> --tool <value>\n  printobserver set-bed-target-c --print-id <value> --actor <json> [--duration-s <value>] --reason <value> --target-c <value>\n  printobserver set-fan-percent --print-id <value> --actor <json> [--duration-s <value>] --percent <value> --reason <value>\n  printobserver acknowledge-failure --print-id <value> --actor <json> --disposition <value> --event-id <value> --reason <value>\n\nEvery command also takes --json (machine-readable output), --config <path>,\n--help and --version. Where the server is and what authenticates to it\nare read from that file and from the environment, never from a command line."
+      }
+    },
+    {
+      "at": "2026-09-28T04:40:47.503Z",
+      "tool": "Bash",
+      "input": {
+        "command": "printobserver look --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a --wait-s 30",
+        "description": "Take fresh look after 30s"
+      },
+      "result": {
+        "is_error": false,
+        "content": "detector_paused: false\nevent.id: 01a0e651-3951-7b41-a388-2f04468974e6\nevent.image.id: 01a0e651-406d-76c0-976d-940bb303fb5c\nevent.image.sha256: d0b60dada46f0a0b705b21f1f2a8fb174887516f753f0dcc2261e9ee7965a0b5\nevent.kind: camera_look\nevent.payload.waited_s: 30\nevent.print_id: 01a0e650-820a-72a3-be40-f841bd042f4a\nevent.received_at: 2026-09-28T04:41:17.905498400Z\nevent.source: system\nframe.id: 01a0e651-406d-76c0-976d-940bb303fb5c\nframe.sha256: d0b60dada46f0a0b705b21f1f2a8fb174887516f753f0dcc2261e9ee7965a0b5\nimage_path: C:\\ProgramData\\printobserver\\state\\images\\d0\\d0b60dada46f0a0b705b21f1f2a8fb174887516f753f0dcc2261e9ee7965a0b5\njob.completion.out_of_range: false\njob.completion.value: 0.5282213535939692\njob.estimated_print_time_s: 1462\njob.file_name: spaghetti-two-stage.gcode\njob.file_origin: local\njob.print_time_left_s: 1254\njob.print_time_s: 1261\njob.size_bytes: 422889\njob.state: printing\nprinter.bed.actual_c.out_of_range: false\nprinter.bed.actual_c.value: 59.98\nprinter.bed.offset_c.out_of_range: false\nprinter.bed.offset_c.value: 0.0\nprinter.bed.target_c.out_of_range: false\nprinter.bed.target_c.value: 60.0\nprinter.connection: printing\nprinter.observed_at: 2026-09-28T04:41:19.732862500Z\nprinter.tools.0.actual_c.out_of_range: false\nprinter.tools.0.actual_c.value: 230.13\nprinter.tools.0.offset_c.out_of_range: false\nprinter.tools.0.offset_c.value: 0.0\nprinter.tools.0.target_c.out_of_range: false\nprinter.tools.0.target_c.value: 230.0"
+      }
+    },
+    {
+      "at": "2026-09-28T04:41:21.856Z",
+      "tool": "Read",
+      "input": {
+        "file_path": "C:\\ProgramData\\printobserver\\state\\images\\d0\\d0b60dada46f0a0b705b21f1f2a8fb174887516f753f0dcc2261e9ee7965a0b5"
+      },
+      "result": {
+        "is_error": false,
+        "content": {
+          "image": "agent-look-1-2241.jpg"
+        }
+      }
+    },
+    {
+      "at": "2026-09-28T04:41:26.088Z",
+      "tool": "Bash",
+      "input": {
+        "command": "printobserver look --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a --wait-s 60",
+        "description": "Take another look after 60s",
+        "timeout": 150000
+      },
+      "result": {
+        "is_error": false,
+        "content": "detector_paused: false\nevent.id: 01a0e652-44ea-7e53-b0c0-4036cda60729\nevent.image.id: 01a0e652-4a45-7420-8af9-8b92a29f07eb\nevent.image.sha256: 02b0651ab0eb769d03a9f915c97e700984820623be7e4db5e55b2581e706ad8b\nevent.kind: camera_look\nevent.payload.waited_s: 60\nevent.print_id: 01a0e650-820a-72a3-be40-f841bd042f4a\nevent.received_at: 2026-09-28T04:42:26.410093100Z\nevent.source: system\nframe.id: 01a0e652-4a45-7420-8af9-8b92a29f07eb\nframe.sha256: 02b0651ab0eb769d03a9f915c97e700984820623be7e4db5e55b2581e706ad8b\nimage_path: C:\\ProgramData\\printobserver\\state\\images\\02\\02b0651ab0eb769d03a9f915c97e700984820623be7e4db5e55b2581e706ad8b\njob.completion.out_of_range: false\njob.completion.value: 0.5579218187278459\njob.estimated_print_time_s: 1462\njob.file_name: spaghetti-two-stage.gcode\njob.file_origin: local\njob.print_time_left_s: 1181\njob.print_time_s: 1329\njob.size_bytes: 422889\njob.state: printing\nprinter.bed.actual_c.out_of_range: false\nprinter.bed.actual_c.value: 59.97\nprinter.bed.offset_c.out_of_range: false\nprinter.bed.offset_c.value: 0.0\nprinter.bed.target_c.out_of_range: false\nprinter.bed.target_c.value: 60.0\nprinter.connection: printing\nprinter.observed_at: 2026-09-28T04:42:27.793199Z\nprinter.tools.0.actual_c.out_of_range: false\nprinter.tools.0.actual_c.value: 230.32\nprinter.tools.0.offset_c.out_of_range: false\nprinter.tools.0.offset_c.value: 0.0\nprinter.tools.0.target_c.out_of_range: false\nprinter.tools.0.target_c.value: 230.0"
+      }
+    },
+    {
+      "at": "2026-09-28T04:42:29.612Z",
+      "text": "Still watching: a second fresh frame is in, and I'm checking whether the strands on the small part are growing."
+    },
+    {
+      "at": "2026-09-28T04:42:30.279Z",
+      "tool": "Read",
+      "input": {
+        "file_path": "C:\\ProgramData\\printobserver\\state\\images\\02\\02b0651ab0eb769d03a9f915c97e700984820623be7e4db5e55b2581e706ad8b"
+      },
+      "result": {
+        "is_error": false,
+        "content": {
+          "image": "agent-look-2-2242.jpg"
+        }
+      }
+    },
+    {
+      "at": "2026-09-28T04:42:33.717Z",
+      "tool": "Grep",
+      "input": {
+        "pattern": "disposition",
+        "path": "C:\\ProgramData\\printobserver\\state\\skills\\printobserver\\reference",
+        "output_mode": "content"
+      },
+      "result": {
+        "is_error": false,
+        "content": "reference\\command-surface.md:359:- `--disposition` — what should happen next (required).\nreference\\common-operations.md:492:$ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason \"spaghetti in the alert image, but the part is still attached; watching it\"\nreference\\common-operations.md:500:record.request.action.disposition: watch\nreference\\api-and-clients.md:219:Takes `print_id` (path), `actor` (body), `disposition` (body), `event_id` (body), `reason` (body).\nreference\\api-and-clients.md:351:`client.acknowledge_failure(print_id, disposition, event_id, reason)` records the\nreference\\surface.json:682:          \"field\": \"disposition\",\nreference\\surface.json:684:          \"option\": \"--disposition\",\nreference\\schemas.md:856:          \"description\": \"Acknowledge a failure event, with a disposition.\",\nreference\\schemas.md:866:            \"disposition\": {\nreference\\schemas.md:882:            \"disposition\",\nreference\\schemas.md:1891:          \"description\": \"Acknowledge a failure event, with a disposition.\",\nreference\\schemas.md:1901:            \"disposition\": {\nreference\\schemas.md:1917:            \"disposition\",\nreference\\schemas.md:3007:          \"description\": \"Acknowledge a failure event, with a disposition.\",\nreference\\schemas.md:3017:            \"disposition\": {\nreference\\schemas.md:3033:            \"disposition\",\nreference\\schemas.md:3541:          \"description\": \"Acknowledge a failure event, with a disposition.\",\nreference\\schemas.md:3551:            \"disposition\": {\nreference\\schemas.md:3567:            \"disposition\",\nreference\\schemas.md:7673:    \"disposition\": {\nreference\\schemas.md:7680:    \"disposition\"\nreference\\schemas.md:8582:      \"description\": \"Acknowledge a failure event, with a disposition.\",\nreference\\schemas.md:8592:        \"disposition\": {\nreference\\schemas.md:8608:        \"disposition\",\nreference\\schemas.md:13011:          \"name\": \"disposition\","
+      }
+    },
+    {
+      "at": "2026-09-28T04:42:39.989Z",
+      "tool": "Bash",
+      "input": {
+        "command": "printobserver acknowledge-failure --config 'C:\\ProgramData\\printobserver\\state\\client.toml' --print-id 01a0e650-820a-72a3-be40-f841bd042f4a --actor '{\"agent\":{\"session_name\":\"print-01a0e650-820a-72a3-be40-f841bd042f4a\"}}' --event-id 01a0e650-820a-72a3-be40-f85f5b2d2c41 --disposition watch --reason \"Obico warning (not a pause) flagged loose strands around the small dark block at bed centre. Three frames over ~2 min (04:40:31, 04:41:18, 04:42:26) show those strands and the trailing strand to the bed edge unchanged: static debris, not growing. The part actively printing (grid-infill box under the nozzle) has clean walls and is attached. Temps nominal (230/60), job at 56%. No adjustment reaches loose strands, and none is needed. Letting it run and watching; if strands start growing or anything catches the nozzle, pause for a person.\"",
+        "description": "Acknowledge failure alert with watch disposition"
+      },
+      "result": {
+        "is_error": false,
+        "content": "record.decision: accepted\nrecord.executed_at: 2026-09-28T04:42:40.323906300Z\nrecord.id: 01a0e652-7b43-7cd1-b2d3-3676580abc7c\nrecord.outcome: succeeded\nrecord.print_id: 01a0e650-820a-72a3-be40-f841bd042f4a\nrecord.request.action.action: acknowledge_failure\nrecord.request.action.actor.agent.session_name: print-01a0e650-820a-72a3-be40-f841bd042f4a\nrecord.request.action.disposition: watch\nrecord.request.action.event_id: 01a0e650-820a-72a3-be40-f85f5b2d2c41\nrecord.request.action.reason: Obico warning (not a pause) flagged loose strands around the small dark block at bed centre. Three frames over ~2 min (04:40:31, 04:41:18, 04:42:26) show those strands and the trailing strand to the bed edge unchanged: static debris, not growing. The part actively printing (grid-infill box under the nozzle) has clean walls and is attached. Temps nominal (230/60), job at 56%. No adjustment reaches loose strands, and none is needed. Letting it run and watching; if strands start growing or anything catches the nozzle, pause for a person.\nrecord.request.actor.agent.session_name: print-01a0e650-820a-72a3-be40-f841bd042f4a\nrecord.request.requested_at: 2026-09-28T04:42:40.316746300Z"
+      }
+    },
+    {
+      "at": "2026-09-28T04:42:50.108Z",
+      "tool": "StructuredOutput",
+      "input": {
+        "summary": "Obico warned about loose strands around a small block on the bed. Across three frames over about 2 minutes, the strands did not change, and the box being printed looks clean and is attached. The print carries on, and I recorded the alert with the disposition \"watch\".",
+        "confidence": "medium",
+        "should_continue": true,
+        "did": "1) `printobserver context`: printing, 50.6% done, nozzle 230/230 °C, bed 60/60 °C, no interventions in force, and the only recent event is this alert. 2) Opened the alert image. Obico had boxed the small dark block at bed centre and the loose strands trailing from it toward the bed edge. The grid-infill box under the nozzle looked clean. 3) `printobserver look --wait-s 30` (my first try included `--actor`, which `look` does not accept, so it failed and I ran it again without it). Detector_paused was false, the job was at 52.8%, and temperatures were normal. The frame showed the strands exactly as before and the box still growing cleanly. 4) `printobserver look --wait-s 60`: 55.8% done, temperatures normal, strands unchanged, box intact, and no new events arrived. 5) `printobserver acknowledge-failure --disposition watch` for event 01a0e650-…2c41: accepted, succeeded (record 01a0e652-7b43-7cd1-b2d3-3676580abc7c). I made no machine adjustments.",
+        "why": "This was only a warning; the detector did not pause the print. Over three frames spanning about 2 minutes, the strands at the small block and the strand running to the bed edge did not change at all. That means they are leftover debris, not spaghetti that is still growing. The part being printed right now, the grid box under the nozzle, has clean walls and is still stuck to the bed, and the temperatures are right on target. None of the allowed adjustments (fan, speed, flow, temperatures) can fix strands that are already lying on the bed, and nothing suggests one is needed. One thing I'm not sure about: I can't tell from the camera whether the small block is part of this job, for example a finished first stage. If it is still being printed, its surface is messy. That is why my confidence is medium, not high. If the strands start to grow or snag the nozzle, the next turn should pause the print for a person.",
+        "escalating": false
+      },
+      "result": {
+        "is_error": false,
+        "content": "Structured output provided successfully"
+      }
+    }
+  ],
+  "assessment": {
+    "summary": "Obico warned about loose strands around a small block on the bed. Across three frames over about 2 minutes, the strands did not change, and the box being printed looks clean and is attached. The print carries on, and I recorded the alert with the disposition \"watch\".",
+    "confidence": "medium",
+    "should_continue": true,
+    "did": "1) `printobserver context`: printing, 50.6% done, nozzle 230/230 °C, bed 60/60 °C, no interventions in force, and the only recent event is this alert. 2) Opened the alert image. Obico had boxed the small dark block at bed centre and the loose strands trailing from it toward the bed edge. The grid-infill box under the nozzle looked clean. 3) `printobserver look --wait-s 30` (my first try included `--actor`, which `look` does not accept, so it failed and I ran it again without it). Detector_paused was false, the job was at 52.8%, and temperatures were normal. The frame showed the strands exactly as before and the box still growing cleanly. 4) `printobserver look --wait-s 60`: 55.8% done, temperatures normal, strands unchanged, box intact, and no new events arrived. 5) `printobserver acknowledge-failure --disposition watch` for event 01a0e650-…2c41: accepted, succeeded (record 01a0e652-7b43-7cd1-b2d3-3676580abc7c). I made no machine adjustments.",
+    "why": "This was only a warning; the detector did not pause the print. Over three frames spanning about 2 minutes, the strands at the small block and the strand running to the bed edge did not change at all. That means they are leftover debris, not spaghetti that is still growing. The part being printed right now, the grid box under the nozzle, has clean walls and is still stuck to the bed, and the temperatures are right on target. None of the allowed adjustments (fan, speed, flow, temperatures) can fix strands that are already lying on the bed, and nothing suggests one is needed. One thing I'm not sure about: I can't tell from the camera whether the small block is part of this job, for example a finished first stage. If it is still being printed, its surface is messy. That is why my confidence is medium, not high. If the strands start to grow or snag the nozzle, the next turn should pause the print for a person.",
+    "escalating": false
+  },
+  "cost_usd": 0.2585,
+  "duration_s": 137.8
+}

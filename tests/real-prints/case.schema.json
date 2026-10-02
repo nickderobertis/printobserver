@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nickderobertis/printobserver/tests/real-prints/case.schema.json",
+  "title": "RealPrintCase",
+  "description": "One real-print case's case.json. The prose fields (fault, detector, agent_turn, sources and the rest) are a reader's record and are left open; `assertions` is the machine-readable contract the skill tests derive every assertion from, and is the one source of what the case expects.",
+  "type": "object",
+  "required": ["case", "frames", "assertions"],
+  "properties": {
+    "case": {
+      "description": "The case's name, which is its directory's name.",
+      "type": "string"
+    },
+    "frames": {
+      "description": "Every frame of the case, each with a label.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "label"],
+        "properties": {
+          "file": { "type": "string" },
+          "label": { "type": "string" }
+        }
+      }
+    },
+    "agent_images": {
+      "description": "The exact pictures a supervision turn was given, each with the id of the event in printobserver-history.json it belongs to. Each file's sha256 is the one that event records.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "event_id"],
+        "properties": {
+          "file": { "type": "string" },
+          "event_id": { "type": "string" }
+        }
+      }
+    },
+    "assertions": { "$ref": "#/$defs/Assertions" }
+  },
+  "$defs": {
+    "Assertions": {
+      "description": "What an agent shown this case should and must never do, as one or more scenarios.",
+      "type": "object",
+      "required": ["scenarios"],
+      "additionalProperties": false,
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Scenario" }
+        }
+      }
+    },
+    "Scenario": {
+      "description": "One situation the agent is put in, and the outcomes that pass it. A scenario passes when at least one outcome of `accept_any_of` is met and no command the agent ran matches any step of `never`.",
+      "type": "object",
+      "required": [
+        "id",
+        "summary",
+        "trigger",
+        "event_image",
+        "printer_state",
+        "detector_warned",
+        "detector_paused_the_print",
+        "looks",
+        "accept_any_of",
+        "never"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Kebab-case, unique within the case.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "summary": {
+          "description": "One sentence: what the agent is shown and what it should do.",
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "description": "What starts the turn: an Obico alert this case's history recorded, an alert a test synthesises because none was raised, or a request to start a print.",
+          "enum": ["recorded_alert", "synthetic_alert", "start_request"]
+        },
+        "event_id": {
+          "description": "Present exactly when the trigger is recorded_alert: the id of an obico_failure_alert event in this case's printobserver-history.json.",
+          "type": "string"
+        },
+        "event_image": {
+          "description": "A file in this case's directory: the picture handed with the event, or for start_request the camera's current frame.",
+          "type": "string"
+        },
+        "printer_state": {
+          "description": "The printer contract's PrinterState spelling (schemas/printobserver-printer-api/PrinterState.json): printing, paused, operational, and the rest.",
+          "type": "string"
+        },
+        "detector_warned": {
+          "description": "Whether the detector's alert is a warning; null when the trigger is not a detection.",
+          "type": ["boolean", "null"]
+        },
+        "detector_paused_the_print": {
+          "description": "Whether the detector paused the print with its alert; null when the trigger is not a detection.",
+          "type": ["boolean", "null"]
+        },
+        "looks": {
+          "description": "What successive `printobserver look` calls answer, in order; the last repeats for every look after it. May be empty.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Look" }
+        },
+        "accept_any_of": {
+          "description": "The acceptable outcomes; at least one must be met. An outcome is met when its steps occur in order among the printobserver commands the agent ran, with other commands allowed between them. An empty outcome asks for nothing and is met by any run.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/Step" }
+          }
+        },
+        "never": {
+          "description": "Steps no command the agent ran may match. May be empty.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Step" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "trigger": { "const": "recorded_alert" } } },
+          "then": { "required": ["event_id"] },
+          "else": { "not": { "required": ["event_id"] } }
+        },
+        {
+          "if": { "properties": { "trigger": { "const": "start_request" } } },
+          "then": {
+            "properties": {
+              "detector_warned": { "type": "null" },
+              "detector_paused_the_print": { "type": "null" }
+            }
+          },
+          "else": {
+            "properties": {
+              "detector_warned": { "type": "boolean" },
+              "detector_paused_the_print": { "type": "boolean" }
+            }
+          }
+        }
+      ]
+    },
+    "Look": {
+      "description": "One answer a `printobserver look` call gives.",
+      "type": "object",
+      "required": ["image"],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "A file in this case's directory: the frame the look answers.",
+          "type": "string"
+        },
+        "arrived_event_ids": {
+          "description": "Events in this case's printobserver-history.json the look delivers, as having arrived since the last one. Absent means none.",
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    },
+    "Step": {
+      "description": "One printobserver command. A command matches a step when it is the step's operation and, for every parameter the step's args lists, names that parameter with that value; numbers compare numerically.",
+      "type": "object",
+      "required": ["operation"],
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "description": "A printobserver command, hyphenated (acknowledge-failure): an operation of schemas/printobserver-server/operations.json with its underscores spelled as hyphens.",
+          "type": "string"
+        },
+        "args": {
+          "description": "Parameters the command must name with these values, spelled as in schemas/printobserver-server/operations.json.",
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number"] }
+        }
+      }
+    }
+  }
+}

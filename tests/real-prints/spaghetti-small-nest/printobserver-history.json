@@ -1,0 +1,215 @@
+{
+  "events": [
+    {
+      "id": "01a0e5f9-4366-7cf1-9c21-74c75dd44fdd",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) `printobserver context` with the Windows config path unquoted failed (exit 4: the backslashes were stripped). Quoted, it answered: printing, 47% done, nozzle 230/230 °C, bed 60/60 °C, no adjustments standing, and the default bounds. 2) Opened the alert image: clear spaghetti. The part is a mangled nest of strands and a long strand trails across the bed toward the front right. 3) `printobserver look` at 03:03:40 answered a fresh frame showing the same failure, still printing. 4) `printobserver pause --actor agent` failed (422: the agent actor has to be given as JSON). Retried with `--actor '{\"agent\":{\"session_name\":\"<print id>\"}}'` and the policy refused it with invalid_from_state: paused. 5) `printobserver look` at 03:04:37 answered a second Obico alert (01a0e5f8-1d7b…, is_warning false, print_paused true, received 03:03:58), detector_paused true, job paused, nozzle target 0. Its frame shows the same spaghetti. 6) `acknowledge-failure --disposition stop` on the original alert 01a0e5f7-7e0d…: accepted, succeeded. 7) `acknowledge-failure --disposition stop` on the alert that paused the print, 01a0e5f8-1d7b…: accepted, succeeded. Two helper shell commands were denied by permission mode: listing the state directory, and one loop that would have sent both acknowledgements. I sent them one at a time instead. I asked for no fan, speed, flow or temperature change.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "Spaghetti failure at about 49%. The part is a tangled nest with a loose strand across the bed. The detector has paused the print, and it stays paused for a person.",
+          "why": "Three frames, from 03:03:17 to 03:04:37, all show the same thing: the part has already failed, as a tangle of loose strands with extruded filament dragged across the bed. Changing speed, flow, fan or temperature cannot repair a part that has already failed, so none of my adjustments reaches the cause. I tried to pause the print myself, but Obico's follow-up alert had already paused it. Since it is already held, I didn't ask for anything that changes the machine. I recorded both alerts with the disposition `stop` so the print stays paused, and wrote in the reasons what the person needs to look at. They should check the part and the nozzle for a blob, then most likely cancel the print, clear the bed and run it again."
+        },
+        "session_name": "print-01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:05:13.318848900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e5f9-4366-7cf1-9c21-74b115404760",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:05:13.318392200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e5f9-1559-7542-8835-4c90e1508e02",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a0e5f9-1558-7263-a0eb-ccc4bce8dec0"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:05:01.529210800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f9-1559-7542-8835-4c8dd6af028c",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a0e5f8-1d7b-7b03-bfb7-c01d192a6268",
+          "reason": "Obico's pause at 03:03:58 was correct: spaghetti confirmed in the 03:04:37 frame (tangled nest at ~49%, loose strand across the bed). None of the agent's adjustments fixes a failed part. Keep the print held for a person, who will most likely cancel it and clear the bed."
+        },
+        "action_id": "01a0e5f9-1558-7263-a0eb-ccc4bce8dec0",
+        "actor": {
+          "agent": {
+            "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+          }
+        }
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:05:01.529069300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f8-fe76-7da2-ba2a-1fc7b5ec23d9",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a0e5f8-fe75-76b0-87d8-13049266b86a"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:04:55.670750100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f8-fe76-7da2-ba2a-1fb824d8166c",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a0e5f7-7e0d-7bd0-b2a9-6cfdfbdf9ce0",
+          "reason": "Spaghetti failure, not recoverable by any bounded adjustment. At ~48-49% the part is a tangled nest of loose strands with a long detached strand running across the bed; seen in the 03:03:17 alert image and fresh frames at 03:03:40 and 03:04:37. Obico's follow-up alert paused the print at 03:03:58 (hotend target now 0). Leave it paused for a person: inspect the part and nozzle for a blob, and most likely cancel, clear the bed and re-run."
+        },
+        "action_id": "01a0e5f8-fe75-76b0-87d8-13049266b86a",
+        "actor": {
+          "agent": {
+            "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+          }
+        }
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:04:55.670453500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f8-b726-7902-8f36-8c187c0b46a3",
+      "image": {
+        "id": "01a0e5f8-bc85-7af3-9f10-d03c595d6742",
+        "sha256": "e14e9b9b8fbeea20ad234b708dea9b0d6e3ab3858eda5c08d7126d9811e5206e"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [
+          "01a0e5f8-1d7b-7b03-bfb7-c01d192a6268"
+        ],
+        "waited_s": 0
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:04:37.414261900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e5f8-a50a-7c33-a55f-52a99c43824f",
+      "kind": "action_rejected",
+      "payload": {
+        "action_id": "01a0e5f8-a509-7960-a926-e7c887268ff5",
+        "decision": {
+          "rejected": {
+            "invalid_from_state": {
+              "state": "paused"
+            }
+          }
+        }
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:04:32.778380200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f8-a50a-7c33-a55f-5291731e0548",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "pause",
+          "actor": {
+            "agent": {
+              "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+            }
+          },
+          "reason": "Spaghetti failure: the part at ~48% is a tangled nest of loose strands and a long detached strand runs across the bed; confirmed in the alert image and a fresh frame at 03:03:40. No fan/speed/flow/temperature adjustment recovers this. A person should inspect and most likely cancel and clear the bed."
+        },
+        "action_id": "01a0e5f8-a509-7960-a926-e7c887268ff5",
+        "actor": {
+          "agent": {
+            "session_name": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d"
+          }
+        }
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:04:32.778062Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a0e5f8-1d7b-7b03-bfb7-c01d192a6268",
+      "image": {
+        "id": "01a0e5f8-1d8f-7b12-bf57-86a92417f334",
+        "sha256": "cf873086d973268d96545a3c015ce6aae1f066eb959e9b86357681cd0069fd70"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "spaghetti-two-stage.gcode",
+        "is_warning": false,
+        "obico_print_id": 4,
+        "print_paused": true,
+        "started_at": "2026-09-28T02:44:20.477709055Z"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IGZhbHNlLCAicHJpbnRfcGF1c2VkIjogdHJ1ZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogNCwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10d28tc3RhZ2UuZ2NvZGUiLCAic3RhcnRlZF9hdCI6IDE3OTA1NjM0NjAuNDc3NzA5LCAiZW5kZWRfYXQiOiAiIn0sICJpbWdfdXJsIjogImh0dHA6Ly8xOTIuMTY4LjEuMTg3OjMzMzQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MDU2NDYzNy45OTk1MjNfcm90YXRlZC5qcGc/ZGlnZXN0PVlpZGNlR1ZsWEhnNVlWeDRPVGRjZURnM1hIaG1OaW9fVjF4NFlXWmNlR1F3ZTBSWVhGeGNlRGcxWEhnNE5GeDRaVGRpWEhoaFppcGNlR0l4ZWx4NE1UUkRYSGd3TTBWd1hIZzRObHg0T0dGY2VHVXhYSGhsWTBRbiJ9",
+      "received_at": "2026-09-28T03:03:58.074769400Z",
+      "source": "obico"
+    },
+    {
+      "id": "01a0e5f7-d9cc-7193-a1ed-63752d271ce2",
+      "image": {
+        "id": "01a0e5f7-e2b7-7130-870e-8867c1b21834",
+        "sha256": "e3eb676d5be4d9e026d018aa78219345a452212f9203457cb29f9b7c88262684"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 0
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "received_at": "2026-09-28T03:03:40.748796300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a0e5f7-7e0d-7bd0-b2a9-6cfdfbdf9ce0",
+      "image": {
+        "id": "01a0e5f7-7e25-7bf2-9aa5-9df63c255747",
+        "sha256": "49c4a5409a76c4cce2281bcd759869292c679d6409c298409bf8abc049816112"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "spaghetti-two-stage.gcode",
+        "is_warning": true,
+        "obico_print_id": 4,
+        "print_paused": false,
+        "started_at": "2026-09-28T02:44:20.477709055Z"
+      },
+      "print_id": "01a0e5e6-4ded-79b0-917f-3dc7d3baf60d",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogNCwgImZpbGVuYW1lIjogInNwYWdoZXR0aS10d28tc3RhZ2UuZ2NvZGUiLCAic3RhcnRlZF9hdCI6IDE3OTA1NjM0NjAuNDc3NzA5LCAiZW5kZWRfYXQiOiAiIn0sICJpbWdfdXJsIjogImh0dHA6Ly8xOTIuMTY4LjEuMTg3OjMzMzQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MDU2NDU5Ny4wNjgzMDhfcm90YXRlZC5qcGc/ZGlnZXN0PVlpZGNlREJpYlZ4NFpUaGNlR1JrZUZ4NFpEbGNlRGhpWEhoaU5GWmNlR0k1ZFZ4NFptRmNlR0l3WEhneE1GeDRZakpjZUdNd1BseDRNREZjZUdFMFMxeDRZemxjZURFeVVWeDRZVE5jZUdGaVhIaGxPRng0WW1aY2VHSmtMbHg0WW1ZMlhIZzVNaWM9In0=",
+      "received_at": "2026-09-28T03:03:17.260546600Z",
+      "source": "obico"
+    }
+  ]
+}
