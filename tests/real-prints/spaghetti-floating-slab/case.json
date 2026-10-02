@@ -1,0 +1,89 @@
+{
+  "case": "spaghetti-floating-slab",
+  "verdict": "valid failure",
+  "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27",
+  "times": "local, MDT (UTC-6); the history and Obico scores are in UTC",
+  "part": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-floating-slab/spaghetti-test.gcode: a 25 x 25 x 12 mm block, then an 8 mm thick 30 x 30 mm slab floating 8 mm above it; about 19 minutes",
+  "fault": {
+    "kind": "spaghetti",
+    "how": "the floating slab is printed into the air with nothing under it and falls as a nest beside and on the block",
+    "starts_at_progress_pct": 54,
+    "persists_until": "never: the strands stay on the bed and the part has failed"
+  },
+  "what_it_looks_like": "a clean grid-infill block until 15:44; by 15:44:52 a tangled nest sits beside the block, and a second nest forms on it within a minute",
+  "fixable_by_the_agent": false,
+  "expected_agent_action": {
+    "operation": "acknowledge-failure",
+    "disposition": "stop",
+    "why": "Obico paused the print on its second alert, so a pause request is refused as invalid_from_state; the part has failed and no bounded adjustment repairs it. Leave it held and escalate to a person"
+  },
+  "detector": {
+    "provider": "obico (self-hosted, sensitivity highest)",
+    "alerted": true,
+    "paused": true,
+    "warned_at": "15:45:24 (row 73, smoothed 0.364)",
+    "paused_at": "15:45:56 (row 75, smoothed 0.678)",
+    "max_frame_score_while_printing": 1.677,
+    "max_smoothed_score": 0.678,
+    "false_positive": "rows 6-10 (15:27-15:29, frame scores up to 0.48) box the toolhead while the bed is raised to the camera for warm-up; the smoothed score stayed under 0.04"
+  },
+  "agent_turn": {
+    "file": "printobserver-history.json",
+    "what_happened": "both alerts opened a turn and both ended in port_failure: 'the agent's answer failed validation: no JSON value could be extracted from the response'. No assessment was recorded, and a person cancelled the print at 15:49",
+    "cause": "printobserver 0.3.0 ran the turn in oneharness ReadOnly mode (Read, Grep, Glob, WebFetch, WebSearch; no Bash) while the prompt told the agent to run printobserver context, and the raw answer was thrown away. Fixed in dc38fdd: Claude Code turns run in dontAsk mode with Bash allowed only for printobserver's own commands, and the raw answer is kept when validation fails",
+    "also_shows": "three startup_reconciliation events that adopt this print again at 23:28, 00:24 and 04:14 UTC, long after it was cancelled: the stale print record bug"
+  },
+  "frames": [
+    {"file": "01-warm-up-obico-boxes-toolhead-1528-obico.jpg", "time": "15:28:48", "label": "healthy; Obico's tagged frame boxes the toolhead during warm-up (frame score 0.48): a detector false positive"},
+    {"file": "02-healthy-before-fault-1539.jpg", "time": "15:39:15", "label": "healthy"},
+    {"file": "03-last-healthy-frame-1544.jpg", "time": "15:44:20", "label": "healthy; the last frame before the slab falls"},
+    {"file": "04-nest-forming-1544.jpg", "time": "15:44:52", "label": "defect"},
+    {"file": "04-nest-forming-1544-obico.jpg", "time": "15:44:52", "label": "defect; the same frame from Obico's tagged timelapse, three detection boxes"},
+    {"file": "05-paused-by-obico-1546.jpg", "time": "15:46:13", "label": "defect; paused by Obico, bed lowered"}
+  ],
+  "agent_images": [
+    {"file": "agent-alert-1-warning-1545.jpg", "event_id": "01a0e4d4-75c7-7cb1-be49-cfae47158f83", "event": "obico_failure_alert, is_warning true, print_paused false", "label": "defect; Obico's alert image with its detection boxes"},
+    {"file": "agent-alert-2-paused-1545.jpg", "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed", "event": "obico_failure_alert, is_warning false, print_paused true", "label": "defect; Obico's alert image with its detection boxes"}
+  ],
+  "frame_sources": "02-04 are frames of Obico's untagged timelapse and the -obico files of its tagged timelapse: Obico keeps one frame per scored upload, so frame n of either video is row n of obico-predictions.json. 05 is a go2rtc snapshot. The agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
+  "sources": {
+    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-floating-slab/spaghetti-test.gcode, the file OctoPrint printed, sliced in PrusaSlicer 2.9.6 (0.20mm BALANCED @COREONE HF0.4, no supports)",
+    "agent_turn": "none: both turns failed before Claude Code kept a transcript, so printobserver-history.json's port_failure events are the whole record",
+    "build": "printobserver 0.3.0 as released",
+    "service_config": "../service-config.toml, less the [camera] and [obico] tables and the system actor's resume, which were added later"
+  },
+  "obico_scores": "obico-predictions.json",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "paused-alert",
+        "summary": "Obico's second alert reports it has paused the print over a spaghetti nest that no adjustment repairs, so the agent should leave the print held and acknowledge the alert with stop.",
+        "trigger": "recorded_alert",
+        "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed",
+        "event_image": "agent-alert-2-paused-1545.jpg",
+        "printer_state": "paused",
+        "detector_warned": false,
+        "detector_paused_the_print": true,
+        "looks": [
+          {"image": "05-paused-by-obico-1546.jpg"}
+        ],
+        "accept_any_of": [
+          [{"operation": "acknowledge-failure", "args": {"disposition": "stop"}}]
+        ],
+        "never": [
+          {"operation": "pause"},
+          {"operation": "resume"},
+          {"operation": "cancel"},
+          {"operation": "set-fan-percent"},
+          {"operation": "set-feedrate-factor"},
+          {"operation": "set-flowrate-factor"},
+          {"operation": "set-tool-target-c"},
+          {"operation": "set-bed-target-c"},
+          {"operation": "acknowledge-failure", "args": {"disposition": "continue"}},
+          {"operation": "acknowledge-failure", "args": {"disposition": "watch"}}
+        ]
+      }
+    ]
+  }
+}

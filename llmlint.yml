@@ -10,6 +10,10 @@ files:
   # List committed files that shouldn't be judged (lock files, generated output).
   exclude:
     - "**/.git/**"
+    # The scripts that made two real-print cases' parts: recorded evidence,
+    # kept byte-identical to the commit they were printed from (45e7fed on
+    # fix/windows-supervision-turns) and never run by anything here.
+    - "tests/real-prints/*/make_*.py"
 rationales: true
 # No `agents` block: the harness/model are NOT pinned here. `oneharness.toml`
 # (composed alongside this file) selects them in fallback mode — codex + gpt-5.5

@@ -1,0 +1,64 @@
+{
+  "case": "under-extrusion-lace",
+  "verdict": "valid failure",
+  "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
+  "printed_on": "2026-09-27",
+  "part": "60 x 20 x 30 mm box, 2 perimeters, 15% grid infill",
+  "fault": {
+    "kind": "under-extrusion",
+    "how": "M221 S40 injected at Z10 and M221 S30 at Z16; nothing later in the file sets flow",
+    "starts_at_progress_pct": 33,
+    "worsens_at_progress_pct": 51,
+    "persists_until": "a set_flowrate_factor from the supervisor"
+  },
+  "what_it_looks_like": "walls and infill thin but continuous at 40% (p46); from 30% the upper walls turn porous and speckled and the infill tops jagged (p58-p71); the box finishes whole with a porous top half",
+  "fixable_by_the_agent": true,
+  "expected_agent_action": {
+    "operation": "set-flowrate-factor",
+    "value": 1.0,
+    "why": "flow is the fault; M221 S100 replaces the file's value and nothing later sets it again. OctoPrint does not report the flow factor, so no prior value is recorded and expiry does not put the fault back"
+  },
+  "detector": {
+    "provider": "obico (self-hosted, sensitivity highest)",
+    "alerted": false,
+    "paused": false,
+    "max_frame_score_while_printing": 0.136,
+    "max_smoothed_score": 0.046,
+    "note": "frame scores rose to 0.08-0.14 after the fault began, far below alerting"
+  },
+  "frames": [
+    {"file": "01-healthy-before-fault-p30.jpg", "progress_pct": 29.9, "label": "healthy"},
+    {"file": "02-flow-40pct-thin-walls-p46.jpg", "progress_pct": 46.1, "label": "defect, subtle"},
+    {"file": "03-flow-30pct-porous-p61.jpg", "progress_pct": 61.1, "label": "defect"},
+    {"file": "04-flow-30pct-porous-p71.jpg", "progress_pct": 71.4, "label": "defect"},
+    {"file": "05-finished.jpg", "progress_pct": 100.0, "label": "finished with a porous top half"},
+    {"file": "fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/crop-03-porous-sheet-p58-61.png", "progress_pct": 61.1, "label": "defect; 2x crops of four frames p58-p61, derived, not a camera frame"}
+  ],
+  "sources": {
+    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/lace-test.gcode is the file OctoPrint printed; fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/lace-test.clean.gcode is the same slice before the flow changes were injected; fault.diff is the unified diff from that clean slice to the printed file; make_box.py writes the part's STL (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4)",
+    "agent_turn": "none: Obico never alerted",
+    "build": "97ee107 on fix/windows-supervision-turns",
+    "service_config": "../service-config.toml"
+  },
+  "obico_scores": "obico-predictions.json",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "porous-walls",
+        "summary": "A synthetic alert shows the walls turning porous with the flow cut to 30 percent, and the look shows the same; the agent should set the flowrate factor back to 1.0.",
+        "trigger": "synthetic_alert",
+        "event_image": "03-flow-30pct-porous-p61.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {"image": "04-flow-30pct-porous-p71.jpg"}
+        ],
+        "accept_any_of": [
+          [{"operation": "set-flowrate-factor", "args": {"factor": 1.0}}]
+        ],
+        "never": [{"operation": "cancel"}, {"operation": "resume"}]
+      }
+    ]
+  }
+}

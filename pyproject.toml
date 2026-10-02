@@ -26,6 +26,7 @@ dev = [
     "pyyaml>=6",
     "actionlint-py>=1.7",
     "shellcheck-py>=0.11",
+    "jsonschema>=4.25",
 ]
 # zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
 # Unix host. Its own group rather than `dev` so hosts that never run that pass —
