@@ -34,6 +34,15 @@
         }
       }
     },
+    "sources": {
+      "description": "Where the case's evidence came from, one sentence per source. A file a source names exists: in this case's directory, beside it with `../`, or on the branch it remains on as `<branch>@<commit>:<path>`.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "obico_scores": {
+      "description": "The file of Obico's scores for this print, and which of its rows.",
+      "type": "string"
+    },
     "assertions": { "$ref": "#/$defs/Assertions" }
   },
   "$defs": {

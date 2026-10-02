@@ -8,8 +8,10 @@ names a file it does not carry, an event its history does not hold, or a
 command printobserver does not have is a test that asserts nothing true.
 
 Every check here reads files and nothing else: no model, network or printer.
-A case whose `case.json` does not parse or does not satisfy
-`case.schema.json` is reported once by `real-prints-schema`, and by every
+Each file is validated against the contract that declares it before anything
+is read out of it — a `case.json` against `case.schema.json`, a history against
+the server's own `HistoryAnswer` — and then read into the typed records below.
+A case that fails either is reported once by `real-prints-schema`, and by every
 other check as one it could not read, so a check run on its own never passes a
 case it skipped.
 """
@@ -34,6 +36,7 @@ ROOT = "tests/real-prints"
 SCHEMA = f"{ROOT}/case.schema.json"
 CASE_FILE = "case.json"
 HISTORY = "printobserver-history.json"
+HISTORY_SCHEMA = "schemas/printobserver-server/HistoryAnswer.json"
 SERVICE_CONFIG = f"{ROOT}/service-config.toml"
 OPERATIONS = "schemas/printobserver-server/operations.json"
 PRINTER_STATE = "schemas/printobserver-printer-api/PrinterState.json"
@@ -50,105 +53,229 @@ FILE_TOKEN = re.compile(
     r"(?<![\w./@:-])(?:\.\./)?(?:[\w-]+/)*[\w.-]+\.(?:jpg|png|json|py|gcode|diff|toml)\b"
 )
 
-# The fields of `sources` and `obico_scores` lead with the file they describe.
-LEADING_FIELDS = ("obico_scores",)
-
-# A credential field of the service configuration, and what it must hold here.
-CREDENTIAL_KEYS = frozenset({"api_key", "shared_secret", "access_token"})
+# A field of the service configuration that holds a secret, by how this
+# configuration names one — `octoprint.api_key`, `ingress.shared_secret`,
+# `obico.access_token`, `api.credential` — rather than by a list of today's
+# fields, so a secret field added later is held to the same rule.
+SECRET_FIELD = re.compile(r"(?:key|secret|token|credential|password)$")
 REDACTED = "<redacted>"
+
+# The operation parameter kinds a number satisfies; every other kind is text.
+NUMERIC_KINDS = frozenset({"number", "integer"})
+
+
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One printobserver command a scenario accepts or forbids."""
+
+    operation: str
+    args: dict[str, str | float]
+
+    @classmethod
+    def read(cls, raw: dict[str, Any]) -> Step:
+        """A step from its validated JSON."""
+        return cls(raw["operation"], dict(raw.get("args", {})))
+
+
+@dataclass(frozen=True, slots=True)
+class Look:
+    """One answer a `printobserver look` gives."""
+
+    image: str
+    arrived_event_ids: tuple[str, ...]
+
+    @classmethod
+    def read(cls, raw: dict[str, Any]) -> Look:
+        """A look from its validated JSON."""
+        return cls(raw["image"], tuple(raw.get("arrived_event_ids", ())))
+
+
+@dataclass(frozen=True, slots=True)
+class Scenario:
+    """One situation a case puts the agent in, and what passes it."""
+
+    id: str
+    event_id: str | None
+    event_image: str
+    printer_state: str
+    looks: tuple[Look, ...]
+    accept_any_of: tuple[tuple[Step, ...], ...]
+    never: tuple[Step, ...]
+
+    @classmethod
+    def read(cls, raw: dict[str, Any]) -> Scenario:
+        """A scenario from its validated JSON."""
+        return cls(
+            id=raw["id"],
+            event_id=raw.get("event_id"),
+            event_image=raw["event_image"],
+            printer_state=raw["printer_state"],
+            looks=tuple(Look.read(look) for look in raw["looks"]),
+            accept_any_of=tuple(
+                tuple(Step.read(step) for step in outcome) for outcome in raw["accept_any_of"]
+            ),
+            never=tuple(Step.read(step) for step in raw["never"]),
+        )
+
+    @property
+    def images(self) -> tuple[str, ...]:
+        """Every image the scenario hands the agent."""
+        return (self.event_image, *(look.image for look in self.looks))
+
+    @property
+    def steps(self) -> Iterator[Step]:
+        """Every step the scenario names, accepted or never."""
+        for outcome in self.accept_any_of:
+            yield from outcome
+        yield from self.never
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """One event of a case's history: its kind and the sha256 of its image."""
+
+    id: str
+    kind: str
+    image_sha256: str | None
+
+    @classmethod
+    def read(cls, raw: dict[str, Any]) -> Event:
+        """An event from its record, validated against `HistoryAnswer`."""
+        image = raw.get("image")
+        return cls(raw["id"], raw["kind"], image["sha256"] if image else None)
 
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """One case directory, and its `case.json` when it could be read."""
+    """One case directory, read and validated."""
 
     name: str
     directory: Path
-    data: dict[str, Any] | None
-    problems: tuple[str, ...]
+    document: dict[str, Any]
+    scenarios: tuple[Scenario, ...]
+    agent_images: dict[str, str]
+    history: dict[str, Event] | None
+
+    def referenced(self) -> Iterator[str]:
+        """Every file the case.json refers to and so must carry.
+
+        Each `file` field, each scenario image, and every file named in
+        `sources` and `obico_scores`. Every other field's prose may mention a
+        file — `see its make_plate.py` — without that being a reference.
+        """
+        yield from _file_fields({k: v for k, v in self.document.items() if k != "assertions"})
+        for scenario in self.scenarios:
+            yield from scenario.images
+        texts = [*self.document.get("sources", {}).values(), self.document.get("obico_scores", "")]
+        for text in texts:
+            yield from (match.group(0) for match in BRANCH_REFERENCE.finditer(text))
+            yield from FILE_TOKEN.findall(BRANCH_REFERENCE.sub("", text))
+
+    def mentioned(self) -> set[str]:
+        """Every file name the case.json mentions anywhere, outside branch references."""
+        return set(FILE_TOKEN.findall(BRANCH_REFERENCE.sub("", json.dumps(self.document))))
 
 
-def _validator(repo: Repo) -> Validator:
-    """The validator for `case.schema.json`, itself checked to be a valid schema."""
-    schema = json.loads(repo.read(SCHEMA))
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
-
-
-def _cases(repo: Repo) -> list[Case]:
-    """Every case directory, each read and validated against the schema."""
-    root = repo.path(ROOT)
-    validator = _validator(repo)
-    cases: list[Case] = []
-    for directory in sorted(p for p in root.iterdir() if p.is_dir()):
-        name = directory.name
-        path = directory / CASE_FILE
-        if not path.is_file():
-            cases.append(Case(name, directory, None, (f"has no {CASE_FILE}",)))
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            cases.append(Case(name, directory, None, (f"{CASE_FILE} does not parse: {error}",)))
-            continue
-        problems = [
-            f"{CASE_FILE} at {error.json_path}: {error.message}"
-            for error in sorted(validator.iter_errors(data), key=lambda e: e.json_path)
-        ]
-        if not problems and data["case"] != name:
-            problems.append(f"{CASE_FILE} names its case {data['case']!r}, not its directory")
-        cases.append(Case(name, directory, None if problems else data, tuple(problems)))
-    return cases
-
-
-def _readable(repo: Repo, check: str) -> Iterator[tuple[Case, dict[str, Any]] | str]:
-    """Each case a check can read, or the finding saying it could not read it."""
-    for case in _cases(repo):
-        if case.data is None:
-            yield f"{case.name}: {CASE_FILE} is unreadable, so {check} could not check it"
-        else:
-            yield case, case.data
-
-
-def real_prints_schema(repo: Repo) -> list[str]:
-    """Every case directory carries a `case.json` that satisfies `case.schema.json`."""
-    return [f"{case.name}: {problem}" for case in _cases(repo) for problem in case.problems]
-
-
-def _named_files(data: dict[str, Any]) -> Iterator[str]:
-    """Every value a case.json gives as a file.
-
-    Each `file` field, each scenario image, and the file the `sources` fields
-    and `obico_scores` lead with.
-    """
-
-    def files(value: object) -> Iterator[str]:
-        if isinstance(value, dict):
+def _file_fields(value: object) -> Iterator[str]:
+    """Every string a `file` key holds, at any depth of a JSON value."""
+    match value:
+        case dict():
             for key, item in value.items():
                 if key == "file" and isinstance(item, str):
                     yield item
                 else:
-                    yield from files(item)
-        elif isinstance(value, list):
+                    yield from _file_fields(item)
+        case list():
             for item in value:
-                yield from files(item)
+                yield from _file_fields(item)
+        case _:
+            pass
 
-    yield from files({k: v for k, v in data.items() if k != "assertions"})
-    leading = [data.get(field) for field in LEADING_FIELDS]
-    leading.extend((data.get("sources") or {}).values())
-    for text in leading:
-        if not isinstance(text, str):
-            continue
-        reference = BRANCH_REFERENCE.match(text)
-        if reference:
-            yield reference.group(0)
-            continue
-        token = FILE_TOKEN.match(text)
-        if token:
-            yield token.group(0)
-    for scenario in data["assertions"]["scenarios"]:
-        yield scenario["event_image"]
-        yield from (look["image"] for look in scenario["looks"])
+
+def _validator(repo: Repo, relative: str) -> Validator:
+    """The validator for one committed schema, itself checked to be a valid schema."""
+    schema = json.loads(repo.read(relative))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _problems(validator: Validator, document: object, named: str) -> list[str]:
+    """Each way a document breaks its schema, located by its JSON path."""
+    errors = sorted(validator.iter_errors(document), key=lambda error: error.json_path)
+    return [f"{named} at {error.json_path}: {error.message}" for error in errors]
+
+
+def _read_json(path: Path) -> tuple[object, str | None]:
+    """A JSON file's value, or the reason it could not be read."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except json.JSONDecodeError as error:
+        return None, f"{path.name} does not parse: {error}"
+
+
+def _read_case(
+    directory: Path, case_schema: Validator, history_schema: Validator
+) -> Case | list[str]:
+    """One case directory read into a `Case`, or every problem that stopped it."""
+    path = directory / CASE_FILE
+    if not path.is_file():
+        return [f"has no {CASE_FILE}"]
+    document, unreadable = _read_json(path)
+    if unreadable:
+        return [unreadable]
+    problems = _problems(case_schema, document, CASE_FILE)
+    history: dict[str, Event] | None = None
+    if (directory / HISTORY).is_file():
+        recorded, unreadable = _read_json(directory / HISTORY)
+        if unreadable:
+            problems.append(unreadable)
+        else:
+            history_problems = _problems(history_schema, recorded, HISTORY)
+            problems.extend(history_problems)
+            if not history_problems and isinstance(recorded, dict):
+                events = (Event.read(event) for event in recorded["events"])
+                history = {event.id: event for event in events}
+    if problems or not isinstance(document, dict):
+        return problems
+    if document["case"] != directory.name:
+        return [f"{CASE_FILE} names its case {document['case']!r}, not its directory"]
+    return Case(
+        name=directory.name,
+        directory=directory,
+        document=document,
+        scenarios=tuple(Scenario.read(raw) for raw in document["assertions"]["scenarios"]),
+        agent_images={
+            entry["file"]: entry["event_id"] for entry in document.get("agent_images", [])
+        },
+        history=history,
+    )
+
+
+def _cases(repo: Repo) -> Iterator[tuple[str, Case | list[str]]]:
+    """Every case directory by name, read, or the problems that stopped it."""
+    case_schema = _validator(repo, SCHEMA)
+    history_schema = _validator(repo, HISTORY_SCHEMA)
+    for directory in sorted(p for p in repo.path(ROOT).iterdir() if p.is_dir()):
+        yield directory.name, _read_case(directory, case_schema, history_schema)
+
+
+def _readable(repo: Repo, check: str, findings: list[str]) -> Iterator[Case]:
+    """Each case a check can read; one it cannot is a finding naming it."""
+    for name, case in _cases(repo):
+        if isinstance(case, Case):
+            yield case
+        else:
+            findings.append(f"{name}: its files are unreadable, so {check} could not check it")
+
+
+def real_prints_schema(repo: Repo) -> list[str]:
+    """Every case carries a `case.json` satisfying `case.schema.json`, and a valid history."""
+    return [
+        f"{name}: {problem}"
+        for name, case in _cases(repo)
+        if not isinstance(case, Case)
+        for problem in case
+    ]
 
 
 def _is_dropped(path: str) -> bool:
@@ -158,75 +285,53 @@ def _is_dropped(path: str) -> bool:
 
 
 def real_prints_files(repo: Repo) -> list[str]:
-    """Every file a case.json names exists, and every file of a case is named by it.
+    """Every file a case.json refers to exists, and every file of a case is named by it.
 
-    A name may be relative to the case directory, may climb to a sibling with
-    `../`, or may name a dropped file on the branch it remains on; a G-code or a
-    crop named any other way names a file this tree does not carry.
+    A reference may be relative to the case directory, may climb to a sibling
+    with `../`, or may name a dropped file on the branch it remains on; a G-code
+    or a crop named any other way names a file this tree does not carry.
     """
     findings: list[str] = []
-    for item in _readable(repo, "real-prints-files"):
-        if isinstance(item, str):
-            findings.append(item)
-            continue
-        case, data = item
-        text = json.dumps(data)
-        for named in _named_files(data):
+    for case in _readable(repo, "real-prints-files", findings):
+        for named in case.referenced():
             reference = BRANCH_REFERENCE.fullmatch(named)
-            if reference:
-                if not _is_dropped(reference.group("path")):
-                    findings.append(
-                        f"{case.name}: {named} names a file on the branch that this tree should "
-                        "carry: only G-code and crops are left there"
-                    )
-                continue
-            if not (case.directory / named).is_file():
-                findings.append(f"{case.name}: {CASE_FILE} names {named}, which is not a file")
-        bare = BRANCH_REFERENCE.sub("", text)
-        for token in FILE_TOKEN.findall(bare):
-            if _is_dropped(token):
+            if reference is None:
+                if not (case.directory / named).is_file():
+                    findings.append(f"{case.name}: {CASE_FILE} names {named}, which is not a file")
+            elif not _is_dropped(reference.group("path")):
                 findings.append(
-                    f"{case.name}: {CASE_FILE} names {token}, a dropped file, without the branch "
-                    "it remains on"
+                    f"{case.name}: {named} names a file on the branch that this tree should "
+                    "carry: only G-code and crops are left there"
                 )
-        mentioned = set(FILE_TOKEN.findall(bare))
-        for path in sorted(case.directory.iterdir()):
-            if path.name != CASE_FILE and path.name not in mentioned:
-                findings.append(
-                    f"{case.name}: {path.name} is in the case but {CASE_FILE} names it nowhere"
-                )
+        mentioned = case.mentioned()
+        findings.extend(
+            f"{case.name}: {CASE_FILE} names {token}, a dropped file, without the branch "
+            "it remains on"
+            for token in sorted(mentioned)
+            if _is_dropped(token)
+        )
+        findings.extend(
+            f"{case.name}: {path.name} is in the case but {CASE_FILE} names it nowhere"
+            for path in sorted(case.directory.iterdir())
+            if path.name != CASE_FILE and path.name not in mentioned
+        )
     return findings
-
-
-def _history(case: Case) -> dict[str, dict[str, Any]] | None:
-    """The events of a case's history by id, or nothing where it has none."""
-    path = case.directory / HISTORY
-    if not path.is_file():
-        return None
-    return {event["id"]: event for event in json.loads(path.read_text(encoding="utf-8"))["events"]}
 
 
 def real_prints_images(repo: Repo) -> list[str]:
     """Every `agent-*` image is the exact picture its event's history records."""
     findings: list[str] = []
-    for item in _readable(repo, "real-prints-images"):
-        if isinstance(item, str):
-            findings.append(item)
-            continue
-        case, data = item
-        listed = {entry["file"]: entry["event_id"] for entry in data.get("agent_images", [])}
-        history = _history(case) or {}
-        for path in sorted(case.directory.glob("agent-*")):
-            if path.name == "agent-turn.json":
-                continue
-            event_id = listed.get(path.name)
+    for case in _readable(repo, "real-prints-images", findings):
+        history = case.history or {}
+        for path in sorted(case.directory.glob("agent-*.jpg")):
+            event_id = case.agent_images.get(path.name)
             if event_id is None:
                 findings.append(
                     f"{case.name}: {path.name} is not listed under agent_images with its event"
                 )
                 continue
             event = history.get(event_id)
-            recorded = (event or {}).get("image", {}).get("sha256")
+            recorded = event.image_sha256 if event else None
             if recorded is None:
                 findings.append(
                     f"{case.name}: {path.name}'s event {event_id} records no image in {HISTORY}"
@@ -241,137 +346,132 @@ def real_prints_images(repo: Repo) -> list[str]:
     return findings
 
 
-def _printer_states(repo: Repo) -> set[str]:
+def _printer_states(repo: Repo) -> frozenset[str]:
     """The string spellings the printer contract's `PrinterState` names."""
     schema = json.loads(repo.read(PRINTER_STATE))
-    return {arm["const"] for arm in schema["oneOf"] if "const" in arm}
+    return frozenset(arm["const"] for arm in schema["oneOf"] if "const" in arm)
+
+
+def _scenario_findings(case: Case, scenario: Scenario, states: frozenset[str]) -> Iterator[str]:
+    """Each way one scenario names an event, a state or an image its case does not have."""
+    where = f"{case.name}: scenario {scenario.id}"
+    if scenario.printer_state not in states:
+        yield (
+            f"{where} has printer_state {scenario.printer_state!r}, which {PRINTER_STATE} "
+            "does not name"
+        )
+    events = case.history or {}
+    if scenario.event_id is not None:
+        event = events.get(scenario.event_id)
+        if case.history is None:
+            yield f"{where} names event {scenario.event_id}, but the case has no {HISTORY}"
+        elif event is None or event.kind != "obico_failure_alert":
+            yield (
+                f"{where} names event {scenario.event_id}, which is no "
+                f"obico_failure_alert in {HISTORY}"
+            )
+        pictured = [name for name, owner in case.agent_images.items() if owner == scenario.event_id]
+        if pictured and scenario.event_image not in pictured:
+            yield (
+                f"{where} hands {scenario.event_image} with event {scenario.event_id}, whose "
+                f"image is {pictured[0]}"
+            )
+    for look in scenario.looks:
+        for arrived in look.arrived_event_ids:
+            if arrived not in events:
+                yield f"{where} has a look deliver event {arrived}, which {HISTORY} does not hold"
+    for image in scenario.images:
+        if "/" in image or not (case.directory / image).is_file():
+            yield f"{where} names image {image}, which is not a file of the case"
 
 
 def real_prints_scenarios(repo: Repo) -> list[str]:
     """Every scenario names events its case's history holds and images its case carries."""
     findings: list[str] = []
     states = _printer_states(repo)
-    for item in _readable(repo, "real-prints-scenarios"):
-        if isinstance(item, str):
-            findings.append(item)
-            continue
-        case, data = item
-        history = _history(case)
-        events = history or {}
-        own_images = {entry["file"]: entry["event_id"] for entry in data.get("agent_images", [])}
+    for case in _readable(repo, "real-prints-scenarios", findings):
         seen: set[str] = set()
-        for scenario in data["assertions"]["scenarios"]:
-            where = f"{case.name}: scenario {scenario['id']}"
-            if scenario["id"] in seen:
-                findings.append(f"{where} is declared twice")
-            seen.add(scenario["id"])
-            if scenario["printer_state"] not in states:
-                findings.append(
-                    f"{where} has printer_state {scenario['printer_state']!r}, which "
-                    f"{PRINTER_STATE} does not name"
-                )
-            event_id = scenario.get("event_id")
-            if event_id is not None:
-                kind = events.get(event_id, {}).get("kind")
-                if history is None:
-                    findings.append(
-                        f"{where} names event {event_id}, but the case has no {HISTORY}"
-                    )
-                elif kind != "obico_failure_alert":
-                    findings.append(
-                        f"{where} names event {event_id}, which is no "
-                        f"obico_failure_alert in {HISTORY}"
-                    )
-                pictured = [name for name, owner in own_images.items() if owner == event_id]
-                if pictured and scenario["event_image"] not in pictured:
-                    findings.append(
-                        f"{where} hands {scenario['event_image']} with event {event_id}, whose "
-                        f"image is {pictured[0]}"
-                    )
-            for look in scenario["looks"]:
-                for arrived in look.get("arrived_event_ids", []):
-                    if arrived not in events:
-                        findings.append(
-                            f"{where} has a look deliver event {arrived}, which "
-                            f"{HISTORY} does not hold"
-                        )
-            images = [scenario["event_image"], *(look["image"] for look in scenario["looks"])]
-            for image in images:
-                if "/" in image or not (case.directory / image).is_file():
-                    findings.append(f"{where} names image {image}, which is not a file of the case")
+        for scenario in case.scenarios:
+            if scenario.id in seen:
+                findings.append(f"{case.name}: scenario {scenario.id} is declared twice")
+            seen.add(scenario.id)
+            findings.extend(_scenario_findings(case, scenario, states))
     return findings
 
 
-def _operations(repo: Repo) -> dict[str, dict[str, str]]:
-    """Each printobserver command, hyphenated, with its parameters' kinds by name."""
+@dataclass(frozen=True, slots=True)
+class Operation:
+    """One printobserver command, and the kind of each parameter it takes."""
+
+    command: str
+    parameter_kinds: dict[str, str]
+
+    def argument_finding(self, name: str, value: str | float) -> str | None:
+        """Why a step cannot give this command this argument, or nothing when it can."""
+        kind = self.parameter_kinds.get(name)
+        if kind is None:
+            return f"argument {name!r}, which is not one of its parameters in {OPERATIONS}"
+        if (kind in NUMERIC_KINDS) != isinstance(value, int | float):
+            return f"argument {name!r} the value {value!r}, which a {kind} parameter cannot hold"
+        return None
+
+
+def _operations(repo: Repo) -> dict[str, Operation]:
+    """Each printobserver command, hyphenated, read from the server's description."""
     described = json.loads(repo.read(OPERATIONS))
-    return {
-        operation["name"].replace("_", "-"): {
-            parameter["name"]: parameter["kind"] for parameter in operation["parameters"]
-        }
+    operations = (
+        Operation(
+            operation["name"].replace("_", "-"),
+            {parameter["name"]: parameter["kind"] for parameter in operation["parameters"]},
+        )
         for operation in described["operations"]
-    }
-
-
-def _steps(scenario: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """Every step a scenario names, accepted or never."""
-    for outcome in scenario["accept_any_of"]:
-        yield from outcome
-    yield from scenario["never"]
+    )
+    return {operation.command: operation for operation in operations}
 
 
 def real_prints_operations(repo: Repo) -> list[str]:
     """Every scenario step is a printobserver command, with that command's own parameters."""
     findings: list[str] = []
     operations = _operations(repo)
-    for item in _readable(repo, "real-prints-operations"):
-        if isinstance(item, str):
-            findings.append(item)
-            continue
-        case, data = item
-        for scenario in data["assertions"]["scenarios"]:
-            where = f"{case.name}: scenario {scenario['id']}"
-            for step in _steps(scenario):
-                operation = step["operation"]
-                parameters = operations.get(operation)
-                if parameters is None:
+    for case in _readable(repo, "real-prints-operations", findings):
+        for scenario in case.scenarios:
+            where = f"{case.name}: scenario {scenario.id}"
+            for step in scenario.steps:
+                operation = operations.get(step.operation)
+                if operation is None:
                     findings.append(
-                        f"{where} names operation {operation!r}, which {OPERATIONS} does not have"
+                        f"{where} names operation {step.operation!r}, which {OPERATIONS} "
+                        "does not have"
                     )
                     continue
-                for name, value in step.get("args", {}).items():
-                    kind = parameters.get(name)
-                    if kind is None:
-                        findings.append(
-                            f"{where} gives {operation} argument {name!r}, which is not one of its "
-                            f"parameters in {OPERATIONS}"
-                        )
-                    elif (kind in {"number", "integer"}) != isinstance(value, int | float):
-                        findings.append(
-                            f"{where} gives {operation} argument {name!r} the value {value!r}, "
-                            f"which a {kind} parameter cannot hold"
-                        )
+                for name, value in step.args.items():
+                    problem = operation.argument_finding(name, value)
+                    if problem is not None:
+                        findings.append(f"{where} gives {step.operation} {problem}")
     return findings
 
 
-def _credentials(table: dict[str, Any], prefix: str = "") -> Iterator[tuple[str, object]]:
-    """Every credential-bearing field of a TOML table, by its dotted name."""
+def _secret_fields(table: dict[str, Any], prefix: str = "") -> Iterator[tuple[str, object]]:
+    """Every secret field of a TOML table, by its dotted name."""
     for key, value in table.items():
         dotted = f"{prefix}{key}"
-        if isinstance(value, dict):
-            yield from _credentials(value, f"{dotted}.")
-        elif key in CREDENTIAL_KEYS or "credential" in key:
-            yield dotted, value
+        match value:
+            case dict():
+                yield from _secret_fields(value, f"{dotted}.")
+            case _ if SECRET_FIELD.search(key):
+                yield dotted, value
+            case _:
+                pass
 
 
 def real_prints_service_config(repo: Repo) -> list[str]:
-    """The shared service configuration parses and carries no credential."""
+    """The shared service configuration parses and carries no secret."""
     try:
         config = repo.read_toml(SERVICE_CONFIG)
     except (OSError, tomllib.TOMLDecodeError) as error:
         return [f"{SERVICE_CONFIG} does not parse: {error}"]
     return [
         f"{SERVICE_CONFIG}: {field} holds a value rather than {REDACTED!r}"
-        for field, value in _credentials(config)
+        for field, value in _secret_fields(config)
         if value != REDACTED
     ]

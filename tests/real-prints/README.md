@@ -140,8 +140,11 @@ How a run is judged:
 
 `just check-repo` runs six deterministic checks over this directory, from
 `tools/repo-checks`'s `checks_real_prints`: every `case.json` satisfies
-`case.schema.json` (`real-prints-schema`); every file a `case.json` names
-exists and every file of a case is named by it (`real-prints-files`); every
+`case.schema.json`, and every `printobserver-history.json` the server's own
+`schemas/printobserver-server/HistoryAnswer.json` (`real-prints-schema`);
+every file a `case.json` refers to — each `file` field, each scenario image,
+and every file its `sources` and `obico_scores` name — exists, and every file
+of a case is named somewhere in it (`real-prints-files`); every
 `agent-*` image's sha256 is the one its event records in
 `printobserver-history.json` (`real-prints-images`); every scenario's events
 are in its case's history and its images are files of the case

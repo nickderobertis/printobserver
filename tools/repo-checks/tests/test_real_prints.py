@@ -139,6 +139,22 @@ def test_a_case_that_does_not_parse_or_is_missing_is_refused(
     refused_with(result, "stray-case", "has no case.json")
 
 
+def test_a_history_breaking_the_servers_contract_is_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A history is held to the server's own `HistoryAnswer` before it is read."""
+    copy = tree()
+    history = f"{NEST}/printobserver-history.json"
+    data = json.loads(copy.read(history))
+    del data["events"][0]["kind"]
+    copy.write(history, json.dumps(data))
+    copy.write(f"{SLAB}/printobserver-history.json", "{ not json")
+    result = check("real-prints-schema", copy)
+    refused_with(result, "spaghetti-small-nest", "printobserver-history.json", "'kind'")
+    refused_with(result, "spaghetti-floating-slab", "printobserver-history.json does not parse")
+    refused_with(check("real-prints-images", copy), "spaghetti-small-nest", "unreadable")
+
+
 def test_a_case_named_for_another_directory_is_refused(
     check: Run, tree: Callable[[], Tree]
 ) -> None:
@@ -213,6 +229,15 @@ def test_a_missing_referenced_file_is_refused(check: Run, tree: Callable[[], Tre
         "spaghetti-floating-slab",
         "paused-alert",
         "05-paused-by-obico-1546.jpg",
+    )
+
+
+def test_a_file_named_anywhere_in_a_source_must_exist(check: Run, tree: Callable[[], Tree]) -> None:
+    """Every file a `sources` sentence names is checked, not only the one it leads with."""
+    copy = tree()
+    (copy.root / ROOT / "under-extrusion-lace/make_box.py").unlink()
+    refused_with(
+        check("real-prints-files", copy), "under-extrusion-lace", "make_box.py", "not a file"
     )
 
 
@@ -343,6 +368,8 @@ def test_an_operation_renamed_in_the_server_is_refused(
         ('shared_secret = "<redacted>"', 'shared_secret = ""', "ingress.shared_secret"),
         ('access_token = "<redacted>"', 'access_token = "tok"', "obico.access_token"),
         ("[camera]", '[api]\ncredential = "long-random"\n\n[camera]', "api.credential"),
+        # A secret field no configuration has yet is held by how it is named.
+        ("[camera]", '[camera]\nstream_token = "abc"', "camera.stream_token"),
     ],
 )
 def test_an_unredacted_credential_is_refused(
