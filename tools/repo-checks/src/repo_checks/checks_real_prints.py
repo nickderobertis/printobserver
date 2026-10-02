@@ -25,8 +25,9 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NewType
 
+from contract_codegen.schemas import read_schemas
 from jsonschema import Draft202012Validator
 from jsonschema.protocols import Validator
 
@@ -60,8 +61,9 @@ FILE_TOKEN = re.compile(
 SECRET_FIELD = re.compile(r"(?:key|secret|token|credential|password)$")
 REDACTED = "<redacted>"
 
-# The operation parameter kinds a number satisfies; every other kind is text.
-NUMERIC_KINDS = frozenset({"number", "integer"})
+# An event's id in a case's history, and a scenario's id within its case.
+EventId = NewType("EventId", str)
+ScenarioId = NewType("ScenarioId", str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,20 +84,21 @@ class Look:
     """One answer a `printobserver look` gives."""
 
     image: str
-    arrived_event_ids: tuple[str, ...]
+    arrived_event_ids: tuple[EventId, ...]
 
     @classmethod
     def read(cls, raw: dict[str, Any]) -> Look:
         """A look from its validated JSON."""
-        return cls(raw["image"], tuple(raw.get("arrived_event_ids", ())))
+        arrived = tuple(EventId(event_id) for event_id in raw.get("arrived_event_ids", ()))
+        return cls(raw["image"], arrived)
 
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
     """One situation a case puts the agent in, and what passes it."""
 
-    id: str
-    event_id: str | None
+    id: ScenarioId
+    event_id: EventId | None
     event_image: str
     printer_state: str
     looks: tuple[Look, ...]
@@ -106,8 +109,8 @@ class Scenario:
     def read(cls, raw: dict[str, Any]) -> Scenario:
         """A scenario from its validated JSON."""
         return cls(
-            id=raw["id"],
-            event_id=raw.get("event_id"),
+            id=ScenarioId(raw["id"]),
+            event_id=EventId(raw["event_id"]) if "event_id" in raw else None,
             event_image=raw["event_image"],
             printer_state=raw["printer_state"],
             looks=tuple(Look.read(look) for look in raw["looks"]),
@@ -134,7 +137,7 @@ class Scenario:
 class Event:
     """One event of a case's history: its kind and the sha256 of its image."""
 
-    id: str
+    id: EventId
     kind: str
     image_sha256: str | None
 
@@ -142,7 +145,7 @@ class Event:
     def read(cls, raw: dict[str, Any]) -> Event:
         """An event from its record, validated against `HistoryAnswer`."""
         image = raw.get("image")
-        return cls(raw["id"], raw["kind"], image["sha256"] if image else None)
+        return cls(EventId(raw["id"]), raw["kind"], image["sha256"] if image else None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,8 +156,8 @@ class Case:
     directory: Path
     document: dict[str, Any]
     scenarios: tuple[Scenario, ...]
-    agent_images: dict[str, str]
-    history: dict[str, Event] | None
+    agent_images: dict[str, EventId]
+    history: dict[EventId, Event] | None
 
     def referenced(self) -> Iterator[str]:
         """Every file the case.json refers to and so must carry.
@@ -224,7 +227,7 @@ def _read_case(
     if unreadable:
         return [unreadable]
     problems = _problems(case_schema, document, CASE_FILE)
-    history: dict[str, Event] | None = None
+    history: dict[EventId, Event] | None = None
     if (directory / HISTORY).is_file():
         recorded, unreadable = _read_json(directory / HISTORY)
         if unreadable:
@@ -245,7 +248,7 @@ def _read_case(
         document=document,
         scenarios=tuple(Scenario.read(raw) for raw in document["assertions"]["scenarios"]),
         agent_images={
-            entry["file"]: entry["event_id"] for entry in document.get("agent_images", [])
+            entry["file"]: EventId(entry["event_id"]) for entry in document.get("agent_images", [])
         },
         history=history,
     )
@@ -285,10 +288,13 @@ def _is_dropped(path: str) -> bool:
 
 
 def real_prints_files(repo: Repo) -> list[str]:
-    """Every file a case.json refers to exists, and every file of a case is named by it.
+    """Every file a case.json refers to is carried, and every file of a case is named by it.
 
-    A reference may be relative to the case directory, may climb to a sibling
-    with `../`, or may name a dropped file on the branch it remains on; a G-code
+    A reference relative to the case directory, or climbing to a sibling with
+    `../`, names a file this tree must carry. One spelled
+    `<branch>@<commit>:<path>` names a dropped file where it remains, and is
+    held to naming a dropped kind — a G-code or a crop — rather than to that
+    commit's contents, which a clone of `main` need not have fetched. A G-code
     or a crop named any other way names a file this tree does not carry.
     """
     findings: list[str] = []
@@ -319,11 +325,15 @@ def real_prints_files(repo: Repo) -> list[str]:
 
 
 def real_prints_images(repo: Repo) -> list[str]:
-    """Every `agent-*` image is the exact picture its event's history records."""
+    """Every `agent-*` image is the exact picture its event's history records.
+
+    Every `agent-*` file but the turn's own `agent-turn.json` is a picture.
+    """
     findings: list[str] = []
     for case in _readable(repo, "real-prints-images", findings):
         history = case.history or {}
-        for path in sorted(case.directory.glob("agent-*.jpg")):
+        pictures = (p for p in case.directory.glob("agent-*") if p.suffix != ".json")
+        for path in sorted(pictures):
             event_id = case.agent_images.get(path.name)
             if event_id is None:
                 findings.append(
@@ -390,7 +400,7 @@ def real_prints_scenarios(repo: Repo) -> list[str]:
     findings: list[str] = []
     states = _printer_states(repo)
     for case in _readable(repo, "real-prints-scenarios", findings):
-        seen: set[str] = set()
+        seen: set[ScenarioId] = set()
         for scenario in case.scenarios:
             if scenario.id in seen:
                 findings.append(f"{case.name}: scenario {scenario.id} is declared twice")
@@ -401,28 +411,54 @@ def real_prints_scenarios(repo: Repo) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class Operation:
-    """One printobserver command, and the kind of each parameter it takes."""
+    """One printobserver command, and the shape of each parameter it takes."""
 
     command: str
-    parameter_kinds: dict[str, str]
+    parameters: dict[str, Validator]
 
     def argument_finding(self, name: str, value: str | float) -> str | None:
         """Why a step cannot give this command this argument, or nothing when it can."""
-        kind = self.parameter_kinds.get(name)
-        if kind is None:
+        shape = self.parameters.get(name)
+        if shape is None:
             return f"argument {name!r}, which is not one of its parameters in {OPERATIONS}"
-        if (kind in NUMERIC_KINDS) != isinstance(value, int | float):
-            return f"argument {name!r} the value {value!r}, which a {kind} parameter cannot hold"
+        error = next(iter(shape.iter_errors(value)), None)
+        if error is not None:
+            return (
+                f"argument {name!r} the value {value!r}, which its shape refuses: {error.message}"
+            )
         return None
+
+
+def _type_definitions(repo: Repo) -> dict[str, Any]:
+    """Every checked-in schema by type name, as the `$defs` a parameter's shape refers into.
+
+    A type file's own `$defs` are copies of the types it refers to, so they are
+    pooled first and the files themselves, each standing for its own name, win.
+    """
+    declared = read_schemas(repo.root)
+    pooled: dict[str, Any] = {}
+    for schema in declared.values():
+        pooled.update(schema.get("$defs", {}))
+    pooled.update(declared)
+    return {
+        name: {key: value for key, value in schema.items() if key not in {"$schema", "$defs"}}
+        for name, schema in pooled.items()
+    }
 
 
 def _operations(repo: Repo) -> dict[str, Operation]:
     """Each printobserver command, hyphenated, read from the server's description."""
     described = json.loads(repo.read(OPERATIONS))
+    definitions = _type_definitions(repo)
     operations = (
         Operation(
             operation["name"].replace("_", "-"),
-            {parameter["name"]: parameter["kind"] for parameter in operation["parameters"]},
+            {
+                parameter["name"]: Draft202012Validator(
+                    {"$defs": definitions, **parameter["shape"]}
+                )
+                for parameter in operation["parameters"]
+            },
         )
         for operation in described["operations"]
     )

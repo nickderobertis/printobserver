@@ -338,12 +338,17 @@ def test_an_unknown_operation_or_argument_is_refused(check: Run, tree: Callable[
     scenario["never"] = [
         {"operation": "set-fan-speed"},
         {"operation": "set-fan-percent", "args": {"percent": "full"}},
+        {"operation": "set-fan-percent", "args": {"duration_s": 1.5}},
+        {"operation": "acknowledge-failure", "args": {"disposition": "halt"}},
     ]
     write_case(copy, "fan-cut-bridge", data)
     result = check("real-prints-operations", copy)
     refused_with(result, "fan-cut-bridge", "'pct'", "not one of its parameters")
     refused_with(result, "fan-cut-bridge", "'set-fan-speed'", "does not have")
-    refused_with(result, "fan-cut-bridge", "'full'", "cannot hold")
+    # Each value is held to its parameter's own shape, its referenced types included.
+    refused_with(result, "fan-cut-bridge", "'full'", "shape refuses")
+    refused_with(result, "fan-cut-bridge", "1.5", "shape refuses")
+    refused_with(result, "fan-cut-bridge", "'halt'", "shape refuses")
 
 
 def test_an_operation_renamed_in_the_server_is_refused(
