@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from repo_checks.model import Repo, toolchain_tools
+from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo, toolchain_tools
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     marker_block,
@@ -79,6 +79,31 @@ def powershell_providers(repo: Repo) -> list[str]:
             f"{source}'s POWERSHELLS {declared!r}"
         ]
     return []
+
+
+def powershell_ascii(repo: Repo) -> list[str]:
+    """Every PowerShell script the tree carries is ASCII, so every PowerShell reads it alike.
+
+    Windows PowerShell 5.1 reads a script file with no byte-order mark in the
+    system's ANSI code page, where the bytes of a UTF-8 em dash include a curly
+    quote that ends a string early: the installer then fails to parse when run
+    with `-File`, though `irm | iex`, which decodes UTF-8, runs it. ASCII reads
+    the same under every encoding, with no mark to keep through a download.
+    """
+    findings: list[str] = []
+    for script in sorted(repo.root.rglob("*.ps1")):
+        relative = script.relative_to(repo.root)
+        if UNCOMMITTED_DIRECTORIES.intersection(relative.parts) or not script.is_file():
+            continue
+        for number, line in enumerate(script.read_bytes().splitlines(), start=1):
+            column = next((at for at, byte in enumerate(line, start=1) if byte > 0x7F), None)
+            if column is not None:
+                findings.append(
+                    f"{relative.as_posix()}:{number}:{column} carries a byte outside ASCII, "
+                    f"which Windows PowerShell 5.1 misreads in a script with no byte-order "
+                    f"mark. Write it in ASCII: a hyphen for a dash, straight quotes for curly ones"
+                )
+    return findings
 
 
 def agent_layer(repo: Repo) -> list[str]:
