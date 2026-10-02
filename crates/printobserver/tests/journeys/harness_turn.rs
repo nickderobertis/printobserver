@@ -42,6 +42,28 @@ impl HarnessOnPath {
         Self { bin }
     }
 
+    /// Lay the configured harness out under `root` the way npm installs it on
+    /// Windows: a `claude.cmd` launcher, and the stand-in as the native program
+    /// in the package beside it, with nothing of the harness's own name.
+    pub fn behind_npm_launcher(root: &Path) -> Self {
+        let bin = root.join("harness-bin");
+        let behind = bin.join(NPM_PROGRAM);
+        let written = stand_in(
+            behind.parent().expect("the program has a directory"),
+            entry(),
+            &root.join("invocations"),
+            0,
+            &assessment_answer(),
+        );
+        std::fs::rename(&written, &behind).expect("the stand-in takes the package's name");
+        std::fs::write(
+            bin.join("claude.cmd"),
+            "@node \"%~dp0\\node_modules\\...\" %*\r\n",
+        )
+        .expect("the launcher is writable");
+        Self { bin }
+    }
+
     /// The whole search path the supervisor runs with: the stand-in's
     /// directory first, then the system directories the stand-in's own shell
     /// commands are in.
@@ -82,6 +104,33 @@ impl HarnessOnPath {
         }
         panic!("no supervision turn wrote {} in time", seen.display());
     }
+}
+
+/// Where npm's package for Claude Code keeps its native program, relative to
+/// the directory npm writes the program's `claude.cmd` launcher into.
+const NPM_PROGRAM: &str = "node_modules/@anthropic-ai/claude-code/bin/claude.exe";
+
+/// A supervisor whose path holds only npm's launcher and its package runs its
+/// turns with the native program behind that launcher, which is what npm's
+/// Windows install leaves: no program of the harness's own name to start.
+#[test]
+fn a_turn_starts_the_program_behind_npms_launcher() {
+    let root = tempfile::TempDir::new().expect("a journey's own root");
+    let harness = HarnessOnPath::behind_npm_launcher(root.path());
+    let world = World::configured_with(
+        crate::world::STOOD_IN,
+        &crate::world::committed_skill(),
+        Some(&harness.search_path()),
+    );
+
+    HarnessOnPath::turn_ran_in(&world);
+
+    let invoked = std::fs::read_to_string(root.path().join("invocations"))
+        .expect("the program behind the launcher was run");
+    assert!(
+        invoked.lines().any(|line| line.starts_with("claude -p")),
+        "the program behind the launcher ran no turn: {invoked}"
+    );
 }
 
 /// The configured harness, as the adapter's table declares it.

@@ -330,9 +330,10 @@ def prompt_template(repo: Repo) -> list[str]:
         for spelling in sorted(_spellings(name)):
             if re.search(rf"\b{re.escape(program)}\s+{re.escape(spelling)}\b", text):
                 findings.append(
-                    f"`{template}` names `{program} {spelling}`. The turn this template "
-                    f"asks for is a reading: the only operation of this program it may "
-                    f"name is the context read `{program} {context_read}`."
+                    f"`{template}` names `{program} {spelling}`. What a turn may do is the "
+                    f"skill's to describe and the policy's to allow: the only operation of "
+                    f"this program the template may name is the context read "
+                    f"`{program} {context_read}`."
                 )
     return findings
 

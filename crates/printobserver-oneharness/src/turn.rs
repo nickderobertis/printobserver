@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use oneharness_core::domain::harness::HarnessIdentity as EngineIdentity;
 use oneharness_core::domain::mode::PermissionMode;
 use oneharness_core::domain::report::{RunReport, RunResult, SessionReport, Status};
 use oneharness_core::domain::session::SessionPhase as HarnessPhase;
@@ -28,6 +29,30 @@ use crate::skill::skill_prose;
 /// that a differently-configured process would not find.
 pub const HARNESS_SESSIONS_DIRECTORY: &str = "harness-sessions";
 
+/// The harness whose turns are granted a shell narrowed to the agent's
+/// commands. Another harness keeps `OneHarness`'s read-only mode, which gives it
+/// no shell at all.
+const CLAUDE_CODE: &str = "claude-code";
+
+/// The Claude Code tools a turn with agent commands has, and there is no other:
+/// the three that only read, and the shell those commands run in.
+const CLAUDE_TURN_TOOLS: [&str; 4] = ["Read", "Grep", "Glob", "Bash"];
+
+/// The tools of [`CLAUDE_TURN_TOOLS`] that are allowed outright. The shell is
+/// allowed only for the configured commands.
+const CLAUDE_READ_TOOLS: [&str; 3] = ["Read", "Grep", "Glob"];
+
+/// How many characters of an answer that failed validation are kept with the
+/// failure: enough to read what the agent said, bounded so a runaway answer
+/// cannot swell the record it lands in.
+pub const ANSWER_EXCERPT_CHARS: usize = 2000;
+
+/// What follows an excerpt that was cut short.
+pub const ANSWER_CUT: &str = " …";
+
+/// What joins the reason an answer was refused to what the agent said.
+pub const ANSWER_SAID: &str = "; the agent answered: ";
+
 /// The supervising agent, reached through `OneHarness` in this process.
 #[derive(Debug)]
 pub struct OneharnessSupervisor {
@@ -50,7 +75,7 @@ impl OneharnessSupervisor {
     ///
     /// Returns [`SupervisorError::Unavailable`] when either file cannot be read,
     /// when the skill opens a frontmatter block it never closes, or when the
-    /// template does not declare the three slots a turn fills.
+    /// template does not declare the four slots a turn fills.
     pub fn open(config: SupervisorConfig) -> Result<Self, SupervisorError> {
         Self::observed(config, TurnSeam::default())
     }
@@ -125,9 +150,17 @@ impl OneharnessSupervisor {
             })
     }
 
-    /// The prompt for one turn: the committed template with its three slots
-    /// filled, and nothing else.
-    fn prompt_for(&self, request: &TurnRequest) -> Result<String, SupervisorError> {
+    /// The prompt for one turn in one session: the committed template with its
+    /// four slots filled, and nothing else.
+    ///
+    /// Built for the session the turn runs in, because the actor the agent
+    /// names itself by is that session's: an agent left to guess the shape of
+    /// its own actor is refused by every request it guesses wrong.
+    fn prompt_for(
+        &self,
+        request: &TurnRequest,
+        session: &SessionName,
+    ) -> Result<String, SupervisorError> {
         let event = serde_json::to_string_pretty(&request.event).map_err(|error| {
             SupervisorError::Unavailable {
                 detail: format!("the triggering event cannot be written down: {error}"),
@@ -137,11 +170,49 @@ impl OneharnessSupervisor {
             .image_path
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
-        Ok(self.template.fill(&event, &image, &request.context_command))
+        let actor = serde_json::json!({ "agent": { "session_name": session.as_str() } });
+        Ok(self
+            .template
+            .fill(&event, &image, &request.context_command, &actor.to_string()))
+    }
+
+    /// How the harness is permitted to act during a turn, and the arguments that
+    /// narrow it.
+    ///
+    /// With no agent commands configured, or on a harness other than Claude
+    /// Code, a turn is `OneHarness`'s read-only mode: the agent reads files and
+    /// has no shell. A turn that has agent commands runs Claude Code in
+    /// `dontAsk` mode instead — what [`PermissionMode::Default`] maps to — which
+    /// refuses any tool call no rule allows and carries on. Its tool set is
+    /// narrowed to [`CLAUDE_TURN_TOOLS`], and its rules allow the read tools
+    /// outright and the shell only for a command beginning with one of the
+    /// configured prefixes.
+    fn permissions(&self) -> (PermissionMode, Vec<String>) {
+        let on_claude_code = self
+            .config
+            .harness
+            .as_str()
+            .parse::<EngineIdentity>()
+            .is_ok_and(|identity| identity.base() == CLAUDE_CODE);
+        if !on_claude_code || self.config.agent_commands.is_empty() {
+            return (PermissionMode::ReadOnly, Vec::new());
+        }
+        let mut arguments = vec!["--tools".to_owned()];
+        arguments.extend(CLAUDE_TURN_TOOLS.map(str::to_owned));
+        arguments.push("--allowedTools".to_owned());
+        arguments.extend(CLAUDE_READ_TOOLS.map(str::to_owned));
+        arguments.extend(
+            self.config
+                .agent_commands
+                .iter()
+                .map(|command| format!("Bash({command}:*)")),
+        );
+        (PermissionMode::Default, arguments)
     }
 
     /// The run request for one turn in one session.
     fn build_request(&self, session: &SessionName, prompt: &str) -> RunRequest {
+        let (mode, passthrough) = self.permissions();
         RunRequest {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
@@ -158,7 +229,8 @@ impl OneharnessSupervisor {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
-            mode: Some(PermissionMode::ReadOnly),
+            mode: Some(mode),
+            passthrough,
             // The supervisor's turns are decided here, not by whatever
             // configuration happens to be on the host it runs on.
             no_config: true,
@@ -193,11 +265,10 @@ impl OneharnessSupervisor {
     /// One supervision turn, from the ledger through the run and back.
     fn take_turn(&self, request: &TurnRequest) -> Result<TurnOutcome, SupervisorError> {
         let print_id = &request.print_id;
-        let prompt = self.prompt_for(request)?;
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
 
-        let outcome = match self.drive(&session, &prompt) {
+        let outcome = match self.drive(&session, &self.prompt_for(request, &session)?) {
             Ok(outcome) => outcome,
             // The harness binds a session to the identity that created it and
             // refuses to continue it on another. That is a session that has
@@ -211,7 +282,9 @@ impl OneharnessSupervisor {
                 ledger.close_current(&reason, Timestamp::now());
                 session = ledger.name_after_current();
                 self.save(&ledger, print_id)?;
-                self.drive(&session, &prompt)
+                // The prompt is built again, because the actor it hands the
+                // agent names the session the turn now runs in.
+                self.drive(&session, &self.prompt_for(request, &session)?)
                     .map_err(|error| unavailable(&error))?
             }
             Err(error) => return Err(unavailable(&error)),
@@ -371,6 +444,23 @@ fn read(path: &Path) -> Result<String, SupervisorError> {
     })
 }
 
+/// Why an answer was refused, followed by what the agent actually said.
+///
+/// The reason alone ("no JSON value could be extracted") names the symptom
+/// rather than the cause. The agent's own words usually name the cause — a
+/// command it was refused, a sign-in the harness is missing — and nothing else
+/// keeps them.
+fn with_answer(why: String, text: Option<&str>) -> String {
+    let Some(said) = text.map(str::trim).filter(|said| !said.is_empty()) else {
+        return why;
+    };
+    let mut kept = said.char_indices().map(|(at, _)| at);
+    match kept.nth(ANSWER_EXCERPT_CHARS) {
+        Some(cut) => format!("{why}{ANSWER_SAID}{}{ANSWER_CUT}", &said[..cut]),
+        None => format!("{why}{ANSWER_SAID}{said}"),
+    }
+}
+
 /// Whatever `OneHarness` refused a run for, as this port's own error.
 fn unavailable(error: &OneharnessError) -> SupervisorError {
     SupervisorError::Unavailable {
@@ -405,8 +495,12 @@ fn assessment(result: &RunResult) -> Result<AgentAssessment, SupervisorError> {
         });
     }
     if result.schema_valid != Some(true) {
+        let why = result
+            .schema_error
+            .clone()
+            .unwrap_or_else(|| NO_ANSWER.to_owned());
         return Err(SupervisorError::InvalidAnswer {
-            detail: result.schema_error.clone().unwrap_or(NO_ANSWER.to_owned()),
+            detail: with_answer(why, result.text.as_deref()),
         });
     }
     // The value is read back as the assessment itself rather than trusted for

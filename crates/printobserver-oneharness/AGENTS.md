@@ -21,7 +21,7 @@ seam.
 
 ## What a prompt may say is one committed file
 
-The template is the whole of it: three slots filled and sent unchanged, and a
+The template is the whole of it: four slots filled and sent unchanged, and a
 system prompt — the prose of the installed skill the configuration names, its
 frontmatter split off — read from the tree rather than carried in this crate's
 text; the crate carries no skill at all. A
@@ -35,6 +35,27 @@ generation target writes it. The rule is keyed on those names rather than on
 words that sound like instructions: an event saying the printer paused is a
 fact, and a rule hunting such words would refuse a truthful description while
 missing an instruction phrased another way.
+
+## A turn's shell runs this program's commands and no other
+
+The prompt has the agent read its print's context through `printobserver
+context`, and the skill has it act through the same program, so a turn needs a
+shell. `OneHarness`'s read-only mode withholds the shell entirely, and a turn
+under it answers in prose instead of an assessment. So a Claude Code turn whose
+configuration carries agent commands runs in `dontAsk` mode, which refuses any
+tool call no rule allows, with the tool set narrowed to `Read Grep Glob Bash`
+and one `Bash(<command>:*)` rule per command. The server derives those commands
+from `OPERATIONS` through the same function that spells the command-line
+program's commands, so the agent may run exactly the commands the program has,
+and what it may change through them stays what the policy grants its actor.
+
+The turn names the tools that exist rather than denying the ones it should not
+have. A denylist is walked past by every tool Claude Code adds after it was
+written — and by `Task`, whose subagent would carry a shell of its own — while a
+named set gains nothing until somebody adds to it here.
+
+The rules are written for Claude Code alone. Another harness keeps the
+read-only mode until its own narrowing is written and proven.
 
 ## The answer is constrained by the generated schema
 

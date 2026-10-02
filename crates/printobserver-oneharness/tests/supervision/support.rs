@@ -258,6 +258,7 @@ pub fn config<Mode>(
         turn_timeout: TurnTimeout::DEFAULT,
         harness_bin: Some(responder()),
         harness_env: env,
+        agent_commands: Vec::new(),
     }
 }
 

@@ -531,7 +531,8 @@ assessment_schema = "schemas/printobserver-supervisor-api/AgentAssessment.json"
 action_schema = "schemas/printobserver-core/PrintAction.json"
 # The program whose operations the template may not name, and the reads this
 # system exposes beside the action vocabulary. `context_read` is the one
-# operation the template may name, because it is a read.
+# operation the template may name: what else a turn does is the skill's to
+# describe and the policy's to allow, so the template names no other.
 program = "printobserver"
 reads = ["prints", "status", "context", "image", "materialize", "history", "manifest-get", "manifest-set"]
 context_read = "context"

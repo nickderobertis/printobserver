@@ -123,17 +123,19 @@ fn client_value(configuration: &str, key: &str) -> Option<String> {
 fn turn_from_the_prompt() -> Option<Turn> {
     let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
-    let mut words = after.split_whitespace();
+    // The path is quoted for a POSIX shell, and read back the way one reads it.
+    let (path, rest) = single_quoted(after.trim_start())?;
     // The command names a configuration file rather than an address, because
     // no client command of that program takes an address. This responder is
     // not that program, so it reads the two values it needs out of the file the
     // server wrote — which is where a real client reads them from too.
-    let configuration = std::fs::read_to_string(words.next()?).ok()?;
+    let configuration = std::fs::read_to_string(path).ok()?;
     let server = client_value(&configuration, "server")?
         .trim_end_matches('/')
         .to_owned();
     let credential = Credential::admitted(client_value(&configuration, "credential")?)?;
-    let print = words
+    let print = rest
+        .split_whitespace()
         .skip_while(|word| *word != "--print-id")
         .nth(1)?
         .trim()
@@ -143,6 +145,24 @@ fn turn_from_the_prompt() -> Option<Turn> {
         credential,
         print,
     })
+}
+
+/// One word a POSIX shell reads out of single quotes at the start of `text` —
+/// each `'\''` a single quote of its own — and what follows it.
+fn single_quoted(text: &str) -> Option<(String, &str)> {
+    let mut word = String::new();
+    let mut rest = text.strip_prefix('\'')?;
+    loop {
+        let (quoted, after) = rest.split_once('\'')?;
+        word.push_str(quoted);
+        match after.strip_prefix("\\''") {
+            Some(reopened) => {
+                word.push('\'');
+                rest = reopened;
+            }
+            None => return Some((word, after)),
+        }
+    }
 }
 
 /// One action this responder could not issue at all.
@@ -274,6 +294,10 @@ fn record_what_was_seen() {
         "cwd_error": here.as_ref().err(),
         "system": system.as_ref().ok(),
         "system_error": system.as_ref().err(),
+        // Everything after the program's own name, and the search path the
+        // turn's commands would be found on.
+        "arguments": arguments.get(1..).unwrap_or_default(),
+        "path": std::env::var("PATH").ok(),
     });
     // A record nobody can read is a journey that cannot see what it asserts
     // on, so failing to write one ends the run rather than passing unseen.

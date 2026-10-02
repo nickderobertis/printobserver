@@ -95,6 +95,12 @@ reason = "Claude Code's login command is a third-party CLI surface with no machi
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "npm_program: Some(\"node_modules/@anthropic-ai/claude-code/bin/claude.exe\"),"
+reason = "Where npm puts Claude Code's native program is npm's layout for a third-party package, and its one machine-readable source is that package's own `bin` entry on the npm registry (`npm view @anthropic-ai/claude-code bin` answers `{ claude: 'bin/claude.exe' }` at 2.1.288), under the `node_modules` npm writes beside the `claude.cmd` launcher. A drift gate would have to reach the public registry from inside the gate. A layout that moves leaves the lookup answering `None`, so the harness is started by name and fails the way a missing program does, naming the program and the PATH, rather than starting something else."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
 site = "arguments: &[\"login\", \"--device-auth\"],"
 reason = "Codex's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `codex login --help` (the device-code form, which completes on a machine with no browser) as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."
 
