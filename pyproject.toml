@@ -105,4 +105,5 @@ root = [
     "tools/printer-smoke",
     "tools/printer-smoke/tests",
     "tests/skilltest",
+    "tests/skilltest-wiring",
 ]

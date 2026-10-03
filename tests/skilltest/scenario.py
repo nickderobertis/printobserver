@@ -4,10 +4,14 @@
 installed skill as the working directory, the pictures as files in the
 supervisor's state directory, named the way it names them, and the client
 configuration beside them. It fills the committed turn template, or writes an
-operator's start request, and stubs every operation the server serves, so
-nothing the agent runs reaches a printer, a server, Obico or a camera.
+operator's start request, and stubs every command the program has, so nothing
+the agent runs reaches a printer, a server, Obico or a camera.
 
-Everything it builds is built without a model, which is what lets the gate's
+Every answer is a document in the server's own answer shape, held in the
+gate to the server's JSON Schemas and to the program's generated examples
+rather than to a second, Python copy of those shapes.
+
+Everything here is built without a model, which is what lets the gate's
 deterministic tests build every scenario on disk and hold what they build to
 the contracts it is read from.
 """
@@ -24,36 +28,40 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from answers import from_labelled, labelled, machine
 from real_prints import (
-    CASES,
     OBICO_SAMPLE,
-    PROGRAM,
     PROMPT_SLOTS_SOURCE,
+    SCHEMAS,
     SKILL,
     TURN_PROMPT,
+    EventId,
+    Look,
     Scenario,
     Step,
     agent_turn,
     commands_in,
-    help_pattern,
     history,
-    operation_pattern,
-    operations,
-    program_pattern,
     read_case,
-    reads,
     required_steps,
     service_config,
     step_pattern,
-    usage,
-    version,
-    version_pattern,
 )
 from skilltest_pytest import TestCase, ToolMock, ToolSpy, called, not_called, spy, stub
+from surface import (
+    PROGRAM,
+    asking_pattern,
+    bare_program_pattern,
+    program_pattern,
+    surface,
+    turn_tool_rules,
+    usage,
+    version,
+)
 
 # The detector's alert kind, and the look's own.
 ALERT = "obico_failure_alert"
@@ -70,23 +78,23 @@ PAUSED_NOZZLE_C = 184.17
 # An idle printer waiting for a print, heaters off.
 IDLE_C = 24.0
 
-# The job's length, which no case records; only its proportions are read.
-ESTIMATED_PRINT_TIME_S = 3600
-FILE_SIZE_BYTES = 422889
 # How long a look says it waited, which a fixed answer cannot take from the
 # command it answers.
 LOOK_WAITED_S = 30
-
-# The exit the program refuses an invocation it cannot parse with.
-USAGE_EXIT = 2
+# The markers of a JPEG comment segment and of the JFIF header.
+JPEG_COMMENT = b"\xff\xfe"
+JFIF_HEADER = b"\xff\xe0"
+# How many later looks re-answer the scenario's last frame, each at its own
+# instant, before skilltest repeats the last answer as it stands.
+LATER_LOOKS = 4
 
 # The file a start request names. No case records one, and which file it is
 # decides nothing about whether the bed is clear.
 START_FILE = "calibration-box.gcode"
 
-
-def _now() -> datetime:
-    return datetime.now(UTC)
+# The reason a fixed answer echoes. The answer's schema requires one, and a
+# fixed answer cannot echo the one the agent gave.
+ECHOED_REASON = "as requested"
 
 
 def _instant(moment: datetime) -> str:
@@ -102,9 +110,14 @@ def _shell_quoted(word: str) -> str:
     return "'" + word.replace("'", "'\\''") + "'"
 
 
-# ---------------------------------------------------------------------------
-# The committed prompt template
-# ---------------------------------------------------------------------------
+def _schema(name: str) -> dict[str, Any]:
+    path = next(SCHEMAS.glob(f"*/{name}.json"))
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dispositions() -> list[str]:
+    """Every disposition an acknowledgement may carry, as its schema declares them."""
+    return [variant["const"] for variant in _schema("AcknowledgementDisposition")["oneOf"]]
 
 
 def declared_slots() -> list[str]:
@@ -134,9 +147,17 @@ def fill(template: str, values: dict[str, str]) -> str:
     return "".join(values.get(piece, piece) for piece in pieces)
 
 
-# ---------------------------------------------------------------------------
-# The facts one scenario's answers are composed from
-# ---------------------------------------------------------------------------
+def harness_config() -> str:
+    """The `.oneharness.toml` a run's harness reads: a production turn's permissions.
+
+    A Claude Code turn runs in `default` mode — Claude Code's `dontAsk` — narrowed
+    to `turn.rs`'s tools, with the read tools allowed and the shell allowed only
+    for the program's own commands. A stubbed command passes because its stub
+    answers it allowed; anything else the agent runs is refused, as it is there.
+    """
+    tools, allowed = turn_tool_rules()
+    arguments = ["--tools", *tools, "--allowedTools", *allowed]
+    return f'mode = "default"\n\n[harness.claude-code]\nargs = {json.dumps(arguments)}\n'
 
 
 @dataclass(frozen=True)
@@ -144,13 +165,13 @@ class Reading:
     """The printer and its job at one moment."""
 
     state: str
-    completion: float
+    completion: float | None
     nozzle_actual: float
     nozzle_target: float
     bed_actual: float
     bed_target: float
-    print_time_s: int
-    print_time_left_s: int
+    print_time_s: int | None = None
+    print_time_left_s: int | None = None
 
 
 @dataclass
@@ -161,6 +182,68 @@ class Image:
     path: Path
     sha256: str
     id: str
+
+
+class Render(StrEnum):
+    """How a stub renders what it answers."""
+
+    LABELLED = "labelled"
+    JSON = "json"
+    TEXT = "text"
+
+
+@dataclass(frozen=True)
+class StubSpec:
+    """One stub: the commands it answers, and what it answers each successive one with."""
+
+    name: str
+    command: str | None
+    pattern: str
+    documents: tuple[Any, ...]
+    render: Render = Render.LABELLED
+    exit_code: int = 0
+
+    def outputs(self) -> list[dict[str, Any]]:
+        """Each response, rendered as the command asked for, with the program's exit."""
+        rendered = []
+        for document in self.documents:
+            match self.render:
+                case Render.TEXT:
+                    output = str(document)
+                case Render.JSON:
+                    output = machine(document)
+                case Render.LABELLED:
+                    output = labelled(document)
+            rendered.append({"output": output, "exit_code": self.exit_code})
+        return rendered
+
+    def mock(self) -> ToolMock:
+        """The skilltest stub."""
+        return stub(tool="bash", pattern=self.pattern, responses=self.outputs(), name=self.name)
+
+
+@dataclass(frozen=True)
+class Adjustment:
+    """One bounded adjustment: its command, what it adjusts, and the grid its stubs echo on."""
+
+    command: str
+    adjustable: str
+    parameter: str
+    resolution: Decimal
+    nominal: float
+
+
+# Each adjustment's value is answered on a grid: every value of its resolution
+# inside the bounds the configuration allows, each by a stub of its own, so the
+# answer echoes the value asked for. A value off the grid is answered at the
+# printer's nominal reading.
+ADJUSTMENTS = (
+    Adjustment("set-feedrate-factor", "feedrate", "factor", Decimal("0.01"), 1.0),
+    Adjustment("set-flowrate-factor", "flowrate", "factor", Decimal("0.01"), 1.0),
+    Adjustment("set-fan-percent", "fan", "percent", Decimal(1), 100.0),
+    Adjustment("set-tool-target-c", "tool_target:0", "target_c", Decimal(1), NOZZLE_C),
+    Adjustment("set-bed-target-c", "bed_target", "target_c", Decimal(1), BED_C),
+)
 
 
 @dataclass
@@ -175,6 +258,7 @@ class Built:
     prompt: str
     images: dict[str, Image]
     event: dict[str, Any] | None
+    situation: dict[str, Any] | None
     answers: dict[str, list[dict[str, Any]]]
     stubs: list[StubSpec]
     never: list[tuple[Step, ToolSpy]]
@@ -186,23 +270,17 @@ class Built:
 
 def _frame(case: str, name: str) -> dict[str, Any]:
     """The frame entry a case's `case.json` gives one of its files, or none."""
-    document = read_case(CASES / case)
-    for frame in document.get("frames", []):
-        if frame["file"] == name:
-            return frame
-    return {}
-
-
-def _alerts(case: str) -> list[dict[str, Any]]:
-    return [event for event in history(case) if event["kind"] == ALERT]
+    return next((f for f in read_case(case).get("frames", []) if f["file"] == name), {})
 
 
 def _file_name(case: str) -> str:
     """The file a case's print ran, as its history or its sources name it."""
-    for alert in _alerts(case):
-        return alert["payload"]["file_name"]
-    document = read_case(CASES / case)
-    named = re.findall(r"[\w-]+(?:\.[\w-]+)*\.gcode", json.dumps(document.get("sources", {})))
+    for event in history(case):
+        if event["kind"] == ALERT:
+            return event["payload"]["file_name"]
+    named = re.findall(
+        r"[\w-]+(?:\.[\w-]+)*\.gcode", json.dumps(read_case(case).get("sources", {}))
+    )
     printed = [name for name in named if not name.endswith(".clean.gcode")]
     if not printed:
         msg = f"{case} names no G-code file its print ran"
@@ -216,15 +294,14 @@ def _reading(scenario: Scenario, image: str, *, paused_by_detector: bool) -> Rea
     A case that recorded the printer's telemetry is read from it: the last
     reading in the scenario's state that carries the job's progress and both
     heaters. Otherwise the frame's progress is the job's, at the profile these
-    prints ran.
+    prints ran, and a progress the case does not record is not answered.
     """
-    document = read_case(scenario.directory)
     state = "paused" if paused_by_detector else scenario.printer_state
     if state == "operational":
-        return Reading(state, 0.0, IDLE_C, 0.0, IDLE_C, 0.0, 0, 0)
+        return Reading(state, None, IDLE_C, 0.0, IDLE_C, 0.0)
     telemetry = [
         row
-        for row in document.get("telemetry", [])
+        for row in read_case(scenario.case).get("telemetry", [])
         if row.get("state", "").lower() == scenario.printer_state
         and "completion_pct" in row
         and "tool0" in row
@@ -239,20 +316,17 @@ def _reading(scenario: Scenario, image: str, *, paused_by_detector: bool) -> Rea
             nozzle_target=float(row["tool0"]["target_c"]),
             bed_actual=float(row["bed"]["actual_c"]),
             bed_target=float(row["bed"]["target_c"]),
-            print_time_s=int(row.get("printTime_s", 0)),
-            print_time_left_s=int(row.get("printTimeLeft_s", 0)),
+            print_time_s=row.get("printTime_s"),
+            print_time_left_s=row.get("printTimeLeft_s"),
         )
-    completion = _frame(scenario.case, image).get("progress_pct", 50.0) / 100
-    elapsed = round(ESTIMATED_PRINT_TIME_S * completion)
+    progress = _frame(scenario.case, image).get("progress_pct")
     return Reading(
         state=state,
-        completion=completion,
+        completion=None if progress is None else progress / 100,
         nozzle_actual=PAUSED_NOZZLE_C if paused_by_detector else NOZZLE_C,
         nozzle_target=0.0 if paused_by_detector else NOZZLE_C,
         bed_actual=BED_C,
         bed_target=BED_C,
-        print_time_s=elapsed,
-        print_time_left_s=ESTIMATED_PRINT_TIME_S - elapsed,
     )
 
 
@@ -278,21 +352,26 @@ def _printer(reading: Reading, observed_at: str) -> dict[str, Any]:
 
 
 def _job(reading: Reading, file_name: str) -> dict[str, Any]:
+    """The job the printer reports, carrying only what the case records of it."""
+    job: dict[str, Any] = {"file_name": file_name, "file_origin": "local", "state": reading.state}
+    if reading.completion is not None:
+        job["completion"] = _reading_value(reading.completion)
+    if reading.print_time_s is not None:
+        job["print_time_s"] = reading.print_time_s
+    if reading.print_time_left_s is not None:
+        job["print_time_left_s"] = reading.print_time_left_s
+    return job
+
+
+def _manifest(file_name: str, allowed: dict[str, Any]) -> dict[str, Any]:
     return {
-        "completion": _reading_value(reading.completion),
-        "estimated_print_time_s": ESTIMATED_PRINT_TIME_S,
+        "allowed": allowed,
         "file_name": file_name,
-        "file_origin": "local",
-        "print_time_left_s": reading.print_time_left_s,
-        "print_time_s": reading.print_time_s,
-        "size_bytes": FILE_SIZE_BYTES,
-        "state": reading.state,
+        "material": "PLA",
+        "metadata": {},
+        "nozzle_diameter_mm": 0.4,
+        "slicer_profile": "0.20mm BALANCED",
     }
-
-
-# ---------------------------------------------------------------------------
-# Building one scenario
-# ---------------------------------------------------------------------------
 
 
 class _Composer:
@@ -300,22 +379,27 @@ class _Composer:
 
     def __init__(self, scenario: Scenario, root: Path) -> None:
         self.scenario = scenario
-        self.now = _now()
+        self.now = datetime.now(UTC)
         self.state_dir = root / "printobserver"
         self.workspace = self.state_dir / "skills" / "printobserver"
         self.config = self.state_dir / "client.toml"
         self.images: dict[str, Image] = {}
-        self.trigger = self._trigger_event()
+        self.trigger = next(
+            (event for event in history(scenario.case) if event["id"] == scenario.event_id), None
+        )
         self.print_id = self.trigger["print_id"] if self.trigger is not None else _id()
         self.actor = json.dumps(
             {"agent": {"session_name": f"print-{self.print_id}"}}, separators=(",", ":")
         )
-        self.file_name = START_FILE if scenario.trigger == "start_request" else self._file()
+        if scenario.trigger == "start_request":
+            self.file_name = START_FILE
+        else:
+            source = _frame(scenario.case, scenario.event_image).get("source")
+            self.file_name = _file_name(source or scenario.case)
         self.opened_at = _instant(self.now - timedelta(minutes=30))
 
-    # -- the world on disk ---------------------------------------------------
-
     def lay_down(self) -> None:
+        """Put the skill, the client configuration and every picture where a turn finds them."""
         shutil.copytree(SKILL, self.workspace, ignore=shutil.ignore_patterns("__pycache__"))
         self.config.write_text(
             f'[client]\nserver = "http://127.0.0.1:8420"\ncredential = "{secrets.token_hex(24)}"\n',
@@ -326,29 +410,32 @@ class _Composer:
 
     def image(self, name: str) -> Image:
         """A case file copied under the state directory, named by its digest as the server does."""
-        if name in self.images:
-            return self.images[name]
-        source = self.scenario.directory / name
-        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        if name not in self.images:
+            self.images[name] = self._stored(name, (self.scenario.directory / name).read_bytes())
+        return self.images[name]
+
+    def capture(self, name: str, index: int) -> Image:
+        """A later capture of a case frame: the same picture, as bytes of a capture of its own.
+
+        A camera never hands two captures of an unchanged scene byte for byte,
+        so a later look of the same frame carries the picture with a JPEG comment
+        segment after its start marker, which leaves what it shows unchanged.
+        """
+        original = (self.scenario.directory / name).read_bytes()
+        comment = f"capture {index}".encode()
+        segment = JPEG_COMMENT + (len(comment) + 2).to_bytes(2, "big") + comment
+        # After the JFIF header where there is one, which a reader expects first.
+        at = 2
+        if original[2:4] == JFIF_HEADER:
+            at = 4 + int.from_bytes(original[4:6], "big")
+        return self._stored(name, original[:at] + segment + original[at:])
+
+    def _stored(self, name: str, content: bytes) -> Image:
+        digest = hashlib.sha256(content).hexdigest()
         path = self.state_dir / "images" / digest[:2] / digest
         path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, path)
-        copied = Image(name=name, path=path, sha256=digest, id=_id())
-        self.images[name] = copied
-        return copied
-
-    # -- the event ------------------------------------------------------------
-
-    def _trigger_event(self) -> dict[str, Any] | None:
-        if self.scenario.event_id is None:
-            return None
-        return next(
-            event for event in history(self.scenario.case) if event["id"] == self.scenario.event_id
-        )
-
-    def _file(self) -> str:
-        source = _frame(self.scenario.case, self.scenario.event_image).get("source")
-        return _file_name(source or self.scenario.case)
+        path.write_bytes(content)
+        return Image(name=name, path=path, sha256=digest, id=_id())
 
     def event(self) -> dict[str, Any] | None:
         """The event the turn is about: the recorded alert, or one built in its shape."""
@@ -356,9 +443,7 @@ class _Composer:
             return None
         image = self.image(self.scenario.event_image)
         if self.trigger is not None:
-            recorded = dict(self.trigger)
-            recorded["image"] = {"id": image.id, "sha256": image.sha256}
-            return recorded
+            return {**self.trigger, "image": {"id": image.id, "sha256": image.sha256}}
         return self._synthetic_alert(image)
 
     def _synthetic_alert(self, image: Image) -> dict[str, Any]:
@@ -398,6 +483,15 @@ class _Composer:
             "source": "obico",
         }
 
+    def situation(self) -> dict[str, Any]:
+        """What the supervisor knew when the turn began, in `TurnSituation`'s field order."""
+        return {
+            "printer_state": self.scenario.printer_state,
+            "detector_warned": self.scenario.detector_warned,
+            "detector_paused_the_print": self.scenario.detector_paused_the_print,
+            "arrived_while_busy": [],
+        }
+
     def earlier_events(self, event: dict[str, Any] | None) -> list[dict[str, Any]]:
         """The print's events up to the turn's, oldest first."""
         if event is None:
@@ -406,10 +500,7 @@ class _Composer:
             return [event]
         recorded = history(self.scenario.case)
         position = next(index for index, held in enumerate(recorded) if held["id"] == event["id"])
-        older = list(reversed(recorded[position + 1 :]))
-        return [*older, event]
-
-    # -- the answers ----------------------------------------------------------
+        return [*reversed(recorded[position + 1 :]), event]
 
     def print_record(self) -> dict[str, Any]:
         provider = (self.trigger or {}).get("payload", {}).get("obico_print_id", 1)
@@ -443,23 +534,37 @@ class _Composer:
 
     def recorded_context(self) -> dict[str, Any] | None:
         """The context the case's own turn was answered, with its picture repointed to the copy."""
-        turn = agent_turn(self.scenario.case)
-        if turn is None:
-            return None
-        for step in turn["steps"]:
-            command = step.get("input", {}).get("command", "")
-            if step.get("tool") == "Bash" and re.search(r"printobserver context\b", command):
-                if step["result"]["is_error"]:
-                    continue
-                document = from_labelled(step["result"]["content"])
-                document["image_path"] = str(self.image(self.scenario.event_image).path)
-                return document
+        for recorded in agent_turn(self.scenario.case) or []:
+            invoked = commands_in(recorded.command)
+            if recorded.failed or not any(c.operation == "context" for c in invoked):
+                continue
+            document = from_labelled(recorded.answered)
+            document["image_path"] = str(self.image(self.scenario.event_image).path)
+            return document
         return None
 
-    def look(self, index: int, delivered: list[dict[str, Any]], paused: bool) -> dict[str, Any]:
-        """The answer of the scenario's look at `index`."""
-        look = self.scenario.looks[index] if self.scenario.looks else None
-        frame = self.image(look.image if look else self.scenario.event_image)
+    def recorded_acknowledgements(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """Each acknowledgement the case's own turn was answered, by its event and disposition."""
+        found: dict[tuple[str, str], dict[str, Any]] = {}
+        for recorded in agent_turn(self.scenario.case) or []:
+            if recorded.failed:
+                continue
+            for invoked in commands_in(recorded.command):
+                if invoked.operation == "acknowledge-failure":
+                    key = (
+                        invoked.options.get("event_id", ""),
+                        invoked.options.get("disposition", ""),
+                    )
+                    found[key] = from_labelled(recorded.answered)
+        return found
+
+    def look(
+        self, index: int, look: Look | None, delivered: list[dict[str, Any]], paused: bool
+    ) -> dict[str, Any]:
+        """The answer of the look at `index`, answering a scenario look's frame."""
+        name = look.image if look else self.scenario.event_image
+        later = index >= max(len(self.scenario.looks), 1)
+        frame = self.capture(name, index) if later else self.image(name)
         reading = _reading(self.scenario, frame.name, paused_by_detector=paused)
         received = self.now + timedelta(seconds=LOOK_WAITED_S * (index + 1))
         answer: dict[str, Any] = {
@@ -486,19 +591,25 @@ class _Composer:
         return answer
 
     def looks(self) -> list[dict[str, Any]]:
-        """Every look's answer, in order; the last repeats for every look after it."""
-        recorded = {event["id"]: event for event in history(self.scenario.case)}
+        """Every look's answer, in order, then the last frame looked at again.
+
+        The last look repeats for every look after it, as a later look of the
+        same frame: a look the server takes later carries its own instant and
+        its own record, and delivers nothing it already delivered.
+        """
+        recorded = {EventId(event["id"]): event for event in history(self.scenario.case)}
         paused = bool(self.scenario.detector_paused_the_print)
+        looks: list[Look | None] = list(self.scenario.looks) or [None]
         answers = []
-        for index, look in enumerate(self.scenario.looks or [None]):
-            delivered = [
-                recorded[event_id] for event_id in (look.arrived_event_ids if look else ())
-            ]
+        for index in range(len(looks) + LATER_LOOKS):
+            look = looks[min(index, len(looks) - 1)]
+            arrived = look.arrived_event_ids if look and index < len(looks) else ()
+            delivered = [recorded[event_id] for event_id in arrived]
             paused = paused or any(
                 event["kind"] == ALERT and event["payload"].get("print_paused")
                 for event in delivered
             )
-            answers.append(self.look(index, delivered, paused))
+            answers.append(self.look(index, look, delivered, paused))
         return answers
 
     def record(self, operation: str, action: dict[str, Any]) -> dict[str, Any]:
@@ -525,86 +636,9 @@ class _Composer:
             }
         }
 
-    def recorded_acknowledgements(self) -> dict[tuple[str, str], dict[str, Any]]:
-        """Each acknowledgement the case's own turn was answered, by its event and disposition."""
-        turn = agent_turn(self.scenario.case)
-        found: dict[tuple[str, str], dict[str, Any]] = {}
-        for step in (turn or {}).get("steps", []):
-            command = step.get("input", {}).get("command", "")
-            if step.get("tool") != "Bash" or step["result"]["is_error"]:
-                continue
-            for invoked in commands_in(command):
-                if invoked.operation != "acknowledge-failure":
-                    continue
-                key = (invoked.options.get("event_id", ""), invoked.options.get("disposition", ""))
-                found[key] = from_labelled(step["result"]["content"])
-        return found
-
-
-# The reason a fixed answer echoes. The answer's schema requires one, and a
-# fixed answer cannot echo the one the agent gave.
-_REASON = "as requested"
-
-# Each adjustment, the one value it asks for, and the grid its stubs answer on:
-# every value of that resolution inside the bounds the configuration allows,
-# each answered by a stub of its own, so an answer echoes the value asked for.
-_ADJUSTMENTS: dict[str, tuple[str, str, Decimal]] = {
-    "set-feedrate-factor": ("feedrate", "factor", Decimal("0.01")),
-    "set-flowrate-factor": ("flowrate", "factor", Decimal("0.01")),
-    "set-fan-percent": ("fan", "percent", Decimal(1)),
-    "set-tool-target-c": ("tool_target:0", "target_c", Decimal(1)),
-    "set-bed-target-c": ("bed_target", "target_c", Decimal(1)),
-}
-# Where a value off that grid is answered: the printer's own nominal reading.
-_NOMINAL = {
-    "feedrate": 1.0,
-    "flowrate": 1.0,
-    "fan": 100.0,
-    "tool_target:0": NOZZLE_C,
-    "bed_target": BED_C,
-}
-
-
-def _manifest(file_name: str) -> dict[str, Any]:
-    return {
-        "allowed": {},
-        "file_name": file_name,
-        "material": "PLA",
-        "metadata": {},
-        "nozzle_diameter_mm": 0.4,
-        "slicer_profile": "0.20mm BALANCED",
-    }
-
-
-@dataclass(frozen=True)
-class StubSpec:
-    """One stub: the commands it answers, and what it answers each successive one with."""
-
-    name: str
-    operation: str
-    pattern: str
-    documents: tuple[dict[str, Any], ...]
-    render: str = "labelled"
-
-    def outputs(self) -> list[dict[str, Any]]:
-        """Each response, in the rendering the command asked for, with the program's exit."""
-        if self.render == "text":
-            return [{"output": document["text"], "exit_code": 0} for document in self.documents]
-        if self.render == "refusal":
-            return [
-                {"output": f"{document['usage']}\n\n{usage()}", "exit_code": USAGE_EXIT}
-                for document in self.documents
-            ]
-        render = machine if self.render == "json" else labelled
-        return [{"output": render(document), "exit_code": 0} for document in self.documents]
-
-    def mock(self) -> ToolMock:
-        """The skilltest stub."""
-        return stub(tool="bash", pattern=self.pattern, responses=self.outputs(), name=self.name)
-
 
 def _rendered(
-    name: str, operation: str, pattern: str, documents: list[dict[str, Any]]
+    name: str, command: str, pattern: str, documents: list[dict[str, Any]]
 ) -> list[StubSpec]:
     """A command's stubs: under `--json` the document, otherwise its lines.
 
@@ -613,17 +647,15 @@ def _rendered(
     """
     json_pattern = pattern + r"""(?:[^"\\]|\\.)*?--json(?:[^\w-]|$)"""
     return [
-        StubSpec(f"{name}-json", operation, json_pattern, tuple(documents), "json"),
-        StubSpec(name, operation, pattern, tuple(documents)),
+        StubSpec(f"{name}-json", command, json_pattern, tuple(documents), Render.JSON),
+        StubSpec(name, command, pattern, tuple(documents)),
     ]
 
 
 def _grid(bound: dict[str, Any], step: Decimal) -> list[Decimal]:
-    low = Decimal(str(bound["min"]))
-    high = Decimal(str(bound["max"]))
     values = []
-    value = low
-    while value <= high:
+    value = Decimal(str(bound["min"]))
+    while value <= Decimal(str(bound["max"])):
         values.append(value.quantize(step))
         value += step
     return values
@@ -645,46 +677,36 @@ def _status_states(scenario: Scenario, before: str) -> list[str]:
     return [before]
 
 
-def build(scenario: Scenario, root: Path) -> Built:
-    """Lay one scenario down under `root` and compose its run, with no model involved."""
-    composer = _Composer(scenario, root)
-    composer.lay_down()
-    event = composer.event()
-    first_reading = _reading(
+def _answers(
+    composer: _Composer, event: dict[str, Any] | None
+) -> tuple[dict[str, list[dict[str, Any]]], set[str]]:
+    """What every command answers, and which of those are a case's own recorded answers."""
+    scenario = composer.scenario
+    first = _reading(
         scenario, scenario.event_image, paused_by_detector=bool(scenario.detector_paused_the_print)
     )
-
     replayed: set[str] = set()
     context = composer.recorded_context()
-    if context is not None:
-        replayed.add("context")
+    if context is None:
+        context = composer.context(event, first)
     else:
-        context = composer.context(event, first_reading)
-
-    looks = composer.looks()
-    alert_ids = [event["id"]] if event is not None else []
-    alert_ids += [
-        arrived["id"]
-        for answer in looks
-        for arrived in answer.get("arrived", [])
-        if arrived["kind"] == ALERT
-    ]
+        replayed.add("context")
     image = composer.image(scenario.event_image)
-    statuses = [
-        {
-            "interventions": [],
-            "job": {
-                **(context["context"].get("job") or _job(first_reading, composer.file_name)),
-                "state": state,
-            },
-            "print": composer.print_record(),
-            "printer": {**_printer(first_reading, _instant(composer.now)), "connection": state},
-        }
-        for state in _status_states(scenario, first_reading.state)
-    ]
+    alert = event["id"] if event is not None else _id()
     answers: dict[str, list[dict[str, Any]]] = {
         "prints": [{"active": composer.print_id, "prints": [composer.print_record()]}],
-        "status": statuses,
+        "status": [
+            {
+                "interventions": [],
+                "job": {
+                    **context["context"].get("job", _job(first, composer.file_name)),
+                    "state": state,
+                },
+                "print": composer.print_record(),
+                "printer": {**_printer(first, _instant(composer.now)), "connection": state},
+            }
+            for state in _status_states(scenario, first.state)
+        ],
         "context": [context],
         "image": [
             {
@@ -692,7 +714,7 @@ def build(scenario: Scenario, root: Path) -> Built:
                 "record": {
                     "byte_len": image.path.stat().st_size,
                     "content_type": "image/jpeg",
-                    "event_id": event["id"] if event is not None else _id(),
+                    "event_id": alert,
                     "fetched_at": _instant(composer.now),
                     "id": image.id,
                     "print_id": composer.print_id,
@@ -705,107 +727,96 @@ def build(scenario: Scenario, root: Path) -> Built:
         "history": [{"events": list(reversed(composer.earlier_events(event)))}],
         "manifest-get": [{"narrowings": []}],
         "manifest-set": [
-            {
-                "manifest": {**_manifest(composer.file_name), "allowed": composer.bounds()},
-                "narrowings": [],
-            }
+            {"manifest": _manifest(composer.file_name, composer.bounds()), "narrowings": []}
         ],
-        "look": looks,
-        "pause": [composer.record("pause", {"reason": _REASON})],
-        "resume": [composer.record("resume", {"reason": _REASON})],
-        "cancel": [composer.record("cancel", {"reason": _REASON})],
+        "look": composer.looks(),
         "start-print": [
             composer.record(
                 "start-print",
                 {
                     "file_name": composer.file_name,
-                    "manifest": _manifest(composer.file_name),
-                    "reason": _REASON,
+                    "manifest": _manifest(composer.file_name, {}),
+                    "reason": ECHOED_REASON,
                 },
             )
         ],
         "acknowledge-failure": [
             composer.record(
                 "acknowledge-failure",
-                {
-                    "disposition": "watch",
-                    "event_id": alert_ids[0] if alert_ids else _id(),
-                    "reason": _REASON,
-                },
+                {"disposition": dispositions()[0], "event_id": alert, "reason": ECHOED_REASON},
             )
         ],
     }
-    for operation, (adjustable, parameter, _) in _ADJUSTMENTS.items():
-        action: dict[str, Any] = {parameter: _NOMINAL[adjustable], "reason": _REASON}
-        if operation == "set-tool-target-c":
-            action["tool"] = 0
-        answers[operation] = [composer.record(operation, action)]
+    for operation in ("pause", "resume", "cancel"):
+        answers[operation] = [composer.record(operation, {"reason": ECHOED_REASON})]
+    for adjustment in ADJUSTMENTS:
+        answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
+    return answers, replayed
 
-    specs: list[StubSpec] = [
-        # Asking for the usage or the version prints it, whatever else the
-        # command names, so these answer before anything else does.
-        StubSpec("help", "", help_pattern(), ({"text": usage()},), "text"),
-        StubSpec("version", "", version_pattern(), ({"text": f"{PROGRAM} {version()}\n"},), "text"),
+
+def _adjusted(composer: _Composer, adjustment: Adjustment, value: float) -> dict[str, Any]:
+    action: dict[str, Any] = {adjustment.parameter: value, "reason": ECHOED_REASON}
+    if adjustment.adjustable.startswith("tool_target:"):
+        action["tool"] = int(adjustment.adjustable.split(":")[1])
+    return composer.record(adjustment.command, action)
+
+
+def _stubs(
+    composer: _Composer, answers: dict[str, list[dict[str, Any]]], alerts: list[str]
+) -> list[StubSpec]:
+    """Every stub, in the order the hook tries them; the first that matches answers."""
+    exits = surface().exits
+    specs = [
+        StubSpec("help", None, asking_pattern("--help"), (usage(),), Render.TEXT),
+        StubSpec("version", None, asking_pattern("--version"), (version(),), Render.TEXT),
     ]
-    # The acknowledgement names what the agent decided, so each disposition of
-    # each alert it was handed answers with exactly that — the case's own
-    # recorded answer where its turn was given one.
+    # An acknowledgement echoes what the agent decided: one stub per disposition
+    # of each alert it was handed, the case's own recorded answer where it has one.
     recorded = composer.recorded_acknowledgements()
-    for event_id in alert_ids:
-        for disposition in ("continue", "watch", "stop"):
+    for event_id in alerts:
+        for disposition in dispositions():
             step = Step("acknowledge-failure", {"disposition": disposition, "event_id": event_id})
             document = recorded.get((event_id, disposition)) or composer.record(
-                "acknowledge-failure",
-                {"disposition": disposition, "event_id": event_id, "reason": _REASON},
+                step.operation, {**step.args, "reason": ECHOED_REASON}
             )
-            specs.extend(
-                _rendered(
-                    f"acknowledge-{disposition}-{event_id}",
-                    step.operation,
-                    step_pattern(step),
-                    [document],
-                )
-            )
-    # Each adjustment echoes the value it was asked for, on its grid.
+            name = f"acknowledge-{disposition}-{event_id}"
+            specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
     bounds = composer.bounds()
-    for operation, (adjustable, parameter, resolution) in _ADJUSTMENTS.items():
-        for value in _grid(bounds[adjustable], resolution):
-            number = float(value) if resolution < 1 else int(value)
-            step = Step(operation, {parameter: number})
-            action = {parameter: float(value), "reason": _REASON}
-            if operation == "set-tool-target-c":
-                action["tool"] = 0
+    for adjustment in ADJUSTMENTS:
+        for value in _grid(bounds[adjustment.adjustable], adjustment.resolution):
+            number = float(value) if adjustment.resolution < 1 else int(value)
+            step = Step(adjustment.command, {adjustment.parameter: number})
+            document = _adjusted(composer, adjustment, float(value))
             specs.append(
                 StubSpec(
-                    f"{operation}-{value}",
-                    operation,
-                    step_pattern(step),
-                    (composer.record(operation, action),),
+                    f"{adjustment.command}-{value}", step.operation, step_pattern(step), (document,)
                 )
             )
-    changing = set(operations()) - reads()
-    for operation in operations():
-        # An operation that changes something is carried out only with a reason.
-        pattern = step_pattern(Step(operation, {}))
-        specs.extend(_rendered(operation, operation, pattern, answers[operation]))
-    # One without a reason is refused before it reaches a server, as the
-    # program refuses a required option it was not given.
-    for operation in sorted(changing):
-        refusal = {
-            "usage": f"{PROGRAM}: `{operation}` needs `--reason`, and this invocation carries none."
-        }
-        specs.append(
-            StubSpec(
-                f"{operation}-without-reason",
-                operation,
-                operation_pattern(operation),
-                (refusal,),
-                "refusal",
-            )
-        )
+    for command in surface().operations:
+        pattern = step_pattern(Step(command.name, {}))
+        specs.extend(_rendered(command.name, command.name, pattern, answers[command.name]))
+    refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}"
+    specs += [
+        StubSpec("usage", None, bare_program_pattern(), (usage(),), Render.TEXT, exits["success"]),
+        StubSpec("refused", None, program_pattern(), (refusal,), Render.TEXT, exits["usage"]),
+    ]
+    return specs
 
-    # Anything else the program is asked prints its usage.
-    specs.append(StubSpec("usage", "", program_pattern(), ({"text": usage()},), "text"))
+
+def build(scenario: Scenario, root: Path) -> Built:
+    """Lay one scenario down under `root` and compose its run, with no model involved."""
+    composer = _Composer(scenario, root)
+    composer.lay_down()
+    event = composer.event()
+    answers, replayed = _answers(composer, event)
+    alerts = [event["id"]] if event is not None else []
+    alerts += [
+        arrived["id"]
+        for answer in answers["look"]
+        for arrived in answer.get("arrived", [])
+        if arrived["kind"] == ALERT
+    ]
+    specs = _stubs(composer, answers, alerts)
 
     never = [(step, spy(tool="bash", pattern=step_pattern(step))) for step in scenario.never]
     required = [
@@ -819,11 +830,11 @@ def build(scenario: Scenario, root: Path) -> Built:
         msg = f"{scenario.test_id} asks for nothing an eval can hold: no never or required step"
         raise ValueError(msg)
 
-    slots = slot_values(composer, event) if event is not None else None
-    if slots is None:
-        prompt = _start_request(composer)
-    else:
-        prompt = fill(TURN_PROMPT.read_text(encoding="utf-8"), slots)
+    situation = composer.situation() if event is not None else None
+    slots = slot_values(composer, event, situation) if event is not None and situation else None
+    prompt = (
+        fill(TURN_PROMPT.read_text(encoding="utf-8"), slots) if slots else _start_request(composer)
+    )
     case = TestCase(
         name=scenario.test_id,
         skill=str(composer.workspace),
@@ -844,6 +855,7 @@ def build(scenario: Scenario, root: Path) -> Built:
         prompt=prompt,
         images=composer.images,
         event=event,
+        situation=situation,
         answers=answers,
         stubs=specs,
         never=never,
@@ -854,21 +866,16 @@ def build(scenario: Scenario, root: Path) -> Built:
     )
 
 
-def slot_values(composer: _Composer, event: dict[str, Any]) -> dict[str, str]:
+def slot_values(
+    composer: _Composer, event: dict[str, Any], situation: dict[str, Any]
+) -> dict[str, str]:
     """What each of the template's slots is filled with for one turn, as `turn.rs` fills them."""
-    scenario = composer.scenario
-    situation = {
-        "printer_state": scenario.printer_state,
-        "detector_warned": scenario.detector_warned,
-        "detector_paused_the_print": scenario.detector_paused_the_print,
-        "arrived_while_busy": [],
-    }
     return {
         "{{event}}": json.dumps(event, indent=2, ensure_ascii=False),
         "{{situation}}": json.dumps(situation, indent=2, ensure_ascii=False),
-        "{{image_path}}": str(composer.image(scenario.event_image).path),
+        "{{image_path}}": str(composer.image(composer.scenario.event_image).path),
         "{{context_command}}": (
-            f"printobserver context --config {_shell_quoted(str(composer.config))} "
+            f"{PROGRAM} context --config {_shell_quoted(str(composer.config))} "
             f"--print-id {composer.print_id}"
         ),
         "{{actor}}": composer.actor,
@@ -883,7 +890,7 @@ def _start_request(composer: _Composer) -> str:
         "Prusament PLA on the 0.4 mm nozzle, sliced with the 0.20mm BALANCED profile, "
         f"and its print record is {composer.print_id}.\n\n"
         f"This is what the printer's camera shows right now:\n\n{frame.path}\n\n"
-        f"Give every printobserver command `--config {_shell_quoted(str(composer.config))}`, "
+        f"Give every {PROGRAM} command `--config {_shell_quoted(str(composer.config))}`, "
         f"and each one whose usage lists `--actor` this actor, quoted as written:\n\n"
         f"--actor '{composer.actor}'\n"
     )

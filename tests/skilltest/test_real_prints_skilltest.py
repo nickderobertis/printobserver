@@ -14,11 +14,13 @@ The model is the one the shipped configuration pins for supervision turns, and
 when it pins none — as today — none is pinned here, so the harness picks its
 default exactly as a production turn's does.
 
-The model must not be able to tell it is under test: the workspace is a neutral
-temporary directory laid out as a supervisor's state directory, the
-environment carries no variable naming this repository's tooling, and the
-harness's permission mode is set by a `.oneharness.toml` above the workspace
-rather than by a variable its shell would inherit.
+The harness runs with a production turn's permissions (`scenario.harness_config`):
+the read tools, and the shell for the program's own commands alone. They are
+set by a `.oneharness.toml` above the workspace rather than by a variable the
+agent's shell would inherit, because the model must not be able to tell it is
+under test: the workspace is a neutral temporary directory laid out as a
+supervisor's state directory, and the environment carries no variable naming
+this repository's tooling.
 
 Opt-in, never in `just check`: run it with `just skilltest` (`-k <scenario>` for
 one). Set `SKILLTEST_REPORT_DIR` to keep each scenario's transcript and verdict.
@@ -36,7 +38,7 @@ from pathlib import Path
 import pytest
 from real_prints import REPO, Scenario, commands_ran, met_outcome, scenarios, shipped_model
 from repo_checks import expect
-from scenario import build
+from scenario import build, harness_config
 from skilltest_pytest import Report, describe_failures, run_skill
 
 ONEHARNESS = shutil.which("oneharness")
@@ -81,7 +83,11 @@ def _stealth(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
 
 
 def _shell_commands(report: Report) -> list[str]:
-    """Every shell command the run recorded, in order, as the agent wrote it."""
+    """Every shell command the agent ran, in order, as it wrote them.
+
+    The mock channel records every tool call of a run that declares mocks, so
+    its `mock_calls` are every call the agent made, stubbed or not.
+    """
     found = []
     for run in report.runs:
         for call in run.mock_calls or []:
@@ -119,7 +125,7 @@ def test_the_skill_takes_an_action_the_case_accepts(
 ) -> None:
     """The agent's commands meet one acceptable outcome and no step it must never take."""
     built = build(scenario, neutral_tmp)
-    (neutral_tmp / ".oneharness.toml").write_text('mode = "bypass"\n', encoding="utf-8")
+    (neutral_tmp / ".oneharness.toml").write_text(harness_config(), encoding="utf-8")
     config = Path(tempfile.mkdtemp()) / "skilltest.yaml"
     config.write_text(
         "provider:\n"

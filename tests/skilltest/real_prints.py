@@ -1,4 +1,4 @@
-"""The real-print cases, read for the skill tests, and the rules they are judged by.
+"""The real-print cases, read for the skill tests, and the rule a run is judged by.
 
 Every scenario, every look and every step comes from a case's `case.json`
 `assertions`, read when the tests run: nothing here holds a copy of what any
@@ -14,7 +14,8 @@ two halves of that rule are here:
 
 `tools/repo-checks`'s `checks_real_prints` already holds every case to its
 schema, its files, its history and the operations it names, so this module
-reads them as valid and does not check them a second time.
+reads them as valid; the recorded turns it replays are not held by any check,
+so [`agent_turn`] reads one only once it has the shape this module reads.
 """
 
 from __future__ import annotations
@@ -25,22 +26,25 @@ import shlex
 import tomllib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from itertools import permutations
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NewType, cast
 
-REPO = Path(__file__).resolve().parents[2]
+from surface import PROGRAM, REPO, invocation_pattern, surface
+
 CASES = REPO / "tests" / "real-prints"
 SERVICE_CONFIG = CASES / "service-config.toml"
 SKILL = REPO / "skills" / "printobserver"
 TURN_PROMPT = REPO / "crates" / "printobserver-oneharness" / "assets" / "turn-prompt.md"
 PROMPT_SLOTS_SOURCE = REPO / "crates" / "printobserver-oneharness" / "src" / "prompt.rs"
-OPERATIONS = REPO / "schemas" / "printobserver-server" / "operations.json"
 COMMON_OPERATIONS = SKILL / "reference" / "common-operations.md"
 SERVICE_INSTALLER = REPO / "scripts" / "install-service.sh"
 OBICO_SAMPLE = REPO / "crates" / "printobserver-obico" / "samples" / "obico" / "failure-alert.json"
+SCHEMAS = REPO / "schemas"
 
-PROGRAM = "printobserver"
+CaseName = NewType("CaseName", str)
+ScenarioId = NewType("ScenarioId", str)
+EventId = NewType("EventId", str)
+Trigger = Literal["recorded_alert", "synthetic_alert", "start_request"]
 
 
 @dataclass(frozen=True)
@@ -48,7 +52,7 @@ class Step:
     """One `printobserver` command a case names: its operation and the args it pins."""
 
     operation: str
-    args: dict[str, str | int | float]
+    args: dict[str, str | float]
 
     def describe(self) -> str:
         """The step as a reader of a failure would write it."""
@@ -63,18 +67,18 @@ class Look:
     """What one `printobserver look` answers: a frame, and the events it delivers."""
 
     image: str
-    arrived_event_ids: tuple[str, ...]
+    arrived_event_ids: tuple[EventId, ...]
 
 
 @dataclass(frozen=True)
 class Scenario:
     """One situation a case puts the agent in, as its `assertions` declare it."""
 
-    case: str
-    id: str
+    case: CaseName
+    id: ScenarioId
     summary: str
-    trigger: str
-    event_id: str | None
+    trigger: Trigger
+    event_id: EventId | None
     event_image: str
     printer_state: str
     detector_warned: bool | None
@@ -102,7 +106,7 @@ class Command:
     options: dict[str, str]
 
     def describe(self) -> str:
-        """The invocation, with its long reasons cut so a failure stays readable."""
+        """The invocation, with its long values cut so a failure stays readable."""
         shown = []
         for name, value in self.options.items():
             text = value if len(value) <= 60 else value[:57] + "..."
@@ -116,17 +120,20 @@ def _step(document: dict[str, Any]) -> Step:
 
 def _scenario(case: str, document: dict[str, Any]) -> Scenario:
     return Scenario(
-        case=case,
-        id=document["id"],
+        case=CaseName(case),
+        id=ScenarioId(document["id"]),
         summary=document["summary"],
-        trigger=document["trigger"],
-        event_id=document.get("event_id"),
+        trigger=cast("Trigger", document["trigger"]),
+        event_id=EventId(document["event_id"]) if "event_id" in document else None,
         event_image=document["event_image"],
         printer_state=document["printer_state"],
         detector_warned=document["detector_warned"],
         detector_paused_the_print=document["detector_paused_the_print"],
         looks=tuple(
-            Look(image=look["image"], arrived_event_ids=tuple(look.get("arrived_event_ids", [])))
+            Look(
+                image=look["image"],
+                arrived_event_ids=tuple(EventId(i) for i in look.get("arrived_event_ids", [])),
+            )
             for look in document["looks"]
         ),
         accept_any_of=tuple(
@@ -136,23 +143,19 @@ def _scenario(case: str, document: dict[str, Any]) -> Scenario:
     )
 
 
-def case_directories() -> list[Path]:
-    """Every case directory on disk, in name order."""
-    return sorted(path.parent for path in CASES.glob("*/case.json"))
-
-
-def read_case(directory: Path) -> dict[str, Any]:
+def read_case(case: str) -> dict[str, Any]:
     """One case's `case.json`."""
-    return json.loads((directory / "case.json").read_text(encoding="utf-8"))
+    return json.loads((CASES / case / "case.json").read_text(encoding="utf-8"))
 
 
 def scenarios() -> list[Scenario]:
     """Every scenario of every case on disk, so a case added later is covered unedited."""
     found = []
-    for directory in case_directories():
-        document = read_case(directory)
+    for path in sorted(CASES.glob("*/case.json")):
+        document = read_case(path.parent.name)
         found.extend(
-            _scenario(directory.name, scenario) for scenario in document["assertions"]["scenarios"]
+            _scenario(path.parent.name, scenario)
+            for scenario in document["assertions"]["scenarios"]
         )
     return found
 
@@ -165,54 +168,53 @@ def history(case: str) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))["events"]
 
 
-def agent_turn(case: str) -> dict[str, Any] | None:
-    """The turn a case recorded running to its end, when it has one."""
+@dataclass(frozen=True)
+class RecordedCommand:
+    """One shell command a recorded turn ran, and what it was answered."""
+
+    command: str
+    answered: str
+    failed: bool
+
+
+def recorded_step(step: object, where: str) -> RecordedCommand | None:
+    """A recorded step's shell command, or none for a step that ran no shell.
+
+    Raises:
+        ValueError: If a shell step is not in the shape a recorded turn writes one.
+    """
+    if not isinstance(step, dict) or step.get("tool") != "Bash":
+        return None
+    given = step.get("input")
+    command = given.get("command") if isinstance(given, dict) else None
+    result = step.get("result")
+    if (
+        not isinstance(command, str)
+        or not isinstance(result, dict)
+        or not isinstance(result.get("is_error"), bool)
+        or not isinstance(result.get("content"), str)
+    ):
+        msg = f"{where} records a shell step without a command, an error flag and its answer"
+        raise ValueError(msg)
+    return RecordedCommand(command=command, answered=result["content"], failed=result["is_error"])
+
+
+def agent_turn(case: str) -> list[RecordedCommand] | None:
+    """The shell commands a case's recorded turn ran, in order, when it has one.
+
+    Raises:
+        ValueError: If the recorded turn is not in the shape `agent-turn.json` is written in.
+    """
     path = CASES / case / "agent-turn.json"
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def operations() -> list[str]:
-    """Every operation the server serves, spelled as the command line spells it."""
-    document = json.loads(OPERATIONS.read_text(encoding="utf-8"))
-    return [operation["name"].replace("_", "-") for operation in document["operations"]]
-
-
-def usage() -> str:
-    """The usage the program prints, composed from the operations it serves."""
-    document = json.loads(OPERATIONS.read_text(encoding="utf-8"))
-    lines = []
-    for operation in document["operations"]:
-        words = [PROGRAM, operation["name"].replace("_", "-")]
-        for parameter in operation["parameters"]:
-            value = "<json>" if parameter["name"] in {"actor", "manifest"} else "<value>"
-            option = f"--{parameter['name'].replace('_', '-')} {value}"
-            words.append(option if parameter["required"] else f"[{option}]")
-        lines.append("  " + " ".join(words))
-    return (
-        f"{PROGRAM} — a supervision layer between a 3D printer and an agent.\n\n"
-        f"Usage:\n  {PROGRAM} server\n  {PROGRAM} sign-in\n" + "\n".join(lines) + "\n\n"
-        "Every command also takes --json (machine-readable output), --config <path>,\n"
-        "--help and --version. Where the server is and what authenticates to it\n"
-        "are read from that file and from the environment, never from a command line.\n"
-    )
-
-
-def version() -> str:
-    """The version the workspace's crates, the program among them, are at."""
-    manifest = tomllib.loads((REPO / "Cargo.toml").read_text(encoding="utf-8"))
-    return manifest["workspace"]["package"]["version"]
-
-
-def reads() -> set[str]:
-    """The operations that only read, which the server declares by their effect."""
-    document = json.loads(OPERATIONS.read_text(encoding="utf-8"))
-    return {
-        operation["name"].replace("_", "-")
-        for operation in document["operations"]
-        if operation["effect"] == "read"
-    }
+    document = json.loads(path.read_text(encoding="utf-8"))
+    steps = document.get("steps") if isinstance(document, dict) else None
+    if not isinstance(steps, list):
+        msg = f"{path} carries no list of steps"
+        raise ValueError(msg)
+    found = [recorded_step(step, str(path)) for step in steps]
+    return [command for command in found if command is not None]
 
 
 def service_config() -> dict[str, Any]:
@@ -226,6 +228,9 @@ def shipped_model() -> str | None:
     The installer writes the configuration a host starts from, and its
     `[supervisor]` table is where a pinned model would be. When it pins none, a
     production turn runs on the harness's own default, and so does this tier.
+
+    Raises:
+        ValueError: If the installer writes no `[supervisor]` table to read.
     """
     text = SERVICE_INSTALLER.read_text(encoding="utf-8")
     table = re.search(r"^\[supervisor\]\n(?P<body>.*?)(?=^\[)", text, re.MULTILINE | re.DOTALL)
@@ -235,10 +240,6 @@ def shipped_model() -> str | None:
     model = re.search(r'^model\s*=\s*"(?P<name>[^"]*)"', table["body"], re.MULTILINE)
     return model["name"] if model else None
 
-
-# ---------------------------------------------------------------------------
-# What the agent ran
-# ---------------------------------------------------------------------------
 
 _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
 # The words after which a shell reads the next word as a command.
@@ -268,11 +269,33 @@ def _at_command_position(words: list[str], index: int) -> bool:
     return position < 0 or words[position] in _COMMAND_POSITION
 
 
-def commands_in(shell_command: str) -> list[Command]:
-    """Every `printobserver <operation>` invocation a shell command makes, in order.
+def _options(words: list[str]) -> dict[str, str]:
+    """The `--name value` options and lone flags of one invocation, up to where it ends."""
+    options: dict[str, str] = {}
+    position = 0
+    while position < len(words):
+        current = words[position]
+        if current in _SEPARATORS or _is_program(current):
+            break
+        if current.startswith("--"):
+            name = current[2:].replace("-", "_")
+            following = words[position + 1] if position + 1 < len(words) else None
+            if following is None or following.startswith("--") or following in _SEPARATORS:
+                options[name] = ""
+                position += 1
+                continue
+            options[name] = following
+            position += 2
+            continue
+        position += 1
+    return options
 
-    The command names its operation first and every option after it as
-    `--name value` or a lone flag, which is the only grammar the program parses.
+
+def commands_in(shell_command: str) -> list[Command]:
+    """Every `printobserver <command>` invocation a shell command makes, in order.
+
+    The program names its command first and every option after it as
+    `--name value` or a lone flag, which is the only grammar it parses.
     """
     words = _words(shell_command)
     found = []
@@ -284,25 +307,7 @@ def commands_in(shell_command: str) -> list[Command]:
         operation = words[index + 1]
         if operation.startswith("-") or operation in _SEPARATORS:
             continue
-        options: dict[str, str] = {}
-        rest = words[index + 2 :]
-        position = 0
-        while position < len(rest):
-            current = rest[position]
-            if current in _SEPARATORS or _is_program(current):
-                break
-            if current.startswith("--"):
-                name = current[2:].replace("-", "_")
-                following = rest[position + 1] if position + 1 < len(rest) else None
-                if following is None or following.startswith("--") or following in _SEPARATORS:
-                    options[name] = ""
-                    position += 1
-                    continue
-                options[name] = following
-                position += 2
-                continue
-            position += 1
-        found.append(Command(operation=operation, options=options))
+        found.append(Command(operation=operation, options=_options(words[index + 2 :])))
     return found
 
 
@@ -311,7 +316,22 @@ def commands_ran(shell_commands: list[str]) -> list[Command]:
     return [command for shell in shell_commands for command in commands_in(shell)]
 
 
-def _same_value(expected: str | int | float, given: str) -> bool:
+def takes_effect(command: Command) -> bool:
+    """Whether the program would carry an invocation out rather than refuse it or print its usage.
+
+    It is one of the program's commands, it does not ask for the usage, and it
+    supplies every value that command requires, by any of that value's forms.
+    """
+    spec = surface().command(command.operation)
+    if spec is None or "help" in command.options:
+        return False
+    given = {f"--{name.replace('_', '-')}" for name, value in command.options.items() if value}
+    return all(
+        any(form in given for form in field.forms) for field in spec.fields if field.required
+    )
+
+
+def _same_value(expected: str | float, given: str) -> bool:
     if isinstance(expected, str):
         return given == expected
     try:
@@ -320,19 +340,8 @@ def _same_value(expected: str | int | float, given: str) -> bool:
         return False
 
 
-def takes_effect(command: Command) -> bool:
-    """Whether the program would carry a command out rather than print its usage or refuse it.
-
-    `--help` prints the usage whatever else is given, and every operation that
-    changes something requires a reason, without which the program refuses it.
-    """
-    if "help" in command.options:
-        return False
-    return command.operation in reads() or bool(command.options.get("reason"))
-
-
 def step_matches(step: Step, command: Command) -> bool:
-    """Whether a command takes the step: its operation, naming each of its args with that value."""
+    """Whether a command takes the step: carried out, naming each of its args with that value."""
     if command.operation != step.operation or not takes_effect(command):
         return False
     return all(
@@ -361,75 +370,6 @@ def required_steps(scenario: Scenario) -> list[Step]:
     return [step for step in first if all(step in outcome for outcome in others)]
 
 
-# ---------------------------------------------------------------------------
-# The hook-side patterns
-# ---------------------------------------------------------------------------
-#
-# A spy's or a stub's pattern is matched inside the harness, as a Rust regex,
-# over the compact JSON of the tool call: `{"tool_name":"Bash","tool_input":
-# {"command":"...",...}}`. So every pattern below is anchored inside the
-# `command` string, crosses no unescaped quote, and uses only what Rust's regex
-# and Python's `re` both read the same way (no lookaround).
-
-# The start of a command the shell runs, inside the JSON string: its first
-# word, or the word after a separator, `do`, `then` or `else`, with any variable
-# assignments before it. A word inside an argument (`grep "printobserver look"`,
-# a path ending in the program's name) is not at one.
-_COMMAND_START = (
-    r'"command":"(?:(?:[^"\\]|\\.)*?(?:[;&|(`]|\\n|\b(?:do|then|else)\s))?\s*'
-    r"""(?:\w+=(?:[^\s"\\]|\\.)*\s+)*"""
-)
-# The program as a shell names it, by path or not, quoted or not.
-_PROGRAM_WORD = r"""(?:\\?["'])?(?:[\w.~:-]*(?:/|\\\\))*printobserver(?:\.exe)?(?:\\?["'])?"""
-# Anything else inside the same command string.
-_REST = r"""(?:[^"\\]|\\.)*?"""
-# Where a word ends: not a further letter, digit, hyphen or point.
-_WORD_END = r"(?:[^\w.-]|$)"
-
-
-def program_pattern(suffix: str = r"""(?:\s|\\?"|$)""") -> str:
-    """The pattern of a command invoking the program at all, followed by `suffix`."""
-    return _COMMAND_START + _PROGRAM_WORD + suffix
-
-
-def version_pattern() -> str:
-    """The pattern of a command asking the program which version it is."""
-    return program_pattern(_REST + r"--version" + _WORD_END)
-
-
-def help_pattern() -> str:
-    """The pattern of a command asking the program for its usage."""
-    return program_pattern(_REST + r"--help" + _WORD_END)
-
-
-def operation_pattern(operation: str) -> str:
-    """The pattern of a command invoking one operation."""
-    return program_pattern(r"\s+" + re.escape(operation) + _WORD_END)
-
-
-def _number(value: int | float) -> str:
-    text = format(Decimal(str(value)).normalize(), "f")
-    whole, _, fraction = text.partition(".")
-    whole = whole.lstrip("0")
-    if fraction:
-        return f"0*{whole}\\.{fraction}0*"
-    return f"0*{whole or '0'}(?:\\.0*)?"
-
-
 def step_pattern(step: Step) -> str:
-    """The pattern of a command taking a step: its operation, and each arg it pins.
-
-    The args may come in any order, and numbers match however the agent spells
-    the same value (`100`, `100.0`). An operation that changes something is
-    taken only with a reason, as [`takes_effect`] reads it.
-    """
-    pinned = []
-    for name, value in step.args.items():
-        spelled = re.escape(value) if isinstance(value, str) else _number(value)
-        option = re.escape("--" + name.replace("_", "-"))
-        pinned.append(_REST + option + r"""\s+['"\\]*""" + spelled + _WORD_END)
-    if step.operation not in reads():
-        pinned.append(_REST + r"--reason\s")
-    orders = ["".join(order) for order in permutations(pinned)] if pinned else [""]
-    alternatives = orders[0] if len(orders) == 1 else "(?:" + "|".join(orders) + ")"
-    return operation_pattern(step.operation) + alternatives
+    """The hook-side pattern of a command taking a step (`surface.invocation_pattern`)."""
+    return invocation_pattern(step.operation, step.args)

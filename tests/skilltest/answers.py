@@ -23,25 +23,14 @@ from collections.abc import Iterable
 from itertools import pairwise
 from typing import Any
 
-# The labelled rendering's separators, as `render.rs` spells them.
-PATH_SEPARATOR = "."
-LABEL_SEPARATOR = ": "
+from surface import separators
+
+PATH_SEPARATOR, LABEL_SEPARATOR = separators()
 
 # The array of event records inside each answer that carries one. A record's
 # fields depend on its kind and on the producer that sent it, so the shape of
 # these is the history's (`HistoryAnswer.json`) rather than an example's.
 EVENT_LISTS = ("context.recent_events", "events", "arrived")
-
-
-# ---------------------------------------------------------------------------
-# The two renderings
-# ---------------------------------------------------------------------------
-
-
-def _scalar(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    return json.dumps(value, ensure_ascii=False)
 
 
 def fields(document: object, at: str = "") -> list[tuple[str, str]]:
@@ -53,21 +42,25 @@ def fields(document: object, at: str = "") -> list[tuple[str, str]]:
     def under(name: str) -> str:
         return f"{at}{PATH_SEPARATOR}{name}" if at else name
 
-    if isinstance(document, dict) and document:
-        found: list[tuple[str, str]] = []
-        for name in sorted(document):
-            found.extend(fields(document[name], under(name)))
-        return found
-    if isinstance(document, list) and document:
-        found = []
-        for index, held in enumerate(document):
-            found.extend(fields(held, under(str(index))))
-        return found
-    if isinstance(document, dict):
-        return [(at, "{}")]
-    if isinstance(document, list):
-        return [(at, "[]")]
-    return [(at, _scalar(document))]
+    match document:
+        case dict() if document:
+            return [
+                leaf for name in sorted(document) for leaf in fields(document[name], under(name))
+            ]
+        case list() if document:
+            return [
+                leaf
+                for index, held in enumerate(document)
+                for leaf in fields(held, under(str(index)))
+            ]
+        case dict():
+            return [(at, "{}")]
+        case list():
+            return [(at, "[]")]
+        case str():
+            return [(at, document)]
+        case _:
+            return [(at, json.dumps(document, ensure_ascii=False))]
 
 
 def labelled(document: object) -> str:
@@ -123,11 +116,6 @@ def from_labelled(text: str) -> dict[str, Any]:
         else:
             holder[last] = _parsed(value)
     return root
-
-
-# ---------------------------------------------------------------------------
-# Field names, as an example and a composed answer are compared
-# ---------------------------------------------------------------------------
 
 
 def _normalized(path: str) -> str | None:
