@@ -217,9 +217,34 @@ def agent_turn(case: str) -> list[RecordedCommand] | None:
     return [command for command in found if command is not None]
 
 
-def service_config() -> dict[str, Any]:
-    """The supervisor's configuration these prints ran under."""
-    return tomllib.loads(SERVICE_CONFIG.read_text(encoding="utf-8"))
+@dataclass(frozen=True)
+class Bound:
+    """The range one adjustable may be set to."""
+
+    min: float
+    max: float
+
+
+def bounds() -> dict[str, Bound]:
+    """What the configuration these prints ran under lets each adjustable be set to.
+
+    Raises:
+        ValueError: If its `[safety.allowed]` is not a range of numbers per adjustable.
+    """
+    config = tomllib.loads(SERVICE_CONFIG.read_text(encoding="utf-8"))
+    allowed = config.get("safety", {}).get("allowed")
+    if not isinstance(allowed, dict) or not allowed:
+        msg = f"{SERVICE_CONFIG} allows no adjustable under [safety.allowed]"
+        raise ValueError(msg)
+    found = {}
+    for name, bound in allowed.items():
+        low = bound.get("min") if isinstance(bound, dict) else None
+        high = bound.get("max") if isinstance(bound, dict) else None
+        if not isinstance(low, int | float) or not isinstance(high, int | float) or low > high:
+            msg = f"{SERVICE_CONFIG}'s [safety.allowed] {name} is not a range from min to max"
+            raise ValueError(msg)
+        found[name] = Bound(min=float(low), max=float(high))
+    return found
 
 
 def shipped_model() -> str | None:
@@ -246,8 +271,31 @@ _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
 _COMMAND_POSITION = {*_SEPARATORS, "do", "then", "else"}
 
 
+def _lines_joined(command: str) -> str:
+    """A command with every unquoted line break read as the separator a shell reads it as.
+
+    A line break inside quotes is part of a word, and one escaped by a
+    backslash continues the line.
+    """
+    out = []
+    quote: str | None = None
+    escaped = False
+    for character in command:
+        if escaped:
+            escaped = False
+            out.append("" if character == "\n" and quote is None else "\\" + character)
+            continue
+        if character == "\\" and quote != "'":
+            escaped = True
+            continue
+        if character in "'\"" and quote in {None, character}:
+            quote = None if quote else character
+        out.append(" ; " if character == "\n" and quote is None else character)
+    return "".join(out)
+
+
 def _words(command: str) -> list[str]:
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+    lexer = shlex.shlex(_lines_joined(command), posix=True, punctuation_chars=";&|()")
     lexer.whitespace_split = True
     try:
         return list(lexer)
@@ -317,18 +365,40 @@ def commands_ran(shell_commands: list[str]) -> list[Command]:
 
 
 def takes_effect(command: Command) -> bool:
-    """Whether the program would carry an invocation out rather than refuse it or print its usage.
+    """Whether the program would carry an invocation out rather than refuse it or answer at once.
 
-    It is one of the program's commands, it does not ask for the usage, and it
-    supplies every value that command requires, by any of that value's forms.
+    It is one of the program's commands; it asks for neither the usage nor the
+    version, which the program answers without carrying anything out; every
+    option it names is one that command or every command takes; a structured
+    value given inline is JSON; and it supplies every value the command
+    requires, by any of that value's forms. What the server then makes of the
+    values is the server's, and the stubs stand in for it.
     """
     spec = surface().command(command.operation)
-    if spec is None or "help" in command.options:
+    if spec is None or {"help", "version"} & set(command.options):
         return False
-    given = {f"--{name.replace('_', '-')}" for name, value in command.options.items() if value}
+    forms = {form: field for field in spec.fields for form in field.forms}
+    given = {f"--{name.replace('_', '-')}": value for name, value in command.options.items()}
+    for option, value in given.items():
+        if option in surface().global_options:
+            continue
+        field = forms.get(option)
+        if field is None:
+            return False
+        if field.structured and option == field.forms[0] and not _is_json(value):
+            return False
+    named = {option for option, value in given.items() if value}
     return all(
-        any(form in given for form in field.forms) for field in spec.fields if field.required
+        any(form in named for form in field.forms) for field in spec.fields if field.required
     )
+
+
+def _is_json(value: str) -> bool:
+    try:
+        json.loads(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _same_value(expected: str | float, given: str) -> bool:

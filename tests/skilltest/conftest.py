@@ -5,9 +5,9 @@ spends real model turns, so it must never fire by accident. Two mechanisms keep
 it from doing so, for two different callers:
 
 * **The project graph** keeps it out of the gate. This directory is its own Nx
-  project declaring a `skilltest` target, and no gate recipe fans out over that
-  name, so `just check` never runs the live tests. Its `test` target runs only
-  the deterministic tests, which build every scenario without a model.
+  project whose only test target is `skilltest`, and no gate recipe fans out
+  over that name, so `just check` never runs the live tests. The deterministic
+  tests, which build every scenario without a model, are `skilltest-wiring`'s.
 * **This conftest** is for a developer who types a bare `pytest` over the tree:
   a test marked ``@pytest.mark.skilltest_e2e`` is skipped unless
   ``SKILLTEST_E2E`` is set, which the `skilltest` target (and `just skilltest`)

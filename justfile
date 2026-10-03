@@ -346,9 +346,8 @@ test-skill-install:
     just node-modules
     bunx nx run-many -t test-skill-install --output-style=stream
 
-# The skill tier: the `printobserver` skill run through a real harness on every
-# real-print scenario under `tests/real-prints`, with every `printobserver`
-# command stubbed, and judged by each case's own `assertions`. Extra arguments
+# With every `printobserver` command stubbed, each scenario under
+# `tests/real-prints` is judged by its case's own `assertions`. Extra arguments
 # go to pytest, so `just skilltest -k fan-cut-bridge` runs one scenario.
 #
 # Deliberately not one of `just check`'s tiers: every scenario spends real model

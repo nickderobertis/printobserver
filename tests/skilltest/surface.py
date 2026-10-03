@@ -123,12 +123,16 @@ def surface() -> Surface:
 
 
 def usage() -> str:
-    """What the program prints for `--help`: its whole surface."""
+    """What the program prints for `--help`: its whole surface, as `surface.rs` writes it.
+
+    `skilltest-wiring` holds this to what the built program prints.
+    """
     lines = "\n".join(command.usage_line() for command in surface().commands)
-    taken = ", ".join(surface().global_options)
     return (
         f"{PROGRAM} — a supervision layer between a 3D printer and an agent.\n\n"
-        f"Usage:\n{lines}\n\nEvery command also takes {taken}, --help and --version.\n"
+        f"Usage:\n{lines}\n\nEvery command also takes --json (machine-readable output), "
+        "--config <path>,\n--help and --version. Where the server is and what authenticates "
+        "to it\nare read from that file and from the environment, never from a command line.\n"
     )
 
 
@@ -161,17 +165,33 @@ def _rust_list(source: Path, name: str) -> list[str]:
     return re.findall(r'"([^"]+)"', found["items"])
 
 
-def turn_tool_rules() -> tuple[list[str], list[str]]:
-    """The tools a production Claude Code turn has, and the rules that allow them.
+def turn_tool_rules() -> tuple[str, str, list[str], list[str]]:
+    """How a production Claude Code turn is narrowed: its two flags, its tools and its rules.
 
-    `turn.rs` narrows the turn to its tools, allows the read tools outright,
-    and allows the shell only for the program's own commands, one per
-    operation (`printobserver-server`'s `agent_commands`).
+    `turn.rs`'s `permissions` passes its tools after one flag and its allowed
+    rules after the other: the read tools outright, and the shell only for the
+    program's own commands, one per operation (`printobserver-server`'s
+    `agent_commands`), each through the rule template it formats.
+
+    Raises:
+        ValueError: If `turn.rs` no longer narrows a turn in that shape.
     """
-    tools = _rust_list(TURN, "CLAUDE_TURN_TOOLS")
-    allowed = _rust_list(TURN, "CLAUDE_READ_TOOLS")
-    allowed += [f"Bash({PROGRAM} {command.name}:*)" for command in surface().operations]
-    return tools, allowed
+    source = TURN.read_text(encoding="utf-8")
+    flags = re.search(
+        r'vec!\["(?P<tools>--\w+)"\.to_owned\(\)\];.*?push\("(?P<allowed>--\w+)"\.to_owned\(\)\)',
+        source,
+        re.DOTALL,
+    )
+    rule = re.search(r'format!\("(?P<rule>\w+\(\{command\}[^"]*)"\)', source)
+    if flags is None or rule is None or "(PermissionMode::Default, arguments)" not in source:
+        msg = f"{TURN} no longer narrows a Claude Code turn by a tool flag and a rule flag"
+        raise ValueError(msg)
+    # llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
+    allowed = _rust_list(TURN, "CLAUDE_READ_TOOLS") + [
+        rule["rule"].replace("{command}", f"{PROGRAM} {command.name}")
+        for command in surface().operations
+    ]
+    return flags["tools"], flags["allowed"], _rust_list(TURN, "CLAUDE_TURN_TOOLS"), allowed
 
 
 # The start of a command the shell runs, inside the JSON string: its first

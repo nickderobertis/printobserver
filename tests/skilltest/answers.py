@@ -88,34 +88,66 @@ def from_labelled(text: str) -> dict[str, Any]:
 
     Each line is a leaf at a dotted path; a numeric segment is an index into a
     list. The program prints every leaf, so this loses nothing it printed.
+
+    Raises:
+        ValueError: If a line is not a labelled leaf, or two lines disagree on
+            what one path holds.
     """
     root: dict[str, Any] = {}
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
-        path, _, value = line.partition(LABEL_SEPARATOR)
+        path, separator, value = line.partition(LABEL_SEPARATOR)
         segments = path.split(PATH_SEPARATOR)
-        holder: Any = root
+        if not separator or not all(segments):
+            msg = f"line {number} is not a labelled leaf: {line!r}"
+            raise ValueError(msg)
+        holder: dict[str, Any] | list[Any] = root
         for segment, following in pairwise(segments):
-            child: Any = [] if following.isdigit() else {}
-            if isinstance(holder, list):
-                index = int(segment)
-                while len(holder) <= index:
-                    holder.append(None)
-                if holder[index] is None:
-                    holder[index] = child
-                holder = holder[index]
-            else:
-                holder = holder.setdefault(segment, child)
-        last = segments[-1]
-        if isinstance(holder, list):
-            index = int(last)
-            while len(holder) <= index:
-                holder.append(None)
-            holder[index] = _parsed(value)
-        else:
-            holder[last] = _parsed(value)
+            holder = _branch(holder, segment, [] if following.isdigit() else {}, number)
+        _place(holder, segments[-1], _parsed(value), number)
     return root
+
+
+def _held(holder: dict[str, Any] | list[Any], segment: str, number: int) -> object:
+    """What a path's segment holds so far, a list grown to reach it."""
+    match holder:
+        case list():
+            if not segment.isdigit():
+                msg = f"line {number} names {segment!r} inside a list"
+                raise ValueError(msg)
+            holder.extend([None] * (int(segment) + 1 - len(holder)))
+            return holder[int(segment)]
+        case dict():
+            return holder.get(segment)
+
+
+def _put(holder: dict[str, Any] | list[Any], segment: str, value: object) -> None:
+    match holder:
+        case list():
+            holder[int(segment)] = value
+        case dict():
+            holder[segment] = value
+
+
+def _branch(
+    holder: dict[str, Any] | list[Any], segment: str, empty: dict[str, Any] | list[Any], number: int
+) -> dict[str, Any] | list[Any]:
+    held = _held(holder, segment, number)
+    if held is None:
+        _put(holder, segment, empty)
+        return empty
+    if isinstance(held, dict | list) and type(held) is type(empty):
+        return held
+    msg = f"line {number} reads {segment!r} as a branch another line gave a value"
+    raise ValueError(msg)
+
+
+def _place(holder: dict[str, Any] | list[Any], segment: str, value: object, number: int) -> None:
+    if _held(holder, segment, number) is not None:
+        msg = f"line {number} gives {segment!r} a value another line already gave it"
+        raise ValueError(msg)
+    _put(holder, segment, value)
 
 
 def _normalized(path: str) -> str | None:

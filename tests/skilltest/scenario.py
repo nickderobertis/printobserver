@@ -30,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, NewType
 
 from answers import from_labelled, labelled, machine
 from real_prints import (
@@ -39,16 +39,17 @@ from real_prints import (
     SCHEMAS,
     SKILL,
     TURN_PROMPT,
+    Bound,
     EventId,
     Look,
     Scenario,
     Step,
     agent_turn,
+    bounds,
     commands_in,
     history,
     read_case,
     required_steps,
-    service_config,
     step_pattern,
 )
 from skilltest_pytest import TestCase, ToolMock, ToolSpy, called, not_called, spy, stub
@@ -62,6 +63,9 @@ from surface import (
     usage,
     version,
 )
+
+PrintId = NewType("PrintId", str)
+ImageId = NewType("ImageId", str)
 
 # The detector's alert kind, and the look's own.
 ALERT = "obico_failure_alert"
@@ -155,8 +159,8 @@ def harness_config() -> str:
     for the program's own commands. A stubbed command passes because its stub
     answers it allowed; anything else the agent runs is refused, as it is there.
     """
-    tools, allowed = turn_tool_rules()
-    arguments = ["--tools", *tools, "--allowedTools", *allowed]
+    tools_flag, allowed_flag, tools, allowed = turn_tool_rules()
+    arguments = [tools_flag, *tools, allowed_flag, *allowed]
     return f'mode = "default"\n\n[harness.claude-code]\nargs = {json.dumps(arguments)}\n'
 
 
@@ -181,7 +185,7 @@ class Image:
     name: str
     path: Path
     sha256: str
-    id: str
+    id: ImageId
 
 
 class Render(StrEnum):
@@ -253,7 +257,7 @@ class Built:
     scenario: Scenario
     workspace: Path
     config: Path
-    print_id: str
+    print_id: PrintId
     actor: str
     prompt: str
     images: dict[str, Image]
@@ -387,7 +391,7 @@ class _Composer:
         self.trigger = next(
             (event for event in history(scenario.case) if event["id"] == scenario.event_id), None
         )
-        self.print_id = self.trigger["print_id"] if self.trigger is not None else _id()
+        self.print_id = PrintId(self.trigger["print_id"] if self.trigger is not None else _id())
         self.actor = json.dumps(
             {"agent": {"session_name": f"print-{self.print_id}"}}, separators=(",", ":")
         )
@@ -435,7 +439,7 @@ class _Composer:
         path = self.state_dir / "images" / digest[:2] / digest
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
-        return Image(name=name, path=path, sha256=digest, id=_id())
+        return Image(name=name, path=path, sha256=digest, id=ImageId(_id()))
 
     def event(self) -> dict[str, Any] | None:
         """The event the turn is about: the recorded alert, or one built in its shape."""
@@ -514,10 +518,8 @@ class _Composer:
         }
 
     def bounds(self) -> dict[str, Any]:
-        return {
-            name: {"max": float(bound["max"]), "min": float(bound["min"])}
-            for name, bound in service_config()["safety"]["allowed"].items()
-        }
+        """The configured bounds, as an answer's `allowed` carries them."""
+        return {name: {"max": bound.max, "min": bound.min} for name, bound in bounds().items()}
 
     def context(self, event: dict[str, Any] | None, reading: Reading) -> dict[str, Any]:
         image = self.image(self.scenario.event_image)
@@ -620,7 +622,8 @@ class _Composer:
         lets a record stand without one.
         """
         actor = json.loads(self.actor)
-        requested = self.now + timedelta(minutes=2)
+        # Stamped as the turn begins, so a look after it is a later one.
+        requested = self.now + timedelta(seconds=1)
         return {
             "record": {
                 "decision": "accepted",
@@ -652,10 +655,10 @@ def _rendered(
     ]
 
 
-def _grid(bound: dict[str, Any], step: Decimal) -> list[Decimal]:
+def _grid(bound: Bound, step: Decimal) -> list[Decimal]:
     values = []
-    value = Decimal(str(bound["min"]))
-    while value <= Decimal(str(bound["max"])):
+    value = Decimal(str(bound.min))
+    while value <= Decimal(str(bound.max)):
         values.append(value.quantize(step))
         value += step
     return values
@@ -781,9 +784,9 @@ def _stubs(
             )
             name = f"acknowledge-{disposition}-{event_id}"
             specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
-    bounds = composer.bounds()
+    allowed = bounds()
     for adjustment in ADJUSTMENTS:
-        for value in _grid(bounds[adjustment.adjustable], adjustment.resolution):
+        for value in _grid(allowed[adjustment.adjustable], adjustment.resolution):
             number = float(value) if adjustment.resolution < 1 else int(value)
             step = Step(adjustment.command, {adjustment.parameter: number})
             document = _adjusted(composer, adjustment, float(value))

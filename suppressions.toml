@@ -712,6 +712,18 @@ site = "skilltest"
 reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells carry neither a signed-in harness nor a budget for model turns, so the live skill tests cannot sit behind it. This project keeps the standard names for everything the gate can run — `format`, `format-check`, `lint`, `typecheck`, and `test` for its deterministic half, which builds every scenario with no model — and puts the live tests under the tier's own name alone, as `tests/skill-install/project.json` does with `test-skill-install` and `tools/obico-env/project.json` with `test-obico`. `skilltest` is that name, the recipe `just skilltest` runs it by, and `repo-policy.toml`'s `[skilltest]` declares it."
 
 [[suppression]]
+rule = "least_privilege_grants"
+file = "tests/skilltest/surface.py"
+site = "allowed = _rust_list(TURN, \"CLAUDE_READ_TOOLS\") + ["
+reason = "This is the read grant a production Claude Code turn runs with, read from `turn.rs` itself, and the skill tier exists to put the agent in a production turn's position: a test that scoped reads more narrowly than production would prove a different agent's behaviour. `turn.rs`'s own grant carries the reason it is unscoped, a supervision turn reading the event's image from the state directory and the skill's reference documents across platform path forms. Here it is bounded further by where the run happens: a fresh temporary directory holding only the copied skill, the case's pictures and a client configuration naming no reachable server, with every `printobserver` command stubbed and every other shell command refused by the same rules."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/test_real_prints_skilltest.py"
+site = "report = run_skill("
+reason = "`run_skill` is skilltest's typed client, returning a parsed `Report`; its only async form, `stream_skill`, reads the terminal report through asyncio's default 64 KiB stream line limit as a single line, and this tier's reports already reach about 70 KB indented, so the async client would fail on the very runs this test makes. A pytest test with one run to wait on gains nothing from an event loop."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"

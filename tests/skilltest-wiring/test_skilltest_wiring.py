@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import real_prints
 import test_real_prints_skilltest as live
 from answers import example_answers, field_names, from_labelled, labelled
 from jsonschema import Draft202012Validator
@@ -44,6 +45,7 @@ from real_prints import (
     Scenario,
     Step,
     agent_turn,
+    bounds,
     commands_in,
     met_outcome,
     outcome_met,
@@ -53,8 +55,10 @@ from real_prints import (
     step_matches,
     takes_effect,
 )
-from repo_checks import expect
+from repo_checks import expect, platforms, shell
+from repo_checks.model import Repo
 from scenario import (
+    ADJUSTMENTS,
     LATER_LOOKS,
     Built,
     Render,
@@ -67,7 +71,7 @@ from scenario import (
     template_slots,
 )
 from skilltest_pytest import MockRefEval, SkilltestProviderError, ToolSpy, run_skill
-from surface import OPERATIONS, surface, turn_tool_rules
+from surface import OPERATIONS, REPO, surface, turn_tool_rules, usage, version
 
 SCENARIOS = live.SCENARIOS
 IDS = [scenario.test_id for scenario in SCENARIOS]
@@ -191,8 +195,9 @@ def test_the_harness_runs_with_a_production_turns_permissions() -> None:
     config = tomllib.loads(harness_config())
     expect.equal(config["mode"], "default", describing="the permission mode")
     arguments = config["harness"]["claude-code"]["args"]
-    tools, allowed = turn_tool_rules()
-    expect.equal(arguments, ["--tools", *tools, "--allowedTools", *allowed])
+    tools_flag, allowed_flag, tools, allowed = turn_tool_rules()
+    expect.equal(arguments, [tools_flag, *tools, allowed_flag, *allowed])
+    expect.equal((tools_flag, allowed_flag), ("--tools", "--allowedTools"), describing="flags")
     shell = [rule for rule in allowed if rule.startswith("Bash(")]
     expect.equal(len(shell), len(surface().operations), describing="one shell rule per command")
     expect.truth(
@@ -254,9 +259,10 @@ def test_every_outcome_is_checked(scenario: Scenario, built: dict[str, Built]) -
 def test_a_step_is_taken_only_by_a_command_the_program_carries_out() -> None:
     """A request for the usage, or a change missing a value it requires, takes no step."""
     pause = Step("pause", {})
+    actor = '\'{"agent":{"session_name":"print-P"}}\''
     acknowledge = Step("acknowledge-failure", {"disposition": "stop"})
     taken = commands_in(
-        "printobserver pause --print-id P --actor A --reason 'a person should look'; "
+        f"printobserver pause --print-id P --actor {actor} --reason 'a person should look'; "
         "printobserver acknowledge-failure --disposition stop --print-id P --actor-file a.json "
         "--event-id E --reason 'spaghetti'"
     )
@@ -264,7 +270,7 @@ def test_a_step_is_taken_only_by_a_command_the_program_carries_out() -> None:
     expect.truth(step_matches(acknowledge, taken[1]), describing="args matched in any order")
     for untaken in (
         "printobserver pause --help",
-        "printobserver pause --print-id P --actor A",
+        f"printobserver pause --print-id P --actor {actor}",
         "printobserver pause --print-id P --reason 'no actor'",
         'grep -rn "printobserver pause" reference',
         "echo printobserver pause --reason why",
@@ -280,7 +286,8 @@ def test_a_step_is_taken_only_by_a_command_the_program_carries_out() -> None:
     fan = Step("set-fan-percent", {"percent": 100})
     for spelled in ("100", "100.0", "'100'"):
         ran = commands_in(
-            f"printobserver set-fan-percent --print-id P --actor A --percent {spelled} --reason r"
+            f"printobserver set-fan-percent --print-id P --actor {actor} "
+            f"--percent {spelled} --reason r"
         )
         expect.truth(step_matches(fan, ran[0]), describing=f"{spelled} to be the value 100")
 
@@ -575,3 +582,78 @@ def test_the_model_is_read_from_the_shipped_configuration() -> None:
     """
     model = shipped_model()
     expect.truth(model is None or model.strip(), describing="no model, or a named one")
+
+
+def _program() -> Path:
+    """The `printobserver` program the workspace's debug build leaves on this host."""
+    return REPO / "target" / "debug" / platforms.host(Repo(REPO)).program
+
+
+def test_the_usage_and_version_stubs_are_what_the_program_prints() -> None:
+    """`--help` and `--version` answer what the built program itself prints for them."""
+    for option, composed in (("--help", usage()), ("--version", version())):
+        printed = shell.run([str(_program()), option])
+        expect.equal(printed.returncode, surface().exits["success"], describing=f"{option}'s exit")
+        expect.equal(composed, printed.stdout, describing=f"the stub's answer to {option}")
+
+
+def test_the_labelled_rendering_reproduces_every_generated_example() -> None:
+    """Read back and rendered again, every example the program printed is printed the same."""
+    rendered = 0
+    for operation, answers in EXAMPLES.items():
+        for lines in answers:
+            again = labelled(from_labelled("\n".join(lines))).splitlines()
+            expect.equal(again, lines, describing=f"{operation}'s example rendered again")
+            rendered += 1
+    expect.truth(rendered >= len(surface().operations), describing="every operation's example")
+
+
+def test_a_labelled_answer_that_is_not_one_is_refused() -> None:
+    """A line with no label, or two lines that disagree about a path, is refused."""
+    for text in ("a.b 1", "a: 1\na.b: 2", "a.b: 1\na: 2", "a.0: 1\na.0: 2", "a.: 1"):
+        with pytest.raises(ValueError, match=r"line [12] "):
+            from_labelled(text)
+    expect.equal(from_labelled("a.0.b: 1\na.1: x\nc: []"), {"a": [{"b": 1}, "x"], "c": []})
+
+
+def test_bounds_that_are_not_a_range_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The configuration's bounds are read as a range per adjustable, or refused."""
+    expect.truth(
+        {adjustment.adjustable for adjustment in ADJUSTMENTS} <= set(bounds()),
+        describing="a bound for every adjustment the stubs answer",
+    )
+    for written in ("[safety.allowed]\nfan = { min = 100.0, max = 0.0 }\n", "[safety]\n"):
+        config = Path(tempfile.mkdtemp()) / "service-config.toml"
+        config.write_text(written, encoding="utf-8")
+        monkeypatch.setattr(real_prints, "SERVICE_CONFIG", config)
+        with pytest.raises(ValueError, match=re.escape("[safety.allowed]")):
+            bounds()
+        shutil.rmtree(config.parent)
+
+
+def test_a_command_on_a_later_line_is_still_read() -> None:
+    """A line break ends a command as a separator does; quoted or escaped, it does not."""
+    ran = commands_in(
+        "printobserver look --print-id P\n"
+        "printobserver pause --print-id P --actor '{}' --reason \"two\nlines\"\n"
+        "printobserver look --print-id P \\\n  --wait-s 30"
+    )
+    expect.equal([command.operation for command in ran], ["look", "pause", "look"])
+    expect.equal(ran[1].options["reason"], "two\nlines", describing="a quoted line break")
+    expect.equal(ran[2].options["wait_s"], "30", describing="a continued line")
+
+
+def test_an_invocation_the_program_refuses_or_answers_at_once_takes_no_effect() -> None:
+    """An unknown option, a malformed structured value or `--version` carries nothing out."""
+    taken = "printobserver pause --print-id P --actor '{\"agent\":{}}' --reason r"
+    expect.truth(takes_effect(commands_in(taken)[0]), describing="a whole pause")
+    expect.truth(
+        takes_effect(commands_in(taken + " --json --config c.toml")[0]),
+        describing="the options every command takes",
+    )
+    for refused in (
+        taken + " --percent 100",
+        taken + " --version",
+        "printobserver pause --print-id P --actor not-json --reason r",
+    ):
+        expect.truth(not takes_effect(commands_in(refused)[0]), describing=f"`{refused}` refused")

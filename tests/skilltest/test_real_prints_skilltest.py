@@ -138,6 +138,7 @@ def test_the_skill_takes_an_action_the_case_accepts(
     _stealth(monkeypatch, built.workspace)
     model = shipped_model()
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         report = run_skill(
             built.case,
             platforms=["claude-code"],
