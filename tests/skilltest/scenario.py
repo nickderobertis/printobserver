@@ -62,6 +62,7 @@ from surface import (
     asking_pattern,
     bare_program_pattern,
     event_kind,
+    naming_pattern,
     program_pattern,
     surface,
     turn_tool_rules,
@@ -760,6 +761,11 @@ class _Composer:
         }
 
 
+def not_an_option(option: str, command: str) -> str:
+    """What the program prints refusing an option a command does not take (`parse.rs`)."""
+    return f"{PROGRAM}: `{option}` is not an option of `{command}`.\n\n{usage()}\n"
+
+
 def _rendered(
     name: str, command: str, pattern: str, documents: list[dict[str, Any]]
 ) -> list[StubSpec]:
@@ -889,6 +895,28 @@ def _stubs(
         StubSpec("help", None, asking_pattern("--help"), (usage(),), Render.TEXT),
         StubSpec("version", None, asking_pattern("--version"), (version(),), Render.TEXT),
     ]
+    # An actor given to a command that takes none is refused before anything is
+    # sent, as the turn's prompt warns: the program's own refusal, for each form.
+    actor_forms = next(
+        field.forms
+        for command in surface().commands
+        for field in command.fields
+        if field.name == "actor"
+    )
+    for command in surface().operations:
+        if any(field.name == "actor" for field in command.fields):
+            continue
+        for option in actor_forms:
+            specs.append(
+                StubSpec(
+                    f"{command.name}-refuses-{option.lstrip('-')}",
+                    command.name,
+                    naming_pattern(command.name, option),
+                    (not_an_option(option, command.name),),
+                    Render.TEXT,
+                    exits["usage"],
+                )
+            )
     # An acknowledgement echoes what the agent decided: one stub per disposition
     # of each alert it was handed, the case's own recorded answer where it has one.
     recorded = composer.recorded_acknowledgements()
@@ -911,7 +939,7 @@ def _stubs(
     for command in surface().operations:
         pattern = step_pattern(Step(command.name, {}))
         specs.extend(_rendered(command.name, command.name, pattern, answers[command.name]))
-    refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}"
+    refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}\n"
     specs += [
         StubSpec("usage", None, bare_program_pattern(), (usage(),), Render.TEXT, exits["success"]),
         # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.

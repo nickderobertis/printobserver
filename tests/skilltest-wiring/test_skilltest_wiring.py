@@ -863,3 +863,19 @@ def test_every_adjustment_is_a_command_with_its_value_and_a_bound() -> None:
         fields = {field.name for field in spec.fields} if spec else set()
         expect.contains(fields, adjustment.parameter, describing=f"{adjustment.command}'s fields")
         expect.contains(allowed, adjustment.adjustable, describing="the configured bounds")
+
+
+def test_an_option_a_command_does_not_take_is_refused_as_the_program_refuses_it(
+    built: dict[str, Built],
+) -> None:
+    """A command given an actor it takes none of is answered with the program's own refusal."""
+    case = next(iter(built.values()))
+    refusals = [spec for spec in case.stubs if "-refuses-" in spec.name]
+    expect.truth(refusals, describing="a refusal stub for a command that takes no actor")
+    for spec in refusals:
+        option = "--" + spec.name.split("-refuses-")[1]
+        written = f"printobserver {spec.command} {option} x"
+        expect.equal(_routed(case, written), spec.name, describing=f"the stub for `{written}`")
+        ran = shell.run([str(_program()), str(spec.command), option, "x"])
+        expect.equal(ran.returncode, spec.exit_code, describing=f"`{written}`'s exit")
+        expect.equal(spec.outputs()[0]["output"], ran.stderr, describing=f"`{written}`'s refusal")

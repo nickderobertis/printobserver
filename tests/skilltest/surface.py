@@ -277,6 +277,11 @@ def asking_pattern(option: str) -> str:
     return _COMMAND_START + _PROGRAM_WORD + _REST + re.escape(option) + _WORD_END
 
 
+def naming_pattern(command: str, option: str) -> str:
+    """The pattern of a command invoking one of the program's commands with one option."""
+    return operation_pattern(command) + _REST + re.escape(option) + r"""(?:[\s"'\\]|$)"""
+
+
 def operation_pattern(command: str) -> str:
     """The pattern of a command invoking one of the program's commands."""
     return _COMMAND_START + _PROGRAM_WORD + r"\s+" + re.escape(command) + _WORD_END
