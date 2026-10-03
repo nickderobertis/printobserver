@@ -153,6 +153,8 @@ fn a_web_address_is_an_http_url_naming_a_host() {
         "HTTP://Printer.local",
         "http://[::1]:8080/frame.jpg",
         "http://[fe80::1]",
+        "http://192.168.1.20:1984/api/frame.jpeg",
+        "http://printer-1.local",
     ] {
         let address = printobserver_vision_api::WebAddress::new(accepted)
             .unwrap_or_else(|why| panic!("{accepted:?} was refused: {why}"));
@@ -169,6 +171,9 @@ fn a_web_address_is_an_http_url_naming_a_host() {
         "http://host..example",
         "http://-host",
         "http://host-:80",
+        "http://999.999.999.999",
+        "http://1.2.3",
+        "http://printer.3",
         "http://",
         "http://host:99999",
         "http://host:port",

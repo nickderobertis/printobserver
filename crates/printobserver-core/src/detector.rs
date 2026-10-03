@@ -81,20 +81,28 @@ pub(crate) type DetectorPauses = BTreeMap<PrintId, DetectorPause>;
 
 impl Supervisor {
     /// Remember that the detector paused one print, under one event.
+    ///
+    /// A print whose pause is already held keeps what the agent has asked of
+    /// it — and the resume that earned — and the newer detection is the one
+    /// acknowledged once it resumes: a detector that says so again has not
+    /// undone the agent's adjustment.
     pub(crate) fn note_detector_pause(
         &self,
         print_id: PrintId,
         event_id: EventId,
         detection: Detection,
     ) {
-        self.detector_pauses().insert(
-            print_id,
-            DetectorPause {
+        self.detector_pauses()
+            .entry(print_id)
+            .and_modify(|held| {
+                held.event_id = event_id;
+                held.detection = detection;
+            })
+            .or_insert(DetectorPause {
                 event_id,
                 detection,
                 adjusted: None,
-            },
-        );
+            });
     }
 
     /// Note an adjustment the agent asked for while the detector's pause held

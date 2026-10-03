@@ -153,8 +153,16 @@ fn names_a_host(authority: &str) -> bool {
 }
 
 /// Whether one host is a name of dot-separated labels, each of letters,
-/// digits and hyphens, neither beginning nor ending with a hyphen.
+/// digits and hyphens, neither beginning nor ending with a hyphen — or, when
+/// its last label is a number, an IPv4 address, as a URL reads such a host.
 fn is_a_host_name(host: &str) -> bool {
+    let numeric = host
+        .rsplit('.')
+        .next()
+        .is_some_and(|last| !last.is_empty() && last.chars().all(|digit| digit.is_ascii_digit()));
+    if numeric {
+        return host.parse::<std::net::Ipv4Addr>().is_ok();
+    }
     !host.is_empty()
         && host.split('.').all(|label| {
             !label.is_empty()

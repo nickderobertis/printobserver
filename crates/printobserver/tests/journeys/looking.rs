@@ -528,3 +528,57 @@ fn without_an_adjustment_the_detectors_pause_holds_past_the_grace() {
     let look = running::read(&world, &["look", "--print-id", &world.print_id]);
     assert_eq!(look["detector_paused"], true, "{look}");
 }
+
+/// A detector that reports the pause again after the agent adjusted the print
+/// does not undo the adjustment: the resume it earned still comes, and the
+/// newer detection is the one acknowledged.
+#[test]
+fn a_repeated_detection_keeps_the_resume_an_adjustment_earned() {
+    let api = obico("200 OK");
+    let world = World::configured(
+        STOOD_IN,
+        &committed_skill(),
+        None,
+        detector_configuration(&api, true),
+    );
+    world.wants(Reports::Paused);
+    post(
+        &world,
+        &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
+    );
+    wait_for("the alert's turn to be over", PATIENCE, || {
+        !events_of(&world, &world.print_id, "port_failure").is_empty()
+    });
+    let ran = running::command(
+        &world,
+        &[
+            "set-fan-percent",
+            "--print-id",
+            &world.print_id,
+            "--percent",
+            "80",
+            "--reason",
+            "more cooling for the overhang",
+            "--actor",
+            AGENT,
+        ],
+    );
+    assert_eq!(ran.code, Some(0), "{}", ran.said());
+    post(
+        &world,
+        &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
+    );
+    wait_for("the second detection's turn to be over", PATIENCE, || {
+        events_of(&world, &world.print_id, "port_failure").len() >= 2
+    });
+
+    wait_for("the print to be resumed", PATIENCE, || {
+        reports(&world) == Some(Reports::Printing)
+    });
+    let resumes = actions_asked(&world, &world.print_id)
+        .into_iter()
+        .filter(|action| action["action"] == "resume")
+        .count();
+    assert_eq!(resumes, 1);
+    wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
+}
