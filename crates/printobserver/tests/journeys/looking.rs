@@ -294,7 +294,6 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         !events_of(&world, &world.print_id, "port_failure").is_empty()
     });
 
-    let adjusted = Instant::now();
     let ran = running::command(
         &world,
         &[
@@ -310,10 +309,15 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         ],
     );
     assert_eq!(ran.code, Some(0), "{}", ran.said());
+    // The first adjustment was applied no later than this.
+    let adjusted = Instant::now();
     let look = running::read(&world, &["look", "--print-id", &world.print_id]);
     assert_eq!(look["detector_paused"], true, "{look}");
 
-    std::thread::sleep(Duration::from_secs(10));
+    // Short enough that the second adjustment reaches the server well inside
+    // the first one's grace even where every command is slow to start — on a
+    // Windows runner a ten-second wait left the first grace to run out first.
+    std::thread::sleep(Duration::from_secs(2));
     assert_eq!(
         reports(&world),
         Some(Reports::Paused),
@@ -344,7 +348,9 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         "the print was resumed {:?} after the second adjustment, before its grace",
         again.elapsed()
     );
-    assert!(adjusted.elapsed() >= Duration::from_secs(29));
+    // With timestamps kept to the second, that puts the resume past the first
+    // adjustment's own grace: the second one moved it on.
+    assert!(again.duration_since(adjusted) >= Duration::from_secs(2));
     let resumes: Vec<Value> = actions_asked(&world, &world.print_id)
         .into_iter()
         .filter(|action| action["action"] == "resume")
