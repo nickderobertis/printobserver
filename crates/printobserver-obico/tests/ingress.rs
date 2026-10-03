@@ -28,14 +28,15 @@ use printobserver_core::store::{EventStore, HistoryQuery, ImageLookup, ImageStor
 use printobserver_core::{ImageRecord, PrintRecord};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
-    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, IngressError, ObicoApi,
-    ObicoFailureAlertPayload, ObicoIngress, ObicoNotificationType, ObicoPrinterNotificationPayload,
-    ObicoVision, ObicoVisionConfig, Receipt, obico_source,
+    AccessToken, DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, IngressError,
+    ObicoApi, ObicoFailureAlertPayload, ObicoIngress, ObicoNotificationType,
+    ObicoPrinterNotificationPayload, ObicoVision, ObicoVisionConfig, Receipt, obico_source,
 };
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{EventPayload, EventRecord, RawBytes, Timestamp};
 use printobserver_vision_api::{
     Detection, MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
+    WebAddress,
 };
 use store::{MemoryStore, RefusingStore};
 
@@ -902,13 +903,13 @@ async fn the_failure_alert_carries_the_detection_and_a_notification_none() {
 const ACCESS_TOKEN: &str = "an-obico-token-nobody-may-read";
 
 /// The adapter, able to reach an Obico API at `url`.
-fn acknowledging(url: String) -> ObicoVision {
+fn acknowledging(url: &str) -> ObicoVision {
     ObicoVision::new(prompt_bounds())
         .expect("the adapter builds")
-        .with_api(Some(ObicoApi {
-            url,
-            access_token: ACCESS_TOKEN.to_owned(),
-        }))
+        .with_api(Some(ObicoApi::new(
+            WebAddress::new(url).expect("the fake API's address"),
+            AccessToken::new(ACCESS_TOKEN).expect("a token"),
+        )))
 }
 
 /// The detection the committed sample is.
@@ -929,7 +930,7 @@ async fn a_handled_detection_is_acknowledged_to_obicos_api() {
         ..Answer::image(b"{}".to_vec())
     })
     .await;
-    acknowledging(format!("{}/", api.base_url()))
+    acknowledging(&format!("{}/", api.base_url()))
         .clear_detection(the_samples_detection())
         .await
         .expect("Obico takes the acknowledgement");
@@ -961,7 +962,7 @@ async fn an_acknowledgement_obico_refuses_names_the_answer_and_never_the_token()
         ..Answer::image(b"{}".to_vec())
     })
     .await;
-    let refused = acknowledging(api.base_url())
+    let refused = acknowledging(&api.base_url())
         .clear_detection(the_samples_detection())
         .await
         .expect_err("a refused acknowledgement is an error");
@@ -971,7 +972,7 @@ async fn an_acknowledgement_obico_refuses_names_the_answer_and_never_the_token()
     assert!(!said.contains(ACCESS_TOKEN), "{said}");
     assert!(!format!("{refused:?}").contains(ACCESS_TOKEN));
 
-    let unreachable = acknowledging(unreachable_url().await)
+    let unreachable = acknowledging(&unreachable_url().await)
         .clear_detection(the_samples_detection())
         .await
         .expect_err("an unreachable API is an error");
@@ -979,6 +980,25 @@ async fn an_acknowledgement_obico_refuses_names_the_answer_and_never_the_token()
         !unreachable.to_string().contains(ACCESS_TOKEN),
         "{unreachable}"
     );
+}
+
+/// An Obico API that does not answer inside the adapter's bound is a timeout
+/// of its own, and nothing it says carries the token.
+#[tokio::test]
+async fn an_acknowledgement_obico_does_not_answer_in_time_is_a_timeout() {
+    let api = ImageHost::serving(Answer {
+        content_type: Some("application/json".to_owned()),
+        delay: prompt_bounds().fetch_timeout + Duration::from_secs(1),
+        ..Answer::image(b"{}".to_vec())
+    })
+    .await;
+    let late = acknowledging(&api.base_url())
+        .clear_detection(the_samples_detection())
+        .await
+        .expect_err("an acknowledgement past the bound is an error");
+    assert_eq!(late, VisionError::TimedOut);
+    assert!(!late.to_string().contains(ACCESS_TOKEN), "{late}");
+    assert_eq!(api.received().len(), 1, "the request did not reach Obico");
 }
 
 /// With no Obico API configured, an acknowledgement is refused as not
@@ -1008,7 +1028,7 @@ fn an_acknowledgement_asked_for_off_any_runtime_reaches_obico() {
         content_type: Some("application/json".to_owned()),
         ..Answer::image(b"{}".to_vec())
     }));
-    let vision = acknowledging(api.base_url());
+    let vision = acknowledging(&api.base_url());
     std::thread::spawn(move || {
         printobserver_core::block_on(vision.clear_detection(the_samples_detection()))
     })

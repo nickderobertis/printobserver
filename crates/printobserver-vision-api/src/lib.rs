@@ -66,6 +66,103 @@ pub struct ProviderPrint {
     pub file_name: Option<String>,
 }
 
+/// An `http` or `https` address an image or a provider's API is reached at,
+/// as an operator wrote it down and this port has ruled on it.
+///
+/// There is no other way to hold one than [`WebAddress::new`], so a
+/// configuration carrying one carries an address naming a host over HTTP —
+/// never text that only begins like one, such as `http://?x` or `http://[`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WebAddress(String);
+
+impl WebAddress {
+    /// The address this text names.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the text is not such an address, in words that never quote
+    /// it: the text may be a secret pasted into the wrong line.
+    pub fn new(text: &str) -> Result<Self, &'static str> {
+        let trimmed = text.trim();
+        let lowered = trimmed.to_ascii_lowercase();
+        let Some(rest) = ["http://", "https://"]
+            .iter()
+            .find_map(|scheme| lowered.strip_prefix(scheme))
+        else {
+            return Err("it must be an http:// or https:// URL");
+        };
+        if rest
+            .chars()
+            .any(|letter| letter.is_whitespace() || letter.is_control())
+        {
+            return Err("it carries a space or a control character, which no URL does");
+        }
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        if !names_a_host(authority) {
+            return Err("it names no host, or names one no URL can");
+        }
+        Ok(Self(trimmed.to_owned()))
+    }
+
+    /// The address, as it was written down.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl core::fmt::Display for WebAddress {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// Whether one URL's authority is a host, and a port when it carries one.
+///
+/// A name of letters, digits, hyphens and dots, or an address in brackets of
+/// hexadecimal digits, colons and dots; then, optionally, a colon and a port
+/// of at most five digits. A user before an `@` is no part of an address this
+/// system is configured with.
+fn names_a_host(authority: &str) -> bool {
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(bracketed) => {
+            let Some((inside, after)) = bracketed.split_once(']') else {
+                return false;
+            };
+            if inside.is_empty()
+                || !inside
+                    .chars()
+                    .all(|letter| letter.is_ascii_hexdigit() || letter == ':' || letter == '.')
+            {
+                return false;
+            }
+            match after {
+                "" => return true,
+                _ => match after.strip_prefix(':') {
+                    Some(port) => (inside, Some(port)),
+                    None => return false,
+                },
+            }
+        }
+        None => match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        },
+    };
+    let host_ok = !host.is_empty()
+        && (authority.starts_with('[')
+            || host
+                .chars()
+                .all(|letter| letter.is_ascii_alphanumeric() || letter == '-' || letter == '.'));
+    let port_ok = port.is_none_or(|digits| {
+        !digits.is_empty()
+            && digits.len() <= 5
+            && digits.chars().all(|digit| digit.is_ascii_digit())
+            && digits.parse::<u32>().is_ok_and(|number| number <= 65_535)
+    });
+    host_ok && port_ok
+}
+
 /// What a provider's failure detector did about a print, when an alert is one
 /// of its detections.
 ///

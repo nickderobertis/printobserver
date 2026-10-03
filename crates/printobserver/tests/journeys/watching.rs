@@ -510,3 +510,51 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
         "Obico was told about a print still paused"
     );
 }
+
+/// A print cancelled under the detector's pause, after the agent adjusted it,
+/// is no longer the detector's to resume: neither the turn's end nor the grace
+/// resumes it, and `Obico` is told nothing.
+#[test]
+fn a_print_cancelled_under_the_detectors_pause_is_not_resumed() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1
+until [ -e "$dir/go" ]; do sleep 0.1; done"#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id.clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    watching.written(&format!("fan-{print}"));
+    let adjusted = Instant::now();
+    let ran = super::running::command(
+        world,
+        &[
+            "cancel",
+            "--print-id",
+            &print,
+            "--actor",
+            "operator",
+            "--reason",
+            "the part has come off the bed",
+        ],
+    );
+    assert_eq!(ran.code, Some(0), "{}", ran.said());
+    watching.go();
+    watching.settled_after(&print, 1);
+    // Past the grace the adjustment would have earned, so a resume it could
+    // still have scheduled would have been asked for by now.
+    if let Some(left) = Duration::from_secs(23).checked_sub(adjusted.elapsed()) {
+        std::thread::sleep(left);
+    }
+
+    let asked = actions_asked(world, &print);
+    let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
+    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
+    assert_eq!(reports(world), Some(Reports::Operational));
+    assert!(
+        api.received().is_empty(),
+        "Obico was told about a cancelled print"
+    );
+}

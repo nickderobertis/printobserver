@@ -222,6 +222,10 @@ async fn an_obico_token_without_an_address_is_refused_and_never_quoted() {
             obico(Some("http://127.0.0.1:3334"), Some("   ")),
             ConfigField::ObicoAccessToken,
         ),
+        (
+            obico(Some("http://127.0.0.1:3334"), Some("two words")),
+            ConfigField::ObicoAccessToken,
+        ),
     ] {
         let root = TempDir::new().expect("a journey's own root");
         let mut document = document(root.path(), &base);
@@ -308,12 +312,13 @@ async fn a_camera_and_obicos_api_are_accepted_and_the_token_never_shown() {
 
     let read = printobserver_server::ServerConfig::load(&path).expect("the configuration reads");
     assert_eq!(
-        read.camera_snapshot_url.as_deref(),
+        read.camera_snapshot_url
+            .as_ref()
+            .map(printobserver_vision_api::WebAddress::as_str),
         Some("https://127.0.0.1:1984/api/frame.jpeg?src=camera")
     );
     let api = read.obico_api.as_ref().expect("Obico's API is configured");
-    assert_eq!(api.url, "http://127.0.0.1:3334");
-    assert_eq!(api.access_token, OBICO_TOKEN);
+    assert_eq!(api.url().as_str(), "http://127.0.0.1:3334");
     let parsed: ConfigFile = toml::from_str(&std::fs::read_to_string(&path).expect("readable"))
         .expect("the document parses");
     for shown in [
@@ -543,4 +548,101 @@ fn only_a_verbatim_drive_path_is_rewritten() {
             "{given} was written as something else"
         );
     }
+}
+
+/// The configuration the PowerShell installer writes, as its committed script
+/// spells it, with the three values that script interpolates given a root of
+/// this journey's own and the two values it leaves for the operator filled in.
+fn the_powershell_installers_configuration(root: &std::path::Path) -> String {
+    let script = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/install-service.ps1"),
+    )
+    .expect("the committed PowerShell installer reads");
+    let opened = "$configuration = @\"\n";
+    let start = script
+        .find(opened)
+        .expect("the installer writes a configuration")
+        + opened.len();
+    let length = script[start..]
+        .find("\n\"@")
+        .expect("the configuration's here-string closes");
+    let state = root.join("state");
+    let skills = state.join("skills");
+    let skill = skills.join("printobserver").join("SKILL.md");
+    std::fs::create_dir_all(skill.parent().expect("the skill's directory"))
+        .expect("the skill's directory is creatable");
+    std::fs::write(&skill, "# A skill\n").expect("the skill is writable");
+    script[start..start + length]
+        .replace("$InstalledSkills", &skills.display().to_string())
+        .replace("$InstalledSkill", &skill.display().to_string())
+        .replace("$InstalledState", &state.display().to_string())
+        .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
+        .replace(
+            "shared_secret = \"\"",
+            "shared_secret = \"a-shared-secret\"",
+        )
+}
+
+/// The commented `[camera]` and `[obico]` examples an installer's
+/// configuration carries, taken up with the token filled in.
+fn with_the_examples_taken_up(configuration: &str) -> String {
+    let markers = [
+        "# [camera]",
+        "# snapshot_url = ",
+        "# [obico]",
+        "# url = ",
+        "# access_token = ",
+    ];
+    let mut taken = 0;
+    let lines: Vec<String> = configuration
+        .lines()
+        .map(|line| {
+            if markers.iter().any(|marker| line.starts_with(marker)) {
+                taken += 1;
+                line.trim_start_matches("# ")
+                    .replace("access_token = \"\"", "access_token = \"an-obico-token\"")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect();
+    assert_eq!(
+        taken,
+        markers.len(),
+        "the configuration carries no full examples"
+    );
+    lines.join("\n")
+}
+
+/// The PowerShell installer's configuration is one the server's own parser
+/// reads, before and after its `[camera]` and `[obico]` examples are taken up;
+/// it grants the system `resume`, and its `[safety]` table opens a line of its
+/// own.
+#[test]
+fn the_powershell_installers_configuration_reads_with_and_without_its_examples() {
+    let root = TempDir::new().expect("a journey's own root");
+    let configuration = the_powershell_installers_configuration(root.path());
+    assert!(
+        configuration.lines().any(|line| line == "[safety]"),
+        "the [safety] table does not open a line of its own"
+    );
+    let path = root.path().join("config.toml");
+
+    let as_written = printobserver_server::ServerConfig::parse(&configuration, &path)
+        .expect("the installer's configuration reads");
+    assert!(
+        as_written.safety.actions[&printobserver_core::ActorClass::System]
+            .contains(&printobserver_core::ActionKind::Resume),
+        "the installer's configuration does not grant the system resume"
+    );
+    assert!(as_written.camera_snapshot_url.is_none());
+    assert!(as_written.obico_api.is_none());
+
+    let taken_up = printobserver_server::ServerConfig::parse(
+        &with_the_examples_taken_up(&configuration),
+        &path,
+    )
+    .expect("the configuration reads with its examples taken up");
+    assert!(taken_up.camera_snapshot_url.is_some());
+    assert!(taken_up.obico_api.is_some());
 }

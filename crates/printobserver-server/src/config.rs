@@ -53,11 +53,12 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::SafetyEnvelope;
-use printobserver_obico::ObicoApi;
+use printobserver_obico::{AccessToken, ObicoApi};
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_vision_api::WebAddress;
 
 /// The answer bound this repository ships, in milliseconds.
 ///
@@ -667,7 +668,7 @@ pub struct ServerConfig {
     /// Absent, the composition root takes the one in the state directory.
     pub api_credential: Option<ApiCredential>,
     /// Where a fresh frame of the print is fetched from, when configured.
-    pub camera_snapshot_url: Option<String>,
+    pub camera_snapshot_url: Option<WebAddress>,
     /// `Obico`'s own API, when configured; its debug form omits the token.
     pub obico_api: Option<ObicoApi>,
 }
@@ -775,8 +776,8 @@ impl ServerConfig {
 
 /// One address a field names, refused unless it is an `http` or `https` URL
 /// naming a host, by the field's own key and without quoting the value.
-fn web_address(field: ConfigField, url: &str) -> Result<String, ConfigError> {
-    printobserver_obico::web_address(url).map_err(|why| ConfigError::about(field, why))
+fn web_address(field: ConfigField, url: &str) -> Result<WebAddress, ConfigError> {
+    WebAddress::new(url).map_err(|why| ConfigError::about(field, why))
 }
 
 /// `Obico`'s API, when both its address and its token are written down.
@@ -797,14 +798,9 @@ fn obico_api(section: ObicoSection) -> Result<Option<ObicoApi>, ConfigError> {
         )),
         (Some(url), Some(access_token)) => {
             let url = web_address(ConfigField::ObicoUrl, &url)?;
-            let access_token = access_token.trim().to_owned();
-            if access_token.is_empty() {
-                return Err(ConfigError::about(
-                    ConfigField::ObicoAccessToken,
-                    "it is empty, and Obico's API refuses a request carrying no token",
-                ));
-            }
-            Ok(Some(ObicoApi { url, access_token }))
+            let access_token = AccessToken::new(&access_token)
+                .map_err(|why| ConfigError::about(ConfigField::ObicoAccessToken, why))?;
+            Ok(Some(ObicoApi::new(url, access_token)))
         }
     }
 }

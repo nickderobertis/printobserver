@@ -272,9 +272,10 @@ fn a_camera_that_gives_no_frame_is_recorded_against_the_look() {
 }
 
 /// An agent's adjustment while the detector's pause holds the print is applied
-/// at once; twenty seconds after it the system resumes the print through the
-/// policy and acknowledges the alert to `Obico`, and nothing the supervisor
-/// wrote or printed carries `Obico`'s token.
+/// at once; twenty seconds after its last such adjustment — a second one moves
+/// the resume on — the system resumes the print through the policy and
+/// acknowledges the alert to `Obico`, and nothing the supervisor wrote or
+/// printed carries `Obico`'s token.
 #[test]
 fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
     let api = obico("200 OK");
@@ -312,14 +313,38 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
     let look = running::read(&world, &["look", "--print-id", &world.print_id]);
     assert_eq!(look["detector_paused"], true, "{look}");
 
+    std::thread::sleep(Duration::from_secs(10));
+    assert_eq!(
+        reports(&world),
+        Some(Reports::Paused),
+        "resumed inside the grace"
+    );
+    let again = Instant::now();
+    let ran = running::command(
+        &world,
+        &[
+            "set-fan-percent",
+            "--print-id",
+            &world.print_id,
+            "--percent",
+            "90",
+            "--reason",
+            "still more cooling for the overhang",
+            "--actor",
+            AGENT,
+        ],
+    );
+    assert_eq!(ran.code, Some(0), "{}", ran.said());
+
     wait_for("the print to be resumed", PATIENCE, || {
         reports(&world) == Some(Reports::Printing)
     });
     assert!(
-        adjusted.elapsed() >= Duration::from_secs(19),
-        "the print was resumed {:?} after the adjustment, before its grace",
-        adjusted.elapsed()
+        again.elapsed() >= Duration::from_secs(19),
+        "the print was resumed {:?} after the second adjustment, before its grace",
+        again.elapsed()
     );
+    assert!(adjusted.elapsed() >= Duration::from_secs(29));
     let resumes: Vec<Value> = actions_asked(&world, &world.print_id)
         .into_iter()
         .filter(|action| action["action"] == "resume")

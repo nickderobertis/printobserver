@@ -137,8 +137,11 @@ impl Supervisor {
         let mut event = self
             .append_system_event(print.id, EventBody::of(&payload)?)
             .await?;
-        let frame = match self.config().camera_snapshot_url.clone() {
-            Some(url) => self.take_frame(print.id, &event, url).await,
+        let frame = match &self.config().camera_snapshot_url {
+            Some(url) => {
+                self.take_frame(print.id, &event, url.as_str().to_owned())
+                    .await
+            }
             None => None,
         };
         let image_path = match &frame {

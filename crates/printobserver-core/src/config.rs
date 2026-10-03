@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::records::SafetyEnvelope;
 use printobserver_types::PrintId;
+use printobserver_vision_api::WebAddress;
 
 /// The placeholder [`CoreConfig::context_command`] substitutes the print for.
 pub const PRINT_ID_PLACEHOLDER: &str = "{print_id}";
@@ -45,7 +46,7 @@ pub struct CoreConfig {
     pub expiry_poll: Duration,
     /// Where a fresh frame of the print is fetched from, when a camera is
     /// configured.
-    pub camera_snapshot_url: Option<String>,
+    pub camera_snapshot_url: Option<WebAddress>,
     /// How long after the agent's last adjustment a print the detector paused
     /// is resumed.
     pub detector_resume_grace: Duration,

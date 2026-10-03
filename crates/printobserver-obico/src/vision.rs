@@ -6,7 +6,7 @@ use core::time::Duration;
 
 use printobserver_types::{RawBytes, Timestamp};
 use printobserver_vision_api::{
-    BoxFuture, Detection, FetchedImage, NormalizedAlert, VisionError, VisionPort,
+    BoxFuture, Detection, FetchedImage, NormalizedAlert, VisionError, VisionPort, WebAddress,
 };
 
 use crate::{fetch, normalize};
@@ -76,51 +76,77 @@ impl fmt::Display for ObicoVisionError {
 
 impl core::error::Error for ObicoVisionError {}
 
-/// Where Obico's own API answers, and the token it is reached with.
+/// The bearer token Obico's own API is reached with.
 ///
 /// Obico's user API accepts an `OAuth2` bearer token or a browser session and
-/// nothing else, so this is a bearer token a self-hosted instance's own
-/// administration issued. The token is never shown: this type's debug form
-/// omits it, and nothing this adapter reports carries it.
+/// nothing else, so this is a token a self-hosted instance's own administration
+/// issued. There is no way to hold an empty one, and neither rendering of this
+/// type shows it: the one place its text is read is the request it
+/// authenticates.
 #[derive(Clone, PartialEq, Eq)]
+pub struct AccessToken(String);
+
+impl AccessToken {
+    /// The token this text names.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the text cannot be a bearer token, in words that never
+    /// quote it: empty or nothing but whitespace, or carrying a space or a
+    /// character outside printable ASCII, which no `Authorization` header
+    /// carries intact.
+    pub fn new(text: &str) -> Result<Self, &'static str> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Err("it is empty, and Obico's API refuses a request carrying no token");
+        }
+        if !trimmed.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(
+                "it carries a space or a character outside printable ASCII, which no \
+                 `Authorization` header carries intact",
+            );
+        }
+        Ok(Self(trimmed.to_owned()))
+    }
+}
+
+impl fmt::Display for AccessToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+impl fmt::Debug for AccessToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AccessToken(<redacted>)")
+    }
+}
+
+/// Where Obico's own API answers, and the token it is reached with.
+///
+/// Built from an address this system has ruled on and a token it has, so a
+/// configuration carrying one carries both; the debug form shows the address
+/// and never the token.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObicoApi {
     /// The server's own address, such as `http://127.0.0.1:3334`.
-    pub url: String,
+    url: WebAddress,
     /// The bearer token its API is reached with.
-    pub access_token: String,
+    access_token: AccessToken,
 }
 
-impl fmt::Debug for ObicoApi {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ObicoApi")
-            .field("url", &self.url)
-            .finish_non_exhaustive()
+impl ObicoApi {
+    /// Obico's API at one address, reached with one token.
+    #[must_use]
+    pub const fn new(url: WebAddress, access_token: AccessToken) -> Self {
+        Self { url, access_token }
     }
-}
 
-/// One address an operator wrote down, refused unless it is an `http` or
-/// `https` URL naming a host.
-///
-/// Parsed as a URL rather than read by its prefix, so text that only begins
-/// like one — `http://?x`, `http://[`, a scheme and nothing else — is refused
-/// where it is configured rather than at the first request that needs it. The
-/// refusal says what is wrong and never quotes the text, which may be a secret
-/// pasted into the wrong line.
-///
-/// # Errors
-///
-/// Answers why the text is not such an address.
-pub fn web_address(text: &str) -> Result<String, &'static str> {
-    let trimmed = text.trim();
-    let parsed = reqwest::Url::parse(trimmed).map_err(|_| "it is not a URL")?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("it must be an http:// or https:// URL");
+    /// The server's own address.
+    #[must_use]
+    pub const fn url(&self) -> &WebAddress {
+        &self.url
     }
-    if parsed.host_str().is_none_or(str::is_empty) {
-        return Err("it names no host");
-    }
-    Ok(trimmed.to_owned())
 }
 
 /// The alert overwrite a handled detection is acknowledged with.
@@ -233,12 +259,12 @@ impl ObicoVision {
         };
         let url = format!(
             "{}{}",
-            api.url.trim_end_matches('/'),
+            api.url.as_str().trim_end_matches('/'),
             acknowledgement_path(provider_printer_id)
         );
         let response = client
             .post(&url)
-            .bearer_auth(&api.access_token)
+            .bearer_auth(&api.access_token.0)
             .send()
             .await
             .map_err(|error| {
@@ -288,7 +314,8 @@ impl VisionPort for ObicoVision {
 
 #[cfg(test)]
 mod tests {
-    use super::{ObicoApi, ObicoVision, ObicoVisionConfig, ObicoVisionError, web_address};
+    use super::{AccessToken, ObicoApi, ObicoVision, ObicoVisionConfig, ObicoVisionError};
+    use printobserver_vision_api::WebAddress;
 
     /// A host that cannot carry the adapter is told which half failed.
     #[test]
@@ -311,42 +338,35 @@ mod tests {
         assert_eq!(*vision.config(), config);
     }
 
-    /// An address is a URL naming a host over HTTP, and nothing that only
-    /// begins like one.
+    /// A token is printable text with no space in it, and nothing else.
     #[test]
-    fn a_web_address_is_an_http_url_naming_a_host() {
-        for accepted in [
-            "http://127.0.0.1:3334",
-            " https://obico.example/ ",
-            "http://127.0.0.1:1984/api/frame.jpeg?src=camera",
-        ] {
-            assert_eq!(web_address(accepted).as_deref(), Ok(accepted.trim()));
-        }
-        for refused in [
-            "http://?x",
-            "http://[invalid",
-            "http://",
-            "ftp://127.0.0.1/frame.jpg",
-            "file:///var/lib/frame.jpg",
-            "127.0.0.1:3334",
-            "",
-        ] {
-            assert!(web_address(refused).is_err(), "{refused:?} was accepted");
+    fn an_access_token_is_printable_text_with_no_space() {
+        assert!(AccessToken::new(" a-token ").is_ok());
+        for refused in ["", "   ", "two words", "a\ttab", "non-ascii-é"] {
+            assert!(
+                AccessToken::new(refused).is_err(),
+                "{refused:?} was accepted"
+            );
         }
     }
 
     /// Neither the API's nor the adapter's debug form shows the token.
     #[test]
     fn no_debug_form_shows_the_access_token() {
-        let api = ObicoApi {
-            url: "http://127.0.0.1:3334".to_owned(),
-            access_token: "a-token-nobody-may-read".to_owned(),
-        };
+        let token = AccessToken::new("a-token-nobody-may-read").expect("a token");
+        let api = ObicoApi::new(
+            WebAddress::new("http://127.0.0.1:3334").expect("an address"),
+            token.clone(),
+        );
         let vision = ObicoVision::new(ObicoVisionConfig::default())
             .expect("the adapter builds")
             .with_api(Some(api.clone()));
-        for shown in [format!("{api:?}"), format!("{vision:?}")] {
-            assert!(shown.contains("127.0.0.1:3334"), "{shown}");
+        for shown in [
+            format!("{api:?}"),
+            format!("{vision:?}"),
+            format!("{token:?}"),
+            token.to_string(),
+        ] {
             assert!(!shown.contains("a-token-nobody-may-read"), "{shown}");
         }
     }

@@ -141,3 +141,41 @@ fn every_error_variant_says_what_it_is() {
         assert!(!variant.to_string().is_empty(), "{variant:?} says nothing");
     }
 }
+
+/// An address is a URL naming a host over HTTP, and nothing that only begins
+/// like one.
+#[test]
+fn a_web_address_is_an_http_url_naming_a_host() {
+    for accepted in [
+        "http://127.0.0.1:3334",
+        " https://obico.example/ ",
+        "http://127.0.0.1:1984/api/frame.jpeg?src=camera",
+        "HTTP://Printer.local",
+        "http://[::1]:8080/frame.jpg",
+        "http://[fe80::1]",
+    ] {
+        let address = printobserver_vision_api::WebAddress::new(accepted)
+            .unwrap_or_else(|why| panic!("{accepted:?} was refused: {why}"));
+        assert_eq!(address.as_str(), accepted.trim());
+        assert_eq!(address.to_string(), accepted.trim());
+    }
+    for refused in [
+        "http://?x",
+        "http://[invalid",
+        "http://[]",
+        "http://",
+        "http://host:99999",
+        "http://host:port",
+        "http://user@host",
+        "http://ho st/",
+        "ftp://127.0.0.1/frame.jpg",
+        "file:///var/lib/frame.jpg",
+        "127.0.0.1:3334",
+        "",
+    ] {
+        assert!(
+            printobserver_vision_api::WebAddress::new(refused).is_err(),
+            "{refused:?} was accepted"
+        );
+    }
+}
