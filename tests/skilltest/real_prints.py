@@ -108,6 +108,8 @@ class Command:
 
     operation: str
     given: tuple[tuple[str, str], ...]
+    # The directory the shell ran it in, which a file an option names is read from.
+    cwd: Path | None = None
 
     @property
     def options(self) -> dict[str, str]:
@@ -396,7 +398,7 @@ def _options(words: list[str]) -> tuple[tuple[str, str], ...]:
     return tuple(options)
 
 
-def commands_in(shell_command: str) -> list[Command]:
+def commands_in(shell_command: str, cwd: Path | None = None) -> list[Command]:
     """Every `printobserver <command>` invocation a shell command makes, in order.
 
     The program names its command first and every option after it as
@@ -412,18 +414,18 @@ def commands_in(shell_command: str) -> list[Command]:
         operation = words[index + 1]
         if operation.startswith("-") or _is_separator(operation):
             continue
-        found.append(Command(operation=operation, given=_options(words[index + 2 :])))
+        found.append(Command(operation=operation, given=_options(words[index + 2 :]), cwd=cwd))
     return found
 
 
-def commands_written(shell_commands: list[str]) -> list[Command]:
+def commands_written(shell_commands: list[str], cwd: Path | None = None) -> list[Command]:
     """Every `printobserver` invocation written in the shell commands the agent ran, in order.
 
     It reads what was written rather than what the shell went on to execute: an
     invocation in a branch the shell skips is counted, as the hook-side spies
     count it too.
     """
-    return [command for shell in shell_commands for command in commands_in(shell)]
+    return [command for shell in shell_commands for command in commands_in(shell, cwd)]
 
 
 # The characters an identifier this system mints is made of, which a value
@@ -439,7 +441,8 @@ def sent_to_server(command: Command) -> bool:
     `--version`, which it answers at once; no word that is no option's value;
     every option one of that command's or `--json` or `--config`, a value given
     once; a number
-    or a whole number that reads as one; a value bound for the request's path
+    or a whole number that reads as one; a file an option names readable, from
+    the directory the command ran in; a value bound for the request's path
     an identifier; a duration inside the bounds `surface.rs` declares; and
     every value the command requires. A value the shell expands (`"$A"`) is
     taken as given. What the supervisor then makes of the request is the
@@ -463,7 +466,13 @@ def sent_to_server(command: Command) -> bool:
         if field is None or not value or field.name in supplied:
             return False
         supplied.add(field.name)
-        if option == field.forms[0] and "$" not in value and not _readable(field, value):
+        if "$" in value:
+            continue
+        if option in field.file_forms:
+            named = Path(value) if command.cwd is None else command.cwd / value
+            if not named.is_file() or not _readable(field, named.read_text(encoding="utf-8")):
+                return False
+        elif not _readable(field, value):
             return False
     return all(field.name in supplied for field in spec.fields if field.required)
 

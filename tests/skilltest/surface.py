@@ -45,6 +45,7 @@ class Field:
     kind: str
     located: str
     forms: tuple[str, ...]
+    file_forms: tuple[str, ...] = ()
 
     @property
     def structured(self) -> bool:
@@ -109,12 +110,16 @@ def surface() -> Surface:
             held = fields.get(option["field"])
             forms = (*held.forms, option["option"]) if held else (option["option"],)
             parameter = parameters.get((command["operation"], option["field"]), {})
+            files = held.file_forms if held else ()
+            if option["supply"] == "file":
+                files = (*files, option["option"])
             fields[option["field"]] = Field(
                 name=option["field"],
                 required=(held.required if held else False) or option["required"],
                 kind=parameter.get("kind", "text"),
                 located=option["located"],
                 forms=forms,
+                file_forms=files,
             )
         commands.append(
             CommandSpec(

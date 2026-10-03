@@ -286,15 +286,17 @@ def test_every_outcome_is_checked(scenario: Scenario, built: dict[str, Built]) -
         expect.truth(_watches(watcher, _command(case, step)), describing="it observes the step")
 
 
-def test_a_step_is_taken_only_by_a_command_the_program_carries_out() -> None:
+def test_a_step_is_taken_only_by_a_command_the_program_carries_out(tmp_path: Path) -> None:
     """A request for the usage, or a change missing a value it requires, takes no step."""
     pause = Step("pause", {})
     actor = '\'{"agent":{"session_name":"print-P"}}\''
+    (tmp_path / "a.json").write_text('{"agent":{"session_name":"print-P"}}', encoding="utf-8")
     acknowledge = Step("acknowledge-failure", {"disposition": "stop"})
     taken = commands_in(
         f"printobserver pause --print-id P --actor {actor} --reason 'a person should look'; "
         "printobserver acknowledge-failure --disposition stop --print-id P --actor-file a.json "
-        "--event-id E --reason 'spaghetti'"
+        "--event-id E --reason 'spaghetti'",
+        cwd=tmp_path,
     )
     expect.truth(step_matches(pause, taken[0]), describing="a pause with a reason taken")
     expect.truth(step_matches(acknowledge, taken[1]), describing="args matched in any order")
@@ -750,6 +752,8 @@ def _variants(case: Built) -> list[str]:
         f"printobserver history {common} --limit 5",
         f"printobserver context {common} --actor {actor}",
         f"printobserver frobnicate {common}",
+        f"printobserver pause {common} --actor-file actor.json --reason r",
+        f"printobserver pause {common} --actor-file missing.json --reason r",
         f"printobserver look stray {common}",
         f"printobserver look {common} --config a.toml --config b.toml",
         f"printobserver look {common} --json",
@@ -767,6 +771,7 @@ def test_the_judge_agrees_with_the_program_on_what_it_sends(built: dict[str, Bui
     """
     directory = Path(tempfile.mkdtemp())
     config = str(_unreachable(directory))
+    (directory / "actor.json").write_text(next(iter(built.values())).actor, encoding="utf-8")
     environment = {k: v for k, v in os.environ.items() if not k.startswith("PRINTOBSERVER_")}
     corpus = []
     for case in built.values():
@@ -776,13 +781,15 @@ def test_the_judge_agrees_with_the_program_on_what_it_sends(built: dict[str, Bui
     exits = surface().exits
     try:
         for written in dict.fromkeys(corpus):
-            for invocation in commands_in(written):
+            for invocation in commands_in(written, cwd=directory):
                 words = [w for w in invocation.words]
                 if "--config" in words:
                     words[words.index("--config") + 1] = config
                 else:
                     words += ["--config", config]
-                ran = shell.run([str(_program()), *words], env=environment, timeout=60)
+                ran = shell.run(
+                    [str(_program()), *words], cwd=directory, env=environment, timeout=60
+                )
                 expect.truth(
                     ran.returncode in {exits["unreachable"], exits["usage"]},
                     describing=f"`{written}` to be sent or refused, not to exit {ran.returncode}",

@@ -151,7 +151,7 @@ def test_the_skill_takes_an_action_the_case_accepts(
         shutil.rmtree(config.parent, ignore_errors=True)
 
     shell = _shell_commands(report)
-    ran = commands_written(shell)
+    ran = commands_written(shell, cwd=built.workspace)
     met = met_outcome(scenario, ran)
     passed = report.passed and met is not None
     _keep(scenario, report, [command.describe() for command in ran], passed)

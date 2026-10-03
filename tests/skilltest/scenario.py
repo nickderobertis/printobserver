@@ -816,6 +816,7 @@ def _stubs(
     refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}"
     specs += [
         StubSpec("usage", None, bare_program_pattern(), (usage(),), Render.TEXT, exits["success"]),
+        # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
         StubSpec("refused", None, program_pattern(), (refusal,), Render.TEXT, exits["usage"]),
     ]
     return specs
