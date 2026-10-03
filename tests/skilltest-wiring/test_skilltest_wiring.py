@@ -529,9 +529,10 @@ EXAMPLES = example_answers(COMMON_OPERATIONS.read_text(encoding="utf-8"))
 SCHEMA_OF = _answer_schemas()
 
 
-def _composed(case: Built) -> Iterator[tuple[str, dict[str, Any]]]:
+def _answered(case: Built) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Every answer a stub gives, replayed or composed, by the command it answers."""
     for spec in case.stubs:
-        if spec.render == Render.TEXT or spec.command is None or spec.command in case.replayed:
+        if spec.render == Render.TEXT or spec.command is None:
             continue
         for document in spec.documents:
             yield spec.command, document
@@ -548,17 +549,23 @@ def _unexampled(operation: str, document: dict[str, Any]) -> set[str]:
 def test_composed_answers_carry_the_example_field_names(
     scenario: Scenario, built: dict[str, Built]
 ) -> None:
-    """No composed answer names a field its operation's generated example does not.
+    """Every answer satisfies its schema, and no composed one names a field its example lacks.
+
+    Replayed answers are held to the schema alone.
 
     The example is what `just docs-generate` captured from the real program;
     a field it no longer carries, or one renamed, is a shape the program no
     longer answers. A field the schema lets an answer leave out may be left
     out, and the schema check is what refuses a required one missing.
     """
-    for operation, document in _composed(built[scenario.test_id]):
-        expect.equal(
-            _unexampled(operation, document), set(), describing=f"{operation}'s field names"
-        )
+    case = built[scenario.test_id]
+    for operation, document in _answered(case):
+        # A replayed answer is what an earlier build printed, so it is held to
+        # the schema the server declares now rather than to today's example.
+        if operation not in case.replayed:
+            expect.equal(
+                _unexampled(operation, document), set(), describing=f"{operation}'s field names"
+            )
         problems = [error.message for error in SCHEMA_OF[operation].iter_errors(document)]
         expect.equal(problems, [], describing=f"{operation}'s answer against its schema")
 

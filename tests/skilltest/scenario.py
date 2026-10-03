@@ -47,6 +47,7 @@ from real_prints import (
     agent_turn,
     bounds,
     commands_in,
+    conforming,
     history,
     read_case,
     required_steps,
@@ -543,7 +544,11 @@ class _Composer:
             invoked = commands_in(recorded.command)
             if recorded.failed or not any(c.operation == "context" for c in invoked):
                 continue
-            document = from_labelled(recorded.answered)
+            document = conforming(
+                from_labelled(recorded.answered),
+                SCHEMAS / "printobserver-server" / "ContextAnswer.json",
+                f"{self.scenario.case}'s recorded context",
+            )
             document["image_path"] = str(self.image(self.scenario.event_image).path)
             return document
         return None
@@ -564,7 +569,11 @@ class _Composer:
                         invoked.options.get("event_id", ""),
                         invoked.options.get("disposition", ""),
                     )
-                    found[key] = from_labelled(recorded.answered)
+                    found[key] = conforming(
+                        from_labelled(recorded.answered),
+                        SCHEMAS / "printobserver-server" / "ActionAnswer.json",
+                        f"{self.scenario.case}'s recorded acknowledgement",
+                    )
         return found
 
     def look(

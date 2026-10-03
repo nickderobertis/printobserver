@@ -9,10 +9,10 @@ the generated example of its operation in
 `skills/printobserver/reference/common-operations.md`, which `just
 docs-generate` writes from the real program.
 
-A stub answers with fixed text, so an action's answer cannot echo the reason or
-the value the agent sent. The acknowledgement — the one action whose echo
-carries what the agent decided — is stubbed once per disposition and event, so
-its answer names what was asked. Every other action answers one accepted record.
+A stub answers with fixed text, so an action's answer cannot echo the reason
+the agent gave. What it can enumerate it echoes, by a stub per variant
+(`scenario.py`): each disposition of each alert an acknowledgement names, and
+each value on an adjustment's grid.
 """
 
 from __future__ import annotations

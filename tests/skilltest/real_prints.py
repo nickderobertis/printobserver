@@ -173,9 +173,17 @@ def _validated(path: Path, schema: Path) -> dict[str, Any]:
     Raises:
         ValueError: If it does not, naming where it first departs from the schema.
     """
-    document = json.loads(path.read_text(encoding="utf-8"))
+    return conforming(json.loads(path.read_text(encoding="utf-8")), schema, str(path))
+
+
+def conforming(document: dict[str, Any], schema: Path, where: str) -> dict[str, Any]:
+    """A document, once it satisfies the schema that declares it.
+
+    Raises:
+        ValueError: If it does not, naming where it first departs from the schema.
+    """
     for error in sorted(_validator(schema).iter_errors(document), key=str):
-        msg = f"{path} at {error.json_path} does not satisfy {schema.name}: {error.message}"
+        msg = f"{where} at {error.json_path} does not satisfy {schema.name}: {error.message}"
         raise ValueError(msg)
     return document
 
