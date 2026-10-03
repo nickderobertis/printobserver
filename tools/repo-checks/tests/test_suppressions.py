@@ -120,12 +120,25 @@ def _git(root: Path, *args: str) -> None:
     run(["git", *args], cwd=root, check=True)
 
 
+def _repository(root: Path) -> None:
+    """A repository that starts no maintenance of git's own.
+
+    The scan walks `.git` as part of the root, and on a
+    git past 2.54 the commit filling it would otherwise spawn a repack that
+    empties it under that walk; the setting is the e2e tier's `GateCopy`'s,
+    for the reason stated beside it.
+    """
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "maintenance.auto", "false")
+    _git(root, "config", "gc.auto", "0")
+
+
 def test_a_change_adding_a_directive_without_its_entry_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
     """Against a base revision, the entry lands in the same change as the directive."""
     broken = tree()
-    _git(broken.root, "init", "-q", "-b", "main")
+    _repository(broken.root)
     _git(broken.root, "config", "user.email", "test@example.com")
     _git(broken.root, "config", "user.name", "test")
     _git(broken.root, "add", "-A")
@@ -144,7 +157,7 @@ def test_a_change_adding_a_directive_without_its_entry_is_refused(
 def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> None:
     """The same change carrying both is exactly what the rule asks for."""
     allowed = tree()
-    _git(allowed.root, "init", "-q", "-b", "main")
+    _repository(allowed.root)
     _git(allowed.root, "config", "user.email", "test@example.com")
     _git(allowed.root, "config", "user.name", "test")
     _git(allowed.root, "add", "-A")
