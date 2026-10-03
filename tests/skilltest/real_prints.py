@@ -408,8 +408,13 @@ def commands_in(shell_command: str) -> list[Command]:
     return found
 
 
-def commands_ran(shell_commands: list[str]) -> list[Command]:
-    """Every `printobserver` invocation across the shell commands the agent ran, in order."""
+def commands_written(shell_commands: list[str]) -> list[Command]:
+    """Every `printobserver` invocation written in the shell commands the agent ran, in order.
+
+    It reads what was written rather than what the shell went on to execute: an
+    invocation in a branch the shell skips is counted, as the hook-side spies
+    count it too.
+    """
     return [command for shell in shell_commands for command in commands_in(shell)]
 
 

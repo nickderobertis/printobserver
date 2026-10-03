@@ -36,7 +36,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from real_prints import REPO, Scenario, commands_ran, met_outcome, scenarios, shipped_model
+from real_prints import REPO, Scenario, commands_written, met_outcome, scenarios, shipped_model
 from repo_checks import expect
 from scenario import build, harness_config
 from skilltest_pytest import Report, describe_failures, run_skill
@@ -151,7 +151,7 @@ def test_the_skill_takes_an_action_the_case_accepts(
         shutil.rmtree(config.parent, ignore_errors=True)
 
     shell = _shell_commands(report)
-    ran = commands_ran(shell)
+    ran = commands_written(shell)
     met = met_outcome(scenario, ran)
     passed = report.passed and met is not None
     _keep(scenario, report, [command.describe() for command in ran], passed)
