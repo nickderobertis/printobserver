@@ -31,7 +31,7 @@
 //! The system prompt is the prose of the `PrintObserver` skill — the Agent
 //! Skill's `SKILL.md` with its frontmatter split off by [`skill_prose`] — read
 //! from the configured path when the port is built. The prompt for a turn is the committed template at
-//! [`SupervisorConfig::prompt_template_path`] with its three slots filled — the
+//! [`SupervisorConfig::prompt_template_path`] with its four slots filled — the
 //! triggering event, the materialized path of its image, and the context
 //! command — and nothing else. This port composes no sentence of its own, so
 //! what a prompt may say is one small file a person reads.
@@ -67,13 +67,17 @@ mod turn;
 pub const DEFAULT_TURN_PROMPT: &str = include_str!("../assets/turn-prompt.md");
 
 pub use config::{
-    AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName, RunReportObserver,
-    RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
+    AgentCommand, AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName,
+    RunReportObserver, RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
 pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{
-    CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SLOTS, TemplateError,
+    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate, SLOTS,
+    TemplateError,
 };
 pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use skill::{UnclosedFrontmatter, skill_prose};
-pub use turn::{HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, TurnReport};
+pub use turn::{
+    ANSWER_CUT, ANSWER_EXCERPT_CHARS, ANSWER_SAID, HARNESS_SESSIONS_DIRECTORY,
+    OneharnessSupervisor, TurnReport,
+};

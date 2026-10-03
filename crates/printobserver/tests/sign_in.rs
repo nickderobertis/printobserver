@@ -675,3 +675,115 @@ fn a_harness_program_not_on_the_path_is_refused_naming_it() {
         said(&output)
     );
 }
+
+/// Where npm's package for Claude Code keeps its native program, relative to
+/// the directory npm writes the program's `claude.cmd` launcher into.
+const NPM_PROGRAM: &str = "node_modules/@anthropic-ai/claude-code/bin/claude.exe";
+
+/// Lay Claude Code out under `bin` the way npm installs it on Windows: a
+/// `claude.cmd` launcher, and a stand-in as the native program in the package
+/// beside it, recording its invocations to `invocations`. Answers that
+/// program's path.
+fn npm_install(bin: &Path, invocations: &Path) -> PathBuf {
+    let entry = SIGN_INS
+        .iter()
+        .find(|entry| entry.identity() == "claude-code")
+        .expect("Claude Code is in the adapter's table");
+    let behind = bin.join(NPM_PROGRAM);
+    let written = stand_in(
+        behind.parent().expect("the program has a directory"),
+        entry,
+        invocations,
+        HARNESS_STATUS,
+        &assessment_answer(),
+    );
+    std::fs::rename(&written, &behind).expect("the stand-in takes the package's name");
+    std::fs::write(
+        bin.join("claude.cmd"),
+        "@node \"%~dp0\\node_modules\\...\" %*\r\n",
+    )
+    .expect("the launcher is writable");
+    behind
+}
+
+/// A path on which npm's `claude.cmd` launcher and its package are all a search
+/// finds signs in with the native program behind the launcher.
+#[test]
+fn signing_in_starts_the_program_behind_npms_launcher() {
+    let host = Host::bare();
+    let entry = &SIGN_INS[0];
+    assert_eq!(entry.identity(), "claude-code");
+    npm_install(&host.bin(), &host.invocations());
+    let config = host.only_what_signing_in_reads(entry.identity());
+
+    let output = signing_in(&host, &config, TYPED, &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(i32::from(HARNESS_STATUS)),
+        "the program behind the launcher did not sign in: {}",
+        said(&output)
+    );
+    let recording = std::fs::read_to_string(host.directory(entry).join(SIGN_IN_SEEN))
+        .expect("the program behind the launcher recorded what it was handed");
+    assert_eq!(recorded(&recording, "argv"), entry.arguments().join(" "));
+    assert_eq!(
+        host.invoked(),
+        vec![format!(
+            "{} {}",
+            entry.program(),
+            entry.arguments().join(" ")
+        )]
+    );
+}
+
+/// A path that finds the program by its own name signs in with that program,
+/// even with npm's launcher and package ahead of it.
+#[test]
+fn signing_in_starts_the_program_found_by_name_over_the_launcher() {
+    let host = Host::with_stand_ins(HARNESS_STATUS);
+    let entry = &SIGN_INS[0];
+    let npm = host.root.path().join("npm");
+    let npm_invocations = host.root.path().join("npm-invocations");
+    npm_install(&npm, &npm_invocations);
+    let config = host.only_what_signing_in_reads(entry.identity());
+
+    let mut process = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+    process
+        .args(["sign-in", "--config"])
+        .arg(&config)
+        .env(
+            "PATH",
+            format!("{}:{}:/usr/bin:/bin", npm.display(), host.bin().display()),
+        )
+        .env_remove(entry.config_env())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = {
+        let _held = forking();
+        process.spawn().expect("the built program runs")
+    }
+    .wait_with_output()
+    .expect("the program finishes");
+
+    assert_eq!(
+        output.status.code(),
+        Some(i32::from(HARNESS_STATUS)),
+        "{}",
+        said(&output)
+    );
+    assert_eq!(
+        host.invoked(),
+        vec![format!(
+            "{} {}",
+            entry.program(),
+            entry.arguments().join(" ")
+        )],
+        "the program found by name was not the one signed in with"
+    );
+    assert!(
+        !npm_invocations.exists(),
+        "the program behind the launcher ran though one was found by name"
+    );
+}

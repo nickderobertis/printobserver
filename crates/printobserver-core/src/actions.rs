@@ -25,7 +25,7 @@ use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
 use crate::clock::plus_seconds;
-use crate::decision::{DecisionInput, adjustment, decide};
+use crate::decision::{DecisionInput, adjustment, changes_the_machine, decide};
 use crate::error::CoreError;
 use crate::kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, agent_source,
@@ -166,7 +166,8 @@ impl Supervisor {
                 intervention: None,
             });
         }
-        if actor.class() == ActorClass::Agent {
+        // Only a change to the machine starts the agent's interval again.
+        if actor.class() == ActorClass::Agent && changes_the_machine(action.kind()) {
             self.note_agent_action(print_id, requested_at);
         }
         if let PrintAction::StartPrint { manifest, .. } = &action {

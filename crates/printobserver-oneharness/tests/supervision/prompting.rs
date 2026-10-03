@@ -1,6 +1,6 @@
 //! The port composes nothing of its own into a turn.
 //!
-//! The prompt is the committed template with its three slots filled and nothing
+//! The prompt is the committed template with its slots filled and nothing
 //! else, and the system prompt is the prose of the skill file at the configured
 //! path rather than text this crate carries.
 
@@ -8,16 +8,16 @@ use std::fs;
 use std::sync::Arc;
 
 use printobserver_oneharness::{
-    CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor, SLOTS,
-    UnclosedFrontmatter, skill_prose,
+    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor,
+    SLOTS, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{PrintId, serde_json};
 
 use crate::support::{
-    Fixture, HARNESS, Watch, always, assessment, block_on, config, event, failure_alert,
-    generated_assessment_schema, notification, port, schema_read_lock, skill_path, template_path,
-    turn, unreadable,
+    Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
+    failure_alert, generated_assessment_schema, notification, port, schema_read_lock, skill_path,
+    template_path, turn, unreadable,
 };
 
 /// The literal text of the committed template between its slots, in the order
@@ -72,7 +72,8 @@ fn fillings(literals: &[String], prompt: &str) -> Option<Vec<String>> {
     Some(found)
 }
 
-/// Every prompt is the committed template with only its three slots differing.
+/// Every prompt is the committed template with only its slots differing, and
+/// the actor it hands the agent is the agent in the session the turn ran in.
 #[test]
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     // Every answer this journey drives is judged by the checked-in assessment
@@ -115,6 +116,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
         let expected_command = request.context_command.clone();
+        // A print's first turn runs in that print's first session.
+        let expected_actor = actor_in(&format!("print-{print_id}"));
         block_on(supervisor.run_turn(request)).expect("the turn runs");
 
         let prompt = watch
@@ -133,6 +136,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
                 EVENT_SLOT => assert_eq!(filling, &expected_event),
                 IMAGE_SLOT => assert_eq!(filling, &expected_image),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
+                ACTOR_SLOT => assert_eq!(filling, &expected_actor),
                 other => panic!("the template declares an unknown slot {other}"),
             }
         }
@@ -144,6 +148,139 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     assert_ne!(
         seen[0], seen[1],
         "two different events filled the same slots"
+    );
+}
+
+/// The actor document the agent names itself by in one session, spelled the
+/// way the supervisor's own action requests read one. This crate cannot see
+/// the core's type; the server's suite parses a real turn's actor as it.
+fn actor_in(session_name: &str) -> String {
+    serde_json::json!({ "agent": { "session_name": session_name } }).to_string()
+}
+
+/// The prompt one run request carries.
+fn prompt_of(request: &oneharness_core::io::run::RunRequest) -> String {
+    request
+        .prompt
+        .first()
+        .expect("the run request carries a prompt")
+        .clone()
+}
+
+/// A turn moved to a new session is prompted with the actor of the session it
+/// moved to, not the one the harness refused: an agent naming a session the
+/// turn no longer runs in is acting as somebody else.
+#[test]
+fn a_turn_moved_to_a_new_session_hands_the_agent_that_sessions_actor() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("prompting-moved");
+    let schema = generated_assessment_schema();
+    let print_id = PrintId::new();
+    let answering = || always("SID-MOVED", &assessment("the print is fine", "high"));
+
+    let first = port(
+        config(&schemas, &fixture, HARNESS, &schema, answering()),
+        &Arc::new(Watch::default()),
+    );
+    block_on(first.run_turn(turn(print_id, event(print_id, unreadable("first")), None)))
+        .expect("the first turn runs");
+    drop(first);
+
+    // The same state directory, and so the same session, on another identity,
+    // which refuses to continue it: the turn moves to the print's second session.
+    let watch = Arc::new(Watch::default());
+    let moved = port(
+        config(&schemas, &fixture, OTHER_HARNESS, &schema, answering()),
+        &watch,
+    );
+    let after =
+        block_on(moved.run_turn(turn(print_id, event(print_id, unreadable("second")), None)))
+            .expect("the moved turn runs");
+    assert_eq!(after.session.session_name, format!("print-{print_id}-2"));
+
+    let prompts: Vec<String> = watch.requests().iter().map(prompt_of).collect();
+    let [refused, ran] = prompts.as_slice() else {
+        panic!("the moved turn was not asked twice: {prompts:#?}");
+    };
+    let quoted = |session: &str| format!("--actor '{}'", actor_in(session));
+    assert!(
+        refused.contains(&quoted(&format!("print-{print_id}"))),
+        "the refused attempt did not name the session it asked to continue:\n{refused}"
+    );
+    assert!(
+        ran.contains(&quoted(&format!("print-{print_id}-2"))),
+        "the turn that ran did not name the session it ran in:\n{ran}"
+    );
+    assert!(
+        !ran.contains(&quoted(&format!("print-{print_id}"))),
+        "the turn that ran still named the session the harness refused:\n{ran}"
+    );
+}
+
+/// The committed template hands acting to the skill and the policy, and says
+/// which commands take the agent's actor, rather than calling the turn a
+/// reading. Read off a real filled prompt, because that is what the agent reads.
+#[test]
+fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("prompting-wording");
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            always("SID-WORDING", &assessment("the print is fine", "high")),
+        ),
+        &watch,
+    );
+    let print_id = PrintId::new();
+    block_on(supervisor.run_turn(turn(
+        print_id,
+        event(print_id, failure_alert(7, Some("bracket.gcode"))),
+        None,
+    )))
+    .expect("the turn runs");
+    let prompt = prompt_of(
+        watch
+            .requests()
+            .first()
+            .expect("the port built a run request"),
+    );
+    // The template wraps its prose at a fixed width, so it is read as words.
+    let words = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    for said in [
+        "decide, and act as your skill describes.",
+        "Everything you ask for goes through the same policy an operator's requests do, \
+         and that policy decides what your role may change.",
+        "Give every other command you run the same `--config` file this one takes.",
+        "A command whose usage lists `--actor` names who is asking.",
+        "A command whose usage does not list it, the one above included, refuses it:",
+        "what you did (each command you ran and what it answered)",
+    ] {
+        assert!(
+            words.contains(said),
+            "the prompt does not say {said:?}:\n{prompt}"
+        );
+    }
+    for unsaid in [
+        "This turn is a reading, not a repair.",
+        "Nothing here asks you to change what the machine is doing",
+        "the only command named below is the one that reads",
+    ] {
+        assert!(
+            !words.contains(unsaid),
+            "the prompt still says {unsaid:?}:\n{prompt}"
+        );
+    }
+    assert!(
+        prompt.contains(&format!(
+            "--actor '{}'",
+            actor_in(&format!("print-{print_id}"))
+        )),
+        "the prompt does not hand the agent its own actor:\n{prompt}"
     );
 }
 

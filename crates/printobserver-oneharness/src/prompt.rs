@@ -1,4 +1,4 @@
-//! The committed prompt template, and the three slots one turn fills.
+//! The committed prompt template, and the four slots one turn fills.
 //!
 //! The template is the whole of what a prompt may say. This module fills its
 //! slots and composes nothing beside them, which is why a rule about what the
@@ -13,9 +13,12 @@ pub const EVENT_SLOT: &str = "{{event}}";
 pub const IMAGE_SLOT: &str = "{{image_path}}";
 /// The slot the command that reads the print's context is written into.
 pub const CONTEXT_COMMAND_SLOT: &str = "{{context_command}}";
+/// The slot the actor document the agent names itself by, in the session the
+/// turn runs in, is written into.
+pub const ACTOR_SLOT: &str = "{{actor}}";
 
 /// Every slot the template declares, and there is no other.
-pub const SLOTS: [&str; 3] = [EVENT_SLOT, IMAGE_SLOT, CONTEXT_COMMAND_SLOT];
+pub const SLOTS: [&str; 4] = [EVENT_SLOT, IMAGE_SLOT, CONTEXT_COMMAND_SLOT, ACTOR_SLOT];
 
 /// What the image slot carries when the event arrived with no image.
 ///
@@ -98,13 +101,19 @@ impl PromptTemplate {
         Ok(Self { segments, order })
     }
 
-    /// The prompt for one turn: this template, with its three slots filled and
+    /// The prompt for one turn: this template, with its four slots filled and
     /// nothing else.
     ///
     /// Every slot is filled in one pass over the template's own segments, so
     /// text a filling happens to carry is never read back as a slot.
     #[must_use]
-    pub fn fill(&self, event: &str, image_path: &str, context_command: &str) -> String {
+    pub fn fill(
+        &self,
+        event: &str,
+        image_path: &str,
+        context_command: &str,
+        actor: &str,
+    ) -> String {
         let mut filled = String::new();
         for (index, segment) in self.segments.iter().enumerate() {
             filled.push_str(segment);
@@ -112,6 +121,7 @@ impl PromptTemplate {
                 Some(&EVENT_SLOT) => filled.push_str(event),
                 Some(&IMAGE_SLOT) => filled.push_str(image_path),
                 Some(&CONTEXT_COMMAND_SLOT) => filled.push_str(context_command),
+                Some(&ACTOR_SLOT) => filled.push_str(actor),
                 Some(_) | None => {}
             }
         }

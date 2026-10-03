@@ -13,8 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use printobserver_oneharness::{
-    HARNESS_SESSIONS_DIRECTORY, OneharnessSupervisor, SESSIONS_DIRECTORY, SessionName,
-    SupervisorConfig, TurnSeam, TurnTimeout,
+    ANSWER_CUT, ANSWER_EXCERPT_CHARS, ANSWER_SAID, HARNESS_SESSIONS_DIRECTORY,
+    OneharnessSupervisor, SESSIONS_DIRECTORY, SessionName, SupervisorConfig, TurnSeam, TurnTimeout,
 };
 use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
@@ -263,6 +263,100 @@ fn an_answer_the_type_refuses_is_refused_even_when_a_schema_admits_it() {
         matches!(refused, SupervisorError::InvalidAnswer { .. }),
         "an answer the type refuses was not refused: {refused:?}"
     );
+}
+
+/// A turn whose answer is no assessment at all, and what the port and its
+/// ledger made of it: the error the caller got, and the failure written down
+/// against the turn.
+fn a_turn_answering(tag: &str, said: &str) -> (SupervisorError, String) {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new(tag);
+    let configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-PROSE", said),
+    );
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(configured, &watch);
+    let print_id = PrintId::new();
+    let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
+        .expect_err("prose was accepted as an assessment");
+    let recorded = supervisor
+        .recorded_turns(&print_id)
+        .expect("the ledger reads back")
+        .into_iter()
+        .next()
+        .and_then(|recorded| recorded.failure)
+        .expect("the turn was written down as a failure");
+    (refused, recorded)
+}
+
+/// An answer that is no assessment is refused carrying what the agent said,
+/// beside why it was refused: the refusal alone names the symptom, and the
+/// agent's own words usually name the cause. The record keeps it too, because
+/// the record is where the next person diagnosing a turn reads it from.
+#[test]
+fn an_answer_with_no_assessment_is_recorded_with_what_the_agent_said() {
+    let said = "I could not run `printobserver context`: the Bash tool is not available.";
+    let (refused, recorded) = a_turn_answering("failures-prose", &format!("\n  {said}  \n"));
+
+    assert!(
+        matches!(refused, SupervisorError::InvalidAnswer { .. }),
+        "prose was refused as something else: {refused:?}"
+    );
+    assert_eq!(
+        recorded,
+        detail(&refused),
+        "the record and the caller disagree"
+    );
+    let (why, kept) = recorded
+        .split_once(ANSWER_SAID)
+        .unwrap_or_else(|| panic!("the failure does not carry what the agent said: {recorded}"));
+    assert!(
+        !why.is_empty(),
+        "the failure lost why the answer was refused: {recorded}"
+    );
+    assert_eq!(
+        kept, said,
+        "the agent's words were not kept trimmed and whole"
+    );
+}
+
+/// A runaway answer is kept only as far as the bound, and says it was cut.
+#[test]
+fn a_long_answer_is_kept_up_to_its_bound_and_marked_cut() {
+    // Multi-byte characters, so a bound counted in bytes would cut one in half.
+    let said: String = "é".repeat(ANSWER_EXCERPT_CHARS + 500);
+    let (_, recorded) = a_turn_answering("failures-runaway", &said);
+
+    let (_, kept) = recorded
+        .split_once(ANSWER_SAID)
+        .unwrap_or_else(|| panic!("the failure does not carry what the agent said: {recorded}"));
+    let excerpt = kept
+        .strip_suffix(ANSWER_CUT)
+        .unwrap_or_else(|| panic!("a cut answer is not marked as cut: …{}", tail(kept)));
+    assert_eq!(excerpt.chars().count(), ANSWER_EXCERPT_CHARS);
+    assert!(
+        said.starts_with(excerpt),
+        "the excerpt is not the answer's start"
+    );
+
+    // An answer exactly at the bound is whole, and so carries no mark.
+    let whole: String = "a".repeat(ANSWER_EXCERPT_CHARS);
+    let (_, recorded) = a_turn_answering("failures-at-bound", &whole);
+    assert!(
+        recorded.ends_with(&format!("{ANSWER_SAID}{whole}")),
+        "an answer at the bound was cut: …{}",
+        tail(&recorded)
+    );
+}
+
+/// The last few characters of a long text, for a message a person reads.
+fn tail(text: &str) -> String {
+    let count = text.chars().count();
+    text.chars().skip(count.saturating_sub(40)).collect()
 }
 
 /// A ledger that cannot be read is reported by every method that reads one.

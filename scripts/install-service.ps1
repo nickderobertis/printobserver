@@ -8,9 +8,9 @@
 # It places FOUR things and no more: the program, the configuration, the state
 # directory, and the service registration with the service control manager. It
 # does NOT start the service and does NOT set it to start automatically, and it
-# must never be changed to — nor given an option that does. This service
+# must never be changed to - nor given an option that does. This service
 # commands a 3D printer, so installing a package must not, as a side effect,
-# start a process that can move a machine — at install or at the next reboot.
+# start a process that can move a machine - at install or at the next reboot.
 # The registration is written to start on demand; setting it to start
 # automatically and starting it is the operator's own second command, which this
 # script prints when it is done.
@@ -76,7 +76,7 @@ $Kept = @()
 # something else.
 function Plain([string]$Name, [string]$Value) {
     if ($Value.Contains('"') -or $Value.Contains("'")) {
-        Fail "$Name carries a quote, which a service's command line and a TOML document have no escape for. Pass $Name a path with no quote in it — move or rename the directory if its name has one."
+        Fail "$Name carries a quote, which a service's command line and a TOML document have no escape for. Pass $Name a path with no quote in it - move or rename the directory if its name has one."
     }
     if ($Value.Contains("`n") -or $Value.Contains("`r")) {
         Fail "$Name carries a newline, which a TOML document reads as the end of a setting. Pass $Name a path on one line."
@@ -101,7 +101,7 @@ function Under-Root([string]$Path) {
 #
 # Its own error preference, because Windows PowerShell turns a program's
 # standard error, read here so that it can be quoted back, into a terminating
-# error under `Stop` — before the exit status that says whether it failed.
+# error under `Stop` - before the exit status that says whether it failed.
 function Must([string]$What, [string]$Next, [scriptblock]$Command) {
     $ErrorActionPreference = 'Continue'
     $said = & $Command 2>&1 | Out-String
@@ -165,7 +165,7 @@ $binPath = "\`"$InstalledBinary\`" server --config \`"$InstalledConfig\`""
 $account = "NT SERVICE\$ServiceName"
 # Whether the manager already holds this service: it answers a query about one
 # it has with success, about one it does not have with 1060, and anything else
-# — access denied, a manager that is not running — is a refusal to go on over
+# - access denied, a manager that is not running - is a refusal to go on over
 # rather than evidence of either.
 $ServiceDoesNotExist = 1060
 $asked = sc.exe query $ServiceName 2>&1 | Out-String

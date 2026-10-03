@@ -1,8 +1,8 @@
 # Put the printobserver program on your path, already built for your platform.
 #
 # The Windows form of the third of the three ALTERNATIVE routes AGENTS.md's "The
-# end-user install path" section states — `scripts/install.sh` is the same route
-# on Linux and macOS — and `just check-repo` refuses a tree in which this path
+# end-user install path" section states - `scripts/install.sh` is the same route
+# on Linux and macOS - and `just check-repo` refuses a tree in which this path
 # differs from what that section's fetch URL names. It is the route for a
 # machine that has neither package manager: nothing here needs Python, Node or
 # a Rust toolchain, and nothing here compiles anything, because the host this
@@ -25,7 +25,7 @@
 #   -To       install into DIR rather than into $env:LOCALAPPDATA\Programs\printobserver.
 #
 # PRINTOBSERVER_RELEASE_BASE points this at somewhere other than the project's
-# own releases — a mirror, or a directory holding a release. It takes the same
+# own releases - a mirror, or a directory holding a release. It takes the same
 # two shapes the forge serves: `<base>/latest/download/<asset>` for the newest
 # release and `<base>/download/<tag>/<asset>` for a pinned one.
 param(
@@ -35,7 +35,7 @@ param(
 )
 
 # The whole route is one function, called once at the end, so that what it sets
-# — the strict mode, the error preference, the progress preference — is scoped
+# - the strict mode, the error preference, the progress preference - is scoped
 # to it and leaves the session of a caller who ran `irm ... | iex` as it was.
 function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     Set-StrictMode -Version Latest
@@ -94,7 +94,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         $releaseBase = $localBase
     }
 
-    # The platform, as the release artifacts name it — read the way Windows
+    # The platform, as the release artifacts name it - read the way Windows
     # itself names the host: `OS` is `Windows_NT` on every Windows, and the
     # processor is what the system reports rather than what this process runs
     # as, because an emulated PowerShell on an ARM64 machine still installs on
@@ -148,7 +148,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         # One way of obtaining a file, whichever kind of place the release is
         # in: copied out of a directory, fetched from anywhere else. Answers
         # nothing when the file is in hand, and otherwise why it is not, in the
-        # words of whatever refused — so the stop can carry the exact cause.
+        # words of whatever refused - so the stop can carry the exact cause.
         function Get-Published([string]$FileName, [string]$Into) {
             if ($isLocal) {
                 $source = Join-Path $from $FileName
@@ -202,7 +202,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         }
 
         # The same archive every platform's route unpacks, and Windows has
-        # carried a `tar` that reads it since Windows 10 — the system's own,
+        # carried a `tar` that reads it since Windows 10 - the system's own,
         # taken by its path where it is there, because another `tar` ahead of
         # it on PATH (Git's, on a runner) reads `C:\...` as a host to connect
         # to rather than a drive.
@@ -225,7 +225,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         }
         # What is in it, before any of it reaches the filesystem: a member
         # naming a place outside the directory of this script's own, or one
-        # that is not a plain file — a link would land wherever it points —
+        # that is not a plain file - a link would land wherever it points -
         # is not one this installs, whatever the digest said. The verbose
         # listing's first character is the member's kind, `-` for a file.
         $members = @(& $tar -tzf (Join-Path $work $asset) 2>$null)
@@ -302,7 +302,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
 
     # What a successful install says, and all of it: where the program went
     # and from which release, that its directory is now on the path where it
-    # was not, and the two commands the operator runs next — the same lines,
+    # was not, and the two commands the operator runs next - the same lines,
     # line for line, that the shell form of this route prints.
     # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     function Report-Installed {
@@ -319,7 +319,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
 
 # The status a caller reads. Run as a file, it is the process's own exit
 # status. Under `irm ... | iex` there is no process of the script's own to
-# exit — an `exit` here would close the caller's window — so the status goes
+# exit - an `exit` here would close the caller's window - so the status goes
 # where a session reads a program's: `$LASTEXITCODE`, which is what a caller
 # checks after a native command, and what a CI step's PowerShell reads back.
 try {

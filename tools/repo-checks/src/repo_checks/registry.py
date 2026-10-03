@@ -51,6 +51,7 @@ CHECKS: dict[str, Check] = {
     "agent-layer": checks_repo.agent_layer,
     "command-allowlist": checks_repo.command_allowlist,
     "powershell-providers": checks_repo.powershell_providers,
+    "powershell-ascii": checks_repo.powershell_ascii,
     "recipes": checks_repo.recipe_set,
     "python-typecheck-platforms": checks_repo.python_typecheck_platforms,
     "node-install": checks_repo.node_install,

@@ -93,6 +93,24 @@ site = "arguments: &[\"auth\", \"login\"],"
 reason = "Claude Code's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `claude auth login --help` as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."
 
 [[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver-oneharness/src/turn.rs"
+site = "arguments.extend(CLAUDE_READ_TOOLS.map(str::to_owned));"
+reason = "The task that made turns act specifies exactly this grant — `--allowedTools Read Grep Glob` — as the surface validated on the real printer. A turn has to read the event's image, which the supervisor materializes under its state directory, outside the skill directory the turn runs in, and the skill's reference documents; scoping Read to path patterns would have to spell Windows and POSIX path forms that nothing here can re-validate against Claude Code. What the read tools can reach is bounded by the service's own account rather than by this list: a dedicated system user whose unit hides every home. None of the three can change anything, and the tool set itself is named rather than denied, so `Write`, `Edit`, `WebFetch` and `Task` are absent."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver-oneharness/src/turn.rs"
+site = ".map(|command| format!(\"Bash({command}:*)\")),"
+reason = "The task that made turns act specifies exactly this rule shape — one `Bash(<command>:*)` per operation — as the surface validated on the real printer. The wildcard is over the arguments of one of this program's own commands, every one of which is a request to the supervisor, and what such a request may change is decided there: the server's policy grants actions per actor class, refuses an out-of-bounds value, and records every request with its actor. The finding's sharper half — that a turn's shell can claim another `--actor` — is a property of the server's credential, which does not bind an actor class, rather than of this rule: an agent restricted to fewer arguments still holds the credential an operator uses. That is recorded as a follow-up for the server, and narrowing the rule's arguments here would not close it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "npm_program: Some(\"node_modules/@anthropic-ai/claude-code/bin/claude.exe\"),"
+reason = "Where npm puts Claude Code's native program is npm's layout for a third-party package, and its one machine-readable source is that package's own `bin` entry on the npm registry (`npm view @anthropic-ai/claude-code bin` answers `{ claude: 'bin/claude.exe' }` at 2.1.288), under the `node_modules` npm writes beside the `claude.cmd` launcher. A drift gate would have to reach the public registry from inside the gate. A layout that moves leaves the lookup answering `None`, so the harness is started by name and fails the way a missing program does, naming the program and the PATH, rather than starting something else."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-oneharness/src/sign_in.rs"
 site = "arguments: &[\"login\", \"--device-auth\"],"

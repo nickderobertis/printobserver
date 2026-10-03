@@ -16,6 +16,10 @@ mod closing;
 mod configuration;
 #[path = "supervision/failures.rs"]
 mod failures;
+#[path = "supervision/launching.rs"]
+mod launching;
+#[path = "supervision/permissions.rs"]
+mod permissions;
 #[path = "supervision/prompting.rs"]
 mod prompting;
 #[path = "supervision/reports.rs"]

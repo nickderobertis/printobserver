@@ -13,6 +13,7 @@
 //! for that identity. Nothing here runs either: the command-line program runs
 //! the sign-in, and `OneHarness` runs the turns.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use oneharness_core::io::usage::{CLAUDE_IDENTITY_ENV, CODEX_IDENTITY_ENV};
@@ -35,6 +36,10 @@ pub struct HarnessSignIn {
     program: &'static str,
     /// The arguments of that harness's own interactive sign-in.
     arguments: &'static [&'static str],
+    /// Where npm's package keeps the native program, relative to the directory
+    /// npm writes the program's `.cmd` launcher into, for a harness npm installs
+    /// as a native program behind that launcher. `None` for one it does not.
+    npm_program: Option<&'static str>,
 }
 
 /// Every harness identity this program can sign in, and there is no other.
@@ -50,6 +55,8 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
         program: "claude",
         // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A third-party CLI's login command has no machine-readable source: OneHarness declares each harness's program, which the tests hold `program` to, but not its sign-in. This is read from `claude auth login --help`, and a gate drift check would have to install and run the paid provider's CLI.
         arguments: &["auth", "login"],
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] npm's layout for this package has no machine-readable source: the package's own `bin` entry names `bin/claude.exe`, which its install step replaces with the platform's native program, and the `claude.cmd` launcher npm writes beside `node_modules` runs that file.
+        npm_program: Some("node_modules/@anthropic-ai/claude-code/bin/claude.exe"),
     },
     HarnessSignIn {
         identity: "codex",
@@ -57,6 +64,7 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
         program: "codex",
         // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A third-party CLI's login command has no machine-readable source: OneHarness declares each harness's program, which the tests hold `program` to, but not its sign-in. This is read from `codex login --help`, and a gate drift check would have to install and run the paid provider's CLI.
         arguments: &["login", "--device-auth"],
+        npm_program: None,
     },
 ];
 
@@ -98,6 +106,43 @@ impl HarnessSignIn {
     #[must_use]
     pub const fn arguments(&self) -> &'static [&'static str] {
         self.arguments
+    }
+
+    /// The native program behind npm's launcher, when a search of `path` finds
+    /// that launcher and no program of the harness's own name.
+    ///
+    /// On Windows npm installs a harness as a `.cmd` launcher, and a program
+    /// started by name is looked for as an `.exe` alone, so neither the sign-in
+    /// nor a turn finds it; a batch file would also be refused the multi-line
+    /// prompt a turn passes. The launcher only runs the native program in npm's
+    /// package, so that program is started instead. Elsewhere npm links the
+    /// program under its own name, which the search finds first, and this
+    /// answers `None` — as it does for a launcher whose package is not beside
+    /// it, which is then left to fail by name the way a missing program does.
+    #[must_use]
+    pub fn program_behind_launcher(&self, path: &OsStr) -> Option<PathBuf> {
+        let relative = self.npm_program?;
+        let native = format!("{}{}", self.program, std::env::consts::EXE_SUFFIX);
+        let launcher = format!("{}.cmd", self.program);
+        let mut behind = None;
+        for directory in std::env::split_paths(path) {
+            if directory.join(&native).is_file() {
+                return None;
+            }
+            if behind.is_none() && directory.join(&launcher).is_file() {
+                behind = Some(directory.join(relative)).filter(|program| program.is_file());
+            }
+        }
+        behind
+    }
+
+    /// The program to start for this harness under a search path: the one
+    /// behind npm's launcher where that is all the search finds, and otherwise
+    /// the program by its own name, for the operating system to find.
+    #[must_use]
+    pub fn program_on(&self, path: &OsStr) -> PathBuf {
+        self.program_behind_launcher(path)
+            .unwrap_or_else(|| PathBuf::from(self.program))
     }
 
     /// The directory this identity keeps its sign-in in, under one state

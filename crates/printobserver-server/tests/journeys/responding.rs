@@ -284,3 +284,83 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
         "the malformed answer was not diagnosed: {unreadable:?}"
     );
 }
+
+/// A directory name a shell would split, unescape or end a quote at: a space,
+/// a single quote and — where a file name may carry one — a backslash.
+fn awkward_directory(root: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "a turn's config"
+    } else {
+        r"a turn's \config\"
+    };
+    let directory = root.join(name);
+    std::fs::create_dir_all(&directory).expect("an awkwardly named directory");
+    directory
+}
+
+/// The context command names its configuration file so that a POSIX shell —
+/// what a turn's shell is on every host, Windows included — reads the path back
+/// unchanged, backslashes, spaces and a single quote of its own included.
+#[test]
+fn a_posix_shell_reads_the_context_commands_configuration_path_back_unchanged() {
+    let root = TempDir::new().expect("a directory of the journey's own");
+    let awkward = root
+        .path()
+        .join(r"it's a \windows\ path with spaces")
+        .join(CLIENT_CONFIG_FILE);
+    let command = context_command(&awkward).replace("{print_id}", "7");
+
+    // The program the command names is stood in for by a shell function that
+    // prints each word it was handed on a line of its own, which is exactly
+    // what the shell made of the command line.
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "printobserver() {{ for word in \"$@\"; do printf '%s\\n' \"$word\"; done; }}\n{command}"
+        ))
+        .output()
+        .expect("a POSIX shell runs");
+    assert!(
+        output.status.success(),
+        "the shell refused `{command}`: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let words: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        words,
+        [
+            "context".to_owned(),
+            "--config".to_owned(),
+            awkward.display().to_string(),
+            "--print-id".to_owned(),
+            "7".to_owned(),
+        ],
+        "the shell did not read `{command}` back as the path it names"
+    );
+}
+
+/// The configuration the server wrote, copied under a directory a shell would
+/// split or unescape, is still the one the responder's turn authenticates by.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_responder_reads_a_configuration_path_a_shell_would_split() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    world.printer.forget();
+    let root = TempDir::new().expect("a directory of the journey's own");
+    let copied = awkward_directory(root.path()).join(CLIENT_CONFIG_FILE);
+    std::fs::copy(world.state_dir().join(CLIENT_CONFIG_FILE), &copied)
+        .expect("the client configuration is copied");
+
+    let did = respond(&copied, print_id, slow_down()).await;
+
+    assert_eq!(
+        did.first().map(|done| done["status"].clone()),
+        Some(json!(200)),
+        "the responder did not act under the configuration at {}: {did:?}",
+        copied.display()
+    );
+    assert_eq!(world.printer.calls(), vec![Call::Feedrate(0.9)]);
+}
