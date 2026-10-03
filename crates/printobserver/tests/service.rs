@@ -1563,6 +1563,76 @@ fn the_installed_files_document_the_credential_and_carry_none() {
     );
 }
 
+/// The commented `[camera]` and `[obico]` examples the template carries, with
+/// the comment marks taken off and the token filled in, as an operator who
+/// has a camera and an `Obico` API would.
+fn with_the_examples_uncommented(template: &str) -> String {
+    let mut uncommented = 0;
+    let lines: Vec<String> = template
+        .lines()
+        .map(|line| {
+            let example = [
+                "# [camera]",
+                "# snapshot_url = ",
+                "# [obico]",
+                "# url = ",
+                "# access_token = ",
+            ]
+            .iter()
+            .any(|marker| line.starts_with(marker));
+            if !example {
+                return line.to_owned();
+            }
+            uncommented += 1;
+            line.trim_start_matches("# ")
+                .replace("access_token = \"\"", "access_token = \"an-obico-token\"")
+        })
+        .collect();
+    assert_eq!(
+        uncommented, 5,
+        "the template does not carry the commented [camera] and [obico] examples"
+    );
+    lines.join("\n")
+}
+
+/// The configuration the installer writes is one the real server's own parser
+/// reads, before and after its `[camera]` and `[obico]` examples are taken up;
+/// it grants the system `resume`, and its `[safety]` table opens a line of its
+/// own.
+#[test]
+fn the_installed_configuration_reads_with_and_without_its_examples() {
+    let under = TempDir::new().expect("a journey's own root");
+    let installed = install(under.path());
+    fill_in(&installed.configuration());
+    install_the_skill(&installed.state());
+    let template =
+        std::fs::read_to_string(installed.configuration()).expect("the configuration reads");
+    assert!(
+        template.lines().any(|line| line == "[safety]"),
+        "the template's [safety] table does not open a line of its own"
+    );
+
+    let as_installed = printobserver_server::ServerConfig::load(installed.configuration())
+        .expect("the installed configuration reads");
+    assert!(
+        as_installed.safety.actions[&printobserver_core::ActorClass::System]
+            .contains(&printobserver_core::ActionKind::Resume),
+        "the installed configuration does not grant the system resume"
+    );
+    assert_eq!(as_installed.camera_snapshot_url, None);
+    assert!(as_installed.obico_api.is_none());
+
+    std::fs::write(
+        installed.configuration(),
+        with_the_examples_uncommented(&template),
+    )
+    .expect("the configuration is writable");
+    let taken_up = printobserver_server::ServerConfig::load(installed.configuration())
+        .expect("the configuration reads with its examples taken up");
+    assert!(taken_up.camera_snapshot_url.is_some());
+    assert!(taken_up.obico_api.is_some());
+}
+
 /// One print in a state directory, as an alert would have opened it.
 fn a_print_in(state: &Path) -> String {
     let store = printobserver_store_sqlite::SqliteStore::open(state).expect("the store opens");
