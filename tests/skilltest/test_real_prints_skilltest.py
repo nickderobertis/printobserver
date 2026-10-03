@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -128,7 +129,32 @@ def _opened_before_acting(report: Report, built: Built, acting: str) -> bool:
     return False
 
 
-def _keep(scenario: Scenario, report: Report, ran: list[str], passed: bool) -> None:
+def models_used(workspace: Path) -> list[str]:
+    """The models Claude Code answered with in the session it ran in a workspace.
+
+    With no model pinned, skilltest reports none; Claude Code writes every
+    session's messages, each naming its model, under its configuration
+    directory, in a folder named after the directory the session ran in.
+    """
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    directory = Path(configured) if configured else Path.home() / ".claude"
+    sessions = directory / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
+    found: set[str] = set()
+    for session in sorted(sessions.glob("*.jsonl")):
+        for line in session.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            message = entry.get("message") if isinstance(entry, dict) else None
+            if isinstance(message, dict) and isinstance(message.get("model"), str):
+                found.add(message["model"])
+    return sorted(found)
+
+
+def _keep(
+    scenario: Scenario, report: Report, models: list[str], ran: list[str], passed: bool
+) -> None:
     if not REPORT_DIR:
         return
     directory = Path(REPORT_DIR)
@@ -138,7 +164,7 @@ def _keep(scenario: Scenario, report: Report, ran: list[str], passed: bool) -> N
     verdict = {
         "scenario": scenario.test_id,
         "passed": passed,
-        "models": [run.model for run in report.runs],
+        "models": models,
         "commands": ran,
     }
     with (directory / "verdicts.jsonl").open("a", encoding="utf-8") as verdicts:
@@ -194,10 +220,10 @@ def test_the_skill_takes_an_action_the_case_accepts(
     ran = requests_answered(calls, built.stubs, built.workspace)
     met = met_outcome(scenario, ran)
     passed = report.passed and met is not None
-    _keep(scenario, report, [command.describe() for command in ran], passed)
+    models = [run.model for run in report.runs if run.model] or models_used(built.workspace)
+    _keep(scenario, report, models, [command.describe() for command in ran], passed)
     print(
-        f"\n{scenario.test_id} on {[run.model or '(harness default)' for run in report.runs]}: "
-        f"{'PASS' if passed else 'FAIL'}"
+        f"\n{scenario.test_id} on {models or '(no model recorded)'}: {'PASS' if passed else 'FAIL'}"
     )
     for command in ran:
         print(f"  ran: {command.describe()}")

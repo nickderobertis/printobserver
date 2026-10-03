@@ -893,3 +893,21 @@ def test_only_a_request_a_stub_answered_is_one_the_agent_made(built: dict[str, B
         not any(step_matches(step, c) for c in requests_answered(calls[:1], case.stubs, None)),
         describing="a never step to be untaken by a branch never run",
     )
+
+
+def test_the_model_a_run_used_is_read_from_claude_codes_own_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no model pinned, the model is the one Claude Code's session record names."""
+    workspace = tmp_path / "printobserver" / "skills" / "printobserver"
+    sessions = tmp_path / "config" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
+    sessions.mkdir(parents=True)
+    (sessions / "a-session.jsonl").write_text(
+        '{"type":"user","message":{"role":"user"}}\n'
+        '{"type":"assistant","message":{"role":"assistant","model":"a-model"}}\n'
+        "not a record\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))
+    expect.equal(live.models_used(workspace), ["a-model"], describing="the session's model")
+    expect.equal(live.models_used(tmp_path / "elsewhere"), [], describing="no session there")
