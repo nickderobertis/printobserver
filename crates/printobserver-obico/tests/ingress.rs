@@ -997,3 +997,26 @@ async fn with_no_api_configured_an_acknowledgement_says_what_is_missing() {
         "{refused:?}"
     );
 }
+
+/// An acknowledgement asked for off any runtime — as the supervision core's
+/// own expiry driver asks for one — still reaches Obico's API.
+#[test]
+fn an_acknowledgement_asked_for_off_any_runtime_reaches_obico() {
+    let hosting = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime for the host");
+    let api = hosting.block_on(ImageHost::serving(Answer {
+        content_type: Some("application/json".to_owned()),
+        ..Answer::image(b"{}".to_vec())
+    }));
+    let vision = acknowledging(api.base_url());
+    std::thread::spawn(move || {
+        printobserver_core::block_on(vision.clear_detection(the_samples_detection()))
+    })
+    .join()
+    .expect("the driver's thread ends")
+    .expect("Obico takes the acknowledgement");
+    assert_eq!(api.received().len(), 1, "{:?}", api.received());
+    drop(hosting);
+}

@@ -13,7 +13,9 @@
 //!
 //! **Its supervision turn** refuses to answer unless that state file is there,
 //! records beside it what it read and the directory it was run in, and answers
-//! the assessment it was given.
+//! the assessment it was given. A journey about what a turn does hands it a
+//! script of its own to run first ([`stand_in_acting`]): what it is handed to
+//! work with is what the prompt carries, and nothing else.
 //!
 //! Nothing here spells a variable's name: each stand-in is written for one entry
 //! of the adapter's own table, and reads the variable that entry declares.
@@ -50,6 +52,10 @@ pub const SIGN_IN_SEEN: &str = "sign-in-seen";
 /// The file a stand-in's supervision turn records into, beside the state file.
 pub const TURN_SEEN: &str = "turn-seen";
 
+/// The prefix of the file each supervision turn writes its whole prompt to,
+/// followed by the print it was about and the turn's ordinal for that print.
+pub const PROMPT: &str = "prompt";
+
 /// What a stand-in's sign-in prints on standard output for the line it was
 /// answered, before the line itself.
 pub const ANSWERED: &str = "was answered: ";
@@ -70,6 +76,28 @@ pub fn stand_in(
     invocations: &Path,
     status: u8,
     answer: &str,
+) -> PathBuf {
+    stand_in_acting(directory, harness, invocations, status, answer, ":")
+}
+
+/// The same stand-in, whose supervision turn runs `turn` — POSIX shell — after
+/// it has recorded what it read and before it answers.
+///
+/// Every turn writes its whole prompt to `<PROMPT>-<print>-<n>` beside the
+/// state file, and `turn` runs with the prompt read the way an agent reads it:
+/// `$print` is the print the prompt names, `$about` is the arguments of the
+/// context command the prompt hands it (its `--config` and its `--print-id`),
+/// `$actor` is the `--actor` line the prompt hands it, `$event` is the
+/// identifier of the event the turn is about, and `$dir` is the directory the
+/// state file is in. `printobserver` is found on the path the supervisor runs
+/// the turn with, as the real harness finds it.
+pub fn stand_in_acting(
+    directory: &Path,
+    harness: &HarnessSignIn,
+    invocations: &Path,
+    status: u8,
+    answer: &str,
+    turn: &str,
 ) -> PathBuf {
     let program = harness.program();
     let variable = harness.config_env();
@@ -98,6 +126,16 @@ case "$1" in
             echo "state=$(cat "$dir/{SIGNED_IN}")"
         }} > "$dir/{TURN_SEEN}.part"
         mv "$dir/{TURN_SEEN}.part" "$dir/{TURN_SEEN}"
+        context=$(printf '%s\n' "$2" | grep -m1 '^printobserver context ')
+        about="${{context#printobserver context }}"
+        print="${{about##*--print-id }}"
+        actor=$(printf '%s\n' "$2" | grep -m1 '^--actor ')
+        event=$(printf '%s\n' "$2" | grep -m1 '"id": ' | sed 's/.*"id": "\([^"]*\)".*/\1/')
+        n=1
+        while [ -e "$dir/{PROMPT}-$print-$n" ]; do n=$((n + 1)); done
+        printf '%s\n' "$2" > "$dir/{PROMPT}-$print-$n.part"
+        mv "$dir/{PROMPT}-$print-$n.part" "$dir/{PROMPT}-$print-$n"
+        {turn}
         printf '%s\n' '{answer}'
         exit 0
         ;;

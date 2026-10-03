@@ -68,6 +68,8 @@ mod failures;
 mod finding;
 #[path = "journeys/formats.rs"]
 mod formats;
+#[path = "journeys/looking.rs"]
+mod looking;
 #[path = "journeys/materializing.rs"]
 mod materializing;
 #[path = "journeys/redaction.rs"]

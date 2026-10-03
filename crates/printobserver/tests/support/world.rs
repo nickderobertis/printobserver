@@ -22,7 +22,6 @@
 //! ways of configuring it are set up: a file this world writes, and the
 //! variables the environment carries.
 
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -150,6 +149,8 @@ pub struct World {
     skill: PathBuf,
     /// The supervisor, running.
     server: Child,
+    /// What the supervisor has printed, read as it prints it.
+    said: std::sync::Mutex<announced::Stream>,
 }
 
 impl Drop for World {
@@ -248,7 +249,8 @@ impl World {
             .stderr(Stdio::piped())
             .spawn()
             .expect("the command that runs the supervisor runs");
-        let address = serving_on(&mut server);
+        let (address, said) =
+            announced::serving(&mut server, "the command that runs the supervisor");
         let proxy = Proxy::in_front_of(address);
 
         let world = Self {
@@ -261,6 +263,7 @@ impl World {
             camera,
             skill: skill.to_path_buf(),
             server,
+            said: std::sync::Mutex::new(said),
         };
         std::fs::write(world.client_config(), world.client_document(CREDENTIAL))
             .expect("the client configuration is writable");
@@ -270,6 +273,18 @@ impl World {
         )
         .expect("the client configuration is writable");
         world
+    }
+
+    /// Everything the supervisor has printed so far, without stopping it.
+    pub fn said_so_far(&self) -> String {
+        let mut stream = self
+            .said
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while let Ok(line) = stream.lines.try_recv() {
+            stream.printed.push_str(&line);
+        }
+        stream.printed.clone()
     }
 
     /// Tell a stood-in machine to refuse everything it is asked, or to stop.
@@ -860,9 +875,4 @@ fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
 /// One JSON document, as the TOML the supervisor reads it in.
 fn toml_of(document: &Value) -> String {
     toml::to_string(document).expect("a configuration document renders")
-}
-
-/// Where the started program says it is serving.
-fn serving_on(child: &mut Child) -> SocketAddr {
-    announced::serving(child, "the command that runs the supervisor").0
 }

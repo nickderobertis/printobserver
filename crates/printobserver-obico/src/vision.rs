@@ -161,11 +161,43 @@ impl ObicoVision {
         &self.config
     }
 
+    /// Acknowledge the alert Obico holds against one printer's current print,
+    /// wherever this is polled.
+    ///
+    /// The supervision core asks for an acknowledgement from its own expiry
+    /// driver too — a thread that polls a port's futures with no reactor, as
+    /// `printobserver_core::block_on` says every port must allow — and this
+    /// adapter's HTTP client needs Tokio's. So a call made inside a Tokio
+    /// runtime runs on it, and one made anywhere else runs on a current-thread
+    /// runtime of its own, with a client of its own, built for the call: a
+    /// client's pooled connections belong to the runtime they were opened on.
+    async fn acknowledge_anywhere(&self, provider_printer_id: i64) -> Result<(), VisionError> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            return self.acknowledge(&self.client, provider_printer_id).await;
+        }
+        let unavailable = |error: &dyn fmt::Display| VisionError::Unreachable {
+            detail: format!("no runtime could be built to reach Obico on: {error}"),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| unavailable(&error))?;
+        let client = reqwest::Client::builder()
+            .timeout(self.config.fetch_timeout)
+            .build()
+            .map_err(|error| unavailable(&error))?;
+        runtime.block_on(self.acknowledge(&client, provider_printer_id))
+    }
+
     /// Acknowledge the alert Obico holds against one printer's current print.
     ///
     /// What a refusal says names the address and the status Obico answered,
     /// and never the token.
-    async fn acknowledge(&self, provider_printer_id: i64) -> Result<(), VisionError> {
+    async fn acknowledge(
+        &self,
+        client: &reqwest::Client,
+        provider_printer_id: i64,
+    ) -> Result<(), VisionError> {
         let Some(api) = &self.api else {
             return Err(VisionError::NotConfigured {
                 detail: "no [obico] url and access_token are configured, so Obico cannot be \
@@ -178,8 +210,7 @@ impl ObicoVision {
             api.url.trim_end_matches('/'),
             acknowledgement_path(provider_printer_id)
         );
-        let response = self
-            .client
+        let response = client
             .post(&url)
             .bearer_auth(&api.access_token)
             .send()
@@ -222,7 +253,10 @@ impl VisionPort for ObicoVision {
     }
 
     fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>> {
-        Box::pin(async move { self.acknowledge(detection.provider_printer_id).await })
+        Box::pin(async move {
+            self.acknowledge_anywhere(detection.provider_printer_id)
+                .await
+        })
     }
 }
 

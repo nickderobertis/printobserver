@@ -289,6 +289,10 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
         }
     }
     said.extend(the_server_command(world, credential));
+    said.push((
+        "the supervisor the walk ran against".to_owned(),
+        world.said_so_far(),
+    ));
     said
 }
 
