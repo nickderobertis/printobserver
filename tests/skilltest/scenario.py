@@ -908,6 +908,7 @@ def _stubs(
             continue
         for option in actor_forms:
             specs.append(
+                # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
                 StubSpec(
                     f"{command.name}-refuses-{option.lstrip('-')}",
                     command.name,
