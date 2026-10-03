@@ -35,9 +35,9 @@ of each one you can follow as it is written.
    layer not sticking: that is what a failing print looks like. A file's name
    never makes a defect intended.
 3. **Look again, and watch if you need to.** A look takes a fresh frame and
-   reads the printer now, after waiting up to 90 seconds, so a few looks show a
-   defect growing or settling. Open each frame. A look returns early with any
-   new event for this print: that is how later alerts reach you.
+   reads the printer now, and it can wait up to a minute and a half first, so a
+   few looks show a defect growing or settling. Open each frame. A look returns
+   early with any new event for this print: that is how later alerts reach you.
 4. **Decide.** Weigh what you see against what the history says, and say which
    way you are going and how sure you are. A single frame is one moment; when
    it and the history disagree, prefer the history and say so.
