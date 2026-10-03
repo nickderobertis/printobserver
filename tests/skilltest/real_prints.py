@@ -266,9 +266,14 @@ def shipped_model() -> str | None:
     return model["name"] if model else None
 
 
-_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
+_PUNCTUATION = ";&|()"
 # The words after which a shell reads the next word as a command.
-_COMMAND_POSITION = {*_SEPARATORS, "do", "then", "else"}
+_KEYWORDS = {"do", "then", "else"}
+
+
+def _is_separator(word: str) -> bool:
+    """Whether a word is the shell's punctuation, which the lexer runs together (`);`)."""
+    return bool(word) and set(word) <= set(_PUNCTUATION)
 
 
 def _lines_joined(command: str) -> str:
@@ -295,7 +300,7 @@ def _lines_joined(command: str) -> str:
 
 
 def _words(command: str) -> list[str]:
-    lexer = shlex.shlex(_lines_joined(command), posix=True, punctuation_chars=";&|()")
+    lexer = shlex.shlex(_lines_joined(command), posix=True, punctuation_chars=_PUNCTUATION)
     lexer.whitespace_split = True
     try:
         return list(lexer)
@@ -314,7 +319,7 @@ def _at_command_position(words: list[str], index: int) -> bool:
     position = index - 1
     while position >= 0 and re.fullmatch(r"\w+=.*", words[position]):
         position -= 1
-    return position < 0 or words[position] in _COMMAND_POSITION
+    return position < 0 or _is_separator(words[position]) or words[position] in _KEYWORDS
 
 
 def _options(words: list[str]) -> dict[str, str]:
@@ -323,12 +328,12 @@ def _options(words: list[str]) -> dict[str, str]:
     position = 0
     while position < len(words):
         current = words[position]
-        if current in _SEPARATORS or _is_program(current):
+        if _is_separator(current) or _is_program(current):
             break
         if current.startswith("--"):
             name = current[2:].replace("-", "_")
             following = words[position + 1] if position + 1 < len(words) else None
-            if following is None or following.startswith("--") or following in _SEPARATORS:
+            if following is None or following.startswith("--") or _is_separator(following):
                 options[name] = ""
                 position += 1
                 continue
@@ -353,7 +358,7 @@ def commands_in(shell_command: str) -> list[Command]:
         if index + 1 >= len(words):
             continue
         operation = words[index + 1]
-        if operation.startswith("-") or operation in _SEPARATORS:
+        if operation.startswith("-") or _is_separator(operation):
             continue
         found.append(Command(operation=operation, options=_options(words[index + 2 :])))
     return found
@@ -370,7 +375,7 @@ def takes_effect(command: Command) -> bool:
     It is one of the program's commands; it asks for neither the usage nor the
     version, which the program answers without carrying anything out; every
     option it names is one that command or every command takes; a structured
-    value given inline is JSON; and it supplies every value the command
+    value given inline is JSON, or a shell expansion; and it supplies every value the command
     requires, by any of that value's forms. What the server then makes of the
     values is the server's, and the stubs stand in for it.
     """
@@ -385,7 +390,7 @@ def takes_effect(command: Command) -> bool:
         field = forms.get(option)
         if field is None:
             return False
-        if field.structured and option == field.forms[0] and not _is_json(value):
+        if field.structured and option == field.forms[0] and not _is_json_or_expanded(value):
             return False
     named = {option for option, value in given.items() if value}
     return all(
@@ -393,7 +398,10 @@ def takes_effect(command: Command) -> bool:
     )
 
 
-def _is_json(value: str) -> bool:
+def _is_json_or_expanded(value: str) -> bool:
+    """Whether a value is JSON, or a shell expansion the shell turns into a value first."""
+    if "$" in value:
+        return True
     try:
         json.loads(value)
     except ValueError:

@@ -25,7 +25,7 @@ import re
 import secrets
 import shutil
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -91,6 +91,9 @@ JFIF_HEADER = b"\xff\xe0"
 # How many later looks re-answer the scenario's last frame, each at its own
 # instant, before skilltest repeats the last answer as it stands.
 LATER_LOOKS = 4
+# How many successive requests of one action are each answered by a record of
+# their own before skilltest repeats the last.
+RECORDS_PER_ACTION = 3
 
 # The file a start request names. No case records one, and which file it is
 # decides nothing about whether the bed is clear.
@@ -545,6 +548,10 @@ class _Composer:
             return document
         return None
 
+    def records(self, operation: str, action: dict[str, Any]) -> list[dict[str, Any]]:
+        """The records successive requests of one action answer, each its own."""
+        return [self.record(operation, action, sequence) for sequence in range(RECORDS_PER_ACTION)]
+
     def recorded_acknowledgements(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Each acknowledgement the case's own turn was answered, by its event and disposition."""
         found: dict[tuple[str, str], dict[str, Any]] = {}
@@ -568,6 +575,9 @@ class _Composer:
         later = index >= max(len(self.scenario.looks), 1)
         frame = self.capture(name, index) if later else self.image(name)
         reading = _reading(self.scenario, frame.name, paused_by_detector=paused)
+        if later:
+            # The case records no progress for a look after its own frames.
+            reading = replace(reading, completion=None, print_time_s=None, print_time_left_s=None)
         received = self.now + timedelta(seconds=LOOK_WAITED_S * (index + 1))
         answer: dict[str, Any] = {
             "detector_paused": paused,
@@ -614,16 +624,19 @@ class _Composer:
             answers.append(self.look(index, look, delivered, paused))
         return answers
 
-    def record(self, operation: str, action: dict[str, Any]) -> dict[str, Any]:
+    def record(self, operation: str, action: dict[str, Any], sequence: int = 0) -> dict[str, Any]:
         """An accepted, executed action record, as the server answers one.
 
         It carries no intervention: an intervention's expiry is the duration the
         agent chose, which a fixed answer cannot know, and the answer's schema
-        lets a record stand without one.
+        lets a record stand without one. The `sequence`-th request of the same
+        action is a record of its own, a second later.
         """
         actor = json.loads(self.actor)
-        # Stamped as the turn begins, so a look after it is a later one.
-        requested = self.now + timedelta(seconds=1)
+        # Stamped after the scenario's own looks and before any later one: an
+        # agent looks, acts, then looks again.
+        looked = LOOK_WAITED_S * (len(self.scenario.looks) + 0.5)
+        requested = self.now + timedelta(seconds=looked + sequence)
         return {
             "record": {
                 "decision": "accepted",
@@ -733,25 +746,21 @@ def _answers(
             {"manifest": _manifest(composer.file_name, composer.bounds()), "narrowings": []}
         ],
         "look": composer.looks(),
-        "start-print": [
-            composer.record(
-                "start-print",
-                {
-                    "file_name": composer.file_name,
-                    "manifest": _manifest(composer.file_name, {}),
-                    "reason": ECHOED_REASON,
-                },
-            )
-        ],
-        "acknowledge-failure": [
-            composer.record(
-                "acknowledge-failure",
-                {"disposition": dispositions()[0], "event_id": alert, "reason": ECHOED_REASON},
-            )
-        ],
+        "start-print": composer.records(
+            "start-print",
+            {
+                "file_name": composer.file_name,
+                "manifest": _manifest(composer.file_name, {}),
+                "reason": ECHOED_REASON,
+            },
+        ),
+        "acknowledge-failure": composer.records(
+            "acknowledge-failure",
+            {"disposition": dispositions()[0], "event_id": alert, "reason": ECHOED_REASON},
+        ),
     }
     for operation in ("pause", "resume", "cancel"):
-        answers[operation] = [composer.record(operation, {"reason": ECHOED_REASON})]
+        answers[operation] = composer.records(operation, {"reason": ECHOED_REASON})
     for adjustment in ADJUSTMENTS:
         answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
     return answers, replayed
@@ -779,11 +788,11 @@ def _stubs(
     for event_id in alerts:
         for disposition in dispositions():
             step = Step("acknowledge-failure", {"disposition": disposition, "event_id": event_id})
-            document = recorded.get((event_id, disposition)) or composer.record(
-                step.operation, {**step.args, "reason": ECHOED_REASON}
-            )
+            documents = composer.records(step.operation, {**step.args, "reason": ECHOED_REASON})
+            if (event_id, disposition) in recorded:
+                documents[0] = recorded[(event_id, disposition)]
             name = f"acknowledge-{disposition}-{event_id}"
-            specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
+            specs.extend(_rendered(name, step.operation, step_pattern(step), documents))
     allowed = bounds()
     for adjustment in ADJUSTMENTS:
         for value in _grid(allowed[adjustment.adjustable], adjustment.resolution):

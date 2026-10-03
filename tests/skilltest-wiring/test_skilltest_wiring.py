@@ -60,6 +60,7 @@ from repo_checks.model import Repo
 from scenario import (
     ADJUSTMENTS,
     LATER_LOOKS,
+    RECORDS_PER_ACTION,
     Built,
     Render,
     StubSpec,
@@ -651,9 +652,24 @@ def test_an_invocation_the_program_refuses_or_answers_at_once_takes_no_effect() 
         takes_effect(commands_in(taken + " --json --config c.toml")[0]),
         describing="the options every command takes",
     )
+    expanded = 'A=$(cat actor.json); printobserver pause --print-id P --actor "$A" --reason r'
+    expect.truth(takes_effect(commands_in(expanded)[0]), describing="an actor the shell expands")
     for refused in (
         taken + " --percent 100",
         taken + " --version",
         "printobserver pause --print-id P --actor not-json --reason r",
     ):
         expect.truth(not takes_effect(commands_in(refused)[0]), describing=f"`{refused}` refused")
+
+
+def test_a_repeated_action_is_answered_by_a_record_of_its_own(built: dict[str, Built]) -> None:
+    """Asking for the same action again is answered by a later, different record."""
+    for case in built.values():
+        for command in ("pause", "resume", "cancel", "start-print", "acknowledge-failure"):
+            records = [document["record"] for document in _spec(case, command).documents]
+            expect.equal(len(records), RECORDS_PER_ACTION, describing=f"{command}'s records")
+            expect.equal(
+                len({record["id"] for record in records}), len(records), describing="their ids"
+            )
+            instants = [record["request"]["requested_at"] for record in records]
+            expect.equal(instants, sorted(set(instants)), describing="each request later")
