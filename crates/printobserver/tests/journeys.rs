@@ -45,6 +45,9 @@ mod scripted;
 mod traced;
 #[path = "support/walk.rs"]
 mod walk;
+#[cfg(unix)]
+#[path = "journeys/watching.rs"]
+mod watching;
 #[path = "support/world.rs"]
 mod world;
 
