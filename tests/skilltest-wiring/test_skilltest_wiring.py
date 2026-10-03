@@ -753,6 +753,12 @@ def _variants(case: Built) -> list[str]:
         f"printobserver context {common} --actor {actor}",
         f"printobserver frobnicate {common}",
         f"printobserver pause {common} --actor-file actor.json --reason r",
+        f"printobserver set-tool-target-c {common} {actor} --tool 9223372036854775808 "
+        "--target-c 215 --reason r",
+        f"printobserver set-tool-target-c {common} {actor} --tool -1 --target-c 215 --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 1_0 --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 1e2 --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent ' 80 ' --reason r",
         f"printobserver pause {common} --actor-file missing.json --reason r",
         f"printobserver look stray {common}",
         f"printobserver look {common} --config a.toml --config b.toml",

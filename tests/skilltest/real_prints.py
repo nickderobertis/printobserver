@@ -477,18 +477,28 @@ def sent_to_server(command: Command) -> bool:
     return all(field.name in supplied for field in spec.fields if field.required)
 
 
+# What Rust's `f64` and `i64` parsers read, which is narrower than Python's
+# `float` and `int`: no digit separators and no digits outside ASCII.
+_RUST_FLOAT = re.compile(r"[+-]?(?:inf|infinity|nan|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)", re.I)
+_RUST_INTEGER = re.compile(r"[+-]?\d+")
+_I64 = range(-(2**63), 2**63)
+
+
 def _readable(field: Field, value: str) -> bool:
-    """Whether the parser reads one value given inline for one field."""
-    try:
-        match field.kind:
-            case "number":
-                number = float(value.strip())
-            case "integer":
-                number = int(value.strip())
-            case _:
-                number = None
-    except ValueError:
-        return False
+    """Whether the parser reads one value for one field (`parse.rs`'s `read_value`)."""
+    text = value.strip()
+    number: float | None = None
+    match field.kind:
+        case "number":
+            if not text.isascii() or not _RUST_FLOAT.fullmatch(text):
+                return False
+            number = float(text)
+        case "integer":
+            if not text.isascii() or not _RUST_INTEGER.fullmatch(text) or int(text) not in _I64:
+                return False
+            number = int(text)
+        case _:
+            pass
     if field.located == "path" and not _IDENTIFIER.fullmatch(value):
         return False
     if field.name == "duration_s" and field.located == "body":

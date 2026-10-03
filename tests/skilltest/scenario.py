@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import re
 import secrets
 import shutil
@@ -58,6 +59,7 @@ from surface import (
     PROGRAM,
     asking_pattern,
     bare_program_pattern,
+    event_kind,
     program_pattern,
     surface,
     turn_tool_rules,
@@ -68,9 +70,9 @@ from surface import (
 PrintId = NewType("PrintId", str)
 ImageId = NewType("ImageId", str)
 
-# The detector's alert kind, and the look's own.
-ALERT = "obico_failure_alert"
-LOOK = "camera_look"
+# The detector's alert kind and the look's own, as their crates declare them.
+ALERT = event_kind("ObicoFailureAlertPayload")
+LOOK = event_kind("CameraLookPayload")
 
 # What the printer reads when a case records no telemetry of its own: the PLA
 # profile every one of these prints ran at, as both recorded contexts read it
@@ -118,9 +120,13 @@ def _shell_quoted(word: str) -> str:
     return "'" + word.replace("'", "'\\''") + "'"
 
 
+def _schema_path(name: str) -> Path:
+    """The generated schema of one type, under whichever crate checks it in."""
+    return next(SCHEMAS.glob(f"*/{name}.json"))
+
+
 def _schema(name: str) -> dict[str, Any]:
-    path = next(SCHEMAS.glob(f"*/{name}.json"))
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(_schema_path(name).read_text(encoding="utf-8"))
 
 
 def dispositions() -> list[str]:
@@ -315,27 +321,67 @@ def _reading(scenario: Scenario, image: str, *, paused_by_detector: bool) -> Rea
         and "tool0" in row
         and "bed" in row
     ]
+    where = f"{scenario.case}'s case.json"
     if telemetry:
         row = telemetry[-1]
         return Reading(
             state=state,
-            completion=row["completion_pct"] / 100,
-            nozzle_actual=float(row["tool0"]["actual_c"]),
-            nozzle_target=float(row["tool0"]["target_c"]),
-            bed_actual=float(row["bed"]["actual_c"]),
-            bed_target=float(row["bed"]["target_c"]),
-            print_time_s=row.get("printTime_s"),
-            print_time_left_s=row.get("printTimeLeft_s"),
+            completion=_percent(row["completion_pct"], where) / 100,
+            nozzle_actual=_measured(row["tool0"].get("actual_c"), where),
+            nozzle_target=_measured(row["tool0"].get("target_c"), where),
+            bed_actual=_measured(row["bed"].get("actual_c"), where),
+            bed_target=_measured(row["bed"].get("target_c"), where),
+            print_time_s=_seconds(row.get("printTime_s"), where),
+            print_time_left_s=_seconds(row.get("printTimeLeft_s"), where),
         )
     progress = _frame(scenario.case, image).get("progress_pct")
     return Reading(
         state=state,
-        completion=None if progress is None else progress / 100,
+        completion=None if progress is None else _percent(progress, where) / 100,
         nozzle_actual=PAUSED_NOZZLE_C if paused_by_detector else NOZZLE_C,
         nozzle_target=0.0 if paused_by_detector else NOZZLE_C,
         bed_actual=BED_C,
         bed_target=BED_C,
     )
+
+
+def _measured(value: object, where: str) -> float:
+    """A recorded reading, once it is a finite number.
+
+    Raises:
+        ValueError: If it is not.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        msg = f"{where} records {value!r} where a reading belongs"
+        raise ValueError(msg)
+    return float(value)
+
+
+def _percent(value: object, where: str) -> float:
+    """A recorded progress, once it is a percentage.
+
+    Raises:
+        ValueError: If it is not a number from 0 to 100.
+    """
+    number = _measured(value, where)
+    if not 0 <= number <= 100:
+        msg = f"{where} records a progress of {number}, outside 0 to 100"
+        raise ValueError(msg)
+    return number
+
+
+def _seconds(value: object, where: str) -> int | None:
+    """A recorded duration in whole seconds, when one was recorded.
+
+    Raises:
+        ValueError: If one was recorded and is not a non-negative whole number.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        msg = f"{where} records {value!r} where a number of seconds belongs"
+        raise ValueError(msg)
+    return value
 
 
 def _reading_value(value: float) -> dict[str, Any]:
@@ -474,17 +520,18 @@ class _Composer:
         body["img_url"] = (
             f"http://127.0.0.1:3334/media/tsd-pics/snapshots/1/{received.timestamp()}.jpg"
         )
+        payload = {
+            "file_name": self.file_name,
+            "is_warning": self.scenario.detector_warned,
+            "obico_print_id": obico_print_id,
+            "print_paused": self.scenario.detector_paused_the_print,
+            "started_at": _instant(started),
+        }
         return {
             "id": _id(),
             "image": {"id": image.id, "sha256": image.sha256},
             "kind": ALERT,
-            "payload": {
-                "file_name": self.file_name,
-                "is_warning": self.scenario.detector_warned,
-                "obico_print_id": obico_print_id,
-                "print_paused": self.scenario.detector_paused_the_print,
-                "started_at": _instant(started),
-            },
+            "payload": conforming(payload, _schema_path("ObicoFailureAlertPayload"), "an alert"),
             "print_id": self.print_id,
             "raw": base64.b64encode(json.dumps(body).encode()).decode(),
             "received_at": _instant(received),
@@ -594,10 +641,11 @@ class _Composer:
                 "id": _id(),
                 "image": {"id": frame.id, "sha256": frame.sha256},
                 "kind": LOOK,
-                "payload": {
-                    "delivered": [event["id"] for event in delivered],
-                    "waited_s": LOOK_WAITED_S,
-                },
+                "payload": conforming(
+                    {"delivered": [event["id"] for event in delivered], "waited_s": LOOK_WAITED_S},
+                    _schema_path("CameraLookPayload"),
+                    "a look",
+                ),
                 "print_id": self.print_id,
                 "received_at": _instant(received),
                 "source": "system",

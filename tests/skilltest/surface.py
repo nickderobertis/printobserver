@@ -180,6 +180,23 @@ def duration_bounds() -> tuple[int, int]:
     return low, high
 
 
+def event_kind(payload: str) -> str:
+    """The kind an event carrying one payload type is written down under, as its crate declares.
+
+    Raises:
+        ValueError: If no crate declares that payload as an event's.
+    """
+    declaration = re.compile(
+        rf"impl EventPayload for {payload} \{{\s*const KIND: &'static str = \"(?P<kind>\w+)\";"
+    )
+    for source in sorted((REPO / "crates").glob("*/src/**/*.rs")):
+        found = declaration.search(source.read_text(encoding="utf-8"))
+        if found is not None:
+            return found["kind"]
+    msg = f"no crate declares {payload} as an event's payload"
+    raise ValueError(msg)
+
+
 def separators() -> tuple[str, str]:
     """The labelled rendering's path separator and label separator, as `render.rs` declares them."""
     return _rust_constant(RENDER, "PATH_SEPARATOR"), _rust_constant(RENDER, "LABEL_SEPARATOR")
