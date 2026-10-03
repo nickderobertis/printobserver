@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -51,9 +52,9 @@ from real_prints import (
     outcome_met,
     recorded_step,
     required_steps,
+    sent_to_server,
     shipped_model,
     step_matches,
-    takes_effect,
 )
 from repo_checks import expect, platforms, shell
 from repo_checks.model import Repo
@@ -174,6 +175,7 @@ def test_skilltest_loads_every_built_case(scenario: Scenario, built: dict[str, B
     case = built[scenario.test_id]
     missing = case.workspace.parent / "no-provider"
     with pytest.raises(SkilltestProviderError, match="no-provider"):
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         run_skill(
             case.case,
             provider=[str(missing)],
@@ -281,7 +283,7 @@ def test_a_step_is_taken_only_by_a_command_the_program_carries_out() -> None:
             describing=f"`{untaken}` to take no pause",
         )
     expect.truth(
-        not takes_effect(commands_in("printobserver frobnicate --reason x")[0]),
+        not sent_to_server(commands_in("printobserver frobnicate --reason x")[0]),
         describing="a command the program does not have to take no effect",
     )
     fan = Step("set-fan-percent", {"percent": 100})
@@ -645,21 +647,17 @@ def test_a_command_on_a_later_line_is_still_read() -> None:
 
 
 def test_an_invocation_the_program_refuses_or_answers_at_once_takes_no_effect() -> None:
-    """An unknown option, a malformed structured value or `--version` carries nothing out."""
+    """An unknown option, a value given twice or `--version` sends nothing to the server."""
     taken = "printobserver pause --print-id P --actor '{\"agent\":{}}' --reason r"
-    expect.truth(takes_effect(commands_in(taken)[0]), describing="a whole pause")
+    expect.truth(sent_to_server(commands_in(taken)[0]), describing="a whole pause")
     expect.truth(
-        takes_effect(commands_in(taken + " --json --config c.toml")[0]),
+        sent_to_server(commands_in(taken + " --json --config c.toml")[0]),
         describing="the options every command takes",
     )
     expanded = 'A=$(cat actor.json); printobserver pause --print-id P --actor "$A" --reason r'
-    expect.truth(takes_effect(commands_in(expanded)[0]), describing="an actor the shell expands")
-    for refused in (
-        taken + " --percent 100",
-        taken + " --version",
-        "printobserver pause --print-id P --actor not-json --reason r",
-    ):
-        expect.truth(not takes_effect(commands_in(refused)[0]), describing=f"`{refused}` refused")
+    expect.truth(sent_to_server(commands_in(expanded)[0]), describing="an actor the shell expands")
+    for refused in (taken + " --percent 100", taken + " --version", taken + " --reason again"):
+        expect.truth(not sent_to_server(commands_in(refused)[0]), describing=f"`{refused}` refused")
 
 
 def test_a_repeated_action_is_answered_by_a_record_of_its_own(built: dict[str, Built]) -> None:
@@ -673,3 +671,78 @@ def test_a_repeated_action_is_answered_by_a_record_of_its_own(built: dict[str, B
             )
             instants = [record["request"]["requested_at"] for record in records]
             expect.equal(instants, sorted(set(instants)), describing="each request later")
+
+
+def _unreachable(directory: Path) -> Path:
+    """A client configuration naming an address nothing listens on."""
+    config = directory / "client.toml"
+    config.write_text('[client]\nserver = "http://127.0.0.1:9"\ncredential = "c"\n', "utf-8")
+    return config
+
+
+def _variants(case: Built) -> list[str]:
+    """Invocations an agent might write, each departing from a whole one in one way."""
+    common = f"--print-id {case.print_id}"
+    actor = f"--actor '{case.actor}'"
+    return [
+        f"printobserver pause {common} {actor} --reason 'a person should look'",
+        f"printobserver pause {common} {actor} --reason ''",
+        f"printobserver pause {common} --actor not-a-document --reason r",
+        f"printobserver pause {common} {actor} --actor-file a.json --reason r",
+        f"printobserver pause --print-id 'a/b' {actor} --reason r",
+        f"printobserver pause {common} {actor} --reason r --json",
+        f"printobserver set-fan-percent {common} {actor} --percent loud --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 80 --duration-s 0 --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 80 --duration-s 86401 "
+        "--reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 80 --duration-s 1.5 --reason r",
+        f"printobserver set-fan-percent {common} {actor} --percent 80.5 --duration-s 600 "
+        "--reason r",
+        f"printobserver set-tool-target-c {common} {actor} --tool 0.0 --target-c 215 --reason r",
+        f"printobserver set-tool-target-c {common} {actor} --tool 0 --target-c 215 --reason r",
+        f"printobserver look {common} --wait-s 30",
+        f"printobserver look {common} --wait-s soon",
+        f"printobserver history {common} --limit 5",
+        f"printobserver context {common} --actor {actor}",
+        f"printobserver frobnicate {common}",
+    ]
+
+
+def test_the_judge_agrees_with_the_program_on_what_it_sends(built: dict[str, Built]) -> None:
+    """Every invocation the judge counts as sent, the built program sends, and no other.
+
+    The program is pointed at an address nothing listens on, so one it parses
+    reaches for the server and exits as unreachable, while one it refuses
+    exits with its usage refusal: the steps of every scenario, and variants of
+    a whole invocation each breaking one of the parser's rules.
+    """
+    directory = Path(tempfile.mkdtemp())
+    config = str(_unreachable(directory))
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("PRINTOBSERVER_")}
+    corpus = []
+    for case in built.values():
+        steps = [*case.scenario.never, *(s for o in case.scenario.accept_any_of for s in o)]
+        corpus += [_command(case, step) for step in steps]
+    corpus += _variants(next(iter(built.values())))
+    exits = surface().exits
+    try:
+        for written in dict.fromkeys(corpus):
+            for invocation in commands_in(written):
+                words = [w for w in invocation.words]
+                if "--config" in words:
+                    words[words.index("--config") + 1] = config
+                else:
+                    words += ["--config", config]
+                ran = shell.run([str(_program()), *words], env=environment, timeout=60)
+                expect.truth(
+                    ran.returncode in {exits["unreachable"], exits["usage"]},
+                    describing=f"`{written}` to be sent or refused, not to exit {ran.returncode}",
+                )
+                expect.equal(
+                    sent_to_server(invocation),
+                    ran.returncode == exits["unreachable"],
+                    describing=f"the judge on `{written}`, which the program answered "
+                    f"{ran.returncode}: {ran.stderr.strip()[:160]}",
+                )
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)

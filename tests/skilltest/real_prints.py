@@ -21,15 +21,19 @@ so [`agent_turn`] reads one only once it has the shape this module reads.
 from __future__ import annotations
 
 import json
+import math
 import re
 import shlex
 import tomllib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from functools import cache
 from pathlib import Path
-from typing import Any, Literal, NewType, cast
+from typing import Any, Literal, NewType, TypeGuard, cast
 
-from surface import PROGRAM, REPO, invocation_pattern, surface
+from jsonschema import Draft202012Validator
+from jsonschema.protocols import Validator
+from surface import PROGRAM, REPO, Field, duration_bounds, invocation_pattern, surface
 
 CASES = REPO / "tests" / "real-prints"
 SERVICE_CONFIG = CASES / "service-config.toml"
@@ -103,7 +107,17 @@ class Command:
     """One `printobserver` invocation inside a command the agent ran."""
 
     operation: str
-    options: dict[str, str]
+    given: tuple[tuple[str, str], ...]
+
+    @property
+    def options(self) -> dict[str, str]:
+        """Each option the invocation names, by its name; the last wins where one repeats."""
+        return dict(self.given)
+
+    @property
+    def words(self) -> list[str]:
+        """The arguments after the program's name, as the program receives them."""
+        return [self.operation, *(w for name, value in self.given for w in _spelled(name, value))]
 
     def describe(self) -> str:
         """The invocation, with its long values cut so a failure stays readable."""
@@ -112,6 +126,11 @@ class Command:
             text = value if len(value) <= 60 else value[:57] + "..."
             shown.append(f"--{name.replace('_', '-')} {shlex.quote(text)}")
         return " ".join([PROGRAM, self.operation, *shown])
+
+
+def _spelled(name: str, value: str) -> list[str]:
+    option = "--" + name.replace("_", "-")
+    return [option, value] if value else [option]
 
 
 def _step(document: dict[str, Any]) -> Step:
@@ -143,9 +162,27 @@ def _scenario(case: str, document: dict[str, Any]) -> Scenario:
     )
 
 
+@cache
+def _validator(schema: Path) -> Validator:
+    return Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))
+
+
+def _validated(path: Path, schema: Path) -> dict[str, Any]:
+    """A JSON file's document, once it satisfies the schema that declares it.
+
+    Raises:
+        ValueError: If it does not, naming where it first departs from the schema.
+    """
+    document = json.loads(path.read_text(encoding="utf-8"))
+    for error in sorted(_validator(schema).iter_errors(document), key=str):
+        msg = f"{path} at {error.json_path} does not satisfy {schema.name}: {error.message}"
+        raise ValueError(msg)
+    return document
+
+
 def read_case(case: str) -> dict[str, Any]:
-    """One case's `case.json`."""
-    return json.loads((CASES / case / "case.json").read_text(encoding="utf-8"))
+    """One case's `case.json`, held to `case.schema.json`."""
+    return _validated(CASES / case / "case.json", CASES / "case.schema.json")
 
 
 def scenarios() -> list[Scenario]:
@@ -165,7 +202,7 @@ def history(case: str) -> list[dict[str, Any]]:
     path = CASES / case / "printobserver-history.json"
     if not path.is_file():
         return []
-    return json.loads(path.read_text(encoding="utf-8"))["events"]
+    return _validated(path, SCHEMAS / "printobserver-server" / "HistoryAnswer.json")["events"]
 
 
 @dataclass(frozen=True)
@@ -225,6 +262,11 @@ class Bound:
     max: float
 
 
+def _finite(value: object) -> TypeGuard[float]:
+    """Whether a value is a finite number, which TOML's booleans, `nan` and `inf` are not."""
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def bounds() -> dict[str, Bound]:
     """What the configuration these prints ran under lets each adjustable be set to.
 
@@ -240,7 +282,7 @@ def bounds() -> dict[str, Bound]:
     for name, bound in allowed.items():
         low = bound.get("min") if isinstance(bound, dict) else None
         high = bound.get("max") if isinstance(bound, dict) else None
-        if not isinstance(low, int | float) or not isinstance(high, int | float) or low > high:
+        if not _finite(low) or not _finite(high) or low > high:
             msg = f"{SERVICE_CONFIG}'s [safety.allowed] {name} is not a range from min to max"
             raise ValueError(msg)
         found[name] = Bound(min=float(low), max=float(high))
@@ -322,9 +364,9 @@ def _at_command_position(words: list[str], index: int) -> bool:
     return position < 0 or _is_separator(words[position]) or words[position] in _KEYWORDS
 
 
-def _options(words: list[str]) -> dict[str, str]:
-    """The `--name value` options and lone flags of one invocation, up to where it ends."""
-    options: dict[str, str] = {}
+def _options(words: list[str]) -> tuple[tuple[str, str], ...]:
+    """The `--name value` options and lone flags of one invocation, in order, up to its end."""
+    options: list[tuple[str, str]] = []
     position = 0
     while position < len(words):
         current = words[position]
@@ -334,14 +376,14 @@ def _options(words: list[str]) -> dict[str, str]:
             name = current[2:].replace("-", "_")
             following = words[position + 1] if position + 1 < len(words) else None
             if following is None or following.startswith("--") or _is_separator(following):
-                options[name] = ""
+                options.append((name, ""))
                 position += 1
                 continue
-            options[name] = following
+            options.append((name, following))
             position += 2
             continue
         position += 1
-    return options
+    return tuple(options)
 
 
 def commands_in(shell_command: str) -> list[Command]:
@@ -360,7 +402,7 @@ def commands_in(shell_command: str) -> list[Command]:
         operation = words[index + 1]
         if operation.startswith("-") or _is_separator(operation):
             continue
-        found.append(Command(operation=operation, options=_options(words[index + 2 :])))
+        found.append(Command(operation=operation, given=_options(words[index + 2 :])))
     return found
 
 
@@ -369,43 +411,58 @@ def commands_ran(shell_commands: list[str]) -> list[Command]:
     return [command for shell in shell_commands for command in commands_in(shell)]
 
 
-def takes_effect(command: Command) -> bool:
-    """Whether the program would carry an invocation out rather than refuse it or answer at once.
+# The characters an identifier this system mints is made of, which a value
+# bound for a request's path must keep to (`parse.rs`'s `check`).
+_IDENTIFIER = re.compile(r"[A-Za-z0-9._~-]+")
 
-    It is one of the program's commands; it asks for neither the usage nor the
-    version, which the program answers without carrying anything out; every
-    option it names is one that command or every command takes; a structured
-    value given inline is JSON, or a shell expansion; and it supplies every value the command
-    requires, by any of that value's forms. What the server then makes of the
-    values is the server's, and the stubs stand in for it.
+
+def sent_to_server(command: Command) -> bool:
+    """Whether the program would parse an invocation and send it to the supervisor.
+
+    The rules are the program's own parser's (`parse.rs`): one of its commands;
+    neither `--help` nor `--version`, which it answers at once; every option one
+    of that command's or one every command takes, a value given once; a number
+    or a whole number that reads as one; a value bound for the request's path
+    an identifier; a duration inside the bounds `surface.rs` declares; and
+    every value the command requires. A value the shell expands (`"$A"`) is
+    taken as given. What the supervisor then makes of the request is the
+    stubs'. `skilltest-wiring` holds this to what the built program does.
     """
     spec = surface().command(command.operation)
     if spec is None or {"help", "version"} & set(command.options):
         return False
     forms = {form: field for field in spec.fields for form in field.forms}
-    given = {f"--{name.replace('_', '-')}": value for name, value in command.options.items()}
-    for option, value in given.items():
+    supplied: set[str] = set()
+    for name, value in command.given:
+        option = "--" + name.replace("_", "-")
         if option in surface().global_options:
             continue
         field = forms.get(option)
-        if field is None:
+        if field is None or not value or field.name in supplied:
             return False
-        if field.structured and option == field.forms[0] and not _is_json_or_expanded(value):
+        supplied.add(field.name)
+        if option == field.forms[0] and "$" not in value and not _readable(field, value):
             return False
-    named = {option for option, value in given.items() if value}
-    return all(
-        any(form in named for form in field.forms) for field in spec.fields if field.required
-    )
+    return all(field.name in supplied for field in spec.fields if field.required)
 
 
-def _is_json_or_expanded(value: str) -> bool:
-    """Whether a value is JSON, or a shell expansion the shell turns into a value first."""
-    if "$" in value:
-        return True
+def _readable(field: Field, value: str) -> bool:
+    """Whether the parser reads one value given inline for one field."""
     try:
-        json.loads(value)
+        match field.kind:
+            case "number":
+                number = float(value.strip())
+            case "integer":
+                number = int(value.strip())
+            case _:
+                number = None
     except ValueError:
         return False
+    if field.located == "path" and not _IDENTIFIER.fullmatch(value):
+        return False
+    if field.name == "duration_s" and field.located == "body":
+        low, high = duration_bounds()
+        return number is not None and low <= number <= high
     return True
 
 
@@ -420,7 +477,7 @@ def _same_value(expected: str | float, given: str) -> bool:
 
 def step_matches(step: Step, command: Command) -> bool:
     """Whether a command takes the step: carried out, naming each of its args with that value."""
-    if command.operation != step.operation or not takes_effect(command):
+    if command.operation != step.operation or not sent_to_server(command):
         return False
     return all(
         name in command.options and _same_value(expected, command.options[name])

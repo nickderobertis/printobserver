@@ -31,6 +31,7 @@ SURFACE = REPO / "skills" / "printobserver" / "reference" / "surface.json"
 OPERATIONS = REPO / "schemas" / "printobserver-server" / "operations.json"
 RENDER = REPO / "crates" / "printobserver" / "src" / "render.rs"
 TURN = REPO / "crates" / "printobserver-oneharness" / "src" / "turn.rs"
+SURFACE_RS = REPO / "crates" / "printobserver" / "src" / "surface.rs"
 
 PROGRAM = "printobserver"
 
@@ -41,8 +42,14 @@ class Field:
 
     name: str
     required: bool
-    structured: bool
+    kind: str
+    located: str
     forms: tuple[str, ...]
+
+    @property
+    def structured(self) -> bool:
+        """Whether the value is a document rather than text or a number."""
+        return self.kind == "structured"
 
 
 @dataclass(frozen=True)
@@ -82,9 +89,9 @@ class Surface:
         return next((command for command in self.commands if command.name == name), None)
 
 
-def _structured(document: dict) -> dict[tuple[str, str], bool]:
+def _parameters(document: dict) -> dict[tuple[str, str], dict]:
     return {
-        (operation["name"], parameter["name"]): parameter["kind"] == "structured"
+        (operation["name"], parameter["name"]): parameter
         for operation in document["operations"]
         for parameter in operation["parameters"]
     }
@@ -94,17 +101,19 @@ def _structured(document: dict) -> dict[tuple[str, str], bool]:
 def surface() -> Surface:
     """The program's surface, read from the manifest it generates."""
     document = json.loads(SURFACE.read_text(encoding="utf-8"))
-    structured = _structured(json.loads(OPERATIONS.read_text(encoding="utf-8")))
+    parameters = _parameters(json.loads(OPERATIONS.read_text(encoding="utf-8")))
     commands = []
     for command in document["commands"]:
         fields: dict[str, Field] = {}
         for option in command["options"]:
             held = fields.get(option["field"])
             forms = (*held.forms, option["option"]) if held else (option["option"],)
+            parameter = parameters.get((command["operation"], option["field"]), {})
             fields[option["field"]] = Field(
                 name=option["field"],
                 required=(held.required if held else False) or option["required"],
-                structured=structured.get((command["operation"], option["field"]), False),
+                kind=parameter.get("kind", "text"),
+                located=option["located"],
                 forms=forms,
             )
         commands.append(
@@ -150,6 +159,20 @@ def _rust_constant(source: Path, name: str) -> str:
         msg = f"{source} declares no {name}"
         raise ValueError(msg)
     return found["value"][1:-1]
+
+
+def duration_bounds() -> tuple[int, int]:
+    """The shortest and longest a bounded change may stand for, as `surface.rs` declares them."""
+    source = SURFACE_RS.read_text(encoding="utf-8")
+    found = [
+        re.search(rf"pub const {name}: i64 = (?P<value>[\d_]+);", source)
+        for name in ("MIN_DURATION_SECONDS", "MAX_DURATION_SECONDS")
+    ]
+    if None in found:
+        msg = f"{SURFACE_RS} declares no duration bounds"
+        raise ValueError(msg)
+    low, high = (int(match["value"].replace("_", "")) for match in found if match)
+    return low, high
 
 
 def separators() -> tuple[str, str]:
@@ -263,7 +286,7 @@ def invocation_pattern(command: str, args: dict[str, str | float]) -> str:
     The args may come in any order, and numbers match however the agent spells
     the same value (`100`, `100.0`). A command that requires a reason names one,
     since the program refuses it otherwise; the rest of what a command requires
-    is left to the judge in `real_prints.takes_effect`, because a pattern
+    is left to the judge in `real_prints.sent_to_server`, because a pattern
     without lookaround can only demand several options by listing every order
     they may come in.
     """

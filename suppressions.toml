@@ -724,6 +724,12 @@ site = "report = run_skill("
 reason = "`run_skill` is skilltest's typed client, returning a parsed `Report`; its only async form, `stream_skill`, reads the terminal report through asyncio's default 64 KiB stream line limit as a single line, and this tier's reports already reach about 70 KB indented, so the async client would fail on the very runs this test makes. A pytest test with one run to wait on gains nothing from an event loop."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_skilltest_wiring.py"
+site = "run_skill("
+reason = "The same typed client as the live tier's, for the same reason: skilltest's async `stream_skill` reads its terminal report as one line through asyncio's 64 KiB stream limit, which this tier's reports approach. Here the call never reaches a harness at all: it hands a built case to skilltest's own loader with a provider that does not exist, so the run stops at the provider having read the whole definition, and there is nothing to await."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
