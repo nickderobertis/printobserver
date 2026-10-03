@@ -69,7 +69,11 @@ def labelled(document: object) -> str:
 
 
 def machine(document: object) -> str:
-    """The `--json` rendering: the document itself, keys in order, pretty-printed."""
+    """The `--json` rendering: the document itself, as `render.rs` writes it.
+
+    serde_json's pretty form, keys in order and a trailing line break;
+    `skilltest-wiring` holds this to `render.rs` and the manifests.
+    """
     return json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 

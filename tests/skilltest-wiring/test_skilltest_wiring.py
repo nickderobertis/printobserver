@@ -35,7 +35,7 @@ from typing import Any, get_args
 import pytest
 import real_prints
 import test_real_prints_skilltest as live
-from answers import example_answers, field_names, from_labelled, labelled
+from answers import example_answers, field_names, from_labelled, labelled, machine
 from jsonschema import Draft202012Validator
 from jsonschema.protocols import Validator
 from real_prints import (
@@ -75,7 +75,7 @@ from scenario import (
     template_slots,
 )
 from skilltest_pytest import MockCall, MockRefEval, SkilltestProviderError, ToolSpy, run_skill
-from surface import OPERATIONS, REPO, surface, turn_tool_rules, usage, version
+from surface import OPERATIONS, RENDER, REPO, surface, turn_tool_rules, usage, version
 
 SCENARIOS = live.SCENARIOS
 IDS = [scenario.test_id for scenario in SCENARIOS]
@@ -911,3 +911,26 @@ def test_the_model_a_run_used_is_read_from_claude_codes_own_session(
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))
     expect.equal(live.models_used(workspace), ["a-model"], describing="the session's model")
     expect.equal(live.models_used(tmp_path / "elsewhere"), [], describing="no session there")
+
+
+def test_the_json_rendering_is_the_programs() -> None:
+    """`--json` answers are rendered as `render.rs` renders a document: serde_json's pretty form.
+
+    That is two-space indentation, keys in order (serde_json's map is ordered
+    unless a manifest asks it to preserve insertion order, which none does),
+    non-ASCII as itself, and a trailing line break.
+    """
+    source = RENDER.read_text(encoding="utf-8")
+    arm = re.search(r"Rendering::Machine => \{(?P<body>.*?)\n        \}", source, re.DOTALL)
+    expect.truth(arm is not None, describing="render.rs's machine rendering")
+    body = arm["body"] if arm else ""
+    expect.contains(body, "to_string_pretty(document)", describing="the machine rendering")
+    expect.contains(body, "rendered.push('\\n')", describing="its trailing line break")
+    manifests = [REPO / "Cargo.toml", *REPO.glob("crates/*/Cargo.toml")]
+    ordered = [m for m in manifests if "preserve_order" in m.read_text(encoding="utf-8")]
+    expect.equal(ordered, [], describing="manifests asking serde_json to keep insertion order")
+    document = {"b": [1.0, {"é": []}], "a": {}}
+    expect.equal(
+        machine(document),
+        '{\n  "a": {},\n  "b": [\n    1.0,\n    {\n      "é": []\n    }\n  ]\n}\n',
+    )

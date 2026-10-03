@@ -221,6 +221,9 @@ def test_the_skill_takes_an_action_the_case_accepts(
     met = met_outcome(scenario, ran)
     passed = report.passed and met is not None
     models = [run.model for run in report.runs if run.model] or models_used(built.workspace)
+    # Claude Code's own record is where an unpinned run's model is read; a run
+    # that yields none means that record has moved, and the evidence with it.
+    expect.truth(models, describing=f"the model {scenario.test_id} ran on to be recorded")
     _keep(scenario, report, models, [command.describe() for command in ran], passed)
     print(
         f"\n{scenario.test_id} on {models or '(no model recorded)'}: {'PASS' if passed else 'FAIL'}"
