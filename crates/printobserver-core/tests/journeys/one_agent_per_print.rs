@@ -121,3 +121,32 @@ fn an_ended_print_releases_its_inbox() {
     );
     assert_eq!(world.agent.turns().len(), 1);
 }
+
+/// The situation's printer state is the printer contract's own spelling of
+/// the state the printer reported, for every state that contract spells as a
+/// word, and nothing else is ever written there.
+#[test]
+fn the_situations_printer_state_is_the_printer_contracts_own_spelling() {
+    for state in [
+        PrinterState::Operational,
+        PrinterState::Paused,
+        PrinterState::Printing,
+        PrinterState::Cancelling,
+        PrinterState::Error,
+        PrinterState::Offline,
+        PrinterState::Unknown("resuming".to_owned()),
+    ] {
+        let world = World::new();
+        world.printer.reports_state(state.clone());
+        let _ = world.handle(failure_alert(7)).expect("handled");
+        let spelled = printobserver_types::serde_json::to_value(&state)
+            .expect("a state renders")
+            .as_str()
+            .map(str::to_owned);
+        assert_eq!(
+            world.agent.turns()[0].situation.printer_state,
+            spelled,
+            "{state:?}"
+        );
+    }
+}

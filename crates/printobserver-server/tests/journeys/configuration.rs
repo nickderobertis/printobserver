@@ -241,6 +241,49 @@ async fn an_obico_token_without_an_address_is_refused_and_never_quoted() {
     }
 }
 
+/// A camera or `Obico` address that only begins like a web address is refused
+/// naming its own field, before the server starts.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_address_that_is_not_a_web_address_is_refused_naming_its_field() {
+    let reachable = silent_host().await;
+    let base = base_url(&reachable);
+    for written in [
+        "http://?x",
+        "http://[invalid",
+        "http://",
+        "ftp://127.0.0.1/frame.jpg",
+    ] {
+        for (table, field) in [
+            (
+                toml::Value::Table(toml::Table::from_iter([(
+                    "snapshot_url".to_owned(),
+                    toml::Value::String(written.to_owned()),
+                )])),
+                ConfigField::CameraSnapshotUrl,
+            ),
+            (
+                obico(Some(written), Some(OBICO_TOKEN)),
+                ConfigField::ObicoUrl,
+            ),
+        ] {
+            let root = TempDir::new().expect("a journey's own root");
+            let mut document = document(root.path(), &base);
+            let section = if field == ConfigField::CameraSnapshotUrl {
+                "camera"
+            } else {
+                "obico"
+            };
+            set(&mut document, section, table);
+            let path = write(root.path(), &document);
+            let refusal = Server::start(&path)
+                .await
+                .err()
+                .unwrap_or_else(|| panic!("`{written}` was accepted as `{field}`"));
+            assert_eq!(refusal.field(), Some(field), "{written}: {refusal}");
+        }
+    }
+}
+
 /// A configuration naming a camera and `Obico`'s API is accepted, and no debug
 /// form of what it was read into shows the token.
 #[tokio::test(flavor = "multi_thread")]

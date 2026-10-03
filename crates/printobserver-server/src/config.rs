@@ -774,29 +774,9 @@ impl ServerConfig {
 }
 
 /// One address a field names, refused unless it is an `http` or `https` URL
-/// naming a host.
-///
-/// The refusal names the field and never quotes the value, so that a token an
-/// operator pasted into the wrong line is not echoed back.
+/// naming a host, by the field's own key and without quoting the value.
 fn web_address(field: ConfigField, url: &str) -> Result<String, ConfigError> {
-    let trimmed = url.trim();
-    let lowered = trimmed.to_ascii_lowercase();
-    let host = ["http://", "https://"]
-        .iter()
-        .find_map(|scheme| lowered.strip_prefix(scheme));
-    match host {
-        Some(rest)
-            if !rest.is_empty()
-                && !rest.starts_with('/')
-                && !trimmed.chars().any(char::is_whitespace) =>
-        {
-            Ok(trimmed.to_owned())
-        }
-        _ => Err(ConfigError::about(
-            field,
-            "it must be an http:// or https:// URL naming a host",
-        )),
-    }
+    printobserver_obico::web_address(url).map_err(|why| ConfigError::about(field, why))
 }
 
 /// `Obico`'s API, when both its address and its token are written down.

@@ -9,7 +9,7 @@
 //! own commands with the `--config` and `--actor` that prompt names. What each
 //! journey here asserts is read back through those same commands.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use printobserver_server::{HarnessSignIn, SIGN_INS};
@@ -171,11 +171,6 @@ fn alerts(world: &World, print: &str) -> Vec<Value> {
         .collect()
 }
 
-/// Whether one path is there.
-fn there(path: &Path) -> bool {
-    path.exists()
-}
-
 /// An event for a print whose turn is running is handed to that turn: its
 /// look returns early carrying it, and no second turn is started.
 #[test]
@@ -323,7 +318,7 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
     };
     wait_for("the second print's turn to start", PATIENCE, other_started);
     assert!(
-        !there(&looking),
+        !looking.exists(),
         "the first print's look had returned before the second print's turn started"
     );
     watching.written(&format!("look-{print}"));
@@ -459,6 +454,56 @@ fn a_resume_the_policy_refuses_leaves_the_print_paused() {
     let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
     assert_eq!(refusal["actor_class"], "system", "{rejected:?}");
     assert_eq!(refusal["action"], "resume", "{rejected:?}");
+    assert_eq!(reports(world), Some(Reports::Paused));
+    assert!(
+        api.received().is_empty(),
+        "Obico was told about a print still paused"
+    );
+}
+
+/// A machine that refuses the resume the turn's end asks for leaves the print
+/// paused: the resume is in the record and never carried out, and `Obico` is
+/// told nothing.
+#[test]
+fn a_resume_the_machine_refuses_leaves_the_print_paused() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1
+until [ -e "$dir/go" ]; do sleep 0.1; done"#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id.clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    watching.written(&format!("fan-{print}"));
+    wait_for("the adjustment to be recorded", PATIENCE, || {
+        !actions_asked(world, &print).is_empty()
+    });
+    assert!(
+        world.machine_refuses(true),
+        "a stood-in machine can be told to refuse"
+    );
+    watching.go();
+    wait_for("the system to ask for the resume", PATIENCE, || {
+        actions_asked(world, &print)
+            .iter()
+            .any(|action| action["action"] == "resume")
+    });
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(world.machine_refuses(false));
+
+    let resume = events_of(world, &print, "action_requested")
+        .into_iter()
+        .find(|requested| requested["payload"]["action"]["action"] == "resume")
+        .expect("the resume is in the record");
+    assert_eq!(resume["payload"]["action"]["actor"], "system");
+    assert!(
+        !events_of(world, &print, "action_executed")
+            .iter()
+            .any(|executed| executed["payload"]["action_id"] == resume["payload"]["action_id"]),
+        "a resume the machine refused is recorded as carried out"
+    );
     assert_eq!(reports(world), Some(Reports::Paused));
     assert!(
         api.received().is_empty(),

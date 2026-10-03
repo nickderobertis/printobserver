@@ -49,10 +49,31 @@ pub(crate) struct DetectorPause {
     pub event_id: EventId,
     /// What the detector did.
     pub detection: Detection,
-    /// The reasons of the adjustments asked for while it was paused, in order.
-    pub adjustments: Vec<String>,
-    /// When the print is to be resumed, once an adjustment has been asked for.
-    pub resume_due: Option<Timestamp>,
+    /// The adjustments the agent asked for under the pause, and the resume
+    /// they earned; absent until it asks for one.
+    pub adjusted: Option<Adjusted>,
+}
+
+/// The adjustments asked for under one detector's pause, and the resume they
+/// earned: there is no resume without an adjustment, and no adjustment
+/// without a resume.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Adjusted {
+    /// The reason of the first adjustment asked for.
+    pub first: String,
+    /// The reasons of every adjustment asked for after it, in order.
+    pub later: Vec<String>,
+    /// When the print is to be resumed: the grace after the last of them.
+    pub resume_due: Timestamp,
+}
+
+impl Adjusted {
+    /// Every reason, in the order the adjustments were asked for.
+    fn reasons(&self) -> Vec<&str> {
+        core::iter::once(self.first.as_str())
+            .chain(self.later.iter().map(String::as_str))
+            .collect()
+    }
 }
 
 /// Every print the detector has paused and nobody has resumed yet.
@@ -71,8 +92,7 @@ impl Supervisor {
             DetectorPause {
                 event_id,
                 detection,
-                adjustments: Vec::new(),
-                resume_due: None,
+                adjusted: None,
             },
         );
     }
@@ -85,8 +105,19 @@ impl Supervisor {
             i64::try_from(self.config().detector_resume_grace.as_secs()).unwrap_or(i64::MAX);
         let due = plus_seconds(now, grace).unwrap_or(now);
         if let Some(pause) = self.detector_pauses().get_mut(&print_id) {
-            pause.adjustments.push(reason.to_owned());
-            pause.resume_due = Some(due);
+            match &mut pause.adjusted {
+                Some(adjusted) => {
+                    adjusted.later.push(reason.to_owned());
+                    adjusted.resume_due = due;
+                }
+                None => {
+                    pause.adjusted = Some(Adjusted {
+                        first: reason.to_owned(),
+                        later: Vec::new(),
+                        resume_due: due,
+                    });
+                }
+            }
         }
     }
 
@@ -109,7 +140,12 @@ impl Supervisor {
             let mut pauses = self.detector_pauses();
             let ids: Vec<PrintId> = pauses
                 .iter()
-                .filter(|(_, pause)| pause.resume_due.is_some_and(|at| at <= now))
+                .filter(|(_, pause)| {
+                    pause
+                        .adjusted
+                        .as_ref()
+                        .is_some_and(|adjusted| adjusted.resume_due <= now)
+                })
                 .map(|(id, _)| *id)
                 .collect();
             ids.into_iter()
@@ -127,7 +163,7 @@ impl Supervisor {
         let taken = {
             let mut pauses = self.detector_pauses();
             match pauses.get(&print_id) {
-                Some(pause) if !pause.adjustments.is_empty() => pauses.remove(&print_id),
+                Some(pause) if pause.adjusted.is_some() => pauses.remove(&print_id),
                 _ => None,
             }
         };
@@ -146,7 +182,11 @@ impl Supervisor {
         let reason = format!(
             "the detector paused this print and the supervising agent adjusted it while \
              paused ({}); resuming so the adjustment takes effect",
-            pause.adjustments.join("; ")
+            pause
+                .adjusted
+                .as_ref()
+                .map(|adjusted| adjusted.reasons().join("; "))
+                .unwrap_or_default()
         );
         let resumed = self
             .request_action(

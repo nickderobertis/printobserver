@@ -75,6 +75,7 @@ pub struct TurnSituation {
     /// The printer's state when the turn began, in the printer contract's own
     /// spelling, null when the printer could not be read.
     #[serde(default)]
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub printer_state: Option<String>,
     /// Whether the detector only warned, null when the event is not one of its
     /// detections.

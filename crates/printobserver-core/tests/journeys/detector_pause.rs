@@ -333,3 +333,45 @@ fn a_print_somebody_else_resumed_is_not_resumed_again() {
     let_the_driver_sweep();
     assert_eq!(world.journal.position(&Call::Resume), None);
 }
+
+/// A printer that refuses the resume leaves the print paused: the refusal is
+/// on the resume's own record, and the detector is told nothing.
+#[test]
+fn a_resume_the_printer_refuses_leaves_the_pause_and_tells_the_detector_nothing() {
+    let world = World::new();
+    world.printer.fails(
+        crate::fakes::PrinterMethod::Resume,
+        printobserver_printer_api::PrinterError::Unreachable {
+            detail: "the printer would not resume".to_owned(),
+        },
+    );
+    world.agent.acts_with(fan_up());
+    let _ = paused_by_the_detector(&world);
+
+    assert!(
+        world.journal.position(&Call::Resume).is_some(),
+        "no resume was asked"
+    );
+    assert_eq!(
+        world
+            .journal
+            .position(&Call::ClearDetection(DETECTOR_PRINTER_ID)),
+        None,
+        "the detector was told about a print still paused"
+    );
+    let resume = world
+        .store
+        .action_records()
+        .into_iter()
+        .find(|record| record.request.action.kind() == ActionKind::Resume)
+        .expect("the resume is recorded");
+    assert_eq!(resume.request.actor, Actor::System);
+    assert!(
+        matches!(
+            resume.outcome,
+            Some(printobserver_core::ExecutionOutcome::Failed { .. })
+        ),
+        "the printer's refusal is not on the resume's record: {:?}",
+        resume.outcome
+    );
+}

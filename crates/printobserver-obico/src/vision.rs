@@ -99,15 +99,41 @@ impl fmt::Debug for ObicoApi {
     }
 }
 
+/// One address an operator wrote down, refused unless it is an `http` or
+/// `https` URL naming a host.
+///
+/// Parsed as a URL rather than read by its prefix, so text that only begins
+/// like one — `http://?x`, `http://[`, a scheme and nothing else — is refused
+/// where it is configured rather than at the first request that needs it. The
+/// refusal says what is wrong and never quotes the text, which may be a secret
+/// pasted into the wrong line.
+///
+/// # Errors
+///
+/// Answers why the text is not such an address.
+pub fn web_address(text: &str) -> Result<String, &'static str> {
+    let trimmed = text.trim();
+    let parsed = reqwest::Url::parse(trimmed).map_err(|_| "it is not a URL")?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("it must be an http:// or https:// URL");
+    }
+    if parsed.host_str().is_none_or(str::is_empty) {
+        return Err("it names no host");
+    }
+    Ok(trimmed.to_owned())
+}
+
 /// The alert overwrite a handled detection is acknowledged with.
 ///
 /// `FAILED` rather than `NOT_FAILED`: the detection was right, and it was
 /// handled by adjusting the print rather than by dismissing it. Obico's
 /// suppression reads only that an acknowledgement happened, so either would
 /// re-arm it; this one is the truthful one.
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 pub const HANDLED_OVERWRITE: &str = "FAILED";
 
 /// The path, under Obico's own address, one printer's alert is acknowledged at.
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 fn acknowledgement_path(provider_printer_id: i64) -> String {
     format!(
         "/api/v1/printers/{provider_printer_id}/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE}"
@@ -262,7 +288,7 @@ impl VisionPort for ObicoVision {
 
 #[cfg(test)]
 mod tests {
-    use super::{ObicoApi, ObicoVision, ObicoVisionConfig, ObicoVisionError};
+    use super::{ObicoApi, ObicoVision, ObicoVisionConfig, ObicoVisionError, web_address};
 
     /// A host that cannot carry the adapter is told which half failed.
     #[test]
@@ -283,6 +309,30 @@ mod tests {
         };
         let vision = ObicoVision::new(config).expect("the adapter builds");
         assert_eq!(*vision.config(), config);
+    }
+
+    /// An address is a URL naming a host over HTTP, and nothing that only
+    /// begins like one.
+    #[test]
+    fn a_web_address_is_an_http_url_naming_a_host() {
+        for accepted in [
+            "http://127.0.0.1:3334",
+            " https://obico.example/ ",
+            "http://127.0.0.1:1984/api/frame.jpeg?src=camera",
+        ] {
+            assert_eq!(web_address(accepted).as_deref(), Ok(accepted.trim()));
+        }
+        for refused in [
+            "http://?x",
+            "http://[invalid",
+            "http://",
+            "ftp://127.0.0.1/frame.jpg",
+            "file:///var/lib/frame.jpg",
+            "127.0.0.1:3334",
+            "",
+        ] {
+            assert!(web_address(refused).is_err(), "{refused:?} was accepted");
+        }
     }
 
     /// Neither the API's nor the adapter's debug form shows the token.

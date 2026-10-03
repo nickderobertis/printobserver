@@ -849,8 +849,6 @@ async fn a_store_that_refuses_the_write_says_nothing_was_written_down() {
     assert_eq!(*ingress.vision().config(), prompt_bounds());
 }
 
-// --- The detection, and telling Obico it was handled --------------------------
-
 /// The failure alert carries what the detector did, read off its own flags and
 /// its printer; a notification is no detection at all.
 #[tokio::test]

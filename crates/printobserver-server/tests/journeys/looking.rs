@@ -204,3 +204,68 @@ async fn a_wait_too_long_or_a_print_unknown_is_refused_at_once() {
     assert!(started.elapsed() < Duration::from_secs(5));
     world.server.stop().await;
 }
+
+/// A printer that cannot be read leaves the look's printer and job absent, and
+/// the look is still taken, framed and written down.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printer_that_cannot_be_read_leaves_the_looks_reads_absent() {
+    let host = image_host(snapshot_bytes()).await;
+    let world = with_camera(StandInAgent::new(), host.url()).await;
+    let print_id = world.open_print().await;
+    world.printer.unreadable(true);
+
+    let (status, look) = world.get(&look_url(&world, print_id, 0)).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(look.get("printer").is_none(), "{look}");
+    assert!(look.get("job").is_none(), "{look}");
+    assert_eq!(look["detector_paused"], false);
+    assert!(look["frame"].is_object(), "{look}");
+    assert_eq!(look["event"]["kind"], "camera_look");
+    world.server.stop().await;
+}
+
+/// A frame the store will not keep is recorded as a port failure at the camera
+/// against the look, and the look answers with no frame.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_frame_the_store_will_not_keep_is_recorded_against_the_look() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let host = image_host(snapshot_bytes()).await;
+    let world = with_camera(StandInAgent::new(), host.url()).await;
+    let print_id = world.open_print().await;
+    let images = world.state_dir().join("images");
+    std::fs::create_dir_all(&images).expect("the images directory");
+    std::fs::set_permissions(&images, std::fs::Permissions::from_mode(0o500))
+        .expect("the images directory can be made read-only");
+
+    let (status, look) = world.get(&look_url(&world, print_id, 0)).await;
+    std::fs::set_permissions(&images, std::fs::Permissions::from_mode(0o700))
+        .expect("the images directory can be made writable again");
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(look.get("frame").is_none(), "{look}");
+    assert!(look.get("image_path").is_none(), "{look}");
+    let history = world
+        .stores
+        .events
+        .history(HistoryQuery {
+            print_id,
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            limit: Some(10),
+        })
+        .await
+        .expect("the history reads");
+    let failure = history
+        .iter()
+        .find_map(printobserver_types::EventRecord::payload_as::<PortFailurePayload>)
+        .expect("the store's refusal is recorded")
+        .expect("of its own type");
+    assert_eq!(failure.site, PortFailureSite::CameraLook);
+    assert_eq!(
+        failure.event_id.to_string(),
+        look["event"]["id"].as_str().expect("the look's own event")
+    );
+    world.server.stop().await;
+}
