@@ -39,8 +39,12 @@ use crate::kinds::{CameraLookPayload, PortFailureSite};
 use crate::supervisor::Supervisor;
 
 /// One fresh look at a print.
+///
+/// An answer rather than a record, so it admits fields beside its own the way
+/// every answer of the server does: a client that could not open the frame's
+/// path says so in a field of its own beside the rest of the answer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[serde(crate = "printobserver_types::serde")]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct Look {
     /// The look itself, as it was written into the print's history, carrying

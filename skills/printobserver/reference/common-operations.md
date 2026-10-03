@@ -503,3 +503,53 @@ record.request.action.reason: spaghetti in the alert image, but the part is stil
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
+
+### look
+
+See the print as it is now rather than as it was when its event arrived. A look
+takes a fresh frame from the camera the supervisor is configured with, reads the
+printer and the job again, and writes itself into the print's history with the
+frame as its image, so every frame stays in the record. Open the frame at the
+`image_path` it answers exactly as you open the context's.
+
+`--wait-s` waits that many seconds first, at most 90, so a few looks in a row
+watch a defect grow or settle. A look inside a turn returns the moment a new
+event arrives for its print and answers it under `arrived`: that is how a later
+alert reaches the agent already watching the print rather than a second one.
+`detector_paused` says whether the detector's pause is what is holding the print.
+
+```console
+$ printobserver look --print-id PRINT_ID --wait-s 1
+detector_paused: false
+event.id: ID
+event.image.id: ID
+event.image.sha256: d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
+event.kind: camera_look
+event.payload.delivered: []
+event.payload.waited_s: 1
+event.print_id: PRINT_ID
+event.received_at: TIMESTAMP
+event.source: system
+frame.id: ID
+frame.sha256: d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
+image_path: STATE_DIR/images/d0/d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
+job.completion.out_of_range: false
+job.completion.value: 0.42
+job.estimated_print_time_s: 3600
+job.file_name: FILE
+job.file_origin: local
+job.print_time_left_s: 1200
+job.print_time_s: 900
+job.size_bytes: 4211
+job.state: printing
+printer.bed.actual_c.out_of_range: false
+printer.bed.actual_c.value: 59.5
+printer.bed.target_c.out_of_range: false
+printer.bed.target_c.value: 62.0
+printer.connection: printing
+printer.observed_at: TIMESTAMP
+printer.tools.0.actual_c.out_of_range: false
+printer.tools.0.actual_c.value: 209.5
+printer.tools.0.target_c.out_of_range: false
+printer.tools.0.target_c.value: 208.0
+```

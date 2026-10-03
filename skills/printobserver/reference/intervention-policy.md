@@ -3,13 +3,15 @@
 What may be asked for, what happens when it may not, and what happens to a
 change that was only meant to stand for a while. This document covers where the
 bounds come from, what a rejection carries, how a bounded intervention is
-restored, and what expiry does when no prior value was available.
+restored, what expiry does when no prior value was available, and what happens
+to a print the detector paused.
 
 Every claim here is stated against the thing it describes: the fields a
 rejection carries are the fields the contracts' rejection type declares, the
 source named for the bounds is the file the server reads them from, and the
 restoration and expiry behaviours each name the journey that asserts them. A
-check reads all four beside the tree.
+check reads all four beside the tree; the detector's pause names its journeys
+too.
 
 ## Where the bounds come from
 
@@ -23,7 +25,9 @@ may request at all, and the minimum interval between two agent actions that
 change the machine. Acknowledging a failure changes nothing there, whatever its
 disposition — `stop` included, which records that the print should stop and
 cancels nothing — so an acknowledgement neither waits on that interval nor
-starts it again.
+starts it again. An adjustment asked for while the print is paused does not
+wait on it either, because nothing it does can show until the print moves;
+pausing, resuming and cancelling still do.
 
 **The print's manifest** is attached when a print is started and may be replaced
 while it runs. A manifest may only ever *narrow*. An adjustable it names
@@ -111,3 +115,31 @@ in order to decide.
 `crates/printobserver-core/tests/journeys/interventions.rs` is the journey that
 asserts it, and it asserts the machine was asked for nothing as well as the
 outcome that was recorded.
+
+## What happens to a print the detector paused
+
+A failure detector that pauses a print reacts faster than any turn, so its
+pause is left standing while the agent looks. When the agent asks for an
+adjustment while the detector's pause holds the print, the adjustment is
+applied at once, and the supervisor then resumes the print **as the system
+actor, through the same policy** — twenty seconds after the agent's last such
+adjustment, or when its turn ends, whichever comes first — so that two or three
+changes reach the print together as it moves again. The agent is not granted
+resume and does not need it.
+
+A resume the policy refuses, because the safety envelope does not grant the
+system resume, leaves the print paused, and the refusal is in the record like
+any other. Once the print has resumed, the detector is told its detection was
+handled — for Obico, an acknowledgement through its own API with the overwrite
+`FAILED` — which is what re-arms it for the rest of the print; an
+acknowledgement it refuses is recorded as a port failure against the
+detection's own event. An agent that acknowledges the detection with the
+disposition `stop` has decided a person should look, and the pause is then left
+alone; so is a print somebody else resumed or cancelled.
+
+`an_adjustment_during_the_turn_resumes_the_print_when_the_turn_ends`,
+`an_adjustment_outside_a_turn_resumes_the_print_after_the_grace`,
+`acknowledging_stop_leaves_the_pause_for_a_person` and
+`a_system_not_granted_resume_leaves_the_print_paused` in
+`crates/printobserver-core/tests/journeys/detector_pause.rs` are the journeys
+that assert it.

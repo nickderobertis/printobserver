@@ -747,6 +747,65 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         "the file the documentation said to open is not the image the record declares"
     );
 
+    let step = documentation
+        .step(3)
+        .ok_or_else(|| unreachable("the fresh look", "the skill states no third step"))?;
+    let looking = documentation.command_in(&step).ok_or_else(|| {
+        unreachable(
+            "the fresh look",
+            "the skill's third step names no command the documents show how to run",
+        )
+    })?;
+    let look_example = documentation.example(&looking).ok_or_else(|| {
+        unreachable(
+            "the fresh look",
+            "no document the skill links to shows a worked example of it",
+        )
+    })?;
+    let fresh = run(world, &bound(&look_example[0].command, &bindings));
+    if fresh.status != 0 {
+        return Err(unreachable(
+            "the fresh look",
+            &format!("it exited {}: {}", fresh.status, fresh.printed),
+        ));
+    }
+    let frame_key = key_showing_under(&look_example, STATE_DIR).ok_or_else(|| {
+        unreachable(
+            "the fresh look",
+            "no document says which field of a look names the frame's file",
+        )
+    })?;
+    let frame_digest_key = keys_ending(&look_example, "sha256")
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            unreachable(
+                "the fresh look",
+                "no document says which field of a look declares the frame's digest",
+            )
+        })?;
+    let frame = fresh.at(&frame_key).ok_or_else(|| {
+        unreachable(
+            "the fresh look",
+            &format!("the look carries no `{frame_key}`"),
+        )
+    })?;
+    let frame_bytes = std::fs::read(frame).map_err(|error| {
+        unreachable(
+            "the fresh look",
+            &format!("the frame at `{frame}` could not be opened: {error}"),
+        )
+    })?;
+    let frame_taken = {
+        use sha2::{Digest as _, Sha256};
+        format!("{:x}", Sha256::digest(&frame_bytes))
+    };
+    assert_eq!(
+        Some(frame_taken.as_str()),
+        fresh.at(&frame_digest_key),
+        "the frame the documentation said to open is not the frame the look declares"
+    );
+
     let refused = documentation.refused_example().ok_or_else(|| {
         unreachable(
             "the rejection's own fields",
@@ -920,12 +979,12 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
     );
 
     let step = documentation
-        .step(5)
-        .ok_or_else(|| unreachable("the observation record", "the skill states no fifth step"))?;
+        .step(6)
+        .ok_or_else(|| unreachable("the observation record", "the skill states no sixth step"))?;
     let recording = documentation.command_in(&step).ok_or_else(|| {
         unreachable(
             "the observation record",
-            "the skill's fifth step names no command the documents show how to run",
+            "the skill's sixth step names no command the documents show how to run",
         )
     })?;
     let record_example = documentation.example(&recording).ok_or_else(|| {

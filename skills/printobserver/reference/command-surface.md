@@ -147,6 +147,21 @@ Reached at `GET /v1/prints/{print_id}/history`.
 
 **Failures.** `unreachable` and `refused` as for every command.
 
+### look
+
+A fresh look at the print, as it is now rather than when its event arrived.
+
+Reached at `GET /v1/prints/{print_id}/look`.
+
+**Arguments.**
+
+- `--print-id` — the print this command is about (required).
+- `--wait-s` — how many seconds to wait first, at most 90, returning the moment an event arrives for the print's running turn (optional; a longer wait is refused rather than shortened).
+
+**Output.** The look as it was written into the print's history, the events that arrived while it waited, the frame the camera gave and the absolute path on the server's own host it was stored at, the printer and the job as they are now, and whether the print is held by the detector's pause. With no camera configured, or one that gave no frame, the frame and its path are absent.
+
+**Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` for a wait over 90. `unreachable` and `refused` as for every command.
+
 ### manifest-get
 
 The manifest a print is running under.

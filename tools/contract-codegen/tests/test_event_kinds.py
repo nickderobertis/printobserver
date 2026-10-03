@@ -97,6 +97,8 @@ def _unmarked(copy: Path) -> None:
 ENVELOPE_FILE = f"{SCHEMAS_DIR}/printobserver-types/{ENVELOPE}.json"
 KIND_TYPE_FILE = f"{SCHEMAS_DIR}/printobserver-types/EventKind.json"
 HISTORY_ANSWER_FILE = f"{SERVER_DIR}/HistoryAnswer.json"
+#: A look's answer, which lists the events that arrived while it waited.
+LOOK_ANSWER_FILE = f"{SCHEMAS_DIR}/printobserver-core/Look.json"
 
 
 def _module(path: Path) -> ModuleType:
@@ -403,7 +405,11 @@ def test_a_kind_table_no_read_lists_events_for_stops_the_walk(
     def one_event(schema: dict[str, Any]) -> None:
         schema["properties"]["events"] = {"$ref": f"#/$defs/{ENVELOPE}"}
 
+    def one_arrival(schema: dict[str, Any]) -> None:
+        schema["properties"]["arrived"] = {"$ref": f"#/$defs/{ENVELOPE}"}
+
     _rewrite(copy / HISTORY_ANSWER_FILE, one_event)
+    _rewrite(copy / LOOK_ANSWER_FILE, one_arrival)
     contract = load(copy)
 
     with pytest.raises(ValueError, match="no operation answers a list of"):

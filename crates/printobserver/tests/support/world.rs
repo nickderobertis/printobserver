@@ -31,6 +31,7 @@ use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
 use crate::announced;
+use crate::host::{Answer, Host};
 use crate::machine::{Machine, Reports};
 use crate::proxy::Proxy;
 
@@ -54,6 +55,13 @@ pub const SECRET: &str = "a-shared-secret-this-tier-configures";
 
 /// The image this world stores, as bytes a digest can be taken of.
 const IMAGE_BYTES: &[u8] = b"not a photograph, but the bytes of one";
+
+/// The frame this world's camera answers a look with: other bytes than the
+/// stored image's, so a frame is never mistaken for it.
+pub const FRAME_BYTES: &[u8] = b"not a camera frame either, but the bytes of one";
+
+/// Where on the camera's host a frame is answered.
+pub const FRAME_PATH: &str = "/api/frame.jpeg";
 
 /// How many times this world asks a real machine to be somewhere before it
 /// gives up and says where it actually is.
@@ -136,6 +144,8 @@ pub struct World {
     pub image_id: String,
     /// The event the acknowledgement command is about.
     pub event_id: String,
+    /// The camera a look takes its frame from.
+    pub camera: Host,
     /// The skill the supervisor is configured with.
     skill: PathBuf,
     /// The supervisor, running.
@@ -174,6 +184,20 @@ impl World {
     ///
     /// The same as [`World::open`].
     pub fn configured_with(world: &str, skill: &Path, harness: Option<&Path>) -> Self {
+        Self::configured(world, skill, harness, |_| {})
+    }
+
+    /// The same, with the supervisor's configuration as one journey edits it.
+    ///
+    /// # Panics
+    ///
+    /// The same as [`World::open`].
+    pub fn configured(
+        world: &str,
+        skill: &Path,
+        harness: Option<&Path>,
+        edit: impl FnOnce(&mut Value),
+    ) -> Self {
         Self::over(
             match world {
                 STOOD_IN => Printer::StoodIn(Machine::start()),
@@ -182,19 +206,28 @@ impl World {
             },
             skill,
             harness,
+            edit,
         )
     }
 
     /// A world over whatever is on the far side of the printer port.
-    fn over(printer: Printer, skill: &Path, harness: Option<&Path>) -> Self {
+    fn over(
+        printer: Printer,
+        skill: &Path,
+        harness: Option<&Path>,
+        edit: impl FnOnce(&mut Value),
+    ) -> Self {
         let root = TempDir::new().expect("this tier's own root");
         let state = root.path().join("state");
         std::fs::create_dir_all(&state).expect("a state directory");
         let (print_id, image_id, event_id) = seed(&state, &printable_file(&printer));
+        let camera = Host::answering(Answer::image(FRAME_BYTES));
 
         let configuration = root.path().join("server.toml");
-        std::fs::write(&configuration, server_document(&state, &printer, skill))
-            .expect("the configuration is writable");
+        let mut document = server_value(&state, &printer, skill);
+        document["camera"] = json!({ "snapshot_url": camera.url(FRAME_PATH) });
+        edit(&mut document);
+        std::fs::write(&configuration, toml_of(&document)).expect("the configuration is writable");
         // Nothing on the path the supervisor runs with. No journey here is about
         // a supervision turn, and an alert one of them posts prompts one: over
         // whatever harness this host happens to have installed, that turn would
@@ -225,6 +258,7 @@ impl World {
             print_id,
             image_id,
             event_id,
+            camera,
             skill: skill.to_path_buf(),
             server,
         };
@@ -485,6 +519,33 @@ impl World {
         format!("{:x}", Sha256::digest(IMAGE_BYTES))
     }
 
+    /// The digest of the frame this world's camera answers.
+    pub fn frame_digest() -> String {
+        use sha2::{Digest as _, Sha256};
+        format!("{:x}", Sha256::digest(FRAME_BYTES))
+    }
+
+    /// Where a look stores the frame this world's camera answers: the store
+    /// addresses an image by its content, so every look's frame is this file.
+    pub fn frame_path(&self) -> PathBuf {
+        let digest = Self::frame_digest();
+        self.root
+            .path()
+            .join("state")
+            .join("images")
+            .join(&digest[..2])
+            .join(digest)
+    }
+
+    /// Put the frame's bytes back where every look's record says they are.
+    pub fn restore_the_frame(&self) {
+        let path = self.frame_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("the frame's own directory");
+        }
+        std::fs::write(path, FRAME_BYTES).expect("the frame is writable");
+    }
+
     /// Where the image lives beneath the state directory.
     fn image_relative_path(&self) -> String {
         with_the_store(self.root.path().join("state"), |store, runtime| {
@@ -740,7 +801,7 @@ pub fn committed_skill() -> PathBuf {
         .join("SKILL.md")
 }
 
-/// The configuration the supervisor is started under.
+/// The configuration a second supervisor is started under.
 fn server_document(state: &Path, printer: &Printer, skill: &Path) -> String {
     toml_of(&server_value(state, printer, skill))
 }

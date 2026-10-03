@@ -396,8 +396,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "description": "One fresh look at a print.",
+  "description": "One fresh look at a print.\n\nAn answer rather than a record, so it admits fields beside its own the way\nevery answer of the server does: a client that could not open the frame's\npath says so in a field of its own beside the rest of the answer.",
   "properties": {
     "arrived": {
       "description": "The events for this print that arrived while the look waited, oldest\nfirst; the look returned early when there were any.",

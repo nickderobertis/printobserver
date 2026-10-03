@@ -879,7 +879,7 @@ schema_directory = "schemas"
 # lines after it are what that command printed.
 example_fence = "console"
 
-# The nine things the skill must carry IN ITS OWN TEXT. Every other rule about
+# The ten things the skill must carry IN ITS OWN TEXT. Every other rule about
 # the skill is about what it may not carry; these are what it owes. A skill that
 # is short enough, holds no reference material and links correctly is refused
 # unless every marker below is in it, because the skill is the whole of what the
@@ -910,16 +910,20 @@ name = "the workflow step that inspects the image"
 marker = "2. **Look at the image.**"
 
 [[docs.skill_element]]
+name = "the workflow step that looks again before deciding"
+marker = "3. **Look again, and watch if you need to.**"
+
+[[docs.skill_element]]
 name = "the workflow step that decides"
-marker = "3. **Decide.**"
+marker = "4. **Decide.**"
 
 [[docs.skill_element]]
 name = "the workflow step that acts with a reason"
-marker = "4. **Act, and say why.**"
+marker = "5. **Act, and say why.**"
 
 [[docs.skill_element]]
 name = "the workflow step that records what was seen"
-marker = "5. **Record what you saw.**"
+marker = "6. **Record what you saw.**"
 
 # Every reference document this repository declares, with the headings each one
 # owes. A heading declared here and absent from the document is a failing check

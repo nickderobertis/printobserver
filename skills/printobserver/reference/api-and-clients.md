@@ -122,6 +122,17 @@ The print's events, newest first.
 
 Takes `print_id` (path), `limit` (query, optional).
 
+### look
+
+A fresh look at the print: waits up to `wait_s` seconds — at most 90, and a
+longer wait is refused — for an event to arrive for the print's running turn,
+returning the moment one does, then writes the look into the print's history,
+takes a frame from the configured camera and reads the printer as it is now.
+
+`GET /v1/prints/{print_id}/look` — answers success.
+
+Takes `print_id` (path), `wait_s` (query, optional).
+
 ### manifest_get
 
 The manifest a print is running under, and every range it asked wider than the envelope allows.
@@ -294,6 +305,10 @@ materialized path on the server's host.
 #### history
 
 `client.history(print_id, limit)` returns `HistoryAnswer`; `limit` is optional.
+
+#### look
+
+`client.look(print_id, wait_s)` returns the `Look`; `wait_s` is optional.
 
 #### manifest_get
 

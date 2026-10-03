@@ -33,6 +33,8 @@ mod harness;
 #[cfg(unix)]
 #[path = "journeys/harness_turn.rs"]
 mod harness_turn;
+#[path = "support/host.rs"]
+mod host;
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]

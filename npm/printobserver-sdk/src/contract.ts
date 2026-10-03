@@ -74,6 +74,7 @@ export const OPERATION_NAMES = [
   "image",
   "history",
   "manifest_get",
+  "look",
   "manifest_set",
   "pause",
   "resume",
@@ -220,6 +221,26 @@ export interface AgentAssessmentPayload {
   assessment: AgentAssessment;
   /** The session the turn ran in. */
   session_name: string;
+}
+
+/**
+ * Somebody took a fresh look at the print.
+ *
+ * Written down before the camera is asked for a frame, so that a frame the
+ * camera would not give is recorded against a look that is already in the
+ * history; the frame itself, when there is one, is this event's image.
+ */
+export interface CameraLookPayload {
+  /**
+   * The events for the print that arrived while it waited, and that it
+   * handed to whoever looked, oldest first.
+   */
+  delivered?: Array<EventId>;
+  /**
+   * How long the look waited for something to happen before it was taken,
+   * in whole seconds.
+   */
+  waited_s: number;
 }
 
 /**
@@ -505,6 +526,42 @@ export interface JobSnapshot {
 }
 
 /**
+ * One fresh look at a print.
+ *
+ * An answer rather than a record, so it admits fields beside its own the way
+ * every answer of the server does: a client that could not open the frame's
+ * path says so in a field of its own beside the rest of the answer.
+ */
+export interface Look {
+  /**
+   * The events for this print that arrived while the look waited, oldest
+   * first; the look returned early when there were any.
+   */
+  arrived?: Array<EventRecord>;
+  /**
+   * Whether the print is paused and the pause is the detector's, which is
+   * what an adjustment asked for now would be applied under.
+   */
+  detector_paused: boolean;
+  /**
+   * The look itself, as it was written into the print's history, carrying
+   * the frame as its image when there is one.
+   */
+  event: EventRecord;
+  /**
+   * The frame the camera gave, absent when no camera is configured or it
+   * gave none — which the history records as a port failure.
+   */
+  frame?: ImageRef | null;
+  /** The absolute path the frame's bytes are at, on the supervisor's host. */
+  image_path?: string | null;
+  /** The job the printer reports now, absent when it could not be read. */
+  job?: JobSnapshot | null;
+  /** The printer's state now, absent when it could not be read. */
+  printer?: PrinterSnapshot | null;
+}
+
+/**
  * An external body arrived that could not be read.
  *
  * This kind always carries its `raw` bytes, and it exists so that an alert
@@ -642,7 +699,9 @@ export type PortFailureSite =
   | "printer_snapshot"
   | "printer_job"
   | "image_write"
-  | "supervision_turn";
+  | "supervision_turn"
+  | "camera_look"
+  | "detector_acknowledgement";
 
 /** The whole vocabulary an actor may ask for, and there is no other. */
 export type PrintAction =
@@ -933,6 +992,7 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  camera_look: CameraLookPayload;
   intervention_expired: InterventionExpiredPayload;
   malformed_external_event: MalformedExternalEventPayload;
   obico_failure_alert: ObicoFailureAlertPayload;
@@ -950,6 +1010,7 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "camera_look",
   "intervention_expired",
   "malformed_external_event",
   "obico_failure_alert",
@@ -1077,6 +1138,24 @@ export class GeneratedClient extends GeneratedSurface {
     const sending = undefined;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ManifestAnswer>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `look` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async look(printId: string, waitS?: number): Promise<Look> {
+    const target = `/v1/prints/${printId}/look`;
+    const asked: Array<[string, string]> = [];
+    if (waitS !== undefined) {
+      asked.push(["wait_s", String(waitS)]);
+    }
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<Look>("GET", target, asked, sending);
   }
 
   /**

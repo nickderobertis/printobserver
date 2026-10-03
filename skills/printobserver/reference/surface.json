@@ -133,6 +133,33 @@
       "answers": [
         "success"
       ],
+      "command": "look",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "mutating": false,
+      "operation": "look",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "wait_s",
+          "located": "query",
+          "option": "--wait-s",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/look"
+    },
+    {
+      "answers": [
+        "success"
+      ],
       "command": "manifest-set",
       "image_path_field": null,
       "method": "PUT",

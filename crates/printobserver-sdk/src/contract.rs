@@ -19,13 +19,14 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 17] = [
+pub const OPERATION_NAMES: [&str; 18] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
     "manifest_get",
+    "look",
     "manifest_set",
     "pause",
     "resume",
@@ -236,6 +237,22 @@ pub struct AgentAssessmentPayload {
     pub assessment: AgentAssessment,
     /// The session the turn ran in.
     pub session_name: String,
+}
+
+/// Somebody took a fresh look at the print.
+///
+/// Written down before the camera is asked for a frame, so that a frame the
+/// camera would not give is recorded against a look that is already in the
+/// history; the frame itself, when there is one, is this event's image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CameraLookPayload {
+    /// The events for the print that arrived while it waited, and that it
+    /// handed to whoever looked, oldest first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered: Option<Vec<EventId>>,
+    /// How long the look waited for something to happen before it was taken,
+    /// in whole seconds.
+    pub waited_s: i64,
 }
 
 /// How sure the agent is.
@@ -563,6 +580,38 @@ pub struct JobSnapshot {
     pub state: PrinterState,
 }
 
+/// One fresh look at a print.
+///
+/// An answer rather than a record, so it admits fields beside its own the way
+/// every answer of the server does: a client that could not open the frame's
+/// path says so in a field of its own beside the rest of the answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Look {
+    /// The events for this print that arrived while the look waited, oldest
+    /// first; the look returned early when there were any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arrived: Option<Vec<EventRecord>>,
+    /// Whether the print is paused and the pause is the detector's, which is
+    /// what an adjustment asked for now would be applied under.
+    pub detector_paused: bool,
+    /// The look itself, as it was written into the print's history, carrying
+    /// the frame as its image when there is one.
+    pub event: EventRecord,
+    /// The frame the camera gave, absent when no camera is configured or it
+    /// gave none — which the history records as a port failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<ImageRef>,
+    /// The absolute path the frame's bytes are at, on the supervisor's host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_path: Option<String>,
+    /// The job the printer reports now, absent when it could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<JobSnapshot>,
+    /// The printer's state now, absent when it could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<PrinterSnapshot>,
+}
+
 /// An external body arrived that could not be read.
 ///
 /// This kind always carries its `raw` bytes, and it exists so that an alert
@@ -741,6 +790,12 @@ pub enum PortFailureSite {
     /// Running the supervision turn the event prompted.
     #[serde(rename = "supervision_turn")]
     SupervisionTurn,
+    /// Taking a fresh frame from the camera for a look at the print.
+    #[serde(rename = "camera_look")]
+    CameraLook,
+    /// Telling the detector that paused the print its detection was handled.
+    #[serde(rename = "detector_acknowledgement")]
+    DetectorAcknowledgement,
 }
 
 /// The whole vocabulary an actor may ask for, and there is no other.
@@ -1198,6 +1253,10 @@ impl EventPayloadKind for AgentAssessmentPayload {
     const KIND: &'static str = "agent_assessment";
 }
 
+impl EventPayloadKind for CameraLookPayload {
+    const KIND: &'static str = "camera_look";
+}
+
 impl EventPayloadKind for InterventionExpiredPayload {
     const KIND: &'static str = "intervention_expired";
 }
@@ -1235,11 +1294,12 @@ impl EventPayloadKind for SupervisionSessionOpenedPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 13] = [
+pub const EVENT_KINDS: [&str; 14] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
+    "camera_look",
     "intervention_expired",
     "malformed_external_event",
     "obico_failure_alert",
@@ -1346,6 +1406,22 @@ impl Client {
     pub fn manifest_get(&self, print_id: &str) -> Result<ManifestAnswer, ClientError> {
         let target = format!("/v1/prints/{print_id}/manifest");
         let asked: Vec<(String, String)> = Vec::new();
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `look` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn look(&self, print_id: &str, wait_s: Option<i64>) -> Result<Look, ClientError> {
+        let target = format!("/v1/prints/{print_id}/look");
+        let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = wait_s {
+            asked.push(("wait_s".to_owned(), value.to_string()));
+        }
         let sending: Option<serde_json::Value> = None;
         self.call("GET", &target, &asked, sending.as_ref())
     }

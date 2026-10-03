@@ -22,6 +22,8 @@
 
 #[path = "support/announced.rs"]
 mod announced;
+#[path = "support/host.rs"]
+mod host;
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]
