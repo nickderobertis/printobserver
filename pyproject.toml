@@ -27,6 +27,8 @@ dev = [
     "actionlint-py>=1.7",
     "shellcheck-py>=0.11",
     "jsonschema>=4.25",
+    "skilltest-pytest>=0.12.0",
+    "skilltest-sdk>=0.12.0",
 ]
 # zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
 # Unix host. Its own group rather than `dev` so hosts that never run that pass —
@@ -47,6 +49,11 @@ convention = "google"
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
+# Registered here rather than beside the tests that use it: `--strict-markers`
+# refuses a marker it does not know, wherever pytest is pointed.
+markers = [
+    "skilltest_e2e: opt-in skill test through a real harness; needs SKILLTEST_E2E=1",
+]
 pythonpath = [
     "tools/repo-checks/src",
     "tools/contract-codegen/src",
@@ -56,6 +63,7 @@ pythonpath = [
     "tools/octoprint-env",
     "tools/obico-env",
     "tools/printer-smoke",
+    "tests/skilltest",
 ]
 
 [tool.coverage.run]
@@ -96,4 +104,5 @@ root = [
     "tools/obico-env/tests",
     "tools/printer-smoke",
     "tools/printer-smoke/tests",
+    "tests/skilltest",
 ]

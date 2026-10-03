@@ -706,6 +706,12 @@ site = "test-skill-install"
 reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells are deliberately not given GitHub CLI, so a `test` target here would put a journey that refuses without `gh` into the gate. The repository names a tier that runs only in its own job after its recipe — `test-integration`, `test-obico` — and `tools/obico-env/project.json` is the same shape as this one: `format`, `format-check`, `lint` and `typecheck` by the standard names, and its tests under its tier's name alone. `test-skill-install` is that name, the recipe `just test-skill-install` fans it out by, and `repo-policy.toml`'s `[skill_install]` declares it."
 
 [[suppression]]
+rule = "new_projects_keep_the_graph_uniform"
+file = "tests/skilltest/project.json"
+site = "skilltest"
+reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells carry neither a signed-in harness nor a budget for model turns, so the live skill tests cannot sit behind it. This project keeps the standard names for everything the gate can run — `format`, `format-check`, `lint`, `typecheck`, and `test` for its deterministic half, which builds every scenario with no model — and puts the live tests under the tier's own name alone, as `tests/skill-install/project.json` does with `test-skill-install` and `tools/obico-env/project.json` with `test-obico`. `skilltest` is that name, the recipe `just skilltest` runs it by, and `repo-policy.toml`'s `[skilltest]` declares it."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"

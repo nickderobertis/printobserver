@@ -346,6 +346,22 @@ test-skill-install:
     just node-modules
     bunx nx run-many -t test-skill-install --output-style=stream
 
+# The skill tier: the `printobserver` skill run through a real harness on every
+# real-print scenario under `tests/real-prints`, with every `printobserver`
+# command stubbed, and judged by each case's own `assertions`. Extra arguments
+# go to pytest, so `just skilltest -k fan-cut-bridge` runs one scenario.
+#
+# Deliberately not one of `just check`'s tiers: every scenario spends real model
+# turns and needs a signed-in harness, so `skilltest` is a target name no gate
+# tier fans out over. Its deterministic half, which builds every scenario with
+# no model, is the project's `test` target and runs in the gate.
+#
+# Run the skill on every real-print scenario through a real harness.
+[positional-arguments]
+skilltest *ARGS:
+    just node-modules
+    bunx nx run skilltest:skilltest --output-style=stream "$@"
+
 # Bring up the scripted OctoPrint environment the integration tier drives.
 #
 # The virtual printer, a free port and the hold print, under `.octoprint-env`.
