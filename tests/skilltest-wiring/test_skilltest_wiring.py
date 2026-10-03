@@ -412,6 +412,9 @@ def test_commands_route_to_the_stub_that_answers_them(built: dict[str, Built]) -
         f"printobserver set-flowrate-factor {changing} --factor 1.0 --reason 'flow'": (
             "set-flowrate-factor-1.00"
         ),
+        f"printobserver set-flowrate-factor {changing} --factor 1.05 --reason 'flow' --json": (
+            "set-flowrate-factor-1.05-json"
+        ),
         f"printobserver pause {changing} --reason 'a person'": "pause",
         f"printobserver pause {changing}": "refused",
         f"cd {case.workspace}/reference; cat command-surface.md": None,

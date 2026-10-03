@@ -799,11 +799,8 @@ def _stubs(
             number = float(value) if adjustment.resolution < 1 else int(value)
             step = Step(adjustment.command, {adjustment.parameter: number})
             document = _adjusted(composer, adjustment, float(value))
-            specs.append(
-                StubSpec(
-                    f"{adjustment.command}-{value}", step.operation, step_pattern(step), (document,)
-                )
-            )
+            name = f"{adjustment.command}-{value}"
+            specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
     for command in surface().operations:
         pattern = step_pattern(Step(command.name, {}))
         specs.extend(_rendered(command.name, command.name, pattern, answers[command.name]))
