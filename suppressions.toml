@@ -732,7 +732,7 @@ reason = "The same typed client as the live tier's, for the same reason: skillte
 [[suppression]]
 rule = "cli_output_contract"
 file = "tests/skilltest/scenario.py"
-site = "StubSpec(\"refused\", None, program_pattern(), (refusal,), Render.TEXT, exits[\"usage\"]),"
+site = "\"refused\", None, program_pattern(), (refusal,), Render.TEXT, exits[\"usage\"], False"
 reason = "This is a stub standing in for the program's refusal, not the program: a skilltest stub carries one output and an exit code, and oneharness hands it to the harness as a rewritten command printing that output, so there is no second stream to put the refusal on. The stub keeps the part of the contract an agent can tell apart, the program's own usage exit status. What the agent reads is unchanged by the stream: Claude Code returns a shell command's standard output and standard error together as one tool result. The real program writes its refusals to standard error, and the gate's corpus test holds the judge to that program's exit statuses."
 
 [[suppression]]
