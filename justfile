@@ -354,7 +354,8 @@ test-skill-install:
 # Deliberately not one of `just check`'s tiers: every scenario spends real model
 # turns and needs a signed-in harness, so `skilltest` is a target name no gate
 # tier fans out over. Its deterministic half, which builds every scenario with
-# no model, is the project's `test` target and runs in the gate.
+# no model, is the `skilltest-wiring` project's `test` target and runs in the
+# gate.
 #
 # Run the skill on every real-print scenario through a real harness.
 [positional-arguments]

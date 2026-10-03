@@ -390,7 +390,7 @@ tier = "test-skill-install"
 # model turns and needs a signed-in harness, so nothing runs it on a change and
 # a person runs it by hand. Its deterministic half — every scenario built with
 # no model and held to the cases, the turn template and the generated examples
-# — is the `skilltest` project's `test` target, which the gate runs.
+# — is the `skilltest-wiring` project's `test` target, which the gate runs.
 tier = "skilltest"
 
 [smoke]

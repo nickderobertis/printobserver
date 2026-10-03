@@ -261,8 +261,8 @@ one acceptable outcome and none of its never-take steps. The expected actions
 are read from each `case.json` at run time, so a case added later is covered
 with no test edited. Its deterministic half builds every scenario with no
 model. It holds what it builds to the cases, to the turn template's slots, and
-to each operation's generated example and answer schema. It is the `skilltest`
-project's `test` target, and the gate runs it.
+to each operation's generated example and answer schema. It is the
+`skilltest-wiring` project's `test` target, and the gate runs it.
 
 **Why it is outside the gate.** Every scenario spends real model turns and needs
 a harness signed in on the host, and a model's judgment is not deterministic.
