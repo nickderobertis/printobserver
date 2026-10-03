@@ -748,6 +748,12 @@ site = "answered = shell.run("
 reason = "`oneharness mock` is a hook responder: it reads one event on standard input, writes one verdict and exits, which is exactly how the harness runs it. AGENTS.md routes every subprocess in this repository through `repo_checks.shell.run`, so this call uses that one helper rather than an async client of its own. The verdict is validated before it is read: a deny carrying a string reason, the only answer the rules this test writes can produce."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/test_real_prints_skilltest.py"
+site = "sessions = directory / \"projects\" / re.sub("
+reason = "The manager ruled that each live run records the model it actually ran on, and with no model pinned, which is what the shipped configuration leaves a turn, neither skilltest's report nor OneHarness carries it: the only record is Claude Code's own session log, so reading it means reading its location and shape. There is no authoritative source to derive them from, and the gate cannot reconcile them, because the gate's runners have no Claude Code to run. The drift gate is the live tier itself: every live run fails when the record yields no model (`expect.truth(models, ...)` in the test), so a moved or reshaped record stops the evidence rather than silently dropping it."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"

@@ -138,6 +138,7 @@ def models_used(workspace: Path) -> list[str]:
     """
     configured = os.environ.get("CLAUDE_CONFIG_DIR")
     directory = Path(configured) if configured else Path.home() / ".claude"
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     sessions = directory / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
     found: set[str] = set()
     for session in sorted(sessions.glob("*.jsonl")):
