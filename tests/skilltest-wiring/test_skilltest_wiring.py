@@ -59,6 +59,7 @@ from real_prints import (
     sent_to_server,
     shipped_model,
     step_matches,
+    unpublished_reason,
 )
 from repo_checks import expect, platforms, shell
 from repo_checks.model import Repo
@@ -103,10 +104,10 @@ ONEHARNESS = shutil.which("oneharness")
 # The tests that ask the real hook, or skilltest's own loader, how a run reads a
 # case: each runs on every host its program publishes a build for.
 needs_oneharness = pytest.mark.skipif(
-    not published("oneharness"), reason="oneharness publishes no build for this platform"
+    not published("oneharness"), reason=unpublished_reason("oneharness")
 )
 needs_skilltest = pytest.mark.skipif(
-    not published("skilltest"), reason="skilltest publishes no build for this platform"
+    not published("skilltest"), reason=unpublished_reason("skilltest")
 )
 
 

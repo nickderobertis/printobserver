@@ -81,6 +81,21 @@ def publishing(program: str) -> frozenset[str]:
     )
 
 
+def unpublished_reason(program: str) -> str:
+    """Why a test needing `program` cannot run here: the upstream artifact that is absent."""
+    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
+    distribution = DISTRIBUTIONS[program]
+    (version,) = [p["version"] for p in lock["package"] if p["name"] == distribution]
+    artifact = {
+        "skilltest": "platform wheel bundling the skilltest binary",
+        "oneharness": "wheel carrying the oneharness binary",
+    }[program]
+    return (
+        f"{distribution} {version}, as locked, publishes no {artifact} for "
+        f"{platforms.host(Repo(REPO)).id}"
+    )
+
+
 def published(program: str) -> bool:
     """Whether `program` publishes a build for the supported platform this host is.
 

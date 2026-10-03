@@ -45,6 +45,7 @@ from real_prints import (
     published,
     scenarios,
     shipped_model,
+    unpublished_reason,
 )
 from repo_checks import expect
 from scenario import Built, build, harness_config, provider_config, requests_answered
@@ -186,10 +187,10 @@ def _keep(
 
 
 @pytest.mark.skilltest_e2e
+@pytest.mark.skipif(not published("skilltest"), reason=unpublished_reason("skilltest"))
 @pytest.mark.skipif(
     not _provider_available(),
-    reason="no skilltest provider: skilltest must publish this platform, and oneharness and"
-    " Claude Code must both be on PATH",
+    reason="no skilltest provider: oneharness and Claude Code must both be on PATH",
 )
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.test_id)
 def test_the_skill_takes_an_action_the_case_accepts(
