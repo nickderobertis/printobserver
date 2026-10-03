@@ -125,27 +125,24 @@ impl core::fmt::Display for WebAddress {
 /// is a colon and a number no greater than 65535. A user before an `@` is no
 /// part of an address this system is configured with.
 fn names_a_host(authority: &str) -> bool {
-    let (host_ok, port) = match authority.strip_prefix('[') {
-        Some(bracketed) => {
-            let Some((inside, after)) = bracketed.split_once(']') else {
-                return false;
-            };
-            let port = match after {
-                "" => None,
-                _ => match after.strip_prefix(':') {
-                    Some(port) => Some(port),
-                    None => return false,
-                },
-            };
-            (inside.parse::<std::net::Ipv6Addr>().is_ok(), port)
-        }
-        None => {
-            let (host, port) = match authority.rsplit_once(':') {
-                Some((host, port)) => (host, Some(port)),
-                None => (authority, None),
-            };
-            (is_a_host_name(host), port)
-        }
+    let (host_ok, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+        let Some((inside, after)) = bracketed.split_once(']') else {
+            return false;
+        };
+        let port = if after.is_empty() {
+            None
+        } else if let Some(port) = after.strip_prefix(':') {
+            Some(port)
+        } else {
+            return false;
+        };
+        (inside.parse::<std::net::Ipv6Addr>().is_ok(), port)
+    } else {
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        };
+        (is_a_host_name(host), port)
     };
     let port_ok = port.is_none_or(|digits| {
         !digits.is_empty()
