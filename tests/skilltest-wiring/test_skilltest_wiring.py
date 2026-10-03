@@ -30,7 +30,7 @@ import tempfile
 import tomllib
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 import real_prints
@@ -45,6 +45,7 @@ from real_prints import (
     TURN_PROMPT,
     Scenario,
     Step,
+    Trigger,
     agent_turn,
     bounds,
     commands_in,
@@ -137,13 +138,39 @@ def _command(built: Built, step: Step, *, reason: bool = True) -> str:
 
 
 def _picture(content: bytes) -> bytes:
-    """A JPEG's bytes without the comment segments a capture carries, which show nothing."""
+    """A JPEG's bytes without the comment segments among its headers, which show nothing.
+
+    Every segment from the start marker up to the first that is neither a
+    comment nor the JFIF header is read; the comments are dropped.
+    """
     kept = bytearray(content[:2])
     at = 2
-    while content[at : at + 2] == b"\xff\xfe":
-        at += 2 + int.from_bytes(content[at + 2 : at + 4], "big")
+    while content[at : at + 2] in {b"\xff\xfe", b"\xff\xe0"}:
+        end = at + 2 + int.from_bytes(content[at + 2 : at + 4], "big")
+        if content[at : at + 2] == b"\xff\xe0":
+            kept += content[at:end]
+        at = end
     kept += content[at:]
     return bytes(kept)
+
+
+def test_a_capture_is_the_same_picture_with_or_without_a_jfif_header() -> None:
+    """A capture's comment is found and dropped after the JFIF header as after the start."""
+    scan = b"\xff\xdb\x00\x03\x01rest"
+    header = b"\xff\xe0\x00\x04JF"
+    comment = b"\xff\xfe\x00\x0bcapture 1"
+    for before in (b"", header):
+        original = b"\xff\xd8" + before + scan
+        captured = b"\xff\xd8" + before + comment + scan
+        expect.equal(_picture(captured), _picture(original), describing="the same picture")
+        expect.truth(captured != original, describing="a capture of its own")
+
+
+def test_the_triggers_are_the_case_schemas() -> None:
+    """The triggers a scenario is read with are exactly the ones `case.schema.json` allows."""
+    schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
+    allowed = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
+    expect.equal(sorted(get_args(Trigger)), sorted(allowed), describing="the triggers")
 
 
 def _spec(case: Built, name: str) -> StubSpec:
@@ -656,7 +683,15 @@ def test_an_invocation_the_program_refuses_or_answers_at_once_takes_no_effect() 
     )
     expanded = 'A=$(cat actor.json); printobserver pause --print-id P --actor "$A" --reason r'
     expect.truth(sent_to_server(commands_in(expanded)[0]), describing="an actor the shell expands")
-    for refused in (taken + " --percent 100", taken + " --version", taken + " --reason again"):
+    for refused in (
+        taken + " --percent 100",
+        taken + " --version",
+        taken + " --reason again",
+        # Carried out on this host, never sent; not run here, since one starts
+        # a supervisor and the other signs a harness in.
+        "printobserver server --config c.toml",
+        "printobserver sign-in",
+    ):
         expect.truth(not sent_to_server(commands_in(refused)[0]), describing=f"`{refused}` refused")
 
 
@@ -705,6 +740,10 @@ def _variants(case: Built) -> list[str]:
         f"printobserver history {common} --limit 5",
         f"printobserver context {common} --actor {actor}",
         f"printobserver frobnicate {common}",
+        f"printobserver look stray {common}",
+        f"printobserver look {common} --config a.toml --config b.toml",
+        f"printobserver look {common} --json",
+        f"printobserver pause {common} {actor} --reason 'unbalanced",
     ]
 
 

@@ -347,8 +347,8 @@ def _words(command: str) -> list[str]:
     try:
         return list(lexer)
     except ValueError:
-        # An unbalanced quote: the words are still worth reading for a command.
-        return command.split()
+        # An unbalanced quote: the shell refuses the whole command, so it runs nothing.
+        return []
 
 
 def _is_program(word: str) -> bool:
@@ -382,6 +382,8 @@ def _options(words: list[str]) -> tuple[tuple[str, str], ...]:
             options.append((name, following))
             position += 2
             continue
+        # A word that is no option's value, which the program refuses.
+        options.append(("", current))
         position += 1
     return tuple(options)
 
@@ -419,9 +421,11 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9._~-]+")
 def sent_to_server(command: Command) -> bool:
     """Whether the program would parse an invocation and send it to the supervisor.
 
-    The rules are the program's own parser's (`parse.rs`): one of its commands;
-    neither `--help` nor `--version`, which it answers at once; every option one
-    of that command's or one every command takes, a value given once; a number
+    The rules are the program's own parser's (`parse.rs`): one of its commands
+    that asks a server, not one it carries out locally; neither `--help` nor
+    `--version`, which it answers at once; no word that is no option's value;
+    every option one of that command's or `--json` or `--config`, a value given
+    once; a number
     or a whole number that reads as one; a value bound for the request's path
     an identifier; a duration inside the bounds `surface.rs` declares; and
     every value the command requires. A value the shell expands (`"$A"`) is
@@ -429,13 +433,18 @@ def sent_to_server(command: Command) -> bool:
     stubs'. `skilltest-wiring` holds this to what the built program does.
     """
     spec = surface().command(command.operation)
-    if spec is None or {"help", "version"} & set(command.options):
+    if spec is None or spec.operation is None or {"help", "version"} & set(command.options):
         return False
     forms = {form: field for field in spec.fields for form in field.forms}
     supplied: set[str] = set()
     for name, value in command.given:
         option = "--" + name.replace("_", "-")
-        if option in surface().global_options:
+        if option == "--json" and not value:
+            continue
+        if option == "--config":
+            if not value or "config" in supplied:
+                return False
+            supplied.add("config")
             continue
         field = forms.get(option)
         if field is None or not value or field.name in supplied:
