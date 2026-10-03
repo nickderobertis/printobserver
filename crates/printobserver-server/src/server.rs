@@ -367,9 +367,11 @@ impl Server {
         let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
-            ObicoVision::new(ObicoVisionConfig::default()).map_err(|error| StartError::State {
-                detail: error.to_string(),
-            })?,
+            ObicoVision::new(ObicoVisionConfig::default())
+                .map_err(|error| StartError::State {
+                    detail: error.to_string(),
+                })?
+                .with_api(config.obico_api.clone()),
         );
         let agent = Arc::new(agent_for(&config)?);
         Self::start_with(
@@ -416,8 +418,13 @@ impl Server {
             .map_err(|error| StartError::Reconciliation {
                 detail: error.to_string(),
             })?;
+        let mut core_config =
+            CoreConfig::new(config.safety.clone(), context_command(&client_config));
+        core_config
+            .camera_snapshot_url
+            .clone_from(&config.camera_snapshot_url);
         let supervisor = Supervisor::new(
-            CoreConfig::new(config.safety.clone(), context_command(&client_config)),
+            core_config,
             Arc::clone(&ports.printer),
             ports.stores.clone(),
             Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,

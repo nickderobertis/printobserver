@@ -1,10 +1,13 @@
-//! The vision port, as the self-hosted Obico webhook plugin fills it.
+//! The vision port, as the self-hosted Obico webhook plugin fills it, and the
+//! one call this adapter makes to Obico's own API: acknowledging an alert.
 
 use core::fmt;
 use core::time::Duration;
 
 use printobserver_types::{RawBytes, Timestamp};
-use printobserver_vision_api::{BoxFuture, FetchedImage, NormalizedAlert, VisionError, VisionPort};
+use printobserver_vision_api::{
+    BoxFuture, Detection, FetchedImage, NormalizedAlert, VisionError, VisionPort,
+};
 
 use crate::{fetch, normalize};
 
@@ -73,13 +76,54 @@ impl fmt::Display for ObicoVisionError {
 
 impl core::error::Error for ObicoVisionError {}
 
-/// The Obico adapter: one body read, one snapshot retrieved.
+/// Where Obico's own API answers, and the token it is reached with.
+///
+/// Obico's user API accepts an OAuth2 bearer token or a browser session and
+/// nothing else, so this is a bearer token a self-hosted instance's own
+/// administration issued. The token is never shown: this type's debug form
+/// omits it, and nothing this adapter reports carries it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ObicoApi {
+    /// The server's own address, such as `http://127.0.0.1:3334`.
+    pub url: String,
+    /// The bearer token its API is reached with.
+    pub access_token: String,
+}
+
+impl fmt::Debug for ObicoApi {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ObicoApi")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The alert overwrite a handled detection is acknowledged with.
+///
+/// `FAILED` rather than `NOT_FAILED`: the detection was right, and it was
+/// handled by adjusting the print rather than by dismissing it. Obico's
+/// suppression reads only that an acknowledgement happened, so either would
+/// re-arm it; this one is the truthful one.
+pub const HANDLED_OVERWRITE: &str = "FAILED";
+
+/// The path, under Obico's own address, one printer's alert is acknowledged at.
+fn acknowledgement_path(provider_printer_id: i64) -> String {
+    format!(
+        "/api/v1/printers/{provider_printer_id}/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE}"
+    )
+}
+
+/// The Obico adapter: one body read, one snapshot retrieved, one alert
+/// acknowledged.
 #[derive(Debug, Clone)]
 pub struct ObicoVision {
     /// The HTTP client the snapshot is fetched with, carrying the timeout.
     client: reqwest::Client,
     /// The bounds the fetch runs under.
     config: ObicoVisionConfig,
+    /// Obico's own API, when this adapter was given a way to reach it.
+    api: Option<ObicoApi>,
 }
 
 impl ObicoVision {
@@ -97,13 +141,65 @@ impl ObicoVision {
             .map_err(|error| ObicoVisionError {
                 detail: error.to_string(),
             })?;
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            api: None,
+        })
+    }
+
+    /// The same adapter, able to reach Obico's own API when one is given.
+    #[must_use]
+    pub fn with_api(mut self, api: Option<ObicoApi>) -> Self {
+        self.api = api;
+        self
     }
 
     /// The bounds this adapter runs under.
     #[must_use]
     pub const fn config(&self) -> &ObicoVisionConfig {
         &self.config
+    }
+
+    /// Acknowledge the alert Obico holds against one printer's current print.
+    ///
+    /// What a refusal says names the address and the status Obico answered,
+    /// and never the token.
+    async fn acknowledge(&self, provider_printer_id: i64) -> Result<(), VisionError> {
+        let Some(api) = &self.api else {
+            return Err(VisionError::NotConfigured {
+                detail: "no [obico] url and access_token are configured, so Obico cannot be \
+                         told its detection was handled"
+                    .to_owned(),
+            });
+        };
+        let url = format!(
+            "{}{}",
+            api.url.trim_end_matches('/'),
+            acknowledgement_path(provider_printer_id)
+        );
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&api.access_token)
+            .send()
+            .await
+            .map_err(|error| {
+                if error.is_timeout() {
+                    VisionError::TimedOut
+                } else {
+                    VisionError::Unreachable {
+                        detail: format!("{url} could not be reached: {}", error.without_url()),
+                    }
+                }
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        Err(VisionError::Unreachable {
+            detail: format!("{url} answered {status} acknowledging the alert"),
+        })
     }
 }
 
@@ -124,11 +220,15 @@ impl VisionPort for ObicoVision {
             fetch::image(&self.client, &source_url, self.config.max_image_bytes).await
         })
     }
+
+    fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>> {
+        Box::pin(async move { self.acknowledge(detection.provider_printer_id).await })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ObicoVision, ObicoVisionConfig, ObicoVisionError};
+    use super::{ObicoApi, ObicoVision, ObicoVisionConfig, ObicoVisionError};
 
     /// A host that cannot carry the adapter is told which half failed.
     #[test]
@@ -149,5 +249,21 @@ mod tests {
         };
         let vision = ObicoVision::new(config).expect("the adapter builds");
         assert_eq!(*vision.config(), config);
+    }
+
+    /// Neither the API's nor the adapter's debug form shows the token.
+    #[test]
+    fn no_debug_form_shows_the_access_token() {
+        let api = ObicoApi {
+            url: "http://127.0.0.1:3334".to_owned(),
+            access_token: "a-token-nobody-may-read".to_owned(),
+        };
+        let vision = ObicoVision::new(ObicoVisionConfig::default())
+            .expect("the adapter builds")
+            .with_api(Some(api.clone()));
+        for shown in [format!("{api:?}"), format!("{vision:?}")] {
+            assert!(shown.contains("127.0.0.1:3334"), "{shown}");
+            assert!(!shown.contains("a-token-nobody-may-read"), "{shown}");
+        }
     }
 }

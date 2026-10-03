@@ -36,7 +36,7 @@ pub fn snapshot_bytes() -> Vec<u8> {
 }
 
 /// Post one body to the real ingress, with the token given.
-async fn post(world: &World, body: &str, token: Option<&str>) -> reqwest::StatusCode {
+pub async fn post(world: &World, body: &str, token: Option<&str>) -> reqwest::StatusCode {
     let url = match token {
         Some(token) => format!("{}?token={token}", world.server.ingress_url()),
         None => world.server.ingress_url(),
@@ -336,13 +336,14 @@ async fn a_body_this_system_cannot_read_is_written_down() {
 /// The queue between the answer and the handling is what lets the answer
 /// precede it, and it is bounded on purpose: a body the worker is too far
 /// behind to take is refused inside the bound rather than held past it, because
-/// past the bound is an alert Obico has already abandoned.
+/// past the bound is an alert Obico has already abandoned. Turns run beside the
+/// worker rather than on it, so what holds the worker here is writing each
+/// alert down — its snapshot is served slowly.
 #[tokio::test(flavor = "multi_thread")]
 async fn what_the_ingress_cannot_take_is_refused_inside_its_bound() {
-    let host = image_host(snapshot_bytes()).await;
-    let agent = StandInAgent::new();
-    agent.taking(DWELL);
-    let world = World::open_with(RecordingPrinter::printing(), agent).await;
+    let host =
+        crate::http_host::Host::dwelling(DWELL, "200 OK", "image/jpeg", snapshot_bytes()).await;
+    let world = World::open_with(RecordingPrinter::printing(), StandInAgent::new()).await;
     let bound = world.server.config().ingress_answer_bound;
     let body = failure_alert(4211, &host.url()).to_string();
 

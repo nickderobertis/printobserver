@@ -16,8 +16,8 @@ use block_on::block_on;
 use printobserver_types::contract::Sample;
 use printobserver_types::{EventBody, EventSource, RawBytes, Timestamp};
 use printobserver_vision_api::{
-    BoxFuture, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
-    VisionError, VisionPort,
+    BoxFuture, Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert,
+    ProviderPrint, VisionError, VisionPort,
 };
 
 /// The alert the trivial implementation answers with.
@@ -33,6 +33,16 @@ fn trivial_alert() -> NormalizedAlert {
             id: 4211,
             file_name: Some("benchy.gcode".to_owned()),
         }),
+        detection: Some(trivial_detection()),
+    }
+}
+
+/// The detection the trivial alert carries and the trivial port clears.
+const fn trivial_detection() -> Detection {
+    Detection {
+        warning: false,
+        paused_the_print: true,
+        provider_printer_id: 41,
     }
 }
 
@@ -58,6 +68,11 @@ impl VisionPort for TrivialVision {
             })
         })
     }
+
+    fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>> {
+        let _ = detection;
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Every method answers its declared success type, behind a shared trait object.
@@ -75,6 +90,7 @@ fn every_method_answers_its_declared_success_type() {
             content_type: String::new()
         })
     );
+    assert_eq!(block_on(port.clear_detection(trivial_detection())), Ok(()));
 }
 
 /// A normalized alert reads its kind off the body it carries.
@@ -116,6 +132,9 @@ fn every_error_variant_says_what_it_is() {
         },
         VisionError::Unreachable {
             detail: "no route".to_owned(),
+        },
+        VisionError::NotConfigured {
+            detail: "no provider API is configured".to_owned(),
         },
     ];
     for variant in variants {

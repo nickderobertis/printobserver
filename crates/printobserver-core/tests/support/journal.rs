@@ -91,6 +91,8 @@ pub enum Call {
     Normalize,
     /// An image was retrieved.
     FetchImage,
+    /// The detector was told its detection on one printer was handled.
+    ClearDetection(i64),
     /// One supervision turn was run for a print.
     RunTurn(PrintId),
     /// A print's supervision session was closed.
@@ -148,7 +150,7 @@ impl Call {
             | Self::SetToolTargetC(_, _)
             | Self::SetBedTargetC(_)
             | Self::SetFanPercent(_) => Port::Printer,
-            Self::Normalize | Self::FetchImage => Port::Vision,
+            Self::Normalize | Self::FetchImage | Self::ClearDetection(_) => Port::Vision,
             Self::RunTurn(_) | Self::CloseSession(_, _) => Port::Supervisor,
         }
     }

@@ -9,7 +9,7 @@ use printobserver_types::{
     EVENT_KIND_MARKER, EventBody, EventPayload, WireField, event_schema_of, wire_fields,
 };
 use printobserver_vision_api::{
-    FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
+    Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
 };
 use schema_files::reconcile;
 
@@ -35,6 +35,7 @@ fn generated() -> Vec<(String, printobserver_types::serde_json::Value)> {
             "ProviderPrint.json".to_owned(),
             schema_of::<ProviderPrint>(),
         ),
+        ("Detection.json".to_owned(), schema_of::<Detection>()),
         (
             "MalformedExternalEventPayload.json".to_owned(),
             event_schema_of::<MalformedExternalEventPayload>(),
@@ -57,6 +58,7 @@ fn the_checked_in_schemas_are_what_the_types_generate() {
 #[test]
 fn normalized_alert_carries_exactly_the_stated_fields() {
     let expected = vec![
+        field("detection", "Detection", false),
         field("image_url", "string", false),
         field("kind", "EventKind", true),
         field("payload", "any", true),
@@ -66,6 +68,17 @@ fn normalized_alert_carries_exactly_the_stated_fields() {
         field("source", "EventSource", true),
     ];
     assert_eq!(wire_fields(&schema_of::<NormalizedAlert>()), expected);
+}
+
+/// `Detection` carries exactly the fields the contract states.
+#[test]
+fn detection_carries_exactly_the_stated_fields() {
+    let expected = vec![
+        field("paused_the_print", "boolean", true),
+        field("provider_printer_id", "integer", true),
+        field("warning", "boolean", true),
+    ];
+    assert_eq!(wire_fields(&schema_of::<Detection>()), expected);
 }
 
 /// `ProviderPrint` carries exactly the fields the contract states.

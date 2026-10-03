@@ -69,5 +69,5 @@ pub use server::{
 };
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    IngressAnswer, ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer, reason_of,
+    IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer, reason_of,
 };

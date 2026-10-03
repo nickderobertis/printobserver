@@ -20,22 +20,60 @@
 //! a turn is running, that call answers the context the loop collected for the
 //! event that prompted it rather than a fresh read: what the agent reasons
 //! about is the state the event was handled at, not whatever the machine has
-//! drifted to since.
+//! drifted to since. A look ([`crate::look`]) is how it sees the machine as it
+//! is now.
+//!
+//! # One agent per print
+//!
+//! [`Supervisor::receive_event`] writes an event down and claims its print's
+//! turn, or — when a turn is already running for that print — hands the event
+//! to that turn through the print's inbox ([`crate::inbox`]), where its next
+//! look takes it. [`Supervisor::run_supervision`] runs a claimed turn and then
+//! one more, in the same session, for whatever arrived during it that it never
+//! took. A print that has ended starts no turn at all, and its inbox is
+//! released with whatever was still waiting in it.
 
 use crate::records::PrintRecord;
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::PrinterState;
 use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest,
+    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest, TurnSituation,
 };
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::context::PrintContext;
 use crate::error::CoreError;
+use crate::inbox::Arrival;
 use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
 use crate::supervisor::Supervisor;
+
+/// One event written down, and the turn it claimed, when it claimed one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Received {
+    /// The event, as the store holds it.
+    pub event: EventRecord,
+    /// The turn it claimed: absent when it belongs to no print, to a print that
+    /// has ended, or was handed to the turn already running for its print.
+    pub turn: Option<PendingTurn>,
+}
+
+/// A turn one event claimed, to be run by [`Supervisor::run_supervision`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingTurn {
+    /// The print the turn is about.
+    print: PrintRecord,
+    /// The event that claimed it.
+    arrival: Arrival,
+}
+
+/// One printer state in the printer contract's own spelling.
+fn state_name(state: &PrinterState) -> Option<String> {
+    printobserver_types::serde_json::to_value(state)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+}
 
 /// The states a print does not carry on from.
 ///
@@ -59,6 +97,27 @@ impl Supervisor {
     /// handled to completion. Every other port failure this loop reaches is
     /// recorded against the event rather than answered here.
     pub async fn handle_event(&self, alert: NormalizedAlert) -> Result<EventRecord, CoreError> {
+        let received = self.receive_event(alert).await?;
+        if let Some(turn) = received.turn {
+            self.run_supervision(turn).await?;
+        }
+        Ok(received.event)
+    }
+
+    /// Write one normalized event down, and say whether it needs a turn of
+    /// its own.
+    ///
+    /// The first half of [`Supervisor::handle_event`], for a caller that runs
+    /// the turn somewhere else so that the next event can be written down
+    /// while this one's turn is still running. An event for a print whose turn
+    /// is already running is handed to that turn and answers no turn of its
+    /// own: one agent per print, and what arrives reaches the agent already
+    /// watching it.
+    ///
+    /// # Errors
+    ///
+    /// Exactly as [`Supervisor::handle_event`]'s.
+    pub async fn receive_event(&self, alert: NormalizedAlert) -> Result<Received, CoreError> {
         let print = self.resolve_print(&alert).await?;
         let draft = EventDraft {
             print_id: print.as_ref().map(|record| record.id),
@@ -74,16 +133,66 @@ impl Supervisor {
             .await
             .map_err(CoreError::Store)?;
         let Some(print) = print else {
-            return Ok(event);
+            return Ok(Received { event, turn: None });
         };
         let image = self
             .write_image(&print, &event, alert.image_url.clone())
             .await;
-        let terminal = self.supervise(&print, &event, image).await?;
-        if let Some(state) = terminal {
-            self.close_out_print(&print, &state).await?;
+        if print.ended_at.is_some() {
+            return Ok(Received { event, turn: None });
         }
-        Ok(event)
+        let mut carried = event.clone();
+        carried.image = image.or(carried.image);
+        if let Some(detection) = alert.detection
+            && detection.paused_the_print
+        {
+            self.note_detector_pause(print.id, event.id, detection);
+        }
+        let arrival = Arrival {
+            event: carried,
+            detection: alert.detection,
+        };
+        let turn = self
+            .inboxes()
+            .claim_or_hand_over(print.id, arrival.clone())
+            .then_some(PendingTurn { print, arrival });
+        Ok(Received { event, turn })
+    }
+
+    /// Run the turn one received event claimed, and one more for whatever
+    /// arrived during it that it never took, until nothing is left.
+    ///
+    /// The detector's pause the agent adjusted the print under is resumed as
+    /// each turn ends, when its grace has not already resumed it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when a turn's outcome could not be
+    /// recorded; a turn that fails is recorded rather than answered.
+    pub async fn run_supervision(&self, turn: PendingTurn) -> Result<(), CoreError> {
+        let PendingTurn { print, arrival } = turn;
+        let mut next = Some((arrival, Vec::new()));
+        while let Some((arrival, earlier)) = next {
+            let supervised = self.supervise(&print, &arrival, earlier).await;
+            self.resume_adjusted_detector_pause(print.id).await;
+            let terminal = match supervised {
+                Ok(terminal) => terminal,
+                Err(error) => {
+                    self.inboxes().release(print.id);
+                    return Err(error);
+                }
+            };
+            if let Some(state) = terminal {
+                self.inboxes().release(print.id);
+                self.forget_detector_pause(print.id);
+                return self.close_out_print(&print, &state).await;
+            }
+            next = self
+                .inboxes()
+                .next_or_release(print.id)
+                .and_then(|mut left| left.pop().map(|latest| (latest, left)));
+        }
+        Ok(())
     }
 
     /// The print an alert belongs to, opened if this system has not seen it.
@@ -194,34 +303,47 @@ impl Supervisor {
 
     /// Collect the context, run one turn on it, and persist what it answered.
     ///
+    /// `earlier` is what arrived for the print before `arrival` while an
+    /// earlier turn was running and that turn never took, oldest first.
+    ///
     /// Answers the terminal state the printer reported, when it reported one.
     async fn supervise(
         &self,
         print: &PrintRecord,
-        event: &EventRecord,
-        image: Option<ImageRef>,
+        arrival: &Arrival,
+        earlier: Vec<Arrival>,
     ) -> Result<Option<PrinterState>, CoreError> {
+        let event = &arrival.event;
         let guard = self.turns().acquire(print.id).await;
         let context = self.gather_context(print, Some(event.id)).await?;
-        let terminal = context
+        let printer_state = context
             .printer
             .as_ref()
-            .map(|snapshot| snapshot.connection.clone())
+            .map(|snapshot| snapshot.connection.clone());
+        let terminal = printer_state
+            .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
-        let image_path = match &image {
+        let image_path = match &event.image {
             Some(reference) => self.image_path(reference).await,
             None => None,
         };
-        let mut carried = event.clone();
-        carried.image = image.or(carried.image);
+        let situation = TurnSituation {
+            printer_state: printer_state.as_ref().and_then(state_name),
+            detector_warned: arrival.detection.map(|detection| detection.warning),
+            detector_paused_the_print: arrival
+                .detection
+                .map(|detection| detection.paused_the_print),
+            arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
+        };
         self.hold_context(print.id, context);
         let turn = self
             .agent()
             .run_turn(TurnRequest {
                 print_id: print.id,
-                event: carried,
+                event: event.clone(),
                 image_path,
                 context_command: self.config().context_command_for(print.id),
+                situation,
             })
             .await;
         self.drop_context(print.id);
@@ -350,7 +472,7 @@ impl Supervisor {
     }
 
     /// Where one image's bytes are, when the store still has them.
-    async fn image_path(&self, image: &ImageRef) -> Option<std::path::PathBuf> {
+    pub(crate) async fn image_path(&self, image: &ImageRef) -> Option<std::path::PathBuf> {
         match self.stores().images.image(image.id).await {
             Ok(ImageLookup::Found { path, .. }) => Some(path),
             _ => None,
@@ -388,7 +510,7 @@ impl Supervisor {
     }
 
     /// Append one event this system raised itself.
-    async fn append_system_event(
+    pub(crate) async fn append_system_event(
         &self,
         print_id: PrintId,
         body: EventBody,
@@ -425,7 +547,7 @@ impl Supervisor {
     /// The event is already in the history by the time any of these sites is
     /// reached, which is what gives the failure somewhere to be recorded.
     /// Nothing is answered to the caller: the loop survives this and goes on.
-    async fn record_port_failure(
+    pub(crate) async fn record_port_failure(
         &self,
         print_id: PrintId,
         event_id: printobserver_types::EventId,

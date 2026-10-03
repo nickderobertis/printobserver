@@ -297,6 +297,23 @@ pub fn failure_alert(provider_print_id: i64) -> NormalizedAlert {
             id: provider_print_id,
             file_name: Some("benchy.gcode".to_owned()),
         }),
+        detection: None,
+    }
+}
+
+/// The provider's own identifier for the printer its detections are about.
+pub const DETECTOR_PRINTER_ID: i64 = 41;
+
+/// A failure alert whose detector paused the print itself before alerting.
+#[must_use]
+pub fn detector_paused_alert(provider_print_id: i64) -> NormalizedAlert {
+    NormalizedAlert {
+        detection: Some(printobserver_vision_api::Detection {
+            warning: false,
+            paused_the_print: true,
+            provider_printer_id: DETECTOR_PRINTER_ID,
+        }),
+        ..failure_alert(provider_print_id)
     }
 }
 

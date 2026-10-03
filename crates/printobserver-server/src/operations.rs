@@ -4,9 +4,9 @@
 //!
 //! The list here is the whole API. It is exactly one operation per variant of
 //! [`PrintAction`](printobserver_core::PrintAction) the contracts declare,
-//! plus seven operations beside them — the prints listing, status, context,
-//! image materialization, history, and the manifest's read and write — and
-//! nothing else. The router is built by folding
+//! plus eight operations beside them — the prints listing, status, context,
+//! image materialization, history, a fresh look, and the manifest's read and
+//! write — and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
@@ -380,6 +380,7 @@ impl Operation {
             ("context", _) => schema_for!(crate::wire::ContextAnswer),
             ("image", _) => schema_for!(crate::wire::ImageAnswer),
             ("history", _) => schema_for!(crate::wire::HistoryAnswer),
+            ("look", _) => schema_for!(crate::wire::LookAnswer),
             ("manifest_get" | "manifest_set", _) => schema_for!(crate::wire::ManifestAnswer),
             (name, _) => panic!("the operation `{name}` has no declared answer shape"),
         };
@@ -616,7 +617,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 17] = [
+pub const OPERATIONS: [Operation; 18] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -640,6 +641,19 @@ pub const OPERATIONS: [Operation; 17] = [
         ..read("history", "/prints/{print_id}/history")
     },
     read("manifest_get", "/prints/{print_id}/manifest"),
+    // A fresh look: waits up to `wait_s` seconds for something to arrive for
+    // the print, returning the moment something does, then takes a frame and
+    // reads the printer as it is now. A read, so it takes no actor.
+    Operation {
+        query: &[Declared {
+            name: "wait_s",
+            required: false,
+            kind: ValueKind::Integer,
+            shape: None,
+        }],
+        image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
+        ..read("look", "/prints/{print_id}/look")
+    },
     Operation {
         name: "manifest_set",
         method: Method::Put,
@@ -716,18 +730,21 @@ pub const OPERATIONS: [Operation; 17] = [
     ),
 ];
 
-/// The seven operations this server serves beside the action vocabulary.
+/// The eight operations this server serves beside the action vocabulary.
 ///
-/// Six of them read and the seventh writes a manifest, which asks nothing of
+/// Seven of them read and the eighth writes a manifest, which asks nothing of
 /// the machine; what they have in common is that none of them is an action of
-/// the vocabulary the contracts declare.
-pub const BESIDE_THE_ACTIONS: [&str; 7] = [
+/// the vocabulary the contracts declare. A look writes its own record into the
+/// print's history, as every read of the camera is kept, and asks nothing of
+/// the machine either.
+pub const BESIDE_THE_ACTIONS: [&str; 8] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
     "manifest_get",
+    "look",
     "manifest_set",
 ];
 

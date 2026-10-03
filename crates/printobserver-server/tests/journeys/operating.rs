@@ -604,9 +604,10 @@ async fn every_adjustment_applies_the_duration_it_is_given() {
 
 /// The operations beside the action vocabulary this journey drives.
 ///
-/// `image` and `prints` are the two it does not: an image answer is a path,
-/// and what that path has to be is `images.rs`'s whole subject; and what the
-/// listing adopts is `finding.rs`'s. Together they are compared against the
+/// `image`, `prints` and `look` are the three it does not: an image answer is
+/// a path, and what that path has to be is `images.rs`'s whole subject; what
+/// the listing adopts is `finding.rs`'s; and what a look waits for and records
+/// is `looking.rs`'s. Together they are compared against the
 /// declared set below, so none of them can fall behind it.
 const DRIVEN_HERE: [&str; 5] = [
     "status",
@@ -622,6 +623,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     let mut covered: Vec<&str> = DRIVEN_HERE.to_vec();
     covered.push("image");
     covered.push("prints");
+    covered.push("look");
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
     declared.sort_unstable();

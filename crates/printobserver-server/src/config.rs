@@ -38,11 +38,22 @@
 //! starts and reuses it after. Either way it is held in a type neither
 //! rendering of which shows it, and the one comparison a presented credential
 //! is admitted by is [`ApiCredential::admits`].
+//!
+//! # The camera and `Obico`'s own API
+//!
+//! Both are optional. `camera.snapshot_url` is where a look fetches a fresh
+//! frame; without it a look carries the printer's state and no frame.
+//! `obico.url` and `obico.access_token` are given together or not at all: they
+//! are how a print the detector paused and the agent adjusted is acknowledged
+//! to `Obico`, which re-arms its detection. Each address must be an `http` or
+//! `https` URL, and the token is held in a type whose debug form never shows
+//! it, so no refusal or log line this program writes can carry it.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::SafetyEnvelope;
+use printobserver_obico::ObicoApi;
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
 use printobserver_types::schemars::JsonSchema;
@@ -117,11 +128,18 @@ pub enum ConfigField {
     /// The credential every request to a versioned operation must carry, when
     /// the operator chose one rather than letting the server generate it.
     ApiCredential,
+    /// Where a fresh frame of the print is fetched from, when a camera is
+    /// configured.
+    CameraSnapshotUrl,
+    /// Where `Obico`'s own API answers, when it is configured.
+    ObicoUrl,
+    /// The bearer token `Obico`'s API is reached with.
+    ObicoAccessToken,
 }
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 16] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -135,6 +153,9 @@ impl ConfigField {
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
         Self::ApiCredential,
+        Self::CameraSnapshotUrl,
+        Self::ObicoUrl,
+        Self::ObicoAccessToken,
     ];
 
     /// The dotted key this field is spelled under in the configuration file.
@@ -154,6 +175,9 @@ impl ConfigField {
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
             Self::ApiCredential => "api.credential",
+            Self::CameraSnapshotUrl => "camera.snapshot_url",
+            Self::ObicoUrl => "obico.url",
+            Self::ObicoAccessToken => "obico.access_token",
         }
     }
 }
@@ -351,6 +375,56 @@ pub struct ApiSection {
     pub credential: Option<String>,
 }
 
+/// Where a fresh frame of the print is fetched from, as written down.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct CameraSection {
+    /// An `http` or `https` URL answering one still image of the print, such
+    /// as a `go2rtc` `frame.jpeg` address. Left out, a look carries no frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_url: Option<String>,
+}
+
+/// Where `Obico`'s own API answers, as written down.
+///
+/// Its debug form never shows the token.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct ObicoSection {
+    /// The server's own `http` or `https` address, such as
+    /// `http://127.0.0.1:3334`. Given with `access_token` or not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// A bearer token for its API, issued by the instance's own OAuth
+    /// administration. Left out with the address, a print the detector paused
+    /// and the supervisor resumed is not acknowledged to `Obico`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+}
+
+impl core::fmt::Debug for ObicoSection {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ObicoSection")
+            .field("url", &self.url)
+            .field(
+                "access_token",
+                &self.access_token.as_ref().map(|_| REDACTED),
+            )
+            .finish()
+    }
+}
+
 /// The whole configuration file, exactly as it is written down.
 ///
 /// This is the parsed document rather than the validated configuration:
@@ -385,6 +459,12 @@ pub struct ConfigFile {
     /// What a caller of the versioned API authenticates with.
     #[serde(default)]
     pub api: ApiSection,
+    /// Where a fresh frame of the print is fetched from.
+    #[serde(default)]
+    pub camera: CameraSection,
+    /// Where `Obico`'s own API answers.
+    #[serde(default)]
+    pub obico: ObicoSection,
 }
 
 /// The shared secret the ingress requires of every post.
@@ -586,6 +666,10 @@ pub struct ServerConfig {
     /// The API credential the operator configured, when they configured one.
     /// Absent, the composition root takes the one in the state directory.
     pub api_credential: Option<ApiCredential>,
+    /// Where a fresh frame of the print is fetched from, when configured.
+    pub camera_snapshot_url: Option<String>,
+    /// `Obico`'s own API, when configured; its debug form omits the token.
+    pub obico_api: Option<ObicoApi>,
 }
 
 impl ServerConfig {
@@ -657,6 +741,12 @@ impl ServerConfig {
                     .map_err(|why| ConfigError::about(ConfigField::ApiCredential, why))
             })
             .transpose()?;
+        let camera_snapshot_url = file
+            .camera
+            .snapshot_url
+            .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
+            .transpose()?;
+        let obico_api = obico_api(file.obico)?;
         Ok(Self {
             state_dir,
             listen,
@@ -669,6 +759,8 @@ impl ServerConfig {
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
+            camera_snapshot_url,
+            obico_api,
         })
     }
 
@@ -678,6 +770,62 @@ impl ServerConfig {
     #[must_use]
     pub fn assets_dir(&self) -> PathBuf {
         self.state_dir.join(ASSETS_DIRECTORY)
+    }
+}
+
+/// One address a field names, refused unless it is an `http` or `https` URL
+/// naming a host.
+///
+/// The refusal names the field and never quotes the value, so that a token an
+/// operator pasted into the wrong line is not echoed back.
+fn web_address(field: ConfigField, url: &str) -> Result<String, ConfigError> {
+    let trimmed = url.trim();
+    let lowered = trimmed.to_ascii_lowercase();
+    let host = ["http://", "https://"]
+        .iter()
+        .find_map(|scheme| lowered.strip_prefix(scheme));
+    match host {
+        Some(rest)
+            if !rest.is_empty()
+                && !rest.starts_with('/')
+                && !trimmed.chars().any(char::is_whitespace) =>
+        {
+            Ok(trimmed.to_owned())
+        }
+        _ => Err(ConfigError::about(
+            field,
+            "it must be an http:// or https:// URL naming a host",
+        )),
+    }
+}
+
+/// `Obico`'s API, when both its address and its token are written down.
+///
+/// One without the other is refused naming the one that is missing: an address
+/// with no token is a request `Obico` refuses, and a token with no address is a
+/// secret written down for nothing.
+fn obico_api(section: ObicoSection) -> Result<Option<ObicoApi>, ConfigError> {
+    match (section.url, section.access_token) {
+        (None, None) => Ok(None),
+        (Some(_), None) => Err(ConfigError::about(
+            ConfigField::ObicoAccessToken,
+            "it is required when obico.url is given",
+        )),
+        (None, Some(_)) => Err(ConfigError::about(
+            ConfigField::ObicoUrl,
+            "it is required when obico.access_token is given",
+        )),
+        (Some(url), Some(access_token)) => {
+            let url = web_address(ConfigField::ObicoUrl, &url)?;
+            let access_token = access_token.trim().to_owned();
+            if access_token.is_empty() {
+                return Err(ConfigError::about(
+                    ConfigField::ObicoAccessToken,
+                    "it is empty, and Obico's API refuses a request carrying no token",
+                ));
+            }
+            Ok(Some(ObicoApi { url, access_token }))
+        }
     }
 }
 

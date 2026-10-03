@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a provider's failure detector did about a print, when an alert is one\nof its detections.\n\nNamed for what it is rather than for the provider, like [`ProviderPrint`]:\nwhether the detector only warned, whether it paused the print itself, and\nthe provider's own identifier for the printer, which is what telling it the\ndetection was handled is addressed to.",
+  "properties": {
+    "paused_the_print": {
+      "description": "Whether the detector paused the print itself before alerting.",
+      "type": "boolean"
+    },
+    "provider_printer_id": {
+      "description": "The provider's own identifier for the printer the detection is about.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "warning": {
+      "description": "Whether the detector called it a warning rather than a failure.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "warning",
+    "paused_the_print",
+    "provider_printer_id"
+  ],
+  "title": "Detection",
+  "type": "object"
+}

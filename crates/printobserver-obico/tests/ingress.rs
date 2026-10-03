@@ -28,14 +28,14 @@ use printobserver_core::store::{EventStore, HistoryQuery, ImageLookup, ImageStor
 use printobserver_core::{ImageRecord, PrintRecord};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
-    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, IngressError, ObicoFailureAlertPayload,
-    ObicoIngress, ObicoNotificationType, ObicoPrinterNotificationPayload, ObicoVisionConfig,
-    Receipt, obico_source,
+    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, IngressError, ObicoApi,
+    ObicoFailureAlertPayload, ObicoIngress, ObicoNotificationType, ObicoPrinterNotificationPayload,
+    ObicoVision, ObicoVisionConfig, Receipt, obico_source,
 };
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{EventPayload, EventRecord, RawBytes, Timestamp};
 use printobserver_vision_api::{
-    MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
+    Detection, MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
 };
 use store::{MemoryStore, RefusingStore};
 
@@ -847,4 +847,153 @@ async fn a_store_that_refuses_the_write_says_nothing_was_written_down() {
     // The adapter is reachable through the ingress, under the bounds it was
     // built with, so a caller can see what they are.
     assert_eq!(*ingress.vision().config(), prompt_bounds());
+}
+
+// --- The detection, and telling Obico it was handled --------------------------
+
+/// The failure alert carries what the detector did, read off its own flags and
+/// its printer; a notification is no detection at all.
+#[tokio::test]
+async fn the_failure_alert_carries_the_detection_and_a_notification_none() {
+    let store = Arc::new(MemoryStore::new());
+    let vision = ingress(&store, prompt_bounds()).vision().clone();
+    let alert = vision
+        .normalize(
+            RawBytes::new(sample_bytes("failure-alert.json")),
+            Some("application/json".to_owned()),
+        )
+        .await
+        .expect("the sample normalizes");
+    assert_eq!(
+        alert.detection,
+        Some(Detection {
+            warning: false,
+            paused_the_print: true,
+            provider_printer_id: 17,
+        })
+    );
+    let mut warned = failure_alert();
+    warned["event"]["is_warning"] = json!(true);
+    warned["event"]["print_paused"] = json!(false);
+    let warned = vision
+        .normalize(body_of(&warned), Some("application/json".to_owned()))
+        .await
+        .expect("the warning normalizes");
+    assert_eq!(
+        warned
+            .detection
+            .map(|seen| (seen.warning, seen.paused_the_print)),
+        Some((true, false))
+    );
+    for name in [
+        "printer-notification-about-a-print.json",
+        "printer-notification-not-about-a-print.json",
+    ] {
+        let notification = vision
+            .normalize(
+                RawBytes::new(sample_bytes(name)),
+                Some("application/json".to_owned()),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("{name} normalizes: {error}"));
+        assert_eq!(notification.detection, None, "{name}");
+    }
+}
+
+/// The token a journey configures, which must never be shown.
+const ACCESS_TOKEN: &str = "an-obico-token-nobody-may-read";
+
+/// The adapter, able to reach an Obico API at `url`.
+fn acknowledging(url: String) -> ObicoVision {
+    ObicoVision::new(prompt_bounds())
+        .expect("the adapter builds")
+        .with_api(Some(ObicoApi {
+            url,
+            access_token: ACCESS_TOKEN.to_owned(),
+        }))
+}
+
+/// The detection the committed sample is.
+const fn the_samples_detection() -> Detection {
+    Detection {
+        warning: false,
+        paused_the_print: true,
+        provider_printer_id: 17,
+    }
+}
+
+/// A handled detection is acknowledged to Obico's own API for the printer it
+/// was about, with the overwrite `FAILED` and the configured bearer token.
+#[tokio::test]
+async fn a_handled_detection_is_acknowledged_to_obicos_api() {
+    let api = ImageHost::serving(Answer {
+        content_type: Some("application/json".to_owned()),
+        ..Answer::image(b"{}".to_vec())
+    })
+    .await;
+    acknowledging(format!("{}/", api.base_url()))
+        .clear_detection(the_samples_detection())
+        .await
+        .expect("Obico takes the acknowledgement");
+    let received = api.received();
+    assert_eq!(received.len(), 1, "{received:?}");
+    let head = received[0].to_ascii_lowercase();
+    assert!(
+        received[0].starts_with(&format!(
+            "POST /api/v1/printers/17/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE} "
+        )),
+        "{}",
+        received[0]
+    );
+    assert_eq!(HANDLED_OVERWRITE, "FAILED");
+    assert!(
+        head.contains(&format!("authorization: bearer {ACCESS_TOKEN}")),
+        "{}",
+        received[0]
+    );
+}
+
+/// An acknowledgement Obico refuses says what it answered and where, and
+/// nothing it says carries the token.
+#[tokio::test]
+async fn an_acknowledgement_obico_refuses_names_the_answer_and_never_the_token() {
+    let api = ImageHost::serving(Answer {
+        status: "403 Forbidden",
+        content_type: Some("application/json".to_owned()),
+        ..Answer::image(b"{}".to_vec())
+    })
+    .await;
+    let refused = acknowledging(api.base_url())
+        .clear_detection(the_samples_detection())
+        .await
+        .expect_err("a refused acknowledgement is an error");
+    let said = refused.to_string();
+    assert!(said.contains("403"), "{said}");
+    assert!(said.contains("acknowledge_alert"), "{said}");
+    assert!(!said.contains(ACCESS_TOKEN), "{said}");
+    assert!(!format!("{refused:?}").contains(ACCESS_TOKEN));
+
+    let unreachable = acknowledging(unreachable_url().await)
+        .clear_detection(the_samples_detection())
+        .await
+        .expect_err("an unreachable API is an error");
+    assert!(
+        !unreachable.to_string().contains(ACCESS_TOKEN),
+        "{unreachable}"
+    );
+}
+
+/// With no Obico API configured, an acknowledgement is refused as not
+/// configured, naming what to configure, and nothing is sent anywhere.
+#[tokio::test]
+async fn with_no_api_configured_an_acknowledgement_says_what_is_missing() {
+    let refused = ObicoVision::new(prompt_bounds())
+        .expect("the adapter builds")
+        .clear_detection(the_samples_detection())
+        .await
+        .expect_err("nothing configured is an error");
+    assert!(
+        matches!(&refused, VisionError::NotConfigured { detail } if detail.contains("[obico]")),
+        "{refused:?}"
+    );
 }

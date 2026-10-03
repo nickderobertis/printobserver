@@ -186,15 +186,16 @@ impl fmt::Display for AgentCommand {
 
 /// How long one supervision turn is given.
 ///
-/// Non-zero by construction. A turn looks at one picture and writes one
-/// paragraph, so the bound exists to stop a turn nothing is waiting for; a
-/// bound of zero would stop every turn instead.
+/// Non-zero by construction. A turn may watch its print for a while — several
+/// fresh looks, each waiting up to a minute and a half — before it acts, so the
+/// default leaves room for that; the bound exists to stop a turn nothing is
+/// waiting for, and a bound of zero would stop every turn instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TurnTimeout(NonZeroU64);
 
 impl TurnTimeout {
     /// The bound a configuration that names no other takes.
-    pub const DEFAULT: Self = Self(NonZeroU64::new(300).expect("300 is not zero"));
+    pub const DEFAULT: Self = Self(NonZeroU64::new(900).expect("900 is not zero"));
 
     /// The bound of this many seconds.
     ///
@@ -414,7 +415,7 @@ pub struct SupervisorConfig {
     /// The `PrintObserver` skill's `SKILL.md`, whose prose is sent as every
     /// turn's system prompt.
     pub skill_path: PathBuf,
-    /// The committed prompt template, whose four slots one turn fills.
+    /// The committed prompt template, whose five slots one turn fills.
     pub prompt_template_path: PathBuf,
     /// The generated assessment schema the agent's answer is constrained by.
     pub assessment_schema: AssessmentSchema,

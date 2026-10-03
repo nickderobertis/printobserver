@@ -127,86 +127,45 @@
       "format": "date-time",
       "title": "Timestamp",
       "type": "string"
-    },
-    "TurnSituation": {
-      "additionalProperties": false,
-      "description": "What the supervisor knew about the moment one turn began, beside its event.\n\nFacts rather than instructions: whether the print is paused, and whether\nthe detector paused it itself, are exactly what decides whether an agent's\nadjustment would be applied to a moving print or held until it moves again.\nEvery field is written out, a fact nobody knows as `null`, so that the\nprompt it fills has one shape whatever was known.",
-      "properties": {
-        "arrived_while_busy": {
-          "default": [],
-          "description": "Events for this print that arrived while its previous turn was running\nand that turn never took, oldest first. The turn's own event is the\nnewest of them, and is not repeated here.",
-          "items": {
-            "$ref": "#/$defs/EventRecord"
-          },
-          "type": "array"
-        },
-        "detector_paused_the_print": {
-          "default": null,
-          "description": "Whether the detector paused the print itself, null when the event is\nnot one of its detections.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "detector_warned": {
-          "default": null,
-          "description": "Whether the detector only warned, null when the event is not one of its\ndetections.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "printer_state": {
-          "default": null,
-          "description": "The printer's state when the turn began, in the printer contract's own\nspelling, null when the printer could not be read.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "What one supervision turn is asked to consider.",
+  "description": "What the supervisor knew about the moment one turn began, beside its event.\n\nFacts rather than instructions: whether the print is paused, and whether\nthe detector paused it itself, are exactly what decides whether an agent's\nadjustment would be applied to a moving print or held until it moves again.\nEvery field is written out, a fact nobody knows as `null`, so that the\nprompt it fills has one shape whatever was known.",
   "properties": {
-    "context_command": {
-      "description": "The command the turn runs to read the print's context.",
-      "type": "string"
+    "arrived_while_busy": {
+      "default": [],
+      "description": "Events for this print that arrived while its previous turn was running\nand that turn never took, oldest first. The turn's own event is the\nnewest of them, and is not repeated here.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
     },
-    "event": {
-      "$ref": "#/$defs/EventRecord",
-      "description": "The event that prompted the turn."
+    "detector_paused_the_print": {
+      "default": null,
+      "description": "Whether the detector paused the print itself, null when the event is\nnot one of its detections.",
+      "type": [
+        "boolean",
+        "null"
+      ]
     },
-    "image_path": {
-      "description": "The absolute path of the image to look at, when there is one.",
+    "detector_warned": {
+      "default": null,
+      "description": "Whether the detector only warned, null when the event is not one of its\ndetections.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "printer_state": {
+      "default": null,
+      "description": "The printer's state when the turn began, in the printer contract's own\nspelling, null when the printer could not be read.",
       "type": [
         "string",
         "null"
       ]
-    },
-    "print_id": {
-      "$ref": "#/$defs/PrintId",
-      "description": "The print the turn is about."
-    },
-    "situation": {
-      "$ref": "#/$defs/TurnSituation",
-      "default": {
-        "arrived_while_busy": [],
-        "detector_paused_the_print": null,
-        "detector_warned": null,
-        "printer_state": null
-      },
-      "description": "What the supervisor knew about the moment the turn began."
     }
   },
-  "required": [
-    "print_id",
-    "event",
-    "context_command"
-  ],
-  "title": "TurnRequest",
+  "title": "TurnSituation",
   "type": "object"
 }

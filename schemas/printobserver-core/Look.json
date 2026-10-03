@@ -1,0 +1,464 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one — it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "HeaterSnapshot": {
+      "additionalProperties": false,
+      "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
+      "properties": {
+        "actual_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is at."
+        },
+        "offset_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The offset applied to this heater's target."
+        },
+        "target_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is driving towards."
+        }
+      },
+      "type": "object"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "JobSnapshot": {
+      "additionalProperties": false,
+      "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
+      "properties": {
+        "completion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
+        },
+        "error": {
+          "description": "The error the source reports, when it reports one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "estimated_print_time_s": {
+          "description": "The whole print's estimated duration, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "file_name": {
+          "description": "The name of the file being printed, as the source reported it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_origin": {
+          "description": "Where the file lives, in the source's own vocabulary.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "print_time_left_s": {
+          "description": "How long the print has left, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "print_time_s": {
+          "description": "How long the print has been running, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the source reports the job to be in."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrinterSnapshot": {
+      "additionalProperties": false,
+      "description": "A printer, as a source reported it at one instant.",
+      "properties": {
+        "bed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bed heater, when the printer reports one."
+        },
+        "chamber": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The chamber heater, when the printer reports one."
+        },
+        "connection": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the printer is in."
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan, in percent."
+        },
+        "feedrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The feedrate multiplier, where one means one hundred percent."
+        },
+        "flowrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flowrate multiplier, where one means one hundred percent."
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The instant this observation was taken."
+        },
+        "tools": {
+          "description": "The tool heaters, indexed by tool number.",
+          "items": {
+            "$ref": "#/$defs/HeaterSnapshot"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connection",
+        "tools",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One fresh look at a print.",
+  "properties": {
+    "arrived": {
+      "description": "The events for this print that arrived while the look waited, oldest\nfirst; the look returned early when there were any.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
+    },
+    "detector_paused": {
+      "description": "Whether the print is paused and the pause is the detector's, which is\nwhat an adjustment asked for now would be applied under.",
+      "type": "boolean"
+    },
+    "event": {
+      "$ref": "#/$defs/EventRecord",
+      "description": "The look itself, as it was written into the print's history, carrying\nthe frame as its image when there is one."
+    },
+    "frame": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The frame the camera gave, absent when no camera is configured or it\ngave none — which the history records as a port failure."
+    },
+    "image_path": {
+      "description": "The absolute path the frame's bytes are at, on the supervisor's host.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "job": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The job the printer reports now, absent when it could not be read."
+    },
+    "printer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrinterSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The printer's state now, absent when it could not be read."
+    }
+  },
+  "required": [
+    "event",
+    "detector_paused"
+  ],
+  "title": "Look",
+  "type": "object"
+}

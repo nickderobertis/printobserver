@@ -19,7 +19,7 @@ mod schema_files;
 
 use printobserver_supervisor_api::{
     AgentAssessment, Confidence, SessionPhase, SupervisionSession, SupervisionSessionClosedPayload,
-    SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest,
+    SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest, TurnSituation,
 };
 use printobserver_types::contract::{Sample as _, TypeContract, schema_of};
 use printobserver_types::serde_json::{Value, json};
@@ -89,6 +89,10 @@ fn generated() -> Vec<(String, Value)> {
         ("TurnRequest.json".to_owned(), schema_of::<TurnRequest>()),
         ("TurnOutcome.json".to_owned(), schema_of::<TurnOutcome>()),
         (
+            "TurnSituation.json".to_owned(),
+            schema_of::<TurnSituation>(),
+        ),
+        (
             "SupervisionSessionOpenedPayload.json".to_owned(),
             event_schema_of::<SupervisionSessionOpenedPayload>(),
         ),
@@ -126,8 +130,44 @@ fn turn_request_carries_exactly_the_stated_fields() {
         field("event", "EventRecord", true),
         field("image_path", "string", false),
         field("print_id", "PrintId", true),
+        field("situation", "TurnSituation", false),
     ];
     assert_eq!(wire_fields(&schema_of::<TurnRequest>()), expected);
+}
+
+/// `TurnSituation` carries exactly the fields the contract states.
+#[test]
+fn turn_situation_carries_exactly_the_stated_fields() {
+    let expected = vec![
+        field("arrived_while_busy", "array:EventRecord", false),
+        field("detector_paused_the_print", "boolean", false),
+        field("detector_warned", "boolean", false),
+        field("printer_state", "string", false),
+    ];
+    assert_eq!(wire_fields(&schema_of::<TurnSituation>()), expected);
+}
+
+/// A situation nothing was known about still writes every field, each fact
+/// nobody knows as null, so the prompt it fills has one shape.
+#[test]
+fn a_situation_nothing_was_known_about_writes_every_field() {
+    let written = printobserver_types::serde_json::to_value(TurnSituation::default())
+        .expect("a situation renders");
+    assert_eq!(
+        written,
+        json!({
+            "printer_state": null,
+            "detector_warned": null,
+            "detector_paused_the_print": null,
+            "arrived_while_busy": [],
+        })
+    );
+    let full = TurnSituation::sample_full();
+    let read: TurnSituation = printobserver_types::serde_json::from_value(
+        printobserver_types::serde_json::to_value(&full).expect("a situation renders"),
+    )
+    .expect("a situation reads back");
+    assert_eq!(read, full);
 }
 
 /// `TurnOutcome` carries exactly the fields the contract states.

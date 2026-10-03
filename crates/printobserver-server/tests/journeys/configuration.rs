@@ -131,8 +131,47 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             );
             set(&mut document, "api", toml::Value::Table(api));
         }
+        // Optional too: an address that is not a web address at all.
+        ConfigField::CameraSnapshotUrl => set(
+            &mut document,
+            "camera",
+            toml::Value::Table(toml::Table::from_iter([(
+                "snapshot_url".to_owned(),
+                toml::Value::String("file:///var/lib/camera/frame.jpg".to_owned()),
+            )])),
+        ),
+        // Given with its token, as it must be, and not a web address.
+        ConfigField::ObicoUrl => set(
+            &mut document,
+            "obico",
+            obico(Some("ftp://127.0.0.1:3334"), Some(OBICO_TOKEN)),
+        ),
+        // The address alone: the token it needs is missing.
+        ConfigField::ObicoAccessToken => set(
+            &mut document,
+            "obico",
+            obico(Some("http://127.0.0.1:3334"), None),
+        ),
     }
     document
+}
+
+/// A token for `Obico`'s API no refusal may quote.
+const OBICO_TOKEN: &str = "an-obico-token-no-refusal-may-quote";
+
+/// An `[obico]` table carrying whichever of its two values are given.
+fn obico(url: Option<&str>, access_token: Option<&str>) -> toml::Value {
+    let mut table = toml::Table::new();
+    if let Some(url) = url {
+        table.insert("url".to_owned(), toml::Value::String(url.to_owned()));
+    }
+    if let Some(token) = access_token {
+        table.insert(
+            "access_token".to_owned(),
+            toml::Value::String(token.to_owned()),
+        );
+    }
+    toml::Value::Table(table)
 }
 
 /// Every field the configuration declares is refused by its own name.
@@ -165,6 +204,91 @@ async fn every_declared_field_is_refused_naming_itself() {
             "the refusal for `{field}` does not name it: {refusal}"
         );
     }
+}
+
+/// An `[obico]` table carrying a token and no address is refused naming the
+/// address it lacks, and no refusal of that table quotes the token.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_obico_token_without_an_address_is_refused_and_never_quoted() {
+    let reachable = silent_host().await;
+    let base = base_url(&reachable);
+    for (table, field) in [
+        (obico(None, Some(OBICO_TOKEN)), ConfigField::ObicoUrl),
+        (
+            obico(Some("not a url"), Some(OBICO_TOKEN)),
+            ConfigField::ObicoUrl,
+        ),
+        (
+            obico(Some("http://127.0.0.1:3334"), Some("   ")),
+            ConfigField::ObicoAccessToken,
+        ),
+    ] {
+        let root = TempDir::new().expect("a journey's own root");
+        let mut document = document(root.path(), &base);
+        set(&mut document, "obico", table);
+        let path = write(root.path(), &document);
+        let refusal = Server::start(&path)
+            .await
+            .err()
+            .expect("an incomplete [obico] table was accepted");
+        assert_eq!(refusal.field(), Some(field), "{refusal}");
+        for shown in [refusal.to_string(), format!("{refusal:?}")] {
+            assert!(
+                !shown.contains(OBICO_TOKEN),
+                "a refusal quoted the token: {shown}"
+            );
+        }
+    }
+}
+
+/// A configuration naming a camera and `Obico`'s API is accepted, and no debug
+/// form of what it was read into shows the token.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_camera_and_obicos_api_are_accepted_and_the_token_never_shown() {
+    let reachable = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let mut document = document(root.path(), &base_url(&reachable));
+    set(
+        &mut document,
+        "camera",
+        toml::Value::Table(toml::Table::from_iter([(
+            "snapshot_url".to_owned(),
+            toml::Value::String("https://127.0.0.1:1984/api/frame.jpeg?src=camera".to_owned()),
+        )])),
+    );
+    set(
+        &mut document,
+        "obico",
+        obico(Some("http://127.0.0.1:3334"), Some(OBICO_TOKEN)),
+    );
+    let path = write(root.path(), &document);
+
+    let read = printobserver_server::ServerConfig::load(&path).expect("the configuration reads");
+    assert_eq!(
+        read.camera_snapshot_url.as_deref(),
+        Some("https://127.0.0.1:1984/api/frame.jpeg?src=camera")
+    );
+    let api = read.obico_api.as_ref().expect("Obico's API is configured");
+    assert_eq!(api.url, "http://127.0.0.1:3334");
+    assert_eq!(api.access_token, OBICO_TOKEN);
+    let parsed: ConfigFile = toml::from_str(&std::fs::read_to_string(&path).expect("readable"))
+        .expect("the document parses");
+    for shown in [
+        format!("{read:?}"),
+        format!("{api:?}"),
+        format!("{parsed:?}"),
+    ] {
+        assert!(shown.contains("127.0.0.1:3334"), "{shown}");
+        assert!(
+            !shown.contains(OBICO_TOKEN),
+            "a debug form showed the token: {shown}"
+        );
+    }
+
+    let running = Server::start(&path)
+        .await
+        .expect("a camera and Obico's API start the composition root");
+    running.stop().await;
 }
 
 /// The configuration this repository's own journeys ship is accepted, and its

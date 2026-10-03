@@ -34,8 +34,8 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use printobserver_core::Supervisor;
 use printobserver_core::store::{EventDraft, EventStore};
+use printobserver_core::{PendingTurn, Supervisor};
 use printobserver_obico::{ObicoVision, obico_source};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::{EventBody, RawBytes, Timestamp};
@@ -129,15 +129,36 @@ impl IngressState {
                 // answers on that same runtime is what the agent calls *during*
                 // its own turn, and an alert that starved it would answer the
                 // agent minutes after it asked.
-                let supervisor = Arc::clone(&supervisor);
+                //
+                // Alerts are written down one at a time, in the order they
+                // arrived, and the turn one claims runs on a thread of its own
+                // so the next is written down while it runs: an alert for a
+                // print whose turn is running is handed to that turn, which is
+                // how it reaches the agent already watching the print, and an
+                // alert for another print is written down and supervised while
+                // the first turn — or a look inside it — is still waiting.
+                let recorder = Arc::clone(&supervisor);
                 let events = Arc::clone(&worker_events);
                 let vision = Arc::clone(&vision);
-                let handled = tokio::task::spawn_blocking(move || {
-                    printobserver_core::block_on(handle(&supervisor, &events, &vision, received));
+                let recorded = tokio::task::spawn_blocking(move || {
+                    printobserver_core::block_on(handle(&recorder, &events, &vision, received))
                 })
                 .await;
-                debug_assert!(handled.is_ok(), "the handling of one alert panicked");
-                counter.send_modify(|count| *count += 1);
+                debug_assert!(recorded.is_ok(), "the recording of one alert panicked");
+                let Ok(Some(turn)) = recorded else {
+                    counter.send_modify(|count| *count += 1);
+                    continue;
+                };
+                let runner = Arc::clone(&supervisor);
+                let finished = counter.clone();
+                tokio::spawn(async move {
+                    let supervised = tokio::task::spawn_blocking(move || {
+                        let _ = printobserver_core::block_on(runner.run_supervision(turn));
+                    })
+                    .await;
+                    debug_assert!(supervised.is_ok(), "the supervision of one alert panicked");
+                    finished.send_modify(|count| *count += 1);
+                });
             }
         });
         Self {
@@ -158,26 +179,31 @@ impl IngressState {
     }
 }
 
-/// Handle one body the endpoint took: read it, and give it to the loop.
+/// Handle one body the endpoint took: read it, give it to the loop to write
+/// down, and answer the turn it claimed, when it claimed one.
 async fn handle(
     supervisor: &Arc<Supervisor>,
     events: &Arc<dyn EventStore>,
     vision: &Arc<ObicoVision>,
     received: Received,
-) {
+) -> Option<PendingTurn> {
     match vision
         .normalize(received.body.clone(), received.content_type)
         .await
     {
         // Core's own loop is the one place an alert becomes a supervised turn:
         // it appends the event, fetches and stores the image the alert names,
-        // runs the turn, and closes the print out when the machine says it has
-        // ended. Nothing here repeats any of that.
-        Ok(alert) => {
-            let _ = supervisor.handle_event(alert).await;
-        }
+        // hands it to a running turn or claims one, and — through the turn this
+        // answers — runs it and closes the print out when the machine says it
+        // has ended. Nothing here repeats any of that.
+        Ok(alert) => supervisor
+            .receive_event(alert)
+            .await
+            .ok()
+            .and_then(|received| received.turn),
         Err(refusal) => {
             record_unread(events, received.body, refusal.to_string()).await;
+            None
         }
     }
 }

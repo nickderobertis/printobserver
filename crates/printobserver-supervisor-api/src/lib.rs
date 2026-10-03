@@ -56,6 +56,54 @@ pub struct TurnRequest {
     pub image_path: Option<PathBuf>,
     /// The command the turn runs to read the print's context.
     pub context_command: String,
+    /// What the supervisor knew about the moment the turn began.
+    #[serde(default)]
+    pub situation: TurnSituation,
+}
+
+/// What the supervisor knew about the moment one turn began, beside its event.
+///
+/// Facts rather than instructions: whether the print is paused, and whether
+/// the detector paused it itself, are exactly what decides whether an agent's
+/// adjustment would be applied to a moving print or held until it moves again.
+/// Every field is written out, a fact nobody knows as `null`, so that the
+/// prompt it fills has one shape whatever was known.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct TurnSituation {
+    /// The printer's state when the turn began, in the printer contract's own
+    /// spelling, null when the printer could not be read.
+    #[serde(default)]
+    pub printer_state: Option<String>,
+    /// Whether the detector only warned, null when the event is not one of its
+    /// detections.
+    #[serde(default)]
+    pub detector_warned: Option<bool>,
+    /// Whether the detector paused the print itself, null when the event is
+    /// not one of its detections.
+    #[serde(default)]
+    pub detector_paused_the_print: Option<bool>,
+    /// Events for this print that arrived while its previous turn was running
+    /// and that turn never took, oldest first. The turn's own event is the
+    /// newest of them, and is not repeated here.
+    #[serde(default)]
+    pub arrived_while_busy: Vec<EventRecord>,
+}
+
+impl Sample for TurnSituation {
+    fn sample_full() -> Self {
+        Self {
+            printer_state: Some("paused".to_owned()),
+            detector_warned: Some(false),
+            detector_paused_the_print: Some(true),
+            arrived_while_busy: vec![EventRecord::sample_full()],
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::default()
+    }
 }
 
 /// What one supervision turn answered with.

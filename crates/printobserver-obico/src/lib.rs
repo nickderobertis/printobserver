@@ -3,7 +3,9 @@
 //! Owns: the `Obico` adapter — the one implementation of
 //! `printobserver-vision-api`, which reads the body the self-hosted `Obico`
 //! webhook notification plugin posts into an event under this adapter's own
-//! kind and fetches the snapshot that body names; the nine wire shapes that
+//! kind and fetches the snapshot that body names, and acknowledges an alert
+//! through `Obico`'s own API once its detection was handled ([`ObicoApi`]);
+//! the nine wire shapes that
 //! producer sends and the sample bodies committed beside them ([`wire`]); the
 //! two event kinds and the source name it writes ([`events`]); and the ingress
 //! that writes both down.
@@ -32,6 +34,15 @@
 //! nothing here supplies a default for a field the producer is declared to
 //! send.
 //!
+//! # Why a handled detection is acknowledged
+//!
+//! `Obico` alerts on a print once and suppresses every alert after it until the
+//! alert is acknowledged, so a print it paused and the supervising agent
+//! adjusted and resumed would otherwise go unwatched for the rest of it. The
+//! acknowledgement is the one request this adapter makes of `Obico`'s API, with
+//! the overwrite [`HANDLED_OVERWRITE`], and it is made only when an address and
+//! a token were configured; the token appears in no debug form and no refusal.
+//!
 //! # Why the image is fetched during the handling
 //!
 //! The URL `Obico` sends is short-lived, so the fetch happens while the alert
@@ -55,8 +66,8 @@ pub use events::{
 };
 pub use ingress::{IngressError, ObicoIngress, Receipt};
 pub use vision::{
-    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, ObicoVision, ObicoVisionConfig,
-    ObicoVisionError,
+    DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, ObicoApi, ObicoVision,
+    ObicoVisionConfig, ObicoVisionError,
 };
 pub use wire::{
     ObicoEventType, ObicoFailureAlert, ObicoFailureEvent, ObicoFailureEventType,

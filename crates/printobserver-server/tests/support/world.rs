@@ -170,8 +170,20 @@ impl World {
     /// one into its state directory — which is the route an installed service
     /// takes — and every journey's client presents it.
     pub async fn open_with(printer: Arc<RecordingPrinter>, agent: Arc<StandInAgent>) -> Self {
+        Self::configured(printer, agent, |_| {}).await
+    }
+
+    /// A server over a fresh root, over the machine and agent given, under the
+    /// base configuration as one journey edits it.
+    pub async fn configured(
+        printer: Arc<RecordingPrinter>,
+        agent: Arc<StandInAgent>,
+        edit: impl FnOnce(&mut toml::Value),
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
-        let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
+        let mut configured = document(root.path(), "http://127.0.0.1:1");
+        edit(&mut configured);
+        let path = write(root.path(), &configured);
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
         let (server, stores) = start(&config, &printer, &agent).await;
         let credential = generated_credential(&config.state_dir);
@@ -381,8 +393,11 @@ async fn start(
     let stores = Stores::of(Arc::new(
         SqliteStore::open(&config.state_dir).expect("the store opens on the state directory"),
     ));
-    let vision =
-        Arc::new(ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"));
+    let vision = Arc::new(
+        ObicoVision::new(ObicoVisionConfig::default())
+            .expect("the adapter is built")
+            .with_api(config.obico_api.clone()),
+    );
     let server = Server::start_with(
         config.clone(),
         Ports {
