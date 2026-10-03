@@ -11,13 +11,13 @@ from the server's `operations.json`; the labelled rendering's separators from
 The hook-side patterns are here too. A stub's or a spy's pattern is matched
 inside the harness as a Rust regex over the compact JSON of a tool call,
 `{"tool_name":"Bash","tool_input":{"command":"...",...}}` — the haystack
-skilltest documents for its rules — so each is anchored at a command the shell
-runs inside the `command` string, crosses no unescaped quote, and uses only
-what Rust's regex and Python's `re` read the same way. The gate routes every
+skilltest documents for its rules — so each is anchored at the start of the
+`command` string, crosses no unescaped quote, and uses only what Rust's regex
+and Python's `re` read the same way. The gate routes every
 command it checks through the real hook, `oneharness mock claude-code`, fed a
 `PreToolUse` event as Claude Code sends one; every live run holds the patterns
 to the real harness's own input, failing on a `printobserver` command no stub
-intercepted (`test_real_prints_skilltest._unstubbed`).
+intercepted when the command began with it (`test_real_prints_skilltest._unstubbed`).
 """
 
 from __future__ import annotations
@@ -244,16 +244,16 @@ def turn_tool_rules() -> tuple[str, str, list[str], list[str]]:
     return flags["tools"], flags["allowed"], _rust_list(TURN, "CLAUDE_TURN_TOOLS"), allowed
 
 
-# The start of a command the shell runs, inside the JSON string: its first
-# word, or the word after a separator, `do`, `then` or `else`, with any variable
-# assignments before it. A word inside an argument (`grep "printobserver look"`,
-# a path ending in the program's name) is not at one.
-_COMMAND_START = (
-    r'"command":"(?:(?:[^"\\]|\\.)*?(?:[;&|(`]|\\n|\b(?:do|then|else)\s))?\s*'
-    r"""(?:\w+=(?:[^\s"\\]|\\.)*\s+)*"""
-)
-# The program as a shell names it, by path or not, quoted or not.
-_PROGRAM_WORD = r"""(?:\\?["'])?(?:[\w.~:-]*(?:/|\\\\))*printobserver(?:\.exe)?(?:\\?["'])?"""
+# The start of the command string. A production turn's rules allow the shell
+# `Bash(printobserver <command>:*)` and nothing else, and Claude Code applies
+# such a rule to a command that is that invocation: one behind a `cd ... &&`,
+# inside a conditional or a loop, or after a variable assignment is refused
+# there. So a stub or a spy answers only a command that begins with the
+# program, and anything else goes unintercepted to the same rules, which
+# refuse it here as they do there.
+_COMMAND_START = r'"command":"\s*'
+# The program as a production turn's rules name it.
+_PROGRAM_WORD = r"printobserver"
 # Anything else inside the same command string.
 _REST = r"""(?:[^"\\]|\\.)*?"""
 # Where a word ends: not a further letter, digit, hyphen or point.

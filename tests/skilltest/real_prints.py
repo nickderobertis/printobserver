@@ -372,30 +372,30 @@ class _Lexer:
     def read(self) -> list[Word] | None:
         command, position = self.command, 0
         while position < len(command):
-            character = command[position]
-            if character in " \t":
-                self.end_word()
-            elif character == "\n" or character in _PUNCTUATION:
-                self.separator(character)
-            elif character == "\\":
-                position += 1
-                if position < len(command) and command[position] != "\n":
-                    self.text.append(command[position])
+            match command[position]:
+                case " " | "\t":
+                    self.end_word()
+                case character if character == "\n" or character in _PUNCTUATION:
+                    self.separator(character)
+                case "\\":
+                    position += 1
+                    if position < len(command) and command[position] != "\n":
+                        self.text.append(command[position])
+                        self.started = True
+                case "'":
+                    closing = command.find("'", position + 1)
+                    if closing < 0:
+                        return None
+                    self.text.append(command[position + 1 : closing])
+                    self.started, position = True, closing
+                case '"':
+                    position = self.double_quoted(position)
+                    if position < 0:
+                        return None
+                case character:
+                    self.expands = self.expands or character == "$"
+                    self.text.append(character)
                     self.started = True
-            elif character == "'":
-                closing = command.find("'", position + 1)
-                if closing < 0:
-                    return None
-                self.text.append(command[position + 1 : closing])
-                self.started, position = True, closing
-            elif character == '"':
-                position = self.double_quoted(position)
-                if position < 0:
-                    return None
-            else:
-                self.expands = self.expands or character == "$"
-                self.text.append(character)
-                self.started = True
             position += 1
         self.end_word()
         return self.words
@@ -493,14 +493,10 @@ def commands_in(shell_command: str, cwd: Path | None = None) -> list[Command]:
     return found
 
 
-def commands_written(shell_commands: list[str], cwd: Path | None = None) -> list[Command]:
-    """Every `printobserver` invocation written in the shell commands the agent ran, in order.
-
-    It reads what was written rather than what the shell went on to execute: an
-    invocation in a branch the shell skips is counted, as the hook-side spies
-    count it too.
-    """
-    return [command for shell in shell_commands for command in commands_in(shell, cwd)]
+def begins_with_program(shell_command: str) -> bool:
+    """Whether a shell command's first word is the program, which is all a turn may run."""
+    words = _words(shell_command)
+    return bool(words) and words[0].text == PROGRAM
 
 
 # The characters an identifier this system mints is made of, which a value

@@ -71,9 +71,10 @@ from scenario import (
     dispositions,
     fill,
     harness_config,
+    requests_answered,
     template_slots,
 )
-from skilltest_pytest import MockRefEval, SkilltestProviderError, ToolSpy, run_skill
+from skilltest_pytest import MockCall, MockRefEval, SkilltestProviderError, ToolSpy, run_skill
 from surface import OPERATIONS, REPO, surface, turn_tool_rules, usage, version
 
 SCENARIOS = live.SCENARIOS
@@ -185,35 +186,6 @@ def _command(built: Built, step: Step, *, reason: bool = True) -> str:
     return " ".join(words)
 
 
-def _picture(content: bytes) -> bytes:
-    """A JPEG's bytes without the comment segments among its headers, which show nothing.
-
-    Every segment from the start marker up to the first that is neither a
-    comment nor the JFIF header is read; the comments are dropped.
-    """
-    kept = bytearray(content[:2])
-    at = 2
-    while content[at : at + 2] in {b"\xff\xfe", b"\xff\xe0"}:
-        end = at + 2 + int.from_bytes(content[at + 2 : at + 4], "big")
-        if content[at : at + 2] == b"\xff\xe0":
-            kept += content[at:end]
-        at = end
-    kept += content[at:]
-    return bytes(kept)
-
-
-def test_a_capture_is_the_same_picture_with_or_without_a_jfif_header() -> None:
-    """A capture's comment is found and dropped after the JFIF header as after the start."""
-    scan = b"\xff\xdb\x00\x03\x01rest"
-    header = b"\xff\xe0\x00\x04JF"
-    comment = b"\xff\xfe\x00\x0bcapture 1"
-    for before in (b"", header):
-        original = b"\xff\xd8" + before + scan
-        captured = b"\xff\xd8" + before + comment + scan
-        expect.equal(_picture(captured), _picture(original), describing="the same picture")
-        expect.truth(captured != original, describing="a capture of its own")
-
-
 def test_the_triggers_are_the_case_schemas() -> None:
     """The triggers a scenario is read with are exactly the ones `case.schema.json` allows."""
     schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
@@ -302,6 +274,10 @@ def test_every_never_step_is_a_not_called_eval(scenario: Scenario, built: dict[s
             not _watches(watcher, case, f"printobserver {step.operation} --help"),
             describing=f"the spy for never {step.describe()} to ignore a request for its usage",
         )
+        expect.truth(
+            not _watches(watcher, case, f"if false; then {_command(case, step)}; fi"),
+            describing=f"the spy for never {step.describe()} to ignore a branch never run",
+        )
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=IDS)
@@ -380,8 +356,9 @@ def test_looks_answer_the_scenarios_frames_in_order(
 ) -> None:
     """Successive looks answer the scenario's frames, by path to a copy of each, in its order.
 
-    After them the last frame is looked at again, each later look its own
-    record at its own instant, delivering nothing already delivered.
+    After them the last frame is looked at again: the same committed file, each
+    later look a record of its own at its own instant, delivering nothing
+    already delivered.
     """
     case = built[scenario.test_id]
     frames = [look.image for look in scenario.looks] or [scenario.event_image]
@@ -397,9 +374,9 @@ def test_looks_answer_the_scenarios_frames_in_order(
             path = Path(answer["image_path"])
             expect.truth(path.is_absolute(), describing=f"{path} to be absolute")
             expect.equal(
-                _picture(path.read_bytes()),
-                _picture((scenario.directory / frame).read_bytes()),
-                describing=f"the look answering {frame}",
+                path.read_bytes(),
+                (scenario.directory / frame).read_bytes(),
+                describing=f"the look answering {frame}, at its committed bytes",
             )
             expect.equal(
                 answer["frame"]["sha256"],
@@ -412,8 +389,6 @@ def test_looks_answer_the_scenarios_frames_in_order(
                 describing="the events it delivers",
             )
             expect.contains(output["output"], str(path), describing="the rendered answer")
-        digests = [answer["frame"]["sha256"] for answer in spec.documents[len(scenario.looks) :]]
-        expect.equal(len(set(digests)), len(digests), describing="each later look its own capture")
         records = [answer["event"]["id"] for answer in spec.documents]
         instants = [answer["event"]["received_at"] for answer in spec.documents]
         expect.equal(len(set(records)), len(records), describing="a record of each look's own")
@@ -448,14 +423,19 @@ def test_commands_route_to_the_stub_that_answers_them(built: dict[str, Built]) -
         f"printobserver context {common}": "context",
         f"printobserver look {common} --wait-s 30": "look",
         f"printobserver look {common} --json": "look-json",
-        f"/usr/local/bin/printobserver status {common}": "status",
+        f"/usr/local/bin/printobserver status {common}": None,
         "printobserver look --help": "help",
         "printobserver --version": "version",
         "printobserver": "usage",
         "printobserver frobnicate": "refused",
         f'C={config}; printobserver acknowledge-failure --config "$C" --print-id {case.print_id} '
-        f"--actor {actor} --event-id {event} --disposition stop --reason 'nest'": (
-            f"acknowledge-stop-{event}"
+        f"--actor {actor} --event-id {event} --disposition stop --reason 'nest'": None,
+        f"printobserver acknowledge-failure {changing} --event-id {event} --disposition stop "
+        "--reason 'nest'": f"acknowledge-stop-{event}",
+        f"if false; then printobserver pause {changing} --reason 'never'; fi": None,
+        f"cd {case.workspace} && printobserver look {common}": None,
+        f"printobserver pause {changing} --reason 'a person'; printobserver look {common}": (
+            "pause"
         ),
         f"printobserver acknowledge-failure {changing} --disposition watch "
         f"--event-id {event} --reason 'static debris'": f"acknowledge-watch-{event}",
@@ -891,3 +871,25 @@ def test_an_option_a_command_does_not_take_is_refused_as_the_program_refuses_it(
         ran = shell.run([str(_program()), str(spec.command), option, "x"])
         expect.equal(ran.returncode, spec.exit_code, describing=f"`{written}`'s exit")
         expect.equal(spec.outputs()[0]["output"], ran.stderr, describing=f"`{written}`'s refusal")
+
+
+def test_only_a_request_a_stub_answered_is_one_the_agent_made(built: dict[str, Built]) -> None:
+    """The judge reads the requests the run report records a stub answering, and no other."""
+    case = next(c for c in built.values() if c.scenario.never)
+    step = case.scenario.never[0]
+    taken = _command(case, step)
+    unrun = f"if false; then {taken}; fi"
+    calls = [
+        MockCall(tool="Bash", input={"command": unrun}, action="allow", mock=None),
+        MockCall(tool="Bash", input={"command": taken}, action="stub", mock=_routed(case, taken)),
+        MockCall(
+            tool="Bash", input={"command": "printobserver --help"}, action="stub", mock="help"
+        ),
+    ]
+    expect.equal(_routed(case, unrun), None, describing="no stub for a branch never run")
+    asked = requests_answered(calls, case.stubs, case.workspace)
+    expect.equal([c.operation for c in asked], [step.operation], describing="the requests made")
+    expect.truth(
+        not any(step_matches(step, c) for c in requests_answered(calls[:1], case.stubs, None)),
+        describing="a never step to be untaken by a branch never run",
+    )

@@ -26,6 +26,7 @@ import re
 import secrets
 import shutil
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -43,6 +44,7 @@ from real_prints import (
     SKILL,
     TURN_PROMPT,
     Bound,
+    Command,
     EventId,
     Look,
     Scenario,
@@ -56,7 +58,16 @@ from real_prints import (
     required_steps,
     step_pattern,
 )
-from skilltest_pytest import TestCase, ToolMock, ToolSpy, called, not_called, spy, stub
+from skilltest_pytest import (
+    MockCall,
+    TestCase,
+    ToolMock,
+    ToolSpy,
+    called,
+    not_called,
+    spy,
+    stub,
+)
 from surface import (
     PROGRAM,
     asking_pattern,
@@ -91,9 +102,6 @@ IDLE_C = 24.0
 # How long a look says it waited, which a fixed answer cannot take from the
 # command it answers.
 LOOK_WAITED_S = 30
-# The markers of a JPEG comment segment and of the JFIF header.
-JPEG_COMMENT = b"\xff\xfe"
-JFIF_HEADER = b"\xff\xe0"
 # How many later looks re-answer the scenario's last frame, each at its own
 # instant, before skilltest repeats the last answer as it stands.
 LATER_LOOKS = 4
@@ -219,6 +227,9 @@ class StubSpec:
     documents: tuple[Any, ...]
     render: Render = Render.LABELLED
     exit_code: int = 0
+    # Whether what it answers is the server's answer to a request the program
+    # sent, rather than the program's own usage, version or refusal.
+    sent: bool = True
 
     def outputs(self) -> list[dict[str, Any]]:
         """Each response, rendered as the command asked for, with the program's exit."""
@@ -514,33 +525,20 @@ class _Composer:
             self.image(name)
 
     def image(self, name: str) -> Image:
-        """A case file copied under the state directory, named by its digest as the server does."""
-        if name not in self.images:
-            self.images[name] = self._stored(name, (self.scenario.directory / name).read_bytes())
-        return self.images[name]
+        """A case file copied, bytes unchanged, under the state directory, named by its digest.
 
-    def capture(self, name: str, index: int) -> Image:
-        """A later capture of a case frame: the same picture, as bytes of a capture of its own.
-
-        A camera never hands two captures of an unchanged scene byte for byte,
-        so a later look of the same frame carries the picture with a JPEG comment
-        segment after its start marker, which leaves what it shows unchanged.
+        Every picture the skill is handed is one of the case's own committed
+        files at its committed bytes; nothing here writes, alters or re-encodes
+        one.
         """
-        original = (self.scenario.directory / name).read_bytes()
-        comment = f"capture {index}".encode()
-        segment = JPEG_COMMENT + (len(comment) + 2).to_bytes(2, "big") + comment
-        # After the JFIF header where there is one, which a reader expects first.
-        at = 2
-        if original[2:4] == JFIF_HEADER:
-            at = 4 + int.from_bytes(original[4:6], "big")
-        return self._stored(name, original[:at] + segment + original[at:])
-
-    def _stored(self, name: str, content: bytes) -> Image:
-        digest = hashlib.sha256(content).hexdigest()
-        path = self.state_dir / "images" / digest[:2] / digest
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        return Image(name=name, path=path, sha256=digest, id=ImageId(_id()))
+        if name not in self.images:
+            source = self.scenario.directory / name
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            path = self.state_dir / "images" / digest[:2] / digest
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, path)
+            self.images[name] = Image(name=name, path=path, sha256=digest, id=ImageId(_id()))
+        return self.images[name]
 
     def event(self) -> dict[str, Any] | None:
         """The event the turn is about: the recorded alert, or one built in its shape."""
@@ -680,7 +678,9 @@ class _Composer:
         """The answer of the look at `index`, answering a scenario look's frame."""
         name = look.image if look else self.scenario.event_image
         later = index >= max(len(self.scenario.looks), 1)
-        frame = self.capture(name, index) if later else self.image(name)
+        frame = self.image(name)
+        # A later look is a record of its own, of the same frame file.
+        frame_id = ImageId(_id()) if later else frame.id
         reading = _reading(self.scenario, frame.name, paused_by_detector=paused)
         if later:
             # The case records no progress for a look after its own frames.
@@ -690,7 +690,7 @@ class _Composer:
             "detector_paused": paused,
             "event": {
                 "id": _id(),
-                "image": {"id": frame.id, "sha256": frame.sha256},
+                "image": {"id": frame_id, "sha256": frame.sha256},
                 "kind": LOOK,
                 "payload": conforming(
                     {"delivered": [event["id"] for event in delivered], "waited_s": LOOK_WAITED_S},
@@ -701,7 +701,7 @@ class _Composer:
                 "received_at": _instant(received),
                 "source": "system",
             },
-            "frame": {"id": frame.id, "sha256": frame.sha256},
+            "frame": {"id": frame_id, "sha256": frame.sha256},
             "image_path": str(frame.path),
             "job": _job(reading, self.file_name),
             "printer": _printer(reading, _instant(received)),
@@ -759,6 +759,31 @@ class _Composer:
                 },
             }
         }
+
+
+def requests_answered(
+    calls: Sequence[MockCall], stubs: Sequence[StubSpec], cwd: Path | None
+) -> list[Command]:
+    """Every request a stub answered as the server, in the order the agent made them.
+
+    This is what ran: a call reaches the shell only once the harness's hook has
+    let it through, and the run report records which stub, if any, answered
+    each. A command no stub answered — refused by the turn's rules, or never
+    reached, such as a branch the shell would not take — asked nothing; one a
+    stub answered asked exactly the request that stub answers. It is counted
+    only when the program would have sent it (`real_prints.sent_to_server`).
+    """
+    answering = {spec.name: spec for spec in stubs if spec.sent and spec.command}
+    found = []
+    for call in calls:
+        spec = answering.get(call.mock or "")
+        command = call.input.get("command") if isinstance(call.input, dict) else None
+        if spec is None or not isinstance(command, str):
+            continue
+        invoked = next((c for c in commands_in(command, cwd) if c.operation == spec.command), None)
+        if invoked is not None:
+            found.append(invoked)
+    return found
 
 
 def not_an_option(option: str, command: str) -> str:
@@ -892,8 +917,10 @@ def _stubs(
     """Every stub, in the order the hook tries them; the first that matches answers."""
     exits = surface().exits
     specs = [
-        StubSpec("help", None, asking_pattern("--help"), (usage(),), Render.TEXT),
-        StubSpec("version", None, asking_pattern("--version"), (version(),), Render.TEXT),
+        StubSpec("help", None, asking_pattern("--help"), (usage(),), Render.TEXT, sent=False),
+        StubSpec(
+            "version", None, asking_pattern("--version"), (version(),), Render.TEXT, sent=False
+        ),
     ]
     # An actor given to a command that takes none is refused before anything is
     # sent, as the turn's prompt warns: the program's own refusal, for each form.
@@ -916,6 +943,7 @@ def _stubs(
                     (not_an_option(option, command.name),),
                     Render.TEXT,
                     exits["usage"],
+                    sent=False,
                 )
             )
     # An acknowledgement echoes what the agent decided: one stub per disposition
@@ -942,9 +970,13 @@ def _stubs(
         specs.extend(_rendered(command.name, command.name, pattern, answers[command.name]))
     refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}\n"
     specs += [
-        StubSpec("usage", None, bare_program_pattern(), (usage(),), Render.TEXT, exits["success"]),
+        StubSpec(
+            "usage", None, bare_program_pattern(), (usage(),), Render.TEXT, exits["success"], False
+        ),
         # llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
-        StubSpec("refused", None, program_pattern(), (refusal,), Render.TEXT, exits["usage"]),
+        StubSpec(
+            "refused", None, program_pattern(), (refusal,), Render.TEXT, exits["usage"], False
+        ),
     ]
     return specs
 

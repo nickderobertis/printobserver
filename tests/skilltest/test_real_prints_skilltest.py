@@ -39,14 +39,13 @@ import pytest
 from real_prints import (
     REPO,
     Scenario,
-    commands_in,
-    commands_written,
+    begins_with_program,
     met_outcome,
     scenarios,
     shipped_model,
 )
 from repo_checks import expect
-from scenario import build, harness_config
+from scenario import Built, build, harness_config, requests_answered
 from skilltest_pytest import Report, describe_failures, run_skill
 
 ONEHARNESS = shutil.which("oneharness")
@@ -91,7 +90,7 @@ def _stealth(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
 
 
 def _unstubbed(report: Report) -> list[str]:
-    """Every shell command naming a `printobserver` invocation that no stub intercepted.
+    """Every shell command beginning with the program that no stub intercepted.
 
     The stubs' patterns assume the shape of the call the harness hook matches
     them against; the run report's `mock_calls` are what the real hook saw and
@@ -102,24 +101,28 @@ def _unstubbed(report: Report) -> list[str]:
     for run in report.runs:
         for call in run.mock_calls or []:
             command = call.input.get("command") if isinstance(call.input, dict) else None
-            if isinstance(command, str) and commands_in(command) and call.action == "allow":
+            if isinstance(command, str) and begins_with_program(command) and call.action == "allow":
                 found.append(command)
     return found
 
 
-def _shell_commands(report: Report) -> list[str]:
-    """Every shell command the agent ran, in order, as it wrote them.
+def _opened_before_acting(report: Report, built: Built, acting: str) -> bool:
+    """Whether the agent opened one of the scenario's pictures before it first asked `acting`.
 
-    The mock channel records every tool call of a run that declares mocks, so
-    its `mock_calls` are every call the agent made, stubbed or not.
+    A run that never looked at its picture tested nothing about the picture.
+    For a start request it is also what the skill asks first: the bed is
+    checked on the camera's frame before a print is started.
     """
-    found = []
+    pictures = {str(image.path) for image in built.images.values()}
     for run in report.runs:
         for call in run.mock_calls or []:
-            command = call.input.get("command") if isinstance(call.input, dict) else None
-            if (call.tool or "").lower() == "bash" and isinstance(command, str):
-                found.append(command)
-    return found
+            given = call.input if isinstance(call.input, dict) else {}
+            if given.get("file_path") in pictures:
+                return True
+            asked = requests_answered([call], built.stubs, built.workspace)
+            if any(request.operation == acting for request in asked):
+                return False
+    return False
 
 
 def _keep(scenario: Scenario, report: Report, ran: list[str], passed: bool) -> None:
@@ -175,13 +178,17 @@ def test_the_skill_takes_an_action_the_case_accepts(
     finally:
         shutil.rmtree(config.parent, ignore_errors=True)
 
+    expect.truth(
+        _opened_before_acting(report, built, "start-print"),
+        describing=f"{scenario.test_id}'s agent to open its picture, before starting any print",
+    )
     expect.equal(
         _unstubbed(report),
         [],
         describing=f"every printobserver command {scenario.test_id} ran to reach a stub",
     )
-    shell = _shell_commands(report)
-    ran = commands_written(shell, cwd=built.workspace)
+    calls = [call for run in report.runs for call in run.mock_calls or []]
+    ran = requests_answered(calls, built.stubs, built.workspace)
     met = met_outcome(scenario, ran)
     passed = report.passed and met is not None
     _keep(scenario, report, [command.describe() for command in ran], passed)
