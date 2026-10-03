@@ -130,28 +130,40 @@ def _opened_before_acting(report: Report, built: Built, acting: str) -> bool:
     return False
 
 
+def _json(line: str) -> object:
+    """One line of a JSON-lines file, or `None` where the line is not JSON."""
+    try:
+        return json.loads(line)
+    except ValueError:
+        return None
+
+
 def models_used(workspace: Path) -> list[str]:
     """The models Claude Code answered with in the session it ran in a workspace.
 
     With no model pinned, skilltest reports none; Claude Code writes every
     session's messages, each naming its model, under its configuration
-    directory, in a folder named after the directory the session ran in.
+    directory, in a folder named after the directory the session ran in. That
+    record's location and shape are read in one statement, the one the
+    suppression below answers for.
     """
     configured = os.environ.get("CLAUDE_CONFIG_DIR")
     directory = Path(configured) if configured else Path.home() / ".claude"
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-    sessions = directory / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
-    found: set[str] = set()
-    for session in sorted(sessions.glob("*.jsonl")):
-        for line in session.read_text(encoding="utf-8").splitlines():
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                continue
-            message = entry.get("message") if isinstance(entry, dict) else None
-            if isinstance(message, dict) and isinstance(message.get("model"), str):
-                found.add(message["model"])
-    return sorted(found)
+    return sorted(
+        {
+            entry["message"]["model"]
+            for session in sorted(
+                (directory / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(workspace))).glob(
+                    "*.jsonl"
+                )
+            )
+            for entry in map(_json, session.read_text(encoding="utf-8").splitlines())
+            if isinstance(entry, dict)
+            and isinstance(entry.get("message"), dict)
+            and isinstance(entry["message"].get("model"), str)
+        }
+    )
 
 
 def _keep(
