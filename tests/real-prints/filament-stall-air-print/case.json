@@ -47,9 +47,9 @@
   ],
   "frame_sources": "the -obico files are frames of Obico's tagged timelapse of this print (no detection boxes appear: Obico saw nothing wrong), matched to rows of ../spaghetti-debris-warning/obico-predictions.json; the others are go2rtc captures",
   "sources": {
-    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode. The filepos values above are byte offsets into the file as OctoPrint held it, which kept CRLF on a few header lines; the committed copy has LF throughout and is 124 bytes shorter. 110 of those carriage returns come before 321305, so the stall is at byte 321195 of the committed copy, and the stop at 338014",
+    "gcode": "../spaghetti-small-nest/spaghetti-two-stage.gcode. The filepos values above are byte offsets into the file as OctoPrint held it, which kept CRLF on a few header lines; the committed copy has LF throughout and is 124 bytes shorter. 110 of those carriage returns come before 321305, so the stall is at byte 321195 of the committed copy, and the stop at 338014",
     "agent_turn": "none: nothing alerted",
-    "build": "34454a9 on fix/windows-supervision-turns",
+    "build": "34454a9, a commit of PR #129",
     "service_config": "../service-config.toml"
   },
   "obico_scores": "../spaghetti-debris-warning/obico-predictions.json, rows 124 onward",

@@ -253,18 +253,63 @@ def test_an_unreferenced_extra_file_is_refused(check: Run, tree: Callable[[], Tr
     )
 
 
-def test_a_dropped_file_must_name_its_branch(check: Run, tree: Callable[[], Tree]) -> None:
-    """A G-code named bare, or a kept file pointed at the branch, is refused."""
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"{FAN}/fan-cut-test.gcode",
+        f"{FAN}/crop-03-bridge-sagging.png",
+        f"{NEST}/spaghetti-two-stage.gcode",
+    ],
+)
+def test_a_missing_gcode_or_crop_is_refused(
+    check: Run, tree: Callable[[], Tree], path: str
+) -> None:
+    """A G-code or a crop a case names is a file it must carry, like a frame."""
+    copy = tree()
+    (copy.root / path).unlink()
+    case, name = path.removeprefix(f"{ROOT}/").split("/")
+    refused_with(check("real-prints-files", copy), case, name, "not a file")
+    if case == "spaghetti-small-nest":
+        # A sibling naming the same G-code with `../` is refused for it too.
+        refused_with(
+            check("real-prints-files", copy),
+            "spaghetti-debris-warning",
+            f"../{case}/{name}",
+            "not a file",
+        )
+
+
+def test_an_unnamed_gcode_or_crop_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
+    """A G-code or a crop in a case that its case.json says nothing about."""
     copy = tree()
     data = case_json(copy, "fan-cut-bridge")
+    data["frames"] = [f for f in data["frames"] if f["file"] != "crop-03-bridge-sagging.png"]
     data["sources"]["gcode"] = "fan-cut-test.gcode is the file OctoPrint printed"
-    data["frames"][0]["file"] = (
-        "fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/05-finished.jpg"
+    write_case(copy, "fan-cut-bridge", data)
+    result = check("real-prints-files", copy)
+    refused_with(result, "fan-cut-bridge", "crop-03-bridge-sagging.png", "names it nowhere")
+    refused_with(result, "fan-cut-bridge", "fan-cut-test.clean.gcode", "names it nowhere")
+
+
+def test_a_file_named_on_another_branch_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
+    """A `<branch>@<commit>:<path>` reference names no file of this tree."""
+    copy = tree()
+    elsewhere = "fix/windows-supervision-turns@45e7fed:tests/real-prints"
+    data = case_json(copy, "fan-cut-bridge")
+    data["frames"][-1]["file"] = f"{elsewhere}/fan-cut-bridge/crop-03-bridge-sagging.png"
+    data["sources"]["gcode"] = (
+        f"{elsewhere}/fan-cut-bridge/fan-cut-test.gcode is the file OctoPrint printed; "
+        "fan-cut-test.clean.gcode is the same slice before the fault was injected"
     )
     write_case(copy, "fan-cut-bridge", data)
     result = check("real-prints-files", copy)
-    refused_with(result, "fan-cut-bridge", "fan-cut-test.gcode", "without the branch")
-    refused_with(result, "fan-cut-bridge", "05-finished.jpg", "this tree should carry")
+    refused_with(result, "fan-cut-bridge", "crop-03-bridge-sagging.png", "not a file")
+    refused_with(
+        result,
+        "fan-cut-bridge",
+        "tests/real-prints/fan-cut-bridge/fan-cut-test.gcode",
+        "not a file",
+    )
 
 
 def test_an_unknown_event_id_is_refused(check: Run, tree: Callable[[], Tree]) -> None:

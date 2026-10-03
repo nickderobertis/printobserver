@@ -32,12 +32,12 @@
     {"file": "03-flow-30pct-porous-p61.jpg", "progress_pct": 61.1, "label": "defect"},
     {"file": "04-flow-30pct-porous-p71.jpg", "progress_pct": 71.4, "label": "defect"},
     {"file": "05-finished.jpg", "progress_pct": 100.0, "label": "finished with a porous top half"},
-    {"file": "fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/crop-03-porous-sheet-p58-61.png", "progress_pct": 61.1, "label": "defect; 2x crops of four frames p58-p61, derived, not a camera frame"}
+    {"file": "crop-03-porous-sheet-p58-61.png", "progress_pct": 61.1, "label": "defect; 2x crops of four frames p58-p61, derived, not a camera frame"}
   ],
   "sources": {
-    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/lace-test.gcode is the file OctoPrint printed; fix/windows-supervision-turns@45e7fed:tests/real-prints/under-extrusion-lace/lace-test.clean.gcode is the same slice before the flow changes were injected; fault.diff is the unified diff from that clean slice to the printed file; make_box.py writes the part's STL (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4)",
+    "gcode": "lace-test.gcode is the file OctoPrint printed; lace-test.clean.gcode is the same slice before the flow changes were injected; fault.diff is the unified diff from that clean slice to the printed file; make_box.py writes the part's STL (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4)",
     "agent_turn": "none: Obico never alerted",
-    "build": "97ee107 on fix/windows-supervision-turns",
+    "build": "97ee107, a commit of PR #129",
     "service_config": "../service-config.toml"
   },
   "obico_scores": "obico-predictions.json",

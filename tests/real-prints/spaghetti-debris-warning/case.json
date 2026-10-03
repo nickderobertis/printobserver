@@ -4,7 +4,7 @@
   "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
   "printed_on": "2026-09-27",
   "times": "local, MDT (UTC-6); the history and Obico scores are in UTC",
-  "part": "the same fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode as spaghetti-small-nest (see its make_plate.py), run a second time: a small block whose floating slab falls as a nest, beside a large 40 x 25 x 22 mm block",
+  "part": "the same ../spaghetti-small-nest/spaghetti-two-stage.gcode as spaghetti-small-nest (see its make_plate.py), run a second time: a small block whose floating slab falls as a nest, beside a large 40 x 25 x 22 mm block",
   "fault": {
     "kind": "spaghetti",
     "how": "the small block's floating slab (Z10.2-11.6) prints into the air and falls on the small block; a strand trails to the front edge of the bed",
@@ -58,9 +58,9 @@
   ],
   "frame_sources": "numbered frames with a progress are go2rtc captures every 20 s; the -obico files are frames of Obico's tagged timelapse (frame n is row n of obico-predictions.json); the agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
   "sources": {
-    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode, the same file printed again",
+    "gcode": "../spaghetti-small-nest/spaghetti-two-stage.gcode, the same file printed again",
     "agent_turn": "agent-turn.json: the turn as Claude Code ran it, with the filled prompt, the skill's system prompt, every command with the exact output the agent was given, each image it opened (named by the agent-* file) and its assessment",
-    "build": "34454a9 on fix/windows-supervision-turns; the skill and turn prompt are as of that commit (the turn prompt still said every request takes --actor, which c056a4a corrects)",
+    "build": "34454a9, a commit of PR #129; the skill and turn prompt are as of that commit (the turn prompt still said every request takes --actor, which c056a4a corrects)",
     "service_config": "../service-config.toml"
   },
   "obico_scores": "obico-predictions.json, the whole print: 1401 rows from 22:20 to its end at 04:14 the next morning",

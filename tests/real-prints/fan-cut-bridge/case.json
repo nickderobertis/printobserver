@@ -30,12 +30,12 @@
     {"file": "04-overhang-stairs-uncooled-p80.jpg", "progress_pct": 80.2, "label": "defect, mostly hidden by the toolhead"},
     {"file": "05-finished.jpg", "progress_pct": 100.0, "label": "finished with a rough bridge"},
     {"file": "obico-tagged-p62.jpg", "progress_pct": 62.0, "label": "defect; the frame Obico tagged, with no detection boxes"},
-    {"file": "fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/crop-03-bridge-sagging.png", "progress_pct": 50.7, "label": "defect; 4x crop of frame 03, derived, not a camera frame"}
+    {"file": "crop-03-bridge-sagging.png", "progress_pct": 50.7, "label": "defect; 4x crop of frame 03, derived, not a camera frame"}
   ],
   "sources": {
-    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/fan-cut-test.gcode is the file OctoPrint printed; fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/fan-cut-test.clean.gcode is the same slice before the fault was injected (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4); fault.diff is the unified diff from that clean slice to the printed file",
+    "gcode": "fan-cut-test.gcode is the file OctoPrint printed; fan-cut-test.clean.gcode is the same slice before the fault was injected (PrusaSlicer 2.9.6, 0.20mm BALANCED @COREONE HF0.4); fault.diff is the unified diff from that clean slice to the printed file",
     "agent_turn": "none: Obico never alerted",
-    "build": "97ee107 on fix/windows-supervision-turns",
+    "build": "97ee107, a commit of PR #129",
     "service_config": "../service-config.toml"
   },
   "obico_scores": "obico-predictions.json",
