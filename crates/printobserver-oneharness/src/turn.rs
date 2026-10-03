@@ -75,7 +75,7 @@ impl OneharnessSupervisor {
     ///
     /// Returns [`SupervisorError::Unavailable`] when either file cannot be read,
     /// when the skill opens a frontmatter block it never closes, or when the
-    /// template does not declare the four slots a turn fills.
+    /// template does not declare the five slots a turn fills.
     pub fn open(config: SupervisorConfig) -> Result<Self, SupervisorError> {
         Self::observed(config, TurnSeam::default())
     }
@@ -151,7 +151,7 @@ impl OneharnessSupervisor {
     }
 
     /// The prompt for one turn in one session: the committed template with its
-    /// four slots filled, and nothing else.
+    /// five slots filled, and nothing else.
     ///
     /// Built for the session the turn runs in, because the actor the agent
     /// names itself by is that session's: an agent left to guess the shape of
@@ -166,14 +166,23 @@ impl OneharnessSupervisor {
                 detail: format!("the triggering event cannot be written down: {error}"),
             }
         })?;
+        let situation = serde_json::to_string_pretty(&request.situation).map_err(|error| {
+            SupervisorError::Unavailable {
+                detail: format!("the turn's situation cannot be written down: {error}"),
+            }
+        })?;
         let image = request
             .image_path
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
         let actor = serde_json::json!({ "agent": { "session_name": session.as_str() } });
-        Ok(self
-            .template
-            .fill(&event, &image, &request.context_command, &actor.to_string()))
+        Ok(self.template.fill(
+            &event,
+            &situation,
+            &image,
+            &request.context_command,
+            &actor.to_string(),
+        ))
     }
 
     /// How the harness is permitted to act during a turn, and the arguments that

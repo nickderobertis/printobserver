@@ -131,8 +131,47 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             );
             set(&mut document, "api", toml::Value::Table(api));
         }
+        // Optional too: an address that is not a web address at all.
+        ConfigField::CameraSnapshotUrl => set(
+            &mut document,
+            "camera",
+            toml::Value::Table(toml::Table::from_iter([(
+                "snapshot_url".to_owned(),
+                toml::Value::String("file:///var/lib/camera/frame.jpg".to_owned()),
+            )])),
+        ),
+        // Given with its token, as it must be, and not a web address.
+        ConfigField::ObicoUrl => set(
+            &mut document,
+            "obico",
+            obico(Some("ftp://127.0.0.1:3334"), Some(OBICO_TOKEN)),
+        ),
+        // The address alone: the token it needs is missing.
+        ConfigField::ObicoAccessToken => set(
+            &mut document,
+            "obico",
+            obico(Some("http://127.0.0.1:3334"), None),
+        ),
     }
     document
+}
+
+/// A token for `Obico`'s API no refusal may quote.
+const OBICO_TOKEN: &str = "an-obico-token-no-refusal-may-quote";
+
+/// An `[obico]` table carrying whichever of its two values are given.
+fn obico(url: Option<&str>, access_token: Option<&str>) -> toml::Value {
+    let mut table = toml::Table::new();
+    if let Some(url) = url {
+        table.insert("url".to_owned(), toml::Value::String(url.to_owned()));
+    }
+    if let Some(token) = access_token {
+        table.insert(
+            "access_token".to_owned(),
+            toml::Value::String(token.to_owned()),
+        );
+    }
+    toml::Value::Table(table)
 }
 
 /// Every field the configuration declares is refused by its own name.
@@ -165,6 +204,139 @@ async fn every_declared_field_is_refused_naming_itself() {
             "the refusal for `{field}` does not name it: {refusal}"
         );
     }
+}
+
+/// An `[obico]` table carrying a token and no address is refused naming the
+/// address it lacks, and no refusal of that table quotes the token.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_obico_token_without_an_address_is_refused_and_never_quoted() {
+    let reachable = silent_host().await;
+    let base = base_url(&reachable);
+    for (table, field) in [
+        (obico(None, Some(OBICO_TOKEN)), ConfigField::ObicoUrl),
+        (
+            obico(Some("not a url"), Some(OBICO_TOKEN)),
+            ConfigField::ObicoUrl,
+        ),
+        (
+            obico(Some("http://127.0.0.1:3334"), Some("   ")),
+            ConfigField::ObicoAccessToken,
+        ),
+        (
+            obico(Some("http://127.0.0.1:3334"), Some("two words")),
+            ConfigField::ObicoAccessToken,
+        ),
+    ] {
+        let root = TempDir::new().expect("a journey's own root");
+        let mut document = document(root.path(), &base);
+        set(&mut document, "obico", table);
+        let path = write(root.path(), &document);
+        let refusal = Server::start(&path)
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("an incomplete [obico] table was accepted"));
+        assert_eq!(refusal.field(), Some(field), "{refusal}");
+        for shown in [refusal.to_string(), format!("{refusal:?}")] {
+            assert!(
+                !shown.contains(OBICO_TOKEN),
+                "a refusal quoted the token: {shown}"
+            );
+        }
+    }
+}
+
+/// A camera or `Obico` address that only begins like a web address is refused
+/// naming its own field, before the server starts.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_address_that_is_not_a_web_address_is_refused_naming_its_field() {
+    let reachable = silent_host().await;
+    let base = base_url(&reachable);
+    for written in [
+        "http://?x",
+        "http://[invalid",
+        "http://",
+        "ftp://127.0.0.1/frame.jpg",
+    ] {
+        for (table, field) in [
+            (
+                toml::Value::Table(toml::Table::from_iter([(
+                    "snapshot_url".to_owned(),
+                    toml::Value::String(written.to_owned()),
+                )])),
+                ConfigField::CameraSnapshotUrl,
+            ),
+            (
+                obico(Some(written), Some(OBICO_TOKEN)),
+                ConfigField::ObicoUrl,
+            ),
+        ] {
+            let root = TempDir::new().expect("a journey's own root");
+            let mut document = document(root.path(), &base);
+            let section = if field == ConfigField::CameraSnapshotUrl {
+                "camera"
+            } else {
+                "obico"
+            };
+            set(&mut document, section, table);
+            let path = write(root.path(), &document);
+            let refusal = Server::start(&path)
+                .await
+                .err()
+                .unwrap_or_else(|| panic!("`{written}` was accepted as `{field}`"));
+            assert_eq!(refusal.field(), Some(field), "{written}: {refusal}");
+        }
+    }
+}
+
+/// A configuration naming a camera and `Obico`'s API is accepted, and no debug
+/// form of what it was read into shows the token.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_camera_and_obicos_api_are_accepted_and_the_token_never_shown() {
+    let reachable = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let mut document = document(root.path(), &base_url(&reachable));
+    set(
+        &mut document,
+        "camera",
+        toml::Value::Table(toml::Table::from_iter([(
+            "snapshot_url".to_owned(),
+            toml::Value::String("https://127.0.0.1:1984/api/frame.jpeg?src=camera".to_owned()),
+        )])),
+    );
+    set(
+        &mut document,
+        "obico",
+        obico(Some("http://127.0.0.1:3334"), Some(OBICO_TOKEN)),
+    );
+    let path = write(root.path(), &document);
+
+    let read = printobserver_server::ServerConfig::load(&path).expect("the configuration reads");
+    assert_eq!(
+        read.camera_snapshot_url
+            .as_ref()
+            .map(printobserver_vision_api::WebAddress::as_str),
+        Some("https://127.0.0.1:1984/api/frame.jpeg?src=camera")
+    );
+    let api = read.obico_api.as_ref().expect("Obico's API is configured");
+    assert_eq!(api.url().as_str(), "http://127.0.0.1:3334");
+    let parsed: ConfigFile = toml::from_str(&std::fs::read_to_string(&path).expect("readable"))
+        .expect("the document parses");
+    for shown in [
+        format!("{read:?}"),
+        format!("{api:?}"),
+        format!("{parsed:?}"),
+    ] {
+        assert!(shown.contains("127.0.0.1:3334"), "{shown}");
+        assert!(
+            !shown.contains(OBICO_TOKEN),
+            "a debug form showed the token: {shown}"
+        );
+    }
+
+    let running = Server::start(&path)
+        .await
+        .expect("a camera and Obico's API start the composition root");
+    running.stop().await;
 }
 
 /// The configuration this repository's own journeys ship is accepted, and its
@@ -376,4 +548,101 @@ fn only_a_verbatim_drive_path_is_rewritten() {
             "{given} was written as something else"
         );
     }
+}
+
+/// The configuration the PowerShell installer writes, as its committed script
+/// spells it, with the three values that script interpolates given a root of
+/// this journey's own and the two values it leaves for the operator filled in.
+fn the_powershell_installers_configuration(root: &std::path::Path) -> String {
+    let script = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/install-service.ps1"),
+    )
+    .expect("the committed PowerShell installer reads");
+    let opened = "$configuration = @\"\n";
+    let start = script
+        .find(opened)
+        .expect("the installer writes a configuration")
+        + opened.len();
+    let length = script[start..]
+        .find("\n\"@")
+        .expect("the configuration's here-string closes");
+    let state = root.join("state");
+    let skills = state.join("skills");
+    let skill = skills.join("printobserver").join("SKILL.md");
+    std::fs::create_dir_all(skill.parent().expect("the skill's directory"))
+        .expect("the skill's directory is creatable");
+    std::fs::write(&skill, "# A skill\n").expect("the skill is writable");
+    script[start..start + length]
+        .replace("$InstalledSkills", &skills.display().to_string())
+        .replace("$InstalledSkill", &skill.display().to_string())
+        .replace("$InstalledState", &state.display().to_string())
+        .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
+        .replace(
+            "shared_secret = \"\"",
+            "shared_secret = \"a-shared-secret\"",
+        )
+}
+
+/// The commented `[camera]` and `[obico]` examples an installer's
+/// configuration carries, taken up with the token filled in.
+fn with_the_examples_taken_up(configuration: &str) -> String {
+    let markers = [
+        "# [camera]",
+        "# snapshot_url = ",
+        "# [obico]",
+        "# url = ",
+        "# access_token = ",
+    ];
+    let mut taken = 0;
+    let lines: Vec<String> = configuration
+        .lines()
+        .map(|line| {
+            if markers.iter().any(|marker| line.starts_with(marker)) {
+                taken += 1;
+                line.trim_start_matches("# ")
+                    .replace("access_token = \"\"", "access_token = \"an-obico-token\"")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect();
+    assert_eq!(
+        taken,
+        markers.len(),
+        "the configuration carries no full examples"
+    );
+    lines.join("\n")
+}
+
+/// The PowerShell installer's configuration is one the server's own parser
+/// reads, before and after its `[camera]` and `[obico]` examples are taken up;
+/// it grants the system `resume`, and its `[safety]` table opens a line of its
+/// own.
+#[test]
+fn the_powershell_installers_configuration_reads_with_and_without_its_examples() {
+    let root = TempDir::new().expect("a journey's own root");
+    let configuration = the_powershell_installers_configuration(root.path());
+    assert!(
+        configuration.lines().any(|line| line == "[safety]"),
+        "the [safety] table does not open a line of its own"
+    );
+    let path = root.path().join("config.toml");
+
+    let as_written = printobserver_server::ServerConfig::parse(&configuration, &path)
+        .expect("the installer's configuration reads");
+    assert!(
+        as_written.safety.actions[&printobserver_core::ActorClass::System]
+            .contains(&printobserver_core::ActionKind::Resume),
+        "the installer's configuration does not grant the system resume"
+    );
+    assert!(as_written.camera_snapshot_url.is_none());
+    assert!(as_written.obico_api.is_none());
+
+    let taken_up = printobserver_server::ServerConfig::parse(
+        &with_the_examples_taken_up(&configuration),
+        &path,
+    )
+    .expect("the configuration reads with its examples taken up");
+    assert!(taken_up.camera_snapshot_url.is_some());
+    assert!(taken_up.obico_api.is_some());
 }

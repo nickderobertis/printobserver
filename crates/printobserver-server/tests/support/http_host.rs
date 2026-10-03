@@ -5,6 +5,7 @@
 //! would be exactly the layer these journeys exist to drive.
 
 use core::fmt::Write as _;
+use core::time::Duration;
 use std::net::SocketAddr;
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -32,6 +33,16 @@ impl Host {
         content_type: &'static str,
         body: Vec<u8>,
     ) -> Self {
+        Self::dwelling(Duration::ZERO, status, content_type, body).await
+    }
+
+    /// Start a host that waits this long before it answers each request.
+    pub async fn dwelling(
+        dwell: Duration,
+        status: &'static str,
+        content_type: &'static str,
+        body: Vec<u8>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -39,7 +50,9 @@ impl Host {
         let serving = tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 let body = body.clone();
-                tokio::spawn(async move { respond(stream, status, content_type, body).await });
+                tokio::spawn(async move {
+                    respond(stream, dwell, status, content_type, body).await;
+                });
             }
         });
         Self { address, serving }
@@ -66,6 +79,7 @@ pub async fn image_host(body: Vec<u8>) -> Host {
 /// Read one request and write the answer.
 async fn respond(
     mut stream: TcpStream,
+    dwell: Duration,
     status: &'static str,
     content_type: &'static str,
     body: Vec<u8>,
@@ -78,6 +92,7 @@ async fn respond(
             Ok(read) => request.extend_from_slice(&buffer[..read]),
         }
     }
+    tokio::time::sleep(dwell).await;
     let mut head = format!("HTTP/1.1 {status}\r\n");
     let _ = write!(head, "Content-Type: {content_type}\r\n");
     let _ = write!(head, "Content-Length: {}\r\n", body.len());

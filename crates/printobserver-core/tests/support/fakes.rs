@@ -1056,7 +1056,8 @@ impl SessionStore for FakeStore {
     }
 }
 
-/// The vision port, which core reaches only to retrieve an image.
+/// The vision port, which core reaches to retrieve an image and to tell the
+/// detector a detection was handled.
 pub struct FakeVision {
     /// The shared ordered record of port calls.
     journal: Arc<Journal>,
@@ -1064,6 +1065,8 @@ pub struct FakeVision {
     image: Mutex<FetchedImage>,
     /// The failure induced at `fetch_image`, if one is.
     failure: Mutex<Option<VisionError>>,
+    /// The failure induced at `clear_detection`, if one is.
+    clearing_failure: Mutex<Option<VisionError>>,
 }
 
 impl FakeVision {
@@ -1077,6 +1080,7 @@ impl FakeVision {
                 content_type: "image/png".to_owned(),
             }),
             failure: Mutex::new(None),
+            clearing_failure: Mutex::new(None),
         }
     }
 
@@ -1088,6 +1092,11 @@ impl FakeVision {
     /// Stop failing every retrieval.
     pub fn heals(&self) {
         *self.failure.lock().expect("the vision port holds") = None;
+    }
+
+    /// Refuse every acknowledgement of a detection from now on.
+    pub fn refuses_clearing(&self, error: VisionError) {
+        *self.clearing_failure.lock().expect("the vision port holds") = Some(error);
     }
 
     /// The image it serves.
@@ -1126,6 +1135,21 @@ impl VisionPort for FakeVision {
             .expect("the vision port holds")
             .clone()
             .map_or_else(|| Ok(self.served()), Err);
+        Box::pin(async move { answer })
+    }
+
+    fn clear_detection(
+        &self,
+        detection: printobserver_vision_api::Detection,
+    ) -> printobserver_vision_api::BoxFuture<'_, Result<(), VisionError>> {
+        self.journal
+            .record(Call::ClearDetection(detection.provider_printer_id));
+        let answer = self
+            .clearing_failure
+            .lock()
+            .expect("the vision port holds")
+            .clone()
+            .map_or(Ok(()), Err);
         Box::pin(async move { answer })
     }
 }

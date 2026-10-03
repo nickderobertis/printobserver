@@ -38,17 +38,18 @@ use printobserver_types::serde_json::Value;
 
 /// The reads this program has beside the action vocabulary, as its own task
 /// names them: the prints listing, status, context, the image read and
-/// materialization, history, and the manifest's read and write.
+/// materialization, history, a fresh look, and the manifest's read and write.
 ///
 /// Written out here rather than read from the server, and then held against
-/// what the server declares — so a server that grew an eighth read would fail
+/// what the server declares — so a server that grew a ninth read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 7] = [
+const READS: [&str; 8] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
+    "look",
     "manifest_get",
     "manifest_set",
 ];
@@ -305,9 +306,9 @@ fn the_surface_this_program_ships_is_the_one_the_contracts_and_the_server_declar
     );
 }
 
-/// The server declares exactly the seven reads this program's own task names.
+/// The server declares exactly the eight reads this program's own task names.
 #[test]
-fn the_server_declares_exactly_the_seven_reads_this_task_names() {
+fn the_server_declares_exactly_the_eight_reads_this_task_names() {
     assert_eq!(
         BESIDE_THE_ACTIONS.iter().copied().collect::<BTreeSet<_>>(),
         READS.iter().copied().collect::<BTreeSet<_>>(),

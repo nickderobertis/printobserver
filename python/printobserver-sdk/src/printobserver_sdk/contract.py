@@ -69,6 +69,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "image",
     "history",
     "manifest_get",
+    "look",
     "manifest_set",
     "pause",
     "resume",
@@ -268,6 +269,26 @@ class AgentAssessmentPayload(TypedDict):
     assessment: AgentAssessment
     # The session the turn ran in.
     session_name: str
+
+
+class CameraLookPayload(TypedDict):
+    """`CameraLookPayload`, as the contracts declare it.
+
+    Somebody took a fresh look at the print.
+
+    Written down before the camera is asked for a frame, so that a frame
+    the
+    camera would not give is recorded against a look that is already in
+    the
+    history; the frame itself, when there is one, is this event's image.
+    """
+
+    # The events for the print that arrived while it waited, and that it
+    # handed to whoever looked, oldest first.
+    delivered: NotRequired[list[EventId]]
+    # How long the look waited for something to happen before it was taken,
+    # in whole seconds.
+    waited_s: int
 
 
 # How sure the agent is.
@@ -653,6 +674,38 @@ class JobSnapshot(TypedDict):
     state: PrinterState
 
 
+class Look(TypedDict):
+    """`Look`, as the contracts declare it.
+
+    One fresh look at a print.
+
+    An answer rather than a record, so it admits fields beside its own the
+    way
+    every answer of the server does: a client that could not open the
+    frame's
+    path says so in a field of its own beside the rest of the answer.
+    """
+
+    # The events for this print that arrived while the look waited, oldest
+    # first; the look returned early when there were any.
+    arrived: NotRequired[list[EventRecord]]
+    # Whether the print is paused and the pause is the detector's, which is
+    # what an adjustment asked for now would be applied under.
+    detector_paused: bool
+    # The look itself, as it was written into the print's history, carrying
+    # the frame as its image when there is one.
+    event: EventRecord
+    # The frame the camera gave, absent when no camera is configured or it
+    # gave none — which the history records as a port failure.
+    frame: NotRequired[ImageRef | None]
+    # The absolute path the frame's bytes are at, on the supervisor's host.
+    image_path: NotRequired[str | None]
+    # The job the printer reports now, absent when it could not be read.
+    job: NotRequired[JobSnapshot | None]
+    # The printer's state now, absent when it could not be read.
+    printer: NotRequired[PrinterSnapshot | None]
+
+
 class MalformedExternalEventPayload(TypedDict):
     """`MalformedExternalEventPayload`, as the contracts declare it.
 
@@ -821,7 +874,12 @@ class PortFailurePayload(TypedDict):
 # be
 # a second version of one fact.
 PortFailureSite: TypeAlias = Literal[
-    "printer_snapshot", "printer_job", "image_write", "supervision_turn"
+    "printer_snapshot",
+    "printer_job",
+    "image_write",
+    "supervision_turn",
+    "camera_look",
+    "detector_acknowledgement",
 ]
 
 
@@ -1414,6 +1472,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "action_rejected": ActionRejectedPayload,
     "action_requested": ActionRequestedPayload,
     "agent_assessment": AgentAssessmentPayload,
+    "camera_look": CameraLookPayload,
     "intervention_expired": InterventionExpiredPayload,
     "malformed_external_event": MalformedExternalEventPayload,
     "obico_failure_alert": ObicoFailureAlertPayload,
@@ -1448,6 +1507,10 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["agent_assessment"]
 ) -> AgentAssessmentPayload | None: ...
+
+
+@overload
+def payload_of(event: EventRecord, kind: Literal["camera_look"]) -> CameraLookPayload | None: ...
 
 
 @overload
@@ -1649,6 +1712,28 @@ class GeneratedClient(GeneratedSurface):
         # type `operations.json` declares for it, so this cast names that type.
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ManifestAnswer, answered)
+
+    def look(self, print_id: str, wait_s: int | None = None) -> Look:
+        """Call `look` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = f"/v1/prints/{print_id}/look"
+        asked: list[tuple[str, str]] = []
+        if wait_s is not None:
+            asked.append(("wait_s", str(wait_s)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(Look, answered)
 
     def manifest_set(self, print_id: str, reason: str, manifest: JobManifest) -> ManifestAnswer:
         """Call `manifest_set` on the configured supervisor.

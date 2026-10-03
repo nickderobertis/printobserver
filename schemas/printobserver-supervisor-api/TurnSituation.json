@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one — it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the supervisor knew about the moment one turn began, beside its event.\n\nFacts rather than instructions: whether the print is paused, and whether\nthe detector paused it itself, are exactly what decides whether an agent's\nadjustment would be applied to a moving print or held until it moves again.\nEvery field is written out, a fact nobody knows as `null`, so that the\nprompt it fills has one shape whatever was known.",
+  "properties": {
+    "arrived_while_busy": {
+      "default": [],
+      "description": "Events for this print that arrived while its previous turn was running\nand that turn never took, oldest first. The turn's own event is the\nnewest of them, and is not repeated here.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
+    },
+    "detector_paused_the_print": {
+      "default": null,
+      "description": "Whether the detector paused the print itself, null when the event is\nnot one of its detections.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "detector_warned": {
+      "default": null,
+      "description": "Whether the detector only warned, null when the event is not one of its\ndetections.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "printer_state": {
+      "default": null,
+      "description": "The printer's state when the turn began, in the printer contract's own\nspelling, null when the printer could not be read.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "title": "TurnSituation",
+  "type": "object"
+}

@@ -24,8 +24,9 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
-    PortFailureSite, PrintContext, agent_source, operator_source, system_source,
+    CameraLookPayload, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
+    PortFailurePayload, PortFailureSite, PrintContext, agent_source, operator_source,
+    system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -37,6 +38,12 @@ use schema_files::reconcile;
 /// The print's context, with its canonical values.
 fn print_context() -> TypeContract {
     TypeContract::of::<PrintContext>("PrintContext")
+}
+
+/// A fresh look at a print, which the look operation answers, with its
+/// canonical values.
+fn look() -> TypeContract {
+    TypeContract::of::<Look>("Look")
 }
 
 /// One kind this crate declares: its schema, its marker, and its samples.
@@ -83,6 +90,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<AgentAssessmentPayload>("AgentAssessmentPayload"),
         kind_of::<OperatorAcknowledgementPayload>("OperatorAcknowledgementPayload"),
         kind_of::<PortFailurePayload>("PortFailurePayload"),
+        kind_of::<CameraLookPayload>("CameraLookPayload"),
     ]
 }
 
@@ -98,6 +106,8 @@ fn generated() -> Vec<(String, Value)> {
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
+    let look = look();
+    entries.push((format!("{}.json", look.name), look.schema()));
     entries.push(("EventDraft.json".to_owned(), schema_of::<EventDraft>()));
     entries.push(("HistoryQuery.json".to_owned(), schema_of::<HistoryQuery>()));
     entries.extend(
@@ -137,6 +147,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("AgentAssessmentPayload", "agent_assessment"),
             ("OperatorAcknowledgementPayload", "operator_acknowledgement"),
             ("PortFailurePayload", "port_failure"),
+            ("CameraLookPayload", "camera_look"),
         ]
     );
     for declared in declared_kinds() {
@@ -216,6 +227,40 @@ fn the_print_context_carries_exactly_the_stated_fields() {
         context.schema().get("title").and_then(Value::as_str),
         Some("PrintContext")
     );
+}
+
+/// A look carries exactly the fields the contract states, round-trips its
+/// canonical values, and omits what it does not carry rather than writing
+/// `null`.
+#[test]
+fn a_look_carries_exactly_the_stated_fields() {
+    let look = look();
+    assert_eq!(
+        wire_fields(&look.schema()),
+        vec![
+            field("arrived", "array:EventRecord", false),
+            field("detector_paused", "boolean", true),
+            field("event", "EventRecord", true),
+            field("frame", "ImageRef", false),
+            field("image_path", "string", false),
+            field("job", "JobSnapshot", false),
+            field("printer", "PrinterSnapshot", false),
+        ]
+    );
+    for value in look.samples() {
+        let round = look
+            .round_trip(value.clone())
+            .unwrap_or_else(|error| panic!("Look: {error}"));
+        assert_eq!(round, value, "Look does not survive a round trip");
+    }
+    let minimal = look.minimal();
+    let object = minimal.as_object().expect("an object");
+    for name in ["arrived", "frame", "image_path", "printer", "job"] {
+        assert!(
+            !object.contains_key(name),
+            "the minimal look carries {name}"
+        );
+    }
 }
 
 /// The print's context round-trips its canonical values unchanged, and an

@@ -189,6 +189,32 @@ fn manifest_get_sends_what_it_declares_and_answers_what_the_server_sent() {
     );
 }
 
+/// `look` sends what it declares and answers what the server sent.
+#[test]
+fn look_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"arrived": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "detector_paused": true, "event": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "frame": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .look("0198f0a1-2b3c-7d4e-8f90-123456789abc", Some(7))
+        .expect("`look` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(
+        received.target,
+        "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/look?wait_s=7"
+    );
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
 /// `manifest_set` sends what it declares and answers what the server sent.
 #[test]
 fn manifest_set_sends_what_it_declares_and_answers_what_the_server_sent() {

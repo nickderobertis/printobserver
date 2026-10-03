@@ -29,6 +29,16 @@
           "const": "supervision_turn",
           "description": "Running the supervision turn the event prompted.",
           "type": "string"
+        },
+        {
+          "const": "camera_look",
+          "description": "Taking a fresh frame from the camera for a look at the print.",
+          "type": "string"
+        },
+        {
+          "const": "detector_acknowledgement",
+          "description": "Telling the detector that paused the print its detection was handled.",
+          "type": "string"
         }
       ]
     }

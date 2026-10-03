@@ -16,8 +16,8 @@ use block_on::block_on;
 use printobserver_types::contract::Sample;
 use printobserver_types::{EventBody, EventSource, RawBytes, Timestamp};
 use printobserver_vision_api::{
-    BoxFuture, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
-    VisionError, VisionPort,
+    BoxFuture, Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert,
+    ProviderPrint, VisionError, VisionPort,
 };
 
 /// The alert the trivial implementation answers with.
@@ -33,6 +33,16 @@ fn trivial_alert() -> NormalizedAlert {
             id: 4211,
             file_name: Some("benchy.gcode".to_owned()),
         }),
+        detection: Some(trivial_detection()),
+    }
+}
+
+/// The detection the trivial alert carries and the trivial port clears.
+const fn trivial_detection() -> Detection {
+    Detection {
+        warning: false,
+        paused_the_print: true,
+        provider_printer_id: 41,
     }
 }
 
@@ -58,6 +68,11 @@ impl VisionPort for TrivialVision {
             })
         })
     }
+
+    fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>> {
+        let _ = detection;
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Every method answers its declared success type, behind a shared trait object.
@@ -75,6 +90,7 @@ fn every_method_answers_its_declared_success_type() {
             content_type: String::new()
         })
     );
+    assert_eq!(block_on(port.clear_detection(trivial_detection())), Ok(()));
 }
 
 /// A normalized alert reads its kind off the body it carries.
@@ -117,8 +133,60 @@ fn every_error_variant_says_what_it_is() {
         VisionError::Unreachable {
             detail: "no route".to_owned(),
         },
+        VisionError::NotConfigured {
+            detail: "no provider API is configured".to_owned(),
+        },
     ];
     for variant in variants {
         assert!(!variant.to_string().is_empty(), "{variant:?} says nothing");
+    }
+}
+
+/// An address is a URL naming a host over HTTP, and nothing that only begins
+/// like one.
+#[test]
+fn a_web_address_is_an_http_url_naming_a_host() {
+    for accepted in [
+        "http://127.0.0.1:3334",
+        " https://obico.example/ ",
+        "http://127.0.0.1:1984/api/frame.jpeg?src=camera",
+        "HTTP://Printer.local",
+        "http://[::1]:8080/frame.jpg",
+        "http://[fe80::1]",
+        "http://192.168.1.20:1984/api/frame.jpeg",
+        "http://printer-1.local",
+    ] {
+        let address = printobserver_vision_api::WebAddress::new(accepted)
+            .unwrap_or_else(|why| panic!("{accepted:?} was refused: {why}"));
+        assert_eq!(address.as_str(), accepted.trim());
+        assert_eq!(address.to_string(), accepted.trim());
+    }
+    for refused in [
+        "http://?x",
+        "http://[invalid",
+        "http://[]",
+        "http://[abc]",
+        "http://[:::]",
+        "http://[::1]x",
+        "http://host..example",
+        "http://-host",
+        "http://host-:80",
+        "http://999.999.999.999",
+        "http://1.2.3",
+        "http://printer.3",
+        "http://",
+        "http://host:99999",
+        "http://host:port",
+        "http://user@host",
+        "http://ho st/",
+        "ftp://127.0.0.1/frame.jpg",
+        "file:///var/lib/frame.jpg",
+        "127.0.0.1:3334",
+        "",
+    ] {
+        assert!(
+            printobserver_vision_api::WebAddress::new(refused).is_err(),
+            "{refused:?} was accepted"
+        );
     }
 }

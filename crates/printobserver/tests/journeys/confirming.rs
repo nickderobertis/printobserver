@@ -200,6 +200,7 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
         "context" => assert_eq!(at(&said, "context.print.id"), world.print_id),
         "image" => assert_eq!(at(&said, "record.id"), world.image_id),
         "history" => the_history_it_answers_is_this_prints(world, &said),
+        "look" => the_look_took_this_worlds_frame(world, &said),
         // A write and the read beside it are confirmed the same way and
         // deliberately so: what a write did is what the read answers, and the
         // manifest both are about is the one the write drove. What is compared
@@ -299,6 +300,32 @@ fn state_after(command: &str) -> Option<Reports> {
         "cancel" => Some(Reports::Operational),
         _ => None,
     }
+}
+
+/// A look is written into this print's history and carries the frame this
+/// world's camera answered, at a path whose bytes are that frame.
+fn the_look_took_this_worlds_frame(world: &World, said: &BTreeMap<String, String>) {
+    use sha2::{Digest as _, Sha256};
+
+    assert_eq!(at(said, "event.kind"), "camera_look", "{said:#?}");
+    assert_eq!(at(said, "event.print_id"), world.print_id, "{said:#?}");
+    let digest = format!("{:x}", Sha256::digest(crate::world::FRAME_BYTES));
+    assert_eq!(at(said, "frame.sha256"), digest, "{said:#?}");
+    assert_eq!(at(said, "event.image.sha256"), digest, "{said:#?}");
+    let bytes = std::fs::read(at(said, "image_path")).expect("the frame's path opens");
+    assert_eq!(
+        bytes,
+        crate::world::FRAME_BYTES,
+        "the frame's path holds other bytes"
+    );
+    assert!(
+        world
+            .camera
+            .received()
+            .iter()
+            .any(|head| head.starts_with(&format!("GET {} ", crate::world::FRAME_PATH))),
+        "the frame was not fetched from this world's camera"
+    );
 }
 
 /// The events a history read answers belong to the print it named, and there

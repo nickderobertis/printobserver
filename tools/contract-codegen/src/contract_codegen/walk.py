@@ -224,6 +224,9 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     Ordered("manifest_set", ""),
     Ordered("manifest_get", ""),
     Ordered("history", ""),
+    # A look at once rather than a wait: nothing arrives for a print no turn is
+    # running for, so a wait here would only be the walk's own time spent.
+    Ordered("look", ""),
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
     Ordered("cancel", "printing"),
@@ -259,6 +262,7 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("*", "reason"): "reason",
     ("*", "duration_s"): "60",
     ("*", "limit"): "20",
+    ("look", "wait_s"): "0",
     ("*", "disposition"): "disposition:continue",
     ("set_feedrate_factor", "factor"): "1.1",
     ("set_flowrate_factor", "factor"): "1.0",

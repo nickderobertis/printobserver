@@ -37,6 +37,21 @@ fn commands_carrying_a_path() -> Vec<(String, &'static str)> {
         .collect()
 }
 
+/// Whether one command's path is to a frame a look took, rather than to the
+/// image an alert arrived with.
+fn takes_a_frame(command: &str) -> bool {
+    command == "look"
+}
+
+/// The file one command's answer names, and the digest its bytes must have.
+fn named_file(world: &World, command: &str) -> (std::path::PathBuf, String) {
+    if takes_a_frame(command) {
+        (world.frame_path(), World::frame_digest())
+    } else {
+        (world.image_path(), World::image_digest())
+    }
+}
+
 /// The arguments one such command is driven with.
 fn driven(world: &World, command: &str) -> Vec<String> {
     let found = walk::walk(world)
@@ -69,7 +84,7 @@ pub fn an_image_is_a_path_that_opens(world: &World) {
         });
         assert_eq!(
             digest_of(&bytes),
-            World::image_digest(),
+            named_file(world, &command).1,
             "the file `{command}` printed is not the image the record declares"
         );
     }
@@ -104,7 +119,8 @@ pub fn a_path_that_names_no_file_here_is_its_own_failure(world: &World) {
             "`{command}` did not name both ways out: {said}"
         );
         assert!(
-            !ran.out.contains(&world.image_path().display().to_string()),
+            !ran.out
+                .contains(&named_file(world, &command).0.display().to_string()),
             "`{command}` printed a path that names no file here as though it were one: {}",
             ran.out
         );
@@ -159,9 +175,12 @@ fn losing(world: &World, command: &str, also: &[&str]) -> Ran {
     let arguments = driven(world, command);
     let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     asked.extend_from_slice(also);
-    world.proxy.losing_the_file(Some(world.image_path()));
+    world
+        .proxy
+        .losing_the_file(Some(named_file(world, command).0));
     let ran = running::command(world, &asked);
     world.proxy.losing_the_file(None);
     world.restore_the_image();
+    world.restore_the_frame();
     ran
 }

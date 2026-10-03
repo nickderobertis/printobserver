@@ -48,8 +48,10 @@ pub const DRAIN: Duration = Duration::from_secs(10);
 /// A child's standard error: what the wait has taken off the reading thread,
 /// and the handle it takes the rest through.
 pub struct Stream {
-    printed: String,
-    lines: Receiver<String>,
+    /// What has been taken off the reading thread so far.
+    pub printed: String,
+    /// The lines the reading thread has read and nobody has taken yet.
+    pub lines: Receiver<String>,
 }
 
 impl Stream {

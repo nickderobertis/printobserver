@@ -128,6 +128,22 @@ test("manifest_get sends what it declares and answers what the server sent", asy
   expect(answered).toEqual(answer);
 });
 
+test("look sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"arrived": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "detector_paused": true, "event": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "frame": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "estimated_print_time_s": 7, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.look("0198f0a1-2b3c-7d4e-8f90-123456789abc", 7);
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/look?wait_s=7");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
 test("manifest_set sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
     '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',

@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use printobserver_oneharness::{
     ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor,
-    SLOTS, UnclosedFrontmatter, skill_prose,
+    SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
 };
-use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
+use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
 use printobserver_types::{PrintId, serde_json};
 
 use crate::support::{
@@ -107,11 +107,23 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     ];
 
     let mut seen = Vec::new();
-    for (payload, image) in triggers {
+    for (index, (payload, image)) in triggers.into_iter().enumerate() {
         let print_id = PrintId::new();
-        let request = turn(print_id, event(print_id, payload), image.clone());
+        let mut request = turn(print_id, event(print_id, payload), image.clone());
+        // The first turn began with everything known, and arrived after an
+        // event its print's previous turn never took; the others knew nothing.
+        if index == 0 {
+            request.situation = TurnSituation {
+                printer_state: Some("paused".to_owned()),
+                detector_warned: Some(false),
+                detector_paused_the_print: Some(true),
+                arrived_while_busy: vec![event(print_id, unreadable("an earlier alert"))],
+            };
+        }
         let expected_event =
             serde_json::to_string_pretty(&request.event).expect("the event is writable");
+        let expected_situation =
+            serde_json::to_string_pretty(&request.situation).expect("the situation is writable");
         let expected_image = image
             .as_ref()
             .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
@@ -134,6 +146,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         for (slot, filling) in order.iter().zip(&found) {
             match *slot {
                 EVENT_SLOT => assert_eq!(filling, &expected_event),
+                SITUATION_SLOT => assert_eq!(filling, &expected_situation),
                 IMAGE_SLOT => assert_eq!(filling, &expected_image),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
                 ACTOR_SLOT => assert_eq!(filling, &expected_actor),
@@ -145,6 +158,29 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
 
     // The literals never moved: only the slots differ between the turns.
     assert_eq!(seen.len(), 3);
+    let situation_at = order
+        .iter()
+        .position(|slot| *slot == SITUATION_SLOT)
+        .expect("the template declares the situation");
+    let known: serde_json::Value =
+        serde_json::from_str(&seen[0][situation_at]).expect("the situation is JSON");
+    assert_eq!(known["printer_state"], "paused");
+    assert_eq!(known["detector_paused_the_print"], true);
+    assert_eq!(
+        known["arrived_while_busy"].as_array().map(Vec::len),
+        Some(1)
+    );
+    let unknown: serde_json::Value =
+        serde_json::from_str(&seen[1][situation_at]).expect("the situation is JSON");
+    assert_eq!(
+        unknown,
+        serde_json::json!({
+            "printer_state": null,
+            "detector_warned": null,
+            "detector_paused_the_print": null,
+            "arrived_while_busy": [],
+        })
+    );
     assert_ne!(
         seen[0], seen[1],
         "two different events filled the same slots"

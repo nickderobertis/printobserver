@@ -33,6 +33,8 @@ mod harness;
 #[cfg(unix)]
 #[path = "journeys/harness_turn.rs"]
 mod harness_turn;
+#[path = "support/host.rs"]
+mod host;
 #[path = "support/machine.rs"]
 mod machine;
 #[path = "support/proxy.rs"]
@@ -43,6 +45,9 @@ mod scripted;
 mod traced;
 #[path = "support/walk.rs"]
 mod walk;
+#[cfg(unix)]
+#[path = "journeys/watching.rs"]
+mod watching;
 #[path = "support/world.rs"]
 mod world;
 
@@ -66,6 +71,8 @@ mod failures;
 mod finding;
 #[path = "journeys/formats.rs"]
 mod formats;
+#[path = "journeys/looking.rs"]
+mod looking;
 #[path = "journeys/materializing.rs"]
 mod materializing;
 #[path = "journeys/redaction.rs"]

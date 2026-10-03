@@ -62,6 +62,11 @@ fn vision_port_declares_exactly_the_stated_methods() {
             &[("source_url", "String")],
             "BoxFuture<'_,Result<FetchedImage,VisionError>>",
         ),
+        method(
+            "clear_detection",
+            &[("detection", "Detection")],
+            "BoxFuture<'_,Result<(),VisionError>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "VisionPort"), expected);
 }
@@ -76,6 +81,7 @@ fn vision_error_carries_exactly_the_stated_variants() {
         variant("TooLarge", &[("limit", "i64")]),
         variant("UnacceptableContentType", &[("content_type", "String")]),
         variant("Unreachable", &[("detail", "String")]),
+        variant("NotConfigured", &[("detail", "String")]),
     ];
     assert_eq!(enum_variants(&source, "VisionError"), expected);
 }

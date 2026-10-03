@@ -87,6 +87,24 @@ site = "identity: &'static str,"
 reason = "`HarnessIdentity` owns a `String`, so it cannot be built in the const `SIGN_INS` table the server and the command-line program both read. The field is private, so that table is the only place an entry is ever constructed, and `every_identity_is_one_oneharness_runs` holds each identity to one OneHarness's own registry runs — which is a stricter validation than `HarnessIdentity::new`, which admits any non-empty name."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-supervisor-api/src/lib.rs"
+site = "pub printer_state: Option<String>,"
+reason = "The printer contract's own state vocabulary, `PrinterState`, lives in `printobserver-printer-api`, and this port may depend on `printobserver-types` alone: `repo-policy.toml`'s `crates.may_depend_on` gives `printobserver-supervisor-api` that one edge, and its manifest and surface tier hold it there, so it cannot name the enum. The string is filled only from `PrinterState`'s own serialization, in `printobserver-core`'s loop, and `the_situations_printer_state_is_the_printer_contracts_own_spelling` in `crates/printobserver-core/tests/journeys/one_agent_per_print.rs` holds it to exactly that spelling for every state. Moving the state vocabulary into `printobserver-types`, so the port could carry the enum without a new edge, is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/vision.rs"
+site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"
+reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowledge_alert/` with the overwrite `FAILED`, under the configured bearer token — is restated from PR #129's code, which drove it against the real self-hosted Obico beside the printer. Here it is driven against a local fake of that API, as the task rebuilding it prescribes (a real Obico is never needed by it), so nothing in this repository yet reconciles it against Obico itself: the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only. Extending that tier to mint a token inside the stack and call this endpoint is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/vision.rs"
+site = "\"/api/v1/printers/{provider_printer_id}/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE}\""
+reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowledge_alert/` with the overwrite `FAILED`, under the configured bearer token — is restated from PR #129's code, which drove it against the real self-hosted Obico beside the printer. Here it is driven against a local fake of that API, as the task rebuilding it prescribes (a real Obico is never needed by it), so nothing in this repository yet reconciles it against Obico itself: the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only. Extending that tier to mint a token inside the stack and call this endpoint is drafted as a follow-up."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-oneharness/src/sign_in.rs"
 site = "arguments: &[\"auth\", \"login\"],"

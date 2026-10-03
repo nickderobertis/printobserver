@@ -14,6 +14,10 @@ printobserver-core = { path = "../printobserver-core", version = "0.3.0" }
 printobserver-types = { workspace = true }
 printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.3.0" }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "rustls", "webpki-roots"] }
+# The runtime an acknowledgement runs on when the supervision core's own expiry
+# driver asks for one: that thread polls a port's futures with no reactor of its
+# own, and the HTTP client above needs Tokio's.
+tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
 jsonschema.workspace = true

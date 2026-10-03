@@ -16,11 +16,11 @@
 //! crate that reaches an action method of the printer port.
 
 use crate::records::{
-    ActionRecord, ActionRequest, Actor, ActorClass, Intervention, InterventionOutcome,
-    PolicyDecision, PrintAction, PrintRecord,
+    AcknowledgementDisposition, ActionRecord, ActionRequest, Actor, ActorClass, Intervention,
+    InterventionOutcome, PolicyDecision, PrintAction, PrintRecord,
 };
 use printobserver_printer_api::Adjustable;
-use printobserver_printer_api::PrinterSnapshot;
+use printobserver_printer_api::{PrinterSnapshot, PrinterState};
 use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
@@ -170,6 +170,7 @@ impl Supervisor {
         if actor.class() == ActorClass::Agent && changes_the_machine(action.kind()) {
             self.note_agent_action(print_id, requested_at);
         }
+        self.follow_the_detectors_pause(print_id, &action, snapshot.as_ref());
         if let PrintAction::StartPrint { manifest, .. } = &action {
             self.attach_manifest(print_id, manifest.clone()).await?;
         }
@@ -190,6 +191,40 @@ impl Supervisor {
             executed: issued.executed,
             intervention,
         })
+    }
+
+    /// What one action that went through does to a pause the detector made.
+    ///
+    /// An agent's adjustment to a print the detector's pause is holding earns
+    /// the print its resume ([`crate::detector`]); an agent's acknowledgement
+    /// with `stop` leaves the pause for a person; and a print somebody else
+    /// resumed or cancelled is no longer the detector's to hold.
+    fn follow_the_detectors_pause(
+        &self,
+        print_id: PrintId,
+        action: &PrintAction,
+        snapshot: Option<&PrinterSnapshot>,
+    ) {
+        if !self.detector_paused(print_id) {
+            return;
+        }
+        let paused = snapshot.is_some_and(|taken| taken.connection == PrinterState::Paused);
+        match (action.actor().class(), action) {
+            (ActorClass::Agent, _) if adjustment(action).is_some() && paused => {
+                self.note_adjustment_while_paused(print_id, action.reason());
+            }
+            (
+                ActorClass::Agent,
+                PrintAction::AcknowledgeFailure {
+                    disposition: AcknowledgementDisposition::Stop,
+                    ..
+                },
+            )
+            | (_, PrintAction::Resume { .. } | PrintAction::Cancel { .. }) => {
+                self.forget_detector_pause(print_id);
+            }
+            _ => {}
+        }
     }
 
     /// Append one event about an action, sourced from whoever asked for it.

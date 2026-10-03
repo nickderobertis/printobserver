@@ -21,7 +21,7 @@ seam.
 
 ## What a prompt may say is one committed file
 
-The template is the whole of it: four slots filled and sent unchanged, and a
+The template is the whole of it: five slots filled and sent unchanged, and a
 system prompt — the prose of the installed skill the configuration names, its
 frontmatter split off — read from the tree rather than carried in this crate's
 text; the crate carries no skill at all. A

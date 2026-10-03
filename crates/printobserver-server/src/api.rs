@@ -44,7 +44,7 @@ use printobserver_core::store::{
     EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
 };
 use printobserver_core::{ActionKind, ExecutionOutcome, PolicyDecision};
-use printobserver_core::{CoreError, Supervisor, effective_bounds};
+use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::{ImageId, PrintId};
 
@@ -88,6 +88,15 @@ pub struct HistoryParams {
     /// The limit asked for; absent takes the port's own default window.
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+/// How long a look asks to wait for something to arrive, in whole seconds.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct LookParams {
+    /// The wait asked for; absent looks at once.
+    #[serde(default)]
+    pub wait_s: Option<u32>,
 }
 
 /// Every public operation, beneath the one versioned prefix.
@@ -207,6 +216,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("context", Method::Get) => get(context),
         ("image", Method::Get) => get(image),
         ("history", Method::Get) => get(history),
+        ("look", Method::Get) => get(look),
         ("manifest_get", Method::Get) => get(manifest_get),
         ("manifest_set", Method::Put) => put(manifest_set),
         (name, method) => panic!(
@@ -377,6 +387,46 @@ async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -
             image_path,
         },
     )
+}
+
+/// Take a fresh look at one print.
+///
+/// A wait longer than the supervisor allows is refused rather than shortened,
+/// and a print nothing is held under is refused before any wait. The wait
+/// itself runs on a blocking thread, exactly as a turn does, so that a minute
+/// and a half of waiting holds no asynchronous worker the agent's own requests
+/// are answered on.
+async fn look(
+    State(state): State<ApiState>,
+    Path(print_id): Path<PrintId>,
+    Query(params): Query<LookParams>,
+) -> Response {
+    let wait_s = params.wait_s.unwrap_or(0);
+    if wait_s > MAX_LOOK_WAIT_S {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            format!("wait_s may be at most {MAX_LOOK_WAIT_S}; {wait_s} was asked for"),
+        );
+    }
+    match state.prints.print(print_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return refusal(StatusCode::NOT_FOUND, CoreError::NoSuchPrint { print_id });
+        }
+        Err(error) => return refusal(store_status(&error), error),
+    }
+    let supervisor = Arc::clone(&state.supervisor);
+    let taken = tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let arrived = supervisor.await_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
+        printobserver_core::block_on(supervisor.take_look(print_id, started.elapsed(), arrived))
+    })
+    .await;
+    match taken {
+        Ok(Ok(look)) => answer(StatusCode::OK, &look),
+        Ok(Err(error)) => refusal(core_status(&error), error),
+        Err(error) => refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+    }
 }
 
 /// Materialize one image: its record, and the absolute path its bytes are at.

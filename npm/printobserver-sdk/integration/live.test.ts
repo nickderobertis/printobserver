@@ -147,6 +147,20 @@ async function stepHistory(client: Client, proxy: Recording) {
   same("history", answered, seen.answer);
 }
 
+/** `look`, answered by a real supervisor. */
+async function stepLook(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.look(world.print_id, 0);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/look?wait_s=${0}`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("look", answered, seen.answer);
+}
+
 /** `cancel`, answered by a real supervisor. */
 async function stepCancel(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "printing");
@@ -361,6 +375,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepManifestSet(client, proxy);
   await stepManifestGet(client, proxy);
   await stepHistory(client, proxy);
+  await stepLook(client, proxy);
   await stepCancel(client, proxy);
   await stepStartPrint(client, proxy);
   await stepSetFeedrateFactor(client, proxy);
@@ -373,7 +388,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepResume(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(17);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(18);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */

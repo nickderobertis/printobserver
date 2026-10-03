@@ -226,12 +226,26 @@ PowerShell on Windows:
   `credential` set to a long random value; the generated file is then not used.
   This credential is separate from `ingress.shared_secret`, and neither is
   accepted in place of the other.
-- `safety.agent_min_interval_s` is the minimum time between agent actions.
+- `camera.snapshot_url` is optional, and the template carries it commented
+  out. It is an `http` or `https` URL answering one still image of the print,
+  such as go2rtc's `frame.jpeg` for the printer's camera; with it, the agent's
+  `printobserver look` takes a fresh frame, and without it a look carries the
+  printer's state and no frame.
+- `obico.url` and `obico.access_token` are optional and given together, and the
+  template carries them commented out. They are Obico's own address and an
+  OAuth2 access token from its administration. When Obico paused a print and
+  the agent adjusted it, the service resumes the print and acknowledges the
+  alert through this API, which re-arms Obico's detection for the rest of the
+  print. The token is never printed or logged.
+- `safety.agent_min_interval_s` is the minimum time between agent actions that
+  change a moving print; adjustments to a paused print do not wait on it.
   Under `safety.allowed`, set the allowed range for feedrate factor, flowrate
   factor, fan percentage, bed target, and each tool target. Under
   `safety.actions`, grant action names separately to `operator`, `agent`, and
-  `system`. Choose limits suitable for your printer and material. A print
-  manifest may narrow them but cannot widen them.
+  `system`. The template grants the system `resume`, which is how a print Obico
+  paused is resumed once the agent's adjustment is in. Choose limits suitable
+  for your printer and material. A print manifest may narrow them but cannot
+  widen them.
 
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.

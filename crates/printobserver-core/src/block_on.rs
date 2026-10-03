@@ -11,7 +11,9 @@
 //! inside some other executor would never complete on this thread. That is a
 //! requirement on the adapters rather than a hidden assumption: core's own
 //! asynchronous methods are ordinary futures its caller drives, and this
-//! executor is reached only by the expiry driver.
+//! executor is reached only by the expiry driver — which restores a bounded
+//! intervention through the printer port, and resumes a print the detector
+//! paused and tells the detector through the vision port.
 
 use core::future::Future;
 use core::task::{Context, Poll};

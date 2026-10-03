@@ -148,6 +148,13 @@ fn ordered(world: &World) -> Vec<Entry> {
             Reports::Printing,
             vec![("limit".to_owned(), "7".to_owned())],
         ),
+        // A look at once: nothing arrives for a print no turn is running for,
+        // so a wait would only be the walk's own time spent.
+        named(
+            "look",
+            Reports::Printing,
+            vec![("wait_s".to_owned(), "0".to_owned())],
+        ),
     ];
     found.extend(actions(world));
     found.push(named(

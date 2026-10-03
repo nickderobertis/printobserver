@@ -158,6 +158,41 @@
       ]
     },
     {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "name": "look",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/prints/{print_id}/look",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "Look"
+        }
+      ]
+    },
+    {
       "accepts": "application/json",
       "answers": "application/json",
       "effect": "write",

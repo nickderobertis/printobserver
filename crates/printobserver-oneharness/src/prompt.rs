@@ -1,4 +1,4 @@
-//! The committed prompt template, and the four slots one turn fills.
+//! The committed prompt template, and the five slots one turn fills.
 //!
 //! The template is the whole of what a prompt may say. This module fills its
 //! slots and composes nothing beside them, which is why a rule about what the
@@ -9,6 +9,9 @@ use core::fmt;
 
 /// The slot the triggering event is written into.
 pub const EVENT_SLOT: &str = "{{event}}";
+/// The slot what the supervisor knew about the moment the turn began is
+/// written into.
+pub const SITUATION_SLOT: &str = "{{situation}}";
 /// The slot the materialized path of the event's image is written into.
 pub const IMAGE_SLOT: &str = "{{image_path}}";
 /// The slot the command that reads the print's context is written into.
@@ -18,7 +21,13 @@ pub const CONTEXT_COMMAND_SLOT: &str = "{{context_command}}";
 pub const ACTOR_SLOT: &str = "{{actor}}";
 
 /// Every slot the template declares, and there is no other.
-pub const SLOTS: [&str; 4] = [EVENT_SLOT, IMAGE_SLOT, CONTEXT_COMMAND_SLOT, ACTOR_SLOT];
+pub const SLOTS: [&str; 5] = [
+    EVENT_SLOT,
+    SITUATION_SLOT,
+    IMAGE_SLOT,
+    CONTEXT_COMMAND_SLOT,
+    ACTOR_SLOT,
+];
 
 /// What the image slot carries when the event arrived with no image.
 ///
@@ -101,7 +110,7 @@ impl PromptTemplate {
         Ok(Self { segments, order })
     }
 
-    /// The prompt for one turn: this template, with its four slots filled and
+    /// The prompt for one turn: this template, with its five slots filled and
     /// nothing else.
     ///
     /// Every slot is filled in one pass over the template's own segments, so
@@ -110,6 +119,7 @@ impl PromptTemplate {
     pub fn fill(
         &self,
         event: &str,
+        situation: &str,
         image_path: &str,
         context_command: &str,
         actor: &str,
@@ -119,6 +129,7 @@ impl PromptTemplate {
             filled.push_str(segment);
             match self.order.get(index) {
                 Some(&EVENT_SLOT) => filled.push_str(event),
+                Some(&SITUATION_SLOT) => filled.push_str(situation),
                 Some(&IMAGE_SLOT) => filled.push_str(image_path),
                 Some(&CONTEXT_COMMAND_SLOT) => filled.push_str(context_command),
                 Some(&ACTOR_SLOT) => filled.push_str(actor),
