@@ -742,6 +742,12 @@ site = "StubSpec("
 reason = "The actor-option refusal stubs stand in for the program's refusal of an option a command does not take, and they have the same single output stream as the catch-all refusal stub suppressed below: a skilltest stub carries one output and an exit code, which oneharness prints from a rewritten command. Claude Code hands the agent standard output and standard error together as one tool result, so the agent reads the same text either way. The stub keeps the program's usage exit status. The gate runs the built program on the same invocation and requires the stub's text to equal that program's standard error and its exit to equal the program's."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_skilltest_wiring.py"
+site = "answered = shell.run("
+reason = "`oneharness mock` is a hook responder: it reads one event on standard input, writes one verdict and exits, which is exactly how the harness runs it. AGENTS.md routes every subprocess in this repository through `repo_checks.shell.run`, so this call uses that one helper rather than an async client of its own. The verdict is validated before it is read: a deny carrying a string reason, the only answer the rules this test writes can produce."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"

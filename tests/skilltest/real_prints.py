@@ -112,6 +112,8 @@ class Command:
     given: tuple[tuple[str, str], ...]
     # The directory the shell ran it in, which a file an option names is read from.
     cwd: Path | None = None
+    # The options whose value the shell expands before the program reads it.
+    expanded: frozenset[str] = frozenset()
 
     @property
     def options(self) -> dict[str, str]:
@@ -330,37 +332,98 @@ def _is_separator(word: str) -> bool:
     return bool(word) and set(word) <= set(_PUNCTUATION)
 
 
-def _lines_joined(command: str) -> str:
-    """A command with every unquoted line break read as the separator a shell reads it as.
+@dataclass(frozen=True)
+class Word:
+    """One word of a shell command, and whether the shell expands something in it."""
 
-    A line break inside quotes is part of a word, and one escaped by a
-    backslash continues the line.
+    text: str
+    expands: bool = False
+
+
+class _Lexer:
+    """Reads a shell command into words as a POSIX shell splits it, for the subset agents write.
+
+    Single quotes keep everything literal; double quotes keep all but `$`, which
+    expands; a backslash keeps the next character, and before a line break
+    continues the line; an unquoted line break separates commands, as does a
+    run of `;&|()`. A `$` outside single quotes is an expansion.
     """
-    out = []
-    quote: str | None = None
-    escaped = False
-    for character in command:
-        if escaped:
-            escaped = False
-            out.append("" if character == "\n" and quote is None else "\\" + character)
-            continue
-        if character == "\\" and quote != "'":
-            escaped = True
-            continue
-        if character in "'\"" and quote in {None, character}:
-            quote = None if quote else character
-        out.append(" ; " if character == "\n" and quote is None else character)
-    return "".join(out)
+
+    def __init__(self, command: str) -> None:
+        self.command = command
+        self.words: list[Word] = []
+        self.text: list[str] = []
+        self.expands = False
+        self.started = False
+
+    def end_word(self) -> None:
+        if self.started:
+            self.words.append(Word("".join(self.text), self.expands))
+        self.text, self.expands, self.started = [], False, False
+
+    def separator(self, mark: str) -> None:
+        self.end_word()
+        last = self.words[-1] if self.words else None
+        if last is not None and _is_separator(last.text) and not last.expands and mark != "\n":
+            self.words[-1] = Word(last.text + mark)
+        else:
+            self.words.append(Word(";" if mark == "\n" else mark))
+
+    def read(self) -> list[Word] | None:
+        command, position = self.command, 0
+        while position < len(command):
+            character = command[position]
+            if character in " \t":
+                self.end_word()
+            elif character == "\n" or character in _PUNCTUATION:
+                self.separator(character)
+            elif character == "\\":
+                position += 1
+                if position < len(command) and command[position] != "\n":
+                    self.text.append(command[position])
+                    self.started = True
+            elif character == "'":
+                closing = command.find("'", position + 1)
+                if closing < 0:
+                    return None
+                self.text.append(command[position + 1 : closing])
+                self.started, position = True, closing
+            elif character == '"':
+                position = self.double_quoted(position)
+                if position < 0:
+                    return None
+            else:
+                self.expands = self.expands or character == "$"
+                self.text.append(character)
+                self.started = True
+            position += 1
+        self.end_word()
+        return self.words
+
+    def double_quoted(self, position: int) -> int:
+        """Read a double-quoted span from its opening quote; the closing quote's position."""
+        command = self.command
+        self.started = True
+        position += 1
+        while position < len(command) and command[position] != '"':
+            character = command[position]
+            if (
+                character == "\\"
+                and position + 1 < len(command)
+                and command[position + 1] in '"\\$`'
+            ):
+                position += 1
+                character = command[position]
+            elif character == "$":
+                self.expands = True
+            self.text.append(character)
+            position += 1
+        return position if position < len(command) else -1
 
 
-def _words(command: str) -> list[str]:
-    lexer = shlex.shlex(_lines_joined(command), posix=True, punctuation_chars=_PUNCTUATION)
-    lexer.whitespace_split = True
-    try:
-        return list(lexer)
-    except ValueError:
-        # An unbalanced quote: the shell refuses the whole command, so it runs nothing.
-        return []
+def _words(command: str) -> list[Word]:
+    """A command's words; none for one with an unbalanced quote, which the shell refuses."""
+    return _Lexer(command).read() or []
 
 
 def _is_program(word: str) -> bool:
@@ -368,36 +431,45 @@ def _is_program(word: str) -> bool:
     return name in {PROGRAM, f"{PROGRAM}.exe"}
 
 
-def _at_command_position(words: list[str], index: int) -> bool:
+def _at_command_position(words: list[Word], index: int) -> bool:
     """Whether the word at `index` is a command a shell runs, not an argument of one."""
     position = index - 1
-    while position >= 0 and re.fullmatch(r"\w+=.*", words[position]):
+    while position >= 0 and re.fullmatch(r"\w+=.*", words[position].text, re.DOTALL):
         position -= 1
-    return position < 0 or _is_separator(words[position]) or words[position] in _KEYWORDS
+    if position < 0:
+        return True
+    return _is_separator(words[position].text) or words[position].text in _KEYWORDS
 
 
-def _options(words: list[str]) -> tuple[tuple[str, str], ...]:
-    """The `--name value` options and lone flags of one invocation, in order, up to its end."""
+def _options(words: list[Word]) -> tuple[tuple[tuple[str, str], ...], frozenset[str]]:
+    """An invocation's options in order, up to its end, and the ones whose value expands."""
     options: list[tuple[str, str]] = []
+    expanded: set[str] = set()
     position = 0
     while position < len(words):
-        current = words[position]
+        current = words[position].text
         if _is_separator(current) or _is_program(current):
             break
         if current.startswith("--"):
             name = current[2:].replace("-", "_")
             following = words[position + 1] if position + 1 < len(words) else None
-            if following is None or following.startswith("--") or _is_separator(following):
+            if (
+                following is None
+                or following.text.startswith("--")
+                or _is_separator(following.text)
+            ):
                 options.append((name, ""))
                 position += 1
                 continue
-            options.append((name, following))
+            options.append((name, following.text))
+            if following.expands:
+                expanded.add(name)
             position += 2
             continue
         # A word that is no option's value, which the program refuses.
         options.append(("", current))
         position += 1
-    return tuple(options)
+    return tuple(options), frozenset(expanded)
 
 
 def commands_in(shell_command: str, cwd: Path | None = None) -> list[Command]:
@@ -409,14 +481,15 @@ def commands_in(shell_command: str, cwd: Path | None = None) -> list[Command]:
     words = _words(shell_command)
     found = []
     for index, word in enumerate(words):
-        if not _is_program(word) or not _at_command_position(words, index):
+        if not _is_program(word.text) or not _at_command_position(words, index):
             continue
         if index + 1 >= len(words):
             continue
-        operation = words[index + 1]
+        operation = words[index + 1].text
         if operation.startswith("-") or _is_separator(operation):
             continue
-        found.append(Command(operation=operation, given=_options(words[index + 2 :]), cwd=cwd))
+        given, expanded = _options(words[index + 2 :])
+        found.append(Command(operation=operation, given=given, cwd=cwd, expanded=expanded))
     return found
 
 
@@ -446,9 +519,10 @@ def sent_to_server(command: Command) -> bool:
     or a whole number that reads as one; a file an option names readable, from
     the directory the command ran in; a value bound for the request's path
     an identifier; a duration inside the bounds `surface.rs` declares; and
-    every value the command requires. A value the shell expands (`"$A"`) is
-    taken as given. What the supervisor then makes of the request is the
-    stubs'. `skilltest-wiring` holds this to what the built program does.
+    every value the command requires. A value the shell expands (`"$A"`, not
+    `'$A'`) is taken as given, since what it expands to is the shell's. What the
+    supervisor then makes of the request is the stubs'. `skilltest-wiring`
+    holds this to what the built program does.
     """
     spec = surface().command(command.operation)
     if spec is None or spec.operation is None or {"help", "version"} & set(command.options):
@@ -468,7 +542,7 @@ def sent_to_server(command: Command) -> bool:
         if field is None or not value or field.name in supplied:
             return False
         supplied.add(field.name)
-        if "$" in value:
+        if name in command.expanded:
             continue
         if option in field.file_forms:
             named = Path(value) if command.cwd is None else command.cwd / value

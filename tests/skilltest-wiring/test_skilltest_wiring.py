@@ -129,6 +129,7 @@ def _hook(rules: list[tuple[str, str]], built: Built, command: str, description:
             "tool_name": "Bash",
             "tool_input": {"command": command, "description": description},
         }
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         answered = shell.run(
             [ONEHARNESS, "mock", "claude-code", "--rules", str(directory / "rules.json")],
             stdin=json.dumps(event, separators=(",", ":"), ensure_ascii=False),
@@ -138,7 +139,13 @@ def _hook(rules: list[tuple[str, str]], built: Built, command: str, description:
         shutil.rmtree(directory, ignore_errors=True)
     if not answered.stdout.strip():
         return None
-    return json.loads(answered.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+    verdict = json.loads(answered.stdout)
+    reason = verdict.get("hookSpecificOutput", {}).get("permissionDecisionReason")
+    if verdict["hookSpecificOutput"].get("permissionDecision") != "deny" or not isinstance(
+        reason, str
+    ):
+        pytest.fail(f"the hook answered in a shape these rules do not produce: {verdict}")
+    return reason
 
 
 def _routed(built: Built, command: str, description: str = "Run a command") -> str | None:
@@ -738,6 +745,10 @@ def test_an_invocation_the_program_refuses_or_answers_at_once_takes_no_effect() 
     )
     expanded = 'A=$(cat actor.json); printobserver pause --print-id P --actor "$A" --reason r'
     expect.truth(sent_to_server(commands_in(expanded)[0]), describing="an actor the shell expands")
+    literal = "printobserver look --print-id P --wait-s '$W'"
+    expect.truth(
+        not sent_to_server(commands_in(literal)[0]), describing="a `$` the shell leaves literal"
+    )
     for refused in (
         taken + " --percent 100",
         taken + " --version",
@@ -792,6 +803,7 @@ def _variants(case: Built) -> list[str]:
         f"printobserver set-tool-target-c {common} {actor} --tool 0 --target-c 215 --reason r",
         f"printobserver look {common} --wait-s 30",
         f"printobserver look {common} --wait-s soon",
+        f"printobserver look {common} --wait-s '$soon'",
         f"printobserver history {common} --limit 5",
         f"printobserver context {common} --actor {actor}",
         f"printobserver frobnicate {common}",
