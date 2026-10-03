@@ -13,9 +13,11 @@ inside the harness as a Rust regex over the compact JSON of a tool call,
 `{"tool_name":"Bash","tool_input":{"command":"...",...}}` — the haystack
 skilltest documents for its rules — so each is anchored at a command the shell
 runs inside the `command` string, crosses no unescaped quote, and uses only
-what Rust's regex and Python's `re` read the same way. Every live run holds
-that assumption to the real hook: a `printobserver` command no stub intercepted
-fails it (`test_real_prints_skilltest._unstubbed`).
+what Rust's regex and Python's `re` read the same way. The gate routes every
+command it checks through the real hook, `oneharness mock claude-code`, fed a
+`PreToolUse` event as Claude Code sends one; every live run holds the patterns
+to the real harness's own input, failing on a `printobserver` command no stub
+intercepted (`test_real_prints_skilltest._unstubbed`).
 """
 
 from __future__ import annotations

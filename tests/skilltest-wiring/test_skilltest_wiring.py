@@ -94,21 +94,62 @@ def built() -> Iterator[dict[str, Built]]:
         shutil.rmtree(root, ignore_errors=True)
 
 
-def _haystack(command: str, description: str = "Run a command") -> str:
-    """A shell call as the harness's hook matches it: the compact JSON of the call."""
-    call = {"tool_name": "Bash", "tool_input": {"command": command, "description": description}}
-    return json.dumps(call, separators=(",", ":"), ensure_ascii=False)
+ONEHARNESS = shutil.which("oneharness")
+
+
+def _hook(rules: list[tuple[str, str]], built: Built, command: str, description: str) -> str | None:
+    """Which rule the real hook applies to a shell call, as a live run's harness hands it one.
+
+    `oneharness mock` is the responder skilltest installs as Claude Code's
+    pre-tool hook, and it matches each rule's pattern as a regex over the raw
+    event Claude Code sends: here a `PreToolUse` event for the call, run from
+    the scenario's workspace. Every rule answers with its own name, so the
+    first that matched is the one named.
+    """
+    if ONEHARNESS is None:
+        pytest.fail("oneharness, which a live run's hook is, is not installed")
+    ruleset = {
+        "rules": [
+            {
+                "match": {"tool": "bash", "event_regex": pattern},
+                "action": {"deny": {"message": name}},
+            }
+            for name, pattern in rules
+        ]
+    }
+    directory = Path(tempfile.mkdtemp())
+    try:
+        (directory / "rules.json").write_text(json.dumps(ruleset), encoding="utf-8")
+        event = {
+            "session_id": "a-session",
+            "transcript_path": str(built.workspace.parent / "transcript.jsonl"),
+            "cwd": str(built.workspace),
+            "permission_mode": "dontAsk",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": command, "description": description},
+        }
+        answered = shell.run(
+            [ONEHARNESS, "mock", "claude-code", "--rules", str(directory / "rules.json")],
+            stdin=json.dumps(event, separators=(",", ":"), ensure_ascii=False),
+            timeout=60,
+        )
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+    if not answered.stdout.strip():
+        return None
+    return json.loads(answered.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def _routed(built: Built, command: str, description: str = "Run a command") -> str | None:
-    """The stub that answers a command: the first whose pattern matches, as the hook picks."""
-    haystack = _haystack(command, description)
-    return next((spec.name for spec in built.stubs if re.search(spec.pattern, haystack)), None)
+    """The stub the real hook answers a command with: the first whose pattern matches."""
+    return _hook([(spec.name, spec.pattern) for spec in built.stubs], built, command, description)
 
 
-def _watches(watcher: ToolSpy, command: str) -> bool:
-    """Whether a spy observes a command, matched as the hook matches it."""
-    return re.search(watcher._match_spec()["pattern"], _haystack(command)) is not None
+def _watches(watcher: ToolSpy, built: Built, command: str) -> bool:
+    """Whether a spy observes a command, matched by the real hook as the run matches it."""
+    pattern = watcher._match_spec()["pattern"]
+    return _hook([("watched", pattern)], built, command, "Run a command") == "watched"
 
 
 def _command(built: Built, step: Step, *, reason: bool = True) -> str:
@@ -247,11 +288,11 @@ def test_every_never_step_is_a_not_called_eval(scenario: Scenario, built: dict[s
             any(w is watcher for w in watched), describing=f"a not_called eval on {step.describe()}"
         )
         expect.truth(
-            _watches(watcher, _command(case, step)),
+            _watches(watcher, case, _command(case, step)),
             describing=f"the spy for never {step.describe()} to observe it being taken",
         )
         expect.truth(
-            not _watches(watcher, f"printobserver {step.operation} --help"),
+            not _watches(watcher, case, f"printobserver {step.operation} --help"),
             describing=f"the spy for never {step.describe()} to ignore a request for its usage",
         )
 
@@ -283,7 +324,9 @@ def test_every_outcome_is_checked(scenario: Scenario, built: dict[str, Built]) -
     expect.equal(len(watched), len(required_steps(scenario)), describing="the called evals")
     for step, watcher in case.required:
         expect.truth(any(w is watcher for w in watched), describing=f"called({step.describe()})")
-        expect.truth(_watches(watcher, _command(case, step)), describing="it observes the step")
+        expect.truth(
+            _watches(watcher, case, _command(case, step)), describing="it observes the step"
+        )
 
 
 def test_a_step_is_taken_only_by_a_command_the_program_carries_out(tmp_path: Path) -> None:
