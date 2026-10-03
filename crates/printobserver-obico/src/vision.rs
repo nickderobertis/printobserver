@@ -159,9 +159,9 @@ impl ObicoApi {
 pub const HANDLED_OVERWRITE: &str = "FAILED";
 
 /// The path, under Obico's own address, one printer's alert is acknowledged at.
-// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 fn acknowledgement_path(provider_printer_id: i64) -> String {
     format!(
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
         "/api/v1/printers/{provider_printer_id}/acknowledge_alert/?alert_overwrite={HANDLED_OVERWRITE}"
     )
 }

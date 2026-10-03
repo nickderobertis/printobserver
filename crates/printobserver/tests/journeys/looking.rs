@@ -531,10 +531,11 @@ fn without_an_adjustment_the_detectors_pause_holds_past_the_grace() {
 
 /// A detector that reports the pause again after the agent adjusted the print
 /// does not undo the adjustment: the resume it earned still comes, and the
-/// newer detection is the one acknowledged.
+/// newer detection is the one acknowledged — to its own printer, and with a
+/// refusal recorded against its own event.
 #[test]
-fn a_repeated_detection_keeps_the_resume_an_adjustment_earned() {
-    let api = obico("200 OK");
+fn a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged() {
+    let api = obico("403 Forbidden");
     let world = World::configured(
         STOOD_IN,
         &committed_skill(),
@@ -564,21 +565,39 @@ fn a_repeated_detection_keeps_the_resume_an_adjustment_earned() {
         ],
     );
     assert_eq!(ran.code, Some(0), "{}", ran.said());
-    post(
-        &world,
-        &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
-    );
-    wait_for("the second detection's turn to be over", PATIENCE, || {
-        events_of(&world, &world.print_id, "port_failure").len() >= 2
-    });
+    let mut again = alert(&world, 4211, crate::machine::RUNNING_FILE, false, true);
+    again["printer"]["id"] = json!(OBICO_PRINTER + 1);
+    post(&world, &again);
 
-    wait_for("the print to be resumed", PATIENCE, || {
-        reports(&world) == Some(Reports::Printing)
-    });
+    let refused = || {
+        events_of(&world, &world.print_id, "port_failure")
+            .into_iter()
+            .find(|failure| failure["payload"]["site"] == "detector_acknowledgement")
+    };
+    wait_for(
+        "the refused acknowledgement to be recorded",
+        PATIENCE,
+        || refused().is_some(),
+    );
+    assert_eq!(reports(&world), Some(Reports::Printing));
     let resumes = actions_asked(&world, &world.print_id)
         .into_iter()
         .filter(|action| action["action"] == "resume")
         .count();
     assert_eq!(resumes, 1);
-    wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
+    let newer = events_of(&world, &world.print_id, "obico_failure_alert")
+        .pop()
+        .expect("the newer detection")["id"]
+        .clone();
+    assert_eq!(refused().expect("recorded")["payload"]["event_id"], newer);
+    let heads = api.received();
+    assert_eq!(heads.len(), 1, "{heads:?}");
+    assert!(
+        heads[0].starts_with(&format!(
+            "POST /api/v1/printers/{}/acknowledge_alert/",
+            OBICO_PRINTER + 1
+        )),
+        "{}",
+        heads[0]
+    );
 }
