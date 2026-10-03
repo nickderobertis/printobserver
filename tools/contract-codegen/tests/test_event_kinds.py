@@ -405,6 +405,8 @@ def test_a_kind_table_no_read_lists_events_for_stops_the_walk(
     def one_event(schema: dict[str, Any]) -> None:
         schema["properties"]["events"] = {"$ref": f"#/$defs/{ENVELOPE}"}
 
+    # The schema is parsed JSON, so it is typed as `_rewrite` hands it over,
+    # exactly as `one_event` above takes it.
     def one_arrival(schema: dict[str, Any]) -> None:
         schema["properties"]["arrived"] = {"$ref": f"#/$defs/{ENVELOPE}"}
 
