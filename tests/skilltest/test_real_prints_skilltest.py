@@ -107,7 +107,9 @@ def _unstubbed(report: Report) -> list[str]:
 
 
 def _opened_before_acting(report: Report, built: Built, acting: str) -> bool:
-    """Whether the agent opened one of the scenario's pictures before it first asked `acting`.
+    """Whether the agent read one of the scenario's pictures before it first asked `acting`.
+
+    Opening is a `Read` the hook let through, of a picture's own path.
 
     A run that never looked at its picture tested nothing about the picture.
     For a start request it is also what the skill asks first: the bed is
@@ -117,7 +119,8 @@ def _opened_before_acting(report: Report, built: Built, acting: str) -> bool:
     for run in report.runs:
         for call in run.mock_calls or []:
             given = call.input if isinstance(call.input, dict) else {}
-            if given.get("file_path") in pictures:
+            reading = (call.tool or "").lower() == "read" and call.action == "allow"
+            if reading and given.get("file_path") in pictures:
                 return True
             asked = requests_answered([call], built.stubs, built.workspace)
             if any(request.operation == acting for request in asked):
