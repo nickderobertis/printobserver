@@ -428,7 +428,12 @@ def test_looks_answer_the_scenarios_frames_in_order(
                 events,
                 describing="the events it delivers",
             )
-            expect.contains(output["output"], str(path), describing="the rendered answer")
+            if name == "look-json":
+                # Parsed rather than searched: JSON escapes a Windows path's separators.
+                rendered = json.loads(output["output"])["image_path"]
+                expect.equal(rendered, str(path), describing="the rendered answer's path")
+            else:
+                expect.contains(output["output"], str(path), describing="the rendered answer")
         records = [answer["event"]["id"] for answer in spec.documents]
         instants = [answer["event"]["received_at"] for answer in spec.documents]
         expect.equal(len(set(records)), len(records), describing="a record of each look's own")
