@@ -381,6 +381,18 @@ program_constant = "SERVICE_NAME"
 # `docs-link-symlinks`.
 tier = "test-skill-install"
 
+[skilltest]
+# The skill tier: the `printobserver` skill run through a real harness on every
+# scenario of every `tests/real-prints/*/case.json`, with every `printobserver`
+# command stubbed, and judged by that case's `assertions`. Like the tiers above
+# it declares a `tier` recipe, which is how the documentation check inventories
+# it. It is deliberately NOT one of `gate.tiers`: each scenario spends real
+# model turns and needs a signed-in harness, so nothing runs it on a change and
+# a person runs it by hand. Its deterministic half — every scenario built with
+# no model and held to the cases, the turn template and the generated examples
+# — is the `skilltest-wiring` project's `test` target, which the gate runs.
+tier = "skilltest"
+
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable
 # of destroying itself, and so the one thing nothing may select automatically.

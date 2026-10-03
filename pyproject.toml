@@ -16,6 +16,18 @@
 [tool.uv.workspace]
 members = []
 
+[tool.uv]
+# `skilltest-sdk` requires `oneharness-cli`, and oneharness publishes no build
+# for Windows on ARM, so without this `uv sync` refuses that host outright and
+# takes every tier there with it. The requirement is skilltest-sdk's own, with
+# that one platform marked off, under either name its machine goes by: the SDK
+# is pure Python, and the wiring tests that need the oneharness binary skip
+# where this lock's wheels carry none, as `tests/skilltest/real_prints.py`'s
+# `publishing` reads them.
+override-dependencies = [
+    "oneharness-cli>=0.16.0,<0.17; sys_platform != 'win32' or (platform_machine != 'ARM64' and platform_machine != 'aarch64')",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.16",
@@ -27,6 +39,8 @@ dev = [
     "actionlint-py>=1.7",
     "shellcheck-py>=0.11",
     "jsonschema>=4.25",
+    "skilltest-pytest>=0.12.0",
+    "skilltest-sdk>=0.12.0",
 ]
 # zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
 # Unix host. Its own group rather than `dev` so hosts that never run that pass —
@@ -47,6 +61,11 @@ convention = "google"
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
+# Registered here rather than beside the tests that use it: `--strict-markers`
+# refuses a marker it does not know, wherever pytest is pointed.
+markers = [
+    "skilltest_e2e: opt-in skill test through a real harness; needs SKILLTEST_E2E=1",
+]
 pythonpath = [
     "tools/repo-checks/src",
     "tools/contract-codegen/src",
@@ -56,6 +75,7 @@ pythonpath = [
     "tools/octoprint-env",
     "tools/obico-env",
     "tools/printer-smoke",
+    "tests/skilltest",
 ]
 
 [tool.coverage.run]
@@ -96,4 +116,6 @@ root = [
     "tools/obico-env/tests",
     "tools/printer-smoke",
     "tools/printer-smoke/tests",
+    "tests/skilltest",
+    "tests/skilltest-wiring",
 ]

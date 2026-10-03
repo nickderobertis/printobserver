@@ -24,37 +24,35 @@ Six steps, in this order, every turn. The commands are in
 of each one you can follow as it is written.
 
 1. **Read the context.** One read gives you the printer, the job, the bounds in
-   force for this print, the adjustments still standing, the print's recent
-   events, and where the latest picture of it is. Read it before you conclude
-   anything; it is the only thing that tells you what happened between turns.
+   force, the adjustments standing, recent events and the latest picture. Read
+   it before you conclude anything.
 2. **Look at the image.** The context answers a path to a file on this host.
    Open that file and look at it. A path is not evidence and neither is a
    picture too dark, too blurred or aimed at nothing — say so rather than
-   reading detail into it. Loose strands where a wall should be, a part off the
-   bed, thin or missing layers, a first layer not sticking: that is what a
-   failing print looks like.
-3. **Look again, and watch if you need to.** The event's picture and what
-   you read first are from when the event arrived. A look takes a fresh frame and
-   reads the printer as it is now, and it can wait up to a minute and a half
-   first, so a few looks in a row show a defect growing or settling before you
-   commit. Open each frame as you opened the first. A look returns early when a
-   new event arrives for this print and hands it to you: that is how later
-   alerts reach you, rather than as another turn.
+   reading detail into it. Loose strands where a wall should be, walls you can
+   see through or infill showing where a surface belongs (under-extrusion),
+   sagging bridges or overhangs (too little cooling), a part off the bed, a first
+   layer not sticking: that is what a failing print looks like. A file's name
+   never makes a defect intended.
+3. **Look again, and watch if you need to.** A look takes a fresh frame and
+   reads the printer now, and it can wait up to a minute and a half first, so a
+   few looks show a defect growing or settling. Open each frame. A look returns
+   early with any new event for this print: that is how later alerts reach you.
 4. **Decide.** Weigh what you see against what the history says, and say which
    way you are going and how sure you are. A single frame is one moment; when
    it and the history disagree, prefer the history and say so.
 5. **Act, and say why.** If something should change, ask for it — with a reason
    somebody reading the record can act on, and, when the change is meant to be
-   temporary, with the time it should stand for. Every adjustment goes through
-   the same policy an operator's does;
-   [the intervention policy](reference/intervention-policy.md) holds the
+   temporary, with the time it should stand for.
+   [The intervention policy](reference/intervention-policy.md) holds the
    bounds, the rejections and what happens when a bounded change expires. If
    nothing should change, ask for nothing. After acting, look again to see
    whether it helped.
 6. **Record what you saw.** Acknowledge the failure event you were handed, with
-   a reason that says what you saw and what you made of it. That puts your
-   reading in the print's own record, where the next turn and the operator find
-   it. It asks nothing of the machine.
+   a reason that says what you saw and what you made of it: disposition
+   continue when nothing is wrong, a false alarm included; watch when something
+   may be going wrong; stop when the print should stop. It asks nothing of the
+   machine.
 
 ## When the detector has already paused the print
 
@@ -72,6 +70,12 @@ safe, so take the time to look.
   acknowledge the failure with the disposition stop: the print stays paused
   for a person, and your reason is what they read.
 
+## When you are asked to start a print
+
+Open the camera's frame first, and start only on an empty bed. The sheet's
+printed lines, logo and glare are not debris; a strand, a part or a blob is.
+If one is there, ask for nothing and tell the person what it is and where.
+
 ## The boundaries you work inside
 
 - **Every adjustment is bounded.** The context tells you the range each thing
@@ -85,7 +89,8 @@ safe, so take the time to look.
 - **The vocabulary is closed, and deliberately so: no path in this system sends
   a command to the printer.** No G-code, no free-form command, no escape hatch —
   only the named adjustments the policy rules on. That closed set is why an
-  agent is allowed near a machine that can set itself on fire.
+  agent may come near a machine that can set itself on fire. Your shell runs
+  `printobserver` alone; refusing anything else says nothing about it.
 
 ## When to escalate instead
 
@@ -103,11 +108,8 @@ adjusting a print you have decided needs a person.
 
 ## Where everything else is
 
-- [The API and the clients](reference/api-and-clients.md) — the same
-  surface over HTTP, for a program.
-- [The schemas](reference/schemas.md) — the exact shape of everything this
-  system answers.
-- [The architecture](reference/architecture.md) — what each part owns and
-  why you reach this system the way an operator does.
-- [Testing](reference/testing.md) — what this repository proves about
-  itself, and when.
+- [The API and the clients](reference/api-and-clients.md): the same surface
+  over HTTP.
+- [The schemas](reference/schemas.md): the shape of every answer.
+- [The architecture](reference/architecture.md): what each part owns.
+- [Testing](reference/testing.md): what this repository proves.

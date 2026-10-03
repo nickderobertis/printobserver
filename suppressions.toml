@@ -706,6 +706,54 @@ site = "test-skill-install"
 reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells are deliberately not given GitHub CLI, so a `test` target here would put a journey that refuses without `gh` into the gate. The repository names a tier that runs only in its own job after its recipe — `test-integration`, `test-obico` — and `tools/obico-env/project.json` is the same shape as this one: `format`, `format-check`, `lint` and `typecheck` by the standard names, and its tests under its tier's name alone. `test-skill-install` is that name, the recipe `just test-skill-install` fans it out by, and `repo-policy.toml`'s `[skill_install]` declares it."
 
 [[suppression]]
+rule = "new_projects_keep_the_graph_uniform"
+file = "tests/skilltest/project.json"
+site = "skilltest"
+reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells carry neither a signed-in harness nor a budget for model turns, so the live skill tests cannot sit behind it. This project keeps the standard names for everything the gate can run — `format`, `format-check`, `lint`, `typecheck`, and `test` for its deterministic half, which builds every scenario with no model — and puts the live tests under the tier's own name alone, as `tests/skill-install/project.json` does with `test-skill-install` and `tools/obico-env/project.json` with `test-obico`. `skilltest` is that name, the recipe `just skilltest` runs it by, and `repo-policy.toml`'s `[skilltest]` declares it."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "tests/skilltest/surface.py"
+site = "allowed = _rust_list(TURN, \"CLAUDE_READ_TOOLS\") + ["
+reason = "This is the read grant a production Claude Code turn runs with, read from `turn.rs` itself, and the skill tier exists to put the agent in a production turn's position: a test that scoped reads more narrowly than production would prove a different agent's behaviour. `turn.rs`'s own grant carries the reason it is unscoped, a supervision turn reading the event's image from the state directory and the skill's reference documents across platform path forms. Here it is bounded further by where the run happens: a fresh temporary directory holding only the copied skill, the case's pictures and a client configuration naming no reachable server, with every `printobserver` command stubbed and every other shell command refused by the same rules."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/test_real_prints_skilltest.py"
+site = "report = run_skill("
+reason = "`run_skill` is skilltest's typed client, returning a parsed `Report`; its only async form, `stream_skill`, reads the terminal report through asyncio's default 64 KiB stream line limit as a single line, and this tier's reports already reach about 70 KB indented, so the async client would fail on the very runs this test makes. A pytest test with one run to wait on gains nothing from an event loop."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_skilltest_wiring.py"
+site = "run_skill("
+reason = "The same typed client as the live tier's, for the same reason: skilltest's async `stream_skill` reads its terminal report as one line through asyncio's 64 KiB stream limit, which this tier's reports approach. Here the call never reaches a harness at all: it hands a built case to skilltest's own loader with a provider that does not exist, so the run stops at the provider having read the whole definition, and there is nothing to await."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tests/skilltest/scenario.py"
+site = "\"refused\", None, program_pattern(), (refusal,), Render.TEXT, exits[\"usage\"], False"
+reason = "This is a stub standing in for the program's refusal, not the program: a skilltest stub carries one output and an exit code, and oneharness hands it to the harness as a rewritten command printing that output, so there is no second stream to put the refusal on. The stub keeps the part of the contract an agent can tell apart, the program's own usage exit status. What the agent reads is unchanged by the stream: Claude Code returns a shell command's standard output and standard error together as one tool result. The real program writes its refusals to standard error, and the gate's corpus test holds the judge to that program's exit statuses."
+
+[[suppression]]
+rule = "cli_output_contract"
+file = "tests/skilltest/scenario.py"
+site = "StubSpec("
+reason = "The actor-option refusal stubs stand in for the program's refusal of an option a command does not take, and they have the same single output stream as the catch-all refusal stub suppressed below: a skilltest stub carries one output and an exit code, which oneharness prints from a rewritten command. Claude Code hands the agent standard output and standard error together as one tool result, so the agent reads the same text either way. The stub keeps the program's usage exit status. The gate runs the built program on the same invocation and requires the stub's text to equal that program's standard error and its exit to equal the program's."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_skilltest_wiring.py"
+site = "answered = shell.run("
+reason = "`oneharness mock` is a hook responder: it reads one event on standard input, writes one verdict and exits, which is exactly how the harness runs it. AGENTS.md routes every subprocess in this repository through `repo_checks.shell.run`, so this call uses that one helper rather than an async client of its own. The verdict is validated before it is read: a deny carrying a string reason, the only answer the rules this test writes can produce."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/test_real_prints_skilltest.py"
+site = "return sorted("
+reason = "The manager ruled that each live run records the model it actually ran on, and with no model pinned, which is what the shipped configuration leaves a turn, neither skilltest's report nor OneHarness carries it: the only record is Claude Code's own session log, so reading it means reading its location and shape, which the one statement under the directive does: the session directory, its JSON-lines files, and the `message.model` field. There is no authoritative source to derive them from, and the gate cannot reconcile them, because the gate's runners have no Claude Code to run. The drift gate is the live tier itself: every live run fails when the record yields no model (`expect.truth(models, ...)` in the test), so a moved or reshaped record stops the evidence rather than silently dropping it."
+
+[[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"

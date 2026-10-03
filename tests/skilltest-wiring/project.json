@@ -1,0 +1,19 @@
+{
+  "name": "skilltest-wiring",
+  "root": "tests/skilltest-wiring",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["skilltest"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tests/skilltest-wiring" },
+    "format-check": { "command": "uv run -q ruff format --check tests/skilltest-wiring" },
+    "lint": { "command": "uv run -q ruff check tests/skilltest-wiring" },
+    "typecheck": {
+      "command": "uv run -q ty check tests/skilltest-wiring && uv run -q ty check --python-platform win32 tests/skilltest-wiring"
+    },
+    "test": {
+      "command": "uv run -q pytest tests/skilltest-wiring",
+      "dependsOn": [{ "projects": ["printobserver"], "target": "build" }]
+    }
+  }
+}
