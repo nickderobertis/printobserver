@@ -35,6 +35,8 @@ from typing import Any, NewType
 
 from answers import from_labelled, labelled, machine
 from real_prints import (
+    ADJUSTABLE,
+    DECISION,
     OBICO_SAMPLE,
     PROMPT_SLOTS_SOURCE,
     SCHEMAS,
@@ -247,17 +249,65 @@ class Adjustment:
     nominal: float
 
 
-# Each adjustment's value is answered on a grid: every value of its resolution
-# inside the bounds the configuration allows, each by a stub of its own, so the
-# answer echoes the value asked for. A value off the grid is answered at the
-# printer's nominal reading.
-ADJUSTMENTS = (
-    Adjustment("set-feedrate-factor", "feedrate", "factor", Decimal("0.01"), 1.0),
-    Adjustment("set-flowrate-factor", "flowrate", "factor", Decimal("0.01"), 1.0),
-    Adjustment("set-fan-percent", "fan", "percent", Decimal(1), 100.0),
-    Adjustment("set-tool-target-c", "tool_target:0", "target_c", Decimal(1), NOZZLE_C),
-    Adjustment("set-bed-target-c", "bed_target", "target_c", Decimal(1), BED_C),
-)
+# The printer's nominal reading of each adjustable, which a value off an
+# adjustment's grid is answered at, by the adjustable's own spelling.
+NOMINAL = {
+    "feedrate": 1.0,
+    "flowrate": 1.0,
+    "fan": 100.0,
+    "tool_target": NOZZLE_C,
+    "bed_target": BED_C,
+}
+# The tool every tool target here is for: the one tool these prints' printer has.
+TOOL = 0
+
+
+def adjustments() -> tuple[Adjustment, ...]:
+    """Every bounded adjustment, as the decision core pairs each action with what it adjusts.
+
+    `decision.rs`'s `adjustment` names, per action, the adjustable it changes
+    and the field carrying the value; `adjustable.rs` spells each adjustable as
+    the bounds name it. Each value is answered on a grid: every value of its
+    resolution inside the bounds the configuration allows, each by a stub of
+    its own, so the answer echoes the value asked for — hundredths for a span a
+    factor's size, whole units otherwise.
+
+    Raises:
+        ValueError: If the core no longer pairs actions with adjustables that way.
+    """
+    decision = DECISION.read_text(encoding="utf-8")
+    spellings = dict(
+        re.findall(
+            r'Self::(\w+)(?: \{[^}]*\})? => formatter\.write_str\("(\w+)"\)',
+            ADJUSTABLE.read_text(encoding="utf-8"),
+        )
+    )
+    tool_target = re.search(r'const TOOL_TARGET: &str = "(\w+)";', ADJUSTABLE.read_text("utf-8"))
+    pairs = re.findall(
+        r"PrintAction::(\w+) \{[^}]*\} => \{?\s*Some\(\(Adjustable::(\w+)[^,]*, \*(\w+)\)\)",
+        decision,
+    )
+    if not pairs or tool_target is None:
+        msg = f"{DECISION} no longer pairs each adjustment with the adjustable it changes"
+        raise ValueError(msg)
+    found = []
+    allowed = bounds()
+    for action, variant, parameter in pairs:
+        command = re.sub(r"(?<!^)(?=[A-Z])", "-", action).lower()
+        if variant in spellings:
+            adjustable, nominal = spellings[variant], NOMINAL[spellings[variant]]
+        else:
+            adjustable = f"{tool_target[1]}:{TOOL}"
+            nominal = NOMINAL[tool_target[1]]
+        span = allowed[adjustable].max - allowed[adjustable].min
+        resolution = Decimal("0.01") if span <= FACTOR_SPAN else Decimal(1)
+        found.append(Adjustment(command, adjustable, parameter, resolution, nominal))
+    return tuple(found)
+
+
+# The widest span a factor's bounds have, past which a value is a whole number.
+FACTOR_SPAN = 5.0
+ADJUSTMENTS = adjustments()
 
 
 @dataclass
@@ -825,8 +875,8 @@ def _answers(
 
 def _adjusted(composer: _Composer, adjustment: Adjustment, value: float) -> dict[str, Any]:
     action: dict[str, Any] = {adjustment.parameter: value, "reason": ECHOED_REASON}
-    if adjustment.adjustable.startswith("tool_target:"):
-        action["tool"] = int(adjustment.adjustable.split(":")[1])
+    if adjustment.adjustable.endswith(f":{TOOL}"):
+        action["tool"] = TOOL
     return composer.record(adjustment.command, action)
 
 

@@ -851,3 +851,15 @@ def test_the_judge_agrees_with_the_program_on_what_it_sends(built: dict[str, Bui
                 )
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+
+
+def test_every_adjustment_is_a_command_with_its_value_and_a_bound() -> None:
+    """Each adjustment read from the core is a command of the program, taking its value field."""
+    expect.truth(ADJUSTMENTS, describing="adjustments read from the decision core")
+    allowed = bounds()
+    for adjustment in ADJUSTMENTS:
+        spec = surface().command(adjustment.command)
+        expect.truth(spec is not None, describing=f"{adjustment.command} a command")
+        fields = {field.name for field in spec.fields} if spec else set()
+        expect.contains(fields, adjustment.parameter, describing=f"{adjustment.command}'s fields")
+        expect.contains(allowed, adjustment.adjustable, describing="the configured bounds")

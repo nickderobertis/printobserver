@@ -44,6 +44,8 @@ COMMON_OPERATIONS = SKILL / "reference" / "common-operations.md"
 SERVICE_INSTALLER = REPO / "scripts" / "install-service.sh"
 OBICO_SAMPLE = REPO / "crates" / "printobserver-obico" / "samples" / "obico" / "failure-alert.json"
 SCHEMAS = REPO / "schemas"
+DECISION = REPO / "crates" / "printobserver-core" / "src" / "decision.rs"
+ADJUSTABLE = REPO / "crates" / "printobserver-printer-api" / "src" / "adjustable.rs"
 
 CaseName = NewType("CaseName", str)
 ScenarioId = NewType("ScenarioId", str)
