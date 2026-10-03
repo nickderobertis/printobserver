@@ -36,7 +36,15 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from real_prints import REPO, Scenario, commands_written, met_outcome, scenarios, shipped_model
+from real_prints import (
+    REPO,
+    Scenario,
+    commands_in,
+    commands_written,
+    met_outcome,
+    scenarios,
+    shipped_model,
+)
 from repo_checks import expect
 from scenario import build, harness_config
 from skilltest_pytest import Report, describe_failures, run_skill
@@ -80,6 +88,23 @@ def _stealth(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     ]
     monkeypatch.setenv("PATH", os.pathsep.join(kept))
     monkeypatch.setenv("PWD", str(workspace))
+
+
+def _unstubbed(report: Report) -> list[str]:
+    """Every shell command naming a `printobserver` invocation that no stub intercepted.
+
+    The stubs' patterns assume the shape of the call the harness hook matches
+    them against; the run report's `mock_calls` are what the real hook saw and
+    did, so a `printobserver` invocation it let through is a pattern that does
+    not match a real call, and would have run a program that is not there.
+    """
+    found = []
+    for run in report.runs:
+        for call in run.mock_calls or []:
+            command = call.input.get("command") if isinstance(call.input, dict) else None
+            if isinstance(command, str) and commands_in(command) and call.action == "allow":
+                found.append(command)
+    return found
 
 
 def _shell_commands(report: Report) -> list[str]:
@@ -150,6 +175,11 @@ def test_the_skill_takes_an_action_the_case_accepts(
     finally:
         shutil.rmtree(config.parent, ignore_errors=True)
 
+    expect.equal(
+        _unstubbed(report),
+        [],
+        describing=f"every printobserver command {scenario.test_id} ran to reach a stub",
+    )
     shell = _shell_commands(report)
     ran = commands_written(shell, cwd=built.workspace)
     met = met_outcome(scenario, ran)
