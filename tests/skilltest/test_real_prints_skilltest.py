@@ -42,6 +42,7 @@ from real_prints import (
     Scenario,
     begins_with_program,
     met_outcome,
+    published,
     scenarios,
     shipped_model,
 )
@@ -59,7 +60,7 @@ TIMEOUT_S = 900
 
 
 def _provider_available() -> bool:
-    return ONEHARNESS is not None and shutil.which("claude") is not None
+    return published("skilltest") and ONEHARNESS is not None and shutil.which("claude") is not None
 
 
 @pytest.fixture
@@ -175,7 +176,8 @@ def _keep(
 @pytest.mark.skilltest_e2e
 @pytest.mark.skipif(
     not _provider_available(),
-    reason="no skilltest provider: oneharness and Claude Code must both be on PATH",
+    reason="no skilltest provider: skilltest must publish this platform, and oneharness and"
+    " Claude Code must both be on PATH",
 )
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario.test_id)
 def test_the_skill_takes_an_action_the_case_accepts(

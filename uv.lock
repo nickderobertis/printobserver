@@ -3,6 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [manifest]
+overrides = [{ name = "oneharness-cli", marker = "(platform_machine != 'ARM64' and platform_machine != 'aarch64') or sys_platform != 'win32'", specifier = ">=0.16.0,<0.17" }]
 
 [manifest.dependency-groups]
 dev = [
@@ -443,7 +444,7 @@ name = "skilltest-sdk"
 version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "oneharness-cli" },
+    { name = "oneharness-cli", marker = "(platform_machine != 'ARM64' and platform_machine != 'aarch64') or sys_platform != 'win32'" },
     { name = "pydantic" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/41/f1/7002ec55441e408355cf7f9e9b361a589233f18b90180bd6d2e61ee087cf/skilltest_sdk-0.12.0.tar.gz", hash = "sha256:3cff92ef9b8f18081bbb3d4584caa2e883fd552868a1cd29fdff608b0a829662", size = 41930, upload-time = "2026-10-03T02:48:42.378Z" }

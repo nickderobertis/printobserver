@@ -38,11 +38,13 @@ import test_real_prints_skilltest as live
 from answers import example_answers, field_names, from_labelled, labelled, machine
 from jsonschema import Draft202012Validator
 from jsonschema.protocols import Validator
+from packaging.markers import Marker
 from real_prints import (
     CASES,
     COMMON_OPERATIONS,
     SCHEMAS,
     TURN_PROMPT,
+    UNPUBLISHED,
     Scenario,
     Step,
     Trigger,
@@ -51,6 +53,7 @@ from real_prints import (
     commands_in,
     met_outcome,
     outcome_met,
+    published,
     recorded_step,
     required_steps,
     sent_to_server,
@@ -96,6 +99,14 @@ def built() -> Iterator[dict[str, Built]]:
 
 
 ONEHARNESS = shutil.which("oneharness")
+# The tests that ask the real hook, or skilltest's own loader, how a run reads a
+# case: each runs on every host its program publishes a build for.
+needs_oneharness = pytest.mark.skipif(
+    not published("oneharness"), reason="oneharness publishes no build for this platform"
+)
+needs_skilltest = pytest.mark.skipif(
+    not published("skilltest"), reason="skilltest publishes no build for this platform"
+)
 
 
 def _hook(rules: list[tuple[str, str]], built: Built, command: str, description: str) -> str | None:
@@ -186,6 +197,27 @@ def _command(built: Built, step: Step, *, reason: bool = True) -> str:
     return " ".join(words)
 
 
+def test_oneharness_is_overridden_off_exactly_the_platforms_it_publishes_nothing_for() -> None:
+    """`pyproject.toml`'s marker installs `oneharness-cli` everywhere else, by any machine name."""
+    override = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]
+    (requirement,) = [
+        r for r in override["override-dependencies"] if r.startswith("oneharness-cli")
+    ]
+    marker = Marker(requirement.split(";", 1)[1])
+    sys_platforms = {"Linux": "linux", "Darwin": "darwin", "Windows": "win32"}
+    installed = {
+        identifier
+        for (system, machine), identifier in platforms.HOSTS.items()
+        if marker.evaluate({"sys_platform": sys_platforms[system], "platform_machine": machine})
+    }
+    supported = {platform.id for platform in platforms.supported(Repo(REPO))}
+    expect.equal(
+        supported - installed,
+        set(UNPUBLISHED["oneharness"]),
+        describing="where it is not installed",
+    )
+
+
 def test_the_triggers_are_the_case_schemas() -> None:
     """The triggers a scenario is read with are exactly the ones `case.schema.json` allows."""
     schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
@@ -212,6 +244,7 @@ def test_every_scenario_on_disk_is_one_live_test() -> None:
     expect.equal({test_id.split("/")[0] for test_id in IDS}, cases, describing="the cases")
 
 
+@needs_skilltest
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=IDS)
 def test_skilltest_loads_every_built_case(scenario: Scenario, built: dict[str, Built]) -> None:
     """The case loads in skilltest's own loader, every pattern a regex its engine compiles.
@@ -256,6 +289,7 @@ def test_the_harness_runs_with_a_production_turns_permissions() -> None:
     )
 
 
+@needs_oneharness
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=IDS)
 def test_every_never_step_is_a_not_called_eval(scenario: Scenario, built: dict[str, Built]) -> None:
     """Each never step's spy is held by a not_called eval and observes that step being taken."""
@@ -280,6 +314,7 @@ def test_every_never_step_is_a_not_called_eval(scenario: Scenario, built: dict[s
         )
 
 
+@needs_oneharness
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=IDS)
 def test_every_outcome_is_checked(scenario: Scenario, built: dict[str, Built]) -> None:
     """Each acceptable outcome is met by its own steps, in order, and by nothing short of them.
@@ -409,6 +444,7 @@ def test_status_reads_the_state_the_sequence_a_case_fixes_produced(
         expect.equal(states, expected, describing=f"{case.scenario.test_id}'s status reads")
 
 
+@needs_oneharness
 def test_commands_route_to_the_stub_that_answers_them(built: dict[str, Built]) -> None:
     """The hook picks the first stub matching a command; each command reaches the right one."""
     case = next(c for c in built.values() if len(c.answers["look"]) > 1 and c.event)
@@ -857,6 +893,7 @@ def test_every_adjustment_is_a_command_with_its_value_and_a_bound() -> None:
         expect.contains(allowed, adjustment.adjustable, describing="the configured bounds")
 
 
+@needs_oneharness
 def test_an_option_a_command_does_not_take_is_refused_as_the_program_refuses_it(
     built: dict[str, Built],
 ) -> None:
@@ -873,6 +910,7 @@ def test_an_option_a_command_does_not_take_is_refused_as_the_program_refuses_it(
         expect.equal(spec.outputs()[0]["output"], ran.stderr, describing=f"`{written}`'s refusal")
 
 
+@needs_oneharness
 def test_only_a_request_a_stub_answered_is_one_the_agent_made(built: dict[str, Built]) -> None:
     """The judge reads the requests the run report records a stub answering, and no other."""
     case = next(c for c in built.values() if c.scenario.never)

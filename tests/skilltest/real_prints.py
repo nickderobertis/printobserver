@@ -33,6 +33,8 @@ from typing import Any, Literal, NewType, TypeGuard, cast
 
 from jsonschema import Draft202012Validator
 from jsonschema.protocols import Validator
+from repo_checks import platforms
+from repo_checks.model import Repo
 from surface import PROGRAM, REPO, Field, duration_bounds, invocation_pattern, surface
 
 CASES = REPO / "tests" / "real-prints"
@@ -46,6 +48,23 @@ OBICO_SAMPLE = REPO / "crates" / "printobserver-obico" / "samples" / "obico" / "
 SCHEMAS = REPO / "schemas"
 DECISION = REPO / "crates" / "printobserver-core" / "src" / "decision.rs"
 ADJUSTABLE = REPO / "crates" / "printobserver-printer-api" / "src" / "adjustable.rs"
+
+#: The supported platforms each upstream program a run drives publishes no build
+#: for. skilltest's releases carry Linux and macOS builds alone, which its SDK's
+#: platform wheels bundle; oneharness's carry none for Windows on ARM, which is
+#: why `pyproject.toml` overrides `oneharness-cli` off that platform. A test that
+#: needs one of them skips here and nowhere else: on every other host a missing
+#: program is a failure.
+UNPUBLISHED: dict[str, frozenset[str]] = {
+    "skilltest": frozenset({"windows-x86_64", "windows-aarch64"}),
+    "oneharness": frozenset({"windows-aarch64"}),
+}
+
+
+def published(program: str) -> bool:
+    """Whether `program` publishes a build for the supported platform this host is."""
+    return platforms.host(Repo(REPO)).id not in UNPUBLISHED[program]
+
 
 CaseName = NewType("CaseName", str)
 ScenarioId = NewType("ScenarioId", str)
