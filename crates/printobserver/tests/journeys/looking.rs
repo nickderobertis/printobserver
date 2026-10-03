@@ -493,3 +493,38 @@ fn adjustments_to_a_paused_print_skip_the_interval_and_nothing_else_does() {
         );
     }
 }
+
+/// With no adjustment asked for, the detector's pause holds past the grace an
+/// adjustment would have earned: nothing resumes the print and `Obico` is told
+/// nothing.
+#[test]
+fn without_an_adjustment_the_detectors_pause_holds_past_the_grace() {
+    let api = obico("200 OK");
+    let world = World::configured(
+        STOOD_IN,
+        &committed_skill(),
+        None,
+        detector_configuration(&api, true),
+    );
+    world.wants(Reports::Paused);
+    post(
+        &world,
+        &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
+    );
+    wait_for("the alert's turn to be over", PATIENCE, || {
+        !events_of(&world, &world.print_id, "port_failure").is_empty()
+    });
+    std::thread::sleep(Duration::from_secs(23));
+
+    assert_eq!(reports(&world), Some(Reports::Paused));
+    assert!(
+        actions_asked(&world, &world.print_id).is_empty(),
+        "something was asked of a print nobody adjusted"
+    );
+    assert!(
+        api.received().is_empty(),
+        "Obico was told about a pause nobody handled"
+    );
+    let look = running::read(&world, &["look", "--print-id", &world.print_id]);
+    assert_eq!(look["detector_paused"], true, "{look}");
+}

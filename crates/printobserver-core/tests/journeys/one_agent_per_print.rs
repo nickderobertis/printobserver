@@ -150,3 +150,40 @@ fn the_situations_printer_state_is_the_printer_contracts_own_spelling() {
         );
     }
 }
+
+/// A turn whose outcome could not be recorded releases its print's inbox, so
+/// the print's next event claims a turn of its own rather than waiting on one
+/// that has gone.
+///
+/// Proven here rather than through the server: what it takes is a store that
+/// fails part-way through a turn, and only this tier carries a store double —
+/// the server and command-line tiers run the real store.
+#[test]
+fn a_turn_that_could_not_be_recorded_releases_its_inbox() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+    world.agent.hold();
+    std::thread::scope(|scope| {
+        let first = scope.spawn(|| world.handle(failure_alert(7)));
+        world.wait_until("the first turn to start", || world.agent.entered() == 1);
+        world.store.fails(
+            crate::fakes::StoreMethod::AppendEvent,
+            printobserver_core::store::StoreError::Database {
+                detail: "the database is locked".to_owned(),
+            },
+        );
+        world.agent.release();
+        assert!(
+            first.join().expect("the first turn ends").is_err(),
+            "a turn whose outcome could not be recorded answered success"
+        );
+    });
+    world.store.heals();
+
+    let next = printobserver_core::block_on(world.core.receive_event(failure_alert(7)))
+        .expect("the next alert is written down");
+    assert!(
+        next.turn.is_some(),
+        "the next alert was handed to a turn that had already gone"
+    );
+}

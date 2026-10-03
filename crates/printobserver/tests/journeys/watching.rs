@@ -558,3 +558,51 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
         "Obico was told about a cancelled print"
     );
 }
+
+/// A print somebody else resumed is no longer the detector's: when it is
+/// paused again by a person and the agent then adjusts it, nothing resumes it
+/// over that person's pause.
+#[test]
+fn a_print_somebody_else_resumed_is_not_resumed_over_their_next_pause() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"touch "$dir/started-$print-$n"
+until [ -e "$dir/go" ]; do sleep 0.1; done
+eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1"#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id.clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    watching.written(&format!("started-{print}-1"));
+    for (command, reason) in [
+        ("resume", "I looked, and the part is fine"),
+        ("pause", "I want to look at the first layer myself"),
+    ] {
+        let ran = super::running::command(
+            world,
+            &[
+                command,
+                "--print-id",
+                &print,
+                "--actor",
+                "operator",
+                "--reason",
+                reason,
+            ],
+        );
+        assert_eq!(ran.code, Some(0), "`{command}`: {}", ran.said());
+    }
+    watching.go();
+    watching.settled_after(&print, 1);
+
+    let asked = actions_asked(world, &print);
+    let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
+    assert_eq!(kinds, ["resume", "pause", "set_fan_percent"], "{asked:?}");
+    assert_eq!(reports(world), Some(Reports::Paused));
+    assert!(
+        api.received().is_empty(),
+        "Obico was told about a person's pause"
+    );
+}

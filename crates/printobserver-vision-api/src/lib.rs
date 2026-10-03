@@ -119,48 +119,55 @@ impl core::fmt::Display for WebAddress {
 
 /// Whether one URL's authority is a host, and a port when it carries one.
 ///
-/// A name of letters, digits, hyphens and dots, or an address in brackets of
-/// hexadecimal digits, colons and dots; then, optionally, a colon and a port
-/// of at most five digits. A user before an `@` is no part of an address this
-/// system is configured with.
+/// A host is an IPv6 address in brackets, which is parsed as one, or a name of
+/// dot-separated labels — each of letters, digits and hyphens, neither
+/// beginning nor ending with a hyphen — which an IPv4 address also is. A port
+/// is a colon and a number no greater than 65535. A user before an `@` is no
+/// part of an address this system is configured with.
 fn names_a_host(authority: &str) -> bool {
-    let (host, port) = match authority.strip_prefix('[') {
+    let (host_ok, port) = match authority.strip_prefix('[') {
         Some(bracketed) => {
             let Some((inside, after)) = bracketed.split_once(']') else {
                 return false;
             };
-            if inside.is_empty()
-                || !inside
-                    .chars()
-                    .all(|letter| letter.is_ascii_hexdigit() || letter == ':' || letter == '.')
-            {
-                return false;
-            }
-            match after {
-                "" => return true,
+            let port = match after {
+                "" => None,
                 _ => match after.strip_prefix(':') {
-                    Some(port) => (inside, Some(port)),
+                    Some(port) => Some(port),
                     None => return false,
                 },
-            }
+            };
+            (inside.parse::<std::net::Ipv6Addr>().is_ok(), port)
         }
-        None => match authority.rsplit_once(':') {
-            Some((host, port)) => (host, Some(port)),
-            None => (authority, None),
-        },
+        None => {
+            let (host, port) = match authority.rsplit_once(':') {
+                Some((host, port)) => (host, Some(port)),
+                None => (authority, None),
+            };
+            (is_a_host_name(host), port)
+        }
     };
-    let host_ok = !host.is_empty()
-        && (authority.starts_with('[')
-            || host
-                .chars()
-                .all(|letter| letter.is_ascii_alphanumeric() || letter == '-' || letter == '.'));
     let port_ok = port.is_none_or(|digits| {
         !digits.is_empty()
-            && digits.len() <= 5
             && digits.chars().all(|digit| digit.is_ascii_digit())
-            && digits.parse::<u32>().is_ok_and(|number| number <= 65_535)
+            && digits.parse::<u16>().is_ok()
     });
     host_ok && port_ok
+}
+
+/// Whether one host is a name of dot-separated labels, each of letters,
+/// digits and hyphens, neither beginning nor ending with a hyphen.
+fn is_a_host_name(host: &str) -> bool {
+    !host.is_empty()
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .chars()
+                    .all(|letter| letter.is_ascii_alphanumeric() || letter == '-')
+        })
 }
 
 /// What a provider's failure detector did about a print, when an alert is one
