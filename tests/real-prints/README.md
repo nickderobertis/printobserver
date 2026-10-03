@@ -40,8 +40,7 @@ Each directory holds one case:
     sha256 recorded in `printobserver-history.json`. On Windows only an
     administrator can read that directory.
   - Files named `crop-*` are enlarged crops made afterwards, not camera
-    frames. They are not in this tree; see "Where the G-code and the crops
-    are" below.
+    frames. `case.json` lists each under `frames` with a label saying so.
 - `obico-predictions.json`, where Obico watched: the detector's score for every
   frame it saw, as Obico recorded them.
   - Obico's timelapse holds one frame per scored upload, so frame n of the
@@ -61,10 +60,10 @@ Each directory holds one case:
   transcript and scrubbed of anything identifying. Claude Code's own system
   prompt and bookkeeping are left out.
 - The G-code OctoPrint printed, and where there is one, the `.clean.gcode`
-  slice before the fault was injected and the script that made the part. The
-  scripts are here; the G-code is not, and where a case had both a clean and a
-  faulted slice, `fault.diff` is the unified diff from the clean slice to the
-  printed one, so the planted fault stays reviewable.
+  slice before the fault was injected and the script that made the part.
+  Where a case had both a clean and a faulted slice, `fault.diff` is the
+  unified diff from the clean slice to the printed one, so the planted fault
+  stays reviewable without reading either slice.
 - `case.json`'s `sources` names the printobserver build each turn ran.
 
 `service-config.toml` is the supervisor's configuration for these prints, with
@@ -90,13 +89,16 @@ it must never take.
 
 ## Where the G-code and the crops are
 
-Every `*.gcode` file and every `crop-*` image these cases were recorded with
-remains on branch `fix/windows-supervision-turns` (PR #129), at commit
-`45e7fed`, at its original path under `tests/real-prints/`. They were left out
-of `main` because the G-code is about 120k lines and the crops are derived.
-A `case.json` names one of them as `<branch>@<commit>:<path>`, for example
-`fix/windows-supervision-turns@45e7fed:tests/real-prints/fan-cut-bridge/fan-cut-test.gcode`,
-and `git show 45e7fed:<path>` reads it from a clone that has fetched that branch.
+In this tree, beside the frames, in the directory of the case that printed or
+cropped them: `fan-cut-bridge/fan-cut-test.gcode`,
+`spaghetti-small-nest/spaghetti-two-stage.gcode`,
+`under-extrusion-lace/crop-03-porous-sheet-p58-61.png` and so on. They are the
+bytes that were printed and photographed, LF line endings and trailing
+whitespace included, so do not reformat or regenerate them. A `case.json`
+names each the way it names every other file: by its name, or as
+`../<case>/<file>` when a case printed a sibling's G-code, as
+`spaghetti-debris-warning` and `filament-stall-air-print` print
+`spaghetti-small-nest`'s.
 
 ## The `assertions` block
 
@@ -144,7 +146,9 @@ How a run is judged:
 `schemas/printobserver-server/HistoryAnswer.json` (`real-prints-schema`);
 every file a `case.json` refers to — each `file` field, each scenario image,
 and every file its `sources` and `obico_scores` name — exists, and every file
-of a case is named somewhere in it (`real-prints-files`); every
+of a case is named somewhere in it (`real-prints-files`). A G-code or a crop
+is held exactly as a frame is, and a path naming another commit's copy of a
+file, such as `<ref>:<path>`, names no file here and is refused; every
 `agent-*` image's sha256 is the one its event records in
 `printobserver-history.json` (`real-prints-images`); every scenario's events
 are in its case's history and its images are files of the case

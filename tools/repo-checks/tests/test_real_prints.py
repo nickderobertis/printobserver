@@ -294,7 +294,7 @@ def test_an_unnamed_gcode_or_crop_is_refused(check: Run, tree: Callable[[], Tree
 def test_a_file_named_on_another_branch_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
     """A `<branch>@<commit>:<path>` reference names no file of this tree."""
     copy = tree()
-    elsewhere = "fix/windows-supervision-turns@45e7fed:tests/real-prints"
+    elsewhere = "fix/some-closed-branch@0123abc:tests/real-prints"
     data = case_json(copy, "fan-cut-bridge")
     data["frames"][-1]["file"] = f"{elsewhere}/fan-cut-bridge/crop-03-bridge-sagging.png"
     data["sources"]["gcode"] = (
