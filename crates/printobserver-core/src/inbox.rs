@@ -86,6 +86,25 @@ impl Inboxes {
         taken
     }
 
+    /// Hand what a look took back to the print's running turn, ahead of
+    /// anything that arrived since, because the look that took it delivered
+    /// nothing.
+    ///
+    /// A print with no turn running any more has nothing to hand it to: its
+    /// turn released it, and what was waiting went with it.
+    pub fn put_back(&self, print_id: PrintId, taken: Vec<Arrival>) {
+        if taken.is_empty() {
+            return;
+        }
+        let mut state = self.held();
+        if let Some(inbox) = state.get_mut(&print_id) {
+            let since = core::mem::replace(&mut inbox.pending, taken);
+            inbox.pending.extend(since);
+            drop(state);
+            self.arrived.notify_all();
+        }
+    }
+
     /// Release the print's turn, dropping anything still waiting for it.
     ///
     /// For a print that has ended: nothing waiting for it can be acted on.
@@ -189,6 +208,29 @@ mod tests {
         inboxes.release(print);
         assert!(inboxes.wait_and_take(print, Duration::ZERO).is_empty());
         assert!(inboxes.claim_or_hand_over(print, arrival()));
+    }
+
+    /// What a look took and could not deliver goes back ahead of what arrived
+    /// since, and a print with no turn running takes nothing back.
+    #[test]
+    fn what_a_look_could_not_deliver_goes_back_first() {
+        let inboxes = Inboxes::default();
+        let print = PrintId::new();
+        assert!(inboxes.claim_or_hand_over(print, arrival()));
+        let first = arrival();
+        assert!(!inboxes.claim_or_hand_over(print, first.clone()));
+        let taken = inboxes.wait_and_take(print, Duration::ZERO);
+        let since = arrival();
+        assert!(!inboxes.claim_or_hand_over(print, since.clone()));
+        inboxes.put_back(print, taken);
+        assert_eq!(
+            inboxes.wait_and_take(print, Duration::ZERO),
+            vec![first, since]
+        );
+        inboxes.release(print);
+        inboxes.put_back(print, vec![arrival()]);
+        assert!(inboxes.claim_or_hand_over(print, arrival()));
+        assert!(inboxes.wait_and_take(print, Duration::ZERO).is_empty());
     }
 
     /// A wait returns the moment something is handed over, rather than at the

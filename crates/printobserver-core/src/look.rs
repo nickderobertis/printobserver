@@ -117,26 +117,26 @@ impl Supervisor {
     /// identifier, and the store's own error when the look could not be
     /// written down. A camera or printer that will not answer is recorded and
     /// answered as an absence rather than as an error.
+    ///
+    /// What arrived is delivered by the look written down, so a look that
+    /// could not be written down delivers nothing: what it was handed goes
+    /// back to the print's running turn, ahead of anything that arrived since,
+    /// for its next look or the turn after it.
     pub async fn take_look(
         &self,
         print_id: PrintId,
         waited: Duration,
         arrived: Vec<Arrival>,
     ) -> Result<Look, CoreError> {
-        let print = self
-            .stores()
-            .prints
-            .print(print_id)
-            .await?
-            .ok_or(CoreError::NoSuchPrint { print_id })?;
-        let arrived: Vec<EventRecord> = arrived.into_iter().map(|each| each.event).collect();
-        let payload = CameraLookPayload {
-            waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
-            delivered: arrived.iter().map(|event| event.id).collect(),
+        let written = self.write_look_down(print_id, waited, &arrived).await;
+        let (print, mut event) = match written {
+            Ok(written) => written,
+            Err(error) => {
+                self.inboxes().put_back(print_id, arrived);
+                return Err(error);
+            }
         };
-        let mut event = self
-            .append_system_event(print.id, EventBody::of(&payload)?)
-            .await?;
+        let arrived: Vec<EventRecord> = arrived.into_iter().map(|each| each.event).collect();
         let frame = match &self.config().camera_snapshot_url {
             Some(url) => {
                 self.take_frame(print.id, &event, url.as_str().to_owned())
@@ -164,6 +164,29 @@ impl Supervisor {
             job,
             detector_paused,
         })
+    }
+
+    /// Write one look down in its print's history, naming what it delivered.
+    async fn write_look_down(
+        &self,
+        print_id: PrintId,
+        waited: Duration,
+        arrived: &[Arrival],
+    ) -> Result<(crate::records::PrintRecord, EventRecord), CoreError> {
+        let print = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .ok_or(CoreError::NoSuchPrint { print_id })?;
+        let payload = CameraLookPayload {
+            waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
+            delivered: arrived.iter().map(|each| each.event.id).collect(),
+        };
+        let event = self
+            .append_system_event(print.id, EventBody::of(&payload)?)
+            .await?;
+        Ok((print, event))
     }
 
     /// Fetch one frame from the camera and store it as a look's image,

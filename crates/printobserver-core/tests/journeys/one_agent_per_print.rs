@@ -187,3 +187,58 @@ fn a_turn_that_could_not_be_recorded_releases_its_inbox() {
         "the next alert was handed to a turn that had already gone"
     );
 }
+
+/// A look that could not be written down delivers nothing: what it took goes
+/// back to the print's running turn, whose next look takes it.
+///
+/// Proven here for the same reason as the journey above: what it takes is a
+/// store that refuses the look's own record, and only this tier carries one.
+#[test]
+fn a_look_that_could_not_be_written_down_hands_back_what_it_took() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+    world.agent.hold();
+    std::thread::scope(|scope| {
+        let first = scope.spawn(|| world.handle(failure_alert(7)));
+        world.wait_until("the first turn to start", || world.agent.entered() == 1);
+        let second = printobserver_core::block_on(world.core.receive_event(failure_alert(7)))
+            .expect("the second alert is written down");
+        let print = second.event.print_id.expect("it names the print");
+
+        let taken = world.core.await_arrivals(print, Duration::ZERO);
+        assert_eq!(taken.len(), 1);
+        world.store.fails(
+            crate::fakes::StoreMethod::AppendEvent,
+            printobserver_core::store::StoreError::Database {
+                detail: "the database is locked".to_owned(),
+            },
+        );
+        let refused =
+            printobserver_core::block_on(world.core.take_look(print, Duration::ZERO, taken));
+        assert!(
+            refused.is_err(),
+            "a look that could not be written down answered one"
+        );
+        world.store.heals();
+
+        let look = printobserver_core::block_on(world.core.take_look(
+            print,
+            Duration::ZERO,
+            world.core.await_arrivals(print, Duration::ZERO),
+        ))
+        .expect("the next look is written down");
+        // Released before anything is asserted, so a failure here ends the
+        // held turn rather than leaving the journey waiting on it.
+        world.agent.release();
+        first.join().expect("the first turn ends").expect("handled");
+        assert_eq!(
+            look.arrived
+                .iter()
+                .map(|event| event.id)
+                .collect::<Vec<_>>(),
+            vec![second.event.id],
+            "what the refused look took was not handed back"
+        );
+    });
+    assert_eq!(world.agent.turns().len(), 1);
+}
