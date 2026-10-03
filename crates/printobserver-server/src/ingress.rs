@@ -137,15 +137,15 @@ impl IngressState {
                 // how it reaches the agent already watching the print, and an
                 // alert for another print is written down and supervised while
                 // the first turn — or a look inside it — is still waiting.
-                let recorder = Arc::clone(&supervisor);
+                let writer = Arc::clone(&supervisor);
                 let events = Arc::clone(&worker_events);
                 let vision = Arc::clone(&vision);
-                let recorded = tokio::task::spawn_blocking(move || {
-                    printobserver_core::block_on(handle(&recorder, &events, &vision, received))
+                let written = tokio::task::spawn_blocking(move || {
+                    printobserver_core::block_on(handle(&writer, &events, &vision, received))
                 })
                 .await;
-                debug_assert!(recorded.is_ok(), "the recording of one alert panicked");
-                let Ok(Some(turn)) = recorded else {
+                debug_assert!(written.is_ok(), "the writing down of one alert panicked");
+                let Ok(Some(turn)) = written else {
                     counter.send_modify(|count| *count += 1);
                     continue;
                 };

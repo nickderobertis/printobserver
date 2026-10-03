@@ -78,7 +78,7 @@ impl core::error::Error for ObicoVisionError {}
 
 /// Where Obico's own API answers, and the token it is reached with.
 ///
-/// Obico's user API accepts an OAuth2 bearer token or a browser session and
+/// Obico's user API accepts an `OAuth2` bearer token or a browser session and
 /// nothing else, so this is a bearer token a self-hosted instance's own
 /// administration issued. The token is never shown: this type's debug form
 /// omits it, and nothing this adapter reports carries it.

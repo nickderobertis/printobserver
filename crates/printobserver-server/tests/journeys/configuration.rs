@@ -230,7 +230,7 @@ async fn an_obico_token_without_an_address_is_refused_and_never_quoted() {
         let refusal = Server::start(&path)
             .await
             .err()
-            .expect("an incomplete [obico] table was accepted");
+            .unwrap_or_else(|| panic!("an incomplete [obico] table was accepted"));
         assert_eq!(refusal.field(), Some(field), "{refusal}");
         for shown in [refusal.to_string(), format!("{refusal:?}")] {
             assert!(

@@ -221,7 +221,7 @@ impl Supervisor {
                 },
             )
             | (_, PrintAction::Resume { .. } | PrintAction::Cancel { .. }) => {
-                self.forget_detector_pause(print_id)
+                self.forget_detector_pause(print_id);
             }
             _ => {}
         }

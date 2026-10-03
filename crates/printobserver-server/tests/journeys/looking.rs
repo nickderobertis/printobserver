@@ -72,7 +72,7 @@ async fn a_camera_that_gives_no_frame_is_recorded_against_the_look() {
             .expect("the history reads");
         let failure = history
             .iter()
-            .find_map(|event| event.payload_as::<PortFailurePayload>())
+            .find_map(printobserver_types::EventRecord::payload_as::<PortFailurePayload>)
             .expect("the camera's failure is recorded")
             .expect("of its own type");
         assert_eq!(failure.site, PortFailureSite::CameraLook);

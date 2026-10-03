@@ -116,13 +116,13 @@ fn respond(mut stream: TcpStream, held: &Held) {
         .unwrap_or_else(PoisonError::into_inner)
         .push(String::from_utf8_lossy(&request).into_owned());
     let answer = &held.answer;
-    let head = format!(
+    let answering = format!(
         "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         answer.status,
         answer.content_type,
         answer.body.len()
     );
-    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(answering.as_bytes());
     let _ = stream.write_all(&answer.body);
     let _ = stream.flush();
 }
