@@ -72,9 +72,9 @@ safe, so take the time to look.
 
 ## When you are asked to start a print
 
-Open the camera's frame first. Start only on an empty bed. A single strand, a
-part or a blob left on it means you ask for nothing and tell the person what is
-on the bed and where.
+Open the camera's frame first, and start only on an empty bed. The sheet's
+printed lines, logo and glare are not debris; a strand, a part or a blob is.
+If one is there, ask for nothing and tell the person what it is and where.
 
 ## The boundaries you work inside
 
@@ -89,7 +89,9 @@ on the bed and where.
 - **The vocabulary is closed, and deliberately so: no path in this system sends
   a command to the printer.** No G-code, no free-form command, no escape hatch —
   only the named adjustments the policy rules on. That closed set is why an
-  agent is allowed near a machine that can set itself on fire.
+  agent is allowed near a machine that can set itself on fire. Your shell runs
+  `printobserver` and nothing else; refusing anything else says nothing about
+  it.
 
 ## When to escalate instead
 
@@ -107,11 +109,8 @@ adjusting a print you have decided needs a person.
 
 ## Where everything else is
 
-- [The API and the clients](reference/api-and-clients.md) — the same
-  surface over HTTP, for a program.
-- [The schemas](reference/schemas.md) — the exact shape of everything this
-  system answers.
-- [The architecture](reference/architecture.md) — what each part owns and
-  why you reach this system the way an operator does.
-- [Testing](reference/testing.md) — what this repository proves about
-  itself, and when.
+- [The API and the clients](reference/api-and-clients.md): the same surface
+  over HTTP.
+- [The schemas](reference/schemas.md): the shape of every answer.
+- [The architecture](reference/architecture.md): what each part owns.
+- [Testing](reference/testing.md): what this repository proves.
