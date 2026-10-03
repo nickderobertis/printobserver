@@ -4,7 +4,7 @@
   "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
   "printed_on": "2026-09-27",
   "times": "local, MDT (UTC-6); the history and Obico scores are in UTC",
-  "part": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-floating-slab/spaghetti-test.gcode: a 25 x 25 x 12 mm block, then an 8 mm thick 30 x 30 mm slab floating 8 mm above it; about 19 minutes",
+  "part": "spaghetti-test.gcode: a 25 x 25 x 12 mm block, then an 8 mm thick 30 x 30 mm slab floating 8 mm above it; about 19 minutes",
   "fault": {
     "kind": "spaghetti",
     "how": "the floating slab is printed into the air with nothing under it and falls as a nest beside and on the block",
@@ -48,7 +48,7 @@
   ],
   "frame_sources": "02-04 are frames of Obico's untagged timelapse and the -obico files of its tagged timelapse: Obico keeps one frame per scored upload, so frame n of either video is row n of obico-predictions.json. 05 is a go2rtc snapshot. The agent-* files are the exact images printobserver stored for each event and handed the turn, copied from its state directory and matching the sha256 in printobserver-history.json",
   "sources": {
-    "gcode": "fix/windows-supervision-turns@45e7fed:tests/real-prints/spaghetti-floating-slab/spaghetti-test.gcode, the file OctoPrint printed, sliced in PrusaSlicer 2.9.6 (0.20mm BALANCED @COREONE HF0.4, no supports)",
+    "gcode": "spaghetti-test.gcode, the file OctoPrint printed, sliced in PrusaSlicer 2.9.6 (0.20mm BALANCED @COREONE HF0.4, no supports)",
     "agent_turn": "none: both turns failed before Claude Code kept a transcript, so printobserver-history.json's port_failure events are the whole record",
     "build": "printobserver 0.3.0 as released",
     "service_config": "../service-config.toml, less the [camera] and [obico] tables and the system actor's resume, which were added later"

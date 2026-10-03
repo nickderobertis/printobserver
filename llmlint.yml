@@ -11,9 +11,19 @@ files:
   exclude:
     - "**/.git/**"
     # The scripts that made two real-print cases' parts: recorded evidence,
-    # kept byte-identical to the commit they were printed from (45e7fed on
-    # fix/windows-supervision-turns) and never run by anything here.
+    # kept byte-identical to the commit they were printed from (45e7fed) and
+    # never run by anything here.
     - "tests/real-prints/*/make_*.py"
+    # The G-code the real prints ran, and the clean slices their faults were
+    # planted in: recorded evidence, byte-identical to what was printed, so no
+    # finding a judge made could be acted on without making it something else.
+    # Each is a slicer's output of 10k to 20k lines that no rule here is about.
+    - "tests/real-prints/fan-cut-bridge/fan-cut-test.clean.gcode"
+    - "tests/real-prints/fan-cut-bridge/fan-cut-test.gcode"
+    - "tests/real-prints/spaghetti-floating-slab/spaghetti-test.gcode"
+    - "tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode"
+    - "tests/real-prints/under-extrusion-lace/lace-test.clean.gcode"
+    - "tests/real-prints/under-extrusion-lace/lace-test.gcode"
 rationales: true
 # No `agents` block: the harness/model are NOT pinned here. `oneharness.toml`
 # (composed alongside this file) selects them in fallback mode — codex + gpt-5.5

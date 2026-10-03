@@ -43,16 +43,12 @@ SERVICE_CONFIG = f"{ROOT}/service-config.toml"
 OPERATIONS = "schemas/printobserver-server/operations.json"
 PRINTER_STATE = "schemas/printobserver-printer-api/PrinterState.json"
 
-# Where the files this tree dropped — the G-code and the derived crops — remain,
-# spelled as a case.json names one of them: `<branch>@<commit>:<path>`.
-BRANCH_REFERENCE = re.compile(
-    r"fix/windows-supervision-turns@45e7fed:(?P<path>tests/real-prints/[\w./-]+\.\w+)"
-)
-
 # A file name as a case.json's prose names one: an optional relative directory,
-# then a name with one of the extensions a case carries.
+# then a name with one of the extensions a case carries. A path after `@` or `:`
+# is read as one too, so `<ref>:<path>` naming another commit's copy of a file
+# names a file this tree must carry, like any other.
 FILE_TOKEN = re.compile(
-    r"(?<![\w./@:-])(?:\.\./)?(?:[\w-]+/)*[\w.-]+\.(?:jpg|png|json|py|gcode|diff|toml)\b"
+    r"(?<![\w./-])(?:\.\./)?(?:[\w-]+/)*[\w.-]+\.(?:jpg|png|json|py|gcode|diff|toml)\b"
 )
 
 # A field of the service configuration that holds a secret, by how this
@@ -193,12 +189,11 @@ class Case:
             yield from scenario.images
         texts = [*self.document.get("sources", {}).values(), self.document.get("obico_scores", "")]
         for text in texts:
-            yield from (match.group(0) for match in BRANCH_REFERENCE.finditer(text))
-            yield from FILE_TOKEN.findall(BRANCH_REFERENCE.sub("", text))
+            yield from FILE_TOKEN.findall(text)
 
     def mentioned(self) -> set[str]:
-        """Every file name the case.json mentions anywhere, outside branch references."""
-        return set(FILE_TOKEN.findall(BRANCH_REFERENCE.sub("", json.dumps(self.document))))
+        """Every file name the case.json mentions anywhere."""
+        return set(FILE_TOKEN.findall(json.dumps(self.document)))
 
 
 def _file_fields(value: object) -> Iterator[str]:
@@ -311,41 +306,20 @@ def real_prints_schema(repo: Repo) -> list[str]:
         return [str(error)]
 
 
-def _is_dropped(path: str) -> bool:
-    """Whether a path is one of the kinds this tree keeps only on the branch."""
-    name = path.rsplit("/", 1)[-1]
-    return name.endswith(".gcode") or name.startswith("crop-")
-
-
 def real_prints_files(repo: Repo) -> list[str]:
     """Every file a case.json refers to is carried, and every file of a case is named by it.
 
-    A reference relative to the case directory, or climbing to a sibling with
-    `../`, names a file this tree must carry. One spelled
-    `<branch>@<commit>:<path>` names a dropped file where it remains, and is
-    held to naming a dropped kind — a G-code or a crop — rather than to that
-    commit's contents, which a clone of `main` need not have fetched. A G-code
-    or a crop named any other way names a file this tree does not carry.
+    A reference is relative to the case directory, or climbs to a sibling with
+    `../`, and names a file this tree must carry — a frame, a G-code and a crop
+    alike. Anything else that names a file, such as a `<ref>:<path>` pointing
+    at another commit, is a reference to no file here and is refused as one.
     """
     findings: list[str] = []
     for case in _readable(repo, "real-prints-files", findings):
         for named in case.referenced():
-            reference = BRANCH_REFERENCE.fullmatch(named)
-            if reference is None:
-                if not (case.directory / named).is_file():
-                    findings.append(f"{case.name}: {CASE_FILE} names {named}, which is not a file")
-            elif not _is_dropped(reference.group("path")):
-                findings.append(
-                    f"{case.name}: {named} names a file on the branch that this tree should "
-                    "carry: only G-code and crops are left there"
-                )
+            if not (case.directory / named).is_file():
+                findings.append(f"{case.name}: {CASE_FILE} names {named}, which is not a file")
         mentioned = case.mentioned()
-        findings.extend(
-            f"{case.name}: {CASE_FILE} names {token}, a dropped file, without the branch "
-            "it remains on"
-            for token in sorted(mentioned)
-            if _is_dropped(token)
-        )
         findings.extend(
             f"{case.name}: {path.name} is in the case but {CASE_FILE} names it nowhere"
             for path in sorted(case.directory.iterdir())
