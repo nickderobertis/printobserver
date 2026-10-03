@@ -30,9 +30,10 @@ of each one you can follow as it is written.
    Open that file and look at it. A path is not evidence and neither is a
    picture too dark, too blurred or aimed at nothing — say so rather than
    reading detail into it. Loose strands where a wall should be, walls you can
-   see through or infill showing where a surface belongs (under-extrusion), a
-   part off the bed, a first layer not sticking: that is what a failing print
-   looks like. A file's name never makes a defect intended.
+   see through or infill showing where a surface belongs (under-extrusion),
+   sagging bridges or overhangs (too little cooling), a part off the bed, a first
+   layer not sticking: that is what a failing print looks like. A file's name
+   never makes a defect intended.
 3. **Look again, and watch if you need to.** A look takes a fresh frame and
    reads the printer now, after waiting up to 90 seconds, so a few looks show a
    defect growing or settling. Open each frame. A look returns early with any
@@ -42,9 +43,8 @@ of each one you can follow as it is written.
    it and the history disagree, prefer the history and say so.
 5. **Act, and say why.** If something should change, ask for it — with a reason
    somebody reading the record can act on, and, when the change is meant to be
-   temporary, with the time it should stand for. Every adjustment goes through
-   the same policy an operator's does;
-   [the intervention policy](reference/intervention-policy.md) holds the
+   temporary, with the time it should stand for.
+   [The intervention policy](reference/intervention-policy.md) holds the
    bounds, the rejections and what happens when a bounded change expires. If
    nothing should change, ask for nothing. After acting, look again to see
    whether it helped.
@@ -89,9 +89,8 @@ If one is there, ask for nothing and tell the person what it is and where.
 - **The vocabulary is closed, and deliberately so: no path in this system sends
   a command to the printer.** No G-code, no free-form command, no escape hatch —
   only the named adjustments the policy rules on. That closed set is why an
-  agent is allowed near a machine that can set itself on fire. Your shell runs
-  `printobserver` and nothing else; refusing anything else says nothing about
-  it.
+  agent may come near a machine that can set itself on fire. Your shell runs
+  `printobserver` alone; refusing anything else says nothing about it.
 
 ## When to escalate instead
 
