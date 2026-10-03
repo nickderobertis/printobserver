@@ -44,7 +44,6 @@ from real_prints import (
     COMMON_OPERATIONS,
     SCHEMAS,
     TURN_PROMPT,
-    UNPUBLISHED,
     Scenario,
     Step,
     Trigger,
@@ -54,6 +53,7 @@ from real_prints import (
     met_outcome,
     outcome_met,
     published,
+    publishing,
     recorded_step,
     required_steps,
     sent_to_server,
@@ -74,6 +74,7 @@ from scenario import (
     dispositions,
     fill,
     harness_config,
+    provider_config,
     requests_answered,
     template_slots,
 )
@@ -213,7 +214,7 @@ def test_oneharness_is_overridden_off_exactly_the_platforms_it_publishes_nothing
     supported = {platform.id for platform in platforms.supported(Repo(REPO))}
     expect.equal(
         supported - installed,
-        set(UNPUBLISHED["oneharness"]),
+        supported - publishing("oneharness"),
         describing="where it is not installed",
     )
 
@@ -247,20 +248,24 @@ def test_every_scenario_on_disk_is_one_live_test() -> None:
 @needs_skilltest
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=IDS)
 def test_skilltest_loads_every_built_case(scenario: Scenario, built: dict[str, Built]) -> None:
-    """The case loads in skilltest's own loader, every pattern a regex its engine compiles.
+    """The case and a run's own configuration load in skilltest's loader.
 
-    A provider that does not exist is the first thing a valid case reaches, so
-    the run stops there having read the whole definition.
+    Every pattern is a regex its engine compiles, and the configuration is the
+    one a live run writes, which that loader refuses a key or a variant it does
+    not have in. A provider that does not exist is the first thing a valid run
+    reaches, so the run stops there having read both.
     """
     case = built[scenario.test_id]
     missing = case.workspace.parent / "no-provider"
+    config = case.workspace.parent / "skilltest.yaml"
+    config.write_text(provider_config(str(missing), live.TIMEOUT_S), encoding="utf-8")
     with pytest.raises(SkilltestProviderError, match="no-provider"):
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         run_skill(
             case.case,
-            provider=[str(missing)],
             platforms=["claude-code"],
             models=["unpinned"],
+            config=config,
             cwd=case.workspace,
         )
 

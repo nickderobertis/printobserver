@@ -49,21 +49,45 @@ SCHEMAS = REPO / "schemas"
 DECISION = REPO / "crates" / "printobserver-core" / "src" / "decision.rs"
 ADJUSTABLE = REPO / "crates" / "printobserver-printer-api" / "src" / "adjustable.rs"
 
-#: The supported platforms each upstream program a run drives publishes no build
-#: for. skilltest's releases carry Linux and macOS builds alone, which its SDK's
-#: platform wheels bundle; oneharness's carry none for Windows on ARM, which is
-#: why `pyproject.toml` overrides `oneharness-cli` off that platform. A test that
-#: needs one of them skips here and nowhere else: on every other host a missing
-#: program is a failure.
-UNPUBLISHED: dict[str, frozenset[str]] = {
-    "skilltest": frozenset({"windows-x86_64", "windows-aarch64"}),
-    "oneharness": frozenset({"windows-aarch64"}),
-}
+LOCK = REPO / "uv.lock"
+#: The locked distribution each upstream program a run drives arrives in.
+DISTRIBUTIONS = {"skilltest": "skilltest-sdk", "oneharness": "oneharness-cli"}
+
+
+@cache
+def publishing(program: str) -> frozenset[str]:
+    """The supported platforms the locked release of `program` carries a build for.
+
+    Read off the platform tags of the wheels `uv.lock` records for its
+    distribution, which are what the registry serves for that release. A pure
+    wheel names no platform and counts for none: `skilltest-sdk`'s is the SDK
+    without the program its platform wheels bundle.
+    """
+    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
+    (package,) = [p for p in lock["package"] if p["name"] == DISTRIBUTIONS[program]]
+    tags = {
+        tag
+        for wheel in package.get("wheels", [])
+        for tag in Path(wheel["url"]).stem.rsplit("-", 1)[-1].split(".")
+    }
+    return frozenset(
+        platform.id
+        for platform in platforms.supported(Repo(REPO))
+        if any(
+            tag.startswith(platform.naming.wheel_family)
+            and tag.endswith(f"_{platform.naming.wheel_machine}")
+            for tag in tags
+        )
+    )
 
 
 def published(program: str) -> bool:
-    """Whether `program` publishes a build for the supported platform this host is."""
-    return platforms.host(Repo(REPO)).id not in UNPUBLISHED[program]
+    """Whether `program` publishes a build for the supported platform this host is.
+
+    A test that needs one skips where it does not and nowhere else: on every
+    other host a missing program is a failure.
+    """
+    return platforms.host(Repo(REPO)).id in publishing(program)
 
 
 CaseName = NewType("CaseName", str)

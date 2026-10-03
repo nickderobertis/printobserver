@@ -185,6 +185,22 @@ def harness_config() -> str:
     return f'mode = "default"\n\n[harness.claude-code]\nargs = {json.dumps(arguments)}\n'
 
 
+def provider_config(oneharness: str, timeout_s: int) -> str:
+    """The skilltest configuration a run reads: `oneharness` as its provider, judged by Claude Code.
+
+    skilltest's own loader refuses a key or a variant it does not have, and
+    `test_skilltest_loads_every_built_case` hands it this, so the gate reads it
+    as a run does.
+    """
+    return (
+        "provider:\n"
+        "  kind: oneharness\n"
+        f"  bin: {json.dumps(oneharness)}\n"
+        "  judge_harness: claude-code\n"
+        f"  timeout_secs: {timeout_s}\n"
+    )
+
+
 @dataclass(frozen=True)
 class Reading:
     """The printer and its job at one moment."""

@@ -47,7 +47,7 @@ from real_prints import (
     shipped_model,
 )
 from repo_checks import expect
-from scenario import Built, build, harness_config, requests_answered
+from scenario import Built, build, harness_config, provider_config, requests_answered
 from skilltest_pytest import Report, describe_failures, run_skill
 
 ONEHARNESS = shutil.which("oneharness")
@@ -187,14 +187,9 @@ def test_the_skill_takes_an_action_the_case_accepts(
     built = build(scenario, neutral_tmp)
     (neutral_tmp / ".oneharness.toml").write_text(harness_config(), encoding="utf-8")
     config = Path(tempfile.mkdtemp()) / "skilltest.yaml"
-    config.write_text(
-        "provider:\n"
-        "  kind: oneharness\n"
-        f"  bin: {json.dumps(ONEHARNESS)}\n"
-        "  judge_harness: claude-code\n"
-        f"  timeout_secs: {TIMEOUT_S}\n",
-        encoding="utf-8",
-    )
+    if ONEHARNESS is None:
+        pytest.fail("the provider check passed with no oneharness on PATH")
+    config.write_text(provider_config(ONEHARNESS, TIMEOUT_S), encoding="utf-8")
     _stealth(monkeypatch, built.workspace)
     model = shipped_model()
     try:

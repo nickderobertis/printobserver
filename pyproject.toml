@@ -21,8 +21,9 @@ members = []
 # for Windows on ARM, so without this `uv sync` refuses that host outright and
 # takes every tier there with it. The requirement is skilltest-sdk's own, with
 # that one platform marked off, under either name its machine goes by: the SDK
-# is pure Python, and the wiring tests that need the oneharness binary skip on
-# the platforms `tests/skilltest/real_prints.py`'s `UNPUBLISHED` names.
+# is pure Python, and the wiring tests that need the oneharness binary skip
+# where this lock's wheels carry none, as `tests/skilltest/real_prints.py`'s
+# `publishing` reads them.
 override-dependencies = [
     "oneharness-cli>=0.16.0,<0.17; sys_platform != 'win32' or (platform_machine != 'ARM64' and platform_machine != 'aarch64')",
 ]
