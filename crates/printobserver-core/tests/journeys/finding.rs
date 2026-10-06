@@ -8,10 +8,12 @@
 
 use printobserver_core::Clock as _;
 use printobserver_core::block_on;
-use printobserver_core::listing::{ACTIVE_STATES, PrintListing};
+use printobserver_core::listing::{
+    ACTIVE_STATES, JOB_START_TOLERANCE_S, PrintListing, REPLACED_REASON,
+};
 use printobserver_core::store::PrintStore as _;
 use printobserver_printer_api::{PrinterError, PrinterState};
-use printobserver_types::PrintId;
+use printobserver_types::{PrintId, Timestamp};
 
 use crate::fakes::PrinterMethod;
 use crate::journal::{Call, Port};
@@ -325,4 +327,139 @@ fn an_alert_opens_a_print_when_no_open_print_waits_for_it() {
             .contains(&Call::AttachObicoPrint(4211)),
         "an identifier was attached with no print waiting for it"
     );
+}
+
+/// When the job the clock now reads began, `running` seconds ago.
+fn started(world: &World, running: i64) -> Timestamp {
+    world
+        .clock
+        .now()
+        .plus_seconds(-running)
+        .expect("a representable instant")
+}
+
+/// The printer runs `file` and has been running it `running` seconds.
+fn runs(world: &World, file: &str, running: Option<i64>) {
+    world.printer.reports_job(Some(file), PrinterState::Printing);
+    world.printer.reports_running_time(running);
+}
+
+/// A print opened for a running job records when the job began: the instant
+/// it was read, less the running time the printer reported. A job reporting no
+/// running time opens a print recording no start.
+#[test]
+fn a_print_opened_for_a_running_job_records_when_the_job_began() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(3024));
+
+    let found = listing(&world);
+
+    let opened = &found.prints[0];
+    assert_eq!(found.active, Some(opened.id));
+    assert_eq!(
+        opened.job_started_at,
+        Some(started(&world, 3024)),
+        "the print does not record the start the job's running time puts it at"
+    );
+    assert_eq!(world.store.print_now(opened.id), Some(opened.clone()));
+
+    let world = World::new();
+    runs(&world, RUNNING, None);
+    let found = listing(&world);
+    assert_eq!(found.prints.len(), 1);
+    assert_eq!(
+        found.prints[0].job_started_at, None,
+        "a job reporting no running time was given a start nobody observed"
+    );
+}
+
+/// One job read again later, its running time grown by the time between, is
+/// the same print — and so is one whose start the second read puts as far as
+/// the tolerance away.
+#[test]
+fn the_same_job_read_later_is_the_same_print() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let first = listing(&world).active.expect("the job is adopted");
+
+    world.clock.advance(900);
+    runs(&world, RUNNING, Some(1500));
+    assert_eq!(listing(&world).active, Some(first));
+
+    // The printer's running time lags the clock by exactly the tolerance.
+    world.clock.advance(300);
+    runs(&world, RUNNING, Some(1800 - JOB_START_TOLERANCE_S));
+    let found = listing(&world);
+    assert_eq!(
+        found.active,
+        Some(first),
+        "a start exactly the tolerance away was taken for another job"
+    );
+    assert_eq!(found.prints.len(), 1, "{:?}", found.prints);
+    assert_eq!(found.prints[0].ended_at, None);
+}
+
+/// A later job of the same file, begun further from the open print's start
+/// than the tolerance, closes the open print as replaced and opens its own.
+#[test]
+fn a_later_job_of_the_same_file_closes_the_stale_print_and_opens_its_own() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let stale = listing(&world).active.expect("the first job is adopted");
+
+    // The first job ended and a second began between two reads, and nothing
+    // read the printer while it was idle: the second began one second further
+    // from the first than the tolerance allows.
+    world.clock.advance(300);
+    let later = 300 + 600 - JOB_START_TOLERANCE_S - 1;
+    runs(&world, RUNNING, Some(later));
+    let found = listing(&world);
+
+    let fresh = found.active.expect("the later job is named active");
+    assert_ne!(
+        fresh, stale,
+        "a later job of the same file was adopted into the earlier job's print"
+    );
+    let stale_now = world.store.print_now(stale).expect("the stale print reads");
+    assert_eq!(stale_now.end_reason.as_deref(), Some(REPLACED_REASON));
+    assert_eq!(stale_now.ended_at, Some(world.clock.now()));
+    assert_eq!(stale_now.state, PrinterState::Operational);
+    let fresh_now = world.store.print_now(fresh).expect("the fresh print reads");
+    assert_eq!(fresh_now.ended_at, None);
+    assert_eq!(fresh_now.file_name.as_deref(), Some(RUNNING));
+    assert_eq!(
+        fresh_now.job_started_at,
+        Some(started(&world, later))
+    );
+    assert_eq!(ids(&found), vec![fresh, stale]);
+    world.journal.assert_no_violations();
+}
+
+/// An open print recorded before starts were — or a job reporting no running
+/// time — is matched by its file name alone, and the print then records the
+/// start of the job it was adopted from.
+#[test]
+fn an_unknown_start_on_either_side_is_matched_by_file_name_alone() {
+    let world = World::new();
+    let legacy = block_on(world.store.open_print(None, Some(RUNNING.to_owned())))
+        .expect("a print recorded before starts were");
+    assert_eq!(legacy.job_started_at, None);
+    runs(&world, RUNNING, Some(42));
+
+    assert_eq!(listing(&world).active, Some(legacy.id));
+    assert_eq!(
+        world
+            .store
+            .print_now(legacy.id)
+            .and_then(|print| print.job_started_at),
+        Some(started(&world, 42)),
+        "the adopted print does not record the start of the job adopted into it"
+    );
+
+    // Now the printer stops reporting a running time: nothing tells this job
+    // from another, so the file name decides as it did before starts existed.
+    world.clock.advance(7200);
+    runs(&world, RUNNING, None);
+    assert_eq!(listing(&world).active, Some(legacy.id));
+    assert_eq!(world.store.prints().len(), 1);
 }

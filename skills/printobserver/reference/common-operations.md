@@ -64,6 +64,7 @@ $ printobserver prints
 active: PRINT_ID
 prints.0.file_name: FILE
 prints.0.id: PRINT_ID
+prints.0.job_started_at: TIMESTAMP
 prints.0.narrowings: []
 prints.0.opened_at: TIMESTAMP
 prints.0.provider_print_id: 4211
@@ -89,6 +90,7 @@ job.size_bytes: 4211
 job.state: printing
 print.file_name: FILE
 print.id: PRINT_ID
+print.job_started_at: TIMESTAMP
 print.narrowings: []
 print.opened_at: TIMESTAMP
 print.provider_print_id: 4211
@@ -137,6 +139,7 @@ context.latest_image.id: IMAGE_ID
 context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
 context.print.file_name: FILE
 context.print.id: PRINT_ID
+context.print.job_started_at: TIMESTAMP
 context.print.narrowings: []
 context.print.opened_at: TIMESTAMP
 context.print.provider_print_id: 4211

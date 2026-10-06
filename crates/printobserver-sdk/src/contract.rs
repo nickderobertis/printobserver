@@ -966,6 +966,16 @@ pub struct PrintRecord {
     pub file_name: Option<String>,
     /// This print's identifier, minted by the store.
     pub id: PrintId,
+    /// When the printer's job this print records began, as the printer's own
+    /// running time puts it: the instant the job was observed, less how long
+    /// the printer reported it had been running then.
+    ///
+    /// This is what tells two jobs of one file apart, since the printer names
+    /// a job by nothing else. Absent when the print was not opened or adopted
+    /// from a running job, when that job reported no running time, and on
+    /// every print recorded before this was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_started_at: Option<Timestamp>,
     /// Every manifest range this print narrowed to the envelope's.
     pub narrowings: Vec<ManifestNarrowing>,
     /// When the print was opened.

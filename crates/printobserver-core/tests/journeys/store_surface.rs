@@ -102,6 +102,11 @@ fn stated_print_methods() -> Vec<Method> {
             "BoxFuture<'_,Result<PrintRecord,StoreError>>",
         ),
         method(
+            "record_job_start",
+            &[("print_id", "PrintId"), ("job_started_at", "Timestamp")],
+            "BoxFuture<'_,Result<PrintRecord,StoreError>>",
+        ),
+        method(
             "print_by_provider_id",
             &[("provider_print_id", "i64")],
             "BoxFuture<'_,Result<Option<PrintRecord>,StoreError>>",

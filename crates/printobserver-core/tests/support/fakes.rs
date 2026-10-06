@@ -178,6 +178,12 @@ impl FakePrinter {
         job.state = state;
     }
 
+    /// Report the job as having run this long, in whole seconds, or report no
+    /// running time at all; which job it is, is told apart by nothing else.
+    pub fn reports_running_time(&self, seconds: Option<i64>) {
+        self.job.lock().expect("the printer holds").print_time_s = seconds;
+    }
+
     /// Fail one method with one error from now on.
     pub fn fails(&self, method: PrinterMethod, error: PrinterError) {
         self.failures

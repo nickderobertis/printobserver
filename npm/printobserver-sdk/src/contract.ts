@@ -798,6 +798,17 @@ export interface PrintRecord {
   file_name?: string | null;
   /** This print's identifier, minted by the store. */
   id: PrintId;
+  /**
+   * When the printer's job this print records began, as the printer's own
+   * running time puts it: the instant the job was observed, less how long
+   * the printer reported it had been running then.
+   *
+   * This is what tells two jobs of one file apart, since the printer names
+   * a job by nothing else. Absent when the print was not opened or adopted
+   * from a running job, when that job reported no running time, and on
+   * every print recorded before this was.
+   */
+  job_started_at?: Timestamp | null;
   /** Every manifest range this print narrowed to the envelope's. */
   narrowings: Array<ManifestNarrowing>;
   /** When the print was opened. */
