@@ -47,12 +47,28 @@ Every print the supervisor holds, most recently opened first, and which of them
 the printer's current job belongs to. This is where `PRINT_ID` comes from: start
 a print in OctoPrint, run this, and take `active`.
 
-When the printer reports a job it is printing or has paused and no open print
-carries that job's file name, this read opens one for it — which is how a print
-started at the printer has an identifier before Obico has reported anything.
-Reading it again while the same job runs opens nothing further, and it asks the
-printer for nothing but what it is doing. The first Obico alert about that job
-joins the print this opened rather than opening a second.
+When the printer reports a job it is printing or has paused and no open print is
+that job, this read opens one for it — which is how a print started at the
+printer has an identifier before Obico has reported anything. Reading it again
+while the same job runs opens nothing further, and it asks the printer for
+nothing but what it is doing. The first Obico alert about that job joins the
+print this opened rather than opening a second.
+
+An open print of the job's file is that job unless the job reports more than 120
+seconds less printing (`job.print_time_s`) than the print's `job_print_time_s`,
+the longest it was seen printing: then it is a later job, the open print ends with
+`a later job of the same file replaced it`, and the job gets a print of its own.
+A pause never splits a print — OctoPrint takes a pause back out of the running
+time when the job resumes — and a print with no `job_print_time_s`, or a job
+reporting no running time, is matched by file name alone. What this keeps as one
+print although it may be two: a later job first read after it has printed about
+as long as the earlier job was last seen printing, or longer, and a later job
+replacing one never seen printing.
+
+A print ends when any read — this one, `status`, `context`, a supervision turn, a
+start, or the supervisor's own start — finds its job no longer printing or
+paused: its interventions are expired, it ends with `the print reached <state>`,
+and its session is closed. A printer that cannot be read ends nothing.
 
 An open print's `state` is the state it was opened in, which is `printing`
 whether or not the printer is paused now. What the printer is doing is `status`'s
@@ -465,7 +481,9 @@ record.request.requested_at: TIMESTAMP
 ### start_print
 
 Start a print of a named file, bounded by a manifest. Valid only while the
-printer is operational.
+printer is operational. A start opens a print of its own when no print is open,
+so `record.print_id` names the print the job runs under and its manifest is
+attached to: act on that print afterwards. The examples below this one do.
 
 ```console
 $ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
@@ -496,9 +514,11 @@ way an observation is put into the record.
 
 ```console
 $ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "spaghetti in the alert image, but the part is still attached; watching it"
-record.decision.rejected: no_active_print
+record.decision: accepted
+record.executed_at: TIMESTAMP
 record.id: ID
-record.print_id: ID
+record.outcome: succeeded
+record.print_id: PRINT_ID
 record.request.action.action: acknowledge_failure
 record.request.action.actor: operator
 record.request.action.disposition: watch
@@ -506,7 +526,6 @@ record.request.action.event_id: EVENT_ID
 record.request.action.reason: spaghetti in the alert image, but the part is still attached; watching it
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
-the supervisor's policy refused this action. Ask again inside what the answer says is allowed
 ```
 
 ### look

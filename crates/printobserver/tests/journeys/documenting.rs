@@ -439,6 +439,16 @@ fn run(world: &World, example: &Example) -> (Vec<Step>, Vec<String>) {
             }
         };
         last_status = status;
+        // A start opens a print of its own, and the examples after it are
+        // about that print: `PRINT_ID` stands for it from the next example on.
+        if step.command.starts_with("printobserver start-print") {
+            if let Some(started) = printed
+                .lines()
+                .find_map(|line| line.strip_prefix("record.print_id: "))
+            {
+                world.follows(started.trim());
+            }
+        }
         let shown: Vec<String> = abstracted(&printed, &bindings)
             .lines()
             .map(str::to_owned)

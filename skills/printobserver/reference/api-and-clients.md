@@ -69,20 +69,50 @@ when the printer reports a job in one of the active states — `printing` and
 any other state or cannot be read, in which case the stored prints are still the
 answer.
 
-Reading it **adopts** that job: when no print with no end recorded carries the
-job's file name, the server opens one — carrying that file name and no Obico ID —
-and names it `active`; otherwise the most recently opened such print is `active`
-and nothing is written. Reading it again while the same job runs opens nothing
-further, and it asks the printer for its job and for nothing else. An open print's
-recorded `state` is `printing` whether or not the printer is paused now; the
-printer's live state is `status`'s answer.
+Reading it **adopts** that job: when no print with no end recorded is that job,
+the server opens one — carrying the job's file name and no Obico ID — and names it
+`active`; otherwise the most recently opened such print is `active`. Reading it
+again while the same job runs opens nothing further, and it asks the printer for
+its job and for nothing else. An open print's recorded `state` is `printing`
+whether or not the printer is paused now; the printer's live state is `status`'s
+answer.
+
+**Which open print a running job is.** OctoPrint names a job by its file alone,
+so an open print of the job's file is that job unless the running times tell them
+apart. OctoPrint's `printTime` counts a pause while it lasts and takes it back out
+at the resume, so the time a job has spent printing only grows. A print records
+`job_print_time_s`, the longest running time a read found its job printing at, and
+`job_started_at`, the read's instant less the running time it reported, which a
+resume moves later. A job of the same file reporting more than 120 seconds less
+than `job_print_time_s` is a later job: the open print is ended with
+`a later job of the same file replaced it`, and the job is given a print of its
+own. No pause, read or not, splits a print. Where either side has no running time —
+a print recorded before these fields, or opened by an alert or a start before any
+read found its job printing, or a printer reporting none — the file name decides.
+
+**When a print ends.** At any read of the printer's job — this listing, `status`,
+`context`, a supervision turn, a start, and the server's own start — that finds
+the job no longer printing or paused: its interventions are expired, it is ended
+with `the print reached <state>`, and its session is closed. A printer that cannot
+be read, or reports a state the vocabulary does not name, ends nothing. A read
+made while a supervision turn holds the print leaves it to that turn, and a turn
+finding its print already ended runs nothing.
+
+**What cannot be told apart, and is kept as one print.** A later job of the same
+file that, when a read first finds it, has printed for no less than the earlier
+job was last seen printing, less 120 seconds; and a later job replacing one no
+read ever found printing. A pause between two reads looks exactly like either.
 
 The first Obico alert or printer notification about that job attaches its Obico
 print ID to the adopted print rather than opening a second: a print already
 carrying the alert's ID is that print; otherwise the most recently opened print
-with no end recorded, no Obico ID and the alert's own file name takes the ID;
-otherwise a print is opened for the alert. The file name is the key, because
-Obico's `print.filename` is the name OctoPrint reports as the job's file.
+with no end recorded, no Obico ID, the alert's own file name and a
+`job_started_at` no more than 120 seconds before the alert's `print.started_at` —
+earlier is no objection, since a resume moves `job_started_at` later — takes the
+ID; otherwise a print is opened for the alert. The file name is the key, because
+Obico's `print.filename` is the name OctoPrint reports as the job's file. An alert
+reads no printer, so it ends nothing; the next read that finds the later job ends
+the earlier print.
 
 ### status
 
@@ -180,6 +210,11 @@ Start a print of a named file, bounded by a manifest.
 `POST /v1/prints/{print_id}/actions/start_print` — answers success, rejected.
 
 Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `reason` (body).
+
+A start reads the printer first, ending every open print that read finds over, and
+when no print is then open it opens one for the file — so the action, its events
+and its manifest belong to the print the answer's `record.print_id` names, which
+may not be `print_id`. Act on that print afterwards.
 
 ### set_feedrate_factor
 
