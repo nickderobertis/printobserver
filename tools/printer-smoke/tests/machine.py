@@ -36,7 +36,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Final, TypedDict
 from urllib.parse import urlsplit
 
 HOST = "127.0.0.1"
@@ -73,7 +73,23 @@ FAULTS = (
     "pause-not-taken",
     "cancel-not-taken",
     "bounds-widened",
+    "start-names-no-print",
 )
+
+#: What the supervisor decides for an action against a print that has ended, as
+#: the contracts spell that rejection.
+NO_ACTIVE_PRINT: Final = {"rejected": "no_active_print"}
+
+
+class Event(TypedDict):
+    """One event of the history this substitute answers, as the contracts spell it."""
+
+    id: str
+    print_id: str
+    source: str
+    received_at: str
+    kind: str
+    payload: dict[str, Any]
 
 
 def identifier() -> str:
@@ -137,7 +153,7 @@ class Machine:
         self.manifest = manifest
         self.print_id = print_id
         self.printer = Printer()
-        self.events: list[dict[str, Any]] = []
+        self.events: list[Event] = []
         self.interventions: list[dict[str, Any]] = []
         self.operations: list[str] = []
         self.commands: list[str] = []
@@ -231,9 +247,7 @@ class Machine:
             if addressed != self.print_id and operation != "start_print":
                 # The print a start replaced has ended, and the supervisor
                 # takes no action against an ended print.
-                return 409, {
-                    "record": self._record_of(identifier(), {"rejected": "no_active_print"})
-                }
+                return 409, {"record": self._record_of(identifier(), NO_ACTIVE_PRINT)}
             return self._act(operation, json.loads(body or b"{}"))
 
     def _read(self, operation: str, addressed: str) -> tuple[int, dict[str, Any]]:
@@ -307,6 +321,10 @@ class Machine:
         """One action of the vocabulary, decided and then carried out."""
         self._expire()
         action_id = identifier()
+        if operation == "start_print":
+            # A start opens a print of its own, which its answer names and
+            # everything after it is about; the request itself is its first.
+            self.print_id = identifier()
         self._record("action_requested", {"action_id": action_id, "action": operation})
 
         adjustable = ADJUSTMENTS.get(operation)
@@ -368,12 +386,6 @@ class Machine:
         """One accepted action that moves the print rather than a value."""
         printer = self.printer
         if operation == "start_print":
-            # A start opens a print of its own, which its answer names and
-            # everything after it is about; the request itself is its first.
-            self.print_id = identifier()
-            for event in self.events:
-                if event["payload"].get("action_id") == action_id:
-                    event["print_id"] = self.print_id
             printer.connection = printer.job_state = PRINTING
             printer.file_name = str(body.get("file_name"))
         elif operation == "pause" and "pause-not-taken" not in self.faults:
@@ -389,7 +401,10 @@ class Machine:
                 printer.values["tool_target:0"] = 0.0
                 printer.values["bed_target"] = 0.0
         self._record("action_executed", {"action_id": action_id, "intervention_id": None})
-        return 200, {"record": self._record_of(action_id, "accepted")}
+        record = self._record_of(action_id, "accepted")
+        if operation == "start_print" and "start-names-no-print" in self.faults:
+            del record["print_id"]
+        return 200, {"record": record}
 
     def _expire(self) -> None:
         """Put back what every bounded change replaced, once its bound has passed."""

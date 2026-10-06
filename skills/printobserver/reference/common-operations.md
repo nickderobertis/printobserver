@@ -55,7 +55,7 @@ nothing but what it is doing. The first Obico alert about that job joins the
 print this opened rather than opening a second.
 
 An open print of the job's file is that job unless the job reports more than 120
-seconds less printing (`job.print_time_s`) than the print's `job_print_time_s`,
+seconds (the identity tolerance) less printing (`job.print_time_s`) than the print's `job_print_time_s`,
 the longest it was seen printing: then it is a later job, the open print ends with
 `a later job of the same file replaced it`, and the job gets a print of its own.
 A pause never splits a print — OctoPrint takes a pause back out of the running

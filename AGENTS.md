@@ -534,9 +534,8 @@ exactly that ceiling.
 **What it verifies**, in this order, reading the printer's own answer back at
 every point and failing the run naming the point where that answer was not what
 was required: the context read reports the printer, the job and effective bounds
-no wider than the configuration allows; the smoke print starts — on a print of
-its own, which the start opens and names, and which every step after it is driven
-against; each adjustable is set just inside its bound and read back from the machine; each is then asked
+no wider than the configuration allows; the smoke print starts; each adjustable
+is set just inside its bound and read back from the machine; each is then asked
 for just outside its bound, and the rejection is confirmed to have changed
 nothing on the machine; a bounded intervention with a short duration puts the
 prior value back at expiry; a pause and a resume are each taken; the print is

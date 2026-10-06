@@ -18,6 +18,7 @@ from printer_smoke import (
     STEP_CONTEXT,
     STEP_INTERVENTION,
     STEP_PAUSE_RESUME,
+    STEP_START,
 )
 from repo_checks.expect import contains, equal
 from world import World
@@ -48,6 +49,11 @@ WRONG: tuple[tuple[str, str, str], ...] = (
         "cancel-not-taken",
         STEP_CANCEL,
         "the machine answers the cancel and goes on reporting a job",
+    ),
+    (
+        "start-names-no-print",
+        STEP_START,
+        "the start is answered with no print it was recorded against",
     ),
     (
         "bounds-widened",

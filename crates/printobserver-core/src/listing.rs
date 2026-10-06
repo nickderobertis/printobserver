@@ -62,8 +62,11 @@
 //! # What it asks of the printer
 //!
 //! One read of the job, which is a read rather than an action: nothing here
-//! reaches an action method of the printer port, so adopting or closing a print
-//! commands nothing at the machine.
+//! reaches an action method of the printer port, so adopting a job commands
+//! nothing at the machine. Closing a print is the one exception, and it is the
+//! close-out's rather than this module's: the close-out expires the print's
+//! active interventions, and an expiry may put an adjusted value back through
+//! the same decided path any action takes.
 //!
 //! # What an adopted print records
 //!

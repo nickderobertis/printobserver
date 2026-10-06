@@ -83,8 +83,8 @@ apart. OctoPrint's `printTime` counts a pause while it lasts and takes it back o
 at the resume, so the time a job has spent printing only grows. A print records
 `job_print_time_s`, the longest running time a read found its job printing at, and
 `job_started_at`, the read's instant less the running time it reported, which a
-resume moves later. A job of the same file reporting more than 120 seconds less
-than `job_print_time_s` is a later job: the open print is ended with
+resume moves later. A job of the same file reporting more than 120 seconds (the
+identity tolerance) less than `job_print_time_s` is a later job: the open print is ended with
 `a later job of the same file replaced it`, and the job is given a print of its
 own. No pause, read or not, splits a print. Where either side has no running time —
 a print recorded before these fields, or opened by an alert or a start before any
@@ -100,14 +100,14 @@ finding its print already ended runs nothing.
 
 **What cannot be told apart, and is kept as one print.** A later job of the same
 file that, when a read first finds it, has printed for no less than the earlier
-job was last seen printing, less 120 seconds; and a later job replacing one no
+job was last seen printing, less 120 seconds (the identity tolerance); and a later job replacing one no
 read ever found printing. A pause between two reads looks exactly like either.
 
 The first Obico alert or printer notification about that job attaches its Obico
 print ID to the adopted print rather than opening a second: a print already
 carrying the alert's ID is that print; otherwise the most recently opened print
 with no end recorded, no Obico ID, the alert's own file name and a
-`job_started_at` no more than 120 seconds before the alert's `print.started_at` —
+`job_started_at` no more than 120 seconds (the identity tolerance) before the alert's `print.started_at` —
 earlier is no objection, since a resume moves `job_started_at` later — takes the
 ID; otherwise a print is opened for the alert. The file name is the key, because
 Obico's `print.filename` is the name OctoPrint reports as the job's file. An alert
