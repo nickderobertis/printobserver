@@ -478,6 +478,12 @@ impl Supervisor {
                 None
             }
         };
+        // The job is read and settled under one hold on resolution, as the
+        // listing's is. A start holds it from the read that chooses its print
+        // until the printer has been asked to start, so a job read before that
+        // hold and settled after it would be the idle machine the start has
+        // since moved, and would close the print the start had just opened.
+        let resolving = self.resolving().await;
         let job = match self.read_job().await {
             Ok(job) => Some(job),
             Err(error) => {
@@ -495,6 +501,7 @@ impl Supervisor {
             Some(job) if print.ended_at.is_none() => self.settle_for_context(print, job).await?,
             _ => print.clone(),
         };
+        drop(resolving);
         let print = &print;
         let manifest = self.stores().prints.manifest(print.id).await?;
         let bounds = self.bounds_for(Some(print), print.id).await?;
@@ -533,6 +540,8 @@ impl Supervisor {
 
     /// Settle the open prints against the job a context read found, and
     /// answer the print the context is about as that left it.
+    ///
+    /// The caller holds resolution from before it read that job.
     async fn settle_for_context(
         &self,
         print: &PrintRecord,
@@ -542,10 +551,7 @@ impl Supervisor {
             job: job.clone(),
             observed_at: self.clock().now(),
         };
-        let settled = {
-            let _resolving = self.resolving().await;
-            self.settle_open_prints(&observed).await?
-        };
+        let settled = self.settle_open_prints(&observed).await?;
         match settled.running {
             Some(running) if running.id == print.id => Ok(running),
             _ if settled.closed.contains(&print.id) => Ok(self
