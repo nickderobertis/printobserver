@@ -219,6 +219,18 @@ impl RecordingPrinter {
         held.job.state = state;
     }
 
+    /// Run `file` in `state`, reporting `print_time_s` as its running time.
+    ///
+    /// The running time is what tells one job of a file from another, so this
+    /// is how a journey stands a later job, a pause or a resume up.
+    pub fn runs_job(&self, file: &str, state: PrinterState, print_time_s: Option<i64>) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.snapshot.connection = state.clone();
+        held.job.file_name = Some(file.to_owned());
+        held.job.state = state;
+        held.job.print_time_s = print_time_s;
+    }
+
     /// Make it report a value JSON denotes no spelling of.
     ///
     /// A disconnected thermistor and a division by a zero-valued reading both

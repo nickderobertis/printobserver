@@ -17,7 +17,8 @@
 //! closed through the same close-out a supervision turn takes
 //! ([`Supervisor::settle_with_printer`]); only what is still open after it is
 //! adopted. A printer that cannot be read closes nothing, and every open print
-//! is adopted as it is.
+//! is adopted as it is. An intervention past its expiry on a print closed here
+//! was expired by that close-out, and is not expired a second time.
 //!
 //! Each of the three is **recorded** as having happened at startup, under the
 //! [`StartupReconciliationPayload`] kind this module declares and alone writes,
@@ -199,7 +200,12 @@ pub async fn reconcile(
         found.resumed.push(print.id);
     }
 
-    for intervention in overdue {
+    // A print the printer showed was over was closed through the close-out,
+    // which expired every intervention on it already.
+    for intervention in overdue
+        .into_iter()
+        .filter(|overdue| !found.closed.contains(&overdue.print_id))
+    {
         let outcome = supervisor.expire_intervention(&intervention).await?;
         record(
             &stores.events,
