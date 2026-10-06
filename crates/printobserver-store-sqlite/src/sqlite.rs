@@ -141,6 +141,7 @@ impl SqliteStore {
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
+            job_started_at: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -253,6 +254,45 @@ impl SqliteStore {
                 .commit()
                 .map_err(|error| database_error(&error))?;
             record.provider_print_id = Some(provider_print_id);
+            Ok(record)
+        })
+    }
+
+    /// Record when a print's job began, on a print that carries no start.
+    ///
+    /// Read and written in one transaction, so that two adoptions recording
+    /// different starts at once cannot both find the print carrying none.
+    fn write_job_start(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+    ) -> Result<PrintRecord, StoreError> {
+        let identifier = print_id.to_string();
+        let query = format!("{PRINT_SELECT} WHERE id = ?1");
+        self.on_connection(move |connection| {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| database_error(&error))?;
+            let mut record = transaction
+                .query_row(&query, params![identifier], print_from_row)
+                .optional()
+                .map_err(|error| database_error(&error))?
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            match record.job_started_at {
+                Some(held) if held == job_started_at => return Ok(record),
+                Some(_) => return Err(refused("prints.job_started_at")),
+                None => {}
+            }
+            transaction
+                .execute(
+                    "UPDATE prints SET job_started_at = ?2 WHERE id = ?1",
+                    params![identifier, instant_text(job_started_at)],
+                )
+                .map_err(|error| database_error(&error))?;
+            transaction
+                .commit()
+                .map_err(|error| database_error(&error))?;
+            record.job_started_at = Some(job_started_at);
             Ok(record)
         })
     }
@@ -890,6 +930,14 @@ impl PrintStore for SqliteStore {
         obico_print_id: i64,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         Box::pin(async move { self.write_provider_print_id(print_id, obico_print_id) })
+    }
+
+    fn record_job_start(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move { self.write_job_start(print_id, job_started_at) })
     }
 
     fn end_print(

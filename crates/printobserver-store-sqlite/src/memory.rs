@@ -132,6 +132,7 @@ impl MemoryStore {
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
+            job_started_at: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -355,6 +356,28 @@ impl PrintStore for MemoryStore {
                 Some(held) if held != obico_print_id => Err(refused("prints.provider_print_id")),
                 _ => {
                     found.provider_print_id = Some(obico_print_id);
+                    Ok(found.clone())
+                }
+            }
+        })
+    }
+
+    fn record_job_start(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move {
+            let mut records = lock(&self.records);
+            let found = records
+                .prints
+                .iter_mut()
+                .find(|print| print.id == print_id)
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            match found.job_started_at {
+                Some(held) if held != job_started_at => Err(refused("prints.job_started_at")),
+                _ => {
+                    found.job_started_at = Some(job_started_at);
                     Ok(found.clone())
                 }
             }

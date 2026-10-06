@@ -98,6 +98,7 @@ impl PrintStore for MemoryStore {
                 file_name,
                 state: PrinterState::Printing,
                 opened_at: Timestamp::now(),
+                job_started_at: None,
                 ended_at: None,
                 end_reason: None,
                 narrowings: Vec::new(),
@@ -156,6 +157,14 @@ impl PrintStore for MemoryStore {
         _obico_print_id: i64,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         unsupported("attach_obico_print")
+    }
+
+    fn record_job_start(
+        &self,
+        _print_id: PrintId,
+        _job_started_at: Timestamp,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        unsupported("record_job_start")
     }
 
     fn end_print(
@@ -361,6 +370,14 @@ impl PrintStore for RefusingStore {
         &self,
         _print_id: PrintId,
         _obico_print_id: i64,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        refused()
+    }
+
+    fn record_job_start(
+        &self,
+        _print_id: PrintId,
+        _job_started_at: Timestamp,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         refused()
     }

@@ -531,6 +531,7 @@ impl PrintStore for FakeStore {
             file_name,
             state: PrinterState::Printing,
             opened_at: self.clock.now(),
+            job_started_at: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -617,6 +618,35 @@ impl PrintStore for FakeStore {
             }
             Some(print) => {
                 print.provider_print_id = Some(obico_print_id);
+                Ok(print.clone())
+            }
+        };
+        drop(held);
+        Box::pin(async move { answer })
+    }
+
+    fn record_job_start(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        self.journal.record(Call::RecordJobStart);
+        let mut held = self.held.lock().expect("the store holds");
+        let answer = match held.prints.get_mut(&print_id) {
+            None => Err(StoreError::NotFound {
+                what: format!("print {print_id}"),
+            }),
+            Some(print)
+                if print
+                    .job_started_at
+                    .is_some_and(|held| held != job_started_at) =>
+            {
+                Err(StoreError::ConstraintRefused {
+                    constraint: "prints.job_started_at".to_owned(),
+                })
+            }
+            Some(print) => {
+                print.job_started_at = Some(job_started_at);
                 Ok(print.clone())
             }
         };

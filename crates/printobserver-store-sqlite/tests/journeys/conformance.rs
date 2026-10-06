@@ -337,6 +337,80 @@ fn an_obico_identifier_attaches_once_and_is_refused_for_another() {
     }
 }
 
+/// When a print's job began is recorded once, read back, and never moved.
+///
+/// A print opens carrying no start, because what opens it may not have seen
+/// the job running. The start recorded is the one read back — by the print's
+/// own identifier and in every listing — so the store does not round it to
+/// another instant, and recording it again is the print unchanged.
+#[test]
+fn a_job_start_is_recorded_once_and_is_refused_for_another() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = block_on(port.open_print(None, Some("hold.gcode".to_owned())))
+            .expect("a print opens");
+        assert_eq!(
+            print.job_started_at, None,
+            "{name}: a print opened with no job read carries a start"
+        );
+        let started: Timestamp = "2026-03-01T11:58:20.250000000Z"
+            .parse()
+            .expect("a fixed instant");
+
+        let recorded =
+            block_on(port.record_job_start(print.id, started)).expect("a start records");
+        assert_eq!(
+            recorded,
+            PrintRecord {
+                job_started_at: Some(started),
+                ..print.clone()
+            },
+            "{name}: recording the start changed something beside it"
+        );
+        assert_eq!(
+            block_on(port.print(print.id)),
+            Ok(Some(recorded.clone())),
+            "{name}: the start did not read back as it was recorded"
+        );
+        assert_eq!(
+            block_on(port.open_prints()),
+            Ok(vec![recorded.clone()]),
+            "{name}: the open prints do not carry the recorded start"
+        );
+        assert_eq!(
+            block_on(port.record_job_start(print.id, started)),
+            Ok(recorded.clone()),
+            "{name}: recording the start the print carries was not the print unchanged"
+        );
+
+        let later: Timestamp = "2026-03-01T12:30:00.000000000Z"
+            .parse()
+            .expect("a fixed instant");
+        assert_eq!(
+            block_on(port.record_job_start(print.id, later)),
+            Err(StoreError::ConstraintRefused {
+                constraint: "prints.job_started_at".to_owned()
+            }),
+            "{name}: a print recording one job's start took another's"
+        );
+        assert_eq!(
+            block_on(port.print(print.id)),
+            Ok(Some(recorded)),
+            "{name}: the refused start moved the recorded one anyway"
+        );
+
+        let nowhere = PrintId::new();
+        assert_eq!(
+            block_on(port.record_job_start(nowhere, started)),
+            Err(StoreError::NotFound {
+                what: format!("print {nowhere}")
+            }),
+            "{name}: a start recorded on a print nothing holds"
+        );
+    }
+}
+
 /// Every event this journey writes, with the kind and instant it was written at.
 struct Written {
     /// The events, oldest first.
