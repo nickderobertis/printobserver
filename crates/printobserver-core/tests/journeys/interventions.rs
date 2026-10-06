@@ -317,3 +317,47 @@ fn a_second_change_supersedes_the_first_and_carries_its_prior_value_forward() {
     );
     world.journal.assert_no_violations();
 }
+
+/// One intervention several expiries reach at once — the driver's sweep, a
+/// print's close-out and a start's reconciliation each can — is put back once:
+/// the machine is told the prior value a single time, and every one of them
+/// answers the outcome that won.
+#[test]
+fn an_intervention_several_expiries_reach_at_once_is_put_back_once() {
+    const EXPIRIES: usize = 8;
+    let world = World::new();
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+    let intervention = fan_change(&world, print.id, 80.0, DURATION_S);
+    world.journal.clear();
+
+    let together = std::sync::Barrier::new(EXPIRIES);
+    let outcomes: Vec<InterventionOutcome> = std::thread::scope(|scope| {
+        let running: Vec<_> = (0..EXPIRIES)
+            .map(|_| {
+                scope.spawn(|| {
+                    together.wait();
+                    printobserver_core::block_on(world.core.expire_intervention(&intervention))
+                        .expect("the expiry settles")
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .map(|expiry| expiry.join().expect("the expiry ran"))
+            .collect()
+    });
+
+    assert_eq!(
+        world.journal.printer_actions(),
+        vec![Call::SetFanPercent(40.0)],
+        "the prior value was put back more than once"
+    );
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| *outcome == InterventionOutcome::Restored),
+        "an expiry answered an outcome other than the one that won: {outcomes:?}"
+    );
+    world.journal.assert_no_violations();
+}
