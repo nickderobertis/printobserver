@@ -1015,7 +1015,7 @@ reason = "Not a directive over this file's own code: it is the text the emitter 
 [[suppression]]
 rule = "live_tier_compiles_and_requires_credential"
 file = "crates/printobserver-server/tests/live/loop.rs"
-site = "let mut walked = every_mutating_operation_has_its_own_effect"
+site = "every_operation_while_it_runs_has_its_own_effect(&world, &proxy, print_id)"
 reason = "There is no credential for this tier to require: it drives the real OctoPrint and the real OneHarness with the deterministic responder standing in for a model (`tests/integration.rs`'s own account), so no harness sign-in is involved. Nor can it pass by skipping: with no OctoPrint brought up it panics naming `just octoprint-up`, and the required `integration` job runs it on every supported platform. This step only gained the print a start opens."
 
 [[suppression]]

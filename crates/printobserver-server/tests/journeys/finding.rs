@@ -618,3 +618,75 @@ async fn a_read_that_finds_the_machine_idle_closes_the_print_and_an_unread_one_d
         world.server.stop().await;
     }
 }
+
+/// A status or a context read can be the first to find a later job of its
+/// print's file. It closes the print as replaced through the close-out every
+/// other read takes — the bounded change it carried expired, and the value it
+/// replaced put back — and answers the print as that left it; the next listing
+/// gives the running job a print of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_status_or_context_read_first_to_find_a_later_job_closes_the_print_as_replaced() {
+    for (operation, print_at) in [
+        ("/v1/prints/{print_id}/status", "/print"),
+        ("/v1/prints/{print_id}/context", "/context/print"),
+    ] {
+        let world = World::open().await;
+        let earlier =
+            prints_while(&world, RUNNING, PrinterState::Printing, Some(1800)).await["active"]
+                .clone();
+        let earlier_id: PrintId = earlier
+            .as_str()
+            .expect("an identifier")
+            .parse()
+            .expect("a print identifier");
+        let (status, adjusted) = world
+            .post(
+                &world.operation_url(
+                    "/v1/prints/{print_id}/actions/set_feedrate_factor",
+                    earlier_id,
+                ),
+                &json!({
+                    "reason": "a journey is asking",
+                    "actor": "operator",
+                    "factor": 1.2,
+                    "duration_s": 3600,
+                }),
+            )
+            .await;
+        assert_eq!(status, reqwest::StatusCode::OK, "{adjusted}");
+
+        world
+            .printer
+            .runs_job(RUNNING, PrinterState::Printing, Some(200));
+        let (_, read) = world.get(&world.operation_url(operation, earlier_id)).await;
+
+        let answered = read.pointer(print_at).expect("the read carries its print");
+        assert_eq!(
+            answered["end_reason"],
+            json!(printobserver_core::listing::REPLACED_REASON),
+            "{operation} answered the print as it was before the read: {read}"
+        );
+        assert!(answered.get("ended_at").is_some(), "{read}");
+        assert!(
+            world
+                .stores
+                .actions
+                .active_interventions(earlier_id)
+                .await
+                .expect("the interventions read")
+                .is_empty(),
+            "{operation} closed the print and left its bounded change running"
+        );
+        assert_eq!(
+            world
+                .printer
+                .value_of(printobserver_printer_api::Adjustable::Feedrate),
+            Some(1.0),
+            "{operation} closed the print without putting its feedrate back"
+        );
+        let after = prints(&world).await;
+        assert_eq!(listed(&after).len(), 2, "{after}");
+        assert_ne!(after["active"], earlier, "{after}");
+        world.server.stop().await;
+    }
+}

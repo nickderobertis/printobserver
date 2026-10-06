@@ -36,7 +36,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Final, TypedDict
+from typing import Any, Final, Literal, NewType, TypedDict
 from urllib.parse import urlsplit
 
 HOST = "127.0.0.1"
@@ -76,16 +76,32 @@ FAULTS = (
     "start-names-no-print",
 )
 
-#: What the supervisor decides for an action against a print that has ended, as
-#: the contracts spell that rejection.
-NO_ACTIVE_PRINT: Final = {"rejected": "no_active_print"}
+#: A print's identifier, as the supervisor mints one.
+PrintId = NewType("PrintId", str)
+
+#: An event's identifier, as the supervisor mints one.
+EventId = NewType("EventId", str)
+
+
+class Rejected(TypedDict):
+    """A decision refusing a request, as `PolicyDecision` spells one."""
+
+    rejected: str | dict[str, Any]
+
+
+#: Every decision this substitute answers: `PolicyDecision`, which
+#: `tests/test_contracts.py` holds each one this substitute makes to.
+Decision = Literal["accepted"] | Rejected
+
+#: What the supervisor decides for an action against a print that has ended.
+NO_ACTIVE_PRINT: Final[Rejected] = {"rejected": "no_active_print"}
 
 
 class Event(TypedDict):
     """One event of the history this substitute answers, as the contracts spell it."""
 
-    id: str
-    print_id: str
+    id: EventId
+    print_id: PrintId
     source: str
     received_at: str
     kind: str
@@ -151,7 +167,7 @@ class Machine:
         self.device = device
         self.envelope = envelope
         self.manifest = manifest
-        self.print_id = print_id
+        self.print_id = PrintId(print_id)
         self.printer = Printer()
         self.events: list[Event] = []
         self.interventions: list[dict[str, Any]] = []
@@ -324,21 +340,23 @@ class Machine:
         if operation == "start_print":
             # A start opens a print of its own, which its answer names and
             # everything after it is about; the request itself is its first.
-            self.print_id = identifier()
+            self.print_id = PrintId(identifier())
         self._record("action_requested", {"action_id": action_id, "action": operation})
 
         adjustable = ADJUSTMENTS.get(operation)
         if adjustable is not None:
             if self.printer.connection not in {PRINTING, PAUSED}:
-                decision = {"rejected": {"invalid_from_state": {"state": self.printer.connection}}}
-                self._record("action_rejected", {"action_id": action_id, "decision": decision})
-                return 409, {"record": self._record_of(action_id, decision)}
+                wrong_state: Rejected = {
+                    "rejected": {"invalid_from_state": {"state": self.printer.connection}}
+                }
+                self._record("action_rejected", {"action_id": action_id, "decision": wrong_state})
+                return 409, {"record": self._record_of(action_id, wrong_state)}
             asked = float(body[ASKED[adjustable]])
             low, high = self.envelope[adjustable]
             if not low <= asked <= high:
                 if "out-of-bounds-applied" in self.faults:
                     self.printer.values[adjustable] = asked
-                decision = {
+                outside: Rejected = {
                     "rejected": {
                         "out_of_bounds": {
                             "adjustable": adjustable,
@@ -347,8 +365,8 @@ class Machine:
                         }
                     }
                 }
-                self._record("action_rejected", {"action_id": action_id, "decision": decision})
-                return 409, {"record": self._record_of(action_id, decision)}
+                self._record("action_rejected", {"action_id": action_id, "decision": outside})
+                return 409, {"record": self._record_of(action_id, outside)}
             return self._adjust(action_id, adjustable, asked, body.get("duration_s"))
 
         return self._transition(action_id, operation, body)
@@ -428,7 +446,7 @@ class Machine:
         """Write one event into the history this substitute answers."""
         self.events.append(
             {
-                "id": identifier(),
+                "id": EventId(identifier()),
                 "print_id": self.print_id,
                 "source": "supervisor",
                 "received_at": now(),
@@ -437,7 +455,7 @@ class Machine:
             }
         )
 
-    def _record_of(self, action_id: str, decision: object) -> dict[str, Any]:
+    def _record_of(self, action_id: str, decision: Decision) -> dict[str, Any]:
         """The action record one answer carries."""
         return {
             "id": action_id,

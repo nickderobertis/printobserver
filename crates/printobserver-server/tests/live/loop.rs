@@ -436,7 +436,8 @@ pub async fn walk(instance: &Scripted) {
     every_mutating_operation_is_rejected_in_its_own_kind(&world, &proxy, print_id).await;
     every_adjustment_applies_the_duration_it_is_given(&world, print_id).await;
     // llmlint: ignore[live_tier_compiles_and_requires_credential] See suppressions.toml.
-    let mut walked = every_mutating_operation_has_its_own_effect(&world, &proxy, print_id).await;
+    let mut walked =
+        every_operation_while_it_runs_has_its_own_effect(&world, &proxy, print_id).await;
     the_history_accounts_for_every_step(&world, print_id).await;
 
     // Restart, and a second alert continues the first alert's session — with the
@@ -967,7 +968,7 @@ const WHILE_IT_RUNS: [&str; 8] = [
 const ENDING_IT: [&str; 2] = ["cancel", "start_print"];
 
 /// Every mutating operation the vocabulary declares was walked, by one of
-/// [`every_mutating_operation_has_its_own_effect`] and
+/// [`every_operation_while_it_runs_has_its_own_effect`] and
 /// [`a_cancel_ends_the_print_and_a_start_opens_its_own`].
 fn every_mutating_operation_was_walked(mut walked: Vec<&'static str>) {
     walked.sort_unstable();
@@ -982,7 +983,7 @@ fn every_mutating_operation_was_walked(mut walked: Vec<&'static str>) {
 
 /// The operations of [`WHILE_IT_RUNS`] have the effect each names, at the
 /// machine itself; answers which were walked.
-async fn every_mutating_operation_has_its_own_effect(
+async fn every_operation_while_it_runs_has_its_own_effect(
     world: &Composed,
     proxy: &Proxy,
     print_id: PrintId,
