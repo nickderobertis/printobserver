@@ -142,6 +142,7 @@ impl SqliteStore {
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
             job_started_at: None,
+            job_print_time_s: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -258,43 +259,29 @@ impl SqliteStore {
         })
     }
 
-    /// Record when a print's job began, on a print that carries no start.
+    /// Record what one read saw of a print's job.
     ///
-    /// Read and written in one transaction, so that two adoptions recording
-    /// different starts at once cannot both find the print carrying none.
-    fn write_job_start(
+    /// One statement, so the running time is raised against the value the row
+    /// holds as it is written rather than one read before it: two reads
+    /// recording at once cannot lower it.
+    fn write_job_sighting(
         &self,
         print_id: PrintId,
         job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
     ) -> Result<PrintRecord, StoreError> {
         let identifier = print_id.to_string();
-        let query = format!("{PRINT_SELECT} WHERE id = ?1");
         self.on_connection(move |connection| {
-            let transaction = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(|error| database_error(&error))?;
-            let mut record = transaction
-                .query_row(&query, params![identifier], print_from_row)
-                .optional()
-                .map_err(|error| database_error(&error))?
-                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
-            match record.job_started_at {
-                Some(held) if held == job_started_at => return Ok(record),
-                Some(_) => return Err(refused("prints.job_started_at")),
-                None => {}
-            }
-            transaction
+            connection
                 .execute(
-                    "UPDATE prints SET job_started_at = ?2 WHERE id = ?1",
-                    params![identifier, instant_text(job_started_at)],
+                    "UPDATE prints SET job_started_at = ?2, \
+                     job_print_time_s = COALESCE(MAX(job_print_time_s, ?3), job_print_time_s, ?3) \
+                     WHERE id = ?1",
+                    params![identifier, instant_text(job_started_at), job_print_time_s],
                 )
-                .map_err(|error| database_error(&error))?;
-            transaction
-                .commit()
-                .map_err(|error| database_error(&error))?;
-            record.job_started_at = Some(job_started_at);
-            Ok(record)
-        })
+                .map_err(|error| database_error(&error))
+        })?;
+        self.require_print(print_id)
     }
 
     /// One print, or the refusal that there is no such print.
@@ -932,12 +919,13 @@ impl PrintStore for SqliteStore {
         Box::pin(async move { self.write_provider_print_id(print_id, obico_print_id) })
     }
 
-    fn record_job_start(
+    fn record_job_sighting(
         &self,
         print_id: PrintId,
         job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        Box::pin(async move { self.write_job_start(print_id, job_started_at) })
+        Box::pin(async move { self.write_job_sighting(print_id, job_started_at, job_print_time_s) })
     }
 
     fn end_print(

@@ -338,23 +338,23 @@ pub trait PrintStore: Send + Sync {
         obico_print_id: i64,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>>;
 
-    /// Record when the printer's job began on a print that carries no start.
+    /// Record what one read of the printer saw of a print's job.
     ///
-    /// A print opened from a running job, or one a running job is adopted
-    /// into, is how this is reached: the job's start is what tells it apart
-    /// from a later job of the same file. Recording the start a print already
-    /// carries answers the print unchanged.
+    /// The job's start is set to `job_started_at` whatever it was, since a
+    /// pause moves it ([`PrintRecord::job_started_at`]); the print's running
+    /// time is raised to `job_print_time_s` when that is longer than the one it
+    /// carries and left alone otherwise, so that the longest the job was ever
+    /// seen printing is what it carries. Absent `job_print_time_s` — a read
+    /// that found the job paused — leaves the running time as it is.
     ///
     /// # Errors
     ///
-    /// Refuses a print that does not exist with [`StoreError::NotFound`], and a
-    /// print already carrying a different start with
-    /// [`StoreError::ConstraintRefused`] naming `prints.job_started_at`: a job
-    /// a print records is never moved to another job.
-    fn record_job_start(
+    /// Refuses a print that does not exist with [`StoreError::NotFound`].
+    fn record_job_sighting(
         &self,
         print_id: PrintId,
         job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>>;
 
     /// Read one print by the provider's own identifier for it.

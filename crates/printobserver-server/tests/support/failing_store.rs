@@ -98,10 +98,11 @@ impl PrintStore for FailingStore {
         failed()
     }
 
-    fn record_job_start(
+    fn record_job_sighting(
         &self,
         _print_id: PrintId,
         _job_started_at: Timestamp,
+        _job_print_time_s: Option<i64>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         failed()
     }

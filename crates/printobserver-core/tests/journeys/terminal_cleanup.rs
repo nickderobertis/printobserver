@@ -250,7 +250,9 @@ fn a_read_that_finds_the_job_over_closes_the_print_through_the_same_cleanup() {
             let (failing, restorable, unreported) = open_three(&world, print.id);
 
             world.printer.reports(reporting_snapshot(state.clone()));
-            world.printer.reports_job(Some("benchy.gcode"), state.clone());
+            world
+                .printer
+                .reports_job(Some("benchy.gcode"), state.clone());
             world
                 .printer
                 .fails(PrinterMethod::SetBedTargetC, failure.clone());
@@ -308,7 +310,10 @@ fn a_read_that_cannot_tell_whether_the_job_is_over_closes_nothing() {
         );
         read(&world, one, print.id);
         assert_eq!(
-            world.store.print_now(print.id).and_then(|held| held.ended_at),
+            world
+                .store
+                .print_now(print.id)
+                .and_then(|held| held.ended_at),
             None,
             "{one}: an unreadable printer closed the print"
         );
@@ -320,7 +325,10 @@ fn a_read_that_cannot_tell_whether_the_job_is_over_closes_nothing() {
         );
         read(&world, one, print.id);
         assert_eq!(
-            world.store.print_now(print.id).and_then(|held| held.ended_at),
+            world
+                .store
+                .print_now(print.id)
+                .and_then(|held| held.ended_at),
             None,
             "{one}: a state nobody named closed the print"
         );
@@ -362,7 +370,10 @@ fn a_read_inside_a_running_turn_leaves_the_print_to_the_turn() {
         });
         reading.join().expect("the read ran");
         assert_eq!(
-            world.store.print_now(print.id).and_then(|held| held.ended_at),
+            world
+                .store
+                .print_now(print.id)
+                .and_then(|held| held.ended_at),
             None,
             "{one}: a read closed the print a running turn holds"
         );

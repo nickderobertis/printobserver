@@ -48,6 +48,11 @@ impl TurnLocks {
     /// For a caller that may itself be answering the turn that holds it — a
     /// read the agent made from inside its own turn — and so must never queue
     /// behind that turn.
+    ///
+    /// # Panics
+    ///
+    /// When the turn locks are poisoned, which only a panic while they were
+    /// being read can leave them.
     pub fn try_acquire(&self, print_id: PrintId) -> Option<TurnGuard<'_>> {
         let mut queues = self.queues.lock().expect("the turn locks are not poisoned");
         let queue = queues.entry(print_id).or_default();

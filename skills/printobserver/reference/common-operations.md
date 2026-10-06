@@ -64,6 +64,7 @@ $ printobserver prints
 active: PRINT_ID
 prints.0.file_name: FILE
 prints.0.id: PRINT_ID
+prints.0.job_print_time_s: 900
 prints.0.job_started_at: TIMESTAMP
 prints.0.narrowings: []
 prints.0.opened_at: TIMESTAMP
@@ -90,6 +91,7 @@ job.size_bytes: 4211
 job.state: printing
 print.file_name: FILE
 print.id: PRINT_ID
+print.job_print_time_s: 900
 print.job_started_at: TIMESTAMP
 print.narrowings: []
 print.opened_at: TIMESTAMP
@@ -139,6 +141,7 @@ context.latest_image.id: IMAGE_ID
 context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
 context.print.file_name: FILE
 context.print.id: PRINT_ID
+context.print.job_print_time_s: 900
 context.print.job_started_at: TIMESTAMP
 context.print.narrowings: []
 context.print.opened_at: TIMESTAMP
@@ -470,7 +473,7 @@ record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
 record.outcome: succeeded
-record.print_id: PRINT_ID
+record.print_id: ID
 record.request.action.action: start_print
 record.request.action.actor: operator
 record.request.action.file_name: FILE
@@ -493,11 +496,9 @@ way an observation is put into the record.
 
 ```console
 $ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "spaghetti in the alert image, but the part is still attached; watching it"
-record.decision: accepted
-record.executed_at: TIMESTAMP
+record.decision.rejected: no_active_print
 record.id: ID
-record.outcome: succeeded
-record.print_id: PRINT_ID
+record.print_id: ID
 record.request.action.action: acknowledge_failure
 record.request.action.actor: operator
 record.request.action.disposition: watch
@@ -505,6 +506,7 @@ record.request.action.event_id: EVENT_ID
 record.request.action.reason: spaghetti in the alert image, but the part is still attached; watching it
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
+the supervisor's policy refused this action. Ask again inside what the answer says is allowed
 ```
 
 ### look
@@ -548,11 +550,11 @@ job.state: printing
 printer.bed.actual_c.out_of_range: false
 printer.bed.actual_c.value: 59.5
 printer.bed.target_c.out_of_range: false
-printer.bed.target_c.value: 62.0
+printer.bed.target_c.value: 60.0
 printer.connection: printing
 printer.observed_at: TIMESTAMP
 printer.tools.0.actual_c.out_of_range: false
 printer.tools.0.actual_c.value: 209.5
 printer.tools.0.target_c.out_of_range: false
-printer.tools.0.target_c.value: 208.0
+printer.tools.0.target_c.value: 210.0
 ```

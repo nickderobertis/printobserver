@@ -33,8 +33,8 @@ pub enum Call {
     ReadPrints,
     /// A provider's identifier was recorded on a print.
     AttachObicoPrint(i64),
-    /// When a print's job began was recorded on it.
-    RecordJobStart,
+    /// What a read saw of a print's job was recorded on it.
+    RecordJobSighting,
     /// A print was ended, in a state.
     EndPrint(String),
     /// A manifest narrowing was recorded.
@@ -125,7 +125,7 @@ impl Call {
             | Self::ReadOpenPrints
             | Self::ReadPrints
             | Self::AttachObicoPrint(_)
-            | Self::RecordJobStart
+            | Self::RecordJobSighting
             | Self::EndPrint(_)
             | Self::RecordNarrowing(_)
             | Self::AppendEvent(_)

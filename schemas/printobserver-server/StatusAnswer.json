@@ -337,6 +337,14 @@
           "$ref": "#/$defs/PrintId",
           "description": "This print's identifier, minted by the store."
         },
+        "job_print_time_s": {
+          "description": "The longest running time, in whole seconds, the printer reported for\nthis print's job at a read that found it printing rather than paused.\n\nThe time a job has spent printing only grows, pause or no pause, so a\njob of this print's file reporting less — by more than\n`listing::JOB_IDENTITY_TOLERANCE_S` — is a later job. Absent until a\nread finds the job printing.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "job_started_at": {
           "anyOf": [
             {
@@ -346,7 +354,7 @@
               "type": "null"
             }
           ],
-          "description": "When the printer's job this print records began, as the printer's own\nrunning time puts it: the instant the job was observed, less how long\nthe printer reported it had been running then.\n\nThis is what tells two jobs of one file apart, since the printer names\na job by nothing else. Absent when the print was not opened or adopted\nfrom a running job, when that job reported no running time, and on\nevery print recorded before this was."
+          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time — a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
         },
         "narrowings": {
           "description": "Every manifest range this print narrowed to the envelope's.",

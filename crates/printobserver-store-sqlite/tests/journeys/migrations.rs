@@ -251,8 +251,9 @@ fn read_the_seeded_print_back(port: &dyn Store) {
          under the record's own name"
     );
     assert_eq!(
-        print.job_started_at, None,
-        "a print written before job starts were recorded read back carrying one"
+        (print.job_started_at, print.job_print_time_s),
+        (None, None),
+        "a print written before job sightings were recorded read back carrying one"
     );
     assert_eq!(
         block_on(port.print_by_provider_id(7))

@@ -152,14 +152,16 @@ DROP INDEX prints_by_obico_id;
 CREATE INDEX prints_by_provider_id ON prints(provider_print_id);
 ";
 
-/// When the printer's job a print records began.
+/// What reads of the printer saw of a print's job: when it began, and the
+/// longest it was seen printing.
 ///
-/// A nullable column with no backfill: a print recorded before it existed has
-/// no start anybody observed, and one guessed now would be a start nobody did.
-/// Such a print is matched to a running job by its file name alone, as it was
-/// when it was written.
-const V4_JOB_STARTED_AT: &str = "\
+/// Nullable columns with no backfill: a print recorded before they existed has
+/// no sighting anybody recorded, and one guessed now would be a sighting nobody
+/// made. Such a print is matched to a running job by its file name alone, as it
+/// was when it was written.
+const V4_JOB_SIGHTING: &str = "\
 ALTER TABLE prints ADD COLUMN job_started_at TEXT;
+ALTER TABLE prints ADD COLUMN job_print_time_s INTEGER;
 ";
 
 /// Every migration, in the order they are applied.
@@ -183,7 +185,7 @@ pub const MIGRATIONS: [Migration; 4] = [
     },
     Migration {
         version: 4,
-        sql: V4_JOB_STARTED_AT,
+        sql: V4_JOB_SIGHTING,
     },
 ];
 

@@ -966,14 +966,26 @@ pub struct PrintRecord {
     pub file_name: Option<String>,
     /// This print's identifier, minted by the store.
     pub id: PrintId,
-    /// When the printer's job this print records began, as the printer's own
-    /// running time puts it: the instant the job was observed, less how long
-    /// the printer reported it had been running then.
+    /// The longest running time, in whole seconds, the printer reported for
+    /// this print's job at a read that found it printing rather than paused.
     ///
-    /// This is what tells two jobs of one file apart, since the printer names
-    /// a job by nothing else. Absent when the print was not opened or adopted
-    /// from a running job, when that job reported no running time, and on
-    /// every print recorded before this was.
+    /// The time a job has spent printing only grows, pause or no pause, so a
+    /// job of this print's file reporting less — by more than
+    /// `listing::JOB_IDENTITY_TOLERANCE_S` — is a later job. Absent until a
+    /// read finds the job printing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_print_time_s: Option<i64>,
+    /// When the printer's job this print records began, as the printer's own
+    /// running time put it at the latest read that found the job running or
+    /// paused: the instant of that read, less the running time it reported.
+    ///
+    /// `OctoPrint` counts a pause into the running time until the job resumes
+    /// and then takes the pause back out, so a pause moves this later: it is
+    /// reset at every such read rather than fixed once. Absent when no read
+    /// has
+    /// found this print's job reporting a running time — a print opened by an
+    /// alert or a start before any read, and every print recorded before this
+    /// was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job_started_at: Option<Timestamp>,
     /// Every manifest range this print narrowed to the envelope's.

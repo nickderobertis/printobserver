@@ -11,18 +11,38 @@
 //! # Which open print a running job is
 //!
 //! The printer names a job by its file and by nothing else, so a file name
-//! alone cannot tell one job from a later one of the same file. What can is
-//! when each began: the instant a job is observed, less the running time the
-//! printer reports for it, is its start ([`ObservedJob::started_at`]), and a
-//! print records the start of the job it was opened or adopted from
-//! ([`PrintRecord::job_started_at`]). An open print is the running job's when
-//! it carries the job's file name and the two starts are within
-//! [`JOB_START_TOLERANCE_S`] of each other — or when either start is unknown,
-//! which is every print recorded before starts were, and every job whose
-//! printer reports no running time. An open print of the same file whose start
-//! is further away is a job that ended without anybody seeing it, and it is
-//! closed with [`REPLACED_REASON`] before the running job is given a print of
-//! its own.
+//! alone cannot tell one job from a later one of the same file. What can is how
+//! long each has been printing. `OctoPrint` reports a job's running time as the
+//! time since it started less every pause it has **resumed** from: a pause
+//! counts while it lasts, and comes back out at the resume. So the running time
+//! a read finds a job *printing* at is the time it has spent printing, and that
+//! only grows; the one a read finds it *paused* at is at least that.
+//!
+//! A print records the longest running time any read found its job printing at
+//! ([`PrintRecord::job_print_time_s`]) and, from the latest read that found its
+//! job printing or paused, when that read put the job's start
+//! ([`PrintRecord::job_started_at`] — the read's instant less the running time
+//! it reported, which a resume moves later, so a read putting it further than
+//! the tolerance from the one recorded resets it).
+//! An open print of the running job's file is that job unless the job reports
+//! a running time more than [`JOB_IDENTITY_TOLERANCE_S`] short of the longest
+//! the print recorded: a job cannot have printed for less than it had already
+//! printed, so that one is a later job, and the print is closed with
+//! [`REPLACED_REASON`] before the running job is given a print of its own. The
+//! tolerance is printing time, and a pause, observed or not, shortens no job's
+//! printing time, so no pause splits a print.
+//!
+//! Where either side reports no running time — a print recorded before these
+//! were, one an alert or a start opened before any read saw its job, one only
+//! ever seen paused, or a job whose printer reports none — the file name is
+//! the whole of what is known, and it decides as it did before.
+//!
+//! What this cannot tell apart, and so keeps as one print: a later job that,
+//! when it is first read, has printed for as long as the earlier job was last
+//! seen printing, less the tolerance, or longer. An earlier job paused between
+//! two reads and resumed reports exactly that, because the pause is taken back
+//! out of its running time at the resume; nothing a read returns tells the two
+//! apart.
 //!
 //! # A read that finds the job over closes its print
 //!
@@ -70,13 +90,18 @@ use crate::supervisor::Supervisor;
 /// job that is not there.
 pub const ACTIVE_STATES: [PrinterState; 2] = [PrinterState::Printing, PrinterState::Paused];
 
-/// How far apart, in seconds, two starts of one job may be put.
+/// How far, in seconds of printing, a job's reported running time may fall
+/// short of the longest a print recorded for its job and still be that job —
+/// and how much later than a print's recorded start an alert may put its job's
+/// start and still be that print's.
 ///
-/// A start is derived from the printer's whole-second running time at an
-/// instant read off another clock, so two reads of one job do not put it at
-/// exactly one instant; two jobs of one file cannot start closer together
-/// than the time it takes to print one and start the next.
-pub const JOB_START_TOLERANCE_S: i64 = 120;
+/// A running time is whole seconds read off the printer's clock at an instant
+/// read off another, and `OctoPrint` reports a job it is still *pausing* — the
+/// head finishing its move — as printing with the pause already counting, so
+/// two reads of one job do not agree to the second. Two jobs of one file
+/// cannot be closer together than the time it takes to print one and start
+/// the next.
+pub const JOB_IDENTITY_TOLERANCE_S: i64 = 120;
 
 /// Why a print is ended when a later job of its file is found running.
 pub const REPLACED_REASON: &str = "a later job of the same file replaced it";
@@ -103,25 +128,53 @@ impl ObservedJob {
         is_over(&self.job.state)
     }
 
-    /// When the job began: the instant it was observed, less the running time
-    /// the printer reported for it then. Unknown when it reported none.
+    /// When the job began, less every pause it has resumed from: the instant
+    /// it was observed, less the running time the printer reported for it
+    /// then. Unknown when it reported none.
     #[must_use]
     pub fn started_at(&self) -> Option<Timestamp> {
         let running = self.job.print_time_s?;
         self.observed_at.plus_seconds(-running).ok()
     }
+
+    /// How long the job has spent printing, when this read found it printing
+    /// and reporting a running time; a paused job's running time counts the
+    /// pause, so it is not one.
+    #[must_use]
+    pub fn printing_time_s(&self) -> Option<i64> {
+        (self.job.state == PrinterState::Printing)
+            .then_some(self.job.print_time_s)
+            .flatten()
+    }
 }
 
-/// Whether a job that began at `started_at` may be the one a print records.
+/// Whether a running job of a print's file may be the job that print records.
 ///
-/// Within [`JOB_START_TOLERANCE_S`] of the start the print records, or either
-/// start unknown — in which case the file name the caller already compared is
-/// the whole of what is known.
+/// Not when the job reports a running time more than
+/// [`JOB_IDENTITY_TOLERANCE_S`] short of the longest the print recorded for its
+/// job; otherwise, and whenever either side reports none, it may — the file
+/// name the caller already compared is then the whole of what is known.
 #[must_use]
-pub fn may_be_same_job(print: &PrintRecord, started_at: Option<Timestamp>) -> bool {
+pub fn may_be_same_job(print: &PrintRecord, observed: &ObservedJob) -> bool {
+    match (print.job_print_time_s, observed.job.print_time_s) {
+        (Some(longest), Some(running)) => {
+            running.saturating_add(JOB_IDENTITY_TOLERANCE_S) >= longest
+        }
+        _ => true,
+    }
+}
+
+/// Whether a job a provider says began at `started_at` may be the job a print
+/// of its file records.
+///
+/// Not when it began more than [`JOB_IDENTITY_TOLERANCE_S`] after the start
+/// the print records. Earlier is no objection: a resume moves the recorded
+/// start later than the job's own, and a provider records the job's own.
+#[must_use]
+pub fn may_have_started_it(print: &PrintRecord, started_at: Option<Timestamp>) -> bool {
     match (print.job_started_at, started_at) {
-        (Some(recorded), Some(observed)) => {
-            seconds_between(recorded, observed).abs() <= JOB_START_TOLERANCE_S
+        (Some(recorded), Some(started)) => {
+            seconds_between(recorded, started) <= JOB_IDENTITY_TOLERANCE_S
         }
         _ => true,
     }
@@ -235,7 +288,10 @@ impl Supervisor {
     /// open print of its file that may be the same job; every open print of
     /// its file that cannot be is closed as replaced. Prints of other files are
     /// left as they are.
-    async fn settle_open_prints(&self, observed: &ObservedJob) -> Result<Settled, CoreError> {
+    pub(crate) async fn settle_open_prints(
+        &self,
+        observed: &ObservedJob,
+    ) -> Result<Settled, CoreError> {
         let mut settled = Settled::default();
         let open = self.stores().prints.open_prints().await?;
         if observed.has_ended() {
@@ -258,14 +314,13 @@ impl Supervisor {
         else {
             return Ok(settled);
         };
-        let started_at = observed.started_at();
         // Most recently opened first, so the first that may be the job is the
         // most recent of them.
         for print in open
             .into_iter()
             .filter(|print| print.file_name.as_ref() == Some(file_name))
         {
-            if !may_be_same_job(&print, started_at) {
+            if !may_be_same_job(&print, observed) {
                 // The earlier job ended before this one began, and a printer
                 // begins a job only from idle.
                 if self
@@ -275,30 +330,46 @@ impl Supervisor {
                     settled.closed.push(print.id);
                 }
             } else if settled.running.is_none() {
-                settled.running = Some(self.adopt_running_job(print, started_at).await?);
+                settled.running = Some(self.record_sighting(print, observed).await?);
             }
         }
         Ok(settled)
     }
 
-    /// Record a running job's start on the print it was matched to, when the
-    /// print records none.
-    pub(crate) async fn adopt_running_job(
+    /// Record what one read saw of the job a print was matched to.
+    ///
+    /// The start a print records is moved only when a read puts the job's
+    /// start more than [`JOB_IDENTITY_TOLERANCE_S`] from it, as a resume after
+    /// a longer pause does: a whole-second running time read at an instant off
+    /// another clock puts one job's start a second or so apart from one read to
+    /// the next, and a record rewritten at every read for that would be a
+    /// record of the reads rather than of the job. Nothing is written when the
+    /// read saw nothing the print does not already carry.
+    async fn record_sighting(
         &self,
         print: PrintRecord,
-        started_at: Option<Timestamp>,
+        observed: &ObservedJob,
     ) -> Result<PrintRecord, CoreError> {
-        match started_at {
-            Some(started_at) if print.job_started_at.is_none() => Ok(self
-                .stores()
-                .prints
-                .record_job_start(print.id, started_at)
-                .await?),
-            _ => Ok(print),
+        let Some(seen) = observed.started_at() else {
+            return Ok(print);
+        };
+        let printing = observed.printing_time_s();
+        let started_at = match print.job_started_at {
+            Some(held) if seconds_between(held, seen).abs() <= JOB_IDENTITY_TOLERANCE_S => held,
+            _ => seen,
+        };
+        if print.job_started_at == Some(started_at) && printing <= print.job_print_time_s {
+            return Ok(print);
         }
+        Ok(self
+            .stores()
+            .prints
+            .record_job_sighting(print.id, started_at, printing)
+            .await?)
     }
 
-    /// Open a print for the job the printer is running, recording its start.
+    /// Open a print for the job the printer is running, recording what the
+    /// read saw of it.
     async fn open_running_print(
         &self,
         observed: &ObservedJob,
@@ -309,7 +380,7 @@ impl Supervisor {
             .prints
             .open_print(None, Some(file_name.to_owned()))
             .await?;
-        self.adopt_running_job(opened, observed.started_at()).await
+        self.record_sighting(opened, observed).await
     }
 
     /// Close one print a read found over, unless a supervision turn holds it.

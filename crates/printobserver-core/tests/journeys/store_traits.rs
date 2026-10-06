@@ -70,12 +70,13 @@ impl PrintStore for TrivialStore {
         Box::pin(async { Ok(PrintRecord::sample_minimal()) })
     }
 
-    fn record_job_start(
+    fn record_job_sighting(
         &self,
         print_id: PrintId,
         job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
-        let _ = (print_id, job_started_at);
+        let _ = (print_id, job_started_at, job_print_time_s);
         Box::pin(async { Ok(PrintRecord::sample_minimal()) })
     }
 
@@ -307,7 +308,7 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
         block_on(
             stores
                 .prints
-                .record_job_start(print_id(), Timestamp::sample_full())
+                .record_job_sighting(print_id(), Timestamp::sample_full(), Some(1))
         ),
         Ok(PrintRecord::sample_minimal())
     );

@@ -51,6 +51,17 @@
           "description": "The provider's own identifier for the print.",
           "format": "int64",
           "type": "integer"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the provider says the print started, when it said.\n\nWhat tells this print's job from a later job of the same file that the\nsupervisor found before any alert about it arrived."
         }
       },
       "required": [
