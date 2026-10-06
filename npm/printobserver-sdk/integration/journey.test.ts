@@ -124,6 +124,7 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
   );
 }
 
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("the same nine steps are answered against a real OctoPrint", async () => {
   const client = new Client({
     server: world.server,

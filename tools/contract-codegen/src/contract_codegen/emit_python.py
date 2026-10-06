@@ -921,6 +921,7 @@ def emit_live(contract: Contract) -> str:
         "    the actor may request it at all, so a refusal for the grant is asked of the",
         "    print the machine is running rather than of one a read has ended.",
         '    """',
+        f"    {ASYNC_DIRECTIVE}",
         '    active = client.prints().get("active")',
         "    return replace(world, print_id=active) if active else world",
         "",
@@ -951,7 +952,11 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
-        "def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None:",
+        "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
+        "def test_every_action_is_refused_as_a_typed_rejection(",
+        "    world: Supervisor,",
+        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+        " See suppressions.toml.",
         '    """Every action, refused by a real supervisor\'s own policy, typed.',
         "",
         "    One client acting as an actor class the envelope grants nothing, against the",

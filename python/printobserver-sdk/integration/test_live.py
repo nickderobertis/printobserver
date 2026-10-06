@@ -570,6 +570,7 @@ def about_the_running_print(client: Client, world: Supervisor) -> Supervisor:
     the actor may request it at all, so a refusal for the grant is asked of the
     print the machine is running rather than of one a read has ended.
     """
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     active = client.prints().get("active")
     return replace(world, print_id=active) if active else world
 
@@ -734,7 +735,10 @@ def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
         truth(False, describing="`resume` to be refused")
 
 
-def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None:
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+def test_every_action_is_refused_as_a_typed_rejection(
+    world: Supervisor,
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """Every action, refused by a real supervisor's own policy, typed.
 
     One client acting as an actor class the envelope grants nothing, against the

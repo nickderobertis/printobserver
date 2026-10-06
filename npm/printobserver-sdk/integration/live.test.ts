@@ -526,6 +526,7 @@ async function refusedResume(client: Client, proxy: Recording) {
  * at the state, the interval or the bounds, so every action is refused from
  * wherever the machine happens to be.
  */
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every action is refused as a typed rejection by a real supervisor", async () => {
   await using proxy = new Recording(world.server);
   const client = new Client({

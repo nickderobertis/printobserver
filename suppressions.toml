@@ -947,6 +947,78 @@ site = "Every method, answered by a real supervisor, in the one order it admits.
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = 'equal(client.manifest_get(world.print_id)["manifest"], wanted)'
+reason = "The fourth journey step reads back the manifest the start recorded against the print it opened, on the same published synchronous client this file's entry at `client = Client(world.server, \"operator\", world.credential)` answers for. The judged tier reads each call as a site of its own apart from that construction, and the same reason applies unchanged."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = "def test_the_same_nine_steps_are_answered_against_a_real_octoprint"
+reason = "The nine-step journey itself, on the same ground as this file's entry for this rule at `def test_a_client_without_the_credential_in_force_is_refused`: it runs only under the project's `test-integration` target, the printer integration tier `AGENTS.md` and `just check-repo` define per client over one shared OctoPrint. This change only has it follow the print a start opens."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "python/printobserver-sdk/integration/test_journey.py"
+site = "The nine steps, in the one order a real machine admits."
+reason = "The same ground as this file's entry for this rule at `A real supervisor refuses a client that does not present its credential.`: the slow tier is its own directory under its own target, not a marker inside the fast one."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = 'active = client.prints().get("active")'
+reason = "A generated helper of the action walk, written by `tools/contract-codegen`'s emitter together with this directive: it reads the listing through the same published synchronous client the walk's other entries for this rule answer for, to find the print the machine is running. The reason is those entries'."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "def test_every_action_is_refused_as_a_typed_rejection"
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive, and run only under the project's `test-integration` target: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "Every action, refused by a real supervisor's own policy, typed."
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "npm/printobserver-sdk/integration/journey.test.ts"
+site = 'test("the same nine steps are answered against a real OctoPrint"'
+reason = "The Node client's nine-step journey itself, on the same ground as this file's entry for this rule at `test(\"a client without the credential in force is refused by a real supervisor\"`: it runs only under that client's `test-integration` target, over the one shared OctoPrint. This change only has it follow the print a start opens."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "npm/printobserver-sdk/integration/live.test.ts"
+site = 'test("every action is refused as a typed rejection by a real supervisor"'
+reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive, and run only under the Node client's `test-integration` target: the same ground as the entry for this rule at `npm/printobserver-sdk/integration/journey.test.ts`."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "def test_every_action_is_refused_as_a_typed_rejection"
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python action walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = "Every action, refused by a real supervisor"
+reason = "Not a directive over this file's own code: it is the text the emitter writes on the generated Python action walk's signature, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
+site = 'test("every action is refused as a typed rejection by a real supervisor"'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Node action walk, so that the directive standing in `npm/printobserver-sdk/integration/live.test.ts` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "live_tier_compiles_and_requires_credential"
+file = "crates/printobserver-server/tests/live/loop.rs"
+site = "let mut walked = every_mutating_operation_has_its_own_effect"
+reason = "There is no credential for this tier to require: it drives the real OctoPrint and the real OneHarness with the deterministic responder standing in for a model (`tests/integration.rs`'s own account), so no harness sign-in is involved. Nor can it pass by skipping: with no OctoPrint brought up it panics naming `just octoprint-up`, and the required `integration` job runs it on every supported platform. This step only gained the print a start opens."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "npm/printobserver-sdk/integration/journey.test.ts"
 site = 'test("a client without the credential in force is refused by a real supervisor"'

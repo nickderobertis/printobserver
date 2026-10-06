@@ -435,6 +435,7 @@ pub async fn walk(instance: &Scripted) {
     every_change_refuses_a_request_with_no_reason(&world, &proxy, print_id).await;
     every_mutating_operation_is_rejected_in_its_own_kind(&world, &proxy, print_id).await;
     every_adjustment_applies_the_duration_it_is_given(&world, print_id).await;
+    // llmlint: ignore[live_tier_compiles_and_requires_credential] See suppressions.toml.
     let mut walked = every_mutating_operation_has_its_own_effect(&world, &proxy, print_id).await;
     the_history_accounts_for_every_step(&world, print_id).await;
 
