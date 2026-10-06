@@ -84,7 +84,7 @@ pub struct Invocation {
 /// what a print actually goes through; and the manifest read comes after the
 /// write, because a start attaches a manifest of its own.
 pub fn walk(world: &World) -> Vec<Driven> {
-    let print = world.print_id.clone();
+    let print = world.print_id();
     let mut driven = Vec::new();
     for (name, reports, values) in ordered(world) {
         let command = printobserver::surface::command(&name)
@@ -102,6 +102,35 @@ pub fn walk(world: &World) -> Vec<Driven> {
         });
     }
     driven
+}
+
+/// This entry, about the print the world is about now.
+///
+/// A walk is built before the machine is put where each command needs it, and
+/// putting it there can replace the print the walk is about.
+#[must_use]
+pub fn about_now(driven: &Driven, world: &World) -> Driven {
+    let mut now = driven.clone();
+    for field in &now.command.fields {
+        if field.parameter.located == Located::Path && field.parameter.name == "print_id" {
+            now.values
+                .insert(field.parameter.name.clone(), world.print_id());
+        }
+    }
+    now
+}
+
+/// These arguments, naming the print the world is about now wherever they
+/// name a print; the same reason as [`about_now`].
+#[must_use]
+pub fn naming_the_print_now(arguments: &[String], world: &World) -> Vec<String> {
+    let mut now = arguments.to_vec();
+    for index in 1..now.len() {
+        if now[index - 1] == "--print-id" {
+            now[index] = world.print_id();
+        }
+    }
+    now
 }
 
 /// The file this world's printer can be asked for.

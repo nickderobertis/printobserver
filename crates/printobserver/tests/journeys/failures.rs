@@ -72,7 +72,7 @@ pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
 fn agent_actor(world: &World) -> String {
     format!(
         "{{\"agent\":{{\"session_name\":\"watch-{}\"}}}}",
-        world.print_id
+        world.print_id()
     )
 }
 
@@ -80,6 +80,7 @@ fn agent_actor(world: &World) -> String {
 pub fn every_command_owes_its_failures(world: &World) {
     for one in walk::walk(world) {
         world.wants(one.reports);
+        let one = walk::about_now(&one, world);
         let arguments = succeeding(&one);
 
         let nothing_there = running::against_nothing(world, &arguments, crate::world::CREDENTIAL);
@@ -189,13 +190,15 @@ fn the_policy_refuses_it(world: &World, one: &Driven) {
 /// demand; against a real one the walk asks for what it can do, so this
 /// journey answers that world by doing nothing.
 pub fn an_action_the_machine_refuses_is_answered_as_that(world: &World) {
-    if !world.machine_refuses(true) {
-        return;
-    }
     let one = walk::walk(world)
         .into_iter()
         .find(|found| found.command.name == "pause")
         .expect("this walk drives a pause");
+    world.wants(one.reports);
+    let one = walk::about_now(&one, world);
+    if !world.machine_refuses(true) {
+        return;
+    }
     let arguments = succeeding(&one);
     let asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
 

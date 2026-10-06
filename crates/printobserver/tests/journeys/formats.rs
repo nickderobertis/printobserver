@@ -101,6 +101,7 @@ fn run(world: &World, arguments: &[String], machine_readable: bool) -> Ran {
     {
         world.wants(one.reports);
     }
+    let arguments = walk::naming_the_print_now(arguments, world);
     let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     if machine_readable {
         asked.push("--json");

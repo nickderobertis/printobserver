@@ -129,7 +129,8 @@ class Machine:
             device: The serial device it reports being connected to.
             envelope: The bounds it enforces, which are the configured ones.
             manifest: The manifest it answers a manifest read with.
-            print_id: The print every operation of it is about.
+            print_id: The print every operation of it is about until a start,
+                which opens a print of its own as the supervisor does.
         """
         self.device = device
         self.envelope = envelope
@@ -216,6 +217,7 @@ class Machine:
             if segments[:1] != ["v1"] or len(segments) < 4:
                 return 404, {"error": f"nothing serves {path}"}
             operation = segments[-1]
+            addressed = segments[2]
             self.operations.append(operation)
             let_through, refusals = self.refusals.get(operation, (0, 0))
             if refusals and let_through:
@@ -224,12 +226,18 @@ class Machine:
                 self.refusals[operation] = (0, refusals - 1)
                 return 500, {"error": f"this substitute was scripted to refuse `{operation}`"}
             if method == "GET":
-                return self._read(operation)
+                return self._read(operation, addressed)
             self.commands.append(operation)
+            if addressed != self.print_id and operation != "start_print":
+                # The print a start replaced has ended, and the supervisor
+                # takes no action against an ended print.
+                return 409, {
+                    "record": self._record_of(identifier(), {"rejected": "no_active_print"})
+                }
             return self._act(operation, json.loads(body or b"{}"))
 
-    def _read(self, operation: str) -> tuple[int, dict[str, Any]]:
-        """One read of the supervisor's surface."""
+    def _read(self, operation: str, addressed: str) -> tuple[int, dict[str, Any]]:
+        """One read of the supervisor's surface, about the print it names."""
         self._expire()
         if operation == "status":
             return 200, {
@@ -253,7 +261,11 @@ class Machine:
         if operation == "manifest":
             return 200, {"manifest": self.manifest, "narrowings": []}
         if operation == "history":
-            return 200, {"events": list(reversed(self.events))}
+            return 200, {
+                "events": [
+                    event for event in reversed(self.events) if event["print_id"] == addressed
+                ]
+            }
         return 404, {"error": f"this substitute serves no `{operation}` read"}
 
     def _bounds(self) -> dict[str, dict[str, float]]:
@@ -356,6 +368,12 @@ class Machine:
         """One accepted action that moves the print rather than a value."""
         printer = self.printer
         if operation == "start_print":
+            # A start opens a print of its own, which its answer names and
+            # everything after it is about; the request itself is its first.
+            self.print_id = identifier()
+            for event in self.events:
+                if event["payload"].get("action_id") == action_id:
+                    event["print_id"] = self.print_id
             printer.connection = printer.job_state = PRINTING
             printer.file_name = str(body.get("file_name"))
         elif operation == "pause" and "pause-not-taken" not in self.faults:

@@ -150,7 +150,7 @@ fn examples_in(root: &Path, document: &str) -> Vec<Example> {
 /// What each placeholder stands for in this world.
 fn bindings(world: &World) -> BTreeMap<&'static str, String> {
     BTreeMap::from([
-        ("PRINT_ID", world.print_id.clone()),
+        ("PRINT_ID", world.print_id().clone()),
         ("IMAGE_ID", world.image_id.clone()),
         ("EVENT_ID", world.event_id.clone()),
         ("FILE", world.printable_file()),
