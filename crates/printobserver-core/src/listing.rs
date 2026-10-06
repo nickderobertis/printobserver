@@ -131,12 +131,23 @@ impl ObservedJob {
         is_over(&self.job.state)
     }
 
+    /// The running time the printer reported for this job, when it reported
+    /// one a job can have run for.
+    ///
+    /// A negative count is no running time at all, so it is read as none
+    /// rather than as a job that began after it was observed: the file name is
+    /// then the whole of what is known, as it is for a printer reporting none.
+    #[must_use]
+    pub fn running_time_s(&self) -> Option<i64> {
+        self.job.print_time_s.filter(|seconds| *seconds >= 0)
+    }
+
     /// When the job began, less every pause it has resumed from: the instant
     /// it was observed, less the running time the printer reported for it
     /// then. Unknown when it reported none.
     #[must_use]
     pub fn started_at(&self) -> Option<Timestamp> {
-        let running = self.job.print_time_s?;
+        let running = self.running_time_s()?;
         self.observed_at.plus_seconds(-running).ok()
     }
 
@@ -146,7 +157,7 @@ impl ObservedJob {
     #[must_use]
     pub fn printing_time_s(&self) -> Option<i64> {
         (self.job.state == PrinterState::Printing)
-            .then_some(self.job.print_time_s)
+            .then(|| self.running_time_s())
             .flatten()
     }
 }
@@ -159,7 +170,7 @@ impl ObservedJob {
 /// name the caller already compared is then the whole of what is known.
 #[must_use]
 pub fn may_be_same_job(print: &PrintRecord, observed: &ObservedJob) -> bool {
-    match (print.job_print_time_s, observed.job.print_time_s) {
+    match (print.job_print_time_s, observed.running_time_s()) {
         (Some(longest), Some(running)) => {
             running.saturating_add(JOB_IDENTITY_TOLERANCE_S) >= longest
         }

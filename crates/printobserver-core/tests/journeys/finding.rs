@@ -496,6 +496,44 @@ fn an_unknown_running_time_on_either_side_is_matched_by_file_name_alone() {
     assert_eq!(only_print(&world).id, legacy.id);
 }
 
+/// A running time no job can have run for — a negative count, the most
+/// negative one included — is no running time: the print records no sighting
+/// from it, and the job is matched by its file name alone.
+#[test]
+fn a_negative_running_time_is_read_as_none() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let first = listing(&world).active.expect("the job is adopted");
+    let began = started(&world, 600);
+
+    for nonsense in [-1, i64::MIN] {
+        world.clock.advance(60);
+        runs(&world, RUNNING, Some(nonsense));
+        assert_eq!(
+            listing(&world).active,
+            Some(first),
+            "a running time of {nonsense} split the job from its print"
+        );
+        let held = only_print(&world);
+        assert_eq!(held.ended_at, None);
+        assert_eq!(
+            (held.job_started_at, held.job_print_time_s),
+            (Some(began), Some(600)),
+            "a running time of {nonsense} was recorded as a sighting"
+        );
+    }
+
+    let world = World::new();
+    runs(&world, RUNNING, Some(-30));
+    listing(&world);
+    let opened = only_print(&world);
+    assert_eq!(
+        (opened.job_started_at, opened.job_print_time_s),
+        (None, None),
+        "a print was opened recording a sighting from a negative running time"
+    );
+}
+
 /// A pause the reads see — longer than the tolerance — and the resume after
 /// it keep one print, and the resume moves the start the print records later
 /// by the pause, which is what `OctoPrint` does to the running time.
