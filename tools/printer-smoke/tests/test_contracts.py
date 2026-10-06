@@ -82,3 +82,40 @@ def test_a_decision_the_contract_does_not_declare_is_refused() -> None:
         not schema.is_valid({"rejected": "no_print_running"}),
         describing="an undeclared refusal to be read as no `PolicyDecision`",
     )
+
+
+#: The contract the history the supervisor answers is.
+HISTORY_ANSWER = REPO_ROOT / "schemas" / "printobserver-server" / "HistoryAnswer.json"
+
+
+def test_the_history_the_substitute_answers_is_the_one_the_contract_declares(
+    substitute: Machine,
+) -> None:
+    """Every event the substitute keeps, read back as the server's `HistoryAnswer`.
+
+    The events are spelled in `machine.py` as `Event`; this is what holds that
+    spelling to `EventRecord`, through every kind the substitute writes: a
+    request, a refusal, an execution, an expiry and a start's own print.
+    """
+    schema = Draft202012Validator(json.loads(HISTORY_ANSWER.read_text(encoding="utf-8")))
+    feedrate = {"factor": 1.0, "reason": "a contract check is asking", "actor": "operator"}
+    decision_of(substitute, PRINT, "set_feedrate_factor", feedrate)
+    substitute.printer.connection = substitute.printer.job_state = PRINTING
+    decision_of(substitute, PRINT, "set_feedrate_factor", {**feedrate, "factor": 9.0})
+    decision_of(substitute, PRINT, "set_feedrate_factor", {**feedrate, "duration_s": 0})
+    substitute.held("feedrate")
+    _, history = substitute.answer("GET", f"/v1/prints/{PRINT}/history", b"")
+    decision_of(substitute, PRINT, "start_print", {**feedrate, "file_name": "smoke.gcode"})
+    _, started = substitute.answer("GET", f"/v1/prints/{substitute.print_id}/history", b"")
+
+    for answer in (history, started):
+        problems = [
+            f"{list(error.absolute_path)}: {error.message}" for error in schema.iter_errors(answer)
+        ]
+        truth(not problems, describing=f"the history to be a `HistoryAnswer`: {problems}")
+    kinds = {event["kind"] for event in [*history["events"], *started["events"]]}
+    equal(
+        kinds,
+        {"action_requested", "action_rejected", "action_executed", "intervention_expired"},
+        describing="the kinds of event the substitute was driven to write",
+    )

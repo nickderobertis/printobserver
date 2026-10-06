@@ -98,7 +98,11 @@ NO_ACTIVE_PRINT: Final[Rejected] = {"rejected": "no_active_print"}
 
 
 class Event(TypedDict):
-    """One event of the history this substitute answers, as the contracts spell it."""
+    """One event of the history this substitute answers, as `EventRecord` spells it.
+
+    `tests/test_contracts.py` holds the history it answers to the server's own
+    `HistoryAnswer`, so this spelling cannot drift from the contract's.
+    """
 
     id: EventId
     print_id: PrintId
