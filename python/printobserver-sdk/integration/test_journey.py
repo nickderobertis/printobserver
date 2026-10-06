@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -148,10 +149,14 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
         client.cancel(world.print_id, "making room for the step that starts one")
     _until(client, world.print_id, {"operational"})
 
-    # journey step 4: start
+    # journey step 4: start — which opens a print of its own, since the cancel
+    #                          above ended the one the bring-up left; every step
+    #                          after it acts on the print its answer names.
     started = client.start_print(world.print_id, world.file_name, wanted, REASON)
     equal(started["record"]["decision"], "accepted")
+    world = replace(world, print_id=started["record"]["print_id"])
     _until(client, world.print_id, {"printing"})
+    equal(client.manifest_get(world.print_id)["manifest"], wanted)
 
     # journey step 5: adjustment — accepted, carrying a reason and a duration.
     adjusted = client.set_feedrate_factor(world.print_id, INSIDE, REASON, DURATION)

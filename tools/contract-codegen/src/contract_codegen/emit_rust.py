@@ -755,7 +755,7 @@ def emit_live(contract: Contract) -> str:
             "    world: &supervisor::Supervisor,",
             "    proxy: &live::Proxy,",
             *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
-            ") {",
+            ") -> supervisor::Supervisor {" if step.follows else ") {",
             f'    ready(client, &world.print_id, "{step.state}");',
             "",
             f"    let answered = client.{spelled}({call})",
@@ -769,6 +769,16 @@ def emit_live(contract: Contract) -> str:
         lines.extend(_live_body_assertions(step))
         lines += [
             f'    live::same("{step.name}", &answered, &seen.answer);',
+            *(
+                [
+                    "    supervisor::Supervisor {",
+                    "        print_id: answered.record.print_id.clone(),",
+                    "        ..world.clone()",
+                    "    }",
+                ]
+                if step.follows
+                else []
+            ),
             "}",
             "",
         ]
@@ -804,6 +814,21 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        "/// The world, about the print the machine is running when it runs one.",
+        "///",
+        "/// The policy refuses an action against an ended print before it asks whether",
+        "/// the actor may request it at all, so a refusal for the grant is asked of the",
+        "/// print the machine is running rather than of one a read has ended.",
+        "fn about_the_running_print(",
+        "    client: &Client,",
+        "    world: supervisor::Supervisor,",
+        ") -> supervisor::Supervisor {",
+        '    match client.prints().expect("a listing is answered").active {',
+        "        Some(print_id) => supervisor::Supervisor { print_id, ..world },",
+        "        None => world,",
+        "    }",
+        "}",
+        "",
         "/// Every method, answered by a real supervisor, in the one order it admits.",
         "#[test]",
         "fn every_method_is_answered_by_a_real_supervisor() {",
@@ -815,7 +840,11 @@ def emit_live(contract: Contract) -> str:
         "        .with_credential(&*world.credential);",
         "    let manifest = manifest(&world.file_name);",
         "",
-        *(f"    step_{step.name}(&client, &world, &proxy{_live_handed(step)});" for step in steps),
+        *(
+            f"    {'let world = ' if step.follows else ''}"
+            f"step_{step.name}(&client, &world, &proxy{_live_handed(step)});"
+            for step in steps
+        ),
         "",
         f'    assert!(proxy.calls() >= {len(steps)}, "every call went through the proxy");',
         "    standing.stop();",
@@ -823,9 +852,10 @@ def emit_live(contract: Contract) -> str:
         "",
         "/// Every action, refused by a real supervisor's own policy, as a typed rejection.",
         "///",
-        "/// One client acting as an actor class the envelope grants nothing. The policy",
-        "/// takes that decision before it looks at the state, the interval or the",
-        "/// bounds, so every action is refused from wherever the machine happens to be.",
+        "/// One client acting as an actor class the envelope grants nothing, against the",
+        "/// print the machine is running. The policy takes that decision before it",
+        "/// looks at the state, the interval or the bounds, so every action is refused",
+        "/// from wherever the machine happens to be.",
         "#[test]",
         "fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {",
         '    let root = tempfile::tempdir().expect("this walk\'s own root");',
@@ -840,6 +870,7 @@ def emit_live(contract: Contract) -> str:
         "    )",
         "    .with_credential(&*world.credential);",
         "    let manifest = manifest(&world.file_name);",
+        "    let world = about_the_running_print(&client, world);",
         "",
         *(
             f"    refused_{step.name}(&client, &world, &proxy{_live_handed(step)});"

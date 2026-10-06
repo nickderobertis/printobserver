@@ -1117,9 +1117,11 @@ class PrintRecord(TypedDict):
     # paused: the instant of that read, less the running time it reported.
     #
     # `OctoPrint` counts a pause into the running time until the job resumes
-    # and then takes the pause back out, so a pause moves this later: it is
-    # reset at every such read rather than fixed once. Absent when no read
-    # has
+    # and then takes the pause back out, so a pause moves this later: a read
+    # putting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the
+    # one
+    # recorded resets it, rather than it being fixed once. Absent when no
+    # read has
     # found this print's job reporting a running time — a print opened by an
     # alert or a start before any read, and every print recorded before this
     # was.

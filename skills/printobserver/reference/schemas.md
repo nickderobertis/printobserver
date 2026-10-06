@@ -4562,7 +4562,7 @@ Declared by `printobserver-server`.
               "type": "null"
             }
           ],
-          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
+          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: a read\nputting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one\nrecorded resets it, rather than it being fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
         },
         "narrowings": {
           "description": "Every manifest range this print narrowed to the envelope's.",
@@ -9788,7 +9788,7 @@ Declared by `printobserver-core`.
               "type": "null"
             }
           ],
-          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
+          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: a read\nputting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one\nrecorded resets it, rather than it being fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
         },
         "narrowings": {
           "description": "Every manifest range this print narrowed to the envelope's.",
@@ -10271,7 +10271,7 @@ Declared by `printobserver-core`.
           "type": "null"
         }
       ],
-      "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
+      "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: a read\nputting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one\nrecorded resets it, rather than it being fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
     },
     "narrowings": {
       "description": "Every manifest range this print narrowed to the envelope's.",
@@ -10664,7 +10664,7 @@ Declared by `printobserver-server`.
               "type": "null"
             }
           ],
-          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
+          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: a read\nputting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one\nrecorded resets it, rather than it being fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
         },
         "narrowings": {
           "description": "Every manifest range this print narrowed to the envelope's.",
@@ -12081,7 +12081,7 @@ Declared by `printobserver-server`.
               "type": "null"
             }
           ],
-          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: it is\nreset at every such read rather than fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
+          "description": "When the printer's job this print records began, as the printer's own\nrunning time put it at the latest read that found the job running or\npaused: the instant of that read, less the running time it reported.\n\n`OctoPrint` counts a pause into the running time until the job resumes\nand then takes the pause back out, so a pause moves this later: a read\nputting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one\nrecorded resets it, rather than it being fixed once. Absent when no read has\nfound this print's job reporting a running time \u2014 a print opened by an\nalert or a start before any read, and every print recorded before this\nwas."
         },
         "narrowings": {
           "description": "Every manifest range this print narrowed to the envelope's.",
