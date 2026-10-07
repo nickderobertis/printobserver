@@ -60,6 +60,37 @@ def api(
         connection.close()
 
 
+def post(url: str, path: str, key: str, body: dict[str, Any], *, timeout: float = 15.0) -> int:
+    """One authenticated POST of a JSON body against an instance, answering its status."""
+    _, _, host_port = url.partition("//")
+    host, _, port = host_port.partition(":")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to a test's instance
+    connection = http.client.HTTPConnection(host, int(port), timeout=timeout)
+    try:
+        connection.request(
+            "POST",
+            path,
+            body=json.dumps(body),
+            headers={"X-Api-Key": key, "Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        response.read()
+        return response.status
+    finally:
+        connection.close()
+
+
+def tool_target(url: str, key: str) -> float | None:
+    """The target the instance reports for the first hotend, or None where it reports none."""
+    status, body = api(url, "/api/printer", key)
+    if status != 200 or not isinstance(body, dict):
+        return None
+    temperature = body.get("temperature")
+    tool = temperature.get("tool0") if isinstance(temperature, dict) else None
+    target = tool.get("target") if isinstance(tool, dict) else None
+    return float(target) if isinstance(target, int | float) else None
+
+
 def state_of(url: str, path: str, key: str, field: str) -> str:
     """One string field of one API answer, or `unknown` when it is not there."""
     status, body = api(url, path, key)

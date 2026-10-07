@@ -442,7 +442,19 @@ def managed_config(connection: Connection) -> dict[str, Any]:
         "api": {"allowCrossOrigin": False},
         "plugins": {
             "_disabled": ["announcements", "softwareupdate", "tracking", "achievements"],
-            "virtual_printer": {"enabled": connection.is_virtual},
+            "virtual_printer": {
+                "enabled": connection.is_virtual,
+                # OctoPrint's virtual printer injects four communication faults
+                # by default — a resend at line 100, a resend whose answer it
+                # then drops at 105, a missing line number at 110 and a
+                # checksum mismatch at 115 — counted from the last `M110`, so
+                # every print the tier starts and adjusts past a hundred lines
+                # meets them. They exist to test OctoPrint's own serial
+                # recovery, which is not what the tier proves, and on a slow
+                # host a fault landing in a cancel-and-restart left the printer
+                # `Offline after error`. A real printer injects none.
+                "simulated_errors": [],
+            },
         },
         "serial": {
             "additionalPorts": [] if connection.is_virtual else [connection.device],
