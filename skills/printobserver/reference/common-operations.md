@@ -16,13 +16,16 @@ authenticates to it. Where the server is and what authenticates to it are never
 arguments, so every example below is the command and nothing else.
 
 - `PRINTOBSERVER_SERVER` — the address the supervisor is listening on.
-- `PRINTOBSERVER_CREDENTIAL` — the credential it serves under: its
-  `api.credential`, or the one it generated into `api-credential` in its state
-  directory.
+- `PRINTOBSERVER_CREDENTIAL` — the credential you act with. A supervision turn
+  is handed both in its environment — a credential minted for that turn alone —
+  and runs every command as shown, with no `--config`. An operator holds the
+  credential `printobserver credential issue` wrote into their own client
+  configuration.
 
 A configuration file's `[client]` table does the same job, as `server` and
-`credential`, and `--config <path>` names one. The supervisor writes one such
-file, `client.toml`, into its state directory.
+`credential`, and `--config <path>` names one. With neither, the operator's own
+`printobserver/client.toml` under their configuration home is read; the
+supervisor writes none.
 
 Four words in the examples stand for values that are yours rather than
 this document's, and three stand for values that differ on every run:

@@ -187,7 +187,6 @@ fn take_plaintext_out(state_dir: &Path) -> Result<(), StartError> {
         path: legacy.clone(),
         detail,
     };
-    // llmlint: ignore[least_privilege_grants] The legacy file is read exactly once, to convert it into its verifier, and then deleted; nothing this start writes carries its text. Its mode is whatever the earlier server created it with (0600 under the installer's 0700 state directory), and a mode check here would refuse to convert, leaving the plaintext in place.
     let held = match std::fs::read(&legacy) {
         Ok(held) => held,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),

@@ -304,12 +304,6 @@ reason = "The function is the six steps of one supervision turn, written in the 
 
 
 [[suppression]]
-rule = "least_privilege_grants"
-file = "crates/printobserver-server/src/server.rs"
-site = "let held = std::fs::read(&path)"
-reason = "The API credential contract reuses an existing credential file's contents unchanged and never rewrites a file the start did not write, so the server does not change a hand-provisioned file's mode. The installed path keeps the file private by its directory: the installer creates the state directory at mode 0700 owned by the service user, and a file the server generates is created 0600. The manager ruled this reading over refusing or narrowing the mode; a mode check on hand-provisioned files is a recorded follow-up."
-
-[[suppression]]
 rule = "boundary_inputs_validated"
 file = "crates/printobserver-server/src/config.rs"
 site = "Ok(Self(value.to_owned()))"

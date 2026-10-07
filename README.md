@@ -218,14 +218,19 @@ PowerShell on Windows:
   required has no such line: add it, and take step 6.
 - `ingress.shared_secret` is the private random value used in step 2. Anyone
   who has it can submit an alert that may lead to a printer action.
-- `api.credential` is optional, and the template leaves it out. Every request to
-  the HTTP API must carry the API credential, and the server refuses any request
-  that does not. Left out, the service generates a random credential the first
-  time it starts, into `api-credential` in the state directory, and reuses it on
-  every later start. To choose it yourself, add an `[api]` table with
-  `credential` set to a long random value; the generated file is then not used.
-  This credential is separate from `ingress.shared_secret`, and neither is
-  accepted in place of the other.
+- `api.credential_verifier` is the one line `printobserver credential issue`
+  prints, below: `sha256:` and the SHA-256 of your operator credential. Every
+  request to the HTTP API must carry a credential, and the server keeps only
+  this verifier of yours, never the credential itself, so nothing a supervision
+  turn can read authenticates as you. Left out, the server reads
+  `api-credential.verifier` in its state directory, and with neither it
+  supervises and refuses every operator request, naming `printobserver
+  credential issue`. Your credential is separate from `ingress.shared_secret`,
+  and neither is accepted in place of the other.
+- `api.credential`, a credential in plaintext, is what earlier versions read.
+  It is still admitted, with a warning in the service's log on every start,
+  until you replace it with `api.credential_verifier`; see
+  [upgrading](#upgrading-from-030-or-earlier).
 - `camera.snapshot_url` is optional, and the template carries it commented
   out. It is an `http` or `https` URL answering one still image of the print,
   such as go2rtc's `frame.jpeg` for the printer's camera; with it, the agent's
@@ -250,43 +255,73 @@ PowerShell on Windows:
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.
 
-Each time it starts, the service writes `client.toml` into the state directory:
-a `[client]` table with `server`, the address it is listening on, and
-`credential`, the API credential in force. Its supervision turns read that file.
-You can too, from a shell that can read the state directory — as root, or from
-an elevated PowerShell: pass `--config <state directory>/client.toml` to any
-command. `client.toml` and `api-credential` are readable by nobody else.
+#### Issue your operator credential
 
-From your own user account you cannot read the configuration file or anything
-under the state directory. Read the credential once with the privilege that
-can, then supply it with the address. Either set both environment variables —
-on Linux and macOS:
+The service holds no credential you can authenticate with — only its verifier.
+Issue yourself one as yourself, unprivileged. On Linux and macOS:
 
 ```console
-export PRINTOBSERVER_SERVER=http://127.0.0.1:8420
-export PRINTOBSERVER_CREDENTIAL="$(sudo cat /var/lib/printobserver/api-credential)"
+printobserver credential issue
 ```
 
-and on Windows, from an elevated PowerShell:
+On Windows, from a PowerShell that is not elevated:
 
 ```powershell
-$env:PRINTOBSERVER_SERVER = 'http://127.0.0.1:8420'
-$env:PRINTOBSERVER_CREDENTIAL = Get-Content 'C:\ProgramData\printobserver\state\api-credential'
+& 'C:\Program Files\printobserver\printobserver.exe' credential issue
 ```
 
-or put both in a `[client]` table in a file only you can read, and pass that
-file with `--config`:
+It draws a credential from 32 random bytes and writes it, with the address the
+template has the service listen on, into your own client configuration —
+`printobserver/client.toml` under your configuration home: `$XDG_CONFIG_HOME`,
+else `~/.config`, on Linux; `~/Library/Application Support` on macOS;
+`%APPDATA%` on Windows — readable by you alone. It prints one line and never the
+credential:
 
 ```toml
-[client]
-server = "http://127.0.0.1:8420"
-credential = "the credential you read"
+api.credential_verifier = "sha256:0d3f…"
 ```
 
-If you set `api.credential`, use that value instead of the generated file. When
-both variables are set and you pass no `--config`, `printobserver` does not read
-the service's configuration file at all. A command the server refuses exits with
-status 4 and says where the credential is read from.
+Put that line in the server's configuration above its first `[table]` header
+(or as `credential_verifier = …` inside an `[api]` table), and the service reads
+it when it next starts. If you change `listen`, run it again with `--replace`
+and `PRINTOBSERVER_SERVER` set to the new address, and put the new line in
+place of the old one. To use a credential you chose instead, pipe it into
+`printobserver credential verifier` for the same line; make it long and random,
+because a verifier of a short or guessable credential can be searched offline.
+
+From then on every command you run reads your own configuration first. With no
+`--config`, a command reads `printobserver/client.toml` under your configuration
+home, then the service's own configuration file for whatever that left unnamed
+(it is private to the service, so from your own account that read is passed
+over). `--config <path>` reads that one file instead. `PRINTOBSERVER_SERVER` and
+`PRINTOBSERVER_CREDENTIAL` win over any file, and when both are set and no
+`--config` is given no file is read at all. A command the server refuses exits
+with status 4 and says where the credential is read from.
+
+#### What a supervision turn is handed
+
+Each supervision turn is minted a credential of its own when it starts, handed
+to the agent's harness in its environment as `PRINTOBSERVER_SERVER` and
+`PRINTOBSERVER_CREDENTIAL` and written to no file, and revoked when the turn
+ends — on success, failure or timeout — or the service restarts. It acts as the
+agent, in that turn's session, on that turn's print, and nothing else: a request
+claiming to be the operator or the system, naming another print, starting a
+print or replacing a manifest is refused with `403` before anything is decided,
+and the agent's minimum interval holds every change it asks for. The service no
+longer writes `client.toml` into its state directory, and deletes one an earlier
+version left there.
+
+#### The boundary that remains
+
+When the service and you run as the same OS user, a supervision turn runs as you
+too: it can read your own client configuration, and the environment of another
+turn running at the same time — through `/proc/<pid>/environ` on Linux, or
+`ps -E` on macOS. Full isolation needs the service to run as an OS user of its
+own. The installer gives it one when it runs as root, as the steps above have
+it: on Linux and macOS it creates the `printobserver` system user (or runs the
+service as the user `--user` names), and on Windows the service runs as its own
+virtual account, `NT SERVICE\printobserver`. Issue your credential as your own
+user, not as the service's.
 
 ### 6. Install the agent's skill
 
@@ -399,8 +434,8 @@ printobserver --version
 ```
 
 Start a print through OctoPrint. Then ask the running supervisor which prints it
-holds. Every command reads the address and the API credential from the two
-environment variables or the `--config` file described in step 5:
+holds. Every command reads the address and your credential from the client
+configuration `printobserver credential issue` wrote in step 5:
 
 ```console
 printobserver prints
@@ -437,9 +472,9 @@ printobserver context --print-id PRINT_ID
 printobserver --help
 ```
 
-Every command reads the server's address and the API credential from a
-configuration file named with `--config`, or from `PRINTOBSERVER_SERVER` and
-`PRINTOBSERVER_CREDENTIAL`; see step 5.
+Every command reads the server's address and your credential from your own
+client configuration, a file named with `--config`, or `PRINTOBSERVER_SERVER`
+and `PRINTOBSERVER_CREDENTIAL`; see step 5.
 
 Every print-specific command takes the print's ID as `--print-id`. Find it
 first: `printobserver prints` lists every print, newest first, and names the one
@@ -455,6 +490,40 @@ Give every change a `--reason`. See
 [common operations](./skills/printobserver/reference/common-operations.md) for a worked example
 of every command, including a temporary adjustment with `--duration-s`, and
 its output.
+
+## Upgrading from 0.3.0 or earlier
+
+Earlier versions generated the API credential into the state directory as
+plaintext and wrote it, with the address, into `client.toml` beside it — where
+every supervision turn could read it and act as the operator. Upgrading changes
+four things.
+
+- **The generated credential is converted on the first start.** When the state
+  directory holds `api-credential` and no `api-credential.verifier`, the service
+  writes the verifier, private to itself, and deletes `api-credential`. The same
+  credential keeps working, so if you already hold it — in
+  `PRINTOBSERVER_CREDENTIAL`, or in a `--config` file of your own — nothing
+  changes for you.
+- **`client.toml` is gone.** The service deletes it at every start and no longer
+  writes it. Your commands read your own client configuration instead, which
+  `printobserver credential issue` writes, or the two variables, or a file you
+  name with `--config`.
+- **A plaintext `api.credential` should become `api.credential_verifier`.** The
+  service still starts and still admits it, but it logs a warning on every start,
+  because a supervision turn runs as the service's user and can read the
+  configuration file it is written in. Pipe the credential into
+  `printobserver credential verifier`, put the line it prints in the
+  configuration, delete `api.credential`, and restart the service. When both keys
+  are there, the verifier wins and the plaintext is refused.
+- **If your old credential is gone** — you only ever read it out of
+  `client.toml` or `api-credential` — issue a new one as yourself with
+  `printobserver credential issue --replace`, put the line it prints in the
+  server's configuration in place of any earlier one, and restart the service.
+  The old credential stops working.
+
+A credential you choose yourself should be long and random: the service keeps
+its SHA-256, and a verifier of a short or guessable credential can be searched
+offline.
 
 ## Reference documentation
 
