@@ -40,10 +40,11 @@ export interface ClientOptions {
   actor: Actor;
   /**
    * What authenticates to it. The supervisor serves no versioned operation to a
-   * caller that does not present the credential it is configured with — its
-   * `api.credential`, or the one it generated into its state directory and
-   * wrote into the client configuration beside it — and a call it refuses for
-   * that throws `Refused` with status 401.
+   * caller that does not present a credential it admits — the operator's, whose
+   * verifier it is configured with and which `printobserver credential issue`
+   * issues, or the one a supervision turn is handed — and a call it refuses for
+   * that throws `Refused` with status 401. A call whose actor is not the
+   * identity that credential is throws it with status 403.
    */
   credential?: string;
 }
