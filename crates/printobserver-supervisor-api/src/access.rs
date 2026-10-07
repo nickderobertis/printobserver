@@ -83,13 +83,50 @@ impl core::fmt::Debug for TurnPass {
     }
 }
 
+/// The session one run is in, as a turn credential is bound to it: never
+/// blank, because the session is what a turn's requests are held to claiming,
+/// and a run in no session is one no request could claim to be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnSession(String);
+
+impl TurnSession {
+    /// One session, by its name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`] when the name is empty or only
+    /// whitespace.
+    pub fn new(name: impl Into<String>) -> Result<Self, SupervisorError> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err(SupervisorError::Unavailable {
+                detail: "a run in no session is issued no credential".to_owned(),
+            });
+        }
+        Ok(Self(name))
+    }
+
+    /// The session's name, as a request's `Actor::Agent { session_name }`
+    /// spells it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl core::fmt::Display for TurnSession {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
 /// Issues the runs of one supervision turn their credentials.
 ///
 /// The core hands one of these to [`crate::SupervisorPort::run_turn`] for the
 /// turn it starts, already bound to the agent class and that turn's print, and
 /// revokes everything it issued when the turn returns.
 pub trait TurnAccess: Send + Sync {
-    /// The pass the run in `session_name` presents.
+    /// The pass the run in `session` presents.
     ///
     /// Issuing again within the same turn — a harness that refused to continue
     /// one session moves the turn into the next — revokes the pass issued
@@ -99,12 +136,12 @@ pub trait TurnAccess: Send + Sync {
     ///
     /// Returns [`SupervisorError::Unavailable`] when no credential could be
     /// minted, which is a run that could reach nothing and is not started.
-    fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError>;
+    fn issue(&self, session: &TurnSession) -> Result<TurnPass, SupervisorError>;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CREDENTIAL_ENV, SERVER_ENV, TurnPass};
+    use super::{CREDENTIAL_ENV, SERVER_ENV, TurnPass, TurnSession};
 
     /// A pass's environment carries the address and the credential, and
     /// neither rendering of it shows the credential.
@@ -133,6 +170,21 @@ mod tests {
                 .environment(),
             vec![(CREDENTIAL_ENV, "c".to_owned())]
         );
+    }
+
+    /// A session that names none is refused, and one that names one is kept as
+    /// it was named.
+    #[test]
+    fn a_blank_session_is_refused() {
+        for blank in ["", "  ", "\t"] {
+            assert!(
+                TurnSession::new(blank).is_err(),
+                "{blank:?} was taken as a session"
+            );
+        }
+        let session = TurnSession::new("print-a-2").expect("a session");
+        assert_eq!(session.as_str(), "print-a-2");
+        assert_eq!(session.to_string(), "print-a-2");
     }
 
     /// A credential no header carries intact is refused, quoting nothing of it.

@@ -13,7 +13,7 @@ use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_supervisor_api::{
     BoxFuture, CREDENTIAL_ENV, SERVER_ENV, SupervisorError, SupervisorPort, TurnAccess,
-    TurnOutcome, TurnPass, TurnRequest,
+    TurnOutcome, TurnPass, TurnRequest, TurnSession,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
@@ -282,7 +282,7 @@ impl OneharnessSupervisor {
         prompt: &str,
         access: &dyn TurnAccess,
     ) -> Result<Result<RunOutcome, OneharnessError>, SupervisorError> {
-        let pass = access.issue(session.as_str())?;
+        let pass = access.issue(&TurnSession::new(session.as_str())?)?;
         let request = self.build_request(session, prompt, &pass);
         if let Some(observer) = &self.seam.requests {
             observer.built(&request);

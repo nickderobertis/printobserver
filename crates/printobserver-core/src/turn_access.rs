@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use printobserver_supervisor_api::{SupervisorError, TurnAccess, TurnPass};
+use printobserver_supervisor_api::{SupervisorError, TurnAccess, TurnPass, TurnSession};
 use printobserver_types::PrintId;
 
 /// One turn's issuer, and what revokes everything it issued.
@@ -84,7 +84,7 @@ pub trait TurnAuthority: Send + Sync {
 pub(crate) struct NoAccess;
 
 impl TurnAccess for NoAccess {
-    fn issue(&self, _session_name: &str) -> Result<TurnPass, SupervisorError> {
+    fn issue(&self, _session: &TurnSession) -> Result<TurnPass, SupervisorError> {
         Err(SupervisorError::Unavailable {
             detail: "this supervisor issues its turns no credential".to_owned(),
         })

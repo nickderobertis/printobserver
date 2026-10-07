@@ -15,7 +15,7 @@ use std::thread;
 use block_on::block_on;
 use printobserver_supervisor_api::{
     AgentAssessment, BoxFuture, SupervisorError, SupervisorPort, TurnAccess, TurnOutcome, TurnPass,
-    TurnRequest,
+    TurnRequest, TurnSession,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::PrintId;
@@ -45,8 +45,8 @@ fn trivial_request() -> TurnRequest {
 struct TrivialAccess;
 
 impl TurnAccess for TrivialAccess {
-    fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
-        TurnPass::new(None, session_name.to_owned())
+    fn issue(&self, session: &TurnSession) -> Result<TurnPass, SupervisorError> {
+        TurnPass::new(None, session.to_string())
     }
 }
 

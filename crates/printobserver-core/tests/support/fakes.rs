@@ -1442,7 +1442,11 @@ impl SupervisorPort for FakeSupervisor {
             let core = self.core.lock().expect("the harness holds").upgrade();
             // What a run is handed to reach the server with, and who core
             // admits it as while this turn runs.
-            let issued = access.issue(&format!("print-{}", request.print_id));
+            let issued = printobserver_supervisor_api::TurnSession::new(format!(
+                "print-{}",
+                request.print_id
+            ))
+            .and_then(|session| access.issue(&session));
             if let Err(error) = &issued {
                 self.unissued
                     .lock()
@@ -1634,7 +1638,7 @@ struct FakeTurnScope {
 impl printobserver_supervisor_api::TurnAccess for FakeTurnScope {
     fn issue(
         &self,
-        session_name: &str,
+        session: &printobserver_supervisor_api::TurnSession,
     ) -> Result<printobserver_supervisor_api::TurnPass, SupervisorError> {
         let credential = format!("turn-credential-{}", self.authority.number());
         let mut live = self.authority.live.lock().expect("the authority holds");
@@ -1644,7 +1648,7 @@ impl printobserver_supervisor_api::TurnAccess for FakeTurnScope {
             (
                 self.turn,
                 TurnBinding {
-                    session_name: session_name.to_owned(),
+                    session_name: session.to_string(),
                     print_id: self.print_id,
                 },
             ),

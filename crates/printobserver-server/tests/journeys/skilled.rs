@@ -78,7 +78,7 @@ struct OnePass;
 impl printobserver_supervisor_api::TurnAccess for OnePass {
     fn issue(
         &self,
-        _session_name: &str,
+        _session: &printobserver_supervisor_api::TurnSession,
     ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
     {
         printobserver_supervisor_api::TurnPass::new(

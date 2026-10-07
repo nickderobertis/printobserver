@@ -38,7 +38,7 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{EventPayload, EventRecord, PrintId};
 
-pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass};
+pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
 pub use assessment::{AgentAssessment, Confidence};
 pub use session::{SessionPhase, SupervisionSession};
 

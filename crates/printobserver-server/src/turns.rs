@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use printobserver_core::{OpenedTurn, TurnAuthority};
-use printobserver_supervisor_api::{SupervisorError, TurnAccess, TurnPass};
+use printobserver_supervisor_api::{SupervisorError, TurnAccess, TurnPass, TurnSession};
 use printobserver_types::PrintId;
 use sha2::{Digest as _, Sha256};
 
@@ -37,9 +37,8 @@ pub const GENERATED_TURN_CREDENTIAL_BYTES: usize = crate::config::GENERATED_CRED
 /// Who one turn credential authenticates as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnBinding {
-    /// The session the run that holds it is in: never empty, because the only
-    /// constructor is `Scope::issue_drawn`, which refuses an empty one.
-    session_name: String,
+    /// The session the run that holds it is in.
+    session: TurnSession,
     /// The print the turn is about.
     print_id: PrintId,
 }
@@ -49,7 +48,7 @@ impl TurnBinding {
     /// `Actor::Agent { session_name }` spells it.
     #[must_use]
     pub fn session_name(&self) -> &str {
-        &self.session_name
+        self.session.as_str()
     }
 
     /// The print the turn holding this credential is about.
@@ -166,29 +165,21 @@ impl Scope {
 }
 
 impl TurnAccess for Scope {
-    fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
-        self.issue_drawn(session_name, getrandom::fill)
+    fn issue(&self, session: &TurnSession) -> Result<TurnPass, SupervisorError> {
+        self.issue_drawn(session, getrandom::fill)
     }
 }
 
 impl Scope {
-    /// Issue the run in `session_name` a credential, drawn by `draw` — the
+    /// Issue the run in `session` a credential, drawn by `draw` — the
     /// operating system's random source, for every run this server starts.
     /// A draw that is refused registers nothing.
     fn issue_drawn(
         &self,
-        session_name: &str,
+        session: &TurnSession,
         draw: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
     ) -> Result<TurnPass, SupervisorError> {
         use base64::Engine as _;
-
-        // The session is what a turn's requests are held to claiming, so one
-        // that names none is no session a request could claim.
-        if session_name.trim().is_empty() {
-            return Err(SupervisorError::Unavailable {
-                detail: "a run in no session is issued no credential".to_owned(),
-            });
-        }
 
         let mut drawn = [0_u8; GENERATED_TURN_CREDENTIAL_BYTES];
         draw(&mut drawn).map_err(|error| SupervisorError::Unavailable {
@@ -218,7 +209,7 @@ impl Scope {
             Held {
                 scope: self.id,
                 binding: TurnBinding {
-                    session_name: session_name.to_owned(),
+                    session: session.clone(),
                     print_id: self.print_id,
                 },
             },
@@ -232,10 +223,15 @@ impl Scope {
 #[cfg(test)]
 mod tests {
     use printobserver_core::TurnAuthority as _;
-    use printobserver_supervisor_api::{CREDENTIAL_ENV, SERVER_ENV, TurnPass};
+    use printobserver_supervisor_api::{CREDENTIAL_ENV, SERVER_ENV, TurnPass, TurnSession};
     use printobserver_types::PrintId;
 
     use super::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
+
+    /// One session, by a name that is one.
+    fn session(name: &str) -> TurnSession {
+        TurnSession::new(name).expect("a session")
+    }
 
     /// The value one variable of a pass carries.
     fn value_of(pass: &TurnPass, name: &str) -> String {
@@ -254,7 +250,7 @@ mod tests {
         let print_id = PrintId::new();
         let opened = registry.open(print_id);
         let access = opened.access();
-        let pass = access.issue("print-a").expect("one is minted");
+        let pass = access.issue(&session("print-a")).expect("one is minted");
         let first = value_of(&pass, CREDENTIAL_ENV);
 
         assert_eq!(value_of(&pass, SERVER_ENV), "http://127.0.0.1:1");
@@ -266,22 +262,21 @@ mod tests {
         assert_eq!(
             registry.admit(first.as_bytes()),
             Some(TurnBinding {
-                session_name: "print-a".to_owned(),
+                session: session("print-a"),
                 print_id,
             })
         );
-        let second = value_of(&access.issue("print-a-2").expect("minted"), CREDENTIAL_ENV);
+        let second = value_of(
+            &access.issue(&session("print-a-2")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
         assert_ne!(first, second);
         assert_eq!(registry.admit(first.as_bytes()), None);
         assert_eq!(registry.live(), 1);
 
         opened.revoke();
         assert_eq!(registry.admit(second.as_bytes()), None);
-        assert!(access.issue("print-a-3").is_err());
-        assert!(
-            registry.open(print_id).access().issue("  ").is_err(),
-            "a run in no session was issued a credential"
-        );
+        assert!(access.issue(&session("print-a-3")).is_err());
         assert_eq!(registry.live(), 0);
     }
 
@@ -297,7 +292,8 @@ mod tests {
             closed: std::sync::Mutex::new(false),
         };
 
-        let Err(refused) = scope.issue_drawn("print-a", |_| Err(getrandom::Error::UNSUPPORTED))
+        let Err(refused) =
+            scope.issue_drawn(&session("print-a"), |_| Err(getrandom::Error::UNSUPPORTED))
         else {
             panic!("a refused draw issued a credential");
         };
@@ -316,12 +312,12 @@ mod tests {
         let registry = TurnCredentials::new(None);
         let kept = registry.open(PrintId::new());
         let kept_credential = value_of(
-            &kept.access().issue("kept").expect("minted"),
+            &kept.access().issue(&session("kept")).expect("minted"),
             CREDENTIAL_ENV,
         );
         let dropped = registry.open(PrintId::new());
         let dropped_credential = value_of(
-            &dropped.access().issue("gone").expect("minted"),
+            &dropped.access().issue(&session("gone")).expect("minted"),
             CREDENTIAL_ENV,
         );
         drop(dropped);

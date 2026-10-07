@@ -514,12 +514,12 @@ pub const ISSUED_SERVER: &str = "http://127.0.0.1:8420";
 impl printobserver_supervisor_api::TurnAccess for RecordingAccess {
     fn issue(
         &self,
-        session_name: &str,
+        session: &printobserver_supervisor_api::TurnSession,
     ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
     {
         let mut issued = self.issued.lock().expect("the access holds");
         let credential = format!("a-turn-credential-{}", issued.len() + 1);
-        issued.push((session_name.to_owned(), credential.clone()));
+        issued.push((session.to_string(), credential.clone()));
         printobserver_supervisor_api::TurnPass::new(
             Some(ISSUED_ADDRESS.parse().expect("an address")),
             credential,

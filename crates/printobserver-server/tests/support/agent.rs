@@ -174,7 +174,9 @@ impl SupervisorPort for StandInAgent {
             sessions_run.push(format!("{}-2", session_of(print_id)));
         }
         for session_name in sessions_run {
-            let issued = match access.issue(&session_name) {
+            let issued = match printobserver_supervisor_api::TurnSession::new(session_name.as_str())
+                .and_then(|session| access.issue(&session))
+            {
                 Ok(issued) => issued,
                 Err(error) => return Box::pin(async move { Err(error) }),
             };

@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use printobserver_supervisor_api::{
-    CREDENTIAL_ENV, SERVER_ENV, SupervisorError, SupervisorPort, TurnAccess, TurnPass,
+    CREDENTIAL_ENV, SERVER_ENV, SupervisorError, SupervisorPort, TurnAccess, TurnPass, TurnSession,
 };
 use printobserver_types::PrintId;
 
@@ -177,7 +177,7 @@ fn a_turn_moved_to_a_new_session_is_issued_that_sessions_credential() {
 struct Refusing;
 
 impl TurnAccess for Refusing {
-    fn issue(&self, _session_name: &str) -> Result<TurnPass, SupervisorError> {
+    fn issue(&self, _session: &TurnSession) -> Result<TurnPass, SupervisorError> {
         Err(SupervisorError::Unavailable {
             detail: "no credential could be minted".to_owned(),
         })
