@@ -1,0 +1,77 @@
+# The Rust supply-chain policy `cargo deny check` holds the workspace to.
+#
+# `just supply-chain` runs it beside `cargo machete`, once, on Linux: the
+# dependency graph is the lockfile's, which is the same on every platform, so a
+# second platform's run would read the same graph again. Each of the four checks
+# is on and fitted to the tree as it stands; a dependency that needs this file
+# widened is a change somebody reviews, not one that lands by default.
+
+[graph]
+# Every feature, and — with no `targets` narrowing it — every platform's
+# dependencies, so a Windows- or macOS-only crate is judged on Linux too.
+all-features = true
+
+[advisories]
+# Every RustSec advisory against a crate in the graph fails the check, unmaintained
+# and unsound crates included, whatever the dependency path to them is.
+version = 2
+yanked = "deny"
+unmaintained = "all"
+unsound = "all"
+ignore = []
+
+[licenses]
+# The licences the tree's dependencies are offered under today, every one of
+# them permissive, and no other: a crate offered only under something else —
+# a copyleft licence above all — fails the check until this list names it.
+version = 2
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.93
+# A licence above that this tree's crates no longer need is a finding, so the
+# list cannot drift wider than the graph it was fitted to.
+unused-allowed-license = "deny"
+
+[licenses.private]
+# The workspace's own crates are MIT and published; nothing is exempt.
+ignore = false
+
+[bans]
+# Two versions of one crate are allowed: fourteen pairs are held apart today by
+# upstream crates this workspace does not control (`hashbrown`, `toml`,
+# `thiserror`, `windows-sys` among them), so refusing them would make every
+# upgrade wait on somebody else's release, and reporting them would bury the
+# one line of this check that matters under a hundred that do not. What this
+# check refuses is below: a wildcard requirement, and the crates it names.
+multiple-versions = "allow"
+wildcards = "deny"
+# A path dependency inside the workspace is not a wildcard: each also states the
+# version it publishes at.
+allow-wildcard-paths = true
+deny = [
+    # The one TLS stack is rustls; an OpenSSL binding would put a system library
+    # the install path never provisions on the small board beside the printer.
+    { crate = "openssl-sys", reason = "TLS is rustls; the install path provisions no system OpenSSL" },
+    { crate = "native-tls", reason = "TLS is rustls; the install path provisions no system OpenSSL" },
+]
+
+[sources]
+# Every crate comes from crates.io. A git dependency or another registry is
+# refused until this file names it.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

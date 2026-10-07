@@ -327,6 +327,19 @@ dispatch-resolve JOB PLATFORM:
 dispatch-run JOB PLATFORM:
     uv run -q python -m repo_checks.dispatching run --job {{quote(JOB)}} --platform {{quote(PLATFORM)}}
 
+# The Rust supply-chain gate: `cargo deny` holds the dependency graph to the
+# advisory, licence, ban and source policy `deny.toml` declares, and `cargo
+# machete` refuses a dependency no crate's code uses. The graph is the
+# lockfile's, the same on every platform, so it runs once — the `supply-chain`
+# job's, on Linux — rather than on every gate cell. Both tools are installed at
+# the releases `repo-policy.toml` holds them at, by name, because neither is
+# bootstrapped.
+supply-chain:
+    uv run -q python -m repo_checks install-tools cargo-deny
+    uv run -q python -m repo_checks install-tools cargo-machete
+    cargo deny --log-level warn check --hide-inclusion-graph
+    cargo machete
+
 # Validate the committed workflows: parse, pinned actions, allowlisted commands.
 lint-workflows:
     uv run -q actionlint
