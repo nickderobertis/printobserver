@@ -17,26 +17,17 @@ import pytest
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo, toolchain_tools
-from repo_checks.parsing import jobs_of, load_workflow, recipes, run_commands
+from repo_checks.parsing import jobs_of, load_workflow, marker_block, recipes, run_commands
 from treecopy import REPO_ROOT
 
-#: The contexts a pull request must always report, which this job is not one of.
+#: The contexts a pull request must always report, read off AGENTS.md's record —
+#: which `just check-repo` holds to the workflows — rather than restated here.
 FIXED_CONTEXTS = frozenset(
-    {
-        "pr-title",
-        "llmlint",
-        *(
-            f"{job} ({platform})"
-            for job in ("gate", "integration")
-            for platform in (
-                "linux-x86_64",
-                "linux-aarch64",
-                "macos-aarch64",
-                "windows-x86_64",
-                "windows-aarch64",
-            )
-        ),
-    }
+    line[2:].strip("`")
+    for line in marker_block(
+        (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8"), "required-checks"
+    )
+    if line.startswith("- ")
 )
 
 

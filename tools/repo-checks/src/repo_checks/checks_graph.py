@@ -39,7 +39,7 @@ EDGES = "implicitDependencies"
 
 
 class ProjectFileError(ValueError):
-    """A `project.json` that does not decode to a project object."""
+    """A file the graph is read from that does not hold what the graph needs."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +126,18 @@ def python_edges(repo: Repo, graph: list[Project]) -> dict[str, dict[str, str]]:
     A name is resolved through the type checker's own search roots — the ones
     `module_names` already holds to offering each name once — and belongs to the
     project whose root holds where it is offered.
+
+    Raises:
+        ProjectFileError: If the type checker's search roots are not a list of paths.
     """
     by_root = {project.root: project.name for project in graph}
     roots = repo.read_toml("pyproject.toml")["tool"]["ty"]["environment"]["root"]
+    if not isinstance(roots, list) or not all(isinstance(r, str) and r for r in roots):
+        msg = "pyproject.toml's `tool.ty.environment.root` is not a list of search-root paths"
+        raise ProjectFileError(msg)
     offered: dict[str, str] = {}
     for search_root in roots:
-        for name, where in _importable_names(repo, str(search_root)).items():
+        for name, where in _importable_names(repo, search_root).items():
             owner = _owner(where, by_root)
             if owner is not None:
                 offered[name] = owner
@@ -201,7 +207,11 @@ def graph_edges(repo: Repo) -> list[str]:
             for edge in sorted(declared - drawn)
         )
 
-    for name, imported in python_edges(repo, graph).items():
+    try:
+        imports = python_edges(repo, graph)
+    except ProjectFileError as malformed:
+        return [*findings, str(malformed)]
+    for name, imported in imports.items():
         project = next(project for project in graph if project.name == name)
         findings.extend(
             f"`{name}` imports `{edge}`'s code ({where}), and its project.json does not "

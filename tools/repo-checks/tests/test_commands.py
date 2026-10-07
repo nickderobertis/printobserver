@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from held_toolchain import held_by_verb
+from repo_checks import checks_graph
 from repo_checks.__main__ import main
 from repo_checks.commands import (
     COVERAGE_HOST,
@@ -24,8 +25,10 @@ from repo_checks.commands import (
     coverage,
     install_hooks,
     install_tools,
+    measured_sources,
 )
 from repo_checks.expect import absent, contains, equal, truth
+from repo_checks.gate_tier import TierError
 from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
 from repo_checks.powershell_release import archive_for as powershell_archive_for
@@ -1187,3 +1190,26 @@ def test_the_rust_report_leaves_out_exactly_the_crates_the_run_did_not_reach() -
         describing="the reached crate's own file kept in",
     )
     equal(Measured().rust_ignored(Repo(REPO_ROOT)), None, describing="the full sweep's pattern")
+
+
+def test_the_affected_python_sources_are_those_under_the_reached_projects() -> None:
+    """A run reaching the client measures the client's source and no other."""
+    repo = Repo(REPO_ROOT)
+    reached = [p for p in checks_graph.projects(repo) if p.name == "printobserver-sdk-python"]
+
+    equal(measured_sources(repo, reached), ("python/printobserver-sdk/src",))
+    equal(measured_sources(repo, []), (), describing="the sources a run reaching nothing measured")
+
+
+def test_coverage_sources_that_are_not_a_list_of_paths_are_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A scalar source would read as no source at all and leave the Python floor unruled."""
+    copy = tree()
+    text = copy.read("pyproject.toml")
+    start = text.index("source = [")
+    end = text.index("]", start) + 1
+    copy.write("pyproject.toml", text[:start] + 'source = "tools/repo-checks/src"' + text[end:])
+
+    with pytest.raises(TierError, match="is not a list of source paths"):
+        measured_sources(copy.repo, checks_graph.projects(copy.repo))

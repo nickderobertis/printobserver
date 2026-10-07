@@ -1015,27 +1015,17 @@ the swap and the merge of that change belong to one window.
 a record that disagrees with them. Applying the settings themselves to the
 repository is a person's action through GitHub.
 
-**The gate's two tiers, and where each runs.** `just check` and every recipe it
-runs that fans out over the project graph — `format-check`, `lint`, `typecheck`,
-`test`, `build` and `test-e2e` — take a tier, and `repo_checks.gate_tier` is the
-one place that decides what a tier reaches, saying so before it runs.
-
-- **The affected tier**, the default (`just check`), runs `nx affected` against
-  an explicitly derived base commit: `NX_BASE` where the environment names one —
-  refused unless it is a plain ref name or a commit SHA naming a commit — and
-  otherwise the merge base of `HEAD` with `origin/main` or `main`. It fails
-  closed to the whole graph: where no merge base can be derived, and where the
-  change touches a file no project owns (the justfile, this file, a workflow,
-  `repo-policy.toml`, a script), because the graph cannot say which suites read
-  one. `just coverage` reports over the projects whose tests that run reached,
-  at the same 95% floors, and rules on no ecosystem whose code it never ran.
-- **The broader tier** (`just check all`) is the full sweep: `nx run-many` over
-  every project, and `just coverage` over every project's code — the report and
-  the floors this gate enforced before it had tiers.
-
-The repository-level steps run at either tier and over the whole tree: the
-Windows-target clippy pass inside `just lint`, `just lint-workflows` and
-`just check-repo`.
+**The gate's two tiers, and where each runs.** The tier is a parameter of the
+same recipes, never a second gate: `just check` runs the **affected tier** —
+the projects a change reaches from an explicitly derived base, never Nx's
+implicit one — and `just check all` the **broader tier**, every project. Both
+run the graph targets `format-check`, `lint`, `typecheck`, `test`, `build` and
+`test-e2e`; no target is promoted out of the affected tier. The affected tier fails closed to the whole graph rather than to nothing: with no
+base to derive, or over a file no project owns, which the graph cannot trace to
+the suites that read it. Coverage holds the same 95% floors at both, over the
+code the run's tests reached; only the sweep is over every project's. The
+repository-level steps — the Windows-target lint, `lint-workflows` and
+`check-repo` — run whole at either tier.
 
 The release model decides where the sweep runs. release-plz opens a release pull
 request and updates it on every push to `main`, so one release can carry several

@@ -126,8 +126,15 @@ def _commit(repo: Repo, variable: str, value: str) -> str:
 
 
 def _merge_base(repo: Repo) -> tuple[str, str] | None:
-    """The merge base of `HEAD` with the base branch, and the ref it was taken against."""
+    """The merge base of `HEAD` with the base branch, and the ref it was taken against.
+
+    Raises:
+        TierError: If `repo-policy.toml`'s base branch is not a plain ref name.
+    """
     branch = repo.policy["repository"]["base_branch"]
+    if not isinstance(branch, str) or not REF_NAME.match(branch):
+        msg = f"repo-policy.toml's `repository.base_branch` {branch!r} is not a plain ref name"
+        raise TierError(msg)
     for candidate in (f"origin/{branch}", branch):
         found = _git(repo, "merge-base", candidate, "HEAD")
         if found:
@@ -181,8 +188,9 @@ def resolve(repo: Repo, tier: str, environ: Mapping[str, str] | None = None) -> 
     """What `tier` reaches in `repo` from here.
 
     Raises:
-        TierError: If `tier` is not one of `TIERS`, or `NX_BASE` or `NX_HEAD` is
-            set to something that is not a plain ref name or SHA naming a commit.
+        TierError: If `tier` is not one of `TIERS`, `NX_BASE` or `NX_HEAD` is set
+            to something that is not a plain ref name or SHA naming a commit, or
+            the base branch `repo-policy.toml` declares is not a plain ref name.
     """
     environment = os.environ if environ is None else environ
     if tier_named(tier) is ALL:

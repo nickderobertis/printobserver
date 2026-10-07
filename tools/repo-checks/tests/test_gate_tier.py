@@ -136,6 +136,17 @@ def test_a_named_head_bounds_the_change_at_that_commit(tmp_path: Path) -> None:
     contains(unbounded.reason, "touches justfile")
 
 
+def test_a_base_branch_that_is_not_a_ref_name_is_refused(tmp_path: Path) -> None:
+    """The policy's base branch reaches git as the merge base's ref, so it is validated too."""
+    repo = repository(tmp_path)
+    repo.path("repo-policy.toml").write_text(
+        '[repository]\nbase_branch = "main;touch pwned"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(TierError, match="is not a plain ref name"):
+        resolve(Repo(repo.root), AFFECTED, {})
+
+
 def test_with_no_derivable_base_the_whole_graph_runs(tmp_path: Path) -> None:
     """No base branch to fork from is no change to scope by: fail closed, and say so."""
     repo = repository(tmp_path, branch="elsewhere")

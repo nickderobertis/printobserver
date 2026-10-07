@@ -129,6 +129,17 @@ def test_a_project_file_that_is_not_an_object_is_refused_naming_it(
     refused(graph_edges(copy.repo), "tools/obico-env/project.json holds a JSON list")
 
 
+def test_search_roots_that_are_not_a_list_of_paths_are_refused(tree: Callable[[], Tree]) -> None:
+    """A scalar root would be walked character by character and resolve no import at all."""
+    copy = tree()
+    text = copy.read("pyproject.toml")
+    start = text.index("root = [")
+    end = text.index("]", start) + 1
+    copy.write("pyproject.toml", text[:start] + 'root = "tools/repo-checks/src"' + text[end:])
+
+    refused(graph_edges(copy.repo), "`tool.ty.environment.root` is not a list of search-root paths")
+
+
 def test_a_change_to_an_imported_tool_package_selects_every_suite_importing_it() -> None:
     """The release tooling's importers are exactly the suites a change there must run."""
     selected = affected_by("tools/release-artifacts/src/release_artifacts/wheels.py")

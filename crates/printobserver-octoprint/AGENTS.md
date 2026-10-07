@@ -14,13 +14,6 @@ printers were normal, so the moment a second crate spells an OctoPrint path or
 its authentication header there are two places one vendor's own surface has to
 be kept right.
 
-`repo-policy.toml`'s `[octoprint]` names the permitted crate and what
-constructing such a request looks like in a Rust source; `just check-repo`
-refuses one of those markers on a line of any other crate, exempting a
-comment-only line so a crate may *say* `/api/job` while no crate but the adapter
-may *build* one — and refuses a tree in which this crate itself constructs none,
-because a rule guarding a boundary nothing is on has stopped being a rule.
-
 So a new OctoPrint endpoint, header or request shape lands here and is exposed
 upward through `printobserver-printer-api`'s port, never spelt in the crate that
 needs it.

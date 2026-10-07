@@ -424,7 +424,7 @@ def measured_for(repo: Repo, tier: str) -> Measured:
 
     Raises:
         TierError: If the tier or the base it is resolved against is refused,
-            or a project file the graph is read from is not a project.
+            or a project file or the coverage sources are not what they must be.
     """
     scope = gate_tier.resolve(repo, tier)
     reached = gate_tier.affected_projects(repo, scope, "test")
@@ -435,14 +435,26 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     except checks_graph.ProjectFileError as malformed:
         raise gate_tier.TierError(str(malformed)) from malformed
     graph = [project for project in declared if project.name in reached]
-    sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
-    python = tuple(
-        str(source)
-        for source in sources
-        if any(str(source).startswith(f"{project.root}/") for project in graph)
-    )
     rust = tuple(project.root for project in graph if RUST in project.tags)
-    return Measured(rust=rust, python=python, reason=scope.reason)
+    return Measured(rust=rust, python=measured_sources(repo, graph), reason=scope.reason)
+
+
+def measured_sources(repo: Repo, graph: list[checks_graph.Project]) -> tuple[str, ...]:
+    """The Python coverage sources `pyproject.toml` declares that lie under `graph`'s roots.
+
+    Raises:
+        TierError: If those sources are not a list of paths, which would read as
+            no source at all and leave the Python floor unruled.
+    """
+    sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
+    if not isinstance(sources, list) or not all(isinstance(s, str) and s for s in sources):
+        msg = "pyproject.toml's `tool.coverage.run.source` is not a list of source paths"
+        raise gate_tier.TierError(msg)
+    return tuple(
+        source
+        for source in sources
+        if any(source.startswith(f"{project.root}/") for project in graph)
+    )
 
 
 def coverage(repo: Repo, measured: Measured | None = None) -> int:
