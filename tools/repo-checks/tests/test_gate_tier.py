@@ -318,7 +318,14 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
             isinstance(triggers, dict) and "pull_request" in triggers,
             describing=f"{context.file} running on a pull request, for `{name}`",
         )
-        equal(triggers["pull_request"], None, describing=f"{context.file}'s pull_request filters")
+        filters = triggers["pull_request"] or {}
+        equal(set(filters) - {"types"}, set(), describing=f"{context.file}'s pull_request filters")
+        for kind in ("opened", "synchronize", "reopened", "ready_for_review"):
+            contains(
+                filters.get("types", ["opened", "synchronize", "reopened"]),
+                kind,
+                describing=f"{context.file}'s pull_request activity types",
+            )
         job = jobs_of(workflow)[context.job]
         equal(job.get("needs"), None, describing=f"what `{context.job}` waits on")
         condition = job.get("if")

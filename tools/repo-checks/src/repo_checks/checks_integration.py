@@ -56,6 +56,10 @@ EXCLUSION_SHAPE = "- `<platform>` — <why the virtual printer is unavailable th
 # these does not run on every change.
 CHANGE_EVENTS = ("pull_request", "push")
 PATH_FILTERS = ("paths", "paths-ignore")
+# The pull-request activity types the job has to run on: GitHub's three
+# defaults, and the lift out of draft, after which the merge path waits for a
+# run on the commit as it stands when it became ready.
+PULL_REQUEST_TYPES = ("opened", "synchronize", "reopened", "ready_for_review")
 BRANCH_FILTERS = ("branches", "branches-ignore")
 
 
@@ -287,6 +291,7 @@ def _trigger_findings(
         if event not in triggers
     ]
 
+    findings.extend(_activity_type_findings(triggers, file_name, where))
     for event, spec in triggers.items():
         if not isinstance(spec, dict):
             continue
@@ -316,6 +321,27 @@ def _trigger_findings(
         )
     findings.extend(_step_condition_findings(repo, job, where))
     return findings
+
+
+def _activity_type_findings(triggers: dict[str, Any], file_name: str, where: str) -> list[str]:
+    """The pull-request trigger runs on every activity type the merge path waits on."""
+    if "pull_request" not in triggers:
+        return []
+    spec = triggers["pull_request"]
+    declared = spec.get("types") if isinstance(spec, dict) else None
+    named = (
+        {str(kind) for kind in declared}
+        if isinstance(declared, list)
+        else {str(declared)}
+        if declared is not None
+        else {"opened", "synchronize", "reopened"}
+    )
+    return [
+        f"{file_name}'s `pull_request` trigger does not run on `{kind}`, so {where} "
+        f"reports nothing on a pull request's `{kind}`"
+        for kind in PULL_REQUEST_TYPES
+        if kind not in named
+    ]
 
 
 def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> list[str]:
