@@ -37,13 +37,26 @@ pub const GENERATED_TURN_CREDENTIAL_BYTES: usize = crate::config::GENERATED_CRED
 /// Who one turn credential authenticates as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnBinding {
-    /// The session the run that holds it is in: never empty, because no
-    /// credential is issued a run in no session. Text rather than a type of its
-    /// own because what it is held to is the contracts' own
-    /// `Actor::Agent { session_name }`, which a request's body carries as text.
-    pub session_name: String,
+    /// The session the run that holds it is in: never empty, because the only
+    /// constructor is `Scope::issue_drawn`, which refuses an empty one.
+    session_name: String,
     /// The print the turn is about.
-    pub print_id: PrintId,
+    print_id: PrintId,
+}
+
+impl TurnBinding {
+    /// The session the run holding this credential is in, as a request's
+    /// `Actor::Agent { session_name }` spells it.
+    #[must_use]
+    pub fn session_name(&self) -> &str {
+        &self.session_name
+    }
+
+    /// The print the turn holding this credential is about.
+    #[must_use]
+    pub const fn print_id(&self) -> PrintId {
+        self.print_id
+    }
 }
 
 /// One live credential, by the scope that issued it.

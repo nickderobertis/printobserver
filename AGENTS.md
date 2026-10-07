@@ -232,20 +232,13 @@ the closure that matters is the closure of the **action** surface: a path to a
 file reaches no printer and cannot be composed into an action.
 
 - **Where a server is and what authenticates to it are configuration.** No client
-  command takes either as an argument or an option. They are read from the
-  operator's own client configuration under their configuration home, then the
-  server's own file — a client with no `[client]` table takes the address the
-  server was told to listen on — or from the one file `--config` names, and from
-  `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win; with both set
-  and no `--config` no file is read. A credential has one accessor and no
+  command takes either as an argument or an option. They are read from
+  configuration files and from `PRINTOBSERVER_SERVER` and
+  `PRINTOBSERVER_CREDENTIAL`, which win; `crates/printobserver/AGENTS.md`
+  records which files, in what order. A credential has one accessor and no
   rendering that shows it.
-- **Every request is the identity its credential authenticated.** The server
-  keeps only the SHA-256 verifier of the operator's credential, and mints each
-  supervision turn a credential of its own, handed to the turn in its
-  environment alone and bound to the agent, that turn's session and its print.
-  A request claiming another actor, naming another print, or — from a turn —
-  starting a print or replacing a manifest is refused `403` before the policy is
-  asked anything.
+- **Every request is the identity its credential authenticated**, and
+  `crates/printobserver-server/AGENTS.md` records how the server holds that.
 - **Five exits, each a different thing to do next**: success, an unreachable
   server, a program nothing configured, an action the policy refused, and an
   image path that names no file on the host the command ran on. That last one

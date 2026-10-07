@@ -111,7 +111,8 @@ impl Caller {
             Self::Operator => "the operator".to_owned(),
             Self::Turn(binding) => format!(
                 "the agent in session `{}` on print {}",
-                binding.session_name, binding.print_id
+                binding.session_name(),
+                binding.print_id()
             ),
         }
     }
@@ -134,7 +135,7 @@ fn claim_refused(caller: &Caller, actor: &Actor) -> Option<Response> {
     let held = match (caller, actor) {
         (Caller::Operator, Actor::Operator) => true,
         (Caller::Turn(binding), Actor::Agent { session_name }) => {
-            *session_name == binding.session_name
+            *session_name == binding.session_name()
         }
         _ => false,
     };
@@ -159,7 +160,7 @@ fn claim_refused(caller: &Caller, actor: &Actor) -> Option<Response> {
 /// Refuse a turn's request about any print but its own.
 fn scope_refused(caller: &Caller, print_id: PrintId) -> Option<Response> {
     match caller {
-        Caller::Turn(binding) if binding.print_id != print_id => Some(refusal(
+        Caller::Turn(binding) if binding.print_id() != print_id => Some(refusal(
             StatusCode::FORBIDDEN,
             format!(
                 "this request authenticated as {} and names print {print_id}: a supervision \
