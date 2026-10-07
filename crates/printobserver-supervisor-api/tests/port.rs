@@ -46,7 +46,7 @@ struct TrivialAccess;
 
 impl TurnAccess for TrivialAccess {
     fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
-        Ok(TurnPass::new(None, session_name.to_owned()))
+        TurnPass::new(None, session_name.to_owned())
     }
 }
 

@@ -496,7 +496,7 @@ impl Server {
         );
         // Every turn's runs are told the address this server bound, beside the
         // credential minted for them.
-        let turns = TurnCredentials::new(Some(format!("http://{address}")));
+        let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
         let reconciliation = reconcile(
             &supervisor,

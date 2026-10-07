@@ -15,6 +15,8 @@
 //! turn is given names no configuration file, so the command-line program the
 //! agent runs reads no file either.
 
+use std::net::SocketAddr;
+
 use crate::SupervisorError;
 
 /// The variable a run is told where the server is in.
@@ -33,28 +35,40 @@ const REDACTED: &str = "<redacted>";
 /// which is what a run's environment is built from — and neither rendering of
 /// this type shows it.
 pub struct TurnPass {
-    /// The address the server answers on, spelled the way a client reads it.
-    server: Option<String>,
+    /// The address the server answers on.
+    server: Option<SocketAddr>,
     /// The credential minted for this run.
     credential: String,
 }
 
 impl TurnPass {
     /// One pass: the server's address, when it is known, and a credential.
-    #[must_use]
-    pub const fn new(server: Option<String>, credential: String) -> Self {
-        Self { server, credential }
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`], quoting nothing of it, when the
+    /// credential is not one an `Authorization` header carries intact: empty,
+    /// or carrying anything but printable ASCII without a space.
+    pub fn new(server: Option<SocketAddr>, credential: String) -> Result<Self, SupervisorError> {
+        if credential.is_empty() || !credential.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(SupervisorError::Unavailable {
+                detail: "the credential minted for this run is not one a request carries intact"
+                    .to_owned(),
+            });
+        }
+        Ok(Self { server, credential })
     }
 
     /// The variables a run's environment carries, as `(name, value)` pairs:
-    /// the server's address when it is known, and the credential.
+    /// the server's address, as a client spells it, when it is known, and the
+    /// credential.
     #[must_use]
-    pub fn environment(&self) -> Vec<(&'static str, &str)> {
+    pub fn environment(&self) -> Vec<(&'static str, String)> {
         let mut assigned = Vec::with_capacity(2);
-        if let Some(server) = &self.server {
-            assigned.push((SERVER_ENV, server.as_str()));
+        if let Some(server) = self.server {
+            assigned.push((SERVER_ENV, format!("http://{server}")));
         }
-        assigned.push((CREDENTIAL_ENV, self.credential.as_str()));
+        assigned.push((CREDENTIAL_ENV, self.credential.clone()));
         assigned
     }
 }
@@ -97,21 +111,38 @@ mod tests {
     #[test]
     fn a_pass_carries_both_variables_and_renders_no_credential() {
         let pass = TurnPass::new(
-            Some("http://127.0.0.1:8420".to_owned()),
+            Some("127.0.0.1:8420".parse().expect("an address")),
             "qz7vk3xhw9mrbt2ycf5jdlgnps46auei".to_owned(),
-        );
+        )
+        .expect("a credential a header carries");
 
         assert_eq!(
             pass.environment(),
             vec![
-                (SERVER_ENV, "http://127.0.0.1:8420"),
-                (CREDENTIAL_ENV, "qz7vk3xhw9mrbt2ycf5jdlgnps46auei"),
+                (SERVER_ENV, "http://127.0.0.1:8420".to_owned()),
+                (
+                    CREDENTIAL_ENV,
+                    "qz7vk3xhw9mrbt2ycf5jdlgnps46auei".to_owned()
+                ),
             ]
         );
         assert!(!format!("{pass:?}").contains("qz7vk3xhw9mrbt2ycf5jdlgnps46auei"));
         assert_eq!(
-            TurnPass::new(None, "c".to_owned()).environment(),
-            vec![(CREDENTIAL_ENV, "c")]
+            TurnPass::new(None, "c".to_owned())
+                .expect("one character is a credential")
+                .environment(),
+            vec![(CREDENTIAL_ENV, "c".to_owned())]
         );
+    }
+
+    /// A credential no header carries intact is refused, quoting nothing of it.
+    #[test]
+    fn a_credential_no_header_carries_is_refused() {
+        for refused in ["", "qx-two words", "qx-tab\there", "qx-caf\u{e9}"] {
+            let error = TurnPass::new(None, refused.to_owned())
+                .err()
+                .unwrap_or_else(|| panic!("{refused:?} was taken as a credential"));
+            assert!(!error.to_string().contains("qx-"), "{error}");
+        }
     }
 }

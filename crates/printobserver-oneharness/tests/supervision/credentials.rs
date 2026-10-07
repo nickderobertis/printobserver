@@ -216,3 +216,40 @@ fn a_run_with_no_credential_is_never_started() {
     );
     assert!(watch.requests().is_empty(), "a run was started anyway");
 }
+
+/// A configuration that assigns either variable itself is overridden: the run
+/// sees the pass it was issued, once each, and nothing configured beside it.
+#[test]
+fn a_configured_server_or_credential_never_reaches_a_run() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("credentials-configured");
+    let watch = Arc::new(Watch::default());
+    let mut configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-CONFIGURED", &assessment("the print is fine", "high")),
+    );
+    configured.harness_env.push(crate::support::assignment(
+        "PRINTOBSERVER_CREDENTIAL=a-stale-operator-credential",
+    ));
+    configured.harness_env.push(crate::support::assignment(
+        "PRINTOBSERVER_SERVER=http://127.0.0.1:9",
+    ));
+    let supervisor = port(configured, &watch);
+    let print_id = PrintId::new();
+
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, unreadable("configured")), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
+
+    let request = watch.requests().into_iter().next().expect("a run request");
+    assert_eq!(
+        assigned(&request.env, CREDENTIAL_ENV),
+        vec!["a-turn-credential-1"]
+    );
+    assert_eq!(assigned(&request.env, SERVER_ENV), vec![ISSUED_SERVER]);
+}

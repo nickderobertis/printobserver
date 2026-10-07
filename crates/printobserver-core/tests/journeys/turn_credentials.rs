@@ -69,3 +69,25 @@ fn a_failed_turn_is_revoked_too_and_each_turn_gets_its_own_credential() {
         assert_eq!(world.turns.admit(credential), None);
     }
 }
+
+/// A supervisor nothing installed an authority on hands its turns an issuer
+/// that issues nothing: the turn runs, and reaches no server as anybody.
+#[test]
+fn a_turn_with_no_authority_installed_is_issued_nothing() {
+    let world = World::with_no_turn_authority();
+    world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+
+    world
+        .handle(failure_alert(7))
+        .expect("the event is handled");
+
+    assert!(
+        world.agent.issued().is_empty(),
+        "a turn was issued a credential"
+    );
+    let unissued = world.agent.unissued();
+    assert_eq!(unissued.len(), 1, "the turn never asked: {unissued:?}");
+    assert!(unissued[0].contains("no credential"), "{unissued:?}");
+    assert_eq!(world.turns.live(), 0);
+}

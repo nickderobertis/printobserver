@@ -92,14 +92,9 @@ fn main() -> ExitCode {
             Err(failure) => refusal(&failure),
         },
         Invocation::CredentialIssue {
-            config,
             replace,
             machine_readable,
-        } => printed(credential::issue(
-            config.as_deref(),
-            replace,
-            machine_readable,
-        )),
+        } => printed(credential::issue(replace, machine_readable)),
         Invocation::CredentialVerifier { machine_readable } => {
             printed(credential::verifier(machine_readable))
         }

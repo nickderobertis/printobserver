@@ -94,6 +94,18 @@ impl World {
     /// A world under one envelope.
     #[must_use]
     pub fn with_envelope(envelope: SafetyEnvelope) -> Self {
+        Self::built(envelope, true)
+    }
+
+    /// A world under the permissive envelope whose supervisor nothing
+    /// installed a turn authority on.
+    #[must_use]
+    pub fn with_no_turn_authority() -> Self {
+        Self::built(permissive_envelope(), false)
+    }
+
+    /// A world under one envelope, its turn authority installed or not.
+    fn built(envelope: SafetyEnvelope, authority: bool) -> Self {
         let journal = Arc::new(Journal::default());
         let clock = Arc::new(FakeClock::new(EPOCH_SECONDS));
         let store = Arc::new(FakeStore::new(Arc::clone(&journal), Arc::clone(&clock)));
@@ -121,9 +133,11 @@ impl World {
         );
         agent.attach(&core);
         let turns = Arc::new(crate::fakes::FakeTurnAuthority::default());
-        assert!(
-            core.install_turn_authority(Arc::new(crate::fakes::OpensTurns(Arc::clone(&turns))))
-        );
+        if authority {
+            assert!(
+                core.install_turn_authority(Arc::new(crate::fakes::OpensTurns(Arc::clone(&turns))))
+            );
+        }
         agent.reads_authority(&turns);
         Self {
             core,

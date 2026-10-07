@@ -121,8 +121,6 @@ pub enum Invocation {
     /// Issue the operator a credential, writing their own client
     /// configuration, and print its verifier.
     CredentialIssue {
-        /// The file to write instead of the operator's own, when one was named.
-        config: Option<PathBuf>,
         /// Whether a configuration already there may be replaced.
         replace: bool,
         /// Whether machine-readable output was asked for.
@@ -284,15 +282,25 @@ fn local(name: &str, config: Option<PathBuf>, flagged: bool, machine_readable: b
             )),
         };
     }
-    if name == CREDENTIAL_ISSUE_COMMAND {
-        return Invocation::CredentialIssue {
-            config,
-            replace: flagged,
-            machine_readable,
+    if name == CREDENTIAL_ISSUE_COMMAND || name == CREDENTIAL_VERIFIER_COMMAND {
+        // The credential commands read no configuration, and the one file
+        // `credential issue` writes is the operator's own, under their own
+        // configuration home: a path a caller named could be one other users
+        // can read.
+        if config.is_some() {
+            return refused(format!(
+                "`{name}` takes no `{CONFIG_OPTION}`: it reads no configuration, and \
+                 `{CREDENTIAL_ISSUE_COMMAND}` writes only your own, under your configuration home."
+            ));
+        }
+        return if name == CREDENTIAL_ISSUE_COMMAND {
+            Invocation::CredentialIssue {
+                replace: flagged,
+                machine_readable,
+            }
+        } else {
+            Invocation::CredentialVerifier { machine_readable }
         };
-    }
-    if name == CREDENTIAL_VERIFIER_COMMAND {
-        return Invocation::CredentialVerifier { machine_readable };
     }
     // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     if name == SIGN_IN_COMMAND {

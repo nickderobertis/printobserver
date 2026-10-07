@@ -1179,3 +1179,115 @@ async fn neither_rendering_of_a_credential_shows_it() {
     );
     server.stop().await;
 }
+
+/// A verifier file that cannot be read at all — a directory where it would be —
+/// refuses the start, naming it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verifier_file_that_cannot_be_read_refuses_the_start() {
+    let rooted = Rooted::unverified().await;
+    std::fs::create_dir(rooted.verifier_file()).expect("a directory is creatable");
+
+    let refusal = rooted
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("an unreadable verifier file was accepted"));
+
+    assert_refused_naming(&refusal, &rooted.verifier_file(), "that cannot be read");
+}
+
+/// A legacy plaintext left beside a verifier already there is removed, and the
+/// verifier there is the one in force: the plaintext's credential is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_beside_a_verifier_is_removed_and_the_verifier_kept() {
+    let rooted = Rooted::unverified().await;
+    let verifier = format!("{}\n", CredentialVerifier::of(OPERATOR));
+    std::fs::write(rooted.verifier_file(), &verifier).expect("writable");
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let server = rooted.start().await.expect("the server starts");
+
+    assert!(!rooted.credential_file().exists(), "the plaintext was left");
+    assert_eq!(
+        std::fs::read_to_string(rooted.verifier_file()).expect("still there"),
+        verifier,
+        "the verifier already there was replaced"
+    );
+    assert!(admits(&server, OPERATOR).await);
+    assert!(
+        !admits(&server, LEGACY).await,
+        "the removed plaintext was admitted"
+    );
+    server.stop().await;
+}
+
+/// A legacy client configuration that cannot be removed refuses the start,
+/// naming it: a start that went on would leave a turn able to read it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_client_configuration_that_cannot_be_removed_refuses_the_start() {
+    let rooted = Rooted::with(|_| {}).await;
+    let client = rooted.state().join(CLIENT_CONFIG_FILE);
+    std::fs::create_dir_all(client.join("held")).expect("a directory where the file would be");
+
+    let refusal = rooted
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a start went on over a client configuration it kept"));
+
+    assert!(matches!(refusal, StartError::State { .. }), "{refusal}");
+    assert!(
+        refusal.to_string().contains(CLIENT_CONFIG_FILE),
+        "{refusal}"
+    );
+}
+
+/// A legacy credential whose verifier cannot be written refuses the start,
+/// naming the file and quoting nothing, and leaves the plaintext where it was
+/// rather than losing the operator's one copy of their credential.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_left() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let rooted = Rooted::unverified().await;
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+    let state = rooted.state();
+    // The store is opened over the directory first, as the composition root
+    // opens it, so what the closed directory refuses is the conversion.
+    let config = ServerConfig::load(&rooted.path).expect("the configuration is accepted");
+    let stores = Stores::of(Arc::new(
+        printobserver_store_sqlite::SqliteStore::open(&state).expect("the store opens"),
+    ));
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o500))
+        .expect("the state directory is closed to writes");
+
+    let refused = Server::start_with(
+        config,
+        Ports {
+            printer: RecordingPrinter::printing()
+                as Arc<dyn printobserver_printer_api::PrinterPort>,
+            stores,
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await
+    .err();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700))
+        .expect("the state directory is opened again");
+
+    let refusal = refused.unwrap_or_else(|| panic!("a start went on with nothing converted"));
+    assert_refused_naming(
+        &refusal,
+        &rooted.credential_file(),
+        "whose verifier cannot be written",
+    );
+    assert_eq!(
+        std::fs::read_to_string(rooted.credential_file()).expect("still there"),
+        LEGACY
+    );
+    assert!(!rooted.verifier_file().exists());
+}

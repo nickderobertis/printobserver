@@ -506,6 +506,9 @@ impl RecordingAccess {
 }
 
 /// The address every recorded pass names.
+const ISSUED_ADDRESS: &str = "127.0.0.1:8420";
+
+/// That address, as a run's environment spells it.
 pub const ISSUED_SERVER: &str = "http://127.0.0.1:8420";
 
 impl printobserver_supervisor_api::TurnAccess for RecordingAccess {
@@ -517,10 +520,10 @@ impl printobserver_supervisor_api::TurnAccess for RecordingAccess {
         let mut issued = self.issued.lock().expect("the access holds");
         let credential = format!("a-turn-credential-{}", issued.len() + 1);
         issued.push((session_name.to_owned(), credential.clone()));
-        Ok(printobserver_supervisor_api::TurnPass::new(
-            Some(ISSUED_SERVER.to_owned()),
+        printobserver_supervisor_api::TurnPass::new(
+            Some(ISSUED_ADDRESS.parse().expect("an address")),
             credential,
-        ))
+        )
     }
 }
 

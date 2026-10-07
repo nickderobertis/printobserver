@@ -183,7 +183,7 @@ impl SupervisorPort for StandInAgent {
                 environment
                     .iter()
                     .find(|(named, _)| *named == name)
-                    .map(|(_, value)| (*value).to_owned())
+                    .map(|(_, value)| value.clone())
             };
             self.passes
                 .lock()

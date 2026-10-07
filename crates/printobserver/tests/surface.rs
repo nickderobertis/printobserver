@@ -212,8 +212,6 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
     wanted.extend(READS.iter().map(|read| command_for(read)));
     wanted.insert("server".to_owned());
     wanted.insert("sign-in".to_owned());
-    // The operator's credential is issued and verified here, reaching no
-    // server: the two commands the fix for shared credentials names.
     wanted.insert("credential issue".to_owned());
     wanted.insert("credential verifier".to_owned());
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();
@@ -517,7 +515,6 @@ fn the_parser_accepts_exactly_the_options_the_surface_declares() {
         spellings.insert(command.name.clone(), command.options());
     }
     for (name, options) in spellings {
-        // A command of two words is typed as two words.
         let words: Vec<&str> = name.split_whitespace().collect();
         for option in &options {
             let (_, said) = run(&[words.as_slice(), &[option.as_str(), "1"]].concat());

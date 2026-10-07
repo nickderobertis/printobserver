@@ -22,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from release_artifacts import world as world_module
 from release_artifacts.__main__ import main
 from release_artifacts.installing import NO_TOOLCHAIN, TOOLCHAIN, prove, without_rust
 from release_artifacts.publishing import PublishError, publish
@@ -263,6 +264,22 @@ def _announcing(root: Path, name: str, address: str) -> Path:
         f"import sys, time\nsys.stderr.write({(SERVING_ON + address + chr(10))!r})\n"
         "sys.stderr.flush()\ntime.sleep(60)\n",
     )
+
+
+def test_a_supervisor_that_never_says_where_it_serves_is_said_to_have(
+    repo: Repo, into: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A world whose supervisor runs and never says where it serves gives up, saying so."""
+    root = into("silent")
+    silent = _stand_in(root, "says-nothing", "import time\ntime.sleep(60)\n")
+    monkeypatch.setattr(world_module, "STARTUP_TIMEOUT_SECONDS", 1.0)
+    world = World(silent, root)
+
+    try:
+        with pytest.raises(WorldError, match="never said where it serves"):
+            world.start()
+    finally:
+        world.stop()
 
 
 @pytest.mark.parametrize(

@@ -81,10 +81,10 @@ impl printobserver_supervisor_api::TurnAccess for OnePass {
         _session_name: &str,
     ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
     {
-        Ok(printobserver_supervisor_api::TurnPass::new(
-            Some("http://127.0.0.1:9".to_owned()),
+        printobserver_supervisor_api::TurnPass::new(
+            Some("127.0.0.1:9".parse().expect("an address")),
             "a-skilled-turns-credential".to_owned(),
-        ))
+        )
     }
 }
 

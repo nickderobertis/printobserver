@@ -493,3 +493,117 @@ async fn a_turn_moved_to_a_second_session_holds_only_that_sessions_credential() 
     world.agent.release_turns();
     world.server.stop().await;
 }
+
+/// One image stored against one print, as the ingress stores an alert's.
+async fn an_image_of(world: &World, print_id: PrintId) -> printobserver_core::ImageRecord {
+    let event = world
+        .stores
+        .events
+        .append_event(printobserver_core::store::EventDraft {
+            print_id: Some(print_id),
+            source: printobserver_core::system_source(),
+            received_at: printobserver_types::Timestamp::now(),
+            body: printobserver_types::EventBody {
+                kind: printobserver_types::EventKind::new("malformed_external_event")
+                    .expect("a kind name"),
+                payload: json!({ "detail": "a journey's own event" }),
+            },
+            raw: None,
+        })
+        .await
+        .expect("an event is appended");
+    world
+        .stores
+        .images
+        .put_image(
+            print_id,
+            event.id,
+            None,
+            "image/jpeg".to_owned(),
+            printobserver_types::RawBytes::new(b"the bytes of a frame".to_vec()),
+        )
+        .await
+        .expect("an image is stored")
+}
+
+/// Every read about another print is refused for a turn — its context, a look
+/// at it, its history, its manifest, and an image of it, whether or not that
+/// image's file is still there — while an image of its own print is served.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_credential_reads_nothing_of_another_print() {
+    let world = World::open().await;
+    let (print_id, pass) = held_turn(&world).await;
+    let other = world.open_print().await;
+    let turn = presenting(&pass.credential);
+    let session = session_of(print_id);
+
+    for path in [
+        format!("/prints/{other}/context"),
+        format!("/prints/{other}/look"),
+        format!("/prints/{other}/history"),
+        format!("/prints/{other}/manifest"),
+    ] {
+        let answer = sent(turn.get(world.url(&path))).await;
+        assert_forbidden(
+            &answer,
+            &format!("a turn reading {path}"),
+            &[&session, &other.to_string()],
+        );
+    }
+
+    let own = an_image_of(&world, print_id).await;
+    let (status, body) = sent(turn.get(world.url(&format!("/images/{}", own.id)))).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    let foreign = an_image_of(&world, other).await;
+    let answer = sent(turn.get(world.url(&format!("/images/{}", foreign.id)))).await;
+    assert_forbidden(&answer, "a turn reading another print's image", &[&session]);
+    std::fs::remove_file(world.state_dir().join(&foreign.relative_path))
+        .expect("the image's file is removable");
+    let answer = sent(turn.get(world.url(&format!("/images/{}", foreign.id)))).await;
+    assert_forbidden(
+        &answer,
+        "a turn reading another print's image whose file is gone",
+        &[&session],
+    );
+    world.agent.release_turns();
+    world.server.stop().await;
+}
+
+/// What a turn's credential may never ask for is refused `403` whatever body
+/// it carries: a start, a manifest replacement and an action on another print
+/// with a body that is not one are refused for who asked before the body is
+/// read.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_credentials_forbidden_requests_are_refused_before_their_bodies() {
+    let world = World::open().await;
+    let (print_id, pass) = held_turn(&world).await;
+    let other = world.open_print().await;
+    let turn = presenting(&pass.credential);
+    let session = session_of(print_id);
+    let not_a_body = "{ this is not a body";
+
+    for (what, request) in [
+        (
+            "a start",
+            turn.post(action_url(&world, print_id, "start_print")),
+        ),
+        (
+            "a manifest replacement",
+            turn.put(world.url(&format!("/prints/{print_id}/manifest"))),
+        ),
+        (
+            "an action on another print",
+            turn.post(action_url(&world, other, "pause")),
+        ),
+    ] {
+        let answer = sent(
+            request
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(not_a_body),
+        )
+        .await;
+        assert_forbidden(&answer, &format!("{what} with no body"), &[&session]);
+    }
+    world.agent.release_turns();
+    world.server.stop().await;
+}

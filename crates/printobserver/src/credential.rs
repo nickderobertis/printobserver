@@ -112,8 +112,8 @@ fn toml_basic_string(text: &str) -> String {
 /// Issue the operator a credential.
 ///
 /// Writes `[client]` — `server` and the drawn `credential` — into the
-/// operator's own client configuration, or the file `--config` named, and
-/// answers the verifier line to print.
+/// operator's own client configuration, under their configuration home and
+/// nowhere else, and answers the verifier line to print.
 ///
 /// # Errors
 ///
@@ -122,22 +122,15 @@ fn toml_basic_string(text: &str) -> String {
 /// configuration is already there and `--replace` was not given, and when the
 /// file cannot be written; and of [`Exit::Refused`] when the random source
 /// refuses.
-pub fn issue(
-    named: Option<&Path>,
-    replace: bool,
-    machine_readable: bool,
-) -> Result<Printed, Failure> {
-    let path = match named {
-        Some(path) => path.to_path_buf(),
-        None => crate::locations::operator_client_config().ok_or_else(|| {
-            Failure::of(
-                Exit::Unconfigured,
-                "there is no configuration home to keep your credential in: set the variable \
-                 your platform keeps it under (`HOME` on Linux and macOS, `APPDATA` on \
-                 Windows), or name the file to write with `--config <path>`",
-            )
-        })?,
-    };
+pub fn issue(replace: bool, machine_readable: bool) -> Result<Printed, Failure> {
+    let path = crate::locations::operator_client_config().ok_or_else(|| {
+        Failure::of(
+            Exit::Unconfigured,
+            "there is no configuration home to keep your credential in: set the variable your \
+             platform keeps it under — `XDG_CONFIG_HOME` or `HOME` on Linux, `HOME` on macOS, \
+             `APPDATA` on Windows",
+        )
+    })?;
     let server = std::env::var(SERVER_ENV)
         .ok()
         .map(|value| value.trim().to_owned())
@@ -169,7 +162,7 @@ pub fn issue(
             ),
         )
     })?;
-    write_private(
+    write_operators_own(
         &path,
         &format!(
             "[client]\nserver = \"{}\"\ncredential = \"{}\"\n",
@@ -189,11 +182,16 @@ pub fn issue(
     })
 }
 
-/// Write the operator's configuration: into a file of its own beside the
-/// target, private from the moment it exists, and then moved into place — so a
-/// configuration being replaced is never seen half-written, and never seen
-/// readable by anybody else.
-fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
+/// Write the operator's configuration under their own configuration home: into
+/// a file of its own beside the target, and then moved into place, so a
+/// configuration being replaced is never seen half-written.
+///
+/// On Unix the file is the operator's alone from the moment it exists (0600,
+/// in a directory created 0700). On Windows a file takes the access of the
+/// folder it is created in, and the one folder this writes into is the
+/// operator's own roaming application data folder, which Windows grants to that
+/// user and the system alone — which is why no path a caller names is written.
+fn write_operators_own(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write as _;
 
     if let Some(directory) = path
@@ -267,4 +265,32 @@ pub fn verifier(machine_readable: bool) -> Result<Printed, Failure> {
         out: verifier_output(&credential.verifier(), machine_readable, None),
         exit: Exit::Success,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEFAULT_SERVER;
+
+    /// The address an issued configuration names when nothing says otherwise
+    /// is the one both installers' configuration has the server listen on.
+    #[test]
+    fn the_default_server_is_where_both_installers_have_it_listen() {
+        let listen = DEFAULT_SERVER
+            .strip_prefix(crate::config::SCHEME)
+            .expect("the default is an http address");
+        for installer in ["install-service.sh", "install-service.ps1"] {
+            let written = std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../scripts")
+                    .join(installer),
+            )
+            .expect("the committed installer reads");
+            assert!(
+                written
+                    .lines()
+                    .any(|line| line == format!("listen = \"{listen}\"")),
+                "{installer}'s configuration does not listen on {listen}"
+            );
+        }
+    }
 }

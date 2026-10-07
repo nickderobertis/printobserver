@@ -12,7 +12,8 @@ use oneharness_core::io::run::{RunControls, RunOutcome, RunRequest, run_supervis
 use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_supervisor_api::{
-    BoxFuture, SupervisorError, SupervisorPort, TurnAccess, TurnOutcome, TurnPass, TurnRequest,
+    BoxFuture, CREDENTIAL_ENV, SERVER_ENV, SupervisorError, SupervisorPort, TurnAccess,
+    TurnOutcome, TurnPass, TurnRequest,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
@@ -225,8 +226,10 @@ impl OneharnessSupervisor {
     ///
     /// The run's environment carries the configured assignments and then the
     /// pass this run was issued: the server's address and the credential minted
-    /// for this run, which is the only way a turn is handed either. No file
-    /// holding the credential is written, and the context command names none.
+    /// for this run, which is the only way a turn is handed either. A
+    /// configured assignment of either variable is left out, so the pass is the
+    /// one value of each the run sees. No file holding the credential is
+    /// written, and the context command names none.
     fn build_request(&self, session: &SessionName, prompt: &str, pass: &TurnPass) -> RunRequest {
         let (mode, passthrough) = self.permissions();
         let mut env: Vec<String> = self
@@ -234,6 +237,11 @@ impl OneharnessSupervisor {
             .harness_env
             .iter()
             .map(ToString::to_string)
+            .filter(|assigned| {
+                ![SERVER_ENV, CREDENTIAL_ENV]
+                    .iter()
+                    .any(|name| assigned.starts_with(&format!("{name}=")))
+            })
             .collect();
         env.extend(
             pass.environment()

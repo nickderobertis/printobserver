@@ -14,6 +14,12 @@
 //! through the variable this platform reads it from — `XDG_CONFIG_HOME` on
 //! Linux and every other Unix, `HOME` on macOS, `APPDATA` on Windows — and
 //! through nothing else.
+//!
+//! One failure is not driven: the operating system's random source refusing
+//! `credential issue` a draw. Nothing a test can do to its own process makes
+//! the kernel refuse one, so that branch is the one stated rather than proven —
+//! it exits `refused` having written nothing, because the draw comes before the
+//! file is opened.
 
 #[path = "support/announced.rs"]
 mod announced;
@@ -62,6 +68,16 @@ fn issued_at(home: &Path) -> PathBuf {
 /// One run of the program with its configuration home at `home`, the
 /// variables given, and `input` on its standard input.
 fn run(home: &Path, arguments: &[&str], environment: &[(&str, &str)], input: &[u8]) -> Output {
+    running(Some(home), arguments, environment, input)
+}
+
+/// The same, with no configuration home at all when `home` is none.
+fn running(
+    home: Option<&Path>,
+    arguments: &[&str],
+    environment: &[(&str, &str)],
+    input: &[u8],
+) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
     command
         .args(arguments)
@@ -73,7 +89,9 @@ fn run(home: &Path, arguments: &[&str], environment: &[(&str, &str)], input: &[u
     for name in HOME_VARIABLES {
         command.env_remove(name);
     }
-    command.env(HOME_VARIABLE, home);
+    if let Some(home) = home {
+        command.env(HOME_VARIABLE, home);
+    }
     for (name, value) in environment {
         command.env(name, value);
     }
@@ -720,4 +738,183 @@ fn a_plaintext_api_credential_is_admitted_and_warned_about_in_the_log_on_every_s
         assert!(admitted(&admitted_run), "{start}: {}", said(&admitted_run));
         drop(server);
     }
+}
+
+/// With no configuration home there is nowhere to keep a credential: refused,
+/// naming the variable to set, and nothing written.
+#[test]
+fn credential_issue_with_no_configuration_home_says_which_variable_to_set() {
+    let refused = running(None, &["credential", "issue"], &[], b"");
+
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(said(&refused).contains(HOME_VARIABLE), "{}", said(&refused));
+    assert!(!said(&refused).contains("api.credential_verifier"));
+}
+
+/// `PRINTOBSERVER_SERVER` naming no address is refused before anything is
+/// written; a bare `host:port` is written as the address a client reads.
+#[test]
+fn credential_issue_holds_the_server_it_writes_to_an_address() {
+    let home = TempDir::new().expect("an operator's own home");
+
+    let refused = run(
+        home.path(),
+        &["credential", "issue"],
+        &[("PRINTOBSERVER_SERVER", "the printer room")],
+        b"",
+    );
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        !issued_at(home.path()).exists(),
+        "a refused issue wrote a configuration"
+    );
+
+    let bare = run(
+        home.path(),
+        &["credential", "issue"],
+        &[("PRINTOBSERVER_SERVER", "127.0.0.1:9418")],
+        b"",
+    );
+    assert_eq!(bare.status.code(), Some(0), "{}", said(&bare));
+    assert_eq!(
+        issued(home.path())["server"].as_str(),
+        Some("http://127.0.0.1:9418")
+    );
+}
+
+/// A configuration that cannot be written is refused naming it, and one that
+/// was already there is left exactly as it was.
+#[test]
+fn credential_issue_that_cannot_write_leaves_what_was_there() {
+    let home = TempDir::new().expect("an operator's own home");
+    let target = issued_at(home.path());
+    let directory = target.parent().expect("the configuration has a directory");
+    std::fs::create_dir_all(directory.parent().expect("a home above it")).expect("writable");
+    std::fs::write(directory, b"a file where the directory would be").expect("writable");
+
+    let refused = run(home.path(), &["credential", "issue"], &[], b"");
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        said(&refused).contains("could not be written"),
+        "{}",
+        said(&refused)
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let home = TempDir::new().expect("an operator's own home");
+        let first = run(home.path(), &["credential", "issue"], &[], b"");
+        assert_eq!(first.status.code(), Some(0), "{}", said(&first));
+        let held = std::fs::read(issued_at(home.path())).expect("issued");
+        let directory = issued_at(home.path())
+            .parent()
+            .expect("a directory")
+            .to_path_buf();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500))
+            .expect("the directory is made read-only");
+        let replaced = run(home.path(), &["credential", "issue", "--replace"], &[], b"");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("the directory is made writable again");
+        assert_eq!(
+            replaced.status.code(),
+            Some(i32::from(Exit::Unconfigured.status())),
+            "{}",
+            said(&replaced)
+        );
+        assert_eq!(
+            std::fs::read(issued_at(home.path())).expect("still there"),
+            held,
+            "a replacement that could not be written changed the configuration"
+        );
+    }
+}
+
+/// `credential verifier --json` answers a document carrying the verifier
+/// alone, and standard input that is not text is refused quoting nothing.
+#[test]
+fn credential_verifier_answers_a_document_and_refuses_what_is_not_text() {
+    let home = TempDir::new().expect("an operator's own home");
+
+    let machine = run(
+        home.path(),
+        &["credential", "verifier", "--json"],
+        &[],
+        b"abc\n",
+    );
+    let document: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_slice(&machine.stdout)
+            .unwrap_or_else(|error| panic!("{error}: {}", said(&machine)));
+    assert_eq!(
+        document,
+        printobserver_types::serde_json::json!({ "credential_verifier": VERIFIER_OF_ABC })
+    );
+
+    let refused = run(home.path(), &["credential", "verifier"], &[], b"qx\xff\xfe");
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Usage.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(said(&refused).contains("not text"), "{}", said(&refused));
+}
+
+/// The credential commands read no configuration, so `--config` is refused
+/// by both rather than taken as a file to write; and a credential command
+/// named without its second word, with an unknown one, or with `--replace`
+/// twice is refused naming what is wrong.
+#[test]
+fn the_credential_commands_refuse_what_they_do_not_take() {
+    let home = TempDir::new().expect("an operator's own home");
+    let elsewhere = home.path().join("shared.toml");
+    let named = elsewhere.display().to_string();
+
+    for (arguments, naming) in [
+        (vec!["credential", "issue", "--config", &named], "--config"),
+        (
+            vec!["credential", "verifier", "--config", &named],
+            "--config",
+        ),
+        (vec!["credential"], "`issue` or `verifier`"),
+        (vec!["credential", "rotate"], "credential rotate"),
+        (
+            vec!["credential", "issue", "--replace", "--replace"],
+            "--replace",
+        ),
+    ] {
+        let refused = run(home.path(), &arguments, &[], b"abc");
+        assert_eq!(
+            refused.status.code(),
+            Some(i32::from(Exit::Usage.status())),
+            "{arguments:?}: {}",
+            said(&refused)
+        );
+        assert!(
+            said(&refused).contains(naming),
+            "{arguments:?}: {}",
+            said(&refused)
+        );
+    }
+    assert!(!elsewhere.exists(), "a named file was written");
+    assert!(
+        !issued_at(home.path()).exists(),
+        "a refused command wrote a configuration"
+    );
 }

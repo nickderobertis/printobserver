@@ -67,7 +67,7 @@ INGRESS_HEADER = "x-printobserver-token"
 SERVING_ON = "printobserver is serving on "
 
 #: How many random bytes the operator credential this puts in force is drawn
-#: from: as many as `printobserver credential issue` draws.
+#: from, in the URL-safe alphabet an `Authorization` header carries as it is.
 CREDENTIAL_BYTES = 32
 
 #: The store the supervisor keeps its record in.
@@ -377,8 +377,8 @@ class World:
         alert below names.
 
         `credential` is the operator credential the supervisor is configured
-        to admit, by its verifier. Given none, one is drawn from as many random
-        bytes as `printobserver credential issue` draws, in its alphabet; a
+        to admit, by its verifier. Given none, one is drawn from
+        `CREDENTIAL_BYTES` random bytes; a
         journey names one to hold a client to a credential of a particular
         shape. `refusing` grants the operator nothing; see `_configuration`.
         """

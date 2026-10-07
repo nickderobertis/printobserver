@@ -91,11 +91,11 @@ Issues the operator a credential: 32 bytes of the operating system's secure rand
 
 - `--replace` — replace an operator configuration already there; without it, one that is there is left alone and the command is refused. The old credential stops working once the server is given the new verifier and restarted.
 
-`--config <path>` names the file to write instead. The address written is `PRINTOBSERVER_SERVER` when that is set, and `http://127.0.0.1:8420` otherwise.
+It writes that file and no other, so it takes no `--config`: a path somebody named could be one other users can read. The address written is `PRINTOBSERVER_SERVER` when that is set, and `http://127.0.0.1:8420` otherwise.
 
 **Output.** One line for the server's configuration, `api.credential_verifier = "sha256:…"`, the SHA-256 of the credential, followed by comment lines saying where to put it — above the configuration's first table — and to restart the service. The credential itself is never printed. With `--json`, a document carrying `credential_verifier` and `client_config`.
 
-**Failures.** `unconfigured` when a configuration is already there and `--replace` was not given, when `PRINTOBSERVER_SERVER` names no address, when there is no configuration home to write into, or when the file cannot be written; `refused` when the random source refuses.
+**Failures.** `unconfigured` when a configuration is already there and `--replace` was not given, when `PRINTOBSERVER_SERVER` names no address, when there is no configuration home to write into, or when the file cannot be written — a configuration already there is then left as it was; `refused` when the random source refuses; `usage` when given `--config`.
 
 ### credential verifier
 
@@ -105,7 +105,7 @@ Prints the verifier of the one credential standard input carries — for a crede
 
 **Output.** The same `api.credential_verifier = "sha256:…"` line `credential issue` prints, and never the credential. With `--json`, a document carrying `credential_verifier`.
 
-**Failures.** `usage` when standard input carries nothing a credential can be — empty, more than one line, a control character — quoting none of it.
+**Failures.** `usage` when standard input carries nothing a credential can be — empty, more than one line, a control character, not text — quoting none of it, and when given `--config`, since it reads no configuration.
 
 ### prints
 

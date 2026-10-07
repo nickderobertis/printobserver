@@ -21,6 +21,7 @@
 //! what varies is the digest, which says nothing about the credential.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -36,7 +37,10 @@ pub const GENERATED_TURN_CREDENTIAL_BYTES: usize = crate::config::GENERATED_CRED
 /// Who one turn credential authenticates as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnBinding {
-    /// The session the run that holds it is in.
+    /// The session the run that holds it is in: never empty, because no
+    /// credential is issued a run in no session. Text rather than a type of its
+    /// own because what it is held to is the contracts' own
+    /// `Actor::Agent { session_name }`, which a request's body carries as text.
     pub session_name: String,
     /// The print the turn is about.
     pub print_id: PrintId,
@@ -59,7 +63,7 @@ struct Registry {
     /// The identifier the next scope takes.
     next_scope: AtomicU64,
     /// Where the server answers, as a turn's runs are told.
-    server: Option<String>,
+    server: Option<SocketAddr>,
 }
 
 /// Every live turn credential, by its digest. Cloning it is another handle
@@ -75,7 +79,7 @@ fn digest(credential: &[u8]) -> [u8; 32] {
 impl TurnCredentials {
     /// An empty registry whose turns' runs are told the server is at `server`.
     #[must_use]
-    pub fn new(server: Option<String>) -> Self {
+    pub fn new(server: Option<SocketAddr>) -> Self {
         Self(Arc::new(Registry {
             held: Mutex::new(HashMap::new()),
             next_scope: AtomicU64::new(0),
@@ -152,6 +156,14 @@ impl TurnAccess for Scope {
     fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
         use base64::Engine as _;
 
+        // The session is what a turn's requests are held to claiming, so one
+        // that names none is no session a request could claim.
+        if session_name.trim().is_empty() {
+            return Err(SupervisorError::Unavailable {
+                detail: "a run in no session is issued no credential".to_owned(),
+            });
+        }
+
         let mut drawn = [0_u8; GENERATED_TURN_CREDENTIAL_BYTES];
         getrandom::fill(&mut drawn).map_err(|error| SupervisorError::Unavailable {
             detail: format!(
@@ -160,6 +172,8 @@ impl TurnAccess for Scope {
             ),
         })?;
         let credential = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(drawn);
+        let digested = digest(credential.as_bytes());
+        let pass = TurnPass::new(self.registry.0.server, credential)?;
         // Held across the insertion, so a turn that returns while a run is
         // being issued its credential leaves nothing live behind it.
         let closed = self
@@ -174,7 +188,7 @@ impl TurnAccess for Scope {
         let mut held = self.registry.held();
         held.retain(|_, live| live.scope != self.id);
         held.insert(
-            digest(credential.as_bytes()),
+            digested,
             Held {
                 scope: self.id,
                 binding: TurnBinding {
@@ -185,7 +199,7 @@ impl TurnAccess for Scope {
         );
         drop(held);
         drop(closed);
-        Ok(TurnPass::new(self.registry.0.server.clone(), credential))
+        Ok(pass)
     }
 }
 
@@ -202,10 +216,7 @@ mod tests {
         pass.environment()
             .into_iter()
             .find(|(named, _)| *named == name)
-            .map_or_else(
-                || panic!("the pass carries no {name}"),
-                |(_, value)| value.to_owned(),
-            )
+            .map_or_else(|| panic!("the pass carries no {name}"), |(_, value)| value)
     }
 
     /// A credential is admitted as the session and print it was issued for
@@ -213,7 +224,7 @@ mod tests {
     /// the turn admits none of them and issues no more.
     #[test]
     fn a_turns_credential_lives_exactly_as_long_as_its_turn() {
-        let registry = TurnCredentials::new(Some("http://127.0.0.1:1".to_owned()));
+        let registry = TurnCredentials::new(Some("127.0.0.1:1".parse().expect("an address")));
         let print_id = PrintId::new();
         let opened = registry.open(print_id);
         let access = opened.access();
@@ -241,6 +252,10 @@ mod tests {
         opened.revoke();
         assert_eq!(registry.admit(second.as_bytes()), None);
         assert!(access.issue("print-a-3").is_err());
+        assert!(
+            registry.open(print_id).access().issue("  ").is_err(),
+            "a run in no session was issued a credential"
+        );
         assert_eq!(registry.live(), 0);
     }
 

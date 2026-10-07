@@ -1243,6 +1243,8 @@ pub struct FakeSupervisor {
     issued: Mutex<Vec<(String, Option<TurnBinding>)>>,
     /// The authority core opens each turn's issuer from.
     authority: Mutex<Option<Arc<FakeTurnAuthority>>>,
+    /// Why each turn that asked for a credential was issued none.
+    unissued: Mutex<Vec<String>>,
 }
 
 impl FakeSupervisor {
@@ -1263,7 +1265,14 @@ impl FakeSupervisor {
             gate: Gate::default(),
             issued: Mutex::new(Vec::new()),
             authority: Mutex::new(None),
+            unissued: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Why each turn that asked for a credential was issued none, in order.
+    #[must_use]
+    pub fn unissued(&self) -> Vec<String> {
+        self.unissued.lock().expect("the harness holds").clone()
     }
 
     /// Every credential a turn was issued, in order, and who the authority
@@ -1424,12 +1433,19 @@ impl SupervisorPort for FakeSupervisor {
             let core = self.core.lock().expect("the harness holds").upgrade();
             // What a run is handed to reach the server with, and who core
             // admits it as while this turn runs.
-            if let Ok(pass) = access.issue(&format!("print-{}", request.print_id)) {
+            let issued = access.issue(&format!("print-{}", request.print_id));
+            if let Err(error) = &issued {
+                self.unissued
+                    .lock()
+                    .expect("the harness holds")
+                    .push(error.to_string());
+            }
+            if let Ok(pass) = issued {
                 let credential = pass
                     .environment()
                     .into_iter()
                     .find(|(name, _)| *name == printobserver_supervisor_api::CREDENTIAL_ENV)
-                    .map(|(_, value)| value.to_owned())
+                    .map(|(_, value)| value)
                     .unwrap_or_default();
                 let admitted = self
                     .authority
@@ -1620,9 +1636,7 @@ impl printobserver_supervisor_api::TurnAccess for FakeTurnScope {
                 },
             ),
         );
-        Ok(printobserver_supervisor_api::TurnPass::new(
-            None, credential,
-        ))
+        printobserver_supervisor_api::TurnPass::new(None, credential)
     }
 }
 
