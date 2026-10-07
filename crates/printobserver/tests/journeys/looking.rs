@@ -29,9 +29,6 @@ use super::running;
 /// the supervisor writes or prints may carry.
 pub const OBICO_TOKEN: &str = "an-obico-token-nothing-may-print";
 
-/// `Obico`'s own identifier for the printer the committed alert is about.
-pub const OBICO_PRINTER: i64 = 17;
-
 /// How long a journey waits for something the supervisor does on its own.
 pub const PATIENCE: Duration = Duration::from_secs(60);
 
@@ -140,18 +137,6 @@ pub fn obico(status: &'static str) -> Host {
         status,
         content_type: "application/json",
         body: b"{}".to_vec(),
-    })
-}
-
-/// Whether `Obico` was asked to acknowledge the alert on the committed
-/// printer, with the overwrite `FAILED` and the configured token.
-pub fn acknowledged(obico: &Host) -> bool {
-    obico.received().iter().any(|head| {
-        head.starts_with(&format!(
-            "POST /api/v1/printers/{OBICO_PRINTER}/acknowledge_alert/?alert_overwrite=FAILED "
-        )) && head
-            .to_ascii_lowercase()
-            .contains(&format!("authorization: bearer {OBICO_TOKEN}"))
     })
 }
 

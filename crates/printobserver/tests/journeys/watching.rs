@@ -21,12 +21,13 @@ use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
 use crate::harness::{PROMPT, SIGN_IN_STATE, SIGNED_IN, assessment_answer, stand_in_acting};
+use crate::host::Host;
 use crate::machine::{RUNNING_FILE, Reports};
 use crate::world::{STOOD_IN, World, committed_skill};
 
 use super::looking::{
-    OBICO_PRINTER, PATIENCE, acknowledged, actions_asked, alert, detector_configuration, events_of,
-    obico, post, reports, wait_for,
+    OBICO_TOKEN, PATIENCE, actions_asked, alert, detector_configuration, events_of, obico, post,
+    reports, wait_for,
 };
 
 /// The harness the world's configuration names.
@@ -38,6 +39,21 @@ const GO: &str = "go";
 /// A turn that says it started, and waits for the journey to let it carry on.
 const WAITING: &str = r#"touch "$dir/started-$print-$n"
 until [ -e "$dir/go" ]; do sleep 0.1; done"#;
+
+/// `Obico`'s own identifier for the printer the committed alert is about.
+pub const OBICO_PRINTER: i64 = 17;
+
+/// Whether `Obico` was asked to acknowledge the alert on the committed
+/// printer, with the overwrite `FAILED` and the configured token.
+pub fn acknowledged(obico: &Host) -> bool {
+    obico.received().iter().any(|head| {
+        head.starts_with(&format!(
+            "POST /api/v1/printers/{OBICO_PRINTER}/acknowledge_alert/?alert_overwrite=FAILED "
+        )) && head
+            .to_ascii_lowercase()
+            .contains(&format!("authorization: bearer {OBICO_TOKEN}"))
+    })
+}
 
 /// The configured harness, as the adapter's table declares it.
 fn entry() -> &'static HarnessSignIn {
@@ -732,11 +748,11 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
 
     let history = Value::Array(super::looking::history(world, &print)).to_string();
     assert!(
-        !history.contains(super::looking::OBICO_TOKEN),
+        !history.contains(OBICO_TOKEN),
         "the history carries the token"
     );
     assert!(
-        !world.said_so_far().contains(super::looking::OBICO_TOKEN),
+        !world.said_so_far().contains(OBICO_TOKEN),
         "the supervisor printed the token"
     );
 }
@@ -780,10 +796,10 @@ fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
     assert_eq!(failure["payload"]["event_id"], detection);
     let detail = failure["payload"]["detail"].as_str().unwrap_or_default();
     assert!(detail.contains("403"), "{detail}");
-    assert!(!detail.contains(super::looking::OBICO_TOKEN), "{detail}");
+    assert!(!detail.contains(OBICO_TOKEN), "{detail}");
     assert_eq!(reports(world), Some(Reports::Printing));
     assert!(
-        !world.said_so_far().contains(super::looking::OBICO_TOKEN),
+        !world.said_so_far().contains(OBICO_TOKEN),
         "the supervisor printed the token"
     );
 }
