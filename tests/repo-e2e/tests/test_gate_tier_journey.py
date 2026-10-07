@@ -36,6 +36,15 @@ def as_a_clone(copy: GateCopy) -> GateCopy:
     return copy
 
 
+def report(output: str) -> str:
+    """A coverage report's text with its paths spelled the same on every host.
+
+    Both reports name a file the way the host does, so Windows separates its
+    directories with a backslash where every other host uses a slash.
+    """
+    return plain(output).replace("\\", "/")
+
+
 def ran(output: str) -> set[str]:
     """The projects Nx ran `format-check` for, read off what it printed."""
     return {found["project"] for found in RAN.finditer(plain(output))}
@@ -165,7 +174,7 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     reported = copy.just("coverage", environment=QUIET)
 
     passing(reported, describing="`just coverage` over the client's own run")
-    output = plain(reported.stdout)
+    output = report(reported.stdout)
     contains(output, "coverage: over the projects the change since")
     contains(output, "rust lines not measured: this run's tests reached no crate")
     contains(output, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
@@ -215,7 +224,7 @@ def test_the_affected_rust_report_is_over_the_crates_the_change_reaches(
     passing(tested, describing="the two crates' own `test` targets")
     reported = copy.just("coverage", environment=QUIET)
 
-    output = plain(reported.stdout)
+    output = report(reported.stdout)
     contains(output, "coverage: over the projects the change since")
     contains(output, "printobserver-vision-api/src/lib.rs", describing="the Rust report")
     truth("rust lines not measured" not in output, describing=f"a Rust total in:\n{output}")
