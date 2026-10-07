@@ -1190,6 +1190,12 @@ reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`
 
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/ci.yml"
+site = 'run: just check "$(just gate-tier)"'
+reason = "A push to `main` runs the affected tier, never the sweep by name: `just gate-tier` answers `all` only for the release pull request. What can make a push sweep everything is the affected tier failing closed over a file no project owns, which AGENTS.md records as the rule, because the graph cannot trace such a file to the suites that read it. The merge of the release pull request is such a push, since it rewrites root manifests. Skipping the gate there would mean taking a verdict another run reached on another commit: a pull-request head that can move after it passed, and which the push event does not name. Proving that two trees match would need the forge's record of that pull request, which no gate step reads. The cost is at most one sweep per release, and only when `main` did not move under the release pull request; when it did, the merged tree is new and this is its first sweep."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/platform-dispatch.yml"
 site = "- gate"
 reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `gate` is the same recipe `ci.yml` runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."

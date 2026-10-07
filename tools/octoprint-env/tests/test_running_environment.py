@@ -30,8 +30,14 @@ REFUSED = frozenset({401, 403})
 #: printer injects a communication fault at unless it is configured not to.
 PAST_THE_INJECTED_FAULTS = 120
 
-#: What OctoPrint logs each time the printer asks for a line again.
+#: What OctoPrint logs each time the printer asks for a line again. Copied from
+#: OctoPrint rather than exported by it, so the walk below also induces one
+#: resend on purpose and requires this wording to count it.
 RESEND_REQUEST = "Got a resend request from the printer"
+
+#: The virtual printer's own debug command that answers the next numbered line
+#: with a checksum mismatch, which OctoPrint answers by resending that line.
+INDUCED_RESEND = "!!DEBUG:trigger_resend_checksum"
 
 #: The hotend target the last command sets, which is how the walk knows the
 #: printer has answered every command before it, and the one it is put back to.
@@ -115,11 +121,13 @@ def test_a_print_driven_past_a_hundred_lines_meets_no_injected_fault(
     The integration tier cancels, restarts and adjusts its prints many times,
     and every adjustment is a numbered line of the running print. OctoPrint's
     virtual printer injects a fault at lines 100, 105, 110 and 115 by default;
-    on a slow Windows host one of them, landing in a cancel and a restart, left
-    the printer `Offline after error` with the tier half walked. So the hold
+    on a slow host one of them, landing in a cancel and a restart, leaves the
+    printer `Offline after error` with the tier half walked. So the hold
     print is restarted here — its `M110` starting the count again — and carried
     past all four, and OctoPrint's own log is read for the resend requests a
-    fault answers with. The print is left running, as the bring-up left it.
+    fault answers with. One resend is then induced on purpose, so a log that
+    stopped saying it in these words fails here rather than reading as none.
+    The print is left running, as the bring-up left it.
     """
     url = str(brought_up["url"])
     key = key_from_record(brought_up)
@@ -134,16 +142,34 @@ def test_a_print_driven_past_a_hundred_lines_meets_no_injected_fault(
     for line in range(PAST_THE_INJECTED_FAULTS):
         command = {"commands": [f"M117 printobserver line {line}"]}
         equal(post(url, "/api/printer/command", key, command), 204, describing="a command")
+    answered(url, key)
+    resent = log.read_text(encoding="utf-8", errors="replace").count(RESEND_REQUEST) - already
+    induce = {"commands": [INDUCED_RESEND, "M117 printobserver resent"]}
+    equal(post(url, "/api/printer/command", key, induce), 204, describing="the induced resend")
+    answered(url, key)
+    induced = log.read_text(encoding="utf-8", errors="replace").count(RESEND_REQUEST) - already
+
+    equal(resent, 0, describing=f"the resend requests {log} records over the print")
+    truth(
+        induced > resent,
+        describing=f"the resend induced with `{INDUCED_RESEND}` to be logged as {RESEND_REQUEST!r}",
+    )
+    equal(printer_state(url, key), "Printing", describing="the printer state afterwards")
+
+
+def answered(url: str, key: str) -> None:
+    """Wait until the printer has answered every command sent before this.
+
+    A hotend target is set and read back, then put back: commands are sent in
+    order, so the machine reporting the marker has answered everything ahead
+    of it.
+    """
     marker = {"commands": [f"M104 T0 S{MARKER_TARGET:g}"]}
     equal(post(url, "/api/printer/command", key, marker), 204, describing="the marker")
     settled(lambda: tool_target(url, key), MARKER_TARGET, describing="the hotend target")
     holding = {"commands": [f"M104 T0 S{HOLDING_TARGET:g}"]}
     equal(post(url, "/api/printer/command", key, holding), 204, describing="the put-back")
     settled(lambda: tool_target(url, key), HOLDING_TARGET, describing="the hotend target")
-
-    resent = log.read_text(encoding="utf-8", errors="replace").count(RESEND_REQUEST) - already
-    equal(resent, 0, describing=f"the resend requests {log} records over the print")
-    equal(printer_state(url, key), "Printing", describing="the printer state afterwards")
 
 
 def settled(read: Callable[[], object], wanted: object, *, describing: str) -> None:

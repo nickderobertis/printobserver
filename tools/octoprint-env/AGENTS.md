@@ -35,13 +35,12 @@ the repository-wide rules; this file holds the ones only this script carries.
   by default answers lines 100, 105, 110 and 115 after each `M110` with a
   resend, a dropped answer, a missing line number and a checksum mismatch. That
   tests OctoPrint's own serial recovery, not this program. The tier carries
-  every print it adjusts past those lines, and on the Windows x86_64 gate one of
-  those faults, landing in a cancel and a restart, left the printer `Offline
-  after error` halfway through the walk. So `managed_config` sets
-  `simulated_errors` to none in both modes; the setting does nothing in serial
-  mode, so the two modes still differ only in their connection keys.
-  `test_running_environment.py` carries a print past line 115 and reads
-  OctoPrint's log for resend requests.
+  every print it adjusts past those lines, and on a slow host a fault that lands
+  in a cancel and a restart leaves the printer `Offline after error`. So
+  `managed_config` sets `simulated_errors` to none in both modes; the setting
+  does nothing in serial mode, so the two modes still differ only in their
+  connection keys. `test_running_environment.py` carries a print past line 115
+  and reads OctoPrint's log for resend requests.
 - **Diagnosed, not timed out.** Every way starting can fail is one of the
   script's `FAILURE_CLASSES`, reported by name with a next action; anything
   outside that closed set is reported with the underlying error's own text. One
