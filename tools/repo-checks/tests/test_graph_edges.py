@@ -11,7 +11,8 @@ import json
 import os
 from collections.abc import Callable
 
-from repo_checks.checks_graph import graph_edges
+import pytest
+from repo_checks.checks_graph import EDGES, graph_edges
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -127,6 +128,34 @@ def test_a_project_file_that_is_not_an_object_is_refused_naming_it(
     copy.write(OBICO_PROJECT, "[]\n")
 
     refused(graph_edges(copy.repo), "tools/obico-env/project.json holds a JSON list")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "naming"),
+    [
+        ("name", "7", "`name` is 7, not a non-empty string"),
+        ("tags", '"lang:python"', "`tags` is 'lang:python', not a list of strings"),
+        (EDGES, '["repo-checks", 3]', "`implicitDependencies` is ['repo-checks', 3]"),
+        ("targets", "[]", "`targets` is a JSON list, not an object"),
+        ("targets", '{"lint": []}', "`lint` is a JSON list, not a target object"),
+        ("targets", '{"lint": {"dependsOn": "^lint"}}', "`lint`.dependsOn is '^lint'"),
+        (
+            "targets",
+            '{"lint": {"dependsOn": [{"projects": "printobserver"}]}}',
+            "`lint`.dependsOn projects is 'printobserver', not a list of strings",
+        ),
+    ],
+)
+def test_a_project_field_in_the_wrong_shape_is_refused_naming_it(
+    tree: Callable[[], Tree], field: str, value: str, naming: str
+) -> None:
+    """A malformed field is refused, not read as the root's name or as no edges at all."""
+    copy = tree()
+    data = json.loads(copy.read(OBICO_PROJECT))
+    data[field] = json.loads(value)
+    copy.write(OBICO_PROJECT, json.dumps(data))
+
+    refused(graph_edges(copy.repo), f"tools/obico-env/project.json's {naming}")
 
 
 def test_search_roots_that_are_not_a_list_of_paths_are_refused(tree: Callable[[], Tree]) -> None:

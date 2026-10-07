@@ -1,10 +1,7 @@
 # octoprint-env
 
-The rules `octoprint_env.py` is held to, and why. The root `AGENTS.md`'s "The
-scripted OctoPrint environment" says what this environment is for, which tiers
-bracket it and where the virtual printer is unavailable — that last as a block
-`just check-repo` reads from the root. This file holds what only this script
-carries.
+The rules `octoprint_env.py` is held to, and why. The root `AGENTS.md` holds
+the repository-wide rules; this file holds the ones only this script carries.
 
 - **Two modes, one flag apart.** `--mode virtual` enables OctoPrint's own
   virtual printer and connects to it, which is what the tier drives.

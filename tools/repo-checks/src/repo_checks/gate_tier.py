@@ -142,22 +142,29 @@ def _merge_base(repo: Repo) -> tuple[str, str] | None:
     return None
 
 
-def _separated(listing: str | None) -> list[str]:
-    """The paths a `-z` listing names, none where git answered nothing."""
-    return [path for path in listing.split("\0") if path] if listing else []
+def _separated(listing: str) -> list[str]:
+    """The paths a `-z` listing names."""
+    return [path for path in listing.split("\0") if path]
 
 
-def _changed(repo: Repo, base: str, head: str | None) -> list[str]:
+def _changed(repo: Repo, base: str, head: str | None) -> list[str] | None:
     """Every path a diff from `base` touches, as Nx's own affected run reads it.
 
     Against the working tree where no head is named, untracked files included,
-    and with renames split into the path they left and the one they took.
+    and with renames split into the path they left and the one they took. None
+    where git refused either query: a change nobody could list is not an empty
+    one, and the caller has no ownership to scope by.
     """
-    diff = ["diff", "--name-only", "--no-renames", "-z", base, *([head] if head else [])]
-    paths = _separated(_git(repo, *diff))
+    diff = _git(repo, "diff", "--name-only", "--no-renames", "-z", base, *([head] if head else []))
+    if diff is None:
+        return None
+    paths = _separated(diff)
     if head is None:
-        paths.extend(_separated(_git(repo, "ls-files", "--others", "--exclude-standard", "-z")))
-    return sorted({path for path in paths if path})
+        untracked = _git(repo, "ls-files", "--others", "--exclude-standard", "-z")
+        if untracked is None:
+            return None
+        paths.extend(_separated(untracked))
+    return sorted(set(paths))
 
 
 def _project_roots(repo: Repo) -> list[str]:
@@ -215,7 +222,15 @@ def resolve(repo: Repo, tier: str, environ: Mapping[str, str] | None = None) -> 
         base, against = found
         how = f"the merge base of HEAD with {against}"
 
-    unowned = _unowned(repo, _changed(repo, base, head))
+    changed = _changed(repo, base, head)
+    if changed is None:
+        return Scope(
+            None,
+            None,
+            f"every project: git could not list the change since {base[:12]} ({how}), so "
+            f"which projects it reaches is unknown and the whole graph cannot miss it",
+        )
+    unowned = _unowned(repo, changed)
     if unowned:
         more = len(unowned) - NAMED_PATHS
         shown = ", ".join(unowned[:NAMED_PATHS]) + (f" and {more} more" if more > 0 else "")

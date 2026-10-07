@@ -1,10 +1,8 @@
 # obico-env
 
 The rules `obico_env.py` and `obico_tier.py` are held to, and why. The root
-`AGENTS.md`'s "The scheduled Obico tier" says what the tier proves, why it runs
-on a schedule rather than on every change, and how to run it by hand —
-`just check-repo` reads that section and its schedule block from the root. This
-file holds what only this tier's code carries.
+`AGENTS.md` holds the repository-wide rules; this file holds the ones only this
+tier's code carries.
 
 ## The capture is what is compared
 

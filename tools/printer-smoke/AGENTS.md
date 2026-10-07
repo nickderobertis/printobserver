@@ -1,10 +1,8 @@
 # printer-smoke
 
 The rules `printer_smoke.py` is held to on its way out of a run, and why. The
-root `AGENTS.md`'s "The real-printer smoke test" says what selects it, what a
-person does before running it, which preconditions it checks, what it verifies
-and what to watch — `just check-repo` reads that section from the root. This
-file holds what only this script carries: how it leaves the machine.
+root `AGENTS.md` holds the repository-wide rules; this file holds the ones only
+this script carries: how it leaves the machine.
 
 **It cleans up on every exit path it has** — a completed run as much as a failed
 or an interrupted one, since a run that finishes without restoring what it

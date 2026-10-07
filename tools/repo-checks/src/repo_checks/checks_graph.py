@@ -51,17 +51,24 @@ class Project:
     tags: frozenset[str]
     edges: frozenset[str]
     targets: dict[str, Any]
+    task_edges: dict[str, str]
 
 
 def projects(repo: Repo) -> list[Project]:
     """Every project of the graph, read off its own `project.json`.
 
-    The file is the deserialization boundary, so every field is narrowed here:
-    a name, root, tag or edge that is not a string is left out rather than
-    carried as one.
+    The file is the deserialization boundary, so every field is narrowed here.
+    A field left out takes the default Nx gives it — the root for a name, and
+    nothing for tags, edges and targets — and one present in the wrong shape is
+    refused rather than replaced, because a graph read past a malformed field is
+    not the graph Nx selects by.
 
     Raises:
-        ProjectFileError: If a `project.json` decodes to anything but an object.
+        ProjectFileError: If a `project.json` decodes to anything but an object,
+            or carries a name that is not a non-empty string, tags or edges that
+            are not a list of strings, targets that are not an object of objects,
+            or a `dependsOn` that is not a list of target names and objects whose
+            `projects` is a list of strings.
     """
     found: list[Project] = []
     for path in repo.project_paths:
@@ -70,23 +77,64 @@ def projects(repo: Repo) -> list[Project]:
         if not isinstance(data, dict):
             msg = f"{root}/project.json holds a JSON {type(data).__name__}, not a project object"
             raise ProjectFileError(msg)
-        name = data.get("name")
-        targets = data.get("targets")
+        name = data.get("name", root)
+        if not isinstance(name, str) or not name:
+            msg = f"{root}/project.json's `name` is {name!r}, not a non-empty string"
+            raise ProjectFileError(msg)
+        targets = data.get("targets", {})
+        if not isinstance(targets, dict):
+            msg = (
+                f"{root}/project.json's `targets` is a JSON {type(targets).__name__}, not an object"
+            )
+            raise ProjectFileError(msg)
         found.append(
             Project(
-                name=name if isinstance(name, str) else root,
+                name=name,
                 root=root,
-                tags=frozenset(_strings(data.get("tags"))),
-                edges=frozenset(_strings(data.get(EDGES))),
-                targets=targets if isinstance(targets, dict) else {},
+                tags=frozenset(_strings(data.get("tags", []), f"{root}/project.json's `tags`")),
+                edges=frozenset(_strings(data.get(EDGES, []), f"{root}/project.json's `{EDGES}`")),
+                targets=targets,
+                task_edges=_task_edges(name, root, targets),
             )
         )
     return found
 
 
-def _strings(value: object) -> list[str]:
-    """The strings of a JSON array, or none where it is not one."""
-    return [entry for entry in value if isinstance(entry, str)] if isinstance(value, list) else []
+def _strings(value: object, field: str) -> list[str]:
+    """The strings `value` lists, `field` naming where it was read for a refusal.
+
+    Raises:
+        ProjectFileError: If `value` is not a list of strings.
+    """
+    if not isinstance(value, list) or not all(isinstance(entry, str) for entry in value):
+        msg = f"{field} is {value!r}, not a list of strings"
+        raise ProjectFileError(msg)
+    return value
+
+
+def _task_edges(name: str, root: str, targets: dict[str, Any]) -> dict[str, str]:
+    """The projects one project's targets depend on a target of, and which target.
+
+    Raises:
+        ProjectFileError: If a target is not an object, or its `dependsOn` is not
+            a list of target names and objects whose `projects` lists strings.
+    """
+    found: dict[str, str] = {}
+    for target, declared in targets.items():
+        where = f"{root}/project.json's `{target}`"
+        if not isinstance(declared, dict):
+            msg = f"{where} is a JSON {type(declared).__name__}, not a target object"
+            raise ProjectFileError(msg)
+        depends = declared.get("dependsOn", [])
+        if not isinstance(depends, list) or not all(isinstance(e, str | dict) for e in depends):
+            msg = f"{where}.dependsOn is {depends!r}, not a list of target names and objects"
+            raise ProjectFileError(msg)
+        for entry in depends:
+            if isinstance(entry, dict):
+                for other in _strings(entry.get("projects", []), f"{where}.dependsOn projects"):
+                    if other != name:
+                        found.setdefault(other, target)
+    return found
 
 
 def _owner(path: str, by_root: dict[str, str]) -> str | None:
@@ -156,19 +204,6 @@ def python_edges(repo: Repo, graph: list[Project]) -> dict[str, dict[str, str]]:
     return edges
 
 
-def _task_edges(project: Project) -> dict[str, str]:
-    """The projects one project's targets depend on a target of, and which target."""
-    found: dict[str, str] = {}
-    for target, declared in project.targets.items():
-        depends = declared.get("dependsOn") if isinstance(declared, dict) else None
-        for entry in depends if isinstance(depends, list) else []:
-            if isinstance(entry, dict):
-                for other in _strings(entry.get("projects")):
-                    if other != project.name:
-                        found.setdefault(other, target)
-    return found
-
-
 def graph_edges(repo: Repo) -> list[str]:
     """Every edge the code draws between projects is one the graph declares."""
     try:
@@ -225,7 +260,7 @@ def graph_edges(repo: Repo) -> list[str]:
             f"`{project.name}:{target}` depends on a target of `{edge}`, and its "
             f"project.json does not declare that edge: a change to `{edge}` would not "
             f"select `{project.name}`"
-            for edge, target in sorted(_task_edges(project).items())
+            for edge, target in sorted(project.task_edges.items())
             if edge not in project.edges
         )
     return findings

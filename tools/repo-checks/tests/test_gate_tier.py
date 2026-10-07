@@ -178,6 +178,19 @@ def test_an_uncommitted_change_no_project_owns_runs_the_whole_graph(tmp_path: Pa
     contains(resolve(repo, AFFECTED, {}).reason, "touches AGENTS.md")
 
 
+def test_a_change_git_cannot_list_runs_the_whole_graph(tmp_path: Path) -> None:
+    """A diff git refused is no change at all to scope by, not an empty one."""
+    repo = repository(tmp_path)
+    base = on_a_branch(repo, "alpha/source.txt")
+    tree = git(repo.root, "rev-parse", f"{base}^{{tree}}")
+    (repo.root / ".git" / "objects" / tree[:2] / tree[2:]).unlink()
+
+    scope = resolve(repo, AFFECTED, {})
+
+    equal(scope.base, None, describing="the base of a change git could not list")
+    contains(scope.reason, "git could not list the change since")
+
+
 def test_the_full_sweep_needs_no_base(tmp_path: Path) -> None:
     """`all` is every project whatever the environment names as a base."""
     repo = repository(tmp_path, branch="elsewhere")
