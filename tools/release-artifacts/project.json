@@ -3,6 +3,7 @@
   "root": "tools/release-artifacts",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["contract-codegen", "printobserver", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/release-artifacts" },
     "format-check": { "command": "uv run -q ruff format --check tools/release-artifacts" },

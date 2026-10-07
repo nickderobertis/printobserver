@@ -6,6 +6,10 @@
     "lang:rust",
     "type:implementation"
   ],
+  "implicitDependencies": [
+    "printobserver-printer-api",
+    "printobserver-types"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-octoprint"

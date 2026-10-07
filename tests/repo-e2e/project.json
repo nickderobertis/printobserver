@@ -3,6 +3,7 @@
   "root": "tests/repo-e2e",
   "projectType": "library",
   "tags": ["lang:python", "type:e2e"],
+  "implicitDependencies": ["octoprint-env", "printer-smoke", "printobserver", "printobserver-sdk-node", "printobserver-sdk-python", "release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/repo-e2e" },
     "format-check": { "command": "uv run -q ruff format --check tests/repo-e2e" },

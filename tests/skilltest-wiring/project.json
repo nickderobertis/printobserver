@@ -3,7 +3,7 @@
   "root": "tests/skilltest-wiring",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
-  "implicitDependencies": ["skilltest"],
+  "implicitDependencies": ["printobserver", "repo-checks", "skilltest"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/skilltest-wiring" },
     "format-check": { "command": "uv run -q ruff format --check tests/skilltest-wiring" },

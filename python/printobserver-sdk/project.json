@@ -6,6 +6,9 @@
     "lang:python",
     "type:client"
   ],
+  "implicitDependencies": [
+    "repo-checks"
+  ],
   "targets": {
     "format": {
       "command": "uv run -q ruff format python/printobserver-sdk"

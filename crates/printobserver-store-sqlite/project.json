@@ -6,6 +6,12 @@
     "lang:rust",
     "type:implementation"
   ],
+  "implicitDependencies": [
+    "printobserver-core",
+    "printobserver-printer-api",
+    "printobserver-supervisor-api",
+    "printobserver-types"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-store-sqlite"

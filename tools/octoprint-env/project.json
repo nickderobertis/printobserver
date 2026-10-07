@@ -3,6 +3,7 @@
   "root": "tools/octoprint-env",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/octoprint-env" },
     "format-check": { "command": "uv run -q ruff format --check tools/octoprint-env" },

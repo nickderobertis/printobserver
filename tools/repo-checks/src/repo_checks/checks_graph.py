@@ -1,0 +1,205 @@
+"""The project graph's edges are the ones the code actually has.
+
+`nx affected` selects a project when a file under it changed or when a project
+it depends on was selected, and nothing else. Nx reads no Cargo manifest and no
+Python import here, so an edge either language draws is one the graph does not
+know about unless a `project.json` declares it under `implicitDependencies` —
+and an edge the graph does not know about is a suite the affected tier skips
+over the change that broke it. This check holds those declarations to what the
+code says, so they cannot drift from it:
+
+* every crate's edges to other crates are exactly the workspace crates its
+  manifest depends on, across every dependency table — `dev-dependencies`
+  included, because a crate's tests are built from them;
+* every Python project's edges include each project whose package or module
+  one of its files imports, resolved through the same search roots the type
+  checker reads, so a name means here what it means to `ty`;
+* every target that depends on another project's target names that project as
+  an edge, because a task dependency orders work and selects nothing.
+
+The Python and task rules are a floor rather than an equality: a suite may also
+depend on what it *runs* rather than imports — a built program, a script it
+drives — and that edge is declared by hand, with no import to derive it from.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from repo_checks.checks_repo import _crate_manifest, _importable_names, _in_workspace_dependencies
+from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
+
+RUST = "lang:rust"
+PYTHON = "lang:python"
+EDGES = "implicitDependencies"
+
+
+@dataclass(frozen=True, slots=True)
+class Project:
+    """One `project.json`: what it is called, where it is, and what it declares."""
+
+    name: str
+    root: str
+    tags: frozenset[str]
+    edges: frozenset[str]
+    targets: dict[str, Any]
+
+
+def projects(repo: Repo) -> list[Project]:
+    """Every project of the graph, read off its own `project.json`.
+
+    The file is the deserialization boundary, so every field is narrowed here:
+    a name, root, tag or edge that is not a string is left out rather than
+    carried as one.
+    """
+    found: list[Project] = []
+    for path in repo.project_paths:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        root = path.parent.relative_to(repo.root).as_posix()
+        name = data.get("name")
+        targets = data.get("targets")
+        found.append(
+            Project(
+                name=name if isinstance(name, str) else root,
+                root=root,
+                tags=frozenset(_strings(data.get("tags"))),
+                edges=frozenset(_strings(data.get(EDGES))),
+                targets=targets if isinstance(targets, dict) else {},
+            )
+        )
+    return found
+
+
+def _strings(value: object) -> list[str]:
+    """The strings of a JSON array, or none where it is not one."""
+    return [entry for entry in value if isinstance(entry, str)] if isinstance(value, list) else []
+
+
+def _owner(path: str, by_root: dict[str, str]) -> str | None:
+    """The project whose root holds `path`, the deepest one where roots nest."""
+    owners = [root for root in by_root if path == root or path.startswith(f"{root}/")]
+    return by_root[max(owners, key=len)] if owners else None
+
+
+def _python_files(repo: Repo, root: str) -> list[Path]:
+    """Every Python source under one project root, skipping what is not committed."""
+    base = repo.path(root)
+    return [
+        path
+        for path in sorted(base.rglob("*.py"))
+        if not UNCOMMITTED_DIRECTORIES & set(path.relative_to(base).parts)
+    ]
+
+
+def _imported(path: Path) -> set[str]:
+    """The top-level names one file imports absolutely."""
+    syntax = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(syntax):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.partition(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module.partition(".")[0])
+    return names
+
+
+def python_edges(repo: Repo, graph: list[Project]) -> dict[str, dict[str, str]]:
+    """Each Python project's import edges: the project imported, and one file importing it.
+
+    A name is resolved through the type checker's own search roots — the ones
+    `module_names` already holds to offering each name once — and belongs to the
+    project whose root holds where it is offered.
+    """
+    by_root = {project.root: project.name for project in graph}
+    roots = repo.read_toml("pyproject.toml")["tool"]["ty"]["environment"]["root"]
+    offered: dict[str, str] = {}
+    for search_root in roots:
+        for name, where in _importable_names(repo, str(search_root)).items():
+            owner = _owner(where, by_root)
+            if owner is not None:
+                offered[name] = owner
+
+    edges: dict[str, dict[str, str]] = {}
+    for project in graph:
+        if PYTHON not in project.tags:
+            continue
+        found: dict[str, str] = {}
+        for path in _python_files(repo, project.root):
+            for name in sorted(_imported(path)):
+                owner = offered.get(name)
+                if owner is not None and owner != project.name:
+                    found.setdefault(owner, path.relative_to(repo.root).as_posix())
+        edges[project.name] = found
+    return edges
+
+
+def _task_edges(project: Project) -> dict[str, str]:
+    """The projects one project's targets depend on a target of, and which target."""
+    found: dict[str, str] = {}
+    for target, declared in project.targets.items():
+        depends = declared.get("dependsOn") if isinstance(declared, dict) else None
+        for entry in depends if isinstance(depends, list) else []:
+            if isinstance(entry, dict):
+                for other in _strings(entry.get("projects")):
+                    if other != project.name:
+                        found.setdefault(other, target)
+    return found
+
+
+def graph_edges(repo: Repo) -> list[str]:
+    """Every edge the code draws between projects is one the graph declares."""
+    graph = projects(repo)
+    names = {project.name for project in graph}
+    findings = [
+        f"{project.root}/project.json declares an edge to `{edge}`, which is no project"
+        for project in graph
+        for edge in sorted(project.edges - names)
+    ]
+
+    crates = set(repo.crate_names)
+    by_root = {project.root: project.name for project in graph}
+    crate_projects = {by_root[f"crates/{c}"] for c in crates if f"crates/{c}" in by_root}
+    for project in graph:
+        if RUST not in project.tags:
+            continue
+        crate = Path(project.root).name
+        if project.root != f"crates/{crate}" or crate not in crates:
+            findings.append(f"{project.root}/project.json is tagged `{RUST}` and is no crate")
+            continue
+        manifest = _in_workspace_dependencies(_crate_manifest(repo, crate), crates)
+        drawn = {by_root[f"crates/{name}"] for name in manifest if f"crates/{name}" in by_root}
+        declared = project.edges & crate_projects
+        findings.extend(
+            f"`{project.name}` depends on crate `{edge}` in its Cargo manifest, and its "
+            f"project.json does not declare that edge: a change to `{edge}` would not "
+            f"select `{project.name}`"
+            for edge in sorted(drawn - declared)
+        )
+        findings.extend(
+            f"`{project.name}` declares an edge to crate `{edge}`, which its Cargo "
+            f"manifest does not depend on"
+            for edge in sorted(declared - drawn)
+        )
+
+    for name, imported in python_edges(repo, graph).items():
+        project = next(project for project in graph if project.name == name)
+        findings.extend(
+            f"`{name}` imports `{edge}`'s code ({where}), and its project.json does not "
+            f"declare that edge: a change to `{edge}` would not select `{name}`"
+            for edge, where in sorted(imported.items())
+            if edge not in project.edges
+        )
+
+    for project in graph:
+        findings.extend(
+            f"`{project.name}:{target}` depends on a target of `{edge}`, and its "
+            f"project.json does not declare that edge: a change to `{edge}` would not "
+            f"select `{project.name}`"
+            for edge, target in sorted(_task_edges(project).items())
+            if edge not in project.edges
+        )
+    return findings
