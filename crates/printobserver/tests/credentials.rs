@@ -15,11 +15,10 @@
 //! Linux and every other Unix, `HOME` on macOS, `APPDATA` on Windows — and
 //! through nothing else.
 //!
-//! One failure is not driven: the operating system's random source refusing
-//! `credential issue` a draw. Nothing a test can do to its own process makes
-//! the kernel refuse one, so that branch is the one stated rather than proven —
-//! it exits `refused` having written nothing, because the draw comes before the
-//! file is opened.
+//! One failure is not driven here: the operating system's random source
+//! refusing `credential issue` a draw, which nothing a test does to its own
+//! process makes the kernel do. `credential.rs`'s own tests drive that branch
+//! over a draw that refuses instead.
 
 #[path = "support/announced.rs"]
 mod announced;

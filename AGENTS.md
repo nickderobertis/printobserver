@@ -959,6 +959,7 @@ gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData
 
 ### Between the two commands, issue the operator's credential
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
 The service keeps no credential an operator could authenticate with — only its
 verifier, so that nothing a supervision turn can read authenticates as the
 operator. So after the installer and before the command that starts the service,

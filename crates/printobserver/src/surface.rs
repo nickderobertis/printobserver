@@ -241,9 +241,9 @@ pub use printobserver_server::command_for;
 ///
 /// One per operation the server declares, plus the one that runs the server,
 /// the one that signs its harness in, and the two credential commands. None of
-/// those four takes a value of its own — the configuration file each reads or
-/// writes is the global option every command takes — and only `credential
-/// issue` takes a flag.
+/// those four takes a value of its own: the server and sign-in commands read
+/// the configuration file the global option names, the credential commands
+/// refuse it, and only `credential issue` takes a flag.
 #[must_use]
 pub fn surface() -> Vec<Command> {
     let mut found: Vec<Command> = LOCAL_COMMANDS

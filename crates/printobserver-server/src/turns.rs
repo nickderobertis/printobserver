@@ -154,6 +154,19 @@ impl Scope {
 
 impl TurnAccess for Scope {
     fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
+        self.issue_drawn(session_name, getrandom::fill)
+    }
+}
+
+impl Scope {
+    /// Issue the run in `session_name` a credential, drawn by `draw` — the
+    /// operating system's random source, for every run this server starts.
+    /// A draw that is refused registers nothing.
+    fn issue_drawn(
+        &self,
+        session_name: &str,
+        draw: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
+    ) -> Result<TurnPass, SupervisorError> {
         use base64::Engine as _;
 
         // The session is what a turn's requests are held to claiming, so one
@@ -165,7 +178,7 @@ impl TurnAccess for Scope {
         }
 
         let mut drawn = [0_u8; GENERATED_TURN_CREDENTIAL_BYTES];
-        getrandom::fill(&mut drawn).map_err(|error| SupervisorError::Unavailable {
+        draw(&mut drawn).map_err(|error| SupervisorError::Unavailable {
             detail: format!(
                 "no credential could be minted for the turn, because the operating system's \
                  random source refused: {error}"
@@ -255,6 +268,30 @@ mod tests {
         assert!(
             registry.open(print_id).access().issue("  ").is_err(),
             "a run in no session was issued a credential"
+        );
+        assert_eq!(registry.live(), 0);
+    }
+
+    /// A draw the random source refuses issues nothing and registers nothing,
+    /// so the run it was for is not started.
+    #[test]
+    fn a_refused_draw_issues_and_registers_nothing() {
+        let registry = TurnCredentials::new(None);
+        let scope = super::Scope {
+            registry: registry.clone(),
+            id: 0,
+            print_id: PrintId::new(),
+            closed: std::sync::Mutex::new(false),
+        };
+
+        let Err(refused) = scope.issue_drawn("print-a", |_| Err(getrandom::Error::UNSUPPORTED))
+        else {
+            panic!("a refused draw issued a credential");
+        };
+
+        assert!(
+            refused.to_string().contains("random source refused"),
+            "{refused}"
         );
         assert_eq!(registry.live(), 0);
     }

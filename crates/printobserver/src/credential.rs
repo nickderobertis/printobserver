@@ -20,7 +20,6 @@
 //! Neither reaches a server, and neither reads a configuration file.
 
 use std::fmt::Write as _;
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use printobserver_server::{ApiCredential, CredentialVerifier};
@@ -123,6 +122,17 @@ fn toml_basic_string(text: &str) -> String {
 /// file cannot be written; and of [`Exit::Refused`] when the random source
 /// refuses.
 pub fn issue(replace: bool, machine_readable: bool) -> Result<Printed, Failure> {
+    issue_drawn(replace, machine_readable, ApiCredential::generate)
+}
+
+/// Issue the operator a credential drawn by `draw` — the operating system's
+/// random source, for every issue this program makes. The draw comes before
+/// the file is opened, so one that is refused writes nothing.
+fn issue_drawn<Refusal: core::fmt::Display>(
+    replace: bool,
+    machine_readable: bool,
+    draw: impl FnOnce() -> Result<ApiCredential, Refusal>,
+) -> Result<Printed, Failure> {
     let path = crate::locations::operator_client_config().ok_or_else(|| {
         Failure::of(
             Exit::Unconfigured,
@@ -153,7 +163,7 @@ pub fn issue(replace: bool, machine_readable: bool) -> Result<Printed, Failure> 
             ),
         ));
     }
-    let credential = ApiCredential::generate().map_err(|error| {
+    let credential = draw().map_err(|error| {
         Failure::of(
             Exit::Refused,
             format!(
@@ -238,8 +248,13 @@ fn staging(path: &Path) -> PathBuf {
 /// Returns a failure of [`Exit::Usage`] when standard input cannot be read or
 /// carries nothing a credential can be, in words that never quote it.
 pub fn verifier(machine_readable: bool) -> Result<Printed, Failure> {
+    verifier_of(std::io::stdin(), machine_readable)
+}
+
+/// The verifier of the one credential `input` carries.
+fn verifier_of(mut input: impl std::io::Read, machine_readable: bool) -> Result<Printed, Failure> {
     let mut held = Vec::new();
-    std::io::stdin().read_to_end(&mut held).map_err(|error| {
+    input.read_to_end(&mut held).map_err(|error| {
         Failure::of(
             Exit::Usage,
             format!("standard input could not be read: {error}"),
@@ -269,7 +284,48 @@ pub fn verifier(machine_readable: bool) -> Result<Printed, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::DEFAULT_SERVER;
+    use super::{DEFAULT_SERVER, issue_drawn, verifier_of};
+    use crate::failure::Exit;
+
+    /// A draw the random source refuses is this program's refusal, made
+    /// before any file is opened.
+    #[test]
+    fn a_refused_draw_is_refused_and_writes_nothing() {
+        let Err(refused) =
+            issue_drawn(true, false, || Err("the random source has nothing to give"))
+        else {
+            panic!("a refused draw issued a credential");
+        };
+
+        assert_eq!(refused.exit, Exit::Refused);
+        assert!(
+            refused.detail.contains("random source refused"),
+            "{}",
+            refused.detail
+        );
+    }
+
+    /// Standard input that cannot be read is a usage refusal saying so.
+    #[test]
+    fn standard_input_that_cannot_be_read_is_refused_saying_so() {
+        struct Unreadable;
+        impl std::io::Read for Unreadable {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("the pipe broke"))
+            }
+        }
+
+        let Err(refused) = verifier_of(Unreadable, false) else {
+            panic!("unreadable input was taken");
+        };
+
+        assert_eq!(refused.exit, Exit::Usage);
+        assert!(
+            refused.detail.contains("could not be read"),
+            "{}",
+            refused.detail
+        );
+    }
 
     /// The address an issued configuration names when nothing says otherwise
     /// is the one both installers' configuration has the server listen on.
