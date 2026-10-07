@@ -937,6 +937,150 @@ fn credential_verifier_refuses_standard_input_it_cannot_read() {
     );
 }
 
+/// How many `credential issue` runs contend for one configuration home at once.
+const CONTENDERS: usize = 8;
+
+/// How many times a contest is held: one race can happen to serialise, so the
+/// journeys below hold several before concluding nothing overlapped.
+const CONTESTS: usize = 12;
+
+/// `credential issue` run by every contender against one configuration home at
+/// once, each with its standard input closed, and what each printed.
+fn contested(home: &Path, arguments: &[&str]) -> Vec<Output> {
+    let children: Vec<Child> = (0..CONTENDERS)
+        .map(|_| {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+            command
+                .args(arguments)
+                .env_remove("PRINTOBSERVER_SERVER")
+                .env_remove("PRINTOBSERVER_CREDENTIAL")
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            for name in HOME_VARIABLES {
+                command.env_remove(name);
+            }
+            command.env(HOME_VARIABLE, home);
+            command.spawn().expect("the program runs")
+        })
+        .collect();
+    children
+        .into_iter()
+        .map(|child| child.wait_with_output().expect("the program exits"))
+        .collect()
+}
+
+/// The verifier line the configuration `credential issue` left would need.
+fn stored_verifier_line(home: &Path) -> String {
+    let credential = issued(home)["credential"]
+        .as_str()
+        .expect("a credential is stored")
+        .to_owned();
+    format!(
+        "api.credential_verifier = \"{}\"",
+        CredentialVerifier::of(&credential)
+    )
+}
+
+/// What the configuration directory holds once every contender has exited:
+/// the configuration alone, and no copy staged on the way to it.
+fn assert_nothing_staged(home: &Path) {
+    let directory = issued_at(home).parent().expect("a directory").to_path_buf();
+    let mut left: Vec<String> = std::fs::read_dir(&directory)
+        .expect("readable")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        vec!["client.toml".to_owned()],
+        "a staged copy was left"
+    );
+}
+
+/// Issues racing for a configuration home with none in it publish exactly one
+/// configuration: one run succeeds, and the verifier it printed is the one the
+/// stored credential needs; every other run is refused for finding a
+/// configuration already there, prints no verifier, and leaves the winner's
+/// file as it was.
+#[test]
+fn racing_issues_publish_exactly_one_configuration_and_print_its_verifier() {
+    for contest in 0..CONTESTS {
+        let home = TempDir::new().expect("an operator's own home");
+
+        let outputs = contested(home.path(), &["credential", "issue"]);
+
+        let (won, lost): (Vec<&Output>, Vec<&Output>) =
+            outputs.iter().partition(|output| output.status.success());
+        assert_eq!(
+            won.len(),
+            1,
+            "contest {contest}: {} issues succeeded without `--replace`: {}",
+            won.len(),
+            outputs.iter().map(said).collect::<Vec<_>>().join("\n---\n")
+        );
+        assert_eq!(
+            verifier_line(won[0]),
+            stored_verifier_line(home.path()),
+            "contest {contest}: the winner printed a verifier the stored credential does not have"
+        );
+        for loser in lost {
+            assert_eq!(
+                loser.status.code(),
+                Some(i32::from(Exit::Unconfigured.status())),
+                "contest {contest}: {}",
+                said(loser)
+            );
+            assert!(
+                said(loser).contains("already there"),
+                "contest {contest}: a loser was refused for something else: {}",
+                said(loser)
+            );
+            assert!(
+                !String::from_utf8_lossy(&loser.stdout).contains("api.credential_verifier"),
+                "contest {contest}: a loser printed a verifier: {}",
+                said(loser)
+            );
+        }
+        assert_nothing_staged(home.path());
+    }
+}
+
+/// Replacements racing over one configuration each succeed, and what is left
+/// is whole: the stored credential is one a contender issued and printed the
+/// verifier of, and no staged copy is left beside it.
+#[test]
+fn racing_replacements_each_succeed_and_leave_one_whole_configuration() {
+    for contest in 0..CONTESTS {
+        let home = TempDir::new().expect("an operator's own home");
+        let first = run(home.path(), &["credential", "issue"], &[], b"");
+        assert_eq!(first.status.code(), Some(0), "{}", said(&first));
+
+        let outputs = contested(home.path(), &["credential", "issue", "--replace"]);
+
+        for output in &outputs {
+            assert_eq!(
+                output.status.code(),
+                Some(0),
+                "contest {contest}: a replacement failed: {}",
+                said(output)
+            );
+        }
+        let stored = stored_verifier_line(home.path());
+        assert!(
+            outputs.iter().any(|output| verifier_line(output) == stored),
+            "contest {contest}: the stored credential is one no contender printed the verifier of"
+        );
+        assert_nothing_staged(home.path());
+    }
+}
+
 /// The credential commands read no configuration, so `--config` is refused
 /// by both rather than taken as a file to write; and a credential command
 /// named without its second word, with an unknown one, or with `--replace`

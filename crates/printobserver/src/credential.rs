@@ -152,16 +152,10 @@ fn issue_drawn<Refusal: core::fmt::Display>(
     } else {
         format!("{SCHEME}{server}")
     };
+    // Checked here so the common refusal draws nothing; what decides it is the
+    // publication itself, which another issue can beat to the file.
     if !replace && path.exists() {
-        return Err(Failure::of(
-            Exit::Unconfigured,
-            format!(
-                "{} is already there, and it may carry the credential the server knows you by. \
-                 Give `{REPLACE_OPTION}` to issue a new one in its place — after which the old \
-                 one stops working once the server is given the new verifier",
-                path.display()
-            ),
-        ));
+        return Err(already_there(&path));
     }
     let credential = draw().map_err(|error| {
         Failure::of(
@@ -179,12 +173,14 @@ fn issue_drawn<Refusal: core::fmt::Display>(
             toml_basic_string(&server),
             toml_basic_string(credential.written())
         ),
+        replace,
     )
-    .map_err(|error| {
-        Failure::of(
+    .map_err(|unwritten| match unwritten {
+        Unwritten::AlreadyThere => already_there(&path),
+        Unwritten::Failed(error) => Failure::of(
             Exit::Unconfigured,
             format!("{} could not be written: {error}", path.display()),
-        )
+        ),
     })?;
     Ok(Printed {
         out: verifier_output(&credential.verifier(), machine_readable, Some(&path)),
@@ -192,16 +188,47 @@ fn issue_drawn<Refusal: core::fmt::Display>(
     })
 }
 
+/// The refusal of a non-replacing issue over a configuration already there.
+fn already_there(path: &Path) -> Failure {
+    Failure::of(
+        Exit::Unconfigured,
+        format!(
+            "{} is already there, and it may carry the credential the server knows you by. \
+             Give `{REPLACE_OPTION}` to issue a new one in its place — after which the old \
+             one stops working once the server is given the new verifier",
+            path.display()
+        ),
+    )
+}
+
+/// Why the operator's configuration was not written.
+#[derive(Debug)]
+enum Unwritten {
+    /// Not replacing, and a configuration was there when this one was
+    /// published — put there by another issue after this one checked.
+    AlreadyThere,
+    /// Anything else, in the operating system's words.
+    Failed(std::io::Error),
+}
+
 /// Write the operator's configuration under their own configuration home: into
-/// a file of its own beside the target, and then moved into place, so a
-/// configuration being replaced is never seen half-written.
+/// a file of this invocation's own beside the target, and then published, so a
+/// configuration is never seen half-written and two issues never share a
+/// staged file.
+///
+/// Publication is atomic either way. Replacing, the staged file is renamed over
+/// the target. Not replacing, it is hard-linked to the target, which the
+/// operating system refuses when anything is already there — so of two issues
+/// that both found no configuration, one publishes and the other is refused,
+/// rather than the second renaming over the first after the first printed its
+/// verifier.
 ///
 /// On Unix the file is the operator's alone from the moment it exists (0600,
 /// in a directory created 0700). On Windows a file takes the access of the
 /// folder it is created in, and the one folder this writes into is the
 /// operator's own roaming application data folder, which Windows grants to that
 /// user and the system alone — which is why no path a caller names is written.
-fn write_operators_own(path: &Path, contents: &str) -> std::io::Result<()> {
+fn write_operators_own(path: &Path, contents: &str, replace: bool) -> Result<(), Unwritten> {
     use std::io::Write as _;
 
     if let Some(directory) = path
@@ -212,31 +239,62 @@ fn write_operators_own(path: &Path, contents: &str) -> std::io::Result<()> {
         builder.recursive(true);
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, PRIVATE_DIRECTORY);
-        builder.create(directory)?;
+        builder.create(directory).map_err(Unwritten::Failed)?;
     }
-    let staged = staging(path);
+    let (staged, mut file) = staged_beside(path).map_err(Unwritten::Failed)?;
+    let written = file
+        .write_all(contents.as_bytes())
+        .and_then(|()| file.sync_all());
+    drop(file);
+    let published = match written {
+        Err(error) => Err(Unwritten::Failed(error)),
+        Ok(()) if replace => std::fs::rename(&staged, path).map_err(Unwritten::Failed),
+        Ok(()) => std::fs::hard_link(&staged, path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                Unwritten::AlreadyThere
+            } else {
+                Unwritten::Failed(error)
+            }
+        }),
+    };
+    // Renamed, the staged name is gone already; linked or refused, it is this
+    // invocation's own and nothing else's to remove.
     let _ = std::fs::remove_file(&staged);
+    published
+}
+
+/// A file of this invocation's own beside `path`, created exclusively, that the
+/// configuration is written into before it is published.
+///
+/// Its name carries this process's id and a count, and creating it refuses one
+/// already there, so no other issue — concurrent, or one that crashed and left
+/// its staged file behind — is ever written into or removed by this one.
+fn staged_beside(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    /// How many names are tried before an issue gives up on staging.
+    const ATTEMPTS: u32 = 64;
+
+    let target = path.file_name().map(ToOwned::to_owned).unwrap_or_default();
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE_FILE);
-    // llmlint: ignore[least_privilege_grants, changed_behavior_has_e2e] suppressions.toml has the reason.
-    let mut file = options.open(&staged)?;
-    let written = file
-        .write_all(contents.as_bytes())
-        .and_then(|()| file.sync_all())
-        .and_then(|()| std::fs::rename(&staged, path));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&staged);
+    let mut attempt = 0;
+    loop {
+        let mut name = std::ffi::OsString::from(".");
+        name.push(&target);
+        name.push(format!(".{}-{attempt}.new", std::process::id()));
+        let staged = path.with_file_name(name);
+        // llmlint: ignore[least_privilege_grants, changed_behavior_has_e2e] suppressions.toml has the reason.
+        match options.open(&staged) {
+            Ok(file) => return Ok((staged, file)),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < ATTEMPTS =>
+            {
+                attempt += 1;
+            }
+            Err(error) => return Err(error),
+        }
     }
-    written
-}
-
-/// The file a configuration is staged in before it is moved into place.
-fn staging(path: &Path) -> PathBuf {
-    let mut name = path.file_name().map(ToOwned::to_owned).unwrap_or_default();
-    name.push(".new");
-    path.with_file_name(name)
 }
 
 /// The verifier of the one credential standard input carries.
