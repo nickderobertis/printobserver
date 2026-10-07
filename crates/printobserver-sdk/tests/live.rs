@@ -914,7 +914,7 @@ fn about_the_running_print(
 #[test]
 fn every_method_is_answered_by_a_real_supervisor() {
     let root = tempfile::tempdir().expect("this walk's own root");
-    let mut standing = supervisor::standing(root.path());
+    let mut standing = supervisor::standing(root.path(), false);
     let world = standing.at.clone();
     let proxy = live::Proxy::in_front_of(&world.server);
     let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
@@ -945,23 +945,18 @@ fn every_method_is_answered_by_a_real_supervisor() {
 
 /// Every action, refused by a real supervisor's own policy, as a typed rejection.
 ///
-/// One client acting as an actor class the envelope grants nothing, against the
-/// print the machine is running. The policy takes that decision before it
+/// One client acting as the operator — the one identity its credential is —
+/// against a supervisor whose envelope grants the operator nothing, about the
+/// print its machine is running. The policy takes that decision before it
 /// looks at the state, the interval or the bounds, so every action is refused
-/// from wherever the machine happens to be.
+/// from wherever the machine happens to be, and nothing moves.
 #[test]
 fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     let root = tempfile::tempdir().expect("this walk's own root");
-    let mut standing = supervisor::standing(root.path());
+    let mut standing = supervisor::standing(root.path(), true);
     let world = standing.at.clone();
     let proxy = live::Proxy::in_front_of(&world.server);
-    let client = Client::new(
-        proxy.url(),
-        Actor::Agent {
-            session_name: "an actor this envelope grants nothing".to_owned(),
-        },
-    )
-    .with_credential(&*world.credential);
+    let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
     let manifest = manifest(&world.file_name);
     let world = about_the_running_print(&client, world);
 

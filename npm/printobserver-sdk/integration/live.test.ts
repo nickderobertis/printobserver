@@ -520,33 +520,45 @@ async function refusedResume(client: Client, proxy: Recording) {
 /**
  * Every action, refused by a real supervisor's own policy, as a typed rejection.
  *
- * One client acting as an actor class the envelope grants nothing, against the
- * print the machine is running: the policy refuses an action against an ended
+ * One client acting as the operator — the one identity its credential is —
+ * against a supervisor whose envelope grants the operator nothing, about the
+ * print its machine is running: the policy refuses an action against an ended
  * print before it asks about the grant. It takes that decision before it looks
  * at the state, the interval or the bounds, so every action is refused from
- * wherever the machine happens to be.
+ * wherever the machine happens to be, and nothing moves.
  */
 // llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every action is refused as a typed rejection by a real supervisor", async () => {
-  await using proxy = new Recording(world.server);
-  const client = new Client({
-    server: proxy.url,
-    actor: { agent: { session_name: "an actor this envelope grants nothing" } },
-    credential: world.credential,
-  });
-  const active = (await client.prints()).active;
-  if (active) {
-    world = { ...world, print_id: active };
-  }
+  const refusing = await Standing.standing(
+    mkdtempSync(join(tmpdir(), "printobserver-refusing-")),
+    true,
+  );
+  const shared = world;
+  try {
+    world = refusing.at;
+    await using proxy = new Recording(world.server);
+    const client = new Client({
+      server: proxy.url,
+      actor: "operator",
+      credential: world.credential,
+    });
+    const active = (await client.prints()).active;
+    if (active) {
+      world = { ...world, print_id: active };
+    }
 
-  await refusedCancel(client, proxy);
-  await refusedStartPrint(client, proxy);
-  await refusedSetFeedrateFactor(client, proxy);
-  await refusedSetFlowrateFactor(client, proxy);
-  await refusedSetFanPercent(client, proxy);
-  await refusedSetToolTargetC(client, proxy);
-  await refusedSetBedTargetC(client, proxy);
-  await refusedAcknowledgeFailure(client, proxy);
-  await refusedPause(client, proxy);
-  await refusedResume(client, proxy);
+    await refusedCancel(client, proxy);
+    await refusedStartPrint(client, proxy);
+    await refusedSetFeedrateFactor(client, proxy);
+    await refusedSetFlowrateFactor(client, proxy);
+    await refusedSetFanPercent(client, proxy);
+    await refusedSetToolTargetC(client, proxy);
+    await refusedSetBedTargetC(client, proxy);
+    await refusedAcknowledgeFailure(client, proxy);
+    await refusedPause(client, proxy);
+    await refusedResume(client, proxy);
+  } finally {
+    world = shared;
+    await refusing.stop();
+  }
 }, 900_000);

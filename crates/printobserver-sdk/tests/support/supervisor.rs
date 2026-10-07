@@ -17,9 +17,9 @@ use std::process::{Child, Command, Stdio};
 /// Where the supervisor is, and what a journey acts on.
 #[derive(Debug, Clone)]
 pub struct Supervisor {
-    /// Where it answers, as its own client configuration writes it.
+    /// Where it answers.
     pub server: String,
-    /// The credential it serves under, as that same configuration carries it.
+    /// The operator credential it admits, whose verifier it is configured with.
     pub credential: String,
     /// The print every step is about.
     pub print_id: String,
@@ -83,13 +83,16 @@ fn python_path(root: &Path) -> String {
         .expect("the justfile lists the path this repository's tools live on")
 }
 
-/// Bring up a supervisor over the scripted `OctoPrint`, and hold it up.
+/// Bring up a supervisor over the scripted `OctoPrint`, and hold it up. A
+/// `refusing` one's envelope grants the operator — the identity every journey's
+/// credential authenticates — nothing, so the policy refuses every action by
+/// its own grant, from wherever the machine happens to be.
 ///
 /// # Panics
 ///
 /// Panics when the environment is not up, naming the recipe that brings one
 /// up: a tier that quietly passed against no printer would prove nothing.
-pub fn standing(into: &Path) -> Standing {
+pub fn standing(into: &Path, refusing: bool) -> Standing {
     let root = repo_root();
     let mut holding = Command::new("uv")
         .args([
@@ -101,6 +104,7 @@ pub fn standing(into: &Path) -> Standing {
             "world",
             "--octoprint",
         ])
+        .args(refusing.then_some("--refusing"))
         .arg("--into")
         .arg(into)
         .current_dir(&root)

@@ -265,11 +265,17 @@ def every_action(contract: Path = ACTION_KINDS) -> list[str]:
     return kinds
 
 
-def _configuration(state: Path, printer: Printer, credential: str) -> str:
+def _configuration(
+    state: Path, printer: Printer, credential: str, *, refusing: bool = False
+) -> str:
     """The one configuration file the supervisor reads, as a document.
 
     It names the verifier of `credential` alone, as an operator who issued one
-    configures it, and never the credential.
+    configures it, and never the credential. `refusing` grants the operator
+    nothing: a client of such a supervisor acts as the operator, the one
+    identity its credential is, and is refused every action by the grant — the
+    one rejection the policy takes before it looks at the state, the interval
+    or the bounds — from wherever the machine happens to be.
     """
     document = {
         "state_dir": str(state),
@@ -291,14 +297,12 @@ def _configuration(state: Path, printer: Printer, credential: str) -> str:
                 "tool_target:0": {"min": 0.0, "max": 260.0},
             },
             "actions": {
-                # Every action there is, read from the contract that names them.
-                "operator": every_action(),
-                # Nothing at all, and deliberately: the all-operation walk
-                # needs one refusal per action method, and the grant is the
-                # one rejection the policy takes before it looks at the
-                # state, the interval or the bounds — so a client acting as
-                # an agent is refused every action from wherever the
-                # machine happens to be.
+                # Every action there is, read from the contract that names them —
+                # or, for a refusing world, none.
+                "operator": [] if refusing else every_action(),
+                # Nothing: no client of this world is a supervision turn, and
+                # an operator's credential claiming the agent is refused
+                # before the policy is asked anything.
                 "agent": [],
                 "system": ["pause"],
             },
@@ -363,6 +367,7 @@ class World:
         printer: Printer | None = None,
         *,
         credential: str | None = None,
+        refusing: bool = False,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
 
@@ -375,11 +380,12 @@ class World:
         to admit, by its verifier. Given none, one is drawn from as many random
         bytes as `printobserver credential issue` draws, in its alphabet; a
         journey names one to hold a client to a credential of a particular
-        shape.
+        shape. `refusing` grants the operator nothing; see `_configuration`.
         """
         self.program = program
         self.root = root
         self.credential = credential or secrets.token_urlsafe(CREDENTIAL_BYTES)
+        self.refusing = refusing
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
         self.state = root / "state"
@@ -407,7 +413,13 @@ class World:
         """
         configuration = self.root / "supervisor.toml"
         configuration.write_text(
-            _as_toml(json.loads(_configuration(self.state, self.printer, self.credential))),
+            _as_toml(
+                json.loads(
+                    _configuration(
+                        self.state, self.printer, self.credential, refusing=self.refusing
+                    )
+                )
+            ),
             encoding="utf-8",
         )
         self._supervisor = start(
