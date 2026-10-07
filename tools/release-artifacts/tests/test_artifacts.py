@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import platform as host_platform
+import shutil
 import struct
 import tarfile
 import zipfile
@@ -520,3 +521,46 @@ def test_what_the_tool_wrote_is_a_document_a_registry_can_read(
 def test_a_failure_says_what_it_was_doing(repo: Repo, into: Callable[[str], Path]) -> None:
     """A stop nobody can act on is worse than none."""
     failing((1, str(BuildError("`cargo package` failed"))), naming="cargo package")
+
+
+def test_the_client_wheel_declares_the_types_it_ships_and_the_program_wheel_does_not(
+    repo: Repo, program: Path, into: Callable[[str], Path]
+) -> None:
+    """A checker reads `py.typed`; a registry's search reads the classifier.
+
+    The client ships its own inline types, so its wheel carries the marker and
+    says so in its metadata. The command-line wheel carries a program and no
+    Python, so it declares nothing about types at all.
+    """
+    client = build(repo, "pypi:printobserver-sdk", into("typed-client"), program).paths[0]
+    with zipfile.ZipFile(client) as opened:
+        carried = opened.namelist()
+        said = opened.read(next(name for name in carried if name.endswith("METADATA"))).decode()
+    contains(carried, "printobserver_sdk/py.typed", describing="what the client wheel carries")
+    contains(said.splitlines(), "Classifier: Typing :: Typed", describing="the client's METADATA")
+
+    route = build(repo, "pypi:printobserver-cli", into("untyped-route"), program).paths[0]
+    with zipfile.ZipFile(route) as opened:
+        metadata = next(name for name in opened.namelist() if name.endswith("METADATA"))
+        route_said = opened.read(metadata).decode()
+    equal(
+        [line for line in route_said.splitlines() if line.startswith("Classifier:")],
+        [],
+        describing="the classifiers the command-line wheel declares",
+    )
+
+
+def test_a_client_carrying_no_marker_is_refused_rather_than_declared_typed(
+    repo: Repo, program: Path, tmp_path: Path, into: Callable[[str], Path]
+) -> None:
+    """The classifier is only a claim the marker it names backs."""
+    copy = tmp_path / "unmarked"
+    for name in ("Cargo.toml", "release-targets.toml"):
+        (copy / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo.path(name), copy / name)
+    sources = "python/printobserver-sdk/src"
+    shutil.copytree(repo.path(sources), copy / sources)
+    (copy / sources / "printobserver_sdk" / "py.typed").unlink()
+
+    with pytest.raises(BuildError, match=r"no py\.typed"):
+        build(Repo(copy), "pypi:printobserver-sdk", into("unmarked-client"), program)
