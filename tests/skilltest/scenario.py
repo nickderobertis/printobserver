@@ -1,9 +1,11 @@
 """One scenario, built into the workspace, the input and the stubs one skilltest run takes.
 
 [`build`] lays a scenario down the way a supervision turn finds the world: the
-installed skill as the working directory, the pictures as files in the
-supervisor's state directory, named the way it names them, and the client
-configuration beside them. It fills the committed turn template, or writes an
+installed skill as the working directory, and the pictures as files in the
+supervisor's state directory, named the way it names them. A turn is handed
+the server and its own credential in its environment rather than in any file,
+and its context command names no configuration. It fills the committed turn
+template, or writes an
 operator's start request, and stubs every command the program has, so nothing
 the agent runs reaches a printer, a server, Obico or a camera.
 
@@ -23,7 +25,6 @@ import hashlib
 import json
 import math
 import re
-import secrets
 import shutil
 import uuid
 from collections.abc import Sequence
@@ -124,11 +125,6 @@ def _instant(moment: datetime) -> str:
 
 def _id() -> str:
     return str(uuid.uuid7())
-
-
-def _shell_quoted(word: str) -> str:
-    """One word as a POSIX shell reads it back, as the server quotes the config path."""
-    return "'" + word.replace("'", "'\\''") + "'"
 
 
 def _schema_path(name: str) -> Path:
@@ -344,7 +340,6 @@ class Built:
 
     scenario: Scenario
     workspace: Path
-    config: Path
     print_id: PrintId
     actor: str
     prompt: str
@@ -514,7 +509,6 @@ class _Composer:
         self.now = datetime.now(UTC)
         self.state_dir = root / "printobserver"
         self.workspace = self.state_dir / "skills" / "printobserver"
-        self.config = self.state_dir / "client.toml"
         self.images: dict[str, Image] = {}
         self.trigger = next(
             (event for event in history(scenario.case) if event["id"] == scenario.event_id), None
@@ -531,12 +525,8 @@ class _Composer:
         self.opened_at = _instant(self.now - timedelta(minutes=30))
 
     def lay_down(self) -> None:
-        """Put the skill, the client configuration and every picture where a turn finds them."""
+        """Put the skill and every picture where a turn finds them."""
         shutil.copytree(SKILL, self.workspace, ignore=shutil.ignore_patterns("__pycache__"))
-        self.config.write_text(
-            f'[client]\nserver = "http://127.0.0.1:8420"\ncredential = "{secrets.token_hex(24)}"\n',
-            encoding="utf-8",
-        )
         for name in [self.scenario.event_image, *(look.image for look in self.scenario.looks)]:
             self.image(name)
 
@@ -1043,7 +1033,6 @@ def build(scenario: Scenario, root: Path) -> Built:
     return Built(
         scenario=scenario,
         workspace=composer.workspace,
-        config=composer.config,
         print_id=composer.print_id,
         actor=composer.actor,
         prompt=prompt,
@@ -1068,10 +1057,7 @@ def slot_values(
         "{{event}}": json.dumps(event, indent=2, ensure_ascii=False),
         "{{situation}}": json.dumps(situation, indent=2, ensure_ascii=False),
         "{{image_path}}": str(composer.image(composer.scenario.event_image).path),
-        "{{context_command}}": (
-            f"{PROGRAM} context --config {_shell_quoted(str(composer.config))} "
-            f"--print-id {composer.print_id}"
-        ),
+        "{{context_command}}": f"{PROGRAM} context --print-id {composer.print_id}",
         "{{actor}}": composer.actor,
     }
 
@@ -1084,7 +1070,7 @@ def _start_request(composer: _Composer) -> str:
         "Prusament PLA on the 0.4 mm nozzle, sliced with the 0.20mm BALANCED profile, "
         f"and its print record is {composer.print_id}.\n\n"
         f"This is what the printer's camera shows right now:\n\n{frame.path}\n\n"
-        f"Give every {PROGRAM} command `--config {_shell_quoted(str(composer.config))}`, "
-        f"and each one whose usage lists `--actor` this actor, quoted as written:\n\n"
+        f"Give each {PROGRAM} command whose usage lists `--actor` this actor, quoted as "
+        "written:\n\n"
         f"--actor '{composer.actor}'\n"
     )

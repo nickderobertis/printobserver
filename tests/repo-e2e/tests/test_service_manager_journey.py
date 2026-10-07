@@ -15,7 +15,7 @@ reads the manager's own answers back:
 3. the manager reports it as one it starts at boot;
 4. a stop through the manager is recorded as a clean exit;
 5. a kill the process cannot answer is followed by the manager bringing up a new
-   process, on a port of its own, as the service's user again;
+   process, answering again, as the service's user again;
 6. teardown through the manager leaves the host as the journey found it.
 
 This is the one walk, over every service manager the supported-platform list
@@ -48,6 +48,7 @@ assertion is not also a stranded service.
 from __future__ import annotations
 
 import getpass
+import hashlib
 import io
 import json
 import os
@@ -124,8 +125,10 @@ WITHIN_SECONDS = 120
 
 QUESTION = "/v1/prints"
 
-#: What a bearer credential may be spelled with (RFC 6750's `b64token`).
-BEARER_TOKEN = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
+#: The operator credential the journey's operator issued themselves. The
+#: service is configured with its verifier alone, as `printobserver credential
+#: issue` prints it, so it holds nothing that authenticates as the operator.
+OPERATOR = "a-journeys-own-operator-credential-Qe7Lm2Vx9Rk4"
 
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
@@ -1270,57 +1273,36 @@ def manager(
             return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 
-def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
-    """Fill the template in as an operator would, take a free port, and install the skill."""
+def _free_address() -> str:
+    """A loopback address nothing listens on now, for the service to take."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return f"127.0.0.1:{probe.getsockname()[1]}"
+
+
+def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> Served:
+    """Fill the template in as an operator would, and install the skill.
+
+    The operator's credential goes in as the verifier `credential issue` prints,
+    above the first table, and the service listens on a free port this names —
+    the address it serves on is written down nowhere else, the same port across
+    a restart.
+    """
     template = manager.read(installed.configuration)
     truth(template is not None, describing="the installer to have written a configuration")
-    filled = (
+    address = _free_address()
+    verifier = "sha256:" + hashlib.sha256(OPERATOR.encode("utf-8")).hexdigest()
+    filled = f'api.credential_verifier = "{verifier}"\n' + (
         (template or "")
         .replace('api_key = ""', 'api_key = "a-provisioned-key"')
         .replace('shared_secret = ""', 'shared_secret = "a-shared-secret"')
         # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
-        .replace('listen = "127.0.0.1:8420"', 'listen = "127.0.0.1:0"')
+        .replace('listen = "127.0.0.1:8420"', f'listen = "{address}"')
     )
     manager.write(installed.configuration, filled)
     manager.lay_down_skill(installed)
-
-
-def _where_it_serves(manager: Manager, state: PurePath) -> Served | None:
-    """The address and credential the running service wrote for the clients beside it.
-
-    `None` until the service has written them: the manager reports a process
-    running from the moment it started it, and the process writes this file
-    once it has bound its port and settled its credential.
-    """
-    text = manager.read(state / "client.toml")
-    if text is None:
-        return None
-    try:
-        written = tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
-        return None
-    table = written.get("client")
-    server = table.get("server") if isinstance(table, dict) else None
-    credential = table.get("credential") if isinstance(table, dict) else None
-    if not isinstance(server, str) or not isinstance(credential, str) or not credential.strip():
-        # The file is written in place, so a read can land between its lines.
-        return None
-    # The service writes a plain-HTTP address; anything else is not one `_ask` can dial.
-    if not server.startswith("http://"):
-        return None
-    address = server.removeprefix("http://")
-    hostname, _, port = address.rpartition(":")
-    # `_fill_in` has the service listen on loopback, so that is the one host it may name.
-    if hostname != "127.0.0.1" or not port.isdigit() or not 0 < int(port) < 65536:
-        return None
-    # It goes into an `Authorization` header as it is, so it is held to the
-    # bearer-token alphabet a header can carry; the service writes URL-safe base64.
-    truth(
-        BEARER_TOKEN.fullmatch(credential),
-        describing=f"the credential in {state / 'client.toml'} to be one a header can carry",
-    )
-    return Served(address, credential)
+    return Served(address, OPERATOR)
 
 
 def _ask(served: Served) -> str:
@@ -1346,21 +1328,15 @@ def _status_line(answer: str) -> str:
     return answer.partition("\r\n")[0]
 
 
-def _answered(manager: Manager, state: PurePath, *, not_by: str | None = None) -> Answer:
-    """The API's answer, and the address it came from, once the service answers.
+def _answered(manager: Manager, served: Served) -> Answer:
+    """The API's answer, once the service answers where it was told to serve.
 
     A service the manager has just started, or just brought back, takes a
-    moment to bind a port of the operating system's choosing and write where it
-    is; until then the address on record is the last process's and nothing
-    answers there. `not_by` is that last address, so that an answer is one the
-    new process gave rather than one the file still described.
+    moment to bind its port; until then nothing answers there.
     """
     latest: list[Answer] = []
 
     def answers() -> bool:
-        served = _where_it_serves(manager, state)
-        if served is None or served.address == not_by:
-            return False
         try:
             answer = _ask(served)
         except OSError:
@@ -1370,6 +1346,15 @@ def _answered(manager: Manager, state: PurePath, *, not_by: str | None = None) -
 
     _eventually(manager, "a service answering its API", answers)
     return latest[-1]
+
+
+def _keeps_no_plaintext(manager: Manager, state: PurePath) -> None:
+    """The running service wrote no credential of its own into its state directory."""
+    for name in ("client.toml", "api-credential"):
+        truth(
+            manager.read(state / name) is None,
+            describing=f"the running service to have written no {state / name}",
+        )
 
 
 def _holds(reported: Reported, describing: str) -> None:
@@ -1383,6 +1368,8 @@ class Activated:
 
     manager: Manager
     installed: Installed
+    #: Where it serves, and the operator's credential.
+    served: Served
 
 
 @pytest.fixture
@@ -1398,9 +1385,9 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
         installed = manager.install()
         truth(not manager.is_running(), describing="the installer to have started nothing")
-        _fill_in(manager, installed, octoprint)
+        served = _fill_in(manager, installed, octoprint)
         manager.activate()
-        yield Activated(manager, installed)
+        yield Activated(manager, installed, served)
     finally:
         manager.remove()
     equal(manager.leftovers(), [], describing="what the journey left on the host once removed")
@@ -1414,7 +1401,8 @@ def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
     manager = activated.manager
 
     _eventually(manager, "the service running", manager.is_running)
-    answer = _answered(manager, activated.installed.state)
+    answer = _answered(manager, activated.served)
+    _keeps_no_plaintext(manager, activated.installed.state)
     truth(
         _status_line(answer.text).startswith("HTTP/1.1 200 "),
         describing=f"the running service's API answering:\n{answer.text}",
@@ -1442,7 +1430,7 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         "the manager reporting the service as one it starts automatically",
     )
     _eventually(manager, "the service running", manager.is_running)
-    first = _answered(manager, activated.installed.state)
+    _answered(manager, activated.served)
     before = manager.main_pid()
     truth(before > 0, describing="a process the manager reports as the service's")
 
@@ -1453,14 +1441,12 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         "the service brought back with a new process",
         lambda: manager.is_running() and manager.main_pid() not in {0, before},
     )
-    again = _answered(manager, activated.installed.state, not_by=first.address)
+    # The process that answered before is gone, so an answer now is the
+    # brought-back process's own.
+    again = _answered(manager, activated.served)
     truth(
         _status_line(again.text).startswith("HTTP/1.1 200 "),
         describing=f"the API answering again from the brought-back process:\n{again.text}",
-    )
-    truth(
-        again.address != first.address,
-        describing="the brought-back service serving on a port of its own",
     )
     _holds(
         manager.runs_as_the_service_user(manager.main_pid()),

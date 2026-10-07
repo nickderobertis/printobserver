@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,8 +27,8 @@ from release_artifacts.installing import NO_TOOLCHAIN, TOOLCHAIN, prove, without
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.world import (
     ACTION_KINDS,
-    CLIENT_CONFIG,
     INGRESS_WORD,
+    SERVING_ON,
     Machine,
     Printer,
     World,
@@ -36,6 +37,7 @@ from release_artifacts.world import (
     _configuration,
     every_action,
     scripted_printer,
+    verifier_of,
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
@@ -170,7 +172,7 @@ def test_the_operator_is_granted_every_action_the_contract_declares(repo: Repo) 
     contract = json.loads(repo.read("schemas/printobserver-core/ActionKind.json"))
     declared = [variant["const"] for variant in contract["oneOf"]]
     printer = Printer("http://127.0.0.1:1", "a-provisioned-key", scripted=False)
-    written = json.loads(_configuration(Path("/var/lib/printobserver"), printer))
+    written = json.loads(_configuration(Path("/var/lib/printobserver"), printer, "a-credential"))
 
     equal(ACTION_KINDS, repo.path("schemas/printobserver-core/ActionKind.json"))
     equal(written["safety"]["actions"]["operator"], declared, describing="the operator's grant")
@@ -240,19 +242,9 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
 ) -> None:
     """A world whose ingress reaches nothing says so rather than timing out silently."""
     root = into("nowhere")
-    state = root / "state"
-    state.mkdir(parents=True, exist_ok=True)
     # Port one is privileged and never listened on, so the ingress post below
     # reaches nothing however this host is configured.
-    written = (
-        '[client]\nserver = "http://127.0.0.1:1"\ncredential = "a-credential-nothing-checks"\n'
-    )
-    quiet = _stand_in(
-        root,
-        "answers-nowhere",
-        f"import pathlib, time\npathlib.Path({str(state / CLIENT_CONFIG)!r}).write_text("
-        f"{written!r}, encoding='utf-8')\ntime.sleep(60)\n",
-    )
+    quiet = _announcing(root, "answers-nowhere", "127.0.0.1:1")
     world = World(quiet, root)
 
     try:
@@ -263,88 +255,61 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
         world.stop()
 
 
-def _writing_client_configuration(root: Path, server: str, credential: str) -> World:
-    """A world whose supervisor writes this `[client]` table and then waits.
-
-    Every character outside printable ASCII, and each quote and backslash, is
-    written as a TOML escape, so the file parses and carries exactly these.
-    """
-
-    def quoted(text: str) -> str:
-        escaped = "".join(
-            c if " " <= c <= "~" and c not in '"\\' else f"\\u{ord(c):04x}" for c in text
-        )
-        return f'"{escaped}"'
-
-    state = root / "state"
-    state.mkdir(parents=True, exist_ok=True)
-    staged = root / "staged-client.toml"
-    staged.write_text(
-        f"[client]\nserver = {quoted(server)}\ncredential = {quoted(credential)}\n",
-        encoding="utf-8",
-    )
-    writing = _stand_in(
+def _announcing(root: Path, name: str, address: str) -> Path:
+    """A supervisor that says it is serving on `address`, and then waits."""
+    return _stand_in(
         root,
-        "writes-a-client-configuration",
-        f"import shutil, time\nshutil.copyfile({str(staged)!r}, {str(state / CLIENT_CONFIG)!r})\n"
-        "time.sleep(60)\n",
+        name,
+        f"import sys, time\nsys.stderr.write({(SERVING_ON + address + chr(10))!r})\n"
+        "sys.stderr.flush()\ntime.sleep(60)\n",
     )
-    return World(writing, root)
-
-
-#: Credentials no `Authorization` header carries intact, one for every clause of
-#: the rule the server holds its own credential to — the list the server's own
-#: journey and each client's smoke check are held to.
-UNPRESENTABLE: list[dict[str, str]] = json.loads(
-    (
-        Path(__file__).resolve().parents[3]
-        / "crates/printobserver-server/tests/fixtures/unpresentable-credentials.json"
-    ).read_text(encoding="utf-8")
-)
-
-
-@pytest.mark.parametrize("entry", UNPRESENTABLE, ids=[entry["what"] for entry in UNPRESENTABLE])
-def test_a_supervisor_writing_an_unpresentable_credential_is_said_to_have(
-    entry: dict[str, str], repo: Repo, into: Callable[[str], Path]
-) -> None:
-    """A world handing its clients a credential nothing serves under says so at once.
-
-    It says so without quoting the credential, and before any request is made.
-    """
-    world = _writing_client_configuration(
-        into(f"credential-{UNPRESENTABLE.index(entry)}"), "http://127.0.0.1:1", entry["credential"]
-    )
-
-    try:
-        with pytest.raises(WorldError, match="a credential no request presents") as refused:
-            world.start()
-    finally:
-        world.stop()
-    absent(str(refused.value), "qx-distinctive", describing=f"a credential {entry['what']}")
 
 
 @pytest.mark.parametrize(
-    "server",
-    [
-        "",
-        "127.0.0.1:8420",
-        "https://127.0.0.1:8420",
-        "http://127.0.0.1",
-        "http://:8420",
-        "http://127.0.0.1:a-port",
-    ],
+    "address",
+    ["", "127.0.0.1", ":8420", "127.0.0.1:a-port", "nowhere at all"],
 )
-def test_a_supervisor_writing_no_http_address_is_said_to_have(
-    server: str, repo: Repo, into: Callable[[str], Path]
+def test_a_supervisor_saying_no_http_address_is_said_to_have(
+    address: str, repo: Repo, into: Callable[[str], Path]
 ) -> None:
-    """A world handing its clients an address none of them connects to says so at once."""
-    world = _writing_client_configuration(into("address"), server, "a-credential-nothing-checks")
+    """A world whose supervisor names an address no client connects to says so at once."""
+    root = into("address")
+    world = World(_announcing(root, "announces-nothing-usable", address), root)
 
     try:
         with pytest.raises(WorldError, match="no http://host:port address"):
             world.start()
     finally:
         world.stop()
+
+
+def test_the_configuration_names_the_verifier_of_the_credential_and_never_it(
+    repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """The supervisor is configured with the verifier of the credential the world presents.
+
+    As an operator who issued one configures it, and with no plaintext.
+    """
+    root = into("verifier")
+    world = World(_announcing(root, "announces-a-closed-port", "127.0.0.1:1"), root)
+    try:
+        with pytest.raises(OSError):
+            world.start()
+    finally:
+        world.stop()
+    written = (root / "supervisor.toml").read_text(encoding="utf-8")
+    configured = tomllib.loads(written)
+    equal(
+        configured["api"],
+        {"credential_verifier": verifier_of(world.credential)},
+        describing="what the world configures the operator's credential as",
+    )
+    absent(written, world.credential, describing="the configuration the world wrote")
+    equal(
+        verifier_of("abc"),
+        "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        describing="the verifier of `abc`",
+    )
 
 
 def test_an_environment_with_no_scripted_printer_names_the_recipe(tmp_path: Path) -> None:
