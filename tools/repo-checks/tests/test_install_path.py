@@ -425,6 +425,9 @@ def test_a_check_that_does_not_ask_which_version_it_is_is_refused(
 
 SIGN_IN = "sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in"
 WINDOWS_SIGN_IN = "& 'C:\\Program Files\\printobserver\\printobserver.exe' sign-in"
+WINDOWS_CREDENTIAL_ISSUE = (
+    "& 'C:\\Program Files\\printobserver\\printobserver.exe' credential issue"
+)
 SKILL_INSTALL = (
     "sudo gh skill install nickderobertis/printobserver printobserver "
     "--dir /var/lib/printobserver/skills"
@@ -436,7 +439,7 @@ WINDOWS_SKILL_INSTALL = (
 
 
 def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> None:
-    """The skill install, the harness installs and the service-user sign-in are one source."""
+    """What runs between the two commands — skill, credential, harness, sign-in — is one source."""
     path = ip.parse(committed.agents_md)
 
     equal(
@@ -444,6 +447,8 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
         (
             SKILL_INSTALL,
             WINDOWS_SKILL_INSTALL,
+            "printobserver credential issue",
+            WINDOWS_CREDENTIAL_ISSUE,
             "sudo npm install -g @anthropic-ai/claude-code",
             "sudo npm install -g @openai/codex",
             SIGN_IN,

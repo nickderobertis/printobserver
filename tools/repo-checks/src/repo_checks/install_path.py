@@ -168,8 +168,9 @@ class InstallPath:
     #: pair they are. A platform's pair is the one its service-manager column
     #: names, which is what `commands_for` answers.
     service_commands: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    #: What is run between the two commands: the agent's skill installed, and
-    #: its harness installed and signed in as the service's user.
+    #: What is run between the two commands: the agent's skill installed, the
+    #: operator's credential issued, and the agent's harness installed and
+    #: signed in as the service's user.
     sign_in: tuple[str, ...] = ()
     #: Every service manager the section states more than one pair for. Kept
     #: rather than collapsed: the second subsection would otherwise replace the
