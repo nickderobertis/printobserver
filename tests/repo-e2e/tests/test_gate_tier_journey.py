@@ -9,14 +9,13 @@ read off what Nx itself printed: one `nx run <project>:format-check` per project
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable
 
 import pytest
-from journey import GateCopy, plain
-from repo_checks.commands import measured_for
+from journey import GateCopy, capture, clean_environment, plain
 from repo_checks.expect import contains, equal, failing, passing, truth
-from repo_checks.model import Repo
 
 #: Every journey here runs Nx in a copy nobody will clean up after, so it runs
 #: without the daemon a local Nx would otherwise leave behind per copy.
@@ -173,37 +172,57 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     truth("tools/repo-checks/src" not in output, describing=f"a report over the client:\n{output}")
 
 
+@pytest.mark.skipif(
+    os.environ.get("PRINTOBSERVER_PLATFORM") == "windows-aarch64",
+    reason="that toolchain cannot read its own profiles; repo-policy.toml records the exemption",
+)
 def test_the_affected_rust_report_is_over_the_crates_the_change_reaches(
     gate_copy: Callable[..., GateCopy], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The crates whose tests a one-crate change runs are the ones its Rust floor rules on.
+    """A one-crate change's Rust floor rules on that crate, and not on one it never reached.
 
-    Read through the real graph — Nx's own affected answer and every project's
-    language tag — so a crate dropped from it by a tag or a root the selection
-    misreads is a crate whose floor nothing would rule on.
+    Both crates' `test` targets are run, so the profiles of the crate the change
+    does not reach are there for the report to read — and `just coverage` has
+    to leave them out by the real graph's own answer: Nx's affected projects and
+    every project's language tag and root. The crates depending on the changed
+    one are reached too, and are left unrun here because the program's own
+    journeys are the costliest suite in the tree and prove nothing more about
+    which crates the report keeps. So are the Python suites the change reaches,
+    which is why the recipe's verdict is not what is asserted: with none of
+    them run, the Python floor has nothing to rule on.
     """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
-    for name, value in QUIET.items():
-        monkeypatch.setenv(name, value)
+    for name in list(os.environ):
+        if name.startswith(("CARGO_LLVM_COV", "LLVM_PROFILE_FILE")) or name == "CARGO_TARGET_DIR":
+            monkeypatch.delenv(name)
+    environment = clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET)
 
-    measured = measured_for(Repo(copy.root), "affected")
+    tested = capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            "--projects=printobserver-vision-api,printobserver-octoprint",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=environment,
+    )
+    passing(tested, describing="the two crates' own `test` targets")
+    reported = copy.just("coverage", environment=QUIET)
 
-    reached = set(measured.rust or ())
-    for crate in ("printobserver-vision-api", "printobserver-core", "printobserver-server"):
-        contains(reached, f"crates/{crate}", describing="the crates the change's tests measure")
-    ignored = re.compile(measured.rust_ignored(Repo(copy.root)) or "(?!)")
-    for crate in ("printobserver-octoprint", "printobserver-types"):
-        truth(crate not in reached, describing=f"{crate} left out of {sorted(reached)}")
-        truth(
-            ignored.search(f"crates/{crate}/src/lib.rs") is not None,
-            describing=f"{crate}'s files left out of the report by {ignored.pattern!r}",
-        )
-    for crate in ("printobserver-vision-api", "printobserver"):
-        truth(
-            ignored.search(f"crates/{crate}/src/lib.rs") is None,
-            describing=f"{crate}'s files kept in the report by {ignored.pattern!r}",
-        )
+    output = plain(reported.stdout)
+    contains(output, "coverage: over the projects the change since")
+    contains(output, "printobserver-vision-api/src/lib.rs", describing="the Rust report")
+    truth("rust lines not measured" not in output, describing=f"a Rust total in:\n{output}")
+    truth(
+        "printobserver-octoprint" not in output,
+        describing=f"the report leaving out the crate the change did not reach:\n{output}",
+    )
 
 
 def test_a_named_head_leaves_out_what_landed_after_it(gate_copy: Callable[..., GateCopy]) -> None:
