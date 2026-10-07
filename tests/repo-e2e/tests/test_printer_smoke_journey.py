@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 from journey import REPO_ROOT, capture, clean_environment
+from repo_checks.checks_repo import GATE_TIER_RUNNER
 from repo_checks.expect import absent, contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.parsing import recipes
@@ -165,9 +166,9 @@ def _fanned_out_tiers() -> list[str]:
     targets: list[str] = []
     for tier in Repo(REPO_ROOT).policy["gate"]["tiers"]:
         for line in parsed[tier].body if tier in parsed else ():
-            words = line.split()
-            if words[:4] == ["bunx", "nx", "run-many", "-t"]:
-                targets.append(words[4])
+            if line.startswith(GATE_TIER_RUNNER):
+                # `<runner> {{quote(tier)}} <target>...`: the tier, then the targets.
+                targets.extend(line[len(GATE_TIER_RUNNER) :].split()[1:])
     return targets
 
 

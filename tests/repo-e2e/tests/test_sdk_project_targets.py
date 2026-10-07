@@ -16,7 +16,9 @@ from collections.abc import Callable
 
 import pytest
 from journey import REPO_ROOT, GateCopy, clean_environment
+from repo_checks.checks_repo import GATE_TIER_RUNNER
 from repo_checks.expect import contains, equal, failing, passing
+from repo_checks.parsing import recipes
 from repo_checks.shell import run as shell_run
 
 PYTHON_PROJECT = "printobserver-sdk-python"
@@ -58,9 +60,16 @@ def test_the_project_declares_every_gate_target(project: str) -> None:
 @pytest.mark.parametrize("project", [PYTHON_PROJECT, NODE_PROJECT])
 def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: str) -> None:
     """A target the gate never reaches is a target that gates nothing."""
-    justfile = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    parsed = recipes((REPO_ROOT / "justfile").read_text(encoding="utf-8"))
+    invoked = [line.split()[1] for line in parsed["check"].body if line.split()[:1] == ["just"]]
+    fanned_out = [
+        line[len(GATE_TIER_RUNNER) :].split()[1:]
+        for line in parsed[target].body
+        if line.startswith(GATE_TIER_RUNNER)
+    ]
 
-    contains(justfile, f"nx run-many -t {target}")
+    contains(invoked, target, describing="the recipes `just check` invokes")
+    contains(fanned_out, [target], describing=f"the Nx targets `just {target}` fans out over")
 
 
 def test_the_committed_project_passes_every_python_target(
