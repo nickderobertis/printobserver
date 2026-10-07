@@ -103,7 +103,8 @@ fn the_same_nine_steps_are_answered_against_a_real_octoprint() {
     // journey step 3: manifest
     let wanted = the_manifest_the_print_runs_under(&client, &world);
     // journey step 4: start
-    starts(&client, &world, &wanted);
+    let opened_by_the_alert = world.print_id.clone();
+    let world = starts(&client, &world, &wanted);
     // journey step 5: adjustment
     the_accepted_adjustment(&client, &world);
     // journey step 6: refusal
@@ -111,7 +112,7 @@ fn the_same_nine_steps_are_answered_against_a_real_octoprint() {
     // journey step 7: unreasoned
     unreasoned(&world);
     // journey step 8: history
-    accounting(&client, &world);
+    accounting(&client, &world, &opened_by_the_alert);
     // journey step 9: cancel
     cancels(&client, &world, &wanted);
 
@@ -165,8 +166,14 @@ fn the_manifest_the_print_runs_under(
     wanted
 }
 
-/// Step four: start a print, under the manifest step three wrote.
-fn starts(client: &Client, world: &supervisor::Supervisor, wanted: &JobManifest) {
+/// Step four: start a print, under the manifest step three wrote, and answer
+/// the world about the print the start opened — which every step after it acts
+/// on, since the cancel that made room for it ended the one the bring-up left.
+fn starts(
+    client: &Client,
+    world: &supervisor::Supervisor,
+    wanted: &JobManifest,
+) -> supervisor::Supervisor {
     // The bring-up left a print running, and a machine already printing cannot
     // be started. Setting it down is this walk's own setup rather than one of
     // the nine steps, and the walk starts one again at the end.
@@ -177,7 +184,21 @@ fn starts(client: &Client, world: &supervisor::Supervisor, wanted: &JobManifest)
         .start_print(&world.print_id, &world.file_name, wanted, REASON)
         .expect("a start is answered");
     assert!(matches!(started.record.decision, PolicyDecision::Accepted));
+    let world = supervisor::Supervisor {
+        print_id: started.record.print_id.clone(),
+        ..world.clone()
+    };
     until(client, &world.print_id, &[PrinterState::Printing]);
+    assert_eq!(
+        client
+            .manifest_get(&world.print_id)
+            .expect("a manifest read is answered")
+            .manifest
+            .as_ref(),
+        Some(wanted),
+        "the print the start opened does not run under the manifest it was given"
+    );
+    world
 }
 
 /// Step five: one adjustment inside the effective bounds, carrying a reason
@@ -296,7 +317,10 @@ fn read_as<P: printobserver_sdk::EventPayloadKind>(event: &EventRecord) -> Optio
 
 /// Step eight: read history, and find the accepted action, its decision and
 /// its outcome.
-fn accounting(client: &Client, world: &supervisor::Supervisor) {
+///
+/// The alert the bring-up delivered is in the history of the print it opened,
+/// which the cancel before step four ended: the start opened a print of its own.
+fn accounting(client: &Client, world: &supervisor::Supervisor, opened_by_the_alert: &str) {
     let history = client
         .history(&world.print_id, Some(200))
         .expect("a history read is answered");
@@ -339,14 +363,15 @@ fn accounting(client: &Client, world: &supervisor::Supervisor) {
             .any(|payload| matches!(payload.decision, PolicyDecision::Rejected(_))),
         "the history accounts for no refused action"
     );
-    // And the alert this print was opened by: a history that had lost the
-    // event the print exists because of would be one nobody could read back.
+    // And the alert the walk's first print was opened by: a history that had
+    // lost the event a print exists because of would be one nobody could read
+    // back.
+    let first = client
+        .history(opened_by_the_alert, Some(200))
+        .expect("a history read is answered");
     assert!(
-        history
-            .events
-            .iter()
-            .any(|event| event.id == world.event_id),
-        "the history does not account for the event this print was opened by"
+        first.events.iter().any(|event| event.id == world.event_id),
+        "the history does not account for the event the first print was opened by"
     );
 }
 

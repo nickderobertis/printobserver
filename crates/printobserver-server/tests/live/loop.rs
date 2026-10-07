@@ -435,7 +435,9 @@ pub async fn walk(instance: &Scripted) {
     every_change_refuses_a_request_with_no_reason(&world, &proxy, print_id).await;
     every_mutating_operation_is_rejected_in_its_own_kind(&world, &proxy, print_id).await;
     every_adjustment_applies_the_duration_it_is_given(&world, print_id).await;
-    every_mutating_operation_has_its_own_effect(&world, &proxy, print_id).await;
+    // llmlint: ignore[live_tier_compiles_and_requires_credential] See suppressions.toml.
+    let mut walked =
+        every_operation_while_it_runs_has_its_own_effect(&world, &proxy, print_id).await;
     the_history_accounts_for_every_step(&world, print_id).await;
 
     // Restart, and a second alert continues the first alert's session — with the
@@ -472,6 +474,11 @@ pub async fn walk(instance: &Scripted) {
         1,
         "the second alert opened a session of its own: {reconciled:?}"
     );
+
+    // Last, because a cancel ends the print every step above is about.
+    walked
+        .extend(a_cancel_ends_the_print_and_a_start_opens_its_own(&world, &proxy, print_id).await);
+    every_mutating_operation_was_walked(walked);
 
     // Leave the environment as the bring-up recipe left it.
     hold_the_print_running(instance).await;
@@ -942,10 +949,9 @@ async fn every_adjustment_applies_the_duration_it_is_given(world: &Composed, pri
     );
 }
 
-/// The order a shared machine admits: the adjustments while the print runs, then
-/// pause and resume, then the cancel that ends it, then the start that puts it
-/// back, then the acknowledgement that stops it again.
-const IN_ORDER: [&str; 10] = [
+/// The order a shared machine admits while the print runs: the adjustments,
+/// then pause and resume, then the acknowledgement.
+const WHILE_IT_RUNS: [&str; 8] = [
     "set_bed_target_c",
     "set_tool_target_c",
     "set_feedrate_factor",
@@ -953,19 +959,37 @@ const IN_ORDER: [&str; 10] = [
     "set_fan_percent",
     "pause",
     "resume",
-    "cancel",
-    "start_print",
     "acknowledge_failure",
 ];
 
-/// Every mutating operation has the effect it names, at the machine itself.
-async fn every_mutating_operation_has_its_own_effect(
+/// What ends the print and what begins the next, which the walk takes last: a
+/// cancel ends the print every step before it is about, and a start opens a
+/// print of its own.
+const ENDING_IT: [&str; 2] = ["cancel", "start_print"];
+
+/// Every mutating operation the vocabulary declares was walked, by one of
+/// [`every_operation_while_it_runs_has_its_own_effect`] and
+/// [`a_cancel_ends_the_print_and_a_start_opens_its_own`].
+fn every_mutating_operation_was_walked(mut walked: Vec<&'static str>) {
+    walked.sort_unstable();
+    let mut declared = vocabulary();
+    declared.sort_unstable();
+    assert_eq!(
+        walked, declared,
+        "the declared lists hold a mutating operation whose effect this walk did \
+         not reach"
+    );
+}
+
+/// The operations of [`WHILE_IT_RUNS`] have the effect each names, at the
+/// machine itself; answers which were walked.
+async fn every_operation_while_it_runs_has_its_own_effect(
     world: &Composed,
     proxy: &Proxy,
     print_id: PrintId,
-) {
+) -> Vec<&'static str> {
     let mut walked = Vec::new();
-    for name in IN_ORDER {
+    for name in WHILE_IT_RUNS {
         let plan = live(name);
         proxy.forget();
         let (code, answer) = ask(world, print_id, name, &plan.accepted).await;
@@ -1012,16 +1036,68 @@ async fn every_mutating_operation_has_its_own_effect(
         }
         walked.push(name);
     }
+    walked
+}
 
-    let mut reached = walked.clone();
-    reached.sort_unstable();
-    let mut declared = vocabulary();
-    declared.sort_unstable();
+/// A cancel ends the print — a read of it finds the job over — and a start
+/// from the idle machine opens a print of its own, which its answer names and
+/// the job runs under; answers which were walked.
+async fn a_cancel_ends_the_print_and_a_start_opens_its_own(
+    world: &Composed,
+    proxy: &Proxy,
+    print_id: PrintId,
+) -> Vec<&'static str> {
+    let [cancel, start] = ENDING_IT;
+    proxy.forget();
+    let (code, cancelled) = ask(world, print_id, cancel, &live(cancel).accepted).await;
+    assert_eq!(code, 200, "`{cancel}` was not accepted: {cancelled}");
     assert_eq!(
-        reached, declared,
-        "the declared list holds a mutating operation whose effect this walk did \
-         not reach"
+        cancelled["record"]["outcome"],
+        json!("succeeded"),
+        "{cancelled}"
     );
+    until_state(world, print_id, "operational").await;
+    // Whichever read first found the job over ended it: a real machine passes
+    // through cancelling on its way to idle.
+    let ended = status(world, print_id).await;
+    assert!(
+        ended["print"]["end_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.starts_with("the print reached ")),
+        "a read of the cancelled print did not end it: {ended}"
+    );
+
+    let (code, started) = ask(world, print_id, start, &live(start).accepted).await;
+    assert_eq!(code, 200, "`{start}` was not accepted: {started}");
+    assert_eq!(
+        started["record"]["outcome"],
+        json!("succeeded"),
+        "{started}"
+    );
+    let opened: PrintId = started["record"]["print_id"]
+        .as_str()
+        .and_then(|text| text.parse().ok())
+        .unwrap_or_else(|| panic!("the start named no print it was recorded against: {started}"));
+    assert_ne!(
+        opened, print_id,
+        "the start was recorded against the ended print"
+    );
+    until_state(world, opened, "printing").await;
+    let running = status(world, opened).await;
+    assert!(running["print"].get("ended_at").is_none(), "{running}");
+    assert_eq!(
+        prints_active(world).await,
+        json!(opened.to_string()),
+        "the listing does not name the print the start opened as the running job's"
+    );
+    vec![cancel, start]
+}
+
+/// The print the listing names as the running job's.
+async fn prints_active(world: &Composed) -> Value {
+    let (code, listed) = world.get(&prints_url(world)).await;
+    assert_eq!(code, reqwest::StatusCode::OK, "{listed}");
+    listed["active"].clone()
 }
 
 /// Every read answers the record it names, read back out of the store.
@@ -1192,9 +1268,15 @@ async fn the_history_accounts_for_every_step(world: &Composed, print_id: PrintId
 /// Every record this system stores about one print, as a caller reads them.
 ///
 /// The printer's own snapshot is deliberately not among them: it carries the
-/// instant it was observed at, so two reads of an unchanged machine differ.
+/// instant it was observed at, so two reads of an unchanged machine differ. Nor
+/// is what a read saw of the print's job (`job_print_time_s`, `job_started_at`):
+/// every read of a running job records it, and the job runs on between two.
 async fn stored(world: &Composed, print_id: PrintId) -> Value {
-    let answered = status(world, print_id).await;
+    let mut answered = status(world, print_id).await;
+    if let Some(print) = answered["print"].as_object_mut() {
+        print.remove("job_print_time_s");
+        print.remove("job_started_at");
+    }
     let (_, events) = world.get(&world.operation_url("history", print_id)).await;
     let (_, manifest) = world
         .get(&world.operation_url("manifest_get", print_id))

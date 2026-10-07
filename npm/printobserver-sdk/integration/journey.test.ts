@@ -124,6 +124,7 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
   );
 }
 
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("the same nine steps are answered against a real OctoPrint", async () => {
   const client = new Client({
     server: world.server,
@@ -159,10 +160,14 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
     .catch(() => undefined);
   await until(client, world.print_id, ["operational"]);
 
-  // journey step 4: start
+  // journey step 4: start — which opens a print of its own, since the cancel
+  // above ended the one the bring-up left; every step after it acts on the print
+  // its answer names.
   const started = await client.startPrint(world.print_id, world.file_name, wanted, REASON);
   expect(started.record.decision).toBe("accepted");
+  world = { ...world, print_id: started.record.print_id };
   await until(client, world.print_id, ["printing"]);
+  expect((await client.manifestGet(world.print_id)).manifest).toEqual(wanted);
 
   // journey step 5: adjustment — accepted, carrying a reason and a duration.
   const adjusted = await client.setFeedrateFactor(world.print_id, INSIDE, REASON, DURATION);

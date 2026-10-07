@@ -238,7 +238,7 @@ fn the_record_a_weaker_check_would_have_accepted_is_there(
     );
     let read = running::read(
         world,
-        &["history", "--print-id", &world.print_id, "--limit", "40"],
+        &["history", "--print-id", &world.print_id(), "--limit", "40"],
     );
     for kind in ["action_requested", "action_executed"] {
         assert!(

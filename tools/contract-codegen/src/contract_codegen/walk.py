@@ -249,6 +249,14 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     Ordered("prints", ""),
 )
 
+#: The one operation whose answer names the print every step after it is about.
+#:
+#: A start opens a print of its own when none is open — and the walk has just
+#: cancelled the one the bring-up left, which the next read finds over and ends —
+#: so the walk follows the print the start's `record.print_id` names rather than
+#: acting on the one the cancel ended.
+FOLLOWED = "start_print"
+
 #: What the real walk supplies for one value, by the operation and the value it
 #: is for, and by the value alone where every operation supplies the same. The
 #: names beginning `world.` are read off the supervisor the walk brought up;
@@ -293,6 +301,11 @@ class LiveStep:
     def method(self) -> str:
         """The method the call is made by."""
         return self.operation.method
+
+    @property
+    def follows(self) -> bool:
+        """Whether every step after this one is about the print its answer names."""
+        return self.name == FOLLOWED
 
 
 def plan_live(contract: Contract) -> tuple[LiveStep, ...]:

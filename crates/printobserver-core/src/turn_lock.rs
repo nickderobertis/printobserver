@@ -43,6 +43,30 @@ impl TurnLocks {
         }
     }
 
+    /// Hold this print's turn when no turn is running for it, without waiting.
+    ///
+    /// For a caller that may itself be answering the turn that holds it — a
+    /// read the agent made from inside its own turn — and so must never queue
+    /// behind that turn.
+    ///
+    /// # Panics
+    ///
+    /// When the turn locks are poisoned, which only a panic while they were
+    /// being read can leave them.
+    pub fn try_acquire(&self, print_id: PrintId) -> Option<TurnGuard<'_>> {
+        let mut queues = self.queues.lock().expect("the turn locks are not poisoned");
+        let queue = queues.entry(print_id).or_default();
+        if queue.held {
+            return None;
+        }
+        queue.held = true;
+        drop(queues);
+        Some(TurnGuard {
+            locks: self,
+            print_id,
+        })
+    }
+
     /// Release one print's turn and wake whoever is queued behind it.
     fn release(&self, print_id: PrintId) {
         let woken = {

@@ -245,6 +245,11 @@ async fn each_sample_normalizes_to_its_own_kind_carrying_the_provider_print() {
     let about_a_print = Some(ProviderPrint {
         id: SAMPLE_OBICO_PRINT_ID,
         file_name: Some("benchy.gcode".to_owned()),
+        started_at: Some(
+            "2026-03-01T12:00:00.500Z"
+                .parse()
+                .expect("the samples' own start is an instant"),
+        ),
     });
     for (name, kind, print) in [
         (

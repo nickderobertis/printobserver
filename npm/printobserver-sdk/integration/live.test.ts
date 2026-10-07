@@ -198,6 +198,8 @@ async function stepStartPrint(client: Client, proxy: Recording) {
   expect(sent.manifest).toEqual(manifest(world));
   expect(sent.reason).toEqual(REASON);
   same("start_print", answered, seen.answer);
+  // Every step after this one is about the print the start opened.
+  world = { ...world, print_id: answered.record.print_id };
 }
 
 /** `set_feedrate_factor`, answered by a real supervisor. */
@@ -518,10 +520,13 @@ async function refusedResume(client: Client, proxy: Recording) {
 /**
  * Every action, refused by a real supervisor's own policy, as a typed rejection.
  *
- * One client acting as an actor class the envelope grants nothing. The policy
- * takes that decision before it looks at the state, the interval or the bounds,
- * so every action is refused from wherever the machine happens to be.
+ * One client acting as an actor class the envelope grants nothing, against the
+ * print the machine is running: the policy refuses an action against an ended
+ * print before it asks about the grant. It takes that decision before it looks
+ * at the state, the interval or the bounds, so every action is refused from
+ * wherever the machine happens to be.
  */
+// llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 test("every action is refused as a typed rejection by a real supervisor", async () => {
   await using proxy = new Recording(world.server);
   const client = new Client({
@@ -529,6 +534,10 @@ test("every action is refused as a typed rejection by a real supervisor", async 
     actor: { agent: { session_name: "an actor this envelope grants nothing" } },
     credential: world.credential,
   });
+  const active = (await client.prints()).active;
+  if (active) {
+    world = { ...world, print_id: active };
+  }
 
   await refusedCancel(client, proxy);
   await refusedStartPrint(client, proxy);

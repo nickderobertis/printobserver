@@ -516,10 +516,15 @@ class Smoke:
     def step_start_print(self) -> None:
         """Start the smoke print, and require the machine to report it printing.
 
+        A start opens a print of its own, so everything after it — every
+        adjustment, the pause, the resume, the cancel, the cleanup and the
+        history — is driven against the print its answer names.
+
         Raises:
-            VerificationError: If the supervisor refused it or the machine never printed.
+            VerificationError: If the supervisor refused it, answered no print, or
+                the machine never printed.
         """
-        self.act(
+        answer = self.act(
             STEP_START,
             "start-print",
             "--file-name",
@@ -528,6 +533,14 @@ class Smoke:
             json.dumps(self.manifest),
         )
         self.started = True
+        started = at(answer.document, "/record/print_id")
+        if not isinstance(started, str) or not started:
+            raise VerificationError(
+                STEP_START, "the start answered no print it was recorded against"
+            )
+        if started != self.print_id:
+            say(f"the start opened print {started}; this run follows it")
+        self.print_id = started
         self.requires(STEP_START, "/printer/connection", "printing")
 
     def step_adjust_inside(self) -> None:

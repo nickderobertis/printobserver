@@ -137,8 +137,10 @@ pub struct World {
     pub printer: Printer,
     /// What a command is configured to reach the supervisor through.
     pub proxy: Proxy,
-    /// The print every command in the walk is about.
-    pub print_id: String,
+    /// The print every command in the walk is about: the one the machine's
+    /// job is, which a read that finds that job over closes and a start, or a
+    /// job the machine is put back to running, replaces ([`Self::follows`]).
+    print: std::sync::Mutex<String>,
     /// The image the materialization commands are about.
     pub image_id: String,
     /// The event the acknowledgement command is about.
@@ -257,7 +259,7 @@ impl World {
             root,
             printer,
             proxy,
-            print_id,
+            print: std::sync::Mutex::new(print_id),
             image_id,
             event_id,
             camera,
@@ -371,6 +373,47 @@ impl World {
     /// Panics when the machine did not reach that state, which is a walk whose
     /// next command could only be refused for being asked from the wrong one.
     pub fn wants(&self, state: Reports) {
+        self.drives(state);
+        if matches!(state, Reports::Printing | Reports::Paused) {
+            self.follows_the_running_print();
+        }
+    }
+
+    /// The print every command in the walk is about now.
+    #[must_use]
+    pub fn print_id(&self) -> String {
+        self.print
+            .lock()
+            .expect("the print the walk is about")
+            .clone()
+    }
+
+    /// Be about this print from now on: the one a start answered, or the one
+    /// the machine's job is.
+    pub fn follows(&self, print_id: &str) {
+        print_id.clone_into(&mut self.print.lock().expect("the print the walk is about"));
+    }
+
+    /// Follow the print the listing names active, when it names one.
+    ///
+    /// A print ends when a read finds its job over, so once the walk has had
+    /// the machine cancel or sit idle, the job it is put back to running is a
+    /// print of its own: the listing is where that print is found.
+    fn follows_the_running_print(&self) {
+        let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+            .args(["prints", "--json", "--config"])
+            .arg(self.client_config())
+            .output()
+            .expect("a listing runs");
+        let listing: Value =
+            printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
+        if let Some(active) = listing.get("active").and_then(Value::as_str) {
+            self.follows(active);
+        }
+    }
+
+    /// Put the machine in one state, through whatever drives it.
+    fn drives(&self, state: Reports) {
         match &self.printer {
             Printer::StoodIn(machine) => machine.reports(state),
             Printer::Scripted { runs_for_s, .. } => {
@@ -494,7 +537,7 @@ impl World {
         self.restore_the_image();
         with_the_store(self.root.path().join("state"), |store, runtime| {
             runtime.block_on(async {
-                let print = self.print_id.parse().expect("a print identifier");
+                let print = self.print_id().parse().expect("a print identifier");
                 let event = store
                     .append_event(printobserver_core::store::EventDraft {
                         print_id: Some(print),
@@ -665,7 +708,13 @@ impl World {
     /// One status read of this world's print, as the document it answers.
     fn status(&self) -> Value {
         let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .args(["status", "--print-id", &self.print_id, "--json", "--config"])
+            .args([
+                "status",
+                "--print-id",
+                &self.print_id(),
+                "--json",
+                "--config",
+            ])
             .arg(self.client_config())
             .output()
             .expect("a status read runs");
@@ -691,10 +740,11 @@ impl World {
     /// What it said is answered rather than dropped, so a walk that could not
     /// settle the machine says why the last attempt did not take.
     fn settle(&self, command: &str, also: &[&str]) -> String {
+        let print_id = self.print_id();
         let mut asked = vec![
             command,
             "--print-id",
-            &self.print_id,
+            &print_id,
             "--actor",
             "operator",
             "--reason",

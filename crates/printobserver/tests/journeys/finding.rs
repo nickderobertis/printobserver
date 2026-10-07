@@ -37,7 +37,7 @@ fn end_the_print(world: &World) {
         .build()
         .expect("a runtime")
         .block_on(store.end_print(
-            world.print_id.parse().expect("a print identifier"),
+            world.print_id().parse().expect("a print identifier"),
             printobserver_core::records::PrinterState::Operational,
             printobserver_types::Timestamp::now(),
             "this journey finished it".to_owned(),
@@ -94,10 +94,10 @@ pub fn a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(worl
     let before = prints(world);
     assert_eq!(
         before["active"],
-        json!(world.print_id),
+        json!(world.print_id()),
         "the open print carrying the running file was not named active: {before}"
     );
-    assert_eq!(listed(&before), vec![world.print_id.clone()], "{before}");
+    assert_eq!(listed(&before), vec![world.print_id().clone()], "{before}");
 
     end_the_print(world);
     let found = prints(world);
@@ -108,7 +108,8 @@ pub fn a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(worl
         "the running job with no open print was not adopted as one print: {found}"
     );
     assert_eq!(
-        ids[1], world.print_id,
+        ids[1],
+        world.print_id(),
         "the listing is not most recently opened first: {found}"
     );
     let adopted = ids[0].clone();

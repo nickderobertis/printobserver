@@ -32,6 +32,7 @@ fn trivial_alert() -> NormalizedAlert {
         print: Some(ProviderPrint {
             id: 4211,
             file_name: Some("benchy.gcode".to_owned()),
+            started_at: None,
         }),
         detection: Some(trivial_detection()),
     }

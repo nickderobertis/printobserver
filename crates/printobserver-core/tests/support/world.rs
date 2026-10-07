@@ -296,6 +296,7 @@ pub fn failure_alert(provider_print_id: i64) -> NormalizedAlert {
         print: Some(ProviderPrint {
             id: provider_print_id,
             file_name: Some("benchy.gcode".to_owned()),
+            started_at: None,
         }),
         detection: None,
     }

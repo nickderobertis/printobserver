@@ -251,6 +251,11 @@ fn read_the_seeded_print_back(port: &dyn Store) {
          under the record's own name"
     );
     assert_eq!(
+        (print.job_started_at, print.job_print_time_s),
+        (None, None),
+        "a print written before job sightings were recorded read back carrying one"
+    );
+    assert_eq!(
         block_on(port.print_by_provider_id(7))
             .expect("the lookup reads")
             .map(|found| found.id),

@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -223,7 +224,7 @@ def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("cancel", answered, seen.answer)
 
 
-def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
+def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervisor:
     """`start_print`, answered by a real supervisor."""
     ready(client, world.print_id, "operational")
 
@@ -254,6 +255,7 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
         describing="the `reason` `start_print` sent",
     )
     same("start_print", answered, seen.answer)
+    return replace(world, print_id=answered["record"]["print_id"])
 
 
 def step_set_feedrate_factor(client: Client, world: Supervisor, proxy: Proxy) -> None:
@@ -544,7 +546,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_history(client, world, proxy)
         step_look(client, world, proxy)
         step_cancel(client, world, proxy)
-        step_start_print(client, world, proxy)
+        world = step_start_print(client, world, proxy)
         step_set_feedrate_factor(client, world, proxy)
         step_set_flowrate_factor(client, world, proxy)
         step_set_fan_percent(client, world, proxy)
@@ -559,6 +561,18 @@ def test_every_method_is_answered_by_a_real_supervisor(
             proxy.calls() >= 18,
             describing="every call to have gone through the proxy",
         )
+
+
+def about_the_running_print(client: Client, world: Supervisor) -> Supervisor:
+    """The world, about the print the machine is running when it runs one.
+
+    The policy refuses an action against an ended print before it asks whether
+    the actor may request it at all, so a refusal for the grant is asked of the
+    print the machine is running rather than of one a read has ended.
+    """
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    active = client.prints().get("active")
+    return replace(world, print_id=active) if active else world
 
 
 def refused_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
@@ -721,12 +735,16 @@ def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
         truth(False, describing="`resume` to be refused")
 
 
-def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None:
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+def test_every_action_is_refused_as_a_typed_rejection(
+    world: Supervisor,
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """Every action, refused by a real supervisor's own policy, typed.
 
-    One client acting as an actor class the envelope grants nothing. The policy
-    takes that decision before it looks at the state, the interval or the
-    bounds, so every action is refused from wherever the machine happens to be.
+    One client acting as an actor class the envelope grants nothing, against the
+    print the machine is running. The policy takes that decision before it looks
+    at the state, the interval or the bounds, so every action is refused from
+    wherever the machine happens to be.
     """
     with Proxy(world.server) as proxy:
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
@@ -735,6 +753,7 @@ def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None
             {"agent": {"session_name": "an actor this envelope grants nothing"}},
             world.credential,
         )
+        world = about_the_running_print(client, world)
         refused_cancel(client, world, proxy)
         refused_start_print(client, world, proxy)
         refused_set_feedrate_factor(client, world, proxy)

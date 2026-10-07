@@ -168,6 +168,25 @@ impl Supervisor {
         if intervention.outcome != InterventionOutcome::StillActive {
             return Ok(intervention.outcome.clone());
         }
+        // Another expiry may have reached it first — the driver's sweep, a
+        // close-out, a start's reconciliation — so it is read again once this
+        // one holds the print's expiries, and one already settled is answered
+        // with the outcome that won rather than put back a second time.
+        let _expiring = self.expiring().acquire(intervention.print_id).await;
+        let still_active = self
+            .stores()
+            .actions
+            .active_interventions(intervention.print_id)
+            .await?
+            .iter()
+            .any(|active| active.id == intervention.id);
+        if !still_active {
+            // Settling is once-only, so this writes nothing and answers the
+            // outcome already settled.
+            return self
+                .settle(intervention, InterventionOutcome::RestoreUnavailable)
+                .await;
+        }
         let Some(prior_value) = intervention.prior_value else {
             return self
                 .settle(intervention, InterventionOutcome::RestoreUnavailable)

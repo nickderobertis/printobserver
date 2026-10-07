@@ -87,6 +87,7 @@ fn provider_print_carries_exactly_the_stated_fields() {
     let expected = vec![
         field("file_name", "string", false),
         field("id", "integer", true),
+        field("started_at", "Timestamp", false),
     ];
     assert_eq!(wire_fields(&schema_of::<ProviderPrint>()), expected);
 }

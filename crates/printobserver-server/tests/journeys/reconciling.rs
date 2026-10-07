@@ -420,3 +420,106 @@ async fn an_intervention_whose_restoration_is_refused_does_not_cost_the_rest() {
     );
     running.stop().await;
 }
+
+/// Start a server over what was left in `state_dir`, over this machine.
+async fn start_over(
+    config: ServerConfig,
+    printer: &Arc<RecordingPrinter>,
+) -> (printobserver_server::Running, Stores) {
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store reopens"),
+    ));
+    let running = Server::start_with(
+        config,
+        Ports {
+            printer: Arc::clone(printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
+            stores: stores.clone(),
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await
+    .expect("the server starts over what was left behind");
+    (running, stores)
+}
+
+/// A print left open over a machine that has since gone idle is closed at the
+/// start, through the close-out a supervision turn takes — its overdue
+/// intervention restored once, the print ended with the state it reached —
+/// rather than adopted and watched again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_closes_a_print_the_idle_machine_shows_is_over() {
+    let root = TempDir::new().expect("a journey's own root");
+    let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
+    let config = ServerConfig::load(&path).expect("the configuration is accepted");
+    let print_id = left_behind(&config.state_dir).await;
+    let printer = RecordingPrinter::printing();
+    printer.in_state(printobserver_printer_api::PrinterState::Operational);
+
+    let (running, stores) = start_over(config, &printer).await;
+
+    let reconciled = running.reconciliation();
+    assert_eq!(reconciled.closed, vec![print_id], "{reconciled:?}");
+    assert!(reconciled.adopted.is_empty(), "{reconciled:?}");
+    assert!(reconciled.resumed.is_empty(), "{reconciled:?}");
+    assert!(reconciled.expired.is_empty(), "{reconciled:?}");
+    let ended = stores
+        .prints
+        .print(print_id)
+        .await
+        .expect("the print reads")
+        .expect("the print is held");
+    assert_eq!(
+        ended.end_reason.as_deref(),
+        Some("the print reached Operational")
+    );
+    assert_eq!(
+        printer
+            .calls()
+            .iter()
+            .filter(|call| **call == Call::Feedrate(PRIOR))
+            .count(),
+        1,
+        "the overdue intervention was not restored exactly once: {:?}",
+        printer.calls()
+    );
+    assert!(
+        stores
+            .actions
+            .active_interventions(print_id)
+            .await
+            .expect("the interventions read")
+            .is_empty()
+    );
+    running.stop().await;
+}
+
+/// A start over a machine nothing can read closes nothing: every print left
+/// open is adopted as it was before the machine was asked at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_over_an_unreadable_machine_adopts_as_before() {
+    let root = TempDir::new().expect("a journey's own root");
+    let path = write(root.path(), &document(root.path(), "http://127.0.0.1:1"));
+    let config = ServerConfig::load(&path).expect("the configuration is accepted");
+    let print_id = left_behind(&config.state_dir).await;
+    let printer = RecordingPrinter::printing();
+    printer.unreadable(true);
+
+    let (running, stores) = start_over(config, &printer).await;
+
+    let reconciled = running.reconciliation();
+    assert!(reconciled.closed.is_empty(), "{reconciled:?}");
+    assert_eq!(reconciled.adopted, vec![print_id], "{reconciled:?}");
+    assert_eq!(reconciled.resumed, vec![print_id], "{reconciled:?}");
+    assert!(
+        stores
+            .prints
+            .print(print_id)
+            .await
+            .expect("the print reads")
+            .is_some_and(|print| print.ended_at.is_none())
+    );
+    running.stop().await;
+}

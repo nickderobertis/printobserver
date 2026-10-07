@@ -252,3 +252,441 @@ async fn an_alert_about_an_adopted_job_attaches_to_the_adopted_print() {
     );
     world.server.stop().await;
 }
+
+/// The print the listing names with this identifier.
+fn print_listed<'a>(answer: &'a Value, id: &Value) -> &'a Value {
+    answer["prints"]
+        .as_array()
+        .and_then(|prints| prints.iter().find(|print| &print["id"] == id))
+        .unwrap_or_else(|| panic!("the listing carries no print {id}: {answer}"))
+}
+
+/// The instant one field of a listed print names.
+fn instant(print: &Value, field: &str) -> Timestamp {
+    print[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("the print carries no {field}: {print}"))
+        .parse()
+        .expect("an instant")
+}
+
+/// Read the prints with the machine running `file` in `state`, `running`
+/// seconds into it.
+async fn prints_while(
+    world: &World,
+    file: &str,
+    state: PrinterState,
+    running: Option<i64>,
+) -> Value {
+    world.printer.runs_job(file, state, running);
+    prints(world).await
+}
+
+/// Post one `Obico` alert to the ingress and wait for its handling to finish.
+async fn alert(world: &World, body: &Value) {
+    let mut completions = world.server.completions();
+    let status = world
+        .client
+        .post(format!("{}?token={SECRET}", world.server.ingress_url()))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body.to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(status, reqwest::StatusCode::ACCEPTED);
+    completions.changed().await.expect("the handling finishes");
+}
+
+/// An alert about `file`, which `Obico` says started at `started_at`.
+fn alert_started(obico_print_id: i64, file: &str, started_at: Timestamp, image: &str) -> Value {
+    let mut body = failure_alert(obico_print_id, image);
+    body["print"]["filename"] = json!(file);
+    body["print"]["started_at"] = json!(printobserver_core::unix_seconds(started_at));
+    body
+}
+
+/// The running times `OctoPrint` reports for one job read at `t`, `t + 60`,
+/// `t + 600` and `t + 630`, paused from `t + 30` to `t + 600`: a pause counts
+/// while it lasts and comes back out at the resume.
+///
+/// This world's reads are moments apart on the wall clock, so what it carries
+/// faithfully is the running times; the start the record keeps moving later at
+/// the resume is the core journeys', which run on a clock they advance.
+const THROUGH_A_LONG_PAUSE: [(PrinterState, i64); 4] = [
+    (PrinterState::Printing, 900),
+    (PrinterState::Paused, 960),
+    (PrinterState::Paused, 1500),
+    (PrinterState::Printing, 960),
+];
+
+/// Read the prints through [`THROUGH_A_LONG_PAUSE`], requiring every read to
+/// name one print active and the listing to hold that print alone; answers
+/// the last read.
+async fn read_through_a_long_pause(world: &World) -> Value {
+    let mut print = None;
+    let mut last = Value::Null;
+    for (state, running) in THROUGH_A_LONG_PAUSE {
+        last = prints_while(world, RUNNING, state.clone(), Some(running)).await;
+        let active = print.get_or_insert_with(|| last["active"].clone());
+        assert_eq!(
+            &last["active"], active,
+            "{state:?} at {running} s split it: {last}"
+        );
+        assert_eq!(listed(&last).len(), 1, "{last}");
+    }
+    last
+}
+
+/// A print paused for longer than the tolerance, with the pause read, and then
+/// resumed, keeps one record, and records the printing time the resume
+/// reported.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_long_pause_the_reads_see_then_a_resume_keeps_one_record() {
+    let world = World::open().await;
+
+    let after = read_through_a_long_pause(&world).await;
+
+    let held = &after["prints"][0];
+    assert!(held.get("ended_at").is_none(), "{after}");
+    assert_eq!(held["job_print_time_s"], json!(960), "{after}");
+    world.server.stop().await;
+}
+
+/// A pause and a resume both between two reads keep one record, whether the
+/// next read finds the job printing again or paused once more.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_and_resume_between_two_reads_keeps_one_record() {
+    let world = World::open().await;
+    let print =
+        prints_while(&world, RUNNING, PrinterState::Printing, Some(900)).await["active"].clone();
+
+    for (state, running) in [
+        (PrinterState::Printing, 950),
+        (PrinterState::Paused, 950 + 86_400),
+        (PrinterState::Printing, 1000),
+    ] {
+        let read = prints_while(&world, RUNNING, state.clone(), Some(running)).await;
+        assert_eq!(
+            read["active"], print,
+            "{state:?} at {running} s split it: {read}"
+        );
+        assert_eq!(listed(&read).len(), 1, "{read}");
+    }
+    world.server.stop().await;
+}
+
+/// The sequence `tests/real-prints/spaghetti-floating-slab` recorded — an
+/// alert opens the print, the supervisor reads it printing, the print is
+/// cancelled at the machine, a job of the same file is started, and the
+/// supervisor restarts — leaves two records rather than one adopted at every
+/// start: the first ended as replaced, and the running job a print of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_recorded_cancellation_then_a_same_file_job_yields_two_records() {
+    const FILE: &str = "spaghetti-test.gcode";
+    let host = image_host(snapshot_bytes()).await;
+    let world = World::open().await;
+    let started: Timestamp = "2026-09-27T21:25:47.573451042Z"
+        .parse()
+        .expect("the recorded start");
+    world
+        .printer
+        .runs_job(FILE, PrinterState::Printing, Some(1170));
+    alert(&world, &alert_started(1, FILE, started, &host.url())).await;
+    let first = prints(&world).await["active"].clone();
+    let first_id: PrintId = first
+        .as_str()
+        .expect("an identifier")
+        .parse()
+        .expect("a print identifier");
+    let (_, status) = world
+        .get(&world.operation_url("/v1/prints/{print_id}/status", first_id))
+        .await;
+    assert_eq!(status["print"]["provider_print_id"], json!(1), "{status}");
+    assert_eq!(status["print"]["job_print_time_s"], json!(1170), "{status}");
+
+    // Cancelled at the machine, and the same file started again half a minute
+    // before the supervisor next comes up.
+    world
+        .printer
+        .runs_job(FILE, PrinterState::Printing, Some(30));
+    let world = world.restart().await;
+
+    let reconciled = world.server.reconciliation();
+    assert_eq!(reconciled.closed, vec![first_id], "{reconciled:?}");
+    assert!(
+        !reconciled.adopted.contains(&first_id),
+        "the start adopted the cancelled print again: {reconciled:?}"
+    );
+    let after = prints(&world).await;
+    assert_eq!(listed(&after).len(), 2, "{after}");
+    let stale = print_listed(&after, &first);
+    assert_eq!(
+        stale["end_reason"],
+        json!(printobserver_core::listing::REPLACED_REASON),
+        "{after}"
+    );
+    let fresh = &after["active"];
+    assert_ne!(fresh, &first, "{after}");
+    let running = print_listed(&after, fresh);
+    assert!(running.get("ended_at").is_none(), "{after}");
+    assert_eq!(running["file_name"], json!(FILE), "{after}");
+    assert_eq!(running["job_print_time_s"], json!(30), "{after}");
+    world.server.stop().await;
+}
+
+/// A job read paused, then cancelled and replaced by the same file before the
+/// next read, yields two records where the earlier job had been read printing
+/// longer than the later one has, by more than the tolerance.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_paused_job_replaced_before_the_next_read_yields_two_records() {
+    let world = World::open().await;
+    let earlier =
+        prints_while(&world, RUNNING, PrinterState::Printing, Some(1800)).await["active"].clone();
+    let paused = prints_while(&world, RUNNING, PrinterState::Paused, Some(1860)).await;
+    assert_eq!(paused["active"], earlier, "{paused}");
+
+    let after = prints_while(&world, RUNNING, PrinterState::Printing, Some(200)).await;
+
+    assert_ne!(after["active"], earlier, "{after}");
+    assert_eq!(listed(&after).len(), 2, "{after}");
+    assert_eq!(
+        print_listed(&after, &earlier)["end_reason"],
+        json!(printobserver_core::listing::REPLACED_REASON),
+        "{after}"
+    );
+    world.server.stop().await;
+}
+
+/// What the reads cannot tell from one job paused between them is kept as one
+/// record: a later job that has printed for as long as the earlier one was
+/// last read printing, less the tolerance, or longer; and a later job
+/// replacing one that was only ever read paused.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_the_reads_cannot_tell_from_a_pause_keeps_one_record() {
+    let world = World::open().await;
+    let print =
+        prints_while(&world, RUNNING, PrinterState::Printing, Some(100)).await["active"].clone();
+    let after = prints_while(&world, RUNNING, PrinterState::Printing, Some(300)).await;
+    assert_eq!(after["active"], print, "{after}");
+    assert_eq!(listed(&after).len(), 1, "{after}");
+    world.server.stop().await;
+
+    let world = World::open().await;
+    let print =
+        prints_while(&world, RUNNING, PrinterState::Paused, Some(1800)).await["active"].clone();
+    let after = prints_while(&world, RUNNING, PrinterState::Printing, Some(10)).await;
+    assert_eq!(after["active"], print, "{after}");
+    assert_eq!(listed(&after).len(), 1, "{after}");
+    world.server.stop().await;
+}
+
+/// A record written with no sighting — before sightings were recorded — is
+/// adopted by its file name, and so is a job reporting no running time.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_record_and_a_job_with_no_running_time_are_matched_by_file_name() {
+    let world = World::open().await;
+    let legacy = world
+        .stores
+        .prints
+        .open_print(None, Some(RUNNING.to_owned()))
+        .await
+        .expect("a print opens");
+    assert_eq!(legacy.job_started_at, None);
+
+    let adopted = prints_while(&world, RUNNING, PrinterState::Printing, Some(5000)).await;
+    assert_eq!(adopted["active"], json!(legacy.id.to_string()), "{adopted}");
+    assert_eq!(listed(&adopted).len(), 1, "{adopted}");
+
+    let unknown = prints_while(&world, RUNNING, PrinterState::Printing, None).await;
+    assert_eq!(unknown["active"], json!(legacy.id.to_string()), "{unknown}");
+    assert_eq!(listed(&unknown).len(), 1, "{unknown}");
+    world.server.stop().await;
+}
+
+/// An alert about the job a print was adopted for, after that job was read
+/// through a long pause and resumed, is that print's: the alert carries the
+/// job's own start, which is the pause earlier than any start a read after the
+/// resume puts it at — and earlier is no objection.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_alert_for_the_same_job_after_a_long_pause_attaches_to_its_print() {
+    let host = image_host(snapshot_bytes()).await;
+    let world = World::open().await;
+    let resumed = read_through_a_long_pause(&world).await;
+    let print = resumed["active"].clone();
+    let recorded = instant(print_listed(&resumed, &print), "job_started_at");
+    let own_start = recorded.plus_seconds(-570).expect("an instant");
+
+    alert(
+        &world,
+        &alert_started(5150, RUNNING, own_start, &host.url()),
+    )
+    .await;
+
+    let after = prints(&world).await;
+    assert_eq!(
+        listed(&after).len(),
+        1,
+        "the alert opened a second print: {after}"
+    );
+    assert_eq!(
+        print_listed(&after, &print)["provider_print_id"],
+        json!(5150)
+    );
+    world.server.stop().await;
+}
+
+/// An alert about a later job of the adopted print's file opens a print of its
+/// own, and the next read, finding that later job, closes the earlier print as
+/// replaced.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_alert_for_a_later_same_file_job_opens_its_own_print() {
+    let host = image_host(snapshot_bytes()).await;
+    let world = World::open().await;
+    let earlier =
+        prints_while(&world, RUNNING, PrinterState::Printing, Some(900)).await["active"].clone();
+
+    world
+        .printer
+        .runs_job(RUNNING, PrinterState::Printing, Some(30));
+    let later_start = Timestamp::now().plus_seconds(-30).expect("an instant");
+    alert(
+        &world,
+        &alert_started(5150, RUNNING, later_start, &host.url()),
+    )
+    .await;
+
+    let after = prints(&world).await;
+    assert_eq!(listed(&after).len(), 2, "{after}");
+    let later = &after["active"];
+    assert_ne!(later, &earlier, "{after}");
+    assert_eq!(
+        print_listed(&after, later)["provider_print_id"],
+        json!(5150)
+    );
+    let stale = print_listed(&after, &earlier);
+    assert!(stale.get("provider_print_id").is_none(), "{after}");
+    assert_eq!(
+        stale["end_reason"],
+        json!(printobserver_core::listing::REPLACED_REASON),
+        "{after}"
+    );
+    world.server.stop().await;
+}
+
+/// A listing or a status read that finds the machine idle closes the open
+/// print through the close-out — the print ended with the state it reached —
+/// and one that cannot read the machine closes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_that_finds_the_machine_idle_closes_the_print_and_an_unread_one_does_not() {
+    for read in ["listing", "status"] {
+        let world = World::open().await;
+        let print_id = world.open_print().await;
+        let status_url = world.operation_url("/v1/prints/{print_id}/status", print_id);
+
+        world.printer.unreadable(true);
+        let _ = prints(&world).await;
+        let _ = world.get(&status_url).await;
+        assert!(
+            world
+                .stores
+                .prints
+                .print(print_id)
+                .await
+                .expect("the print reads")
+                .is_some_and(|held| held.ended_at.is_none()),
+            "{read}: a machine nothing could read closed the print"
+        );
+        world.printer.unreadable(false);
+
+        world.printer.in_state(PrinterState::Operational);
+        let answered = if read == "listing" {
+            print_listed(&prints(&world).await, &json!(print_id.to_string())).clone()
+        } else {
+            world.get(&status_url).await.1["print"].clone()
+        };
+        assert_eq!(
+            answered["end_reason"],
+            json!("the print reached Operational"),
+            "{read}: {answered}"
+        );
+        assert_eq!(
+            answered["state"],
+            json!("operational"),
+            "{read}: {answered}"
+        );
+        world.server.stop().await;
+    }
+}
+
+/// A status or a context read can be the first to find a later job of its
+/// print's file. It closes the print as replaced through the close-out every
+/// other read takes — the bounded change it carried expired, and the value it
+/// replaced put back — and answers the print as that left it; the next listing
+/// gives the running job a print of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_status_or_context_read_first_to_find_a_later_job_closes_the_print_as_replaced() {
+    for (operation, print_at) in [
+        ("/v1/prints/{print_id}/status", "/print"),
+        ("/v1/prints/{print_id}/context", "/context/print"),
+    ] {
+        let world = World::open().await;
+        let earlier =
+            prints_while(&world, RUNNING, PrinterState::Printing, Some(1800)).await["active"]
+                .clone();
+        let earlier_id: PrintId = earlier
+            .as_str()
+            .expect("an identifier")
+            .parse()
+            .expect("a print identifier");
+        let (status, adjusted) = world
+            .post(
+                &world.operation_url(
+                    "/v1/prints/{print_id}/actions/set_feedrate_factor",
+                    earlier_id,
+                ),
+                &json!({
+                    "reason": "a journey is asking",
+                    "actor": "operator",
+                    "factor": 1.2,
+                    "duration_s": 3600,
+                }),
+            )
+            .await;
+        assert_eq!(status, reqwest::StatusCode::OK, "{adjusted}");
+
+        world
+            .printer
+            .runs_job(RUNNING, PrinterState::Printing, Some(200));
+        let (_, read) = world.get(&world.operation_url(operation, earlier_id)).await;
+
+        let answered = read.pointer(print_at).expect("the read carries its print");
+        assert_eq!(
+            answered["end_reason"],
+            json!(printobserver_core::listing::REPLACED_REASON),
+            "{operation} answered the print as it was before the read: {read}"
+        );
+        assert!(answered.get("ended_at").is_some(), "{read}");
+        assert!(
+            world
+                .stores
+                .actions
+                .active_interventions(earlier_id)
+                .await
+                .expect("the interventions read")
+                .is_empty(),
+            "{operation} closed the print and left its bounded change running"
+        );
+        assert_eq!(
+            world
+                .printer
+                .value_of(printobserver_printer_api::Adjustable::Feedrate),
+            Some(1.0),
+            "{operation} closed the print without putting its feedrate back"
+        );
+        let after = prints(&world).await;
+        assert_eq!(listed(&after).len(), 2, "{after}");
+        assert_ne!(after["active"], earlier, "{after}");
+        world.server.stop().await;
+    }
+}

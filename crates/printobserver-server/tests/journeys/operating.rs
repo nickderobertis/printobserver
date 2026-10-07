@@ -745,3 +745,281 @@ fn instant(value: &Value) -> i64 {
     let parsed: printobserver_types::Timestamp = text.parse().expect("an instant is RFC 3339");
     parsed.as_utc().timestamp()
 }
+
+/// A start asked of an idle machine opens a print of its own: the print it was
+/// asked against, which that machine shows is over, is closed by the read the
+/// start makes first, and the action, its events and its manifest are written
+/// against the print the answer names, with no sighting of a job until a read
+/// finds it running — and the next listing names that print active. A start the policy refuses, over a machine
+/// already running a job, opens nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_opens_its_own_print_and_writes_everything_against_it() {
+    const STARTED: &str = "hold.gcode";
+    let world = World::open().await;
+    let asked_against = world.open_print().await;
+    world.printer.in_state(PrinterState::Operational);
+    let start = body(
+        &json!("operator"),
+        &[("file_name", json!(STARTED)), ("manifest", manifest())],
+    );
+
+    let (status, answer) = world
+        .post(
+            &world.operation_url(&path("start_print"), asked_against),
+            &start,
+        )
+        .await;
+
+    assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+    assert_eq!(answer["record"]["decision"], json!("accepted"), "{answer}");
+    let started: printobserver_types::PrintId = answer["record"]["print_id"]
+        .as_str()
+        .expect("the record names a print")
+        .parse()
+        .expect("a print identifier");
+    assert_ne!(
+        started, asked_against,
+        "the start took the ended print: {answer}"
+    );
+    let unseen = world
+        .stores
+        .prints
+        .print(started)
+        .await
+        .expect("the print reads")
+        .expect("the started print is held");
+    assert_eq!(
+        (unseen.job_started_at, unseen.job_print_time_s),
+        (None, None),
+        "a print no read has seen running carries a sighting"
+    );
+    // The machine runs what it was asked to, as `OctoPrint` does by the time
+    // its start answers.
+    world
+        .printer
+        .runs_job(STARTED, PrinterState::Printing, Some(4));
+    let ended = world
+        .get(&world.operation_url(&path("status"), asked_against))
+        .await
+        .1;
+    assert_eq!(
+        ended["print"]["end_reason"],
+        json!("the print reached Operational"),
+        "{ended}"
+    );
+
+    let (_, status) = world
+        .get(&world.operation_url(&path("status"), started))
+        .await;
+    let opened = &status["print"];
+    assert_eq!(opened["file_name"], json!(STARTED), "{status}");
+    assert!(opened.get("ended_at").is_none(), "{status}");
+    assert!(opened.get("provider_print_id").is_none(), "{status}");
+    assert_eq!(opened["job_print_time_s"], json!(4), "{status}");
+    let (_, manifest_read) = world
+        .get(&world.operation_url(&path("manifest_get"), started))
+        .await;
+    assert_eq!(manifest_read["manifest"], manifest(), "{manifest_read}");
+    let (_, history) = world
+        .get(&world.operation_url(&path("history"), started))
+        .await;
+    let kinds: Vec<&str> = history["events"]
+        .as_array()
+        .expect("a history is a list")
+        .iter()
+        .filter_map(|event| event["kind"].as_str())
+        .collect();
+    for kind in ["action_requested", "action_executed"] {
+        assert!(
+            kinds.contains(&kind),
+            "no {kind} on the started print: {history}"
+        );
+    }
+    assert!(world.printer.calls().contains(&Call::Start(
+        printobserver_types::FileName::new(STARTED).expect("a file name")
+    )));
+
+    let (_, listing) = world.get(&world.at("/v1/prints")).await;
+    assert_eq!(listing["active"], json!(started.to_string()), "{listing}");
+    assert_eq!(
+        listing["prints"].as_array().map(Vec::len),
+        Some(2),
+        "the started job was given a print beside the one its start opened: {listing}"
+    );
+
+    // A start refused because the machine is running: nothing is opened.
+    let (status, refused) = world
+        .post(&world.operation_url(&path("start_print"), started), &start)
+        .await;
+    assert_eq!(status, reqwest::StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["record"]["print_id"], json!(started.to_string()));
+    assert!(
+        refused["record"]["decision"]["rejected"].is_object(),
+        "{refused}"
+    );
+    let (_, after) = world.get(&world.at("/v1/prints")).await;
+    assert_eq!(after["prints"].as_array().map(Vec::len), Some(2), "{after}");
+    world.server.stop().await;
+}
+
+/// A start the policy refuses, over a machine whose print is over, still makes
+/// the read that chooses its print first: the print it was asked against is
+/// closed by that read, and the refusal is recorded against a print opened for
+/// the file the start names — which the answer names, which carries no sighting
+/// of a job, and which the machine was asked nothing for. The next read, finding
+/// the machine still idle, closes that print too, and names nothing active.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_start_is_recorded_against_its_own_print_which_the_next_read_closes() {
+    const STARTED: &str = "hold.gcode";
+    let world = World::open().await;
+    let asked_against = world.open_print().await;
+    world.printer.in_state(PrinterState::Operational);
+    // The envelope these journeys run under grants the agent no start.
+    let start = body(
+        &json!({ "agent": { "session_name": "watch-1" } }),
+        &[("file_name", json!(STARTED)), ("manifest", manifest())],
+    );
+
+    let (status, refused) = world
+        .post(
+            &world.operation_url(&path("start_print"), asked_against),
+            &start,
+        )
+        .await;
+
+    assert_eq!(status, reqwest::StatusCode::CONFLICT, "{refused}");
+    assert!(
+        refused["record"]["decision"]["rejected"]
+            .get("actor_may_not_request")
+            .is_some(),
+        "{refused}"
+    );
+    let opened: printobserver_types::PrintId = refused["record"]["print_id"]
+        .as_str()
+        .expect("the record names a print")
+        .parse()
+        .expect("a print identifier");
+    assert_ne!(opened, asked_against, "{refused}");
+    assert!(
+        !world
+            .printer
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::Start(_))),
+        "a refused start reached the machine"
+    );
+    let held = world
+        .stores
+        .prints
+        .print(opened)
+        .await
+        .expect("the print reads")
+        .expect("the refused start's print is held");
+    assert_eq!(held.file_name.as_deref(), Some(STARTED));
+    assert_eq!(held.ended_at, None);
+    assert_eq!((held.job_started_at, held.job_print_time_s), (None, None));
+    let ended = world
+        .stores
+        .prints
+        .print(asked_against)
+        .await
+        .expect("the print reads")
+        .expect("the asked print is held");
+    assert_eq!(
+        ended.end_reason.as_deref(),
+        Some("the print reached Operational")
+    );
+
+    let (_, listing) = world.get(&world.at("/v1/prints")).await;
+    assert!(listing.get("active").is_none(), "{listing}");
+    let closed = world
+        .stores
+        .prints
+        .print(opened)
+        .await
+        .expect("the print reads")
+        .expect("the refused start's print is held");
+    assert_eq!(
+        closed.end_reason.as_deref(),
+        Some("the print reached Operational"),
+        "the idle machine's read left the refused start's print open"
+    );
+    world.server.stop().await;
+}
+
+/// A read made while a start is in flight waits for it — the listing, and a
+/// status or a context read of the print the start opened, alike: it finds the
+/// job the start began running, rather than finding the machine idle between
+/// the two and closing that print. The listing names that print active.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_during_a_start_finds_the_job_it_began_rather_than_closing_its_print() {
+    const STARTED: &str = "hold.gcode";
+    for read in ["prints", "status", "context"] {
+        let world = World::open().await;
+        let asked_against = world.open_print().await;
+        world.printer.in_state(PrinterState::Operational);
+        world
+            .printer
+            .starts_jobs_after(std::time::Duration::from_millis(500));
+        let start = body(
+            &json!("operator"),
+            &[("file_name", json!(STARTED)), ("manifest", manifest())],
+        );
+        let url = world.operation_url(&path("start_print"), asked_against);
+        let ((status, answer), during) = tokio::join!(world.post(&url, &start), async {
+            // Read once the machine has been asked to start, while it is still
+            // idle and the start has not answered.
+            while !world
+                .printer
+                .calls()
+                .iter()
+                .any(|call| matches!(call, Call::Start(_)))
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let read_url = if read == "prints" {
+                world.at("/v1/prints")
+            } else {
+                // The print the start opened, which is open by the time the
+                // machine is asked to start.
+                let opened = world
+                    .stores
+                    .prints
+                    .open_prints()
+                    .await
+                    .expect("the open prints read")
+                    .into_iter()
+                    .find(|print| print.file_name.as_deref() == Some(STARTED))
+                    .expect("the start opened a print before asking the machine");
+                world.operation_url(&path(read), opened.id)
+            };
+            world.get(&read_url).await.1
+        },);
+
+        assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+        let started: printobserver_types::PrintId = answer["record"]["print_id"]
+            .as_str()
+            .expect("the record names a print")
+            .parse()
+            .expect("a print identifier");
+        let opened = world
+            .stores
+            .prints
+            .print(started)
+            .await
+            .expect("the print reads")
+            .expect("the started print is held");
+        assert_eq!(
+            opened.ended_at, None,
+            "the {read} read made during the start closed its print: {during}"
+        );
+        if read == "prints" {
+            assert_eq!(
+                during["active"],
+                json!(started.to_string()),
+                "the listing made during the start did not find its job: {during}"
+            );
+        }
+        world.server.stop().await;
+    }
+}

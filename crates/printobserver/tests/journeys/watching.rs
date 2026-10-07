@@ -182,7 +182,7 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
         |_| {},
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     post(world, &alert(world, 4211, RUNNING_FILE, true, false));
     watching.written(&format!("started-{print}"));
     std::thread::sleep(Duration::from_secs(1));
@@ -218,7 +218,7 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
 fn what_a_turn_never_took_gets_exactly_one_more_turn_in_the_same_session() {
     let watching = Watching::start(WAITING, |_| {});
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.written(&format!("started-{print}-1"));
@@ -300,7 +300,7 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
         |_| {},
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     post(world, &alert(world, 4211, RUNNING_FILE, true, false));
     watching.written(&format!("started-{print}"));
     post(
@@ -331,7 +331,7 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
 fn an_ended_print_releases_its_inbox() {
     let watching = Watching::start(WAITING, |_| {});
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Operational);
     post(world, &alert(world, 4211, RUNNING_FILE, true, false));
     watching.written(&format!("started-{print}-1"));
@@ -374,7 +374,7 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
         detector_configuration(&api, true),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     let posted = Instant::now();
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
@@ -410,7 +410,7 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
         detector_configuration(&api, true),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.settled_after(&print, 1);
@@ -440,7 +440,7 @@ fn a_resume_the_policy_refuses_leaves_the_print_paused() {
         detector_configuration(&api, false),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.settled_after(&print, 1);
@@ -473,7 +473,7 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
         detector_configuration(&api, true),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.written(&format!("fan-{print}"));
@@ -523,7 +523,7 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
         detector_configuration(&api, true),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.written(&format!("fan-{print}"));
@@ -572,7 +572,7 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
         detector_configuration(&api, true),
     );
     let world = &watching.world;
-    let print = world.print_id.clone();
+    let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.written(&format!("started-{print}-1"));

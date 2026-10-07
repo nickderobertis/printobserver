@@ -21,7 +21,7 @@ use crate::records::{
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterSnapshot, PrinterState};
-use printobserver_types::{EventBody, EventSource, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventSource, FileName, PrintId, Timestamp};
 
 use crate::bounds::{Bounds, effective_bounds};
 use crate::clock::plus_seconds;
@@ -111,11 +111,28 @@ impl Supervisor {
     /// Returns the store's own error when the decision, the execution or the
     /// intervention could not be recorded. A refusal by the printer is not an
     /// error: it is recorded and reported in [`ActionOutcome::executed`].
+    ///
+    /// A start may be made against a print other than `print_id`: it is
+    /// recorded against [`Self::print_to_start`]'s, which the answer's record
+    /// names.
     pub async fn request_action(
         &self,
         print_id: PrintId,
         action: PrintAction,
     ) -> Result<ActionOutcome, CoreError> {
+        // A start holds every resolution of a print from the read that chooses
+        // its print until the printer has been asked to start: a read between
+        // the two would find the machine idle and close the print just opened.
+        let (_starting, print_id) = match &action {
+            PrintAction::StartPrint { file_name, .. } => {
+                let resolving = self.resolving().await;
+                (
+                    Some(resolving),
+                    self.print_to_start(print_id, file_name).await?,
+                )
+            }
+            _ => (None, print_id),
+        };
         let requested_at = self.clock().now();
         let actor = action.actor().clone();
         let print = self.stores().prints.print(print_id).await?;
@@ -191,6 +208,35 @@ impl Supervisor {
             executed: issued.executed,
             intervention,
         })
+    }
+
+    /// The print a start is made against.
+    ///
+    /// Starting a job begins a print of its own. So the printer is read first,
+    /// which closes every open print that read shows is over exactly as any
+    /// other read does ([`crate::listing`]), and when no print is open after it
+    /// one is opened for the file the start names — with no provider
+    /// identifier, and no sighting of a job until a read finds it running. A
+    /// print still open after the read is the one asked for, as it always was:
+    /// a printer running or holding a job refuses a start whichever print it
+    /// is recorded against.
+    async fn print_to_start(
+        &self,
+        asked: PrintId,
+        file_name: &FileName,
+    ) -> Result<PrintId, CoreError> {
+        if let Some(observed) = self.observe_job().await {
+            self.settle_open_prints(&observed).await?;
+        }
+        if !self.stores().prints.open_prints().await?.is_empty() {
+            return Ok(asked);
+        }
+        let opened = self
+            .stores()
+            .prints
+            .open_print(None, Some(file_name.as_str().to_owned()))
+            .await?;
+        Ok(opened.id)
     }
 
     /// What one action that went through does to a pause the detector made.

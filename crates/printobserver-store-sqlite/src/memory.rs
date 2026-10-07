@@ -132,6 +132,8 @@ impl MemoryStore {
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
+            job_started_at: None,
+            job_print_time_s: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -358,6 +360,25 @@ impl PrintStore for MemoryStore {
                     Ok(found.clone())
                 }
             }
+        })
+    }
+
+    fn record_job_sighting(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move {
+            let mut records = lock(&self.records);
+            let found = records
+                .prints
+                .iter_mut()
+                .find(|print| print.id == print_id)
+                .ok_or_else(|| not_found(&format!("print {print_id}")))?;
+            found.job_started_at = Some(job_started_at);
+            found.job_print_time_s = found.job_print_time_s.max(job_print_time_s);
+            Ok(found.clone())
         })
     }
 
