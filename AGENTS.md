@@ -1048,14 +1048,11 @@ affected tier, a push against the last commit that workflow passed on, which
 by hand, takes the sweep, because the whole graph is the answer that cannot miss
 anything. The required check names are the same at either tier.
 
-Outside both tiers, and unchanged by them: the `integration (<platform>)` jobs
-run `just test-integration` against a real OctoPrint on every pull request
-whatever the affected set reaches, and the gate's `test-e2e` keeps its OctoPrint
-journey; `llmlint`, `pr-title`, `skill-install` and `supply-chain` are jobs of
-their own on every change; the Obico tier and the registry install-path proof
-run on their schedules; `just skilltest` and the real-printer smoke run only by
-hand. No gate-time measurement or threshold is recorded here yet: which targets
-the affected tier keeps is the tier split above until one is measured.
+Outside both tiers: the `integration (<platform>)` jobs run `just
+test-integration` on every pull request whatever the affected set reaches;
+`llmlint`, `pr-title`, `skill-install` and `supply-chain` are jobs of their own
+on every change; the Obico tier and the registry install-path proof run on their
+schedules; `just skilltest` and the real-printer smoke run only by hand.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`

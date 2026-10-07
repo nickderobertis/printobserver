@@ -149,3 +149,44 @@ def test_the_affected_coverage_report_rules_on_no_code_its_run_did_not_measure(
         "coverage: rust lines not measured: this run's tests reached no crate (floor 95%), "
         "python lines not measured: this run's tests reached no Python source (floor 95%)",
     )
+
+
+def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """A change to the Python client measures that client, and the report rules on it alone."""
+    copy = as_a_clone(gate_copy())
+    branch_with_a_change(copy, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
+
+    tested = copy.just("test", environment=QUIET, timeout=1800)
+    passing(tested, describing="`just test` over a change to the Python client")
+    reported = copy.just("coverage", environment=QUIET)
+
+    passing(reported, describing="`just coverage` over the client's own run")
+    output = plain(reported.stdout)
+    contains(output, "coverage: over the projects the change since")
+    contains(output, "rust lines not measured: this run's tests reached no crate")
+    contains(output, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
+    truth("tools/repo-checks/src" not in output, describing=f"a report over the client:\n{output}")
+
+
+def test_a_named_head_leaves_out_what_landed_after_it(gate_copy: Callable[..., GateCopy]) -> None:
+    """`nx-set-shas` names a head; a commit past it is not this run's change."""
+    copy = as_a_clone(gate_copy())
+    branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
+    head = copy.git("rev-parse", "HEAD")
+    copy.write(
+        "crates/printobserver-octoprint/src/lib.rs",
+        copy.read("crates/printobserver-octoprint/src/lib.rs") + "\n// A later change.\n",
+    )
+    copy.git("commit", "-q", "-am", "feat: a later change to another crate")
+
+    result = copy.just("format-check", environment={**QUIET, "NX_HEAD": head})
+
+    passing(result, describing="`just format-check` bounded at a named head")
+    selected = ran(result.stdout)
+    contains(selected, "printobserver-vision-api", describing="what the bounded range runs")
+    truth(
+        "printobserver-octoprint" not in selected,
+        describing=f"the crate changed after the head left out of {sorted(selected)}",
+    )

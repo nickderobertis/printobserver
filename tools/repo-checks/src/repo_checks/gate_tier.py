@@ -38,14 +38,23 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
-AFFECTED = "affected"
-ALL = "all"
-TIERS = (AFFECTED, ALL)
+
+class Tier(StrEnum):
+    """The two tiers a gate run is at: the projects a change reaches, or every one."""
+
+    AFFECTED = "affected"
+    ALL = "all"
+
+
+AFFECTED = Tier.AFFECTED
+ALL = Tier.ALL
+TIERS = tuple(Tier)
 
 #: The variables a caller names the base and head commits in. `nx-set-shas`
 #: exports both, and Nx reads them itself too.
@@ -63,9 +72,10 @@ REF_NAME = re.compile(r"^(?![-./])(?!.*\.\.)(?!.*//)(?!.*/$)(?!.*\.lock$)[A-Za-z
 #: run, which is passed back as it is.
 REFUSED = 2
 
-#: The head-branch prefix `release-plz` names its release pull request with,
-#: when `release-plz.toml` names none of its own.
-RELEASE_BRANCH_PREFIX = "release-plz-"
+#: Where `release-plz.toml` names the head-branch prefix of the release pull
+#: request — the one statement of it, which `release-plz` and the selector both
+#: read, so neither restates the other's default.
+RELEASE_BRANCH_KEY = "pr_branch_prefix"
 
 #: How many of the paths no project owns a run names before counting the rest.
 NAMED_PATHS = 5
@@ -154,6 +164,19 @@ def _unowned(repo: Repo, paths: Sequence[str]) -> list[str]:
     return [path for path in paths if not any(path.startswith(f"{root}/") for root in roots)]
 
 
+def tier_named(named: str) -> Tier:
+    """The tier a caller named, narrowed at the boundary it came in through.
+
+    Raises:
+        TierError: If `named` is not one of `TIERS`.
+    """
+    try:
+        return Tier(named)
+    except ValueError:
+        msg = f"unknown tier {named!r}: use {AFFECTED.value!r} (the default) or {ALL.value!r}"
+        raise TierError(msg) from None
+
+
 def resolve(repo: Repo, tier: str, environ: Mapping[str, str] | None = None) -> Scope:
     """What `tier` reaches in `repo` from here.
 
@@ -162,10 +185,7 @@ def resolve(repo: Repo, tier: str, environ: Mapping[str, str] | None = None) -> 
             set to something that is not a plain ref name or SHA naming a commit.
     """
     environment = os.environ if environ is None else environ
-    if tier not in TIERS:
-        msg = f"unknown tier {tier!r}: use {AFFECTED!r} (the default) or {ALL!r}"
-        raise TierError(msg)
-    if tier == ALL:
+    if tier_named(tier) is ALL:
         return Scope(None, None, "every project: the full sweep, as asked")
 
     named_head = environment.get(HEAD_VARIABLE, "")
@@ -227,35 +247,53 @@ def affected_projects(repo: Repo, scope: Scope, target: str) -> set[str] | None:
         msg = f"`nx show projects --affected` failed:\n{shown.stdout}{shown.stderr}"
         raise TierError(msg)
     listed = json.loads(shown.stdout)
-    if not isinstance(listed, list):
-        msg = f"`nx show projects --json` printed something other than a list: {shown.stdout}"
+    if not isinstance(listed, list) or not all(isinstance(name, str) for name in listed):
+        msg = (
+            f"`nx show projects --json` printed something other than a list of project "
+            f"names: {shown.stdout}"
+        )
         raise TierError(msg)
-    return {str(name) for name in listed}
+    return set(listed)
 
 
 def release_branch_prefix(repo: Repo) -> str:
-    """The head-branch prefix of the pull request `release-plz` opens."""
+    """The head-branch prefix of the pull request `release-plz` opens.
+
+    Raises:
+        TierError: If `release-plz.toml` names none, so no pull request could be
+            told apart as the release pull request.
+    """
     workspace = repo.read_toml("release-plz.toml").get("workspace", {})
-    prefix = workspace.get("pr_branch_prefix") if isinstance(workspace, dict) else None
-    return prefix if isinstance(prefix, str) and prefix else RELEASE_BRANCH_PREFIX
+    prefix = workspace.get(RELEASE_BRANCH_KEY) if isinstance(workspace, dict) else None
+    if not isinstance(prefix, str) or not prefix:
+        msg = (
+            f"release-plz.toml's [workspace] names no `{RELEASE_BRANCH_KEY}`, so the release "
+            f"pull request the sweep runs on cannot be told apart from any other"
+        )
+        raise TierError(msg)
+    return prefix
 
 
-def select(repo: Repo, environ: Mapping[str, str] | None = None) -> str:
+def select(repo: Repo, environ: Mapping[str, str] | None = None) -> Tier:
     """The tier a continuous-integration run of the gate is for.
 
     The sweep runs on the release pull request, which is where a batched
     release is gated before it ships; an ordinary pull request and a push to
     the base branch run the affected tier. Any other event — a hand dispatch of
     one gate cell, or a run nothing here recognises — takes the sweep.
+
+    Raises:
+        TierError: If `release-plz.toml` names no release branch prefix.
     """
     environment = os.environ if environ is None else environ
-    event = environment.get("GITHUB_EVENT_NAME", "")
-    if event == "pull_request":
-        head = environment.get("GITHUB_HEAD_REF", "")
-        return ALL if head.startswith(release_branch_prefix(repo)) else AFFECTED
-    if event == "push":
-        return AFFECTED
-    return ALL
+    match environment.get("GITHUB_EVENT_NAME", ""):
+        case "pull_request":
+            head = environment.get("GITHUB_HEAD_REF", "")
+            return ALL if head.startswith(release_branch_prefix(repo)) else AFFECTED
+        case "push":
+            return AFFECTED
+        case _:
+            return ALL
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,12 +306,12 @@ def main(argv: list[str] | None = None) -> int:
     parsed = parser.parse_args(argv)
     repo = Repo(Path(parsed.root))
 
-    if parsed.verb == "select":
-        print(select(repo))
-        return 0
-    if parsed.tier is None or not parsed.targets:
-        parser.error("run needs a tier and at least one target")
     try:
+        if parsed.verb == "select":
+            print(select(repo))
+            return 0
+        if parsed.tier is None or not parsed.targets:
+            parser.error("run needs a tier and at least one target")
         scope = resolve(repo, parsed.tier)
     except TierError as error:
         print(f"gate-tier: refused: {error}", file=sys.stderr)

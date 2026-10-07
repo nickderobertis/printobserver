@@ -38,6 +38,10 @@ PYTHON = "lang:python"
 EDGES = "implicitDependencies"
 
 
+class ProjectFileError(ValueError):
+    """A `project.json` that does not decode to a project object."""
+
+
 @dataclass(frozen=True, slots=True)
 class Project:
     """One `project.json`: what it is called, where it is, and what it declares."""
@@ -55,11 +59,17 @@ def projects(repo: Repo) -> list[Project]:
     The file is the deserialization boundary, so every field is narrowed here:
     a name, root, tag or edge that is not a string is left out rather than
     carried as one.
+
+    Raises:
+        ProjectFileError: If a `project.json` decodes to anything but an object.
     """
     found: list[Project] = []
     for path in repo.project_paths:
         data = json.loads(path.read_text(encoding="utf-8"))
         root = path.parent.relative_to(repo.root).as_posix()
+        if not isinstance(data, dict):
+            msg = f"{root}/project.json holds a JSON {type(data).__name__}, not a project object"
+            raise ProjectFileError(msg)
         name = data.get("name")
         targets = data.get("targets")
         found.append(
@@ -100,10 +110,13 @@ def _imported(path: Path) -> set[str]:
     syntax = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     names: set[str] = set()
     for node in ast.walk(syntax):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.partition(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names.add(node.module.partition(".")[0])
+        match node:
+            case ast.Import(names=aliases):
+                names.update(alias.name.partition(".")[0] for alias in aliases)
+            case ast.ImportFrom(module=str(module), level=0):
+                names.add(module.partition(".")[0])
+            case _:
+                pass
     return names
 
 
@@ -152,7 +165,10 @@ def _task_edges(project: Project) -> dict[str, str]:
 
 def graph_edges(repo: Repo) -> list[str]:
     """Every edge the code draws between projects is one the graph declares."""
-    graph = projects(repo)
+    try:
+        graph = projects(repo)
+    except ProjectFileError as malformed:
+        return [str(malformed)]
     names = {project.name for project in graph}
     findings = [
         f"{project.root}/project.json declares an edge to `{edge}`, which is no project"

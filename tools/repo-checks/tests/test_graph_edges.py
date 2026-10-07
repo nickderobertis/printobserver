@@ -119,6 +119,16 @@ def test_an_edge_to_no_project_is_refused(tree: Callable[[], Tree]) -> None:
     refused(graph_edges(copy.repo), "declares an edge to `no-such-project`, which is no project")
 
 
+def test_a_project_file_that_is_not_an_object_is_refused_naming_it(
+    tree: Callable[[], Tree],
+) -> None:
+    """A project file decoding to a list is read as nothing, not as a project with no edges."""
+    copy = tree()
+    copy.write(OBICO_PROJECT, "[]\n")
+
+    refused(graph_edges(copy.repo), "tools/obico-env/project.json holds a JSON list")
+
+
 def test_a_change_to_an_imported_tool_package_selects_every_suite_importing_it() -> None:
     """The release tooling's importers are exactly the suites a change there must run."""
     selected = affected_by("tools/release-artifacts/src/release_artifacts/wheels.py")

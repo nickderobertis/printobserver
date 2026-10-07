@@ -115,6 +115,27 @@ def test_a_head_is_validated_like_a_base(tmp_path: Path) -> None:
         resolve(repo, AFFECTED, {"NX_HEAD": "$(id)"})
 
 
+def test_a_named_head_bounds_the_change_at_that_commit(tmp_path: Path) -> None:
+    """What lands after the named head is not this run's change, and what lands before is."""
+    repo = repository(tmp_path)
+    base = on_a_branch(repo, "alpha/source.txt")
+    head = git(repo.root, "rev-parse", "HEAD")
+    repo.path("justfile").write_text("later\n", encoding="utf-8")
+    git(repo.root, "add", "-A")
+    git(repo.root, "commit", "-q", "-m", "chore: a later change no project owns")
+
+    bounded = resolve(repo, AFFECTED, {"NX_BASE": base, "NX_HEAD": head[:12]})
+
+    equal((bounded.base, bounded.head), (base, head), describing="the range a named head bounds")
+    equal(
+        bounded.nx("lint"),
+        ["bunx", "nx", "affected", f"--base={base}", f"--head={head}", "-t", "lint"],
+    )
+    unbounded = resolve(repo, AFFECTED, {"NX_BASE": base})
+    equal(unbounded.base, None, describing="the same base with the later commit in range")
+    contains(unbounded.reason, "touches justfile")
+
+
 def test_with_no_derivable_base_the_whole_graph_runs(tmp_path: Path) -> None:
     """No base branch to fork from is no change to scope by: fail closed, and say so."""
     repo = repository(tmp_path, branch="elsewhere")
@@ -197,11 +218,20 @@ def test_a_release_branch_prefix_release_plz_is_configured_with_is_honoured(
 ) -> None:
     """The prefix is read off `release-plz.toml`, not restated beside it."""
     copy = tree()
-    copy.edit("release-plz.toml", "[workspace]\n", '[workspace]\npr_branch_prefix = "cut-"\n')
+    copy.edit("release-plz.toml", 'pr_branch_prefix = "release-plz-"', 'pr_branch_prefix = "cut-"')
 
     event = {"GITHUB_EVENT_NAME": "pull_request"}
     equal(select(copy.repo, {**event, "GITHUB_HEAD_REF": "cut-1"}), ALL)
     equal(select(copy.repo, {**event, "GITHUB_HEAD_REF": RELEASE_BRANCH}), AFFECTED)
+
+
+def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], Tree]) -> None:
+    """With no prefix stated there is no telling the release pull request apart, so no guess."""
+    copy = tree()
+    copy.edit("release-plz.toml", 'pr_branch_prefix = "release-plz-"\n', "")
+
+    with pytest.raises(TierError, match="names no `pr_branch_prefix`"):
+        select(copy.repo, {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_HEAD_REF": RELEASE_BRANCH})
 
 
 def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base() -> None:

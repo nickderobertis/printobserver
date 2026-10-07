@@ -423,13 +423,18 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     the affected projects drops whole files and never a test that reached one.
 
     Raises:
-        TierError: If the tier or the base it is resolved against is refused.
+        TierError: If the tier or the base it is resolved against is refused,
+            or a project file the graph is read from is not a project.
     """
     scope = gate_tier.resolve(repo, tier)
     reached = gate_tier.affected_projects(repo, scope, "test")
     if reached is None:
         return Measured(reason=scope.reason)
-    graph = [project for project in checks_graph.projects(repo) if project.name in reached]
+    try:
+        declared = checks_graph.projects(repo)
+    except checks_graph.ProjectFileError as malformed:
+        raise gate_tier.TierError(str(malformed)) from malformed
+    graph = [project for project in declared if project.name in reached]
     sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
     python = tuple(
         str(source)
