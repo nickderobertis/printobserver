@@ -316,7 +316,6 @@ pub fn traced(
 ) -> Ran {
     use std::process::{Command, Stdio};
 
-    let environment = &with_its_own_config_home(environment, scratch);
     let _trace = KERNEL_TRACE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -336,6 +335,9 @@ pub fn traced(
     std::fs::write(&probe, b"")
         .unwrap_or_else(|error| panic!("{} could not be written: {error}", probe.display()));
     let _ = std::fs::remove_file(&probe);
+    // Made only once the scratch is proven writable, so a scratch that is not a
+    // directory is refused as one rather than as a home that could not be made.
+    let environment = &with_its_own_config_home(environment, scratch);
 
     etw::tool(
         "logman",
