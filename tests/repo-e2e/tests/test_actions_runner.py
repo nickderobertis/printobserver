@@ -5,7 +5,8 @@ forge is pinned here over a workflow small enough to read: a job waits on what
 it `needs` and is skipped when that failed or was skipped; a job's `if:` reads
 another job's outputs and skips it when false; a step's `if:` skips the step
 and its `id` then answers nothing; a step's `GITHUB_OUTPUT` lines become the
-job's outputs; the event a run is under is what `github` and `inputs` answer;
+job's outputs; the event a run is under is what `github` and `inputs` answer,
+and what a step reads as `GITHUB_EVENT_NAME` whatever its caller ran under;
 a `uses:` boundary is recorded with the inputs it was given; the two artifact
 actions move files through a store keyed by run id, and a download of what
 nothing uploaded fails the step; a caller's set of jobs to run skips the rest
@@ -217,6 +218,55 @@ def test_a_runner_read_off_another_job_is_recorded_and_a_named_bash_fails_a_pipe
     )
     run = Runner(unnamed, tmp_path / "checkout", path_first=tmp_path, env=clean_environment()).run()
     equal(run.result("run"), Result.SUCCESS, describing="the same pipe under the default shell")
+
+
+EVENT_VARIABLES = """
+name: event
+on: workflow_dispatch
+jobs:
+  read:
+    runs-on: ubuntu-24.04
+    outputs:
+      seen: ${{ steps.read.outputs.seen }}
+    steps:
+      - id: read
+        run: |
+          seen="$GITHUB_EVENT_NAME:$GITHUB_REF:$GITHUB_HEAD_REF:$GITHUB_BASE_REF"
+          echo "seen=$seen" >> "$GITHUB_OUTPUT"
+"""
+
+
+def test_a_step_sees_this_runs_event_rather_than_the_one_it_was_started_under(
+    tmp_path: Path,
+) -> None:
+    """The forge's event variables are the modelled event's, whatever the caller's are.
+
+    A journey runs this runner inside a real pull-request job, whose own
+    `GITHUB_EVENT_NAME` and `GITHUB_HEAD_REF` a step would otherwise inherit and
+    act on as though the dispatch under test were that pull request.
+    """
+    workflow = tmp_path / "event.yml"
+    workflow.write_text(EVENT_VARIABLES, encoding="utf-8")
+    (tmp_path / "checkout").mkdir()
+
+    run = Runner(
+        workflow,
+        tmp_path / "checkout",
+        path_first=tmp_path,
+        env=clean_environment(
+            GITHUB_EVENT_NAME="pull_request",
+            GITHUB_REF="refs/pull/7/merge",
+            GITHUB_HEAD_REF="release-plz-2026-10-07",
+            GITHUB_BASE_REF="main",
+        ),
+        event=Event("workflow_dispatch", inputs={}, ref="refs/heads/elsewhere"),
+    ).run()
+
+    equal(
+        run.jobs["read"].outputs["seen"],
+        "workflow_dispatch:refs/heads/elsewhere::",
+        describing="the event variables a step saw",
+    )
 
 
 def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
