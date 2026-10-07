@@ -2046,3 +2046,21 @@ rule = "tests_assert_real_behavior"
 file = "crates/printobserver/tests/journeys/announcing.rs"
 site = "fn the_stand_in()"
 reason = "Not a test of anything: it is the stand-in supervisor process the announcement-wait journeys in the same file start, reached as an ignored test of this binary because that is how a Rust test binary runs one of its own functions in a process of its own (the store crate's `child::run` does the same). It is ignored so nothing else runs it, and it refuses to run unless a journey set its behaviour. What it does is observed and asserted from outside, by those journeys: that the wait stops it, how long that took, and that the failure carries what it printed. An assertion inside the child would assert on the fixture rather than on the wait under test."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/config.rs"
+site = "let gathered = gather(operator.iter().chain(std::iter::once(&default)))?;"
+reason = "The second file this merge reads is the server's default configuration, a compile-time system path (`locations::HERE.config`) that no journey can write without root. `gather`'s own test proves the merge over two real files — the operator's file wins and the default fills only what it left unnamed — and `tests/credentials.rs` drives the operator's file through the real binary against a real server."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/credential.rs"
+site = "let written = file"
+reason = "A write or sync failing into a file this call just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The cleanup after it is the one `remove_file` every refused and failed publication shares, which `credential_issue_that_cannot_write_leaves_what_was_there` and the racing-issue journeys drive through the real binary."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/server.rs"
+site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"
+reason = "A write or sync failing into the verifier file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The conversion it serves, and the start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route` against the real server."

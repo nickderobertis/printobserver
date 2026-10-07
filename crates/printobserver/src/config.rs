@@ -321,6 +321,45 @@ fn look_for(path: &Path) -> Result<Looked, Unconfigured> {
     }
 }
 
+/// What the files nobody named supply between them.
+#[derive(Debug, Default)]
+struct Gathered {
+    /// The server, from the first file naming one.
+    server: Option<(String, String)>,
+    /// The credential, from the first file naming one.
+    credential: Option<(String, String)>,
+    /// The first file passed over as somebody else's, and why.
+    passed_over: Option<(PathBuf, String)>,
+}
+
+/// Read files nobody named in order, each filling only what the ones before it
+/// left unnamed, and stopping once nothing is left to fill.
+///
+/// # Errors
+///
+/// Returns [`Unconfigured`] for the first file [`look_for`] refuses.
+fn gather<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Result<Gathered, Unconfigured> {
+    let mut gathered = Gathered::default();
+    for path in paths {
+        if gathered.server.is_some() && gathered.credential.is_some() {
+            break;
+        }
+        match look_for(path)? {
+            Looked::Found(read) => {
+                gathered.server = gathered.server.or(read.server);
+                gathered.credential = gathered.credential.or(read.credential);
+            }
+            Looked::Absent => {}
+            Looked::PassedOver(detail) => {
+                if gathered.passed_over.is_none() {
+                    gathered.passed_over = Some((path.clone(), detail));
+                }
+            }
+        }
+    }
+    Ok(gathered)
+}
+
 /// Read what this program was configured with.
 ///
 /// With a file named, that file is read and nothing else is. With none, the
@@ -370,23 +409,13 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
         reported = path.to_path_buf();
     } else if from_environment.0.is_none() || from_environment.1.is_none() {
         let operator = crate::locations::operator_client_config();
-        for path in operator.iter().chain(std::iter::once(&default)) {
-            if server.is_some() && credential.is_some() {
-                break;
-            }
-            match look_for(path)? {
-                Looked::Found(read) => {
-                    server = server.or(read.server);
-                    credential = credential.or(read.credential);
-                }
-                Looked::Absent => {}
-                Looked::PassedOver(detail) => {
-                    if passed_over.is_none() {
-                        reported.clone_from(path);
-                        passed_over = Some(detail);
-                    }
-                }
-            }
+        // llmlint: ignore[changed_behavior_has_e2e] The second file read here is the server's default, a compile-time system path no journey can write without root; `gather`'s own test proves the merge over two real files, and `tests/credentials.rs` drives the operator's file through the binary.
+        let gathered = gather(operator.iter().chain(std::iter::once(&default)))?;
+        server = gathered.server;
+        credential = gathered.credential;
+        if let Some((path, detail)) = gathered.passed_over {
+            reported = path;
+            passed_over = Some(detail);
         }
     }
     if let Some(value) = from_environment.0 {
@@ -415,7 +444,7 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Credential, REDACTED};
+    use super::{Credential, REDACTED, gather};
 
     /// Neither rendering of a credential shows it.
     ///
@@ -433,6 +462,45 @@ mod tests {
             credential
                 .header_value()
                 .ends_with("qz7vk3xhw9mrbt2ycf5jdlgnps46auei")
+        );
+    }
+
+    /// The operator's own file is read first and the server's default fills
+    /// only what it left unnamed; a file naming both leaves the default unread.
+    #[test]
+    fn the_operators_file_wins_and_the_default_fills_what_it_left() {
+        let root = tempfile::TempDir::new().expect("a test's own directory");
+        let operator = root.path().join("client.toml");
+        let default = root.path().join("config.toml");
+        std::fs::write(&operator, "[client]\ncredential = \"the-operators\"\n").expect("writable");
+        std::fs::write(
+            &default,
+            "listen = \"127.0.0.1:9\"\n[client]\ncredential = \"the-services\"\n",
+        )
+        .expect("writable");
+
+        let merged = gather([&operator, &default]).expect("both are documents");
+        assert_eq!(
+            merged.credential.map(|(value, _)| value).as_deref(),
+            Some("the-operators")
+        );
+        assert!(
+            merged
+                .server
+                .is_some_and(|(value, _)| value.contains("127.0.0.1:9")),
+            "the default did not supply the server the operator's file left unnamed"
+        );
+
+        std::fs::write(
+            &operator,
+            "[client]\nserver = \"http://127.0.0.1:7\"\ncredential = \"the-operators\"\n",
+        )
+        .expect("writable");
+        std::fs::write(&default, "this is not a document").expect("writable");
+        let whole = gather([&operator, &default]).expect("the default is never opened");
+        assert_eq!(
+            whole.server.map(|(value, _)| value).as_deref(),
+            Some("http://127.0.0.1:7")
         );
     }
 }

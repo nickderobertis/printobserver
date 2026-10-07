@@ -141,6 +141,7 @@ fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE);
     let mut file = options.open(path)?;
+    // llmlint: ignore[changed_behavior_has_e2e] A write or sync failing into a file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root; the conversion it serves, and the next start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route`.
     let written = file.write_all(contents).and_then(|()| file.sync_all());
     if written.is_err() {
         // The file is this start's own and holds nothing usable, so it is

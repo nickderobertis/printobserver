@@ -247,6 +247,7 @@ fn write_operators_own(path: &Path, contents: &str, replace: bool) -> Result<(),
         builder.create(directory).map_err(Unwritten::Failed)?;
     }
     let (staged, mut file) = staged_beside(path).map_err(Unwritten::Failed)?;
+    // llmlint: ignore[changed_behavior_has_e2e] A write or sync failing into a file the same call just created exclusively is a full or failing disk, which no journey can arrange on a runner without root; the cleanup after it is the one `remove_file` every refused and failed publication shares, which `credential_issue_that_cannot_write_leaves_what_was_there` and `racing_issues_publish_exactly_one_configuration_and_print_its_verifier` drive through the binary.
     let written = file
         .write_all(contents.as_bytes())
         .and_then(|()| file.sync_all());
